@@ -12,7 +12,7 @@ select * from
 --------------------------------------
  Values Scan on "*VALUES*_1"
    Output: "*VALUES*_1".column1
-   SubPlan 1
+   SubPlan any_1
      ->  Values Scan on "*VALUES*"
            Output: "*VALUES*".column1
 (5 rows)

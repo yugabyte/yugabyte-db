@@ -613,11 +613,11 @@ order by a.a;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort
-   Output: a.a, ((SubPlan 1))
+   Output: a.a, ((SubPlan expr_1))
    Sort Key: a.a
    ->  Seq Scan on public.a
-         Output: a.a, (SubPlan 1)
-         SubPlan 1
+         Output: a.a, (SubPlan expr_1)
+         SubPlan expr_1
            ->  Aggregate
                  Output: sum(c.c)
                  ->  Hash Join

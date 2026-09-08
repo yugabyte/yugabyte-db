@@ -5,6 +5,7 @@
 -- pg_catalog alterations. Validate columns of pg_yb_profile and oids.
 --
 \d pg_yb_profile
+-- YB_TODO_PG19MERGE: Change pg_yb_profile_oid_index oid back to 8052 before PG19 release.
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_profile', 'pg_yb_profile_oid_index');
 SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_profile';
 SELECT pg_describe_object('pg_yb_profile'::regclass::oid, oid, 0) FROM pg_yb_profile;

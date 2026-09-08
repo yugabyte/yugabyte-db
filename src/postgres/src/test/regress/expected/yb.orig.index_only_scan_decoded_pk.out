@@ -721,7 +721,7 @@ EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_pa
  Sort
    Sort Key: i.item_id
    ->  YB Batched Nested Loop Join
-         Join Filter: (i.item_id = t.tag_id)
+         Join Filter: (t.tag_id = i.item_id)
          ->  Index Only Scan using t_join_child_tag on t_join_child i
                Index Cond: (tag = 1)
          ->  Index Scan using t_join_parent_pkey on t_join_parent t
@@ -952,7 +952,7 @@ EXPLAIN (COSTS OFF) SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_j
  Sort
    Sort Key: c.h2
    ->  YB Batched Nested Loop Join
-         Join Filter: (c.h1 = p.tag_id)
+         Join Filter: (p.tag_id = c.h1)
          ->  Index Only Scan using t_partial_include_v on t_partial_include c
                Index Cond: (v = 25)
          ->  Index Scan using t_join_parent_pkey on t_join_parent p
@@ -1310,7 +1310,7 @@ EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_pa
  Sort
    Sort Key: i.item_id
    ->  YB Batched Nested Loop Join
-         Join Filter: (i.item_id = t.tag_id)
+         Join Filter: (t.tag_id = i.item_id)
          ->  Index Scan using t_join_child_tag on t_join_child i
                Index Cond: (tag = 1)
          ->  Index Scan using t_join_parent_pkey on t_join_parent t

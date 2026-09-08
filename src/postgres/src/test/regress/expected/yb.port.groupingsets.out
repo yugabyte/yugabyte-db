@@ -478,17 +478,17 @@ select grouping(ss.x)
 from int8_tbl i1
 cross join lateral (select (select i1.q1) as x) ss
 group by ss.x;
-                   QUERY PLAN                   
-------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  GroupAggregate
-   Output: GROUPING((SubPlan 1)), ((SubPlan 2))
-   Group Key: ((SubPlan 2))
+   Output: GROUPING((SubPlan expr_1)), ((SubPlan expr_2))
+   Group Key: ((SubPlan expr_2))
    ->  Sort
-         Output: ((SubPlan 2)), i1.q1
-         Sort Key: ((SubPlan 2))
+         Output: ((SubPlan expr_2)), i1.q1
+         Sort Key: ((SubPlan expr_2))
          ->  Seq Scan on public.int8_tbl i1
-               Output: (SubPlan 2), i1.q1
-               SubPlan 2
+               Output: (SubPlan expr_2), i1.q1
+               SubPlan expr_2
                  ->  Result *RESULT*_1
                        Output: i1.q1
 (11 rows)
@@ -508,22 +508,22 @@ select (select grouping(ss.x))
 from int8_tbl i1
 cross join lateral (select (select i1.q1) as x) ss
 group by ss.x;
-                 QUERY PLAN                 
---------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  GroupAggregate
-   Output: (SubPlan 2), ((SubPlan 3))
-   Group Key: ((SubPlan 3))
+   Output: (SubPlan expr_1), ((SubPlan expr_3))
+   Group Key: ((SubPlan expr_3))
    ->  Sort
-         Output: ((SubPlan 3)), i1.q1
-         Sort Key: ((SubPlan 3))
+         Output: ((SubPlan expr_3)), i1.q1
+         Sort Key: ((SubPlan expr_3))
          ->  Seq Scan on public.int8_tbl i1
-               Output: (SubPlan 3), i1.q1
-               SubPlan 3
+               Output: (SubPlan expr_3), i1.q1
+               SubPlan expr_3
                  ->  Result *RESULT*_2
                        Output: i1.q1
-   SubPlan 2
+   SubPlan expr_1
      ->  Result *RESULT*
-           Output: GROUPING((SubPlan 1))
+           Output: GROUPING((SubPlan expr_2))
 (14 rows)
 
 select (select grouping(ss.x))
@@ -849,7 +849,7 @@ explain (costs off)
  Sort
    Sort Key: "*VALUES*".column1
    ->  Values Scan on "*VALUES*"
-         SubPlan 1
+         SubPlan expr_1
            ->  Aggregate
                  Group Key: ()
                  Filter: "*VALUES*".column1
@@ -1745,17 +1745,17 @@ NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TAB
 -- test handling of outer GroupingFunc within subqueries
 explain (costs off)
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
-        QUERY PLAN         
----------------------------
+             QUERY PLAN             
+------------------------------------
  MixedAggregate
-   Hash Key: $2
+   Hash Key: (InitPlan expr_3).col1
    Group Key: ()
-   InitPlan 1 (returns $1)
+   InitPlan expr_2
      ->  Result *RESULT*_1
-   InitPlan 3 (returns $2)
+   InitPlan expr_3
      ->  Result *RESULT*_2
    ->  Result *RESULT*_3
-   SubPlan 2
+   SubPlan expr_1
      ->  Result *RESULT*
 (10 rows)
 

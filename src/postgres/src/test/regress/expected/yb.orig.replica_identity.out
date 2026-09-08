@@ -24,6 +24,10 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
  nonkey | text    |           |          |                                                   | extended |              | 
 Indexes:
     "test_replica_identity_pkey" PRIMARY KEY, lsm (id HASH)
+Not-null constraints:
+    "test_replica_identity_id_not_null" NOT NULL "id"
+    "test_replica_identity_keya_not_null" NOT NULL "keya"
+    "test_replica_identity_keyb_not_null" NOT NULL "keyb"
 
 -- YB Note: Make sure replica identity is retained after table rewrite operations
 ALTER TABLE test_replica_identity REPLICA IDENTITY FULL;

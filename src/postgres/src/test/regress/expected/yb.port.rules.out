@@ -1194,7 +1194,8 @@ do instead insert into rules_foo2 values (f1);
 ERROR:  column "f1" does not exist
 LINE 2: do instead insert into rules_foo2 values (f1);
                                                   ^
-HINT:  There is a column named "f1" in table "old", but it cannot be referenced from this part of the query.
+DETAIL:  There are columns named "f1", but they are in tables that cannot be referenced from this part of the query.
+HINT:  Try using a table-qualified name.
 -- this is the correct way:
 create rule rules_foorule as on insert to rules_foo where f1 < 100
 do instead insert into rules_foo2 values (new.f1);
@@ -1366,24 +1367,24 @@ pg_indexes| SELECT n.nspname AS schemaname,
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
      LEFT JOIN pg_tablespace t ON ((t.oid = i.reltablespace)))
   WHERE ((c.relkind = ANY (ARRAY['r'::"char", 'm'::"char", 'p'::"char"])) AND (i.relkind = ANY (ARRAY['i'::"char", 'I'::"char"])));
-pg_locks| SELECT l.locktype,
-    l.database,
-    l.relation,
+pg_locks| SELECT locktype,
+    database,
+    relation,
     NULL::integer AS page,
     NULL::smallint AS tuple,
     NULL::text AS virtualxid,
     NULL::xid AS transactionid,
-    l.classid,
-    l.objid,
-    l.objsubid,
+    classid,
+    objid,
+    objsubid,
     NULL::text AS virtualtransaction,
-    l.pid,
-    array_to_string(l.mode, ','::text) AS mode,
-    l.granted,
-    l.fastpath,
-    l.waitstart,
-    l.waitend,
-    jsonb_build_object('node', l.node, 'transactionid', l.transaction_id, 'subtransaction_id', l.subtransaction_id, 'is_explicit', l.is_explicit, 'tablet_id', l.tablet_id, 'blocked_by', l.blocked_by, 'keyrangedetails', jsonb_build_object('cols', to_jsonb((l.hash_cols || l.range_cols)), 'attnum', l.attnum, 'column_id', l.column_id, 'multiple_rows_locked', l.multiple_rows_locked)) AS ybdetails
+    pid,
+    array_to_string(mode, ','::text) AS mode,
+    granted,
+    fastpath,
+    waitstart,
+    waitend,
+    jsonb_build_object('node', node, 'transactionid', transaction_id, 'subtransaction_id', subtransaction_id, 'is_explicit', is_explicit, 'tablet_id', tablet_id, 'blocked_by', blocked_by, 'keyrangedetails', jsonb_build_object('cols', to_jsonb((hash_cols || range_cols)), 'attnum', attnum, 'column_id', column_id, 'multiple_rows_locked', multiple_rows_locked)) AS ybdetails
    FROM yb_lock_status(NULL::oid, NULL::uuid) l(locktype, database, relation, pid, mode, granted, fastpath, waitstart, waitend, node, tablet_id, transaction_id, subtransaction_id, status_tablet_id, is_explicit, hash_cols, range_cols, attnum, column_id, multiple_rows_locked, blocked_by, classid, objid, objsubid);
 pg_matviews| SELECT n.nspname AS schemaname,
     c.relname AS matviewname,
@@ -3039,85 +3040,85 @@ yb_pg_stat_plans_insights| WITH cte AS (
             min(yb_pg_stat_plans.avg_est_cost) OVER (PARTITION BY yb_pg_stat_plans.dbid, yb_pg_stat_plans.userid, yb_pg_stat_plans.queryid) AS min_avg_est_cost
            FROM yb_pg_stat_plans
         )
- SELECT cte.dbid,
-    cte.userid,
-    cte.queryid,
-    cte.planid,
-    cte.first_used,
-    cte.last_used,
-    cte.hints,
-    cte.avg_exec_time,
-    cte.avg_est_cost,
-    cte.min_avg_exec_time,
-    cte.min_avg_est_cost,
+ SELECT dbid,
+    userid,
+    queryid,
+    planid,
+    first_used,
+    last_used,
+    hints,
+    avg_exec_time,
+    avg_est_cost,
+    min_avg_exec_time,
+    min_avg_est_cost,
         CASE
-            WHEN (((cte.avg_exec_time = cte.min_avg_exec_time) AND (cte.min_avg_est_cost <> cte.avg_est_cost)) OR ((cte.avg_exec_time <> cte.min_avg_exec_time) AND (cte.min_avg_est_cost = cte.avg_est_cost))) THEN 'Yes'::text
+            WHEN (((avg_exec_time = min_avg_exec_time) AND (min_avg_est_cost <> avg_est_cost)) OR ((avg_exec_time <> min_avg_exec_time) AND (min_avg_est_cost = avg_est_cost))) THEN 'Yes'::text
             ELSE 'No'::text
         END AS plan_require_evaluation,
         CASE
-            WHEN (cte.avg_exec_time = cte.min_avg_exec_time) THEN 'Yes'::text
+            WHEN (avg_exec_time = min_avg_exec_time) THEN 'Yes'::text
             ELSE 'No'::text
         END AS plan_min_exec_time
    FROM cte
-  ORDER BY cte.queryid, cte.planid, cte.last_used;
+  ORDER BY queryid, planid, last_used;
 yb_pg_stat_plans_insights_with_server_uuid| SELECT yb_get_local_tserver_uuid() AS server_uuid,
-    yb_pg_stat_plans_insights.dbid,
-    yb_pg_stat_plans_insights.userid,
-    yb_pg_stat_plans_insights.queryid,
-    yb_pg_stat_plans_insights.planid,
-    yb_pg_stat_plans_insights.first_used,
-    yb_pg_stat_plans_insights.last_used,
-    yb_pg_stat_plans_insights.hints,
-    yb_pg_stat_plans_insights.avg_exec_time,
-    yb_pg_stat_plans_insights.avg_est_cost,
-    yb_pg_stat_plans_insights.min_avg_exec_time,
-    yb_pg_stat_plans_insights.min_avg_est_cost,
-    yb_pg_stat_plans_insights.plan_require_evaluation,
-    yb_pg_stat_plans_insights.plan_min_exec_time
+    dbid,
+    userid,
+    queryid,
+    planid,
+    first_used,
+    last_used,
+    hints,
+    avg_exec_time,
+    avg_est_cost,
+    min_avg_exec_time,
+    min_avg_est_cost,
+    plan_require_evaluation,
+    plan_min_exec_time
    FROM yb_pg_stat_plans_insights;
 yb_pg_stat_plans_with_server_uuid| SELECT yb_get_local_tserver_uuid() AS server_uuid,
-    yb_pg_stat_plans.dbid,
-    yb_pg_stat_plans.userid,
-    yb_pg_stat_plans.queryid,
-    yb_pg_stat_plans.planid,
-    yb_pg_stat_plans.first_used,
-    yb_pg_stat_plans.last_used,
-    yb_pg_stat_plans.hints,
-    yb_pg_stat_plans.calls,
-    yb_pg_stat_plans.avg_exec_time,
-    yb_pg_stat_plans.max_exec_time,
-    yb_pg_stat_plans.max_exec_time_params,
-    yb_pg_stat_plans.avg_est_cost,
-    yb_pg_stat_plans.plan
+    dbid,
+    userid,
+    queryid,
+    planid,
+    first_used,
+    last_used,
+    hints,
+    calls,
+    avg_exec_time,
+    max_exec_time,
+    max_exec_time_params,
+    avg_est_cost,
+    plan
    FROM yb_pg_stat_plans;
-yb_query_diagnostics_status| SELECT yb_get_query_diagnostics_status.status,
-    yb_get_query_diagnostics_status.description,
-    yb_get_query_diagnostics_status.query_id,
-    yb_get_query_diagnostics_status.start_time,
-    yb_get_query_diagnostics_status.diagnostics_interval_sec,
-    yb_get_query_diagnostics_status.bind_var_query_min_duration_ms,
-    yb_get_query_diagnostics_status.explain_params,
-    yb_get_query_diagnostics_status.path
+yb_query_diagnostics_status| SELECT status,
+    description,
+    query_id,
+    start_time,
+    diagnostics_interval_sec,
+    bind_var_query_min_duration_ms,
+    explain_params,
+    path
    FROM yb_get_query_diagnostics_status() yb_get_query_diagnostics_status(status, description, query_id, start_time, diagnostics_interval_sec, bind_var_query_min_duration_ms, explain_params, path);
-yb_servers_metrics| SELECT yb_servers_metrics.uuid,
-    yb_servers_metrics.metrics,
-    yb_servers_metrics.status,
-    yb_servers_metrics.error
+yb_servers_metrics| SELECT uuid,
+    metrics,
+    status,
+    error
    FROM yb_servers_metrics() yb_servers_metrics(uuid, metrics, status, error);
-yb_tablet_metadata| SELECT t.tablet_id,
-    t.oid,
-    t.namespace AS db_name,
-    t.object_name AS relname,
-    t.start_hash_code,
-    t.end_hash_code,
-    t.leader,
-    t.replicas,
-    t.start_range,
-    t.end_range,
-    t.tablet_attrs,
-    t.tablet_state
+yb_tablet_metadata| SELECT tablet_id,
+    oid,
+    namespace AS db_name,
+    object_name AS relname,
+    start_hash_code,
+    end_hash_code,
+    leader,
+    replicas,
+    start_range,
+    end_range,
+    tablet_attrs,
+    tablet_state
    FROM yb_get_tablet_metadata() t(tablet_id, object_uuid, oid, namespace, object_name, type, start_hash_code, end_hash_code, leader, replicas, start_range, end_range, tablet_attrs, tablet_state)
-  WHERE (((t.namespace = 'system'::text) AND (t.object_name = 'transactions'::text)) OR (t.type = 'YSQL'::text));
+  WHERE (((namespace = 'system'::text) AND (object_name = 'transactions'::text)) OR (type = 'YSQL'::text));
 yb_terminated_queries| SELECT d.datname AS databasename,
     s.backend_pid,
     s.query_id,
@@ -3128,20 +3129,20 @@ yb_terminated_queries| SELECT d.datname AS databasename,
    FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_id, query_text, termination_reason, query_start, query_end)
      LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
 yb_terminated_queries_with_server_uuid| SELECT yb_get_local_tserver_uuid() AS server_uuid,
-    yb_terminated_queries.databasename,
-    yb_terminated_queries.backend_pid,
-    yb_terminated_queries.query_id,
-    yb_terminated_queries.query_text,
-    yb_terminated_queries.termination_reason,
-    yb_terminated_queries.query_start_time,
-    yb_terminated_queries.query_end_time
+    databasename,
+    backend_pid,
+    query_id,
+    query_text,
+    termination_reason,
+    query_start_time,
+    query_end_time
    FROM yb_terminated_queries;
-yb_wait_event_desc| SELECT yb_wait_event_desc.wait_event_class,
-    yb_wait_event_desc.wait_event_type,
-    yb_wait_event_desc.wait_event,
-    yb_wait_event_desc.wait_event_description,
-    yb_wait_event_desc.wait_event_code,
-    yb_wait_event_desc.wait_event_aux_description
+yb_wait_event_desc| SELECT wait_event_class,
+    wait_event_type,
+    wait_event,
+    wait_event_description,
+    wait_event_code,
+    wait_event_aux_description
    FROM yb_wait_event_desc() yb_wait_event_desc(wait_event_class, wait_event_type, wait_event, wait_event_description, wait_event_code, wait_event_aux_description);
 SELECT tablename, rulename, definition FROM pg_rules
 WHERE schemaname = 'pg_catalog'

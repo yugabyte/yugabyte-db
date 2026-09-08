@@ -66,7 +66,7 @@ ALTER PUBLICATION pub_all_tables1 OWNER TO regress_yb_db_user1;
 SET SESSION AUTHORIZATION 'regress_yb_db_user1';
 --should fail
 ALTER PUBLICATION pub_all_tables1 OWNER TO regress_yb_db_user2;
-ERROR:  must be member of role "regress_yb_db_user2"
+ERROR:  must be able to SET ROLE "regress_yb_db_user2"
 RESET SESSION AUTHORIZATION;
 CREATE PUBLICATION pub_all_tables2 FOR ALL TABLES;
 CREATE ROLE regress_yb_db_admin_user2 LOGIN;

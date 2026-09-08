@@ -50,14 +50,14 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, ((t)::character varying)
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, v, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
@@ -71,13 +71,13 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, ((t)::character varying)
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=50 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=50.00 loops=1)
                Output: i2, i4, n, v, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Storage Table Read Requests: 1
@@ -91,14 +91,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, ((t)::character varying)
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, v, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
@@ -112,14 +112,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, ((t)::character varying)
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, v, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Merge Sort Key: tv_tbl.i2, tv_tbl.i4
@@ -159,14 +159,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, ((v)::text), ((t)::character varying)
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, ((v)::text), ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, (v)::text, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
@@ -180,13 +180,13 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, ((v)::text), ((t)::character varying)
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, ((v)::text), ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=50 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=50.00 loops=1)
                Output: i2, i4, n, (v)::text, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Storage Table Read Requests: 1
@@ -200,14 +200,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, ((v)::text), ((t)::character varying)
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, ((v)::text), ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, (v)::text, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
@@ -221,14 +221,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, ((v)::text), ((t)::character varying)
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, ((v)::text), ((t)::character varying)
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, (v)::text, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Merge Sort Key: tv_tbl.i2, tv_tbl.i4
@@ -277,14 +277,14 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, t
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, t
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, v, t
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
@@ -298,13 +298,13 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, t
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, t
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=50 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=50.00 loops=1)
                Output: i2, i4, n, v, t
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Storage Table Read Requests: 1
@@ -318,14 +318,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, t
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, t
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, v, t
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
@@ -339,14 +339,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v, t
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v, t
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=6 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=6.00 loops=1)
                Output: i2, i4, n, v, t
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Merge Sort Key: tv_tbl.i2, tv_tbl.i4
@@ -395,16 +395,16 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=9 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=9.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
@@ -416,15 +416,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=491 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=491.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
                Storage Table Read Requests: 1
@@ -436,16 +436,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (15 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=9 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=9.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
@@ -457,15 +457,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=491 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=491.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
                Storage Table Read Requests: 1
@@ -477,16 +477,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (15 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=9 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=9.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
@@ -498,16 +498,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=9 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=9.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
                Merge Sort Key: tv_tbl.i2, tv_tbl.i4
@@ -523,16 +523,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (20 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=9 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=9.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
@@ -544,16 +544,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: i2, i4, n, v
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: i2, i4, n, v
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Presorted Key: tv_tbl.i2, tv_tbl.i4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using idx on public.tv_tbl (actual rows=9 loops=1)
+         ->  Index Scan using idx on public.tv_tbl (actual rows=9.00 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
                Merge Sort Key: tv_tbl.i2, tv_tbl.i4

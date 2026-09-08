@@ -275,7 +275,8 @@ NOTICE:  merging constraint "con1" with inherited definition
  d      | integer |           |          | 
 Check constraints:
     "con1" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test2 RENAME CONSTRAINT con1 TO con1foo; -- fail
 ERROR:  cannot rename inherited constraint "con1"
@@ -303,7 +304,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | integer |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con2 CHECK (b > 0) NO INHERIT;
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con2 TO con2foo; -- ok
@@ -330,7 +332,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | integer |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con3 PRIMARY KEY (a);
 NOTICE:  table rewrite may lead to inconsistencies
@@ -361,7 +364,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | integer |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 DROP TABLE constraint_rename_test2;
 DROP TABLE constraint_rename_test;
@@ -575,7 +579,8 @@ alter table nv_parent add check (d between '2001-01-01'::date and '2099-12-31'::
 Check constraints:
     "nv_child_2009_d_check" CHECK (d >= '01-01-2009'::date AND d <= '12-31-2009'::date)
     "nv_parent_d_check" CHECK (d >= '01-01-2001'::date AND d <= '12-31-2099'::date) NOT VALID
-Inherits: nv_parent
+Inherits:
+    nv_parent
 
 -- we leave nv_parent and children around to help test pg_dump logic
 -- Foreign key adding test with mixed types
@@ -587,12 +592,12 @@ CREATE TEMP TABLE FKTABLE (ftest1 inet);
 -- This next should fail, because int=inet does not exist
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 -- This should also fail for the same reason, but here we
 -- give the column name
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable(ptest1);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 DROP TABLE FKTABLE;
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
@@ -610,7 +615,7 @@ DROP TABLE FKTABLE;
 CREATE TEMP TABLE FKTABLE (ftest1 numeric);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: numeric and integer.
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
@@ -632,26 +637,26 @@ CREATE TEMP TABLE PKTABLE (ptest1 int, ptest2 inet,
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: cidr and integer.
 DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest1, ptest2);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: cidr and integer.
 DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TEMP TABLE FKTABLE (ftest1 int, ftest2 inet);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest2, ptest1);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest2" of the referenced table are of incompatible types: integer and inet.
 -- As does this...
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest2, ftest1)
      references pktable(ptest1, ptest2);
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- Test that ALTER CONSTRAINT updates trigger deferrability properly
@@ -1471,8 +1476,12 @@ ERROR:  column "........pg.dropped.1........" referenced in foreign key constrai
 drop table atacc2;
 create index "testing_idx" on atacc1(a);
 ERROR:  column "a" does not exist
+LINE 1: create index "testing_idx" on atacc1(a);
+                                             ^
 create index "testing_idx" on atacc1("........pg.dropped.1........");
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: create index "testing_idx" on atacc1("........pg.dropped.1.....
+                                             ^
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
 create table attest1 as select * from atacc1;
@@ -1908,7 +1917,8 @@ alter table anothertab alter column atcol1 drop default;
 alter table anothertab alter column atcol1 type boolean
         using case when atcol1 % 2 = 0 then true else false end; -- fails
 ERROR:  operator does not exist: boolean <= integer
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 alter table anothertab drop constraint anothertab_chk;
 alter table anothertab drop constraint anothertab_chk; -- fails
 ERROR:  constraint "anothertab_chk" for table "anothertab" does not exist
@@ -2261,7 +2271,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  b      | double precision |           |          | 
 Check constraints:
     "test_inh_check_a_check" CHECK (a > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2298,7 +2309,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  b      | double precision |           |          | 
 Check constraints:
     "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2338,7 +2350,8 @@ Check constraints:
     "blocal" CHECK (b < 1000::double precision)
     "bmerged" CHECK (b > 1::double precision)
     "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2384,7 +2397,8 @@ Check constraints:
     "blocal" CHECK (b::double precision < 1000::double precision)
     "bmerged" CHECK (b::double precision > 1::double precision)
     "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2463,8 +2477,8 @@ create view at_view_2 as select *, to_json(v1) as j from at_view_1 v1;
  id     | integer |           |          |         | plain    | 
  stuff  | text    |           |          |         | extended | 
 View definition:
- SELECT bt.id,
-    bt.stuff
+ SELECT id,
+    stuff
    FROM at_base_table bt;
 
 \d+ at_view_2
@@ -2475,8 +2489,8 @@ View definition:
  stuff  | text    |           |          |         | extended | 
  j      | json    |           |          |         | extended | 
 View definition:
- SELECT v1.id,
-    v1.stuff,
+ SELECT id,
+    stuff,
     to_json(v1.*) AS j
    FROM at_view_1 v1;
 
@@ -2502,8 +2516,8 @@ create or replace view at_view_1 as select *, 2+2 as more from at_base_table bt;
  stuff  | text    |           |          |         | extended | 
  more   | integer |           |          |         | plain    | 
 View definition:
- SELECT bt.id,
-    bt.stuff,
+ SELECT id,
+    stuff,
     2 + 2 AS more
    FROM at_base_table bt;
 
@@ -2515,8 +2529,8 @@ View definition:
  stuff  | text    |           |          |         | extended | 
  j      | json    |           |          |         | extended | 
 View definition:
- SELECT v1.id,
-    v1.stuff,
+ SELECT id,
+    stuff,
     to_json(v1.*) AS j
    FROM at_view_1 v1;
 
@@ -3043,7 +3057,8 @@ Typed table of type: test_type2
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
  b      | text    |           |          | 
-Inherits: test_tbl2
+Inherits:
+    test_tbl2
 
 DROP TABLE test_tbl2_subclass, test_tbl2;
 DROP TYPE test_type2;
@@ -3282,7 +3297,7 @@ COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KE
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
 ERROR:  foreign key constraint "comment_test_child_fk" cannot be implemented
-DETAIL:  Key columns "id" and "id" are of incompatible types: text and integer.
+DETAIL:  Key columns "id" of the referencing table and "id" of the referenced table are of incompatible types: text and integer.
 -- Comments should be intact
 SELECT col_description('comment_test_child'::regclass, 1) as comment;
               comment              
@@ -3676,17 +3691,22 @@ ALTER TABLE partitioned DROP COLUMN a;
 ERROR:  cannot drop column "a" because it is part of the partition key of relation "partitioned"
 ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
 ERROR:  cannot alter column "a" because it is part of the partition key of relation "partitioned"
+LINE 1: ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
+                                             ^
 ALTER TABLE partitioned DROP COLUMN b;
 ERROR:  cannot drop column "b" because it is part of the partition key of relation "partitioned"
 ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
 ERROR:  cannot alter column "b" because it is part of the partition key of relation "partitioned"
+LINE 1: ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
+                                             ^
 -- partitioned table cannot participate in regular inheritance
 CREATE TABLE nonpartitioned (
 	a int,
 	b int
 );
 ALTER TABLE partitioned INHERIT nonpartitioned;
-ERROR:  cannot change inheritance of partitioned table
+ERROR:  ALTER action INHERIT cannot be performed on relation "partitioned"
+DETAIL:  This operation is not supported for partitioned tables.
 ALTER TABLE nonpartitioned INHERIT partitioned;
 ERROR:  cannot inherit from partitioned table "partitioned"
 -- cannot add NO INHERIT constraint to partitioned tables
@@ -3702,7 +3722,8 @@ CREATE TABLE unparted (
 );
 CREATE TABLE fail_part (like unparted);
 ALTER TABLE unparted ATTACH PARTITION fail_part FOR VALUES IN ('a');
-ERROR:  table "unparted" is not partitioned
+ERROR:  ALTER action ATTACH PARTITION cannot be performed on relation "unparted"
+DETAIL:  This operation is not supported for tables.
 DROP TABLE unparted, fail_part;
 -- check that partition bound is compatible
 CREATE TABLE list_parted (
@@ -4134,18 +4155,17 @@ ALTER TABLE part_2 RENAME COLUMN b to c;
 ERROR:  cannot rename inherited column "b"
 ALTER TABLE part_2 ALTER COLUMN b TYPE text;
 ERROR:  cannot alter inherited column "b"
+LINE 1: ALTER TABLE part_2 ALTER COLUMN b TYPE text;
+                                        ^
 -- cannot add/drop NOT NULL or check constraints to *only* the parent, when
 -- partitions exist
 ALTER TABLE ONLY list_parted2 ALTER b SET NOT NULL;
 ERROR:  constraint must be added to child tables too
-DETAIL:  Column "b" of relation "part_2" is not already NOT NULL.
 HINT:  Do not specify the ONLY keyword.
 ALTER TABLE ONLY list_parted2 ADD CONSTRAINT check_b CHECK (b <> 'zz');
 ERROR:  constraint must be added to child tables too
 ALTER TABLE list_parted2 ALTER b SET NOT NULL;
 ALTER TABLE ONLY list_parted2 ALTER b DROP NOT NULL;
-ERROR:  cannot remove constraint from only the partitioned table when partitions exist
-HINT:  Do not specify the ONLY keyword.
 ALTER TABLE list_parted2 ADD CONSTRAINT check_b CHECK (b <> 'zz');
 -- Uncomment when #14570 is fixed
 /*
@@ -4183,6 +4203,8 @@ ALTER TABLE list_parted2 DROP COLUMN b;
 ERROR:  cannot drop column "b" because it is part of the partition key of relation "part_5"
 ALTER TABLE list_parted2 ALTER COLUMN b TYPE text;
 ERROR:  cannot alter column "b" because it is part of the partition key of relation "part_5"
+LINE 1: ALTER TABLE list_parted2 ALTER COLUMN b TYPE text;
+                                              ^
 -- dropping non-partition key columns should be allowed on the parent table.
 ALTER TABLE list_parted DROP COLUMN b;
 SELECT * FROM list_parted;

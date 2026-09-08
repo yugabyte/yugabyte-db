@@ -33,15 +33,15 @@ SET enable_bitmapscan = off;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM tmp WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: r1, r2, r3, r4, r5, n
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: r1, r2, r3, r4, r5, n
          Sort Key: tmp.r2, tmp.r3, tmp.r4, tmp.n
          Sort Method: top-N heapsort
-         ->  Seq Scan on pg_temp.tmp (actual rows=1983 loops=1)
+         ->  Seq Scan on pg_temp.tmp (actual rows=1983.00 loops=1)
                Output: r1, r2, r3, r4, r5, n
                Filter: (tmp.r1 = ANY ('{0,1,2,3}'::integer[]))
                Rows Removed by Filter: 3065

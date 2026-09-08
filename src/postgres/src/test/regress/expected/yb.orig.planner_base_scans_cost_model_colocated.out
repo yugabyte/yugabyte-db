@@ -45,9 +45,9 @@ ANALYZE test_20892;
 set yb_fetch_row_limit = 1024;
 set yb_fetch_size_limit = '1MB';
 explain (analyze, costs off, summary off, timing off) SELECT 0 FROM test_20892;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_20892 (actual rows=100 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_20892 (actual rows=100.00 loops=1)
 (1 row)
 
 SELECT count(*) FROM test_20892;
@@ -67,9 +67,9 @@ Colocation: true
 set yb_fetch_row_limit = 100;
 set yb_fetch_size_limit = '10kB';
 explain (analyze, costs off, summary off, timing off) SELECT 0 FROM test_20892;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_20892 (actual rows=100 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_20892 (actual rows=100.00 loops=1)
 (1 row)
 
 SELECT count(*) FROM test_20892;

@@ -60,15 +60,15 @@ CREATE TABLE testpub_tbl2 (id serial primary key, data text);
 -- fail - can't add to for all tables publication
 ALTER PUBLICATION testpub_foralltables ADD TABLE testpub_tbl2;
 ERROR:  publication "testpub_foralltables" is defined as FOR ALL TABLES
-DETAIL:  Tables cannot be added to or dropped from FOR ALL TABLES publications.
+DETAIL:  Tables or sequences cannot be added to or dropped from FOR ALL TABLES publications.
 -- fail - can't drop from all tables publication
 ALTER PUBLICATION testpub_foralltables DROP TABLE testpub_tbl2;
 ERROR:  publication "testpub_foralltables" is defined as FOR ALL TABLES
-DETAIL:  Tables cannot be added to or dropped from FOR ALL TABLES publications.
+DETAIL:  Tables or sequences cannot be added to or dropped from FOR ALL TABLES publications.
 -- fail - can't add to for all tables publication
 ALTER PUBLICATION testpub_foralltables SET TABLE pub_test.testpub_nopk;
 ERROR:  publication "testpub_foralltables" is defined as FOR ALL TABLES
-DETAIL:  Tables cannot be added to or dropped from FOR ALL TABLES publications.
+DETAIL:  Tables or sequences cannot be added to or dropped from FOR ALL TABLES publications.
 -- YB Note: TABLES IN SCHEMA is blocked at runtime in YB.
 -- fail - can't add schema to 'FOR ALL TABLES' publication
 ALTER PUBLICATION testpub_foralltables ADD TABLES IN SCHEMA pub_test;
@@ -807,6 +807,8 @@ Indexes:
 Publications:
     "testpub_foralltables"
     "testpub_fortable" (a, b)
+Not-null constraints:
+    "testpub_tbl7_a_not_null" NOT NULL "a"
 
 -- ok: the column list is the same, we should skip this table (or at least not fail)
 ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, b);
@@ -822,6 +824,8 @@ Indexes:
 Publications:
     "testpub_foralltables"
     "testpub_fortable" (a, b)
+Not-null constraints:
+    "testpub_tbl7_a_not_null" NOT NULL "a"
 
 -- ok: the column list changes, make sure the catalog gets updated
 ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, c);
@@ -837,6 +841,8 @@ Indexes:
 Publications:
     "testpub_foralltables"
     "testpub_fortable" (a, c)
+Not-null constraints:
+    "testpub_tbl7_a_not_null" NOT NULL "a"
 
 -- column list for partitioned tables has to cover replica identities for
 -- all child relations
@@ -1046,6 +1052,9 @@ Indexes:
 Publications:
     "testpub_both_filters" (a, c) WHERE (c <> 1)
     "testpub_foralltables"
+Not-null constraints:
+    "testpub_tbl_both_filters_a_not_null" NOT NULL "a"
+    "testpub_tbl_both_filters_c_not_null" NOT NULL "c"
 
 DROP TABLE testpub_tbl_both_filters;
 ERROR:  cannot drop a table which is part of a publication.
@@ -1319,6 +1328,8 @@ Indexes:
 Publications:
     "testpib_ins_trunct"
     "testpub_fortbl"
+Not-null constraints:
+    "testpub_tbl1_id_not_null" NOT NULL "id"
 
 -- verify relation cache invalidation when a primary key is added using
 -- an existing index

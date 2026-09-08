@@ -60,7 +60,7 @@ CREATE GROUP regress_priv_group1;
 CREATE GROUP regress_priv_group2 WITH USER regress_priv_user1, regress_priv_user2;
 ALTER GROUP regress_priv_group1 ADD USER regress_priv_user4;
 ALTER GROUP regress_priv_group2 ADD USER regress_priv_user2;	-- duplicate
-NOTICE:  role "regress_priv_user2" is already a member of role "regress_priv_group2"
+NOTICE:  role "regress_priv_user2" has already been granted membership in role "regress_priv_group2" by role "postgres"
 ALTER GROUP regress_priv_group2 DROP USER regress_priv_user2;
 GRANT regress_priv_group2 TO regress_priv_user4 WITH ADMIN OPTION;
 -- prepare non-leakproof function for later
@@ -114,7 +114,7 @@ GRANT UPDATE ON atest2 TO regress_priv_user3;
 GRANT INSERT ON atest2 TO regress_priv_user4 GRANTED BY CURRENT_USER;
 GRANT TRUNCATE ON atest2 TO regress_priv_user5 GRANTED BY CURRENT_ROLE;
 GRANT TRUNCATE ON atest2 TO regress_priv_user4 GRANTED BY regress_priv_user5;  -- error
-ERROR:  grantor must be current user
+ERROR:  must inherit privileges of role "regress_priv_user5"
 SET SESSION AUTHORIZATION regress_priv_user2;
 SELECT session_user, current_user;
     session_user    |    current_user    
@@ -650,6 +650,8 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
 	INSERT VALUES (a, NULL);
 ERROR:  This statement not supported yet
+LINE 1: MERGE INTO mtarget t USING msource s ON t.a = s.a
+        ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 -- YB: port further queries when above works
 -- check error reporting with column privs
@@ -1569,12 +1571,14 @@ CREATE FUNCTION dogrant_ok() RETURNS void LANGUAGE sql SECURITY DEFINER AS
 GRANT regress_priv_group2 TO regress_priv_user5; -- ok: had ADMIN OPTION
 SET ROLE regress_priv_group2;
 GRANT regress_priv_group2 TO regress_priv_user5; -- fails: SET ROLE suspended privilege
-ERROR:  must have admin option on role "regress_priv_group2"
+ERROR:  permission denied to grant role "regress_priv_group2"
+DETAIL:  Only roles with the ADMIN option on role "regress_priv_group2" may grant this role.
 SET SESSION AUTHORIZATION regress_priv_user1;
 GRANT regress_priv_group2 TO regress_priv_user5; -- fails: no ADMIN OPTION
-ERROR:  must have admin option on role "regress_priv_group2"
+ERROR:  permission denied to grant role "regress_priv_group2"
+DETAIL:  Only roles with the ADMIN option on role "regress_priv_group2" may grant this role.
 SELECT dogrant_ok();			-- ok: SECURITY DEFINER conveys ADMIN
-NOTICE:  role "regress_priv_user5" is already a member of role "regress_priv_group2"
+NOTICE:  role "regress_priv_user5" has already been granted membership in role "regress_priv_group2" by role "regress_priv_user4"
  dogrant_ok 
 ------------
  
@@ -1582,10 +1586,12 @@ NOTICE:  role "regress_priv_user5" is already a member of role "regress_priv_gro
 
 SET ROLE regress_priv_group2;
 GRANT regress_priv_group2 TO regress_priv_user5; -- fails: SET ROLE did not help
-ERROR:  must have admin option on role "regress_priv_group2"
+ERROR:  permission denied to grant role "regress_priv_group2"
+DETAIL:  Only roles with the ADMIN option on role "regress_priv_group2" may grant this role.
 SET SESSION AUTHORIZATION regress_priv_group2;
 GRANT regress_priv_group2 TO regress_priv_user5; -- fails: no self-admin
-ERROR:  must have admin option on role "regress_priv_group2"
+ERROR:  permission denied to grant role "regress_priv_group2"
+DETAIL:  Only roles with the ADMIN option on role "regress_priv_group2" may grant this role.
 SET SESSION AUTHORIZATION regress_priv_user4;
 DROP FUNCTION dogrant_ok();
 REVOKE regress_priv_group2 FROM regress_priv_user5;
@@ -2339,38 +2345,38 @@ set session role regress_priv_user4;
 grant select on dep_priv_test to regress_priv_user5;
 \dp dep_priv_test
                                                Access privileges
- Schema |     Name      | Type  |               Access privileges               | Column privileges | Policies 
---------+---------------+-------+-----------------------------------------------+-------------------+----------
- public | dep_priv_test | table | regress_priv_user1=arwdDxt/regress_priv_user1+|                   | 
-        |               |       | regress_priv_user2=r*/regress_priv_user1     +|                   | 
-        |               |       | regress_priv_user3=r*/regress_priv_user1     +|                   | 
-        |               |       | regress_priv_user4=r*/regress_priv_user2     +|                   | 
-        |               |       | regress_priv_user4=r*/regress_priv_user3     +|                   | 
-        |               |       | regress_priv_user5=r/regress_priv_user4       |                   | 
+ Schema |     Name      | Type  |               Access privileges                | Column privileges | Policies 
+--------+---------------+-------+------------------------------------------------+-------------------+----------
+ public | dep_priv_test | table | regress_priv_user1=arwdDxtm/regress_priv_user1+|                   | 
+        |               |       | regress_priv_user2=r*/regress_priv_user1      +|                   | 
+        |               |       | regress_priv_user3=r*/regress_priv_user1      +|                   | 
+        |               |       | regress_priv_user4=r*/regress_priv_user2      +|                   | 
+        |               |       | regress_priv_user4=r*/regress_priv_user3      +|                   | 
+        |               |       | regress_priv_user5=r/regress_priv_user4        |                   | 
 (1 row)
 
 set session role regress_priv_user2;
 revoke select on dep_priv_test from regress_priv_user4 cascade;
 \dp dep_priv_test
                                                Access privileges
- Schema |     Name      | Type  |               Access privileges               | Column privileges | Policies 
---------+---------------+-------+-----------------------------------------------+-------------------+----------
- public | dep_priv_test | table | regress_priv_user1=arwdDxt/regress_priv_user1+|                   | 
-        |               |       | regress_priv_user2=r*/regress_priv_user1     +|                   | 
-        |               |       | regress_priv_user3=r*/regress_priv_user1     +|                   | 
-        |               |       | regress_priv_user4=r*/regress_priv_user3     +|                   | 
-        |               |       | regress_priv_user5=r/regress_priv_user4       |                   | 
+ Schema |     Name      | Type  |               Access privileges                | Column privileges | Policies 
+--------+---------------+-------+------------------------------------------------+-------------------+----------
+ public | dep_priv_test | table | regress_priv_user1=arwdDxtm/regress_priv_user1+|                   | 
+        |               |       | regress_priv_user2=r*/regress_priv_user1      +|                   | 
+        |               |       | regress_priv_user3=r*/regress_priv_user1      +|                   | 
+        |               |       | regress_priv_user4=r*/regress_priv_user3      +|                   | 
+        |               |       | regress_priv_user5=r/regress_priv_user4        |                   | 
 (1 row)
 
 set session role regress_priv_user3;
 revoke select on dep_priv_test from regress_priv_user4 cascade;
 \dp dep_priv_test
                                                Access privileges
- Schema |     Name      | Type  |               Access privileges               | Column privileges | Policies 
---------+---------------+-------+-----------------------------------------------+-------------------+----------
- public | dep_priv_test | table | regress_priv_user1=arwdDxt/regress_priv_user1+|                   | 
-        |               |       | regress_priv_user2=r*/regress_priv_user1     +|                   | 
-        |               |       | regress_priv_user3=r*/regress_priv_user1      |                   | 
+ Schema |     Name      | Type  |               Access privileges                | Column privileges | Policies 
+--------+---------------+-------+------------------------------------------------+-------------------+----------
+ public | dep_priv_test | table | regress_priv_user1=arwdDxtm/regress_priv_user1+|                   | 
+        |               |       | regress_priv_user2=r*/regress_priv_user1      +|                   | 
+        |               |       | regress_priv_user3=r*/regress_priv_user1       |                   | 
 (1 row)
 
 set session role regress_priv_user1;

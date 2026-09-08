@@ -475,18 +475,28 @@ CREATE INDEX NONCONCURRENTLY ON manyarrays USING ybgin (f);
 -- ASC
 CREATE INDEX idx_hash ON jsonbs USING ybgin (j ASC);
 ERROR:  access method "ybgin" does not support ASC/DESC/HASH options
+LINE 1: CREATE INDEX idx_hash ON jsonbs USING ybgin (j ASC);
+                                                     ^
 -- DESC
 CREATE INDEX idx_hash ON jsonbs USING ybgin (j DESC);
 ERROR:  access method "ybgin" does not support ASC/DESC/HASH options
+LINE 1: CREATE INDEX idx_hash ON jsonbs USING ybgin (j DESC);
+                                                     ^
 -- HASH
 CREATE INDEX idx_hash ON jsonbs USING ybgin (j HASH);
 ERROR:  access method "ybgin" does not support ASC/DESC/HASH options
+LINE 1: CREATE INDEX idx_hash ON jsonbs USING ybgin (j HASH);
+                                                     ^
 -- NULLS FIRST
 CREATE INDEX idx_hash ON jsonbs USING ybgin (j NULLS FIRST);
 ERROR:  access method "ybgin" does not support NULLS FIRST/LAST options
+LINE 1: CREATE INDEX idx_hash ON jsonbs USING ybgin (j NULLS FIRST);
+                                                     ^
 -- NULLS LAST
 CREATE INDEX idx_hash ON jsonbs USING ybgin (j NULLS LAST);
 ERROR:  access method "ybgin" does not support NULLS FIRST/LAST options
+LINE 1: CREATE INDEX idx_hash ON jsonbs USING ybgin (j NULLS LAST);
+                                                     ^
 --
 -- Colocation
 --

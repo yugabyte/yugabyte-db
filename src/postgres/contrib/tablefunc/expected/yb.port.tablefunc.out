@@ -216,13 +216,14 @@ SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth WHERE attribute = ''a'' ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature int4, test_result text, test_startdate timestamp, volts float8);
-ERROR:  provided "categories" SQL must return 1 column of at least one row
+ERROR:  crosstab categories query must return at least one row
 -- if category query generates more than one column, get expected error
 SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT rowdt, attribute FROM cth ORDER BY 2')
 AS c(rowid text, rowdt timestamp, temperature int4, test_result text, test_startdate timestamp, volts float8);
-ERROR:  provided "categories" SQL must return 1 column of at least one row
+ERROR:  invalid crosstab categories query
+DETAIL:  The query must return one column.
 -- if source query returns zero rows, get zero rows returned
 SELECT * FROM crosstab(
   'SELECT rowid, rowdt, attribute, val FROM cth WHERE false ORDER BY 1',
@@ -381,17 +382,17 @@ SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 4, '~') A
 
 -- should fail as first two columns must have the same type
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid text, parent_keyid int, level int, branch text);
-ERROR:  invalid return type
-DETAIL:  First two columns must be the same type.
+ERROR:  invalid connectby return type
+DETAIL:  Source key type integer does not match return key type text.
 -- should fail as key field datatype should match return datatype
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid float8, parent_keyid float8, level int, branch text);
-ERROR:  invalid return type
-DETAIL:  SQL key field type double precision does not match return key field type integer.
+ERROR:  invalid connectby return type
+DETAIL:  Source key type integer does not match return key type double precision.
 -- tests for values using custom queries
 -- query with one column - failed
 SELECT * FROM connectby('connectby_int', '1; --', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int);
-ERROR:  invalid return type
-DETAIL:  Query must return at least two columns.
+ERROR:  invalid connectby source data query
+DETAIL:  The query must return at least two columns.
 -- query with two columns first value as NULL
 SELECT * FROM connectby('connectby_int', 'NULL::int, 1::int; --', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int);
  keyid | parent_keyid | level 

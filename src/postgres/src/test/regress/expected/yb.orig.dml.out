@@ -124,13 +124,13 @@ CREATE TABLE gh30373 (id INT PRIMARY KEY);
 INSERT INTO gh30373 VALUES(1);
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (ANALYZE ON) UPDATE gh30373 a SET id = b.id+1 FROM gh30373 b WHERE a.id=b.id;
-                                                    QUERY PLAN                                                     
--------------------------------------------------------------------------------------------------------------------
- Update on gh30373 a  (cost=0.00..226.50 rows=0 width=0) (actual rows=0 loops=1)
-   ->  YB Batched Nested Loop Join  (cost=0.00..226.50 rows=1000 width=96) (actual rows=1 loops=1)
-         Join Filter: (a.id = b.id)
-         ->  Seq Scan on gh30373 a  (cost=0.00..100.00 rows=1000 width=64) (actual rows=1 loops=1)
-         ->  Index Scan using gh30373_pkey on gh30373 b  (cost=0.00..0.11 rows=1 width=36) (actual rows=1 loops=1)
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Update on gh30373 a  (cost=0.00..226.50 rows=0 width=0) (actual rows=0.00 loops=1)
+   ->  YB Batched Nested Loop Join  (cost=0.00..226.50 rows=1000 width=96) (actual rows=1.00 loops=1)
+         Join Filter: (b.id = a.id)
+         ->  Seq Scan on gh30373 a  (cost=0.00..100.00 rows=1000 width=64) (actual rows=1.00 loops=1)
+         ->  Index Scan using gh30373_pkey on gh30373 b  (cost=0.00..0.11 rows=1 width=36) (actual rows=1.00 loops=1)
                Index Cond: (id = ANY (ARRAY[a.id, $2, $3, ..., $1024]))
 (6 rows)
 
@@ -285,10 +285,10 @@ CREATE TABLE root_pk_p2 PARTITION OF root_pk_base FOR VALUES FROM (11) TO (21);
 INSERT INTO root_pk_base VALUES (1, 1, 1), (2, 2, 2), (13, 13, 13);
 -- Single shard update that does not violate the partition constraint.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE root_pk_p1 SET v = v + 1 WHERE k1 = 1 AND k2 = 1;
-                   QUERY PLAN                    
--------------------------------------------------
- Update on root_pk_p1 (actual rows=0 loops=1)
-   ->  Result root_pk_p1 (actual rows=1 loops=1)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Update on root_pk_p1 (actual rows=0.00 loops=1)
+   ->  Result root_pk_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -300,10 +300,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE root_pk_p1 SET v = v + 1 WHERE k1 = 1 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE root_pk_p1 SET v = v + 1, k2 = k2 + 1 WHERE k1 = 1 AND k2 = 1;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Update on root_pk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using root_pk_p1_pkey on root_pk_p1 (actual rows=1 loops=1)
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Update on root_pk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using root_pk_p1_pkey on root_pk_p1 (actual rows=1.00 loops=1)
          Index Cond: ((k1 = 1) AND (k2 = 1))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -337,10 +337,10 @@ CREATE TABLE no_pk_p2 PARTITION OF no_pk_base FOR VALUES FROM (11) TO (21);
 INSERT INTO no_pk_base VALUES (1, 1), (2, 2), (14, 14), (15, 15);
 -- Updates addressing the leaf partition.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_p1 SET v2 = v2 + 1 WHERE v1 = 1;
-                     QUERY PLAN                     
-----------------------------------------------------
- Update on no_pk_p1 (actual rows=0 loops=1)
-   ->  Seq Scan on no_pk_p1 (actual rows=1 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Update on no_pk_p1 (actual rows=0.00 loops=1)
+   ->  Seq Scan on no_pk_p1 (actual rows=1.00 loops=1)
          Storage Filter: (v1 = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
@@ -354,10 +354,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_p1 SET v2 = v2 + 1 WHERE v1 = 1;
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_p1 SET v1 = 3 WHERE v1 = 2;
-                     QUERY PLAN                     
-----------------------------------------------------
- Update on no_pk_p1 (actual rows=0 loops=1)
-   ->  Seq Scan on no_pk_p1 (actual rows=1 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Update on no_pk_p1 (actual rows=0.00 loops=1)
+   ->  Seq Scan on no_pk_p1 (actual rows=1.00 loops=1)
          Storage Filter: (v1 = 2)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
@@ -375,11 +375,11 @@ ERROR:  new row for relation "no_pk_p1" violates partition constraint
 DETAIL:  Failing row contains (12, 2).
 -- Updates addressing the root partition.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_base SET v2 = v2 + 1 WHERE v1 = 14;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Update on no_pk_base (actual rows=0 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Update on no_pk_base (actual rows=0.00 loops=1)
    Update on no_pk_p2 no_pk_base_1
-   ->  Seq Scan on no_pk_p2 no_pk_base_1 (actual rows=1 loops=1)
+   ->  Seq Scan on no_pk_p2 no_pk_base_1 (actual rows=1.00 loops=1)
          Storage Filter: (v1 = 14)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
@@ -393,11 +393,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_base SET v2 = v2 + 1 WHERE v1 = 
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_base SET v1 = 16 WHERE v1 = 15;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Update on no_pk_base (actual rows=0 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Update on no_pk_base (actual rows=0.00 loops=1)
    Update on no_pk_p2 no_pk_base_1
-   ->  Seq Scan on no_pk_p2 no_pk_base_1 (actual rows=1 loops=1)
+   ->  Seq Scan on no_pk_p2 no_pk_base_1 (actual rows=1.00 loops=1)
          Storage Filter: (v1 = 15)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
@@ -411,11 +411,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_base SET v1 = 16 WHERE v1 = 15;
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pk_base SET v1 = 5 WHERE v1 = 16;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Update on no_pk_base (actual rows=0 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Update on no_pk_base (actual rows=0.00 loops=1)
    Update on no_pk_p2 no_pk_base_1
-   ->  Seq Scan on no_pk_p2 no_pk_base_1 (actual rows=1 loops=1)
+   ->  Seq Scan on no_pk_p2 no_pk_base_1 (actual rows=1.00 loops=1)
          Storage Filter: (v1 = 16)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
@@ -447,10 +447,10 @@ CREATE TABLE ck_p2 PARTITION OF ck_base (k PRIMARY KEY) FOR VALUES FROM (11) TO 
 INSERT INTO ck_base VALUES (1, 1), (12, 12);
 -- Single shard updates by addressing the leaf.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_p1 SET v = v + 1 WHERE k = 1;
-                 QUERY PLAN                 
---------------------------------------------
- Update on ck_p1 (actual rows=0 loops=1)
-   ->  Result ck_p1 (actual rows=1 loops=1)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Update on ck_p1 (actual rows=0.00 loops=1)
+   ->  Result ck_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -463,10 +463,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_p1 SET v = v + 1 WHERE k = 1;
 
 -- Updates modifying the clustering/partitioning key.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_p1 SET k = 2 WHERE k = 1;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Update on ck_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_p1_pkey on ck_p1 (actual rows=1 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Update on ck_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_p1_pkey on ck_p1 (actual rows=1.00 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -486,11 +486,11 @@ DETAIL:  Failing row contains (16, 2).
 -- The planner can determine the destination leaf via partition pruning on k, and the
 -- leaf's clustering key is fully specified.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_base SET v = v + 1 WHERE k = 12;
-                  QUERY PLAN                  
-----------------------------------------------
- Update on ck_base (actual rows=0 loops=1)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Update on ck_base (actual rows=0.00 loops=1)
    Update on ck_p2 ck_base
-   ->  Result ck_base (actual rows=1 loops=1)
+   ->  Result ck_base (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -557,10 +557,10 @@ SELECT * FROM ck_ne_ptk_base ORDER BY ck;
 
 -- 4c. Same-partition clustering key update via leaf. (distributed transaction).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p2 SET ck = 10 WHERE ck = 3;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on ck_ne_ptk_p2 (actual rows=0 loops=1)
-   ->  Index Scan using ck_ne_ptk_p2_pkey on ck_ne_ptk_p2 (actual rows=1 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_p2 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_ne_ptk_p2_pkey on ck_ne_ptk_p2 (actual rows=1.00 loops=1)
          Index Cond: (ck = 3)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -575,10 +575,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p2 SET ck = 10 WHERE ck = 3;
 
 -- 4d. Non-partition column update via leaf (single shard).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 7;
-                    QUERY PLAN                     
----------------------------------------------------
- Update on ck_ne_ptk_p1 (actual rows=0 loops=1)
-   ->  Result ck_ne_ptk_p1 (actual rows=1 loops=1)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on ck_ne_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Result ck_ne_ptk_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -591,10 +591,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 
 
 -- 4e. Partition key update to a value that stays in the same partition (distributed transaction).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET ptk = 6 WHERE ck = 8;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on ck_ne_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_ne_ptk_p1_pkey on ck_ne_ptk_p1 (actual rows=1 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_ne_ptk_p1_pkey on ck_ne_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 8)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -610,10 +610,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET ptk = 6 WHERE ck = 8;
 -- 4f. Updates inside an explicit transaction block (single-shard downgraded to distributed transaction).
 BEGIN;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 1;
-                    QUERY PLAN                     
----------------------------------------------------
- Update on ck_ne_ptk_p1 (actual rows=0 loops=1)
-   ->  Result ck_ne_ptk_p1 (actual rows=1 loops=1)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on ck_ne_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Result ck_ne_ptk_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -668,9 +668,9 @@ END $$;
 INSERT INTO ck_ne_ptk_p1 VALUES (9, 5, 9), (11, 5, 11);
 -- Same-partition partition key update via upsert. Should succeed.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
-                   QUERY PLAN                   
-------------------------------------------------
- Insert on ck_ne_ptk_p1 (actual rows=0 loops=1)
+                    QUERY PLAN                     
+---------------------------------------------------
+ Insert on ck_ne_ptk_p1 (actual rows=0.00 loops=1)
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: ck_ne_ptk_p1_pkey
    Tuples Inserted: 0
@@ -679,7 +679,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_p1 VALUES (9, 5, 99) ON
    Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
    Storage Table Write Requests: 1
-   ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
@@ -715,10 +715,10 @@ CREATE TABLE ck_mc_ptk_p1 PARTITION OF ck_mc_ptk_base (ck PRIMARY KEY) FOR VALUE
 INSERT INTO ck_mc_ptk_base VALUES (1, 5, 5, 1);
 -- Update one partition key column (ptk1) via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_mc_ptk_p1 SET ptk1 = 6 WHERE ck = 1;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on ck_mc_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_mc_ptk_p1_pkey on ck_mc_ptk_p1 (actual rows=1 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on ck_mc_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_mc_ptk_p1_pkey on ck_mc_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -733,10 +733,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_mc_ptk_p1 SET ptk1 = 6 WHERE ck = 1
 
 -- Update all partition key columns (ptk1, ptk2) via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_mc_ptk_p1 SET ptk1 = 7, ptk2 = 7 WHERE ck = 1;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on ck_mc_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_mc_ptk_p1_pkey on ck_mc_ptk_p1 (actual rows=1 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on ck_mc_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_mc_ptk_p1_pkey on ck_mc_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -751,10 +751,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_mc_ptk_p1 SET ptk1 = 7, ptk2 = 7 WH
 
 -- Update only a non-partition column (v) via leaf (single shard).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_mc_ptk_p1 SET v = v + 1 WHERE ck = 1;
-                    QUERY PLAN                     
----------------------------------------------------
- Update on ck_mc_ptk_p1 (actual rows=0 loops=1)
-   ->  Result ck_mc_ptk_p1 (actual rows=1 loops=1)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on ck_mc_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Result ck_mc_ptk_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -783,10 +783,10 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 INSERT INTO ck_ov_ptk_base VALUES (1, 1, 5, 1);
 -- Update partition-key-only column (ptk) via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ov_ptk_p1 SET ptk = 6 WHERE ck1 = 1 AND ck2 = 1;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on ck_ov_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_ov_ptk_p1_pkey on ck_ov_ptk_p1 (actual rows=1 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on ck_ov_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_ov_ptk_p1_pkey on ck_ov_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: ((ck1 = 1) AND (ck2 = 1))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -801,10 +801,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ov_ptk_p1 SET ptk = 6 WHERE ck1 = 1
 
 -- Update clustering key column (ck2) via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ov_ptk_p1 SET ck2 = 6 WHERE ck1 = 1 AND ck2 = 1;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on ck_ov_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_ov_ptk_p1_pkey on ck_ov_ptk_p1 (actual rows=1 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on ck_ov_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_ov_ptk_p1_pkey on ck_ov_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: ((ck1 = 1) AND (ck2 = 1))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -819,10 +819,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ov_ptk_p1 SET ck2 = 6 WHERE ck1 = 1
 
 -- Update non-key column (v) via leaf (single shard).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ov_ptk_p1 SET v = v + 1 WHERE ck1 = 1 AND ck2 = 1;
-                    QUERY PLAN                     
----------------------------------------------------
- Update on ck_ov_ptk_p1 (actual rows=0 loops=1)
-   ->  Result ck_ov_ptk_p1 (actual rows=1 loops=1)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on ck_ov_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Result ck_ov_ptk_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -849,10 +849,10 @@ CREATE TABLE ml_leaf PARTITION OF ml_mid (ck PRIMARY KEY) FOR VALUES FROM (1) TO
 INSERT INTO ml_root VALUES (1, 5, 5, 1);
 -- Update mid-level partition key (ptk2) via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ml_leaf SET ptk2 = 6 WHERE ck = 1;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Update on ml_leaf (actual rows=0 loops=1)
-   ->  Index Scan using ml_leaf_pkey on ml_leaf (actual rows=1 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Update on ml_leaf (actual rows=0.00 loops=1)
+   ->  Index Scan using ml_leaf_pkey on ml_leaf (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -867,10 +867,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ml_leaf SET ptk2 = 6 WHERE ck = 1;
 
 -- Update root partition key (ptk1) via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ml_leaf SET ptk1 = 6 WHERE ck = 1;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Update on ml_leaf (actual rows=0 loops=1)
-   ->  Index Scan using ml_leaf_pkey on ml_leaf (actual rows=1 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Update on ml_leaf (actual rows=0.00 loops=1)
+   ->  Index Scan using ml_leaf_pkey on ml_leaf (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -885,10 +885,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ml_leaf SET ptk1 = 6 WHERE ck = 1;
 
 -- Update non-partition column (v) via leaf (single shard).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ml_leaf SET v = v + 1 WHERE ck = 1;
-                  QUERY PLAN                  
-----------------------------------------------
- Update on ml_leaf (actual rows=0 loops=1)
-   ->  Result ml_leaf (actual rows=1 loops=1)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Update on ml_leaf (actual rows=0.00 loops=1)
+   ->  Result ml_leaf (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -901,11 +901,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ml_leaf SET v = v + 1 WHERE ck = 1;
 
 -- Update root partition key (ptk1) addressing the mid-level partition (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ml_mid SET ptk1 = 7 WHERE ck = 1;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on ml_mid (actual rows=0 loops=1)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Update on ml_mid (actual rows=0.00 loops=1)
    Update on ml_leaf ml_mid_1
-   ->  Index Scan using ml_leaf_pkey on ml_leaf ml_mid_1 (actual rows=1 loops=1)
+   ->  Index Scan using ml_leaf_pkey on ml_leaf ml_mid_1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -931,10 +931,10 @@ CREATE TABLE expr_ptk_p1 PARTITION OF expr_ptk_base (ck PRIMARY KEY) FOR VALUES 
 INSERT INTO expr_ptk_base VALUES (1, 5, 'hello', 'world', 1);
 -- Update regular partition key column (a) via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_ptk_p1 SET a = 6 WHERE ck = 1;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Update on expr_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using expr_ptk_p1_pkey on expr_ptk_p1 (actual rows=1 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on expr_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using expr_ptk_p1_pkey on expr_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -949,10 +949,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_ptk_p1 SET a = 6 WHERE ck = 1;
 
 -- Update column referenced by the first expression key via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_ptk_p1 SET b1 = 'goodbye' WHERE ck = 1;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Update on expr_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using expr_ptk_p1_pkey on expr_ptk_p1 (actual rows=1 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on expr_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using expr_ptk_p1_pkey on expr_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -967,10 +967,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_ptk_p1 SET b1 = 'goodbye' WHERE c
 
 -- Update column referenced by the third expression key via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_ptk_p1 SET b2 = 'goodbye' WHERE ck = 1;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Update on expr_ptk_p1 (actual rows=0 loops=1)
-   ->  Index Scan using expr_ptk_p1_pkey on expr_ptk_p1 (actual rows=1 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on expr_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using expr_ptk_p1_pkey on expr_ptk_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -985,10 +985,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_ptk_p1 SET b2 = 'goodbye' WHERE c
 
 -- Update non-key column (v) via leaf (single shard).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_ptk_p1 SET v = v + 1 WHERE ck = 1;
-                    QUERY PLAN                    
---------------------------------------------------
- Update on expr_ptk_p1 (actual rows=0 loops=1)
-   ->  Result expr_ptk_p1 (actual rows=1 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Update on expr_ptk_p1 (actual rows=0.00 loops=1)
+   ->  Result expr_ptk_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -1013,10 +1013,10 @@ ALTER TABLE out_of_order_cols_base ATTACH PARTITION out_of_order_cols_p1 FOR VAL
 INSERT INTO out_of_order_cols_base VALUES (1, 5, 'hello', 1), (2, 6, 'bar', 123);
 -- Update ptk1 via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE out_of_order_cols_p1 SET ptk1 = 6 WHERE ck = 1;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Update on out_of_order_cols_p1 (actual rows=0 loops=1)
-   ->  Index Scan using out_of_order_cols_p1_pkey on out_of_order_cols_p1 (actual rows=1 loops=1)
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Update on out_of_order_cols_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using out_of_order_cols_p1_pkey on out_of_order_cols_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1031,10 +1031,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE out_of_order_cols_p1 SET ptk1 = 6 WHER
 
 -- Update ptk2 via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE out_of_order_cols_p1 SET ptk2 = 'goodbye' WHERE ck = 1;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Update on out_of_order_cols_p1 (actual rows=0 loops=1)
-   ->  Index Scan using out_of_order_cols_p1_pkey on out_of_order_cols_p1 (actual rows=1 loops=1)
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Update on out_of_order_cols_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using out_of_order_cols_p1_pkey on out_of_order_cols_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1049,10 +1049,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE out_of_order_cols_p1 SET ptk2 = 'goodb
 
 -- Update non-key column (v) via leaf (single shard).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE out_of_order_cols_p1 SET v = v + 1 WHERE ck = 1;
-                        QUERY PLAN                         
------------------------------------------------------------
- Update on out_of_order_cols_p1 (actual rows=0 loops=1)
-   ->  Result out_of_order_cols_p1 (actual rows=1 loops=1)
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Update on out_of_order_cols_p1 (actual rows=0.00 loops=1)
+   ->  Result out_of_order_cols_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -1078,10 +1078,10 @@ ALTER TABLE expr_mixed_base ATTACH PARTITION expr_mixed_p1 FOR VALUES FROM ('aaa
 INSERT INTO expr_mixed_base VALUES (1, 5, 'hello', 1);
 -- Update column referenced by TEXT expression key via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_mixed_p1 SET b = 'goodbye' WHERE ck = 1;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Update on expr_mixed_p1 (actual rows=0 loops=1)
-   ->  Index Scan using expr_mixed_p1_pkey on expr_mixed_p1 (actual rows=1 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Update on expr_mixed_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using expr_mixed_p1_pkey on expr_mixed_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1096,10 +1096,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_mixed_p1 SET b = 'goodbye' WHERE 
 
 -- Update olumn referenced by INT expression key via leaf (distributed).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_mixed_p1 SET n = 6 WHERE ck = 1;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Update on expr_mixed_p1 (actual rows=0 loops=1)
-   ->  Index Scan using expr_mixed_p1_pkey on expr_mixed_p1 (actual rows=1 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Update on expr_mixed_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using expr_mixed_p1_pkey on expr_mixed_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1114,10 +1114,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_mixed_p1 SET n = 6 WHERE ck = 1;
 
 -- Update non-key column v via leaf (single shard).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_mixed_p1 SET v = v + 1 WHERE ck = 1;
-                     QUERY PLAN                     
-----------------------------------------------------
- Update on expr_mixed_p1 (actual rows=0 loops=1)
-   ->  Result expr_mixed_p1 (actual rows=1 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Update on expr_mixed_p1 (actual rows=0.00 loops=1)
+   ->  Result expr_mixed_p1 (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -1181,10 +1181,10 @@ SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
 
 -- 11c. Same-partition clustering key update via leaf.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck = 3;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Update on ck_ne_ptk_tmp_p2 (actual rows=0 loops=1)
-   ->  Index Scan using ck_ne_ptk_tmp_p2_pkey on ck_ne_ptk_tmp_p2 (actual rows=1 loops=1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_tmp_p2 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_ne_ptk_tmp_p2_pkey on ck_ne_ptk_tmp_p2 (actual rows=1.00 loops=1)
          Index Cond: (ck = 3)
  Storage Read Requests: 0
  Storage Read Ops: 0
@@ -1195,10 +1195,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck 
 
 -- 11d. Non-partition column update via leaf.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE ck = 7;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Update on ck_ne_ptk_tmp_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_ne_ptk_tmp_p1_pkey on ck_ne_ptk_tmp_p1 (actual rows=1 loops=1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_tmp_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_ne_ptk_tmp_p1_pkey on ck_ne_ptk_tmp_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 7)
  Storage Read Requests: 0
  Storage Read Ops: 0
@@ -1209,10 +1209,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE c
 
 -- 11e. Partition key update to a value that stays in the same partition.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck = 8;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Update on ck_ne_ptk_tmp_p1 (actual rows=0 loops=1)
-   ->  Index Scan using ck_ne_ptk_tmp_p1_pkey on ck_ne_ptk_tmp_p1 (actual rows=1 loops=1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_tmp_p1 (actual rows=0.00 loops=1)
+   ->  Index Scan using ck_ne_ptk_tmp_p1_pkey on ck_ne_ptk_tmp_p1 (actual rows=1.00 loops=1)
          Index Cond: (ck = 8)
  Storage Read Requests: 0
  Storage Read Ops: 0
@@ -1225,14 +1225,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck 
 INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 9), (11, 5, 11);
 -- Same-partition partition key update via upsert. Should succeed.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
-                     QUERY PLAN                     
-----------------------------------------------------
- Insert on ck_ne_ptk_tmp_p1 (actual rows=0 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Insert on ck_ne_ptk_tmp_p1 (actual rows=0.00 loops=1)
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: ck_ne_ptk_tmp_p1_pkey
    Tuples Inserted: 0
    Conflicting Tuples: 1
-   ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0

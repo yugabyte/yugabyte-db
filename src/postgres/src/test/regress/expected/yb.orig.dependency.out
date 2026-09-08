@@ -20,8 +20,10 @@ ERROR:  non-superuser cannot reassign objects from superuser
 SET SESSION AUTHORIZATION regress_user1;
 REASSIGN OWNED BY regress_user1 TO regress_user2;
 ERROR:  permission denied to reassign objects
+DETAIL:  Only roles with privileges of role "regress_user2" may reassign objects to it.
 REASSIGN OWNED BY regress_user2 TO regress_user1;
 ERROR:  permission denied to reassign objects
+DETAIL:  Only roles with privileges of role "regress_user2" may reassign objects owned by it.
 -- should succeed, user has privileges on both old and new role
 SET SESSION AUTHORIZATION regress_user3;
 REASSIGN OWNED BY regress_user1 TO regress_user2;

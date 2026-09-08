@@ -535,7 +535,7 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
    ->  Sort
          Sort Key: pctest1.k
          ->  YB Batched Nested Loop Join
-               Join Filter: (pctest1.k = pctest2.k)
+               Join Filter: (pctest2.k = pctest1.k)
                ->  Parallel Index Scan using pctest1_c_idx on pctest1
                      Index Cond: (c = 42)
                ->  Index Scan using pctest2_pkey on pctest2
@@ -709,14 +709,14 @@ SELECT * FROM
          Hash Cond: (pctest1.b = pctest4.c)
          ->  Merge Join
                Merge Cond: (pctest1.k = pctest2.k)
-               Join Filter: (pctest1.c = pctest2.c)
+               Join Filter: (pctest2.c = pctest1.c)
                ->  Parallel Index Scan using pctest1_pkey on pctest1
                ->  Materialize
                      ->  Index Scan using pctest2_pkey on pctest2
          ->  Parallel Hash
                ->  Merge Join
                      Merge Cond: (pctest3.k = pctest4.k)
-                     Join Filter: (pctest3.b = pctest4.b)
+                     Join Filter: (pctest4.b = pctest3.b)
                      ->  Parallel Index Scan using pctest1_pkey on pctest1 pctest3
                      ->  Materialize
                            ->  Index Scan using pctest2_pkey on pctest2 pctest4
@@ -738,8 +738,8 @@ SELECT * from pctest2
                        QUERY PLAN                        
 ---------------------------------------------------------
  Seq Scan on pctest2
-   Filter: ((b)::numeric < (SubPlan 1))
-   SubPlan 1
+   Filter: ((b)::numeric < (SubPlan expr_1))
+   SubPlan expr_1
      ->  Finalize Aggregate
            ->  Index Scan using pctest1_c_idx on pctest1
                  Index Cond: (c = pctest2.c)
@@ -1148,7 +1148,7 @@ ORDER BY s1.k;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Nested Loop
-   Join Filter: (pctest_h1.b = pctest_h4.c)
+   Join Filter: (pctest_h4.c = pctest_h1.b)
    ->  Gather Merge
          Workers Planned: 2
          ->  Sort
@@ -1526,7 +1526,7 @@ SELECT pctest_h1.*, pctest_h2.k FROM pctest_h1, pctest_h2
    ->  Sort
          Sort Key: pctest_h1.k
          ->  YB Batched Nested Loop Join
-               Join Filter: (pctest_h1.k = pctest_h2.k)
+               Join Filter: (pctest_h2.k = pctest_h1.k)
                ->  Parallel Index Scan using pctest_h1_c_idx on pctest_h1
                      Index Cond: (c = 42)
                ->  Index Scan using pctest_h2_pkey on pctest_h2

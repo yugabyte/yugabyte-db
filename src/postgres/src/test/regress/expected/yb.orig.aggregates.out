@@ -1526,7 +1526,7 @@ INSERT INTO test VALUES(1), (2), (3);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
@@ -1537,7 +1537,7 @@ INSERT INTO test VALUES(1), (2), (3);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
@@ -1875,7 +1875,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(*)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
@@ -1886,7 +1886,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(*)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
@@ -2045,7 +2045,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v1)))
+   Join Filter: ((count(test.v1)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
@@ -2056,7 +2056,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v1)))
+   Join Filter: ((count(test.v1)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
@@ -2130,7 +2130,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
@@ -2141,7 +2141,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true

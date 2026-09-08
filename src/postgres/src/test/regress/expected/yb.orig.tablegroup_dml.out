@@ -159,7 +159,7 @@ SELECT * FROM tab_range2 ORDER BY a;
 CREATE TABLE tab_range_nogrp (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range_nogrp ON tab_range_nogrp (a);
 \dt
-               List of relations
+                 List of tables
  Schema |        Name        | Type  |  Owner   
 --------+--------------------+-------+----------
  public | tab_hash_nogrp     | table | yugabyte
@@ -172,7 +172,7 @@ CREATE INDEX idx_range_nogrp ON tab_range_nogrp (a);
 (7 rows)
 
 \di
-                            List of relations
+                             List of indexes
  Schema |          Name           | Type  |  Owner   |       Table        
 --------+-------------------------+-------+----------+--------------------
  public | idx_range2              | index | yugabyte | tab_range2
@@ -304,7 +304,7 @@ ERROR:  relation "tab_range2" does not exist
 LINE 1: SELECT * FROM tab_range2;
                       ^
 \dt
-                  List of relations
+                   List of tables
  Schema |          Name           | Type  |  Owner   
 --------+-------------------------+-------+----------
  public | tab_hash_nogrp          | table | yugabyte
@@ -315,7 +315,7 @@ LINE 1: SELECT * FROM tab_range2;
 (5 rows)
 
 \di
-                               List of relations
+                                List of indexes
  Schema |          Name           | Type  |  Owner   |          Table          
 --------+-------------------------+-------+----------+-------------------------
  public | idx_range_nogrp         | index | yugabyte | tab_range_nogrp

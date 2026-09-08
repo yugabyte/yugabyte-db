@@ -189,7 +189,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */
                   QUERY PLAN                  
 ----------------------------------------------
  Seq Scan on t_kv (actual rows=12.00 loops=1)
-(1 row)
+   Disabled: true
+(2 rows)
 
 /*+ IndexOnlyScan(t_kv) */ SELECT k FROM t_kv;
  k  
@@ -279,7 +280,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_v
                   QUERY PLAN                  
 ----------------------------------------------
  Seq Scan on t_kv (actual rows=12.00 loops=1)
-(1 row)
+   Disabled: true
+(2 rows)
 
 /*+ IndexOnlyScan(t_kv t_vi) */ SELECT k FROM t_kv;
  k  
@@ -407,7 +409,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_k
 ----------------------------------------------------
  Delete on t_kv (actual rows=0.00 loops=1)
    ->  Seq Scan on t_kv (actual rows=10.00 loops=1)
-(2 rows)
+         Disabled: true
+(3 rows)
 
 INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
 /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT * FROM t_kv;
@@ -431,7 +434,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_v
 ----------------------------------------------------
  Delete on t_kv (actual rows=0.00 loops=1)
    ->  Seq Scan on t_kv (actual rows=10.00 loops=1)
-(2 rows)
+         Disabled: true
+(3 rows)
 
 INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
 /*+ IndexOnlyScan(t_kv t_vi) */ SELECT * FROM t_kv;

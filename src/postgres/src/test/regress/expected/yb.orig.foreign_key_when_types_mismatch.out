@@ -66,10 +66,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -122,10 +122,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -146,10 +146,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -170,10 +170,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -380,11 +380,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(460) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(460) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -393,8 +393,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(460) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(460) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -406,8 +406,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -579,10 +579,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -635,10 +635,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -659,10 +659,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -683,10 +683,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -893,11 +893,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(792) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(792) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -906,8 +906,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(792) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(792) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -919,8 +919,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -1092,10 +1092,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -1148,10 +1148,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -1172,10 +1172,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -1196,10 +1196,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -1406,11 +1406,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(32004) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(32004) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -1419,8 +1419,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(32004) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(32004) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -1432,8 +1432,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -1605,10 +1605,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -1661,10 +1661,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -1685,10 +1685,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -1709,10 +1709,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -1919,11 +1919,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(2026) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(2026) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -1932,8 +1932,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(2026) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(2026) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -1945,8 +1945,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -2122,10 +2122,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -2178,10 +2178,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -2202,10 +2202,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -2226,10 +2226,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -2440,11 +2440,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(7) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(7) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -2453,8 +2453,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(7) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(7) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -2466,8 +2466,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -2643,10 +2643,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -2699,10 +2699,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -2723,10 +2723,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -2747,10 +2747,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -2963,11 +2963,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(52) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(52) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -2976,8 +2976,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(52) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(52) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -2989,8 +2989,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -3170,10 +3170,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -3226,10 +3226,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -3250,10 +3250,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -3274,10 +3274,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -3488,11 +3488,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(10) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(10) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -3501,8 +3501,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(10) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(10) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -3514,8 +3514,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -3687,10 +3687,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -3743,10 +3743,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -3767,10 +3767,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -3791,10 +3791,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -4005,11 +4005,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(10) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(10) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -4018,8 +4018,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(10) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(10) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -4031,8 +4031,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -4204,10 +4204,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -4260,10 +4260,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -4284,10 +4284,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -4308,10 +4308,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -4522,11 +4522,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(10) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(10) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -4535,8 +4535,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(10) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(10) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -4548,8 +4548,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(999) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(999) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -4721,10 +4721,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -4777,10 +4777,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -4801,10 +4801,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -4825,10 +4825,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -5033,11 +5033,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(alpha) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(alpha) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(missing) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(missing) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -5046,8 +5046,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(alpha) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(alpha) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -5059,8 +5059,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(missing) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(missing) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -5232,10 +5232,10 @@ INSERT INTO child VALUES (1, :'v1'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -5288,10 +5288,10 @@ DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100007, :'v1'), (100008, :'v2'), (100009, :'v3');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -5312,10 +5312,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100004, :'v1'), (100005, :'v1'), (100006, :'v1');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -5336,10 +5336,10 @@ SELECT count(*) FROM child;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES
   (100001, :'v1'), (100002, :'v1'), (100003, :'v2');
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
  Trigger for constraint child_v1_fkey: calls=3
  Storage Read Requests: 1
@@ -5546,11 +5546,11 @@ SELECT count(*) FROM child;
 (1 row)
 
 UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(alpha) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:147: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(alpha) is referenced from table "child".
 DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(missing) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:148: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(missing) is referenced from table "child".
 SELECT count(*) FROM child;
  count 
 -------
@@ -5559,8 +5559,8 @@ SELECT count(*) FROM child;
 
 BEGIN;
   UPDATE parent SET v1 = :'v3' WHERE h = 1; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(alpha) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:151: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(alpha) is referenced from table "child".
   INSERT INTO parent VALUES (3, :'v4');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -5572,8 +5572,8 @@ SELECT count(*) FROM parent WHERE v1 = :'v3';
 
 BEGIN;
   DELETE FROM parent WHERE h = 2; -- should fail: no matching parent key
-ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates foreign key constraint "child_v1_fkey" on table "child"
-DETAIL:  Key (v1)=(missing) is still referenced from table "child".
+ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:156: ERROR:  update or delete on table "parent" violates RESTRICT setting of foreign key constraint "child_v1_fkey" on table "child"
+DETAIL:  Key (v1)=(missing) is referenced from table "child".
   INSERT INTO parent VALUES (4, :'v5');
 ysqlsh:yb_commands/foreign_key_when_types_mismatch_helper.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT; -- should fail
@@ -5754,8 +5754,8 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 123, 9876543210, 'hello');
                      QUERY PLAN                      
 -----------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_v2_v3_fkey: calls=1
  Storage Read Requests: 1
@@ -5805,8 +5805,8 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 100, 123, 'hello', 'world');
                        QUERY PLAN                       
 --------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_v2_v3_v4_fkey: calls=1
  Storage Read Requests: 2
@@ -5855,10 +5855,10 @@ INSERT INTO child VALUES (100001, 1); -- warm up catalog cache
 DELETE FROM child WHERE h = 100001; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 1);
-                   QUERY PLAN                   
-------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Trigger for constraint child_v1_fkey1: calls=1
@@ -5972,10 +5972,10 @@ INSERT INTO parent VALUES (1, 100), (2, 200), (3, 300);
 INSERT INTO child VALUES (10, 100), (110, 200); -- warm up catalog cache
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
-                        QUERY PLAN                         
------------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
          Storage Flush Requests: 1
  Trigger for constraint child_v1_fkey on child_p1: calls=1
@@ -6026,8 +6026,8 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100, 'alpha'), (111, 200, 'beta');
                           QUERY PLAN                          
 --------------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
          Storage Flush Requests: 1
  Trigger for constraint child_v1_v2_fkey on child_p1: calls=1
@@ -6076,10 +6076,10 @@ INSERT INTO child VALUES (10, 100, 'alpha'), (110, 200, 'beta'); -- warm up cata
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 200, 'gamma'),
  (120, 300, 'delta'), (130, 400, 'epsilon');
-                        QUERY PLAN                        
-----------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
          Storage Flush Requests: 2
  Trigger for constraint child_v1_h_fkey on child: calls=3
@@ -6132,8 +6132,8 @@ EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child
   VALUES (2, 10000), (11001, 20000), (12002, 30000);
                          QUERY PLAN                          
 -------------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
          Storage Flush Requests: 3
  Trigger for constraint child_v1_h_fkey on child_p1: calls=1
@@ -6214,8 +6214,8 @@ EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child
   (100004, 10, 100, 1), (100005, 130, 400, 4);
                          QUERY PLAN                          
 -------------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=5 loops=1)
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=5.00 loops=1)
          Storage Table Write Requests: 5
          Storage Flush Requests: 2
  Trigger for constraint child_v1_v2_h_fkey on child: calls=5
@@ -6305,10 +6305,10 @@ INSERT INTO parent VALUES (1, 100), (2, 200), (3, 300);
 INSERT INTO child VALUES (10, 100), (110, 200); -- warm up catalog cache
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
-                        QUERY PLAN                         
------------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
          Storage Flush Requests: 1
  Trigger for constraint child_v1_fkey on child_p1: calls=1
@@ -6358,10 +6358,10 @@ INSERT INTO parent VALUES (1, 100), (2, 200), (3, 300);
 INSERT INTO child VALUES (10, 100), (110, 200); -- warm up catalog cache
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
-                        QUERY PLAN                         
------------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
          Storage Flush Requests: 1
  Trigger for constraint child_v1_fkey on child_p1: calls=1
@@ -6411,10 +6411,10 @@ INSERT INTO parent VALUES (1, 100), (2, 200), (3, 300);
 INSERT INTO child VALUES (10, 100), (110, 200); -- warm up catalog cache
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
-                        QUERY PLAN                         
------------------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=3 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=3.00 loops=1)
          Storage Table Write Requests: 3
          Storage Flush Requests: 1
  Trigger for constraint child_v1_fkey on child_p1: calls=1
@@ -6619,10 +6619,10 @@ INSERT INTO child VALUES (100001, 100); -- warm up catalog cache
 DELETE FROM child WHERE h = 100001; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100002, 100);
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -6649,10 +6649,10 @@ UPDATE pg_cast SET castfunc = :'initial_castfunc' -- back to original function i
   WHERE castsource = 'int2'::regtype AND casttarget = 'int4'::regtype;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE; -- should perform a catalog cache flush
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100003, 100);
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
@@ -6683,10 +6683,10 @@ INSERT INTO child VALUES (100001, 100); -- warm up catalog cache
 DELETE FROM child WHERE h = 100001; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100002, 100);
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -6716,10 +6716,10 @@ UPDATE pg_proc SET proname = (:'initial_proname') WHERE oid = (:int4_castfunc);
 -- perform a catalog lookup and hence, not perform a catalog cache flush.
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100003, 100);
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 1
@@ -6760,10 +6760,10 @@ INSERT INTO child VALUES (1, 456); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 456);
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on child (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint child_v1_fkey: calls=1
  Storage Read Requests: 2

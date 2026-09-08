@@ -65,7 +65,7 @@ DETAIL:  Create index in transaction block cannot be concurrent.
 HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
 ROLLBACK TO a;
 \di
-          List of relations
+           List of indexes
  Schema | Name | Type | Owner | Table 
 --------+------+------+-------+-------
 (0 rows)

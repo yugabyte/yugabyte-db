@@ -736,7 +736,7 @@ step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
 step s2_del_restrict_col: DELETE FROM pk_rel WHERE v_restrict='g'; <waiting ...>
 step s1_commit: COMMIT;
 step s2_del_restrict_col: <... completed>
-ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+ERROR:  update or delete on table "pk_rel" violates RESTRICT setting of foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
 step s2_commit: COMMIT;
 step s2_read_fk_rel: SELECT * FROM fk_rel;
 h|v_no_action|v_restrict|v_cascade
@@ -769,7 +769,7 @@ step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
 step s2_del_restrict_col: DELETE FROM pk_rel WHERE v_restrict='g'; <waiting ...>
 step s1_commit: COMMIT;
 step s2_del_restrict_col: <... completed>
-ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+ERROR:  update or delete on table "pk_rel" violates RESTRICT setting of foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
 step s2_commit: COMMIT;
 step s2_read_fk_rel: SELECT * FROM fk_rel;
 h|v_no_action|v_restrict|v_cascade
@@ -801,7 +801,7 @@ step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
 step s2_upd_restrict_col: UPDATE pk_rel SET v_restrict='a' WHERE v_restrict='g'; <waiting ...>
 step s1_commit: COMMIT;
 step s2_upd_restrict_col: <... completed>
-ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+ERROR:  update or delete on table "pk_rel" violates RESTRICT setting of foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
 step s2_commit: COMMIT;
 step s2_read_fk_rel: SELECT * FROM fk_rel;
 h|v_no_action|v_restrict|v_cascade
@@ -834,7 +834,7 @@ step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
 step s2_upd_restrict_col: UPDATE pk_rel SET v_restrict='a' WHERE v_restrict='g'; <waiting ...>
 step s1_commit: COMMIT;
 step s2_upd_restrict_col: <... completed>
-ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+ERROR:  update or delete on table "pk_rel" violates RESTRICT setting of foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
 step s2_commit: COMMIT;
 step s2_read_fk_rel: SELECT * FROM fk_rel;
 h|v_no_action|v_restrict|v_cascade

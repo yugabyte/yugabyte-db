@@ -769,9 +769,9 @@ select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 -- actually run the query with an analyze to use the partial index
 explain (costs off, analyze on, timing off, summary off)
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
-                           QUERY PLAN                            
------------------------------------------------------------------
- Index Scan using onek2_u2_prtl on onek2 (actual rows=1 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using onek2_u2_prtl on onek2 (actual rows=1.00 loops=1)
    Index Cond: (unique2 = 11)
    Storage Filter: (stringu1 = 'ATAAAA'::name)
 (3 rows)
@@ -968,10 +968,11 @@ create table list_parted_tbl (a int,b int) partition by list (a);
 create table list_parted_tbl1 partition of list_parted_tbl
   for values in (1) partition by list(b);
 explain (costs off) select * from list_parted_tbl;
-        QUERY PLAN        
---------------------------
+             QUERY PLAN              
+-------------------------------------
  Result list_parted_tbl
+   Replaces: Scan on list_parted_tbl
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 drop table list_parted_tbl;

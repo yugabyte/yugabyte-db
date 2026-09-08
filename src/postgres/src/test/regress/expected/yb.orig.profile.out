@@ -17,10 +17,10 @@ Indexes:
     "pg_yb_profile_prfname_index" UNIQUE CONSTRAINT, lsm (prfname ASC), tablespace "pg_global"
 Tablespace: "pg_global"
 
+-- YB_TODO_PG19MERGE: Change pg_yb_profile_oid_index oid back to 8052 before PG19 release.
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_profile', 'pg_yb_profile_oid_index');
  oid  |         relname         | reltype | relnatts 
 ------+-------------------------+---------+----------
--- YB_TODO_PG19MERGE: Change pg_yb_profile_oid_index oid back to 8052 before PG19 release.
  8051 | pg_yb_profile           |    8053 |        4
  9811 | pg_yb_profile_oid_index |       0 |        1
 (2 rows)

@@ -669,8 +669,9 @@ $$ AS query \gset
 --------------------------------------
  Aggregate
    ->  Seq Scan on partial
+         Disabled: true
          Filter: (a && '{e}'::text[])
-(3 rows)
+(4 rows)
 
 SELECT $$
 :P SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';

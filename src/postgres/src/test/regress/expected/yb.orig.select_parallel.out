@@ -765,12 +765,12 @@ explain (costs off)
 SAVEPOINT settings;
 SET LOCAL debug_parallel_query = 1;
 EXPLAIN (analyze, timing off, summary off, costs off) SELECT * FROM tenk1;
-                         QUERY PLAN                          
--------------------------------------------------------------
- Gather (actual rows=10000 loops=1)
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Gather (actual rows=10000.00 loops=1)
    Workers Planned: 4
    Workers Launched: 4
-   ->  Parallel Seq Scan on tenk1 (actual rows=2000 loops=5)
+   ->  Parallel Seq Scan on tenk1 (actual rows=2000.00 loops=5)
 (4 rows)
 
 ROLLBACK TO SAVEPOINT settings;

@@ -31,10 +31,10 @@ CREATE TRIGGER mchairs_table_trigger BEFORE UPDATE ON mchairs_table FOR EACH ROW
 -- The value of v1 should be incremented twice, index v1_v2 should be updated.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 + 1 WHERE h = 1;
 NOTICE:  Musical chairs invoked with h = 1
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Update on mchairs_table (actual rows=0 loops=1)
-   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0.00 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1.00 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -52,10 +52,10 @@ NOTICE:  Musical chairs invoked with h = 1
 -- The value of v1 should be updated again, indexes v1_v2, v3 should be updated.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v3 = v3 + 1 WHERE h = 1;
 NOTICE:  Musical chairs invoked with h = 1
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Update on mchairs_table (actual rows=0 loops=1)
-   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0.00 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1.00 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -76,10 +76,10 @@ NOTICE:  Musical chairs invoked with h = 11
 NOTICE:  Musical chairs invoked with h = 12
 NOTICE:  Musical chairs invoked with h = 9
 NOTICE:  Musical chairs invoked with h = 10
-                       QUERY PLAN                        
----------------------------------------------------------
- Update on mchairs_table (actual rows=0 loops=1)
-   ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Update on mchairs_table (actual rows=0.00 loops=1)
+   ->  Seq Scan on mchairs_table (actual rows=4.00 loops=1)
          Storage Filter: ((h > 8) AND (h <= 12))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
@@ -117,10 +117,10 @@ SELECT * FROM mchairs_table ORDER BY h;
 -- should be updated.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1 WHERE h = 1;
 NOTICE:  Musical chairs invoked with h = 1
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Update on mchairs_table (actual rows=0 loops=1)
-   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0.00 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1.00 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -137,10 +137,10 @@ NOTICE:  Musical chairs invoked with h = 1
 -- Same as above but for the primary key
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 40, v1 = v1 + 1 WHERE h = 4;
 NOTICE:  Musical chairs invoked with h = -36
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Update on mchairs_table (actual rows=0 loops=1)
-   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0.00 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1.00 loops=1)
          Index Cond: (h = 4)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -159,10 +159,10 @@ NOTICE:  Musical chairs invoked with h = -36
 -- h is applied on the value of h that is returned by the before row trigger.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 1, v1 = v1 + 1 WHERE h = 4;
 NOTICE:  Musical chairs invoked with h = 3
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Update on mchairs_table (actual rows=0 loops=1)
-   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0.00 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1.00 loops=1)
          Index Cond: (h = 4)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -183,10 +183,10 @@ NOTICE:  Musical chairs invoked with h = 5
 NOTICE:  Musical chairs invoked with h = 6
 NOTICE:  Musical chairs invoked with h = 7
 NOTICE:  Musical chairs invoked with h = 8
-                       QUERY PLAN                        
----------------------------------------------------------
- Update on mchairs_table (actual rows=0 loops=1)
-   ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Update on mchairs_table (actual rows=0.00 loops=1)
+   ->  Seq Scan on mchairs_table (actual rows=4.00 loops=1)
          Storage Filter: ((h > 4) AND (h <= 8))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3

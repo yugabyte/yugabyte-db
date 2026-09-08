@@ -19,9 +19,9 @@ INSERT INTO t_multiple_binds SELECT i, j FROM generate_series(1, 10) i, generate
 SET yb_enable_advanced_index_cond_fold = off;
 -- These two can send all conditions because the conditions are on seperate keys. No recheck required.
 :explain_analyze /*+ IndexScan(t t_multiple_binds_pkey) */ SELECT * FROM t_multiple_binds t WHERE a IN (1,2) and b <= 5;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
- Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=10 loops=1)
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=10.00 loops=1)
    Index Cond: ((a = ANY ('{1,2}'::integer[])) AND (b <= 5))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -29,9 +29,9 @@ SET yb_enable_advanced_index_cond_fold = off;
 (5 rows)
 
 :explain_analyze /*+ IndexScan(t t_a_b_idx) */ SELECT * FROM t_multiple_binds t WHERE a IN (1,2) and b <= 5;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Scan using t_a_b_idx on t_multiple_binds t (actual rows=10 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using t_a_b_idx on t_multiple_binds t (actual rows=10.00 loops=1)
    Index Cond: ((a = ANY ('{1,2}'::integer[])) AND (b <= 5))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -43,9 +43,9 @@ SET yb_enable_advanced_index_cond_fold = off;
 
 -- These can only bind one condition to the key, so recheck is required.
 :explain_analyze /*+ IndexScan(t t_multiple_binds_pkey) */ SELECT * FROM t_multiple_binds t WHERE a <= 7 AND a = 8;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=0 loops=1)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=0.00 loops=1)
    Index Cond: ((a <= 7) AND (a = 8))
    Rows Removed by Index Recheck: 10
    Storage Table Read Requests: 1
@@ -54,9 +54,9 @@ SET yb_enable_advanced_index_cond_fold = off;
 (6 rows)
 
 :explain_analyze /*+ IndexScan(t t_multiple_binds_pkey) */ SELECT * FROM t_multiple_binds t WHERE b <= 7 AND b = 8;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=0 loops=1)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=0.00 loops=1)
    Index Cond: ((b <= 7) AND (b = 8))
    Rows Removed by Index Recheck: 10
    Storage Table Read Requests: 1
@@ -65,9 +65,9 @@ SET yb_enable_advanced_index_cond_fold = off;
 (6 rows)
 
 :explain_analyze /*+ IndexScan(t t_a_b_idx) */ SELECT * FROM t_multiple_binds t WHERE a <= 7 AND a = 8;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Index Scan using t_a_b_idx on t_multiple_binds t (actual rows=0 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Index Scan using t_a_b_idx on t_multiple_binds t (actual rows=0.00 loops=1)
    Index Cond: ((a <= 7) AND (a = 8))
    Rows Removed by Index Recheck: 10
    Storage Table Read Requests: 1
@@ -79,9 +79,9 @@ SET yb_enable_advanced_index_cond_fold = off;
 (9 rows)
 
 :explain_analyze /*+ IndexScan(t t_a_b_idx) */ SELECT * FROM t_multiple_binds t WHERE b <= 7 AND b = 8;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Index Scan using t_a_b_idx on t_multiple_binds t (actual rows=0 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Index Scan using t_a_b_idx on t_multiple_binds t (actual rows=0.00 loops=1)
    Index Cond: ((b <= 7) AND (b = 8))
    Rows Removed by Index Recheck: 10
    Storage Table Read Requests: 1
@@ -96,9 +96,9 @@ RESET yb_enable_advanced_index_cond_fold;
 -- Inequality bounds fold into the IN array, reducing rows fetched from DocDB.
 -- lower bound: IN (1..5) prunes to (3,4,5)
 :explain_analyze /*+ IndexScan(t t_multiple_binds_pkey) */ SELECT * FROM t_multiple_binds t WHERE a IN (1,2,3,4,5) AND a >= 3;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
- Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=30 loops=1)
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=30.00 loops=1)
    Index Cond: ((a = ANY ('{1,2,3,4,5}'::integer[])) AND (a >= 3))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -107,9 +107,9 @@ RESET yb_enable_advanced_index_cond_fold;
 
 -- both bounds: IN (1..5) prunes to (3,4)
 :explain_analyze /*+ IndexScan(t t_multiple_binds_pkey) */ SELECT * FROM t_multiple_binds t WHERE a IN (1,2,3,4,5) AND a >= 3 AND a < 5;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
- Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=20 loops=1)
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=20.00 loops=1)
    Index Cond: ((a = ANY ('{1,2,3,4,5}'::integer[])) AND (a >= 3) AND (a < 5))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -118,17 +118,17 @@ RESET yb_enable_advanced_index_cond_fold;
 
 -- all elements pruned, 0 rows
 :explain_analyze /*+ IndexScan(t t_multiple_binds_pkey) */ SELECT * FROM t_multiple_binds t WHERE a IN (1,2,3) AND a > 5;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=0 loops=1)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Index Scan using t_multiple_binds_pkey on t_multiple_binds t (actual rows=0.00 loops=1)
    Index Cond: ((a = ANY ('{1,2,3}'::integer[])) AND (a > 5))
 (2 rows)
 
 -- Index Only Scan + IN + inequality
 :explain_analyze /*+ IndexOnlyScan(t t_a_b_idx) */ SELECT a, b FROM t_multiple_binds t WHERE a IN (1,2,3,4,5) AND a >= 3;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Only Scan using t_a_b_idx on t_multiple_binds t (actual rows=30 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Only Scan using t_a_b_idx on t_multiple_binds t (actual rows=30.00 loops=1)
    Index Cond: ((a = ANY ('{1,2,3,4,5}'::integer[])) AND (a >= 3))
    Heap Fetches: 0
    Storage Index Read Requests: 1
@@ -147,9 +147,9 @@ CREATE INDEX t_hash_range ON t_incomplete_binds(h1, r2 ASC);
 CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 -- full bindings (no recheck required)
 :explain_analyze SELECT * FROM t_incomplete_binds WHERE h1 = 1 AND h2 = 5;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using t_hash_hash on t_incomplete_binds (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using t_hash_hash on t_incomplete_binds (actual rows=1.00 loops=1)
    Index Cond: ((h1 = 1) AND (h2 = 5))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -160,9 +160,9 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_incomplete_binds WHERE h1 = 1 AND r2 < 5;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Index Scan using t_hash_range on t_incomplete_binds (actual rows=4 loops=1)
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Index Scan using t_hash_range on t_incomplete_binds (actual rows=4.00 loops=1)
    Index Cond: ((h1 = 1) AND (r2 < 5))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -173,9 +173,9 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_incomplete_binds WHERE r1 < 1 AND r2 < 5;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Index Scan using t_range_range on t_incomplete_binds (actual rows=0 loops=1)
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Index Scan using t_range_range on t_incomplete_binds (actual rows=0.00 loops=1)
    Index Cond: ((r1 < 1) AND (r2 < 5))
    Storage Index Read Requests: 1
    Storage Index Read Ops: 1
@@ -183,9 +183,9 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 
 -- partial bindings (recheck required)
 :explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h2 = 5;
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Index Scan using t_hash_hash on t_incomplete_binds t (actual rows=10 loops=1)
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Index Scan using t_hash_hash on t_incomplete_binds t (actual rows=10.00 loops=1)
    Index Cond: (h2 = 5)
    Rows Removed by Index Recheck: 90
    Storage Table Read Requests: 3
@@ -197,9 +197,9 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 (9 rows)
 
 :explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using t_hash_range on t_incomplete_binds t (actual rows=40 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using t_hash_range on t_incomplete_binds t (actual rows=40.00 loops=1)
    Index Cond: (r2 < 5)
    Rows Removed by Index Recheck: 60
    Storage Table Read Requests: 3
@@ -211,9 +211,9 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 (9 rows)
 
 :explain_analyze /*+ IndexScan(t t_range_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Index Scan using t_range_range on t_incomplete_binds t (actual rows=40 loops=1)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Index Scan using t_range_range on t_incomplete_binds t (actual rows=40.00 loops=1)
    Index Cond: (r2 < 5)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -239,9 +239,9 @@ INSERT INTO t_int VALUES (-32768, -2147483648, -9223372036854775808);
 INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 -- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i2 = 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=1 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=1.00 loops=1)
    Index Cond: (i2 = 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -252,9 +252,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i2 > 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=2 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=2.00 loops=1)
    Index Cond: (i2 > 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -265,9 +265,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i2 < 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=1 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=1.00 loops=1)
    Index Cond: (i2 < 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -279,9 +279,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 
 -- these are each out of range, so recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i2 = 32768;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=0.00 loops=1)
    Index Cond: (i2 = 32768)
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -293,9 +293,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=4 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=4.00 loops=1)
    Index Cond: (i2 < 32768)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -306,9 +306,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=0.00 loops=1)
    Index Cond: (i2 > 32768)
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -320,9 +320,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i2 on t_int (actual rows=3 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=3.00 loops=1)
    Index Cond: (i2 = ANY ('{1,2,32767,32768}'::integer[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -334,9 +334,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 
 -- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i4 = 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=1 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=1.00 loops=1)
    Index Cond: (i4 = 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -347,9 +347,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i4 > 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=2 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=2.00 loops=1)
    Index Cond: (i4 > 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -360,9 +360,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i4 < 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=1 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=1.00 loops=1)
    Index Cond: (i4 < 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -374,9 +374,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 
 -- these are each out of range, so recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=0.00 loops=1)
    Index Cond: (i4 = '2147483648'::bigint)
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -388,9 +388,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=0.00 loops=1)
    Index Cond: (i4 > '2147483648'::bigint)
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -402,9 +402,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=4 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i4 on t_int (actual rows=4.00 loops=1)
    Index Cond: (i4 < '2147483648'::bigint)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -417,7 +417,7 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 :explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
                              QUERY PLAN                             
 --------------------------------------------------------------------
- Index Scan using t_int_i4 on t_int (actual rows=3 loops=1)
+ Index Scan using t_int_i4 on t_int (actual rows=3.00 loops=1)
    Index Cond: (i4 = ANY ('{1,2,2147483647,2147483648}'::bigint[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -429,9 +429,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 
 -- these are each within range, so no recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i8 = 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i8 on t_int (actual rows=1 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i8 on t_int (actual rows=1.00 loops=1)
    Index Cond: (i8 = 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -442,9 +442,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i8 > 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i8 on t_int (actual rows=2 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i8 on t_int (actual rows=2.00 loops=1)
    Index Cond: (i8 > 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -455,9 +455,9 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i8 < 1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Index Scan using t_int_i8 on t_int (actual rows=1 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Scan using t_int_i8 on t_int (actual rows=1.00 loops=1)
    Index Cond: (i8 < 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -471,7 +471,7 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 :explain_analyze SELECT * FROM t_int WHERE i8 = 9223372036854775809;
                              QUERY PLAN                             
 --------------------------------------------------------------------
- Seq Scan on t_int (actual rows=0 loops=1)
+ Seq Scan on t_int (actual rows=0.00 loops=1)
    Storage Filter: ((i8)::numeric = '9223372036854775809'::numeric)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -481,7 +481,7 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 :explain_analyze SELECT * FROM t_int WHERE i8 > 9223372036854775809;
                              QUERY PLAN                             
 --------------------------------------------------------------------
- Seq Scan on t_int (actual rows=0 loops=1)
+ Seq Scan on t_int (actual rows=0.00 loops=1)
    Storage Filter: ((i8)::numeric > '9223372036854775809'::numeric)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -491,7 +491,7 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 :explain_analyze SELECT * FROM t_int WHERE i8 < 9223372036854775809;
                              QUERY PLAN                             
 --------------------------------------------------------------------
- Seq Scan on t_int (actual rows=4 loops=1)
+ Seq Scan on t_int (actual rows=4.00 loops=1)
    Storage Filter: ((i8)::numeric < '9223372036854775809'::numeric)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -501,7 +501,7 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 :explain_analyze SELECT * FROM t_int WHERE i8 IN (1, 2, 9223372036854775807, 9223372036854775808);
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
- Seq Scan on t_int (actual rows=2 loops=1)
+ Seq Scan on t_int (actual rows=2.00 loops=1)
    Storage Filter: ((i8)::numeric = ANY ('{1,2,9223372036854775807,9223372036854775808}'::numeric[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -530,9 +530,9 @@ INSERT INTO t_float VALUES (1.234567890123456,    1.234567890123456);
 INSERT INTO t_float VALUES (1.2345678901234567,   1.2345678901234567);
 INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 :explain_analyze SELECT * FROM t_float WHERE f4 = 1.23456789;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Index Scan using t_float_f4 on t_float (actual rows=0 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using t_float_f4 on t_float (actual rows=0.00 loops=1)
    Index Cond: (f4 = '1.23456789'::double precision)
    Rows Removed by Index Recheck: 16
    Storage Table Read Requests: 1
@@ -544,9 +544,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f4 < 1.23456789;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Index Scan using t_float_f4 on t_float (actual rows=16 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using t_float_f4 on t_float (actual rows=16.00 loops=1)
    Index Cond: (f4 < '1.23456789'::double precision)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -557,9 +557,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f4 > 1.23456789;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Index Scan using t_float_f4 on t_float (actual rows=0 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using t_float_f4 on t_float (actual rows=0.00 loops=1)
    Index Cond: (f4 > '1.23456789'::double precision)
    Rows Removed by Index Recheck: 16
    Storage Table Read Requests: 1
@@ -571,9 +571,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f4 = 1.2345678901234567;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Index Scan using t_float_f4 on t_float (actual rows=0 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using t_float_f4 on t_float (actual rows=0.00 loops=1)
    Index Cond: (f4 = '1.2345678901234567'::double precision)
    Rows Removed by Index Recheck: 16
    Storage Table Read Requests: 1
@@ -585,9 +585,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f4 < 1.2345678901234567;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Index Scan using t_float_f4 on t_float (actual rows=16 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using t_float_f4 on t_float (actual rows=16.00 loops=1)
    Index Cond: (f4 < '1.2345678901234567'::double precision)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -598,9 +598,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f4 > 1.2345678901234566;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Index Scan using t_float_f4 on t_float (actual rows=0 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using t_float_f4 on t_float (actual rows=0.00 loops=1)
    Index Cond: (f4 > '1.2345678901234567'::double precision)
    Rows Removed by Index Recheck: 16
    Storage Table Read Requests: 1
@@ -612,9 +612,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (9 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f8 = 1.2345678901234567;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Index Scan using t_float_f8 on t_float (actual rows=2 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using t_float_f8 on t_float (actual rows=2.00 loops=1)
    Index Cond: (f8 = '1.2345678901234567'::double precision)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -625,9 +625,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f8 < 1.2345678901234567;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Index Scan using t_float_f8 on t_float (actual rows=14 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using t_float_f8 on t_float (actual rows=14.00 loops=1)
    Index Cond: (f8 < '1.2345678901234567'::double precision)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
@@ -638,9 +638,9 @@ INSERT INTO t_float VALUES (1.23456789012345678,  1.23456789012345678);
 (8 rows)
 
 :explain_analyze SELECT * FROM t_float WHERE f8 > 1.2345678901234566;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Index Scan using t_float_f8 on t_float (actual rows=0 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using t_float_f8 on t_float (actual rows=0.00 loops=1)
    Index Cond: (f8 > '1.2345678901234567'::double precision)
    Storage Index Read Requests: 1
    Storage Index Read Ops: 1
@@ -656,9 +656,9 @@ CREATE INDEX t_text_range ON t_text(v ASC);
 INSERT INTO t_name VALUES ('aa'), ('ab'), ('ac'), ('ad'), ('ba'), ('bb'), ('bc'), ('bd');
 INSERT INTO t_text VALUES ('aa'), ('ab'), ('ac'), ('ad'), ('ba'), ('bb'), ('bc'), ('bd');
 :explain_analyze SELECT * FROM t_name WHERE v >= 'b'::name;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Index Only Scan using t_name_range on t_name (actual rows=4 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Only Scan using t_name_range on t_name (actual rows=4.00 loops=1)
    Index Cond: (v >= 'b'::name)
    Heap Fetches: 0
    Storage Index Read Requests: 1
@@ -667,9 +667,9 @@ INSERT INTO t_text VALUES ('aa'), ('ab'), ('ac'), ('ad'), ('ba'), ('bb'), ('bc')
 (6 rows)
 
 :explain_analyze SELECT * FROM t_name WHERE v >= 'b'::text;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Index Only Scan using t_name_range on t_name (actual rows=4 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Only Scan using t_name_range on t_name (actual rows=4.00 loops=1)
    Index Cond: (v >= 'b'::text)
    Rows Removed by Index Recheck: 4
    Heap Fetches: 0
@@ -679,9 +679,9 @@ INSERT INTO t_text VALUES ('aa'), ('ab'), ('ac'), ('ad'), ('ba'), ('bb'), ('bc')
 (7 rows)
 
 :explain_analyze SELECT * FROM t_name WHERE v LIKE 'a%';
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Index Only Scan using t_name_range on t_name (actual rows=4 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Only Scan using t_name_range on t_name (actual rows=4.00 loops=1)
    Index Cond: ((v >= 'a'::text) AND (v < 'b'::text))
    Storage Filter: (v ~~ 'a%'::text)
    Heap Fetches: 0
@@ -691,9 +691,9 @@ INSERT INTO t_text VALUES ('aa'), ('ab'), ('ac'), ('ad'), ('ba'), ('bb'), ('bc')
 (7 rows)
 
 :explain_analyze SELECT * FROM t_text WHERE v >= 'b'::name;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Index Only Scan using t_text_range on t_text (actual rows=4 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Only Scan using t_text_range on t_text (actual rows=4.00 loops=1)
    Storage Filter: (v >= 'b'::name)
    Heap Fetches: 0
    Storage Index Read Requests: 1
@@ -702,9 +702,9 @@ INSERT INTO t_text VALUES ('aa'), ('ab'), ('ac'), ('ad'), ('ba'), ('bb'), ('bc')
 (6 rows)
 
 :explain_analyze SELECT * FROM t_text WHERE v >= 'b'::text;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Index Only Scan using t_text_range on t_text (actual rows=4 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Only Scan using t_text_range on t_text (actual rows=4.00 loops=1)
    Index Cond: (v >= 'b'::text)
    Heap Fetches: 0
    Storage Index Read Requests: 1
@@ -713,9 +713,9 @@ INSERT INTO t_text VALUES ('aa'), ('ab'), ('ac'), ('ad'), ('ba'), ('bb'), ('bc')
 (6 rows)
 
 :explain_analyze SELECT * FROM t_text WHERE v LIKE 'a%';
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Index Only Scan using t_text_range on t_text (actual rows=4 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Only Scan using t_text_range on t_text (actual rows=4.00 loops=1)
    Index Cond: ((v >= 'a'::text) AND (v < 'b'::text))
    Storage Filter: (v ~~ 'a%'::text)
    Heap Fetches: 0
@@ -735,9 +735,9 @@ CREATE INDEX ON t_domain_text(t ASC);
 INSERT INTO t_domain_int SELECT i, i FROM generate_series(1, 10) i;
 INSERT INTO t_domain_text SELECT i, i::text FROM generate_series(1, 10) i;
 :explain_analyze SELECT * FROM t_domain_int WHERE i = 1;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Index Scan using t_domain_int_i_idx on t_domain_int (actual rows=1 loops=1)
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Index Scan using t_domain_int_i_idx on t_domain_int (actual rows=1.00 loops=1)
    Index Cond: ((i)::integer = 1)
    Rows Removed by Index Recheck: 9
    Storage Table Read Requests: 1
@@ -749,9 +749,9 @@ INSERT INTO t_domain_text SELECT i, i::text FROM generate_series(1, 10) i;
 (9 rows)
 
 :explain_analyze SELECT * FROM t_domain_text WHERE t = '1';
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Index Scan using t_domain_text_t_idx on t_domain_text (actual rows=1 loops=1)
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Index Scan using t_domain_text_t_idx on t_domain_text (actual rows=1.00 loops=1)
    Index Cond: ((t)::text = '1'::text)
    Rows Removed by Index Recheck: 9
    Storage Table Read Requests: 1
@@ -772,9 +772,9 @@ CREATE INDEX ON test_multiple_rechecks (a ASC, b ASC, c ASC);
 INSERT INTO test_multiple_rechecks SELECT i, j, k FROM generate_series(1, 10) i, generate_series(1, 10) j, generate_series(1, 10) k;
 SET yb_test_skip_binding_scan_keys = true;
 :explain_analyze /*+ IndexScan(t) */ SELECT * FROM test_multiple_rechecks t WHERE ROW(a, b) < ROW(4, 4) AND c IN (1, 2, 3, 4, 5, 6) AND c < 4;
-                                               QUERY PLAN                                               
---------------------------------------------------------------------------------------------------------
- Index Scan using test_multiple_rechecks_a_b_c_idx on test_multiple_rechecks t (actual rows=99 loops=1)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Index Scan using test_multiple_rechecks_a_b_c_idx on test_multiple_rechecks t (actual rows=99.00 loops=1)
    Index Cond: ((ROW(a, b) < ROW(4, 4)) AND (c = ANY ('{1,2,3,4,5,6}'::integer[])) AND (c < 4))
    Rows Removed by Index Recheck: 901
    Storage Table Read Requests: 1
@@ -808,7 +808,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i2 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k = ANY(ARRAY[5,6,7,8,9,10,11,12,13,14]::bigint[]);
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
- Index Scan using t_i2_pkey on t_i2 (actual rows=6 loops=1)
+ Index Scan using t_i2_pkey on t_i2 (actual rows=6.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k = ANY ('{5,6,7,8,9,10,11,12,13,14}'::bigint[])))
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -819,7 +819,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i2 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k = ANY(ARRAY[5,6,7,8,9,10,11,12,13,14]::smallint[]);
                                                         QUERY PLAN                                                        
 --------------------------------------------------------------------------------------------------------------------------
- Index Scan using t_i2_pkey on t_i2 (actual rows=6 loops=1)
+ Index Scan using t_i2_pkey on t_i2 (actual rows=6.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k = ANY ('{5,6,7,8,9,10,11,12,13,14}'::smallint[])))
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -830,7 +830,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i4 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k = ANY(ARRAY[5,6,7,8,9,10,11,12,13,14]::bigint[]);
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
- Index Scan using t_i4_pkey on t_i4 (actual rows=6 loops=1)
+ Index Scan using t_i4_pkey on t_i4 (actual rows=6.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k = ANY ('{5,6,7,8,9,10,11,12,13,14}'::bigint[])))
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -841,7 +841,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i4 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k = ANY(ARRAY[5,6,7,8,9,10,11,12,13,14]::smallint[]);
                                                         QUERY PLAN                                                        
 --------------------------------------------------------------------------------------------------------------------------
- Index Scan using t_i4_pkey on t_i4 (actual rows=6 loops=1)
+ Index Scan using t_i4_pkey on t_i4 (actual rows=6.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k = ANY ('{5,6,7,8,9,10,11,12,13,14}'::smallint[])))
    Rows Removed by Index Recheck: 4
    Storage Table Read Requests: 1
@@ -852,7 +852,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i8 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k = ANY(ARRAY[5,6,7,8,9,10,11,12,13,14]::bigint[]);
                                                       QUERY PLAN                                                       
 -----------------------------------------------------------------------------------------------------------------------
- Index Scan using t_i8_pkey on t_i8 (actual rows=6 loops=1)
+ Index Scan using t_i8_pkey on t_i8 (actual rows=6.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::bigint[])) AND (k = ANY ('{5,6,7,8,9,10,11,12,13,14}'::bigint[])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -862,7 +862,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f4 WHERE k IN (1,2,3,4,5) AND k = ANY(ARRAY[3,4,5,6,7]::real[]);
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
- Index Scan using t_f4_pkey on t_f4 (actual rows=3 loops=1)
+ Index Scan using t_f4_pkey on t_f4 (actual rows=3.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5}'::real[])) AND (k = ANY ('{3,4,5,6,7}'::real[])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -872,7 +872,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f8 WHERE k IN (1,2,3,4,5) AND k = ANY(ARRAY[3,4,5,6,7]::real[]);
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
- Index Scan using t_f8_pkey on t_f8 (actual rows=3 loops=1)
+ Index Scan using t_f8_pkey on t_f8 (actual rows=3.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5}'::double precision[])) AND (k = ANY ('{3,4,5,6,7}'::real[])))
    Rows Removed by Index Recheck: 2
    Storage Table Read Requests: 1
@@ -883,7 +883,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_num WHERE k IN (1,2,3,4,5) AND k = ANY(ARRAY[3,4,5,6,7]::int[]);
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
- Index Scan using t_num_pkey on t_num (actual rows=3 loops=1)
+ Index Scan using t_num_pkey on t_num (actual rows=3.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5}'::numeric[])) AND (k = ANY ('{3,4,5,6,7}'::numeric[])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -894,7 +894,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i2 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Index Scan using t_i2_pkey on t_i2 (actual rows=4 loops=1)
+ Index Scan using t_i2_pkey on t_i2 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k >= 7))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -904,7 +904,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i4 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Index Scan using t_i4_pkey on t_i4 (actual rows=4 loops=1)
+ Index Scan using t_i4_pkey on t_i4 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k >= 7))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -914,7 +914,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i8 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
- Index Scan using t_i8_pkey on t_i8 (actual rows=4 loops=1)
+ Index Scan using t_i8_pkey on t_i8 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::bigint[])) AND (k >= 7))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -924,7 +924,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f4 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
- Index Scan using t_f4_pkey on t_f4 (actual rows=4 loops=1)
+ Index Scan using t_f4_pkey on t_f4 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::real[])) AND (k >= '7'::double precision))
    Rows Removed by Index Recheck: 6
    Storage Table Read Requests: 1
@@ -935,7 +935,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f8 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7;
                                                 QUERY PLAN                                                 
 -----------------------------------------------------------------------------------------------------------
- Index Scan using t_f8_pkey on t_f8 (actual rows=4 loops=1)
+ Index Scan using t_f8_pkey on t_f8 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::double precision[])) AND (k >= '7'::double precision))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -945,7 +945,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_num WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7;
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
- Index Scan using t_num_pkey on t_num (actual rows=4 loops=1)
+ Index Scan using t_num_pkey on t_num (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::numeric[])) AND (k >= '7'::numeric))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -955,7 +955,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_txt WHERE k IN ('05','06','07','08','09','10','11') AND k >= '08';
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Index Scan using t_txt_pkey on t_txt (actual rows=4 loops=1)
+ Index Scan using t_txt_pkey on t_txt (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{05,06,07,08,09,10,11}'::text[])) AND (k >= '08'::text))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -965,7 +965,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i2 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7::bigint;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
- Index Scan using t_i2_pkey on t_i2 (actual rows=4 loops=1)
+ Index Scan using t_i2_pkey on t_i2 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k >= '7'::bigint))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -975,7 +975,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i2 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7.0::real;
                           QUERY PLAN                           
 ---------------------------------------------------------------
- Index Scan using t_i2_pkey on t_i2 (actual rows=4 loops=1)
+ Index Scan using t_i2_pkey on t_i2 (actual rows=4.00 loops=1)
    Index Cond: (k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[]))
    Storage Filter: ((k)::double precision >= '7'::real)
    Storage Table Read Requests: 1
@@ -986,7 +986,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_i4 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7::bigint;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
- Index Scan using t_i4_pkey on t_i4 (actual rows=4 loops=1)
+ Index Scan using t_i4_pkey on t_i4 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::integer[])) AND (k >= '7'::bigint))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -996,7 +996,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f4 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7.0::double precision;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
- Index Scan using t_f4_pkey on t_f4 (actual rows=4 loops=1)
+ Index Scan using t_f4_pkey on t_f4 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::real[])) AND (k >= '7'::double precision))
    Rows Removed by Index Recheck: 6
    Storage Table Read Requests: 1
@@ -1007,7 +1007,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f4 WHERE k = ANY(ARRAY[1,2,3,4,5,6,7,8,9,10]::real[]) AND k >= 7.0::double precision;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
- Index Scan using t_f4_pkey on t_f4 (actual rows=4 loops=1)
+ Index Scan using t_f4_pkey on t_f4 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::real[])) AND (k >= '7'::double precision))
    Rows Removed by Index Recheck: 6
    Storage Table Read Requests: 1
@@ -1018,7 +1018,7 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f8 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7.0::real;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
- Index Scan using t_f8_pkey on t_f8 (actual rows=4 loops=1)
+ Index Scan using t_f8_pkey on t_f8 (actual rows=4.00 loops=1)
    Index Cond: ((k = ANY ('{1,2,3,4,5,6,7,8,9,10}'::double precision[])) AND (k >= '7'::real))
    Rows Removed by Index Recheck: 6
    Storage Table Read Requests: 1

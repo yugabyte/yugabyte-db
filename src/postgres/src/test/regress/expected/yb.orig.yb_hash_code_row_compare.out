@@ -25,8 +25,8 @@ SELECT * FROM hc_rc_t1
     LIMIT 5;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5.00 loops=1)
          Index Cond: (ROW(yb_hash_code(h), h, r1, r2) > ROW(4624, 1, 10, 100))
 (3 rows)
 
@@ -38,10 +38,10 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (yb_hash_code(h), h, r1) > (yb_hash_code(1), 1, 10)
     LIMIT 5;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5.00 loops=1)
          Index Cond: (ROW(yb_hash_code(h), h, r1) > ROW(4624, 1, 10))
 (3 rows)
 
@@ -55,8 +55,8 @@ SELECT * FROM hc_rc_t1
     LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5.00 loops=1)
          Index Cond: (ROW(yb_hash_code(h), h, r1, r2) < ROW(64672, 3, 30, 300))
 (3 rows)
 
@@ -68,10 +68,10 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (h, r1, r2) > (1, 10, 100)
     LIMIT 5;
-                     QUERY PLAN                     
-----------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Seq Scan on hc_rc_t1 (actual rows=5 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  Seq Scan on hc_rc_t1 (actual rows=5.00 loops=1)
          Filter: (ROW(h, r1, r2) > ROW(1, 10, 100))
          Rows Removed by Filter: 2
 (4 rows)
@@ -87,8 +87,8 @@ SELECT * FROM hc_rc_t1
     LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5.00 loops=1)
          Index Cond: ((ROW(yb_hash_code(h), h, r1, r2) > ROW(4624, 1, 10, 100)) AND (yb_hash_code(h) < 50000))
 (3 rows)
 
@@ -111,8 +111,8 @@ SELECT * FROM hc_rc_t2
     LIMIT 10;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Limit (actual rows=10 loops=1)
-   ->  Seq Scan on hc_rc_t2 (actual rows=10 loops=1)
+ Limit (actual rows=10.00 loops=1)
+   ->  Seq Scan on hc_rc_t2 (actual rows=10.00 loops=1)
          Filter: (ROW(yb_hash_code(h1), h1, h2, r) > ROW(4624, 1, 2, 7))
          Rows Removed by Filter: 2
 (4 rows)
@@ -127,8 +127,8 @@ SELECT * FROM hc_rc_t2
     LIMIT 10;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
- Limit (actual rows=10 loops=1)
-   ->  Seq Scan on hc_rc_t2 (actual rows=10 loops=1)
+ Limit (actual rows=10.00 loops=1)
+   ->  Seq Scan on hc_rc_t2 (actual rows=10.00 loops=1)
          Filter: (ROW(yb_hash_code(h1, h2), h1, r) > ROW(40674, 1, 7))
          Rows Removed by Filter: 15
 (4 rows)
@@ -143,8 +143,8 @@ SELECT * FROM hc_rc_t1
     LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5.00 loops=1)
          Index Cond: (ROW(yb_hash_code(h), h, r1, r2) < ROW(64672, 3, 30, 300))
 (3 rows)
 
@@ -171,7 +171,7 @@ SELECT * FROM hc_rc_t3
     WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100);
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Index Scan using hc_rc_t3_pkey on hc_rc_t3 (actual rows=49 loops=1)
+ Index Scan using hc_rc_t3_pkey on hc_rc_t3 (actual rows=49.00 loops=1)
    Index Cond: (ROW(yb_hash_code(h), h, r1, r2) > ROW(4624, 1, 10, 100))
    Rows Removed by Index Recheck: 2
 (3 rows)

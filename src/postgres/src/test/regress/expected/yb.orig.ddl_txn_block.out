@@ -240,6 +240,8 @@ HINT:  Consider running it outside of a transaction block. See https://github.co
 Indexes:
     "test10_pkey" PRIMARY KEY, lsm (id HASH)
     "test10_idx" lsm (val HASH)
+Not-null constraints:
+    "test10_id_not_null" NOT NULL "id"
 
 ROLLBACK;
 \d+ test10;
@@ -250,6 +252,8 @@ ROLLBACK;
  val    | text    |           |          |         | extended |              | 
 Indexes:
     "test10_pkey" PRIMARY KEY, lsm (id HASH)
+Not-null constraints:
+    "test10_id_not_null" NOT NULL "id"
 
 -- TODO(#3109): CREATE and DROP database are already being tested in various
 -- other regress tests. This is being tested here since

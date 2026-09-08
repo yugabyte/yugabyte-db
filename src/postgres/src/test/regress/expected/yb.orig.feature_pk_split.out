@@ -216,10 +216,10 @@ EXPLAIN (COSTS OFF) SELECT MAX(col_integer) FROM feature_pk_split;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Scan Backward using feature_pk_split_pkey on feature_pk_split
-                 Index Cond: (col_integer IS NOT NULL)
 (5 rows)
 
 SELECT MAX(col_integer) FROM feature_pk_split;

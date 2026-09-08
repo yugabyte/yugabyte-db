@@ -200,8 +200,12 @@ drop view myview;
 -- test some commands to make sure they fail on the dropped column
 create index "testing_idx" on atacc1(a);
 ERROR:  column "a" does not exist
+LINE 1: create index "testing_idx" on atacc1(a);
+                                             ^
 create index "testing_idx" on atacc1("........pg.dropped.1........");
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: create index "testing_idx" on atacc1("........pg.dropped.1.....
+                                             ^
 alter table atacc1 rename a to z;
 ERROR:  column "a" does not exist
 alter table atacc1 add constraint checka check (a >= 0);

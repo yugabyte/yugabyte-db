@@ -440,10 +440,10 @@ CREATE TRIGGER trigger_bi BEFORE INSERT ON t_test FOR EACH ROW EXECUTE FUNCTION 
 BEGIN ISOLATION LEVEL READ COMMITTED;
 -- The query below must be executed in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (11, 11), (12, 12);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 4
  Trigger trigger_bi: calls=2
  Storage Read Requests: 0
@@ -457,10 +457,10 @@ COMMIT;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 -- The query below must be executed in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (1, 1), (2, 2);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 4
  Trigger trigger_bi: calls=2
  Storage Read Requests: 0
@@ -474,10 +474,10 @@ COMMIT;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- The query below must be executed in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (3, 3), (4, 4);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 4
  Trigger trigger_bi: calls=2
  Storage Read Requests: 0
@@ -493,10 +493,10 @@ CREATE TRIGGER trigger_ai AFTER INSERT ON t_test FOR EACH ROW EXECUTE FUNCTION s
 BEGIN ISOLATION LEVEL READ COMMITTED;
 -- The query below must be executed in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (13, 13), (14, 14);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
@@ -510,10 +510,10 @@ COMMIT;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 -- The query below must be executed in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (5, 5), (6, 6);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
@@ -527,10 +527,10 @@ COMMIT;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- The query below must be executed in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (7, 7), (8, 8);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
@@ -577,10 +577,10 @@ END; $$;
 -- Write to the table once to get any catalog lookups out of the way.
 INSERT INTO t_test VALUES (100, 100);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (21, 21), (22, 22);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
@@ -606,10 +606,10 @@ BEGIN
 END; $$;
 INSERT INTO t_test VALUES (101, 101);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (23, 23), (24, 24);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
@@ -642,10 +642,10 @@ INSERT INTO t_test VALUES (102, 102);
 -- 3. t_temp: (26, 26)
 --    t_other: (26, 26)
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (25, 25), (26, 26);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
@@ -676,10 +676,10 @@ INSERT INTO t_test VALUES (103, 103);
 --    t_temp: (28, 28)
 --    t_other: (28, 28)
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (27, 27), (28, 28);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
@@ -718,10 +718,10 @@ INSERT INTO t_test VALUES (104, 104);
 --    t_other: (30, 30)
 --    t_temp: (130, 130)
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (29, 29), (30, 30);
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0

@@ -35,7 +35,7 @@ EXPLAIN (COSTS OFF) with w(i) as (
            Conflict Resolution: UPDATE
            Conflict Arbiter Indexes: a_i_key
            ->  Result *RESULT*
-   InitPlan 2 (returns $2)
+   InitPlan expr_1
      ->  CTE Scan on w
    ->  Result *RESULT*_1
 (11 rows)
@@ -67,7 +67,7 @@ EXPLAIN (COSTS OFF) with w(i) as (
            Conflict Resolution: UPDATE
            Conflict Arbiter Indexes: a_i_key
            ->  Result *RESULT*
-   InitPlan 2 (returns $2)
+   InitPlan expr_1
      ->  CTE Scan on w
    ->  Result *RESULT*_1
 (11 rows)
@@ -108,7 +108,7 @@ EXPLAIN (COSTS OFF) with w(i) as (
            Conflict Resolution: UPDATE
            Conflict Arbiter Indexes: a_i_key
            ->  Result *RESULT*_1
-   InitPlan 3 (returns $4)
+   InitPlan expr_1
      ->  CTE Scan on w
    ->  Result *RESULT*_2
 (16 rows)

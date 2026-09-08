@@ -378,7 +378,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, COUNT(
                        QUERY PLAN                        
 ---------------------------------------------------------
  HashAggregate (actual rows=2.00 loops=1)
-   Group Key: r1, count(r1)
+   Group Key: r1, count(*)
    ->  HashAggregate (actual rows=2.00 loops=1)
          Group Key: r1
          ->  Seq Scan on t (actual rows=2000.00 loops=1)
@@ -401,10 +401,12 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, COUNT(
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  HashAggregate (actual rows=2.00 loops=1)
-   Group Key: r1, count(r1) OVER (?)
+   Group Key: r1, count(r1) OVER w1
    ->  WindowAgg (actual rows=2000.00 loops=1)
+         Window: w1 AS (PARTITION BY r1)
+         Storage: Memory  Maximum Storage: 48kB
          ->  Index Scan using t_pkey on t (actual rows=2000.00 loops=1)
-(4 rows)
+(6 rows)
 
 SELECT DISTINCT r1, COUNT(r1) OVER (PARTITION BY r1) FROM t;
  r1 | count 

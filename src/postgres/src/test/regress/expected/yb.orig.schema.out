@@ -103,8 +103,11 @@ Partition key: RANGE (k)
 Indexes:
     "p_tbl_pkey" PRIMARY KEY, lsm (k HASH)
     "p_tbl_k_idx" lsm (k HASH)
-Partitions: s1.p_tbl_1 FOR VALUES FROM (1) TO (3),
-            s1.p_tbl_default DEFAULT
+Not-null constraints:
+    "p_tbl_k_not_null" NOT NULL "k"
+Partitions:
+    s1.p_tbl_1 FOR VALUES FROM (1) TO (3)
+    s1.p_tbl_default DEFAULT
 
 DROP TABLE S2.P_TBL;
 -- for temp table

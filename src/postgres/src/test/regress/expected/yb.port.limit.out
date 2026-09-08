@@ -521,11 +521,15 @@ SELECT  thousand
 		FROM onek WHERE thousand < 5
 		ORDER BY thousand FETCH FIRST 1 ROW WITH TIES FOR UPDATE SKIP LOCKED;
 ERROR:  SKIP LOCKED and WITH TIES options cannot be used together
+LINE 3:   ORDER BY thousand FETCH FIRST 1 ROW WITH TIES FOR UPDATE S...
+                                              ^
 -- should fail
 SELECT ''::text AS two, unique1, unique2, stringu1
 		FROM onek WHERE unique1 > 50
 		FETCH FIRST 2 ROW WITH TIES;
 ERROR:  WITH TIES cannot be specified without ORDER BY clause
+LINE 3:   FETCH FIRST 2 ROW WITH TIES;
+                            ^
 -- test ruleutils
 CREATE VIEW limit_thousand_v_1 AS SELECT thousand FROM onek WHERE thousand < 995
 		ORDER BY thousand FETCH FIRST 5 ROWS WITH TIES OFFSET 10;
@@ -535,12 +539,12 @@ CREATE VIEW limit_thousand_v_1 AS SELECT thousand FROM onek WHERE thousand < 995
 ----------+---------+-----------+----------+---------+---------+-------------
  thousand | integer |           |          |         | plain   | 
 View definition:
- SELECT onek.thousand
+ SELECT thousand
    FROM onek
-  WHERE onek.thousand < 995
-  ORDER BY onek.thousand
+  WHERE thousand < 995
+  ORDER BY thousand
  OFFSET 10
- FETCH FIRST 5 ROWS WITH TIES;
+ FETCH FIRST (5) ROWS WITH TIES;
 
 CREATE VIEW limit_thousand_v_2 AS SELECT thousand FROM onek WHERE thousand < 995
 		ORDER BY thousand OFFSET 10 FETCH FIRST 5 ROWS ONLY;
@@ -550,10 +554,10 @@ CREATE VIEW limit_thousand_v_2 AS SELECT thousand FROM onek WHERE thousand < 995
 ----------+---------+-----------+----------+---------+---------+-------------
  thousand | integer |           |          |         | plain   | 
 View definition:
- SELECT onek.thousand
+ SELECT thousand
    FROM onek
-  WHERE onek.thousand < 995
-  ORDER BY onek.thousand
+  WHERE thousand < 995
+  ORDER BY thousand
  OFFSET 10
  LIMIT 5;
 
@@ -568,11 +572,11 @@ CREATE VIEW limit_thousand_v_3 AS SELECT thousand FROM onek WHERE thousand < 995
 ----------+---------+-----------+----------+---------+---------+-------------
  thousand | integer |           |          |         | plain   | 
 View definition:
- SELECT onek.thousand
+ SELECT thousand
    FROM onek
-  WHERE onek.thousand < 995
-  ORDER BY onek.thousand
- FETCH FIRST (NULL::integer + 1) ROWS WITH TIES;
+  WHERE thousand < 995
+  ORDER BY thousand
+ FETCH FIRST ((NULL::integer + 1)) ROWS WITH TIES;
 
 CREATE VIEW limit_thousand_v_4 AS SELECT thousand FROM onek WHERE thousand < 995
 		ORDER BY thousand FETCH FIRST NULL ROWS ONLY;
@@ -582,10 +586,10 @@ CREATE VIEW limit_thousand_v_4 AS SELECT thousand FROM onek WHERE thousand < 995
 ----------+---------+-----------+----------+---------+---------+-------------
  thousand | integer |           |          |         | plain   | 
 View definition:
- SELECT onek.thousand
+ SELECT thousand
    FROM onek
-  WHERE onek.thousand < 995
-  ORDER BY onek.thousand
+  WHERE thousand < 995
+  ORDER BY thousand
  LIMIT ALL;
 
 -- leave these views

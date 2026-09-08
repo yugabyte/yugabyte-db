@@ -514,13 +514,13 @@ CREATE DATABASE test_blar_db
 LC_COLLATE "blar"
 LC_CTYPE "blar"
 TEMPLATE template0;
-ERROR:  invalid locale name: "blar"
+ERROR:  invalid LC_COLLATE locale name: "blar"
 -- test YB blar db, invalid locale name
 \c yugabyte
 CREATE DATABASE test_blar_db
 LOCALE "blar"
 TEMPLATE template0;
-ERROR:  invalid locale name: "blar"
+ERROR:  invalid LC_COLLATE locale name: "blar"
 -- test YB zh_CN.utf8 db, unsupported locale name
 \c yugabyte
 SET yb_test_collation = TRUE;

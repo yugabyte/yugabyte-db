@@ -94,7 +94,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000.00 loops=1)
-   Join Filter: (t_large.a = t_small.a)
+   Join Filter: (t_small.a = t_large.a)
    ->  Seq Scan on t_large (actual rows=5000.00 loops=1)
          Storage Table Read Requests: 34
          Storage Table Read Ops: 101
@@ -115,7 +115,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000.00 loops=1)
-   Join Filter: (t_small.a = t_large.a)
+   Join Filter: (t_large.a = t_small.a)
    ->  Seq Scan on t_small (actual rows=5000.00 loops=1)
          Storage Table Read Requests: 2
          Storage Table Read Ops: 6
@@ -137,7 +137,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000.00 loops=1)
-   Join Filter: (t_large.a = t_small.a)
+   Join Filter: (t_small.a = t_large.a)
    ->  Seq Scan on t_large (actual rows=5000.00 loops=1)
          Storage Table Read Requests: 4
          Storage Table Read Ops: 12
@@ -158,7 +158,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000.00 loops=1)
-   Join Filter: (t_small.a = t_large.a)
+   Join Filter: (t_large.a = t_small.a)
    ->  Seq Scan on t_small (actual rows=5000.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3

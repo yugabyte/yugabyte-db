@@ -1776,7 +1776,8 @@ select f1(point(3,4));  -- fail for lack of + operator
 ERROR:  operator does not exist: point + integer
 LINE 1: x + 1
           ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 QUERY:  x + 1
 CONTEXT:  PL/pgSQL function f1(anyelement) line 3 at RETURN
 drop function f1(x anyelement);
@@ -1861,7 +1862,8 @@ select f1(int4range(42, 49), 11, 4.5) as fail;  -- range type doesn't fit
 ERROR:  function f1(int4range, integer, numeric) does not exist
 LINE 1: select f1(int4range(42, 49), 11, 4.5) as fail;
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop function f1(x anycompatiblerange, y anycompatible, z anycompatible);
 -- fail, can't infer type:
 create function f1(x anycompatible) returns anycompatiblerange as $$
@@ -1915,7 +1917,8 @@ select x, pg_typeof(x), y, pg_typeof(y)
 ERROR:  function f1(integer, numeric[], integer, numeric) does not exist
 LINE 2:   from f1(11, array[1, 2.2], 42, 34.5);
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop function f1(a anyelement, b anyarray,
                  c anycompatible, d anycompatible);
 --
@@ -2654,7 +2657,7 @@ begin
 end $$ language plpgsql;
 select namedparmcursor_test7();
 ERROR:  division by zero
-CONTEXT:  SQL expression "42/0 AS p1, 77 AS p2"
+CONTEXT:  PL/pgSQL expression "42/0 AS p1, 77 AS p2"
 PL/pgSQL function namedparmcursor_test7() line 6 at OPEN
 -- check that line comments work correctly within the argument list (there
 -- is some special handling of this case in the code: the newline after the
@@ -3340,7 +3343,7 @@ select shadowtest(1);
 ERROR:  function shadowtest(integer) does not exist
 LINE 1: select shadowtest(1);
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  There is no function of that name.
 reset plpgsql.extra_errors;
 reset plpgsql.extra_warnings;
 create or replace function shadowtest(f1 int)
@@ -3908,7 +3911,7 @@ end;
 $$ language plpgsql;
 select compos();
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type unknown does not match expected type character varying in column 2.
+DETAIL:  Returned type unknown does not match expected type character varying in column "y" (position 2).
 CONTEXT:  PL/pgSQL function compos() while casting return value to function's return type
 -- ... but this does
 create or replace function compos() returns compostype as $$

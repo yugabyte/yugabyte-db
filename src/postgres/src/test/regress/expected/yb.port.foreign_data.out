@@ -348,7 +348,6 @@ CREATE SERVER s6 VERSION '16.0' FOREIGN DATA WRAPPER foo OPTIONS (host 'a', dbna
 CREATE SERVER s7 TYPE 'oracle' VERSION '17.0' FOREIGN DATA WRAPPER foo OPTIONS (host 'a', dbname 'b');
 CREATE SERVER s8 FOREIGN DATA WRAPPER postgresql OPTIONS (foo '1'); -- ERROR
 ERROR:  invalid option "foo"
-HINT:  Valid options in this context are: authtype, service, connect_timeout, dbname, host, hostaddr, port, tty, options, requiressl, sslmode, gsslib
 CREATE SERVER s8 FOREIGN DATA WRAPPER postgresql OPTIONS (host 'localhost', dbname 's8db');
 \des+
                                                                        List of foreign servers
@@ -463,11 +462,10 @@ ERROR:  permission denied for foreign-data wrapper foo
 RESET ROLE;
 ALTER SERVER s8 OPTIONS (foo '1');                          -- ERROR option validation
 ERROR:  invalid option "foo"
-HINT:  Valid options in this context are: authtype, service, connect_timeout, dbname, host, hostaddr, port, tty, options, requiressl, sslmode, gsslib
 ALTER SERVER s8 OPTIONS (connect_timeout '30', SET dbname 'db1', DROP host);
 SET ROLE regress_test_role;
 ALTER SERVER s1 OWNER TO regress_test_indirect;             -- ERROR
-ERROR:  must be member of role "regress_test_indirect"
+ERROR:  must be able to SET ROLE "regress_test_indirect"
 RESET ROLE;
 GRANT regress_test_indirect TO regress_test_role;
 SET ROLE regress_test_role;
@@ -626,7 +624,7 @@ ERROR:  user mapping for "regress_foreign_data_user" already exists for server "
 CREATE USER MAPPING FOR public SERVER s4 OPTIONS ("this mapping" 'is public');
 CREATE USER MAPPING FOR user SERVER s8 OPTIONS (username 'test', password 'secret');    -- ERROR
 ERROR:  invalid option "username"
-HINT:  Valid options in this context are: user, password
+HINT:  Perhaps you meant the option "user".
 CREATE USER MAPPING FOR user SERVER s8 OPTIONS (user 'test', password 'secret');
 ALTER SERVER s5 OWNER TO regress_test_role;
 ALTER SERVER s6 OWNER TO regress_test_indirect;
@@ -665,7 +663,7 @@ ALTER USER MAPPING FOR public SERVER s5 OPTIONS (gotcha 'true');            -- E
 ERROR:  user mapping for "public" does not exist for server "s5"
 ALTER USER MAPPING FOR current_user SERVER s8 OPTIONS (username 'test');    -- ERROR
 ERROR:  invalid option "username"
-HINT:  Valid options in this context are: user, password
+HINT:  Perhaps you meant the option "user".
 ALTER USER MAPPING FOR current_user SERVER s8 OPTIONS (DROP user, SET password 'public');
 SET ROLE regress_test_role;
 ALTER USER MAPPING FOR current_user SERVER s5 OPTIONS (ADD modified '1');
@@ -773,6 +771,8 @@ COMMENT ON COLUMN ft1.c1 IS 'ft1.c1';
 Check constraints:
     "ft1_c2_check" CHECK (c2 <> ''::text)
     "ft1_c3_check" CHECK (c3 >= '01-01-1994'::date AND c3 <= '01-31-1994'::date)
+Not-null constraints:
+    "ft1_c1_not_null" NOT NULL "c1"
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
@@ -935,6 +935,9 @@ ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
 Check constraints:
     "ft1_c2_check" CHECK (c2 <> ''::text)
     "ft1_c3_check" CHECK (c3 >= '01-01-1994'::date AND c3 <= '01-31-1994'::date)
+Not-null constraints:
+    "ft1_c1_not_null" NOT NULL "c1"
+    "ft1_c6_not_null" NOT NULL "c6"
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
@@ -1552,6 +1555,8 @@ DROP FOREIGN TABLE ft2;
  c1     | integer |           | not null |         | plain    |              | 
  c2     | text    |           |          |         | extended |              | 
  c3     | date    |           |          |         | plain    |              | 
+Not-null constraints:
+    "fd_pt1_c1_not_null" NOT NULL "c1"
 
 CREATE FOREIGN TABLE ft2 (
 	c1 integer NOT NULL,
@@ -1565,6 +1570,8 @@ CREATE FOREIGN TABLE ft2 (
  c1     | integer |           | not null |         |             | plain    |              | 
  c2     | text    |           |          |         |             | extended |              | 
  c3     | date    |           |          |         |             | plain    |              | 
+Not-null constraints:
+    "ft2_c1_not_null" NOT NULL "c1"
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
@@ -1585,9 +1592,12 @@ Child tables: ft2
  c1     | integer |           | not null |         |             | plain    |              | 
  c2     | text    |           |          |         |             | extended |              | 
  c3     | date    |           |          |         |             | plain    |              | 
+Not-null constraints:
+    "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 CREATE TABLE ct3() INHERITS(ft2);
 CREATE FOREIGN TABLE ft3 (
@@ -1628,8 +1638,11 @@ Inherits: ft2
  c1     | integer |           | not null |         |             | plain    |              | 
  c2     | text    |           |          |         |             | extended |              | 
  c3     | date    |           |          |         |             | plain    |              | 
+Not-null constraints:
+    "ft3_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
-Inherits: ft2
+Inherits:
+    ft2
 
 -- add attributes recursively
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
@@ -1872,9 +1885,12 @@ Child tables: ft2
  c3     | date    |           |          |         |             | plain    |              | 
 Check constraints:
     "fd_pt1chk2" CHECK (c2 <> ''::text)
+Not-null constraints:
+    "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 -- drop constraints recursively
 ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk1 CASCADE;
@@ -1903,9 +1919,12 @@ Child tables: ft2
 Check constraints:
     "fd_pt1chk2" CHECK (c2 <> ''::text)
     "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+Not-null constraints:
+    "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
@@ -1930,9 +1949,12 @@ Child tables: ft2
 Check constraints:
     "fd_pt1chk2" CHECK (c2 <> ''::text)
     "fd_pt1chk3" CHECK (c2 <> ''::text)
+Not-null constraints:
+    "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 -- changes name of an attribute recursively
 ALTER TABLE fd_pt1 RENAME COLUMN c1 TO f1;
@@ -1961,9 +1983,12 @@ Child tables: ft2
 Check constraints:
     "f2_check" CHECK (f2 <> ''::text)
     "fd_pt1chk2" CHECK (f2 <> ''::text)
+Not-null constraints:
+    "ft2_c1_not_null" NOT NULL "f1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 DROP TABLE fd_pt1 CASCADE;
 NOTICE:  drop cascades to foreign table ft2
@@ -2037,6 +2062,8 @@ CREATE FOREIGN TABLE fd_pt2_1 (
  c2     | text         |           |          |         |             | extended |              | 
  c3     | date         |           |          |         |             | plain    |              | 
  c4     | character(1) |           |          |         |             | extended |              | 
+Not-null constraints:
+    "fd_pt2_1_c1_not_null" NOT NULL "c1"
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
@@ -2052,6 +2079,8 @@ DROP FOREIGN TABLE fd_pt2_1;
  c2     | text    |           |          |         | extended |              | 
  c3     | date    |           |          |         | plain    |              | 
 Partition key: LIST (c1)
+Not-null constraints:
+    "fd_pt2_c1_not_null" NOT NULL "c1"
 Number of partitions: 0
 
 CREATE FOREIGN TABLE fd_pt2_1 (
@@ -2066,6 +2095,8 @@ CREATE FOREIGN TABLE fd_pt2_1 (
  c1     | integer |           | not null |         |             | plain    |              | 
  c2     | text    |           |          |         |             | extended |              | 
  c3     | date    |           |          |         |             | plain    |              | 
+Not-null constraints:
+    "fd_pt2_1_c1_not_null" NOT NULL "c1"
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
@@ -2137,6 +2168,9 @@ ALTER TABLE fd_pt2 ALTER c2 SET NOT NULL;
  c2     | text    |           | not null |         | extended |              | 
  c3     | date    |           |          |         | plain    |              | 
 Partition key: LIST (c1)
+Not-null constraints:
+    "fd_pt2_c1_not_null" NOT NULL "c1"
+    "fd_pt2_c2_not_null" NOT NULL "c2"
 Number of partitions: 0
 
 \d+ fd_pt2_1
@@ -2167,6 +2201,9 @@ ALTER TABLE fd_pt2 ADD CONSTRAINT fd_pt2chk1 CHECK (c1 > 0);
 Partition key: LIST (c1)
 Check constraints:
     "fd_pt2chk1" CHECK (c1 > 0)
+Not-null constraints:
+    "fd_pt2_c1_not_null" NOT NULL "c1"
+    "fd_pt2_c2_not_null" NOT NULL "c2"
 Number of partitions: 0
 
 \d+ fd_pt2_1
@@ -2178,6 +2215,10 @@ Number of partitions: 0
  c3     | date    |           | not null |         |             | plain    |              | 
 Check constraints:
     "p21chk" CHECK (c2 <> ''::text)
+Not-null constraints:
+    "fd_pt2_1_c1_not_null" NOT NULL "c1"
+    "fd_pt2_1_c2_not_null" NOT NULL "c2"
+    "fd_pt2_1_c3_not_null" NOT NULL "c3"
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 

@@ -4,9 +4,9 @@ CREATE TABLE abcd(a int primary key, b int, c int, d int) SPLIT INTO 1 TABLETS;
 CREATE INDEX abcd_b_c_d_idx ON abcd (b ASC) INCLUDE (c, d);
 INSERT INTO abcd SELECT i, i, i, i FROM generate_series(1, 10) i;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
-               QUERY PLAN                
------------------------------------------
- Result *RESULT* (actual rows=1 loops=1)
+                 QUERY PLAN                 
+--------------------------------------------
+ Result *RESULT* (actual rows=1.00 loops=1)
    Storage Table Read Requests: 8
    Storage Table Read Ops: 8
    Storage Table Rows Scanned: 32

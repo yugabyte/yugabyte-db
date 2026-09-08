@@ -25,10 +25,10 @@
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Append (actual rows=5 loops=1)
-         ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=5 loops=1)
+   ->  Append (actual rows=5.00 loops=1)
+         ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=5.00 loops=1)
                Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 1
@@ -55,32 +55,32 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2, parent.r3, parent.p1, parent.p2, parent.n
          Sort Method: top-N heapsort
-         ->  Append (actual rows=1983 loops=1)
-               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=439 loops=1)
+         ->  Append (actual rows=1983.00 loops=1)
+               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=439.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 439
-               ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=247 loops=1)
+               ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=247.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 247
-               ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=751 loops=1)
+               ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=751.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 751
-               ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=546 loops=1)
+               ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=546.00 loops=1)
                      Output: parent_5.n, parent_5.r3, parent_5.p1, parent_5.r1, parent_5.r2, parent_5.p2
                      Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
@@ -91,16 +91,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2, parent.r3, parent.p1, parent.p2, parent.n
          Presorted Key: parent.r2, parent.r3, parent.p1, parent.p2
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Merge Append (actual rows=6 loops=1)
+         ->  Merge Append (actual rows=6.00 loops=1)
                Sort Key: parent.r2, parent.r3, parent.p1, parent.p2
-               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=2 loops=1)
+               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=2.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_2.r2, parent_2.r3, parent_2.p1, parent_2.p2
@@ -110,7 +110,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 4
                      Storage Table Rows Scanned: 20
-               ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=3 loops=1)
+               ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=3.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_3.r2, parent_3.r3, parent_3.p1, parent_3.p2
@@ -120,7 +120,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 4
                      Storage Table Rows Scanned: 20
-               ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=3 loops=1)
+               ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=3.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_4.r2, parent_4.r3, parent_4.p1, parent_4.p2
@@ -130,7 +130,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 4
                      Storage Table Rows Scanned: 20
-               ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=1 loops=1)
+               ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=1.00 loops=1)
                      Output: parent_5.n, parent_5.r3, parent_5.p1, parent_5.r1, parent_5.r2, parent_5.p2
                      Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_5.r2, parent_5.r3, parent_5.p1, parent_5.p2
@@ -162,32 +162,32 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2 DESC, parent.r3 DESC, parent.p1 DESC, parent.p2 DESC, parent.n
          Sort Method: top-N heapsort
-         ->  Append (actual rows=1983 loops=1)
-               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=439 loops=1)
+         ->  Append (actual rows=1983.00 loops=1)
+               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=439.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 439
-               ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=247 loops=1)
+               ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=247.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 247
-               ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=751 loops=1)
+               ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=751.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 751
-               ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=546 loops=1)
+               ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=546.00 loops=1)
                      Output: parent_5.n, parent_5.r3, parent_5.p1, parent_5.r1, parent_5.r2, parent_5.p2
                      Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
@@ -196,18 +196,18 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (31 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
-                                                 QUERY PLAN                                                  
--------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2 DESC, parent.r3 DESC, parent.p1 DESC, parent.p2 DESC, parent.n
          Presorted Key: parent.r2, parent.r3, parent.p1, parent.p2
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Merge Append (actual rows=6 loops=1)
+         ->  Merge Append (actual rows=6.00 loops=1)
                Sort Key: parent.r2 DESC, parent.r3 DESC, parent.p1 DESC, parent.p2 DESC
-               ->  Index Scan Backward using child1a_pkey on public.child1a parent_2 (actual rows=1 loops=1)
+               ->  Index Scan Backward using child1a_pkey on public.child1a parent_2 (actual rows=1.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_2.r2 DESC, parent_2.r3 DESC, parent_2.p1 DESC, parent_2.p2 DESC
@@ -217,7 +217,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 4
                      Storage Table Rows Scanned: 20
-               ->  Index Scan Backward using child1b_pkey on public.child1b parent_3 (actual rows=1 loops=1)
+               ->  Index Scan Backward using child1b_pkey on public.child1b parent_3 (actual rows=1.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_3.r2 DESC, parent_3.r3 DESC, parent_3.p1 DESC, parent_3.p2 DESC
@@ -227,7 +227,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 4
                      Storage Table Rows Scanned: 20
-               ->  Index Scan Backward using child2_pkey on public.child2 parent_4 (actual rows=3 loops=1)
+               ->  Index Scan Backward using child2_pkey on public.child2 parent_4 (actual rows=3.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_4.r2 DESC, parent_4.r3 DESC, parent_4.p1 DESC, parent_4.p2 DESC
@@ -237,7 +237,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 4
                      Storage Table Rows Scanned: 20
-               ->  Index Scan Backward using child3_pkey on public.child3 parent_5 (actual rows=4 loops=1)
+               ->  Index Scan Backward using child3_pkey on public.child3 parent_5 (actual rows=4.00 loops=1)
                      Output: parent_5.n, parent_5.r3, parent_5.p1, parent_5.r1, parent_5.r2, parent_5.p2
                      Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_5.r2 DESC, parent_5.r3 DESC, parent_5.p1 DESC, parent_5.p2 DESC
@@ -274,10 +274,10 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Append (actual rows=5 loops=1)
-         ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=5 loops=1)
+   ->  Append (actual rows=5.00 loops=1)
+         ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=5.00 loops=1)
                Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
                Storage Table Read Requests: 1
@@ -301,26 +301,26 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2, parent.p1, parent.r3, parent.r1, parent.n
          Sort Method: top-N heapsort
-         ->  Append (actual rows=2018 loops=1)
-               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=807 loops=1)
+         ->  Append (actual rows=2018.00 loops=1)
+               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=807.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 807
-               ->  Index Scan using child2_pkey on public.child2 parent_3 (actual rows=818 loops=1)
+               ->  Index Scan using child2_pkey on public.child2 parent_3 (actual rows=818.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 818
-               ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=393 loops=1)
+               ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=393.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
@@ -329,18 +329,18 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (25 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2, parent.p1, parent.r3, parent.r1, parent.n
          Presorted Key: parent.r2, parent.p1, parent.r3, parent.r1
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Merge Append (actual rows=6 loops=1)
+         ->  Merge Append (actual rows=6.00 loops=1)
                Sort Key: parent.r2, parent.p1, parent.r3, parent.r1
-               ->  Index Scan using child1a_p2_r2_p1_r3_r1_idx on public.child1a parent_2 (actual rows=6 loops=1)
+               ->  Index Scan using child1a_p2_r2_p1_r3_r1_idx on public.child1a parent_2 (actual rows=6.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Merge Sort Key: parent_2.r2, parent_2.p1, parent_2.r3, parent_2.r1
@@ -353,7 +353,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Index Read Requests: 1
                      Storage Index Read Ops: 4
                      Storage Index Rows Scanned: 20
-               ->  Index Scan using child2_p2_r2_p1_r3_r1_idx on public.child2 parent_3 (actual rows=1 loops=1)
+               ->  Index Scan using child2_p2_r2_p1_r3_r1_idx on public.child2 parent_3 (actual rows=1.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Merge Sort Key: parent_3.r2, parent_3.p1, parent_3.r3, parent_3.r1
@@ -366,7 +366,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Index Read Requests: 1
                      Storage Index Read Ops: 4
                      Storage Index Rows Scanned: 20
-               ->  Index Scan using child3_p2_r2_p1_r3_r1_idx on public.child3 parent_4 (actual rows=1 loops=1)
+               ->  Index Scan using child3_p2_r2_p1_r3_r1_idx on public.child3 parent_4 (actual rows=1.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Merge Sort Key: parent_4.r2, parent_4.p1, parent_4.r3, parent_4.r1
@@ -401,26 +401,26 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2 DESC, parent.p1 DESC, parent.r3 DESC, parent.r1 DESC, parent.n
          Sort Method: top-N heapsort
-         ->  Append (actual rows=2018 loops=1)
-               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=807 loops=1)
+         ->  Append (actual rows=2018.00 loops=1)
+               ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=807.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 807
-               ->  Index Scan using child2_pkey on public.child2 parent_3 (actual rows=818 loops=1)
+               ->  Index Scan using child2_pkey on public.child2 parent_3 (actual rows=818.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 818
-               ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=393 loops=1)
+               ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=393.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
@@ -429,18 +429,18 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (25 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
-                                                        QUERY PLAN                                                         
----------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5.00 loops=1)
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2 DESC, parent.p1 DESC, parent.r3 DESC, parent.r1 DESC, parent.n
          Presorted Key: parent.r2, parent.p1, parent.r3, parent.r1
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Merge Append (actual rows=6 loops=1)
+         ->  Merge Append (actual rows=6.00 loops=1)
                Sort Key: parent.r2 DESC, parent.p1 DESC, parent.r3 DESC, parent.r1 DESC
-               ->  Index Scan Backward using child1a_p2_r2_p1_r3_r1_idx on public.child1a parent_2 (actual rows=1 loops=1)
+               ->  Index Scan Backward using child1a_p2_r2_p1_r3_r1_idx on public.child1a parent_2 (actual rows=1.00 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Merge Sort Key: parent_2.r2 DESC, parent_2.p1 DESC, parent_2.r3 DESC, parent_2.r1 DESC
@@ -453,7 +453,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Index Read Requests: 1
                      Storage Index Read Ops: 4
                      Storage Index Rows Scanned: 20
-               ->  Index Scan Backward using child2_p2_r2_p1_r3_r1_idx on public.child2 parent_3 (actual rows=1 loops=1)
+               ->  Index Scan Backward using child2_p2_r2_p1_r3_r1_idx on public.child2 parent_3 (actual rows=1.00 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Merge Sort Key: parent_3.r2 DESC, parent_3.p1 DESC, parent_3.r3 DESC, parent_3.r1 DESC
@@ -466,7 +466,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Index Read Requests: 1
                      Storage Index Read Ops: 4
                      Storage Index Rows Scanned: 20
-               ->  Index Scan Backward using child3_p2_r2_p1_r3_r1_idx on public.child3 parent_4 (actual rows=6 loops=1)
+               ->  Index Scan Backward using child3_p2_r2_p1_r3_r1_idx on public.child3 parent_4 (actual rows=6.00 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Merge Sort Key: parent_4.r2 DESC, parent_4.p1 DESC, parent_4.r3 DESC, parent_4.r1 DESC

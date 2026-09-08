@@ -120,6 +120,8 @@ LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv-x-icu";
 CREATE DOMAIN testdomain_i AS int COLLATE "sv-x-icu"; -- fails
 ERROR:  collations are not supported by type integer
+LINE 1: CREATE DOMAIN testdomain_i AS int COLLATE "sv-x-icu";
+                                      ^
 CREATE TABLE collate_test4 (
     a int,
     b testdomain_sv
@@ -446,18 +448,18 @@ CREATE VIEW collview2 AS SELECT a, b FROM collate_test1 ORDER BY b COLLATE "C";
 CREATE VIEW collview3 AS SELECT a, lower((x || x) COLLATE "C") FROM collate_test10;
 SELECT table_name, view_definition FROM information_schema.views
   WHERE table_name LIKE 'collview%' ORDER BY 1;
- table_name |                             view_definition                              
-------------+--------------------------------------------------------------------------
- collview1  |  SELECT collate_test1.a,                                                +
-            |     collate_test1.b                                                     +
-            |    FROM collate_test1                                                   +
-            |   WHERE ((collate_test1.b COLLATE "C") >= 'bbc'::text);
- collview2  |  SELECT collate_test1.a,                                                +
-            |     collate_test1.b                                                     +
-            |    FROM collate_test1                                                   +
-            |   ORDER BY (collate_test1.b COLLATE "C");
- collview3  |  SELECT collate_test10.a,                                               +
-            |     lower(((collate_test10.x || collate_test10.x) COLLATE "C")) AS lower+
+ table_name |              view_definition               
+------------+--------------------------------------------
+ collview1  |  SELECT a,                                +
+            |     b                                     +
+            |    FROM collate_test1                     +
+            |   WHERE ((b COLLATE "C") >= 'bbc'::text);
+ collview2  |  SELECT a,                                +
+            |     b                                     +
+            |    FROM collate_test1                     +
+            |   ORDER BY (b COLLATE "C");
+ collview3  |  SELECT a,                                +
+            |     lower(((x || x) COLLATE "C")) AS lower+
             |    FROM collate_test10;
 (3 rows)
 
@@ -970,6 +972,8 @@ CREATE INDEX collate_test1_idx3 ON collate_test1 ((b COLLATE "C")); -- this is d
 CREATE INDEX collate_test1_idx4 ON collate_test1 (((b||'foo') COLLATE "POSIX"));
 CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE "C"); -- fail
 ERROR:  collations are not supported by type integer
+LINE 1: CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE ...
+                                                          ^
 CREATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "C")); -- fail
 ERROR:  collations are not supported by type integer
 LINE 1: ...ATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "C...
@@ -989,8 +993,9 @@ select * from collate_test1 where b ilike 'abc';
           QUERY PLAN           
 -------------------------------
  Seq Scan on collate_test1
+   Disabled: true
    Filter: (b ~~* 'abc'::text)
-(2 rows)
+(3 rows)
 
 select * from collate_test1 where b ilike 'abc';
  a |  b  
@@ -1004,8 +1009,9 @@ select * from collate_test1 where b ilike 'ABC';
           QUERY PLAN           
 -------------------------------
  Seq Scan on collate_test1
+   Disabled: true
    Filter: (b ~~* 'ABC'::text)
-(2 rows)
+(3 rows)
 
 select * from collate_test1 where b ilike 'ABC';
  a |  b  

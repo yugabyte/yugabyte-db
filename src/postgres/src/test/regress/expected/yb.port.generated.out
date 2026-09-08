@@ -203,6 +203,8 @@ MERGE INTO gtestm t USING (VALUES (1, 10), (2, 20)) v(id, f1) ON t.id = v.id
   WHEN MATCHED THEN UPDATE SET f1 = v.f1
   WHEN NOT MATCHED THEN INSERT VALUES (v.id, v.f1, 200);
 ERROR:  This statement not supported yet
+LINE 1: MERGE INTO gtestm t USING (VALUES (1, 10), (2, 20)) v(id, f1...
+        ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 -- YB note: port additional tests once MERGE is supported.
 DROP TABLE gtestm;
@@ -266,7 +268,8 @@ SELECT * FROM gtest1_1;
 --------+---------+-----------+----------+------------------------------------
  a      | integer |           | not null | 
  b      | integer |           |          | generated always as (a * 2) stored
-Inherits: gtest1
+Inherits:
+    gtest1
 
 INSERT INTO gtest1_1 VALUES (4);
 SELECT * FROM gtest1_1;
@@ -345,6 +348,7 @@ CREATE TABLE gtesty (x int, b int GENERATED ALWAYS AS (x * 22) STORED);
 CREATE TABLE gtest1_2 () INHERITS (gtest1, gtesty);  -- error
 NOTICE:  merging multiple inherited definitions of column "b"
 ERROR:  column "b" inherits conflicting generation expressions
+HINT:  To resolve the conflict, specify a generation expression explicitly.
 DROP TABLE gtesty;
 CREATE TABLE gtesty (x int, b int DEFAULT 55);
 CREATE TABLE gtest1_2 () INHERITS (gtest0, gtesty);  -- error
@@ -827,6 +831,8 @@ SELECT * FROM gtest27 order by a; -- YB: add ordering
 
 ALTER TABLE gtest27 ALTER COLUMN x TYPE boolean USING x <> 0;  -- error
 ERROR:  cannot specify USING when altering type of generated column
+LINE 1: ALTER TABLE gtest27 ALTER COLUMN x TYPE boolean USING x <> 0...
+                                         ^
 DETAIL:  Column "x" is a generated column.
 ALTER TABLE gtest27 ALTER COLUMN x DROP DEFAULT;  -- error
 ERROR:  column "x" of relation "gtest27" is a generated column
@@ -846,9 +852,9 @@ CREATE TABLE gtest29 (
 );
 INSERT INTO gtest29 (a) VALUES (3), (4);
 ALTER TABLE gtest29 ALTER COLUMN a DROP EXPRESSION;  -- error
-ERROR:  column "a" of relation "gtest29" is not a stored generated column
+ERROR:  column "a" of relation "gtest29" is not a generated column
 ALTER TABLE gtest29 ALTER COLUMN a DROP EXPRESSION IF EXISTS;  -- notice
-NOTICE:  column "a" of relation "gtest29" is not a stored generated column, skipping
+NOTICE:  column "a" of relation "gtest29" is not a generated column, skipping
 ALTER TABLE gtest29 ALTER COLUMN b DROP EXPRESSION;
 INSERT INTO gtest29 (a) VALUES (5);
 INSERT INTO gtest29 (a, b) VALUES (6, 66);
@@ -897,7 +903,8 @@ Number of child tables: 1 (Use \d+ to list them.)
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
  b      | integer |           |          | 
-Inherits: gtest30
+Inherits:
+    gtest30
 
 DROP TABLE gtest30 CASCADE;
 NOTICE:  drop cascades to table gtest30_1
@@ -922,7 +929,8 @@ Number of child tables: 1 (Use \d+ to list them.)
 --------+---------+-----------+----------+------------------------------------
  a      | integer |           |          | 
  b      | integer |           |          | generated always as (a * 2) stored
-Inherits: gtest30
+Inherits:
+    gtest30
 
 ALTER TABLE gtest30_1 ALTER COLUMN b DROP EXPRESSION;  -- error
 ERROR:  cannot drop generation expression from inherited column

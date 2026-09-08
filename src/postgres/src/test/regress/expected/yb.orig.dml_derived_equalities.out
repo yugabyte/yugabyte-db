@@ -1131,7 +1131,7 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT c
 ----------------------------------------
  Aggregate
    ->  Nested Loop
-         Join Filter: (a.x = b.x)
+         Join Filter: (b.x = a.x)
          ->  Seq Scan on demo_a a
          ->  Materialize
                ->  Seq Scan on demo_b b

@@ -769,7 +769,8 @@ EXPLAIN UPDATE parted SET b='5' WHERE a = 1;
  Update on parted  (cost=0.00..4.11 rows=0 width=0)
    Update on part_a_1_5 parted
    ->  Result parted  (cost=0.00..4.11 rows=1 width=100)
-(3 rows)
+         Replaces: Aggregate
+(4 rows)
 
 UPDATE parted SET b='5' WHERE a = 1;
 -- Verify that single row optimization is not invoked when

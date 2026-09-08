@@ -79,15 +79,15 @@ CREATE INDEX NONCONCURRENTLY mod_min_tbl_expr_a_idx ON mod_min_tbl ((yb_hash_cod
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT a FROM mod_null_tbl ORDER BY a LIMIT 5;
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_null_tbl.a
          Sort Method: quicksort
-         ->  Seq Scan on public.mod_null_tbl (actual rows=3 loops=1)
+         ->  Seq Scan on public.mod_null_tbl (actual rows=3.00 loops=1)
                Output: a
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -95,15 +95,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_null_tbl mod_null_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_null_tbl ORDER BY a LIMIT 5;
-                                               QUERY PLAN                                                
----------------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_null_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_null_tbl_bkt_a_idx on public.mod_null_tbl (actual rows=3 loops=1)
+         ->  Index Only Scan using mod_null_tbl_bkt_a_idx on public.mod_null_tbl (actual rows=3.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1
@@ -112,15 +112,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_null_tbl mod_null_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_null_tbl ORDER BY a LIMIT 5;
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_null_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_null_tbl_expr_a_idx on public.mod_null_tbl (actual rows=3 loops=1)
+         ->  Index Only Scan using mod_null_tbl_expr_a_idx on public.mod_null_tbl (actual rows=3.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1
@@ -142,30 +142,30 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT a FROM mod_zero_tbl ORDER BY a LIMIT 5;
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Limit (actual rows=0 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Limit (actual rows=0.00 loops=1)
    Output: a
-   ->  Sort (actual rows=0 loops=1)
+   ->  Sort (actual rows=0.00 loops=1)
          Output: a
          Sort Key: mod_zero_tbl.a
          Sort Method: quicksort
-         ->  Seq Scan on public.mod_zero_tbl (actual rows=0 loops=1)
+         ->  Seq Scan on public.mod_zero_tbl (actual rows=0.00 loops=1)
                Output: a
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_zero_tbl mod_zero_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_zero_tbl ORDER BY a LIMIT 5;
-                                               QUERY PLAN                                                
----------------------------------------------------------------------------------------------------------
- Limit (actual rows=0 loops=1)
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=0.00 loops=1)
    Output: a
-   ->  Sort (actual rows=0 loops=1)
+   ->  Sort (actual rows=0.00 loops=1)
          Output: a
          Sort Key: mod_zero_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_zero_tbl_bkt_a_idx on public.mod_zero_tbl (actual rows=0 loops=1)
+         ->  Index Only Scan using mod_zero_tbl_bkt_a_idx on public.mod_zero_tbl (actual rows=0.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1
@@ -173,15 +173,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_zero_tbl mod_zero_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_zero_tbl ORDER BY a LIMIT 5;
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Limit (actual rows=0 loops=1)
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=0.00 loops=1)
    Output: a
-   ->  Sort (actual rows=0 loops=1)
+   ->  Sort (actual rows=0.00 loops=1)
          Output: a
          Sort Key: mod_zero_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_zero_tbl_expr_a_idx on public.mod_zero_tbl (actual rows=0 loops=1)
+         ->  Index Only Scan using mod_zero_tbl_expr_a_idx on public.mod_zero_tbl (actual rows=0.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1
@@ -205,15 +205,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT a FROM mod_neg_tbl ORDER BY a LIMIT 5;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_neg_tbl.a
          Sort Method: quicksort
-         ->  Seq Scan on public.mod_neg_tbl (actual rows=3 loops=1)
+         ->  Seq Scan on public.mod_neg_tbl (actual rows=3.00 loops=1)
                Output: a
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -221,15 +221,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_neg_tbl mod_neg_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_neg_tbl ORDER BY a LIMIT 5;
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_neg_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_neg_tbl_bkt_a_idx on public.mod_neg_tbl (actual rows=3 loops=1)
+         ->  Index Only Scan using mod_neg_tbl_bkt_a_idx on public.mod_neg_tbl (actual rows=3.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1
@@ -238,15 +238,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_neg_tbl mod_neg_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_neg_tbl ORDER BY a LIMIT 5;
-                                               QUERY PLAN                                               
---------------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_neg_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_neg_tbl_expr_a_idx on public.mod_neg_tbl (actual rows=3 loops=1)
+         ->  Index Only Scan using mod_neg_tbl_expr_a_idx on public.mod_neg_tbl (actual rows=3.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1
@@ -271,15 +271,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT a FROM mod_min_tbl ORDER BY a LIMIT 5;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_min_tbl.a
          Sort Method: quicksort
-         ->  Seq Scan on public.mod_min_tbl (actual rows=3 loops=1)
+         ->  Seq Scan on public.mod_min_tbl (actual rows=3.00 loops=1)
                Output: a
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -287,15 +287,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_min_tbl mod_min_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_min_tbl ORDER BY a LIMIT 5;
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_min_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_min_tbl_bkt_a_idx on public.mod_min_tbl (actual rows=3 loops=1)
+         ->  Index Only Scan using mod_min_tbl_bkt_a_idx on public.mod_min_tbl (actual rows=3.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1
@@ -304,15 +304,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(mod_min_tbl mod_min_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT a FROM mod_min_tbl ORDER BY a LIMIT 5;
-                                               QUERY PLAN                                               
---------------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    Output: a
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Output: a
          Sort Key: mod_min_tbl.a
          Sort Method: quicksort
-         ->  Index Only Scan using mod_min_tbl_expr_a_idx on public.mod_min_tbl (actual rows=3 loops=1)
+         ->  Index Only Scan using mod_min_tbl_expr_a_idx on public.mod_min_tbl (actual rows=3.00 loops=1)
                Output: a
                Heap Fetches: 0
                Storage Index Read Requests: 1

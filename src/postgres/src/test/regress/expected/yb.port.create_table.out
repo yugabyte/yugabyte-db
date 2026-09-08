@@ -186,6 +186,8 @@ CREATE TABLE partitioned (
     a int
 ) PARTITION BY MAGIC (a);
 ERROR:  unrecognized partitioning strategy "magic"
+LINE 3: ) PARTITION BY MAGIC (a);
+                       ^
 -- specified column must be present in the table
 CREATE TABLE partitioned (
 	a int
@@ -399,10 +401,11 @@ CREATE TABLE part_null PARTITION OF list_parted FOR VALUES IN (null);
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  a      | integer |           |          |         | plain   |              | 
 Partition key: LIST (a)
-Partitions: part_null FOR VALUES IN (NULL),
-            part_p1 FOR VALUES IN (1),
-            part_p2 FOR VALUES IN (2),
-            part_p3 FOR VALUES IN (3)
+Partitions:
+    part_null FOR VALUES IN (NULL)
+    part_p1 FOR VALUES IN (1)
+    part_p2 FOR VALUES IN (2)
+    part_p3 FOR VALUES IN (3)
 
 -- forbidden expressions for partition bound with list partitioned table
 CREATE TABLE part_bogus_expr_fail PARTITION OF list_parted FOR VALUES IN (somename);
@@ -849,6 +852,8 @@ drop table test_part_coll_posix;
  b      | integer |           | not null | 1       | plain    |              | 
 Partition of: parted FOR VALUES IN ('b')
 Partition constraint: ((a IS NOT NULL) AND (a = 'b'::text))
+Not-null constraints:
+    "part_b_b_not_null" NOT NULL "b" (local, inherited)
 
 -- Both partition bound and partition key in describe output
 \d+ part_c
@@ -860,7 +865,10 @@ Partition constraint: ((a IS NOT NULL) AND (a = 'b'::text))
 Partition of: parted FOR VALUES IN ('c')
 Partition constraint: ((a IS NOT NULL) AND (a = 'c'::text))
 Partition key: RANGE (b)
-Partitions: part_c_1_10 FOR VALUES FROM (1) TO (10)
+Not-null constraints:
+    "part_c_b_not_null" NOT NULL "b" (local, inherited)
+Partitions:
+    part_c_1_10 FOR VALUES FROM (1) TO (10)
 
 -- a level-2 partition's constraint will include the parent's expressions
 \d+ part_c_1_10
@@ -999,8 +1007,9 @@ create table boolspart_f partition of boolspart for values in (false);
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  a      | boolean |           |          |         | plain   |              | 
 Partition key: LIST (a)
-Partitions: boolspart_f FOR VALUES IN (false),
-            boolspart_t FOR VALUES IN (true)
+Partitions:
+    boolspart_f FOR VALUES IN (false)
+    boolspart_t FOR VALUES IN (true)
 
 drop table boolspart;
 -- partitions mixing temporary and permanent relations

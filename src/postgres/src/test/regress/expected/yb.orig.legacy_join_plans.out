@@ -334,7 +334,7 @@ select * from t1 join t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -345,7 +345,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2_pkey on t2
@@ -369,7 +369,7 @@ select * from t1 join t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k2 on t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -380,7 +380,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k2 on t2
@@ -404,7 +404,7 @@ select * from t1 join t2 on t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k3 on t2
          Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -415,7 +415,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k3 on t2
@@ -439,7 +439,7 @@ select * from t1 join t2 on t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k4k5 on t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -450,7 +450,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k4k5 on t2
@@ -474,7 +474,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2r_pkey on t2r t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -485,7 +485,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2r_pkey on t2r t2
@@ -509,7 +509,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k2 on t2r t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -520,7 +520,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k2 on t2r t2
@@ -544,7 +544,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k3 on t2r t2
          Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -555,7 +555,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k3 on t2r t2
@@ -579,7 +579,7 @@ select * from t1 join t2r t2 on t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -590,7 +590,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k4k5 on t2r t2
@@ -626,7 +626,7 @@ select * from t1 join t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -637,7 +637,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2_pkey on t2
@@ -661,7 +661,7 @@ select * from t1 join t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k2 on t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -672,7 +672,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k2 on t2
@@ -710,7 +710,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k3 on t2
@@ -750,7 +750,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k4k5 on t2
@@ -776,7 +776,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2r_pkey on t2r t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -787,7 +787,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2r_pkey on t2r t2
@@ -811,7 +811,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k2 on t2r t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -822,7 +822,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k2 on t2r t2
@@ -858,7 +858,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k3 on t2r t2
@@ -896,7 +896,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k4k5 on t2r t2
@@ -1227,7 +1227,7 @@ select * from t1 join t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1238,7 +1238,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2_pkey on t2
@@ -1262,7 +1262,7 @@ select * from t1 join t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k2 on t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1273,7 +1273,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k2 on t2
@@ -1297,7 +1297,7 @@ select * from t1 join t2 on t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k3 on t2
          Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1308,7 +1308,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k3 on t2
@@ -1332,7 +1332,7 @@ select * from t1 join t2 on t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k4k5 on t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1343,7 +1343,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k4k5 on t2
@@ -1367,7 +1367,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2r_pkey on t2r t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1378,7 +1378,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2r_pkey on t2r t2
@@ -1402,7 +1402,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k2 on t2r t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1413,7 +1413,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k2 on t2r t2
@@ -1437,7 +1437,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k3 on t2r t2
          Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1448,7 +1448,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k3 on t2r t2
@@ -1472,7 +1472,7 @@ select * from t1 join t2r t2 on t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1483,7 +1483,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k4k5 on t2r t2
@@ -1791,7 +1791,7 @@ select * from t1 join t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1802,7 +1802,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2_pkey on t2
@@ -1826,7 +1826,7 @@ select * from t1 join t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k2 on t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1837,7 +1837,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k2 on t2
@@ -1861,7 +1861,7 @@ select * from t1 join t2 on t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k3 on t2
          Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1872,7 +1872,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k3 on t2
@@ -1896,7 +1896,7 @@ select * from t1 join t2 on t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k4k5 on t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1907,7 +1907,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k4k5 on t2
@@ -1931,7 +1931,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2r_pkey on t2r t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1942,7 +1942,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2r_pkey on t2r t2
@@ -1966,7 +1966,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k2 on t2r t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1977,7 +1977,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k2 on t2r t2
@@ -2001,7 +2001,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k3 on t2r t2
          Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2012,7 +2012,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k3 on t2r t2
@@ -2036,7 +2036,7 @@ select * from t1 join t2r t2 on t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2047,7 +2047,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k4k5 on t2r t2
@@ -2082,7 +2082,7 @@ select * from t1 join t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2093,7 +2093,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2_pkey on t2
@@ -2117,7 +2117,7 @@ select * from t1 join t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k2 on t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2128,7 +2128,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k2 on t2
@@ -2166,7 +2166,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k3 on t2
@@ -2206,7 +2206,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k4k5 on t2
@@ -2232,7 +2232,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2r_pkey on t2r t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2243,7 +2243,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2r_pkey on t2r t2
@@ -2267,7 +2267,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2r_k2 on t2r t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2278,7 +2278,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k2 on t2r t2
@@ -2314,7 +2314,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k3 on t2r t2
@@ -2352,7 +2352,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k4k5 on t2r t2
@@ -2948,7 +2948,7 @@ select * from t1 join t2 on t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2959,7 +2959,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2_pkey on t2
@@ -2983,7 +2983,7 @@ select * from t1 join t2 on t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k2 on t2
          Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2994,7 +2994,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k2 on t2
@@ -3018,7 +3018,7 @@ select * from t1 join t2 on t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k3 on t2
          Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -3029,7 +3029,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k3 on t2
@@ -3053,7 +3053,7 @@ select * from t1 join t2 on t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Seq Scan on t1
    ->  Index Scan using i_t2_k4k5 on t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -3064,7 +3064,7 @@ select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2_k4k5 on t2
@@ -3100,7 +3100,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k1)
+   Join Filter: (t2.k1 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using t2r_pkey on t2r t2
@@ -3137,7 +3137,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k2)
+   Join Filter: (t2.k2 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k2 on t2r t2
@@ -3174,7 +3174,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k3)
+   Join Filter: (t2.k3 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k3 on t2r t2
@@ -3210,7 +3210,7 @@ select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.k4)
+   Join Filter: (t2.k4 = t1.a)
    ->  Index Scan using i_t1_id on t1
          Index Cond: (id = 7)
    ->  Index Scan using i_t2r_k4k5 on t2r t2
@@ -3243,11 +3243,11 @@ where t3.k4 in (select t5.k2 from t1 t4 join t2r t5 on t4.id = t5.k3 and t4.id =
                                                QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join  (cost=9.46..32.94 rows=500 width=50)
-   Join Filter: (t1.id = t2.k1)
+   Join Filter: (t2.k1 = t1.id)
    ->  YB Batched Nested Loop Join  (cost=9.46..28.82 rows=500 width=29)
-         Join Filter: (t3.k3 = t1.id)
+         Join Filter: (t1.id = t3.k3)
          ->  YB Batched Nested Loop Join  (cost=9.46..26.07 rows=500 width=21)
-               Join Filter: (t3.k4 = t5.k2)
+               Join Filter: (t5.k2 = t3.k4)
                ->  HashAggregate  (cost=9.46..9.56 rows=10 width=4)
                      Group Key: t5.k2
                      ->  Nested Loop  (cost=0.00..9.44 rows=10 width=4)

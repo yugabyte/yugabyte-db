@@ -939,10 +939,10 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a
 /*+ Leading((p2 p1)) */ EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=5 loops=1)
+ YB Batched Nested Loop Join (actual rows=5.00 loops=1)
    Join Filter: ((p1.a = p2.b) AND (p1.b = p2.a))
-   ->  Seq Scan on p2 (actual rows=200 loops=1)
-   ->  Index Scan using p1_pkey on p1 (actual rows=0 loops=67)
+   ->  Seq Scan on p2 (actual rows=200.00 loops=1)
+   ->  Index Scan using p1_pkey on p1 (actual rows=0.00 loops=67)
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p2.b, p2.a), ROW($1, $4), ROW($2, $5)]))
 (5 rows)
 
@@ -1186,11 +1186,12 @@ EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtabl
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: ((strtable.a)::text = (strtable2.a)::text)
+   Join Filter: ((strtable2.a)::text = (strtable.a)::text)
    ->  Seq Scan on strtable
+         Disabled: true
    ->  Index Scan using strtable2_pkey on strtable2
          Index Cond: ((a)::text = ANY (ARRAY[(strtable.a)::text, ($1)::text, ($2)::text]))
-(5 rows)
+(6 rows)
 
 SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a;
   a  |  b  |  a  |  b   
@@ -1207,11 +1208,12 @@ EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtabl
                                                                               QUERY PLAN                                                                              
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (((strtable.a)::text = (strtable2.a)::text) AND ((strtable.b)::text = (strtable2.b)::text))
+   Join Filter: (((strtable2.a)::text = (strtable.a)::text) AND ((strtable2.b)::text = (strtable.b)::text))
    ->  Seq Scan on strtable
+         Disabled: true
    ->  Index Scan using strtable2_pkey on strtable2
          Index Cond: (ROW((a)::text, (b)::text) = ANY (ARRAY[ROW((strtable.a)::text, (strtable.b)::text), ROW(($1)::text, ($4)::text), ROW(($2)::text, ($5)::text)]))
-(5 rows)
+(6 rows)
 
 SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
   a  |  b  |  a  |  b  
@@ -1230,11 +1232,12 @@ explain (costs off) select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
                                                                                                     QUERY PLAN                                                                                                    
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: ((q1.a = (q2.a)::double precision) AND (q1.b = (q2.b)::double precision))
+   Join Filter: (((q2.a)::double precision = q1.a) AND ((q2.b)::double precision = q1.b))
    ->  Seq Scan on q2
+         Disabled: true
    ->  Index Scan using q1_pkey on q1
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((q2.a)::double precision, (q2.b)::double precision), ROW(($1)::double precision, ($4)::double precision), ROW(($2)::double precision, ($5)::double precision)]))
-(5 rows)
+(6 rows)
 
 select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
    a   |   b   |   a   |   b   
@@ -1250,11 +1253,12 @@ explain (costs off) select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
                                                                       QUERY PLAN                                                                      
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: ((q3.a = (q4.a)::bpchar) AND (q3.b = (q4.b)::bpchar))
+   Join Filter: (((q4.a)::bpchar = q3.a) AND ((q4.b)::bpchar = q3.b))
    ->  Seq Scan on q4
+         Disabled: true
    ->  Index Scan using q3_pkey on q3
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((q4.a)::bpchar, (q4.b)::bpchar), ROW(($1)::bpchar, ($4)::bpchar), ROW(($2)::bpchar, ($5)::bpchar)]))
-(5 rows)
+(6 rows)
 
 select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
    a    |   b    |   a   |   b   
@@ -1267,11 +1271,12 @@ explain (costs off) select * from q1, q2 where q1.a::decimal = q2.a and q1.b::de
                                                                          QUERY PLAN                                                                         
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (((q1.a)::numeric = q2.a) AND ((q1.b)::numeric = q2.b))
+   Join Filter: ((q2.a = (q1.a)::numeric) AND (q2.b = (q1.b)::numeric))
    ->  Seq Scan on q1
+         Disabled: true
    ->  Index Scan using q2_pkey on q2
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((q1.a)::numeric, (q1.b)::numeric), ROW(($1)::numeric, ($4)::numeric), ROW(($2)::numeric, ($5)::numeric)]))
-(5 rows)
+(6 rows)
 
 select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
    a   |   b   |   a   |   b   
@@ -1283,11 +1288,12 @@ explain (costs off) select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q
                                                                                                                                      QUERY PLAN                                                                                                                                     
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: ((q1.a = ((q2.a)::numeric)::double precision) AND (q1.b = ((q2.b)::numeric)::double precision))
+   Join Filter: ((((q2.a)::numeric)::double precision = q1.a) AND (((q2.b)::numeric)::double precision = q1.b))
    ->  Seq Scan on q2
+         Disabled: true
    ->  Index Scan using q1_pkey on q1
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(((q2.a)::numeric)::double precision, ((q2.b)::numeric)::double precision), ROW((($1)::numeric)::double precision, (($4)::numeric)::double precision), ROW((($2)::numeric)::double precision, (($5)::numeric)::double precision)]))
-(5 rows)
+(6 rows)
 
 select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
    a   |   b   |   a   |   b   
@@ -1299,11 +1305,12 @@ explain (costs off) select * from q3, q4 where q3.a::text = q4.a and q3.b::text 
                                                                         QUERY PLAN                                                                        
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (((q3.a)::text = (q4.a)::text) AND ((q3.b)::text = (q4.b)::text))
+   Join Filter: (((q4.a)::text = (q3.a)::text) AND ((q4.b)::text = (q3.b)::text))
    ->  Seq Scan on q3
+         Disabled: true
    ->  Index Scan using q4_pkey on q4
          Index Cond: (ROW((a)::text, (b)::text) = ANY (ARRAY[ROW((q3.a)::text, (q3.b)::text), ROW(($1)::text, ($4)::text), ROW(($2)::text, ($5)::text)]))
-(5 rows)
+(6 rows)
 
 select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
    a    |   b    |  a  |  b  
@@ -1315,11 +1322,12 @@ explain (costs off) select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b
                                                                         QUERY PLAN                                                                        
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (((q3.a)::text = (q4.a)::text) AND ((q3.b)::text = (q4.b)::text))
+   Join Filter: (((q4.a)::text = (q3.a)::text) AND ((q4.b)::text = (q3.b)::text))
    ->  Seq Scan on q3
+         Disabled: true
    ->  Index Scan using q4_pkey on q4
          Index Cond: (ROW((a)::text, (b)::text) = ANY (ARRAY[ROW((q3.a)::text, (q3.b)::text), ROW(($1)::text, ($4)::text), ROW(($2)::text, ($5)::text)]))
-(5 rows)
+(6 rows)
 
 select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
    a    |   b    |  a  |  b  
@@ -1347,11 +1355,12 @@ explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 wh
                                                                         QUERY PLAN                                                                        
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (((q3.a)::text = (q4.a)::text) AND ((q3.b)::text = (q4.b)::text))
+   Join Filter: (((q4.a)::text = (q3.a)::text) AND ((q4.b)::text = (q3.b)::text))
    ->  Seq Scan on q3
+         Disabled: true
    ->  Index Scan using q4_pkey on q4
          Index Cond: (ROW((a)::text, (b)::text) = ANY (ARRAY[ROW((q3.a)::text, (q3.b)::text), ROW(($1)::text, ($4)::text), ROW(($2)::text, ($5)::text)]))
-(5 rows)
+(6 rows)
 
 /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
    a    |   b    |  a  |  b  
@@ -1460,7 +1469,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  YB Batched Nested Loop Join
-         Join Filter: (t1.a = t2.b)
+         Join Filter: (t2.b = t1.a)
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b <= 15)
          ->  Index Scan using p1_pkey on p1 t1
@@ -2294,14 +2303,14 @@ INSERT INTO m1 SELECT i*2 FROM generate_series(1, 2000) i;
 CREATE TABLE m2 (a money, primary key(a asc));
 INSERT INTO m2 SELECT i*5 FROM generate_series(1, 2000) i;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-                            QUERY PLAN                            
-------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=5 loops=1)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=5.00 loops=1)
    Join Filter: (t1.a = t2.a)
    Rows Removed by Join Filter: 8
-   ->  Index Scan using m1_pkey on m1 t1 (actual rows=25 loops=1)
+   ->  Index Scan using m1_pkey on m1 t1 (actual rows=25.00 loops=1)
          Index Cond: (a <= (50)::money)
-   ->  Index Scan using m2_pkey on m2 t2 (actual rows=1 loops=9)
+   ->  Index Scan using m2_pkey on m2 t2 (actual rows=1.00 loops=9)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (7 rows)
 
@@ -2316,14 +2325,14 @@ SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
 (5 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-                            QUERY PLAN                            
-------------------------------------------------------------------
- YB Batched Nested Loop Left Join (actual rows=10 loops=1)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ YB Batched Nested Loop Left Join (actual rows=10.00 loops=1)
    Join Filter: (t1.a = t2.a)
    Rows Removed by Join Filter: 7
-   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10 loops=1)
+   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10.00 loops=1)
          Index Cond: (a <= (50)::money)
-   ->  Index Scan using m1_pkey on m1 t2 (actual rows=1 loops=4)
+   ->  Index Scan using m1_pkey on m1 t2 (actual rows=1.00 loops=4)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (7 rows)
 
@@ -2343,14 +2352,14 @@ SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
 (10 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
-                            QUERY PLAN                            
-------------------------------------------------------------------
- YB Batched Nested Loop Anti Join (actual rows=5 loops=1)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ YB Batched Nested Loop Anti Join (actual rows=5.00 loops=1)
    Join Filter: (t1.a = t2.a)
    Rows Removed by Join Filter: 8
-   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10 loops=1)
+   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10.00 loops=1)
          Index Cond: (a <= (50)::money)
-   ->  Index Scan using m1_pkey on m1 t2 (actual rows=1 loops=4)
+   ->  Index Scan using m1_pkey on m1 t2 (actual rows=1.00 loops=4)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (7 rows)
 
@@ -2866,13 +2875,13 @@ FROM names n, name_refs r, generate_series(1, 32) pos(i)
 WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
                                                                 QUERY PLAN                                                                
 ------------------------------------------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=6 loops=1)
+ YB Batched Nested Loop Join (actual rows=6.00 loops=1)
    Join Filter: (r.ref_names[pos.i] = n.name_id)
    Rows Removed by Join Filter: 186
-   ->  Function Scan on generate_series pos (actual rows=32 loops=1)
-   ->  Nested Loop (actual rows=6 loops=1)
-         ->  Seq Scan on name_refs r (actual rows=5 loops=1)
-         ->  Index Scan using names_name_id_idx on names n (actual rows=1 loops=5)
+   ->  Function Scan on generate_series pos (actual rows=32.00 loops=1)
+   ->  Nested Loop (actual rows=6.00 loops=1)
+         ->  Seq Scan on name_refs r (actual rows=5.00 loops=1)
+         ->  Index Scan using names_name_id_idx on names n (actual rows=1.00 loops=5)
                Index Cond: (name_id = ANY (ARRAY[(r.ref_names)[pos.i], (r.ref_names)[$1], (r.ref_names)[$2], ..., (r.ref_names)[$1023]]))
                Storage Filter: (r.namespace_id = namespace_id)
 (9 rows)
@@ -3548,15 +3557,15 @@ ANALYZE t_bnl_outer, t_bnl_inner;
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
 /*+ YbBatchedNL(o i) Leading((o i)) */
 SELECT * FROM t_bnl_outer o JOIN t_bnl_inner i ON o.v = i.k WHERE i.k >= 3;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=3 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=3.00 loops=1)
    Join Filter: (o.v = i.k)
-   ->  Index Scan using t_bnl_outer_pkey on t_bnl_outer o (actual rows=5 loops=1)
+   ->  Index Scan using t_bnl_outer_pkey on t_bnl_outer o (actual rows=5.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 5
-   ->  Index Scan using t_bnl_inner_pkey on t_bnl_inner i (actual rows=3 loops=1)
+   ->  Index Scan using t_bnl_inner_pkey on t_bnl_inner i (actual rows=3.00 loops=1)
          Index Cond: ((k = ANY (ARRAY[o.v, $1, $2, ..., $1023])) AND (k >= 3))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -3568,15 +3577,15 @@ SET yb_enable_advanced_index_cond_fold = off;
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
 /*+ YbBatchedNL(o i) Leading((o i)) */
 SELECT * FROM t_bnl_outer o JOIN t_bnl_inner i ON o.v = i.k WHERE i.k >= 3;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=3 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=3.00 loops=1)
    Join Filter: (o.v = i.k)
-   ->  Index Scan using t_bnl_outer_pkey on t_bnl_outer o (actual rows=5 loops=1)
+   ->  Index Scan using t_bnl_outer_pkey on t_bnl_outer o (actual rows=5.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 5
-   ->  Index Scan using t_bnl_inner_pkey on t_bnl_inner i (actual rows=3 loops=1)
+   ->  Index Scan using t_bnl_inner_pkey on t_bnl_inner i (actual rows=3.00 loops=1)
          Index Cond: ((k = ANY (ARRAY[o.v, $1, $2, ..., $1023])) AND (k >= 3))
          Rows Removed by Index Recheck: 2
          Storage Table Read Requests: 1
@@ -3747,12 +3756,12 @@ INSERT INTO t_multi_tablet SELECT i, j, 'Value(' || i::text || ', ' || j::text |
 SET yb_bnl_batch_size = 1024;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT t.* FROM generate_series(1, 1000) i, t_multi_tablet t WHERE h1 = 1 AND h2 = i;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=100 loops=1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=100.00 loops=1)
    Join Filter: (i.i = t.h2)
-   ->  Function Scan on generate_series i (actual rows=1000 loops=1)
-   ->  Index Scan using t_multi_tablet_pkey on t_multi_tablet t (actual rows=100 loops=1)
+   ->  Function Scan on generate_series i (actual rows=1000.00 loops=1)
+   ->  Index Scan using t_multi_tablet_pkey on t_multi_tablet t (actual rows=100.00 loops=1)
          Index Cond: ((h2 = ANY (ARRAY[i.i, $1, $2, ..., $1023])) AND (h1 = 1))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 48
@@ -3763,13 +3772,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT t.* FROM generate_series(1, 100) i, generate_series(1, 100) j, t_multi_tablet t WHERE h1 = i AND h2 = j;
                                                           QUERY PLAN                                                           
 -------------------------------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=10000 loops=1)
+ YB Batched Nested Loop Join (actual rows=10000.00 loops=1)
    Join Filter: (t.h2 = j.j)
-   ->  Function Scan on generate_series j (actual rows=100 loops=1)
-   ->  YB Batched Nested Loop Join (actual rows=10000 loops=1)
+   ->  Function Scan on generate_series j (actual rows=100.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=10000.00 loops=1)
          Join Filter: (i.i = t.h1)
-         ->  Function Scan on generate_series i (actual rows=100 loops=1)
-         ->  Index Scan using t_multi_tablet_pkey on t_multi_tablet t (actual rows=10000 loops=1)
+         ->  Function Scan on generate_series i (actual rows=100.00 loops=1)
+         ->  Index Scan using t_multi_tablet_pkey on t_multi_tablet t (actual rows=10000.00 loops=1)
                Index Cond: ((h1 = ANY (ARRAY[i.i, $1, $2, ..., $1023])) AND (h2 = ANY (ARRAY[j.j, $1025, $1026, ..., $2047])))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 48

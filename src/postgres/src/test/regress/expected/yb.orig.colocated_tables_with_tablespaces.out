@@ -244,6 +244,8 @@ CREATE TABLE table_1 (a INT PRIMARY KEY) TABLESPACE tsp1;
  a      | integer |           | not null |         | plain   |              | 
 Indexes:
     "table_1_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
+Not-null constraints:
+    "table_1_a_not_null" NOT NULL "a"
 Tablespace: "tsp1"
 Colocation: true
 
@@ -257,6 +259,8 @@ CREATE TABLE table_1 (a INT PRIMARY KEY) with (COLOCATION = false);
  a      | integer |           | not null |         | plain   |              | 
 Indexes:
     "table_1_pkey" PRIMARY KEY, lsm (a HASH)
+Not-null constraints:
+    "table_1_a_not_null" NOT NULL "a"
 Options: colocation=false
 
 DROP TABLE table_1;

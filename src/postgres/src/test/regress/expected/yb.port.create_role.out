@@ -24,7 +24,8 @@ CREATE ROLE regress_noiseword SYSID 12345;
 NOTICE:  SYSID can no longer be specified
 -- fail, cannot grant membership in superuser role
 CREATE ROLE regress_nosuch_super IN ROLE regress_role_super;
-ERROR:  must be superuser to alter superusers
+ERROR:  permission denied to grant role "regress_role_super"
+DETAIL:  Only roles with the SUPERUSER attribute may grant roles with the SUPERUSER attribute.
 -- fail, database owner cannot have members
 CREATE ROLE regress_nosuch_dbowner IN ROLE pg_database_owner;
 ERROR:  role "pg_database_owner" cannot have explicit members

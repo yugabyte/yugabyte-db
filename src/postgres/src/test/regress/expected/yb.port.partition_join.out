@@ -804,19 +804,21 @@ SELECT avg(t1.a), avg(t2.b), avg(t3.a + t3.b), t1.c, t2.c, t3.c FROM plt1 t1, pl
 -- joins where one of the relations is proven empty
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a = 1 AND t1.a = 2;
-        QUERY PLAN        
---------------------------
+         QUERY PLAN         
+----------------------------
  Result
+   Replaces: Join on t1, t2
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a = 1 AND a = 2) t1 LEFT JOIN prt2 t2 ON t1.a = t2.b;
-        QUERY PLAN        
---------------------------
+          QUERY PLAN          
+------------------------------
  Result
+   Replaces: Join on t2, prt1
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 /* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
@@ -1064,8 +1066,9 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE a = 1 AND a = 2) 
          ->  Seq Scan on prt2_l_p3_p2 t2_7
    ->  Hash
          ->  Result prt1_l
+               Replaces: Scan on prt1_l
                One-Time Filter: false
-(11 rows)
+(12 rows)
 
 -- Test case to verify proper handling of subqueries in a partitioned delete.
 -- The weird-looking lateral join is just there to force creation of a

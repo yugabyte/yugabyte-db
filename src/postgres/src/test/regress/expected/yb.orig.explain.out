@@ -10,8 +10,8 @@ INSERT INTO p2 (SELECT generate_series(1, 15));
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (1, 1, 1);
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
@@ -26,8 +26,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (1, 1, 1);
 EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (2, 2, 2);
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
  Storage Read Requests: 1
@@ -48,8 +48,8 @@ BEGIN;
 EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (3, 3, 3);
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
  Storage Read Requests: 1
@@ -66,8 +66,8 @@ ROLLBACK;
 EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (4, 4, 4) \; EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (5, 5, 5);
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
  Storage Read Requests: 1
@@ -79,8 +79,8 @@ EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (4, 4, 4) \
 
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
  Storage Read Requests: 1
@@ -101,8 +101,8 @@ EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (4, 4, 4) \
 EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (6, 6, 6) \; EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (7, 7, 7);
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
  Storage Read Requests: 1
@@ -114,8 +114,8 @@ EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (6, 6, 6) \
 
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
  Storage Read Requests: 1
@@ -129,10 +129,10 @@ ROLLBACK;
 \set AUTOCOMMIT ON
 -- Commit stats should not be displayed if there is nothing to display.
 EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF) INSERT INTO p1 VALUES (101);
-                  QUERY PLAN                   
------------------------------------------------
- Insert on p1 (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on p1 (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
@@ -155,16 +155,16 @@ ERROR:  EXPLAIN option COMMIT requires ANALYZE
 EXPLAIN (ANALYZE, COMMIT, COSTS OFF) INSERT INTO t_test VALUES (9, 9, 9);
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
  Trigger for constraint t_test_p1_fk_fkey: calls=1
 (3 rows)
 
 EXPLAIN (ANALYZE, DIST, COMMIT, SUMMARY OFF, COSTS OFF) INSERT INTO t_test VALUES (10, 10, 10);
                     QUERY PLAN                     
 ---------------------------------------------------
- Insert on t_test (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+ Insert on t_test (actual rows=0.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint t_test_p1_fk_fkey: calls=1
 (4 rows)
@@ -238,9 +238,9 @@ SELECT * FROM t_test ORDER BY k;
 -- DEBUG without DIST should produce a warning and no debug metrics
 EXPLAIN (ANALYZE, DEBUG, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
 WARNING:  EXPLAIN option DEBUG requires DIST
-                       QUERY PLAN                       
---------------------------------------------------------
- Index Scan using p1_pkey on p1 (actual rows=1 loops=1)
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using p1_pkey on p1 (actual rows=1.00 loops=1)
    Index Cond: (k = 1)
 (2 rows)
 
@@ -253,9 +253,9 @@ SHOW yb_explain_hide_non_deterministic_fields;
 
 EXPLAIN (ANALYZE, DEBUG, DIST, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
 WARNING:  GUC yb_explain_hide_non_deterministic_fields disables EXPLAIN option DEBUG
-                       QUERY PLAN                       
---------------------------------------------------------
- Index Scan using p1_pkey on p1 (actual rows=1 loops=1)
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using p1_pkey on p1 (actual rows=1.00 loops=1)
    Index Cond: (k = 1)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1

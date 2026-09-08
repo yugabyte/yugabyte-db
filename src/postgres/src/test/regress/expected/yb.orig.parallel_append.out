@@ -247,20 +247,20 @@ WHERE
     );
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Nested Loop (actual rows=59 loops=1)
+ Nested Loop (actual rows=59.00 loops=1)
    Join Filter: ((table2.col_varchar_key)::text = (table3.col_varchar_nokey)::text)
    Rows Removed by Join Filter: 1721
-   ->  Nested Loop Semi Join (actual rows=89 loops=1)
+   ->  Nested Loop Semi Join (actual rows=89.00 loops=1)
          Join Filter: ((table2.col_varchar_nokey)::text <> ('j'::text))
          Rows Removed by Join Filter: 24
-         ->  Seq Scan on d table2 (actual rows=100 loops=1)
-         ->  Gather (actual rows=1 loops=100)
+         ->  Seq Scan on d table2 (actual rows=100.00 loops=1)
+         ->  Gather (actual rows=1.00 loops=100)
                Workers Planned: 2
                Workers Launched: 2
-               ->  Parallel Append (actual rows=1 loops=300)
-                     ->  Seq Scan on dummy (actual rows=1 loops=100)
-                     ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=100)
-   ->  Seq Scan on c table3 (actual rows=20 loops=89)
+               ->  Parallel Append (actual rows=1.00 loops=300)
+                     ->  Seq Scan on dummy (actual rows=1.00 loops=100)
+                     ->  Seq Scan on dummy dummy_1 (actual rows=1.00 loops=100)
+   ->  Seq Scan on c table3 (actual rows=20.00 loops=89)
 (14 rows)
 
 drop table c;

@@ -265,16 +265,16 @@ create index on p_out(a asc);
 create table p_in(a int, primary key(a asc));
 insert into p_in values (4);
 /*+Set(yb_prefer_bnl false) IndexScan(p_out) NestLoop(p_out p_in) Leading((p_out p_in))*/ explain (analyze, costs off, summary off, timing off, dist) select * from p_out, p_in where p_out.a = p_in.a limit 1;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit (actual rows=1 loops=1)
-   ->  Nested Loop (actual rows=1 loops=1)
-         ->  Index Scan using p_out_a_idx on p_out (actual rows=4 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=1.00 loops=1)
+   ->  Nested Loop (actual rows=1.00 loops=1)
+         ->  Index Scan using p_out_a_idx on p_out (actual rows=4.00 loops=1)
                Storage Table Rows Scanned: 4
                Storage Index Read Requests: 2
                Storage Index Read Ops: 2
                Storage Index Rows Scanned: 4
-         ->  Index Scan using p_in_pkey on p_in (actual rows=0 loops=4)
+         ->  Index Scan using p_in_pkey on p_in (actual rows=0.00 loops=4)
                Index Cond: (a = p_out.a)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -340,7 +340,7 @@ DROP TABLE tbl, tbl2;
 CREATE TABLE tab_nonkey2 (a INT) WITH (colocation = true);
 CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 \dt
-                 List of relations
+                   List of tables
  Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
@@ -361,7 +361,7 @@ CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 (15 rows)
 
 \di
-                                List of relations
+                                 List of indexes
  Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range                   | index | yugabyte | tab_range_nonkey2
@@ -477,7 +477,7 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 (2 rows)
 
 \dt
-                 List of relations
+                   List of tables
  Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
@@ -498,7 +498,7 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 (15 rows)
 
 \di
-                                List of relations
+                                 List of indexes
  Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range                   | index | yugabyte | tab_range_nonkey2
@@ -669,7 +669,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 (2 rows)
 
 \dt
-                 List of relations
+                   List of tables
  Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
@@ -686,7 +686,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 (11 rows)
 
 \di
-                                List of relations
+                                 List of indexes
  Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3

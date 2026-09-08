@@ -35,9 +35,9 @@ SET enable_seqscan = false;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(a) < 4000)
 (2 rows)
 
@@ -53,9 +53,9 @@ SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(a) = 2675)
 (2 rows)
 
@@ -72,7 +72,7 @@ SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((a)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -89,7 +89,7 @@ SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((a)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -106,9 +106,9 @@ SET enable_seqscan = true;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(a) < 4000)
 (2 rows)
 
@@ -124,9 +124,9 @@ SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(a) = 2675)
 (2 rows)
 
@@ -143,7 +143,7 @@ SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((a)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -160,7 +160,7 @@ SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((a)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -179,12 +179,13 @@ SET enable_seqscan = false;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Filter: (yb_hash_code(h) < 4000)
    Rows Removed by Filter: 9
-(3 rows)
+(4 rows)
 
 SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
@@ -197,12 +198,13 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Filter: (yb_hash_code(h) = 2675)
    Rows Removed by Filter: 9
-(3 rows)
+(4 rows)
 
 SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
@@ -217,7 +219,7 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -234,7 +236,7 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -253,9 +255,9 @@ SET enable_seqscan = false;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) < 4000)
    Heap Fetches: 0
 (3 rows)
@@ -272,9 +274,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
    Heap Fetches: 0
 (3 rows)
@@ -290,9 +292,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
    Heap Fetches: 0
 (3 rows)
@@ -308,9 +310,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
    Heap Fetches: 0
 (3 rows)
@@ -328,9 +330,9 @@ SET enable_seqscan = true;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) < 4000)
    Heap Fetches: 0
 (3 rows)
@@ -347,9 +349,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
    Heap Fetches: 0
 (3 rows)
@@ -367,7 +369,7 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -384,7 +386,7 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -404,9 +406,9 @@ SET enable_seqscan = false;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Filter: (yb_hash_code(h) < 4000)
    Rows Removed by Filter: 9
    Heap Fetches: 0
@@ -424,9 +426,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Filter: (yb_hash_code(h) = 2675)
    Rows Removed by Filter: 9
    Heap Fetches: 0
@@ -443,9 +445,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
    Heap Fetches: 0
 (3 rows)
@@ -461,9 +463,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
    Heap Fetches: 0
 (3 rows)
@@ -481,9 +483,9 @@ SET enable_seqscan = true;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Filter: (yb_hash_code(h) < 4000)
    Rows Removed by Filter: 9
 (3 rows)
@@ -500,9 +502,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Filter: (yb_hash_code(h) = 2675)
    Rows Removed by Filter: 9
 (3 rows)
@@ -520,7 +522,7 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -537,7 +539,7 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -558,12 +560,13 @@ SET enable_seqscan = false;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Filter: (yb_hash_code(h) < 4000)
    Rows Removed by Filter: 9
-(3 rows)
+(4 rows)
 
 SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
@@ -577,9 +580,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using t_b_hash_code_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using t_b_hash_code_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
@@ -597,7 +600,7 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -613,9 +616,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Index Scan using t_b_cbrt_idx on test_with_pk (actual rows=1 loops=1)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Index Scan using t_b_cbrt_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -632,9 +635,9 @@ SET enable_seqscan = true;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Filter: (yb_hash_code(h) < 4000)
    Rows Removed by Filter: 9
 (3 rows)
@@ -651,9 +654,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using t_b_hash_code_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using t_b_hash_code_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
@@ -671,7 +674,7 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Seq Scan on test_with_pk (actual rows=1 loops=1)
+ Seq Scan on test_with_pk (actual rows=1.00 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -687,9 +690,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Index Scan using t_b_cbrt_idx on test_with_pk (actual rows=1 loops=1)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Index Scan using t_b_cbrt_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -711,9 +714,9 @@ SET enable_seqscan = false;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) < 4000)
 (2 rows)
 
@@ -729,9 +732,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
@@ -747,9 +750,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -765,9 +768,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
@@ -784,9 +787,9 @@ SET enable_seqscan = true;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) < 4000)
 (2 rows)
 
@@ -801,9 +804,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
@@ -818,9 +821,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
@@ -835,9 +838,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1.00 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 

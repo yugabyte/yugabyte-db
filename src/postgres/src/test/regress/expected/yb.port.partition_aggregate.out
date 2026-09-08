@@ -156,13 +156,14 @@ SELECT c, a, count(*) FROM pagg_tab GROUP BY a, c;
 -- Test when input relation for grouping is dummy
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a) FROM pagg_tab WHERE 1 = 2 GROUP BY c;
-           QUERY PLAN           
---------------------------------
+             QUERY PLAN             
+------------------------------------
  HashAggregate
    Group Key: c
    ->  Result pagg_tab
+         Replaces: Scan on pagg_tab
          One-Time Filter: false
-(4 rows)
+(5 rows)
 
 SELECT c, sum(a) FROM pagg_tab WHERE 1 = 2 GROUP BY c;
  c | sum 

@@ -52,23 +52,23 @@ CREATE USER MAPPING FOR regress_no_priv_user SERVER file_server;
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'xml');  -- ERROR
 ERROR:  COPY format "xml" not recognized
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'text', quote ':');          -- ERROR
-ERROR:  COPY quote available only in CSV mode
+ERROR:  COPY QUOTE requires CSV mode
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'text', escape ':');         -- ERROR
-ERROR:  COPY escape available only in CSV mode
+ERROR:  COPY ESCAPE requires CSV mode
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'binary', header 'true');    -- ERROR
 ERROR:  cannot specify HEADER in BINARY mode
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'binary', quote ':');        -- ERROR
-ERROR:  COPY quote available only in CSV mode
+ERROR:  COPY QUOTE requires CSV mode
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'binary', escape ':');       -- ERROR
-ERROR:  COPY escape available only in CSV mode
+ERROR:  COPY ESCAPE requires CSV mode
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'text', delimiter 'a');      -- ERROR
 ERROR:  COPY delimiter cannot be "a"
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'text', escape '-');         -- ERROR
-ERROR:  COPY escape available only in CSV mode
+ERROR:  COPY ESCAPE requires CSV mode
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'csv', quote '-', null '=-=');   -- ERROR
 ERROR:  CSV quote character must not appear in the NULL specification
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'csv', delimiter '-', null '=-=');    -- ERROR
-ERROR:  COPY delimiter must not appear in the NULL specification
+ERROR:  COPY delimiter character must not appear in the NULL specification
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'csv', delimiter '-', quote '-');    -- ERROR
 ERROR:  COPY delimiter and quote must be different
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (format 'csv', delimiter '---');     -- ERROR
@@ -139,7 +139,7 @@ CREATE FOREIGN TABLE text_csv (
 ) SERVER file_server
 OPTIONS (format 'text', filename :'filename', null 'NULL');
 SELECT * FROM text_csv; -- ERROR
-ERROR:  COPY force not null available only in CSV mode
+ERROR:  COPY FORCE_NOT_NULL requires CSV mode
 ALTER FOREIGN TABLE text_csv OPTIONS (SET format 'csv');
 DROP FOREIGN TABLE text_csv;
 CREATE FOREIGN TABLE text_csv (
@@ -175,7 +175,6 @@ ERROR:  invalid option "force_not_null"
 HINT:  There are no valid options in this context.
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (force_not_null '*'); -- ERROR
 ERROR:  invalid option "force_not_null"
-HINT:  Valid options in this context are: filename, program, format, header, delimiter, quote, escape, null, encoding
 -- force_null is not allowed to be specified at any foreign object level:
 ALTER FOREIGN DATA WRAPPER file_fdw OPTIONS (ADD force_null '*'); -- ERROR
 ERROR:  invalid option "force_null"
@@ -188,7 +187,6 @@ ERROR:  invalid option "force_null"
 HINT:  There are no valid options in this context.
 CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (force_null '*'); -- ERROR
 ERROR:  invalid option "force_null"
-HINT:  Valid options in this context are: filename, program, format, header, delimiter, quote, escape, null, encoding
 -- basic query tests
 SELECT * FROM agg_text WHERE b > 10.0 ORDER BY a;
   a  |   b    
@@ -286,6 +284,7 @@ SET constraint_exclusion = 'on';
 SELECT explain_filter('EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_csv WHERE a < 0');
  Result agg_csv
    Output: a, b
+   Replaces: Scan on agg_csv
    One-Time Filter: false
 
 \t off
@@ -478,7 +477,8 @@ ALTER FOREIGN TABLE agg_text OWNER TO regress_file_fdw_user;
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 SET ROLE regress_file_fdw_user;
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
-ERROR:  only superuser or a role with privileges of the pg_read_server_files role may specify the filename option of a file_fdw foreign table
+ERROR:  permission denied to set the "filename" option of a file_fdw foreign table
+DETAIL:  Only roles with privileges of the "pg_read_server_files" role may set this option.
 SET ROLE regress_file_fdw_superuser;
 -- cleanup
 RESET ROLE;

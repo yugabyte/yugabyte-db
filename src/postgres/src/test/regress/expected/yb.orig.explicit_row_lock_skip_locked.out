@@ -106,13 +106,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED;
-                       QUERY PLAN                       
---------------------------------------------------------
- LockRows (actual rows=15 loops=1)
-   ->  Sort (actual rows=15 loops=1)
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ LockRows (actual rows=15.00 loops=1)
+   ->  Sort (actual rows=15.00 loops=1)
          Sort Key: v
          Sort Method: quicksort
-         ->  Seq Scan on t_asc (actual rows=15 loops=1)
+         ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
                Storage Table Rows Scanned: 15
@@ -153,14 +153,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED;
-                          QUERY PLAN                          
---------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Sort (actual rows=5 loops=1)
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Sort (actual rows=5.00 loops=1)
                Sort Key: v
                Sort Method: quicksort
-               ->  Seq Scan on t_asc (actual rows=15 loops=1)
+               ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 15
@@ -201,13 +201,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc WHERE k < 6 ORDER BY v FOR UPDATE SKIP LOCKED;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- LockRows (actual rows=5 loops=1)
-   ->  Sort (actual rows=5 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ LockRows (actual rows=5.00 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: v
          Sort Method: quicksort
-         ->  Index Scan using t_asc_pkey on t_asc (actual rows=5 loops=1)
+         ->  Index Scan using t_asc_pkey on t_asc (actual rows=5.00 loops=1)
                Index Cond: (k < 6)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -253,13 +253,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (7 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc WHERE k::text LIKE '%1%' ORDER BY v FOR UPDATE SKIP LOCKED;
-                      QUERY PLAN                       
--------------------------------------------------------
- LockRows (actual rows=7 loops=1)
-   ->  Sort (actual rows=7 loops=1)
+                        QUERY PLAN                        
+----------------------------------------------------------
+ LockRows (actual rows=7.00 loops=1)
+   ->  Sort (actual rows=7.00 loops=1)
          Sort Key: v
          Sort Method: quicksort
-         ->  Seq Scan on t_asc (actual rows=7 loops=1)
+         ->  Seq Scan on t_asc (actual rows=7.00 loops=1)
                Filter: ((k)::text ~~ '%1%'::text)
                Rows Removed by Filter: 8
                Storage Table Read Requests: 1
@@ -298,11 +298,11 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (3 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc WHERE k < 6 LIMIT 3 FOR UPDATE SKIP LOCKED;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Index Scan using t_asc_pkey on t_asc (actual rows=3 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Index Scan using t_asc_pkey on t_asc (actual rows=3.00 loops=1)
                Index Cond: (k < 6)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -344,13 +344,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_with_idx WHERE v > 10 ORDER BY k FOR UPDATE SKIP LOCKED;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- LockRows (actual rows=5 loops=1)
-   ->  Sort (actual rows=5 loops=1)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ LockRows (actual rows=5.00 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: k
          Sort Method: quicksort
-         ->  Index Scan using t_with_idx_v on t_with_idx (actual rows=5 loops=1)
+         ->  Index Scan using t_with_idx_v on t_with_idx (actual rows=5.00 loops=1)
                Index Cond: (v > 10)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -395,13 +395,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_with_idx WHERE v::text LIKE '%1%' ORDER BY (k + v) FOR UPDATE SKIP LOCKED;
-                         QUERY PLAN                         
-------------------------------------------------------------
- LockRows (actual rows=5 loops=1)
-   ->  Sort (actual rows=5 loops=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ LockRows (actual rows=5.00 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: ((k + v))
          Sort Method: quicksort
-         ->  Seq Scan on t_with_idx (actual rows=5 loops=1)
+         ->  Seq Scan on t_with_idx (actual rows=5.00 loops=1)
                Filter: ((v)::text ~~ '%1%'::text)
                Rows Removed by Filter: 5
                Storage Table Read Requests: 1
@@ -464,18 +464,18 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k;
-                        QUERY PLAN                        
-----------------------------------------------------------
- Sort (actual rows=15 loops=1)
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Sort (actual rows=15.00 loops=1)
    Sort Key: cte.k
    Sort Method: quicksort
    CTE cte
-     ->  LockRows (actual rows=15 loops=1)
-           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+     ->  LockRows (actual rows=15.00 loops=1)
+           ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                  Storage Table Read Requests: 1
                  Storage Table Read Ops: 1
                  Storage Table Rows Scanned: 15
-   ->  CTE Scan on cte (actual rows=15 loops=1)
+   ->  CTE Scan on cte (actual rows=15.00 loops=1)
  Storage Read Requests: 16
  Storage Read Ops: 16
  Storage Rows Scanned: 30
@@ -512,16 +512,16 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5;
-                       QUERY PLAN                        
----------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    CTE cte
-     ->  LockRows (actual rows=5 loops=1)
-           ->  Seq Scan on t_asc (actual rows=5 loops=1)
+     ->  LockRows (actual rows=5.00 loops=1)
+           ->  Seq Scan on t_asc (actual rows=5.00 loops=1)
                  Storage Table Read Requests: 1
                  Storage Table Read Ops: 1
                  Storage Table Rows Scanned: 5
-   ->  CTE Scan on cte (actual rows=5 loops=1)
+   ->  CTE Scan on cte (actual rows=5.00 loops=1)
  Storage Read Requests: 6
  Storage Read Ops: 6
  Storage Rows Scanned: 10
@@ -558,16 +558,16 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS NOT MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5;
-                       QUERY PLAN                        
----------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    CTE cte
-     ->  LockRows (actual rows=5 loops=1)
-           ->  Seq Scan on t_asc (actual rows=5 loops=1)
+     ->  LockRows (actual rows=5.00 loops=1)
+           ->  Seq Scan on t_asc (actual rows=5.00 loops=1)
                  Storage Table Read Requests: 1
                  Storage Table Read Ops: 1
                  Storage Table Rows Scanned: 5
-   ->  CTE Scan on cte (actual rows=5 loops=1)
+   ->  CTE Scan on cte (actual rows=5.00 loops=1)
  Storage Read Requests: 6
  Storage Read Ops: 6
  Storage Rows Scanned: 10
@@ -604,16 +604,17 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- CTE Scan on cte (actual rows=5 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ CTE Scan on cte (actual rows=5.00 loops=1)
+   Storage: Memory  Maximum Storage: 17kB
    CTE cte
-     ->  Limit (actual rows=5 loops=1)
-           ->  LockRows (actual rows=5 loops=1)
-                 ->  Sort (actual rows=5 loops=1)
+     ->  Limit (actual rows=5.00 loops=1)
+           ->  LockRows (actual rows=5.00 loops=1)
+                 ->  Sort (actual rows=5.00 loops=1)
                        Sort Key: t_asc.v
                        Sort Method: quicksort
-                       ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                       ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 15
@@ -622,7 +623,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER 
  Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(16 rows)
+(17 rows)
 
 SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte');
  yb_lockrows_max_read_aheads 
@@ -653,22 +654,22 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Sort (actual rows=5 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Sort (actual rows=5.00 loops=1)
    Sort Key: cte.k
    Sort Method: quicksort
    CTE cte
-     ->  Limit (actual rows=5 loops=1)
-           ->  LockRows (actual rows=5 loops=1)
-                 ->  Sort (actual rows=5 loops=1)
+     ->  Limit (actual rows=5.00 loops=1)
+           ->  LockRows (actual rows=5.00 loops=1)
+                 ->  Sort (actual rows=5.00 loops=1)
                        Sort Key: t_asc.v
                        Sort Method: quicksort
-                       ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                       ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 15
-   ->  CTE Scan on cte (actual rows=5 loops=1)
+   ->  CTE Scan on cte (actual rows=5.00 loops=1)
  Storage Read Requests: 6
  Storage Read Ops: 6
  Storage Rows Scanned: 20
@@ -700,13 +701,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (0 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc LIMIT 5) SELECT k FROM cte ORDER BY k FOR UPDATE SKIP LOCKED;
-                      QUERY PLAN                       
--------------------------------------------------------
- Sort (actual rows=5 loops=1)
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Sort (actual rows=5.00 loops=1)
    Sort Key: t_asc.k
    Sort Method: quicksort
-   ->  Limit (actual rows=5 loops=1)
-         ->  Seq Scan on t_asc (actual rows=5 loops=1)
+   ->  Limit (actual rows=5.00 loops=1)
+         ->  Seq Scan on t_asc (actual rows=5.00 loops=1)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
                Storage Table Rows Scanned: 5
@@ -756,19 +757,19 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED;
-                        QUERY PLAN                        
-----------------------------------------------------------
- Limit (actual rows=5 loops=1)
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
    CTE cte
-     ->  LockRows (actual rows=15 loops=1)
-           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+     ->  LockRows (actual rows=15.00 loops=1)
+           ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                  Storage Table Read Requests: 1
                  Storage Table Read Ops: 1
                  Storage Table Rows Scanned: 15
-   ->  Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: cte.k
          Sort Method: top-N heapsort
-         ->  CTE Scan on cte (actual rows=15 loops=1)
+         ->  CTE Scan on cte (actual rows=15.00 loops=1)
  Storage Read Requests: 16
  Storage Read Ops: 16
  Storage Rows Scanned: 30
@@ -808,23 +809,23 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (10 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 3;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
    CTE cte
-     ->  Limit (actual rows=10 loops=1)
-           ->  LockRows (actual rows=10 loops=1)
-                 ->  Sort (actual rows=10 loops=1)
+     ->  Limit (actual rows=10.00 loops=1)
+           ->  LockRows (actual rows=10.00 loops=1)
+                 ->  Sort (actual rows=10.00 loops=1)
                        Sort Key: t_asc.v
                        Sort Method: quicksort
-                       ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                       ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 15
-   ->  Sort (actual rows=3 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Sort Key: cte.k
          Sort Method: top-N heapsort
-         ->  CTE Scan on cte (actual rows=10 loops=1)
+         ->  CTE Scan on cte (actual rows=10.00 loops=1)
  Storage Read Requests: 11
  Storage Read Ops: 11
  Storage Rows Scanned: 25
@@ -856,17 +857,17 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (0 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Sort (actual rows=5 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: cte.k
          Sort Method: top-N heapsort
-         ->  Subquery Scan on cte (actual rows=15 loops=1)
-               ->  Sort (actual rows=15 loops=1)
+         ->  Subquery Scan on cte (actual rows=15.00 loops=1)
+               ->  Sort (actual rows=15.00 loops=1)
                      Sort Key: t_asc.v
                      Sort Method: quicksort
-                     ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                     ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
                            Storage Table Rows Scanned: 15
@@ -916,18 +917,18 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED), filtered AS (SELECT k FROM locked WHERE k < 6) SELECT k FROM filtered ORDER BY k;
-                        QUERY PLAN                        
-----------------------------------------------------------
- Sort (actual rows=5 loops=1)
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Sort (actual rows=5.00 loops=1)
    Sort Key: locked.k
    Sort Method: quicksort
    CTE locked
-     ->  LockRows (actual rows=15 loops=1)
-           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+     ->  LockRows (actual rows=15.00 loops=1)
+           ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                  Storage Table Read Requests: 1
                  Storage Table Read Ops: 1
                  Storage Table Rows Scanned: 15
-   ->  CTE Scan on locked (actual rows=5 loops=1)
+   ->  CTE Scan on locked (actual rows=5.00 loops=1)
          Filter: (k < 6)
          Rows Removed by Filter: 10
  Storage Read Requests: 16
@@ -966,14 +967,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub WHERE k < 6 ORDER BY k;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Sort (actual rows=5 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Sort (actual rows=5.00 loops=1)
    Sort Key: sub.k
    Sort Method: quicksort
-   ->  Subquery Scan on sub (actual rows=5 loops=1)
-         ->  LockRows (actual rows=5 loops=1)
-               ->  Index Scan using t_asc_pkey on t_asc (actual rows=5 loops=1)
+   ->  Subquery Scan on sub (actual rows=5.00 loops=1)
+         ->  LockRows (actual rows=5.00 loops=1)
+               ->  Index Scan using t_asc_pkey on t_asc (actual rows=5.00 loops=1)
                      Index Cond: (k < 6)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -1011,16 +1012,16 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (3 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED LIMIT 3) sub WHERE k < 6 ORDER BY k;
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Sort (actual rows=3 loops=1)
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Sort (actual rows=3.00 loops=1)
    Sort Key: sub.k
    Sort Method: quicksort
-   ->  Subquery Scan on sub (actual rows=3 loops=1)
+   ->  Subquery Scan on sub (actual rows=3.00 loops=1)
          Filter: (sub.k < 6)
-         ->  Limit (actual rows=3 loops=1)
-               ->  LockRows (actual rows=3 loops=1)
-                     ->  Seq Scan on t_asc (actual rows=3 loops=1)
+         ->  Limit (actual rows=3.00 loops=1)
+               ->  LockRows (actual rows=3.00 loops=1)
+                     ->  Seq Scan on t_asc (actual rows=3.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
                            Storage Table Rows Scanned: 3
@@ -1081,15 +1082,15 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc ORDER BY v) sub FOR UPDATE SKIP LOCKED;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- LockRows (actual rows=15 loops=1)
-   ->  Subquery Scan on sub (actual rows=15 loops=1)
-         ->  LockRows (actual rows=15 loops=1)
-               ->  Sort (actual rows=15 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ LockRows (actual rows=15.00 loops=1)
+   ->  Subquery Scan on sub (actual rows=15.00 loops=1)
+         ->  LockRows (actual rows=15.00 loops=1)
+               ->  Sort (actual rows=15.00 loops=1)
                      Sort Key: t_asc.v
                      Sort Method: quicksort
-                     ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                     ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
                            Storage Table Rows Scanned: 15
@@ -1140,18 +1141,18 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (10 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a FOR UPDATE SKIP LOCKED;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- LockRows (actual rows=10 loops=1)
-   ->  Sort (actual rows=10 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ LockRows (actual rows=10.00 loops=1)
+   ->  Sort (actual rows=10.00 loops=1)
          Sort Key: t_part.a
          Sort Method: quicksort
-         ->  Append (actual rows=10 loops=1)
-               ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+         ->  Append (actual rows=10.00 loops=1)
+               ->  Seq Scan on t_part_lo t_part_1 (actual rows=5.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 3
                      Storage Table Rows Scanned: 5
-               ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+               ->  Seq Scan on t_part_hi t_part_2 (actual rows=5.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 3
                      Storage Table Rows Scanned: 5
@@ -1195,14 +1196,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (8 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc ORDER BY v OFFSET 3 LIMIT 5 FOR UPDATE SKIP LOCKED;
-                          QUERY PLAN                          
---------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=8 loops=1)
-         ->  Sort (actual rows=8 loops=1)
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=8.00 loops=1)
+         ->  Sort (actual rows=8.00 loops=1)
                Sort Key: v
                Sort Method: quicksort
-               ->  Seq Scan on t_asc (actual rows=15 loops=1)
+               ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 15
@@ -1239,16 +1240,16 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (3 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) sub LIMIT 3;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  Subquery Scan on sub (actual rows=3 loops=1)
-         ->  Limit (actual rows=3 loops=1)
-               ->  LockRows (actual rows=3 loops=1)
-                     ->  Sort (actual rows=3 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  Subquery Scan on sub (actual rows=3.00 loops=1)
+         ->  Limit (actual rows=3.00 loops=1)
+               ->  LockRows (actual rows=3.00 loops=1)
+                     ->  Sort (actual rows=3.00 loops=1)
                            Sort Key: t_asc.v
                            Sort Method: quicksort
-                           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                           ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 1
                                  Storage Table Rows Scanned: 15
@@ -1284,17 +1285,17 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (3 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10) sub LIMIT 3 FOR UPDATE SKIP LOCKED;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Subquery Scan on sub (actual rows=3 loops=1)
-               ->  Limit (actual rows=3 loops=1)
-                     ->  LockRows (actual rows=3 loops=1)
-                           ->  Sort (actual rows=3 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Subquery Scan on sub (actual rows=3.00 loops=1)
+               ->  Limit (actual rows=3.00 loops=1)
+                     ->  LockRows (actual rows=3.00 loops=1)
+                           ->  Sort (actual rows=3.00 loops=1)
                                  Sort Key: t_asc.v
                                  Sort Method: quicksort
-                                 ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                                 ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                                        Storage Table Read Requests: 1
                                        Storage Table Read Ops: 1
                                        Storage Table Rows Scanned: 15
@@ -1344,15 +1345,15 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub ORDER BY k LIMIT 5;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  Sort (actual rows=5 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: sub.k
          Sort Method: top-N heapsort
-         ->  Subquery Scan on sub (actual rows=15 loops=1)
-               ->  LockRows (actual rows=15 loops=1)
-                     ->  Seq Scan on t_asc (actual rows=15 loops=1)
+         ->  Subquery Scan on sub (actual rows=15.00 loops=1)
+               ->  LockRows (actual rows=15.00 loops=1)
+                     ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
                            Storage Table Rows Scanned: 15
@@ -1463,17 +1464,17 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE SKIP LOCKED;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- LockRows (actual rows=24 loops=1)
-   ->  Sort (actual rows=24 loops=1)
+ LockRows (actual rows=24.00 loops=1)
+   ->  Sort (actual rows=24.00 loops=1)
          Sort Key: t_a.id, t_b.cid
          Sort Method: quicksort
-         ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+         ->  YB Batched Nested Loop Join (actual rows=24.00 loops=1)
                Join Filter: (t_a.id = t_b.parent_id)
-               ->  Seq Scan on t_b (actual rows=24 loops=1)
+               ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 24
-               ->  Index Scan using t_a_pkey on t_a (actual rows=8 loops=1)
+               ->  Index Scan using t_a_pkey on t_a (actual rows=8.00 loops=1)
                      Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -1555,17 +1556,17 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE OF t_a SKIP LOCKED;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- LockRows (actual rows=24 loops=1)
-   ->  Sort (actual rows=24 loops=1)
+ LockRows (actual rows=24.00 loops=1)
+   ->  Sort (actual rows=24.00 loops=1)
          Sort Key: t_a.id, t_b.cid
          Sort Method: quicksort
-         ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+         ->  YB Batched Nested Loop Join (actual rows=24.00 loops=1)
                Join Filter: (t_a.id = t_b.parent_id)
-               ->  Seq Scan on t_b (actual rows=24 loops=1)
+               ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 24
-               ->  Index Scan using t_a_pkey on t_a (actual rows=8 loops=1)
+               ->  Index Scan using t_a_pkey on t_a (actual rows=8.00 loops=1)
                      Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -1599,20 +1600,20 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (1 row)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a LEFT JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id = 9 ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- LockRows (actual rows=1 loops=1)
-   ->  Sort (actual rows=1 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ LockRows (actual rows=1.00 loops=1)
+   ->  Sort (actual rows=1.00 loops=1)
          Sort Key: t_a.ord
          Sort Method: quicksort
-         ->  Nested Loop Left Join (actual rows=1 loops=1)
+         ->  Nested Loop Left Join (actual rows=1.00 loops=1)
                Join Filter: (t_a.id = t_b.parent_id)
-               ->  Index Scan using t_a_pkey on t_a (actual rows=1 loops=1)
+               ->  Index Scan using t_a_pkey on t_a (actual rows=1.00 loops=1)
                      Index Cond: (id = 9)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 1
-               ->  Index Scan using t_b_parent_idx on t_b (actual rows=0 loops=1)
+               ->  Index Scan using t_b_parent_idx on t_b (actual rows=0.00 loops=1)
                      Index Cond: (parent_id = 9)
                      Storage Index Read Requests: 1
                      Storage Index Read Ops: 1
@@ -1660,24 +1661,24 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Incremental Sort (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Incremental Sort (actual rows=5.00 loops=1)
                Sort Key: t_a.id, t_b.cid
                Presorted Key: t_a.id
                Full-sort Groups: 1  Sort Method: quicksort
-               ->  Result (actual rows=24 loops=1)
-                     ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+               ->  Result (actual rows=24.00 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=24.00 loops=1)
                            Join Filter: (t_a.id = t_b.parent_id)
                            Sort Keys: t_a.id
-                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                                  Storage Table Read Requests: 2
                                  Storage Table Read Ops: 2
                                  Storage Table Rows Scanned: 24
                                  Storage Index Read Requests: 2
                                  Storage Index Read Ops: 2
                                  Storage Index Rows Scanned: 24
-                           ->  Index Scan using t_a_pkey on t_a (actual rows=4 loops=2)
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=4.00 loops=2)
                                  Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 1
@@ -1719,20 +1720,20 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT x.id AS x_id, y.id AS y_id FROM t_a x JOIN t_a y ON x.id = y.id ORDER BY x.ord LIMIT 5 FOR UPDATE OF x SKIP LOCKED;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Sort (actual rows=5 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Sort (actual rows=5.00 loops=1)
                Sort Key: x.ord
                Sort Method: quicksort
-               ->  YB Batched Nested Loop Join (actual rows=9 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=9.00 loops=1)
                      Join Filter: (x.id = y.id)
-                     ->  Seq Scan on t_a x (actual rows=9 loops=1)
+                     ->  Seq Scan on t_a x (actual rows=9.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
                            Storage Table Rows Scanned: 9
-                     ->  Index Scan using t_a_pkey on t_a y (actual rows=9 loops=1)
+                     ->  Index Scan using t_a_pkey on t_a y (actual rows=9.00 loops=1)
                            Index Cond: (id = ANY (ARRAY[x.id, $2, $3, ..., $1024]))
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -1778,22 +1779,22 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub.id, t_b.cid FROM (SELECT * FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.ord, t_b.cid;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
- Sort (actual rows=9 loops=1)
+ Sort (actual rows=9.00 loops=1)
    Sort Key: sub.ord, t_b.cid
    Sort Method: quicksort
-   ->  YB Batched Nested Loop Join (actual rows=9 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=9.00 loops=1)
          Join Filter: (sub.id = t_b.parent_id)
-         ->  Subquery Scan on sub (actual rows=3 loops=1)
-               ->  Limit (actual rows=3 loops=1)
-                     ->  LockRows (actual rows=3 loops=1)
-                           ->  Sort (actual rows=3 loops=1)
+         ->  Subquery Scan on sub (actual rows=3.00 loops=1)
+               ->  Limit (actual rows=3.00 loops=1)
+                     ->  LockRows (actual rows=3.00 loops=1)
+                           ->  Sort (actual rows=3.00 loops=1)
                                  Sort Key: t_a.ord
                                  Sort Method: quicksort
-                                 ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                 ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                                        Storage Table Read Requests: 1
                                        Storage Table Read Ops: 1
                                        Storage Table Rows Scanned: 9
-         ->  Index Scan using t_b_parent_idx on t_b (actual rows=9 loops=1)
+         ->  Index Scan using t_b_parent_idx on t_b (actual rows=9.00 loops=1)
                Index Cond: (parent_id = ANY (ARRAY[sub.id, $2, $3, ..., $1024]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -1845,24 +1846,24 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Incremental Sort (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Incremental Sort (actual rows=5.00 loops=1)
                Sort Key: t_a.id, t_b.cid
                Presorted Key: t_a.id
                Full-sort Groups: 1  Sort Method: quicksort
-               ->  Result (actual rows=12 loops=1)
-                     ->  YB Batched Nested Loop Join (actual rows=12 loops=1)
+               ->  Result (actual rows=12.00 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=12.00 loops=1)
                            Join Filter: (t_a.id = t_b.parent_id)
                            Sort Keys: t_a.id
-                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                                  Storage Table Read Requests: 2
                                  Storage Table Read Ops: 2
                                  Storage Table Rows Scanned: 24
                                  Storage Index Read Requests: 2
                                  Storage Index Read Ops: 2
                                  Storage Index Rows Scanned: 24
-                           ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=2)
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=2.00 loops=2)
                                  Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
                                  Storage Filter: (grp = 1)
                                  Storage Table Read Requests: 1
@@ -1912,14 +1913,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Sort (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Sort (actual rows=5.00 loops=1)
                Sort Key: t_a.id, t_b.cid
                Sort Method: quicksort
-               ->  YB Batched Nested Loop Join (actual rows=6 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=6.00 loops=1)
                      Join Filter: (t_a.id = t_b.parent_id)
-                     ->  Index Scan using t_b_val_idx on t_b (actual rows=6 loops=1)
+                     ->  Index Scan using t_b_val_idx on t_b (actual rows=6.00 loops=1)
                            Index Cond: (val < 70)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -1927,7 +1928,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                            Storage Index Read Requests: 1
                            Storage Index Read Ops: 1
                            Storage Index Rows Scanned: 6
-                     ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=2.00 loops=1)
                            Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -1976,14 +1977,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 AND t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Sort (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Sort (actual rows=5.00 loops=1)
                Sort Key: t_a.id, t_b.cid
                Sort Method: quicksort
-               ->  YB Batched Nested Loop Join (actual rows=6 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=6.00 loops=1)
                      Join Filter: (t_a.id = t_b.parent_id)
-                     ->  Index Scan using t_b_val_idx on t_b (actual rows=6 loops=1)
+                     ->  Index Scan using t_b_val_idx on t_b (actual rows=6.00 loops=1)
                            Index Cond: (val < 70)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -1991,7 +1992,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                            Storage Index Read Requests: 1
                            Storage Index Read Ops: 1
                            Storage Index Rows Scanned: 6
-                     ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=2.00 loops=1)
                            Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
                            Storage Filter: (grp = 1)
                            Storage Table Read Requests: 1
@@ -2035,24 +2036,24 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id::text LIKE '%1%' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Incremental Sort (actual rows=3 loops=1)
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Incremental Sort (actual rows=3.00 loops=1)
                Sort Key: t_a.id, t_b.cid
                Presorted Key: t_a.id
                Full-sort Groups: 1  Sort Method: quicksort
-               ->  Result (actual rows=3 loops=1)
-                     ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+               ->  Result (actual rows=3.00 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
                            Join Filter: (t_a.id = t_b.parent_id)
                            Sort Keys: t_a.id
-                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                                  Storage Table Read Requests: 2
                                  Storage Table Read Ops: 2
                                  Storage Table Rows Scanned: 24
                                  Storage Index Read Requests: 2
                                  Storage Index Read Ops: 2
                                  Storage Index Rows Scanned: 24
-                           ->  Index Scan using t_a_pkey on t_a (actual rows=0 loops=2)
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=0.00 loops=2)
                                  Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
                                  Filter: ((id)::text ~~ '%1%'::text)
                                  Rows Removed by Filter: 4
@@ -2103,17 +2104,17 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.cid::text LIKE '%1%' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Incremental Sort (actual rows=5 loops=1)
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Incremental Sort (actual rows=5.00 loops=1)
                Sort Key: t_a.id, t_b.cid
                Presorted Key: t_a.id
                Full-sort Groups: 1  Sort Method: quicksort
-               ->  Result (actual rows=12 loops=1)
-                     ->  YB Batched Nested Loop Join (actual rows=12 loops=1)
+               ->  Result (actual rows=12.00 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=12.00 loops=1)
                            Join Filter: (t_a.id = t_b.parent_id)
                            Sort Keys: t_a.id
-                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=12 loops=1)
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=12.00 loops=1)
                                  Filter: ((cid)::text ~~ '%1%'::text)
                                  Rows Removed by Filter: 12
                                  Storage Table Read Requests: 1
@@ -2122,7 +2123,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_
                                  Storage Index Read Requests: 1
                                  Storage Index Read Ops: 1
                                  Storage Index Rows Scanned: 24
-                           ->  Index Scan using t_a_pkey on t_a (actual rows=3 loops=2)
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=3.00 loops=2)
                                  Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 1
@@ -2169,23 +2170,23 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (10 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id + t_b.cid > 15 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Incremental Sort (actual rows=5 loops=1)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Incremental Sort (actual rows=5.00 loops=1)
                Sort Key: t_a.id, t_b.cid
                Presorted Key: t_a.id
                Full-sort Groups: 1  Sort Method: quicksort
-               ->  Nested Loop (actual rows=13 loops=1)
-                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+               ->  Nested Loop (actual rows=13.00 loops=1)
+                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                            Storage Table Read Requests: 2
                            Storage Table Read Ops: 2
                            Storage Table Rows Scanned: 24
                            Storage Index Read Requests: 2
                            Storage Index Read Ops: 2
                            Storage Index Rows Scanned: 24
-                     ->  Index Scan using t_a_pkey on t_a (actual rows=1 loops=24)
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=0.54 loops=24)
                            Index Cond: (id = t_b.parent_id)
                            Storage Filter: ((id + t_b.cid) > 15)
                            Storage Table Read Requests: 1
@@ -2228,14 +2229,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id FROM t_a JOIN unnest(ARRAY[1, 2, 3, 4]) AS ids(id) ON t_a.id = ids.id ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- LockRows (actual rows=4 loops=1)
-   ->  Sort (actual rows=4 loops=1)
+ LockRows (actual rows=4.00 loops=1)
+   ->  Sort (actual rows=4.00 loops=1)
          Sort Key: t_a.ord
          Sort Method: quicksort
-         ->  YB Batched Nested Loop Join (actual rows=4 loops=1)
+         ->  YB Batched Nested Loop Join (actual rows=4.00 loops=1)
                Join Filter: (t_a.id = ids.id)
-               ->  Function Scan on unnest ids (actual rows=4 loops=1)
-               ->  Index Scan using t_a_pkey on t_a (actual rows=4 loops=1)
+               ->  Function Scan on unnest ids (actual rows=4.00 loops=1)
+               ->  Index Scan using t_a_pkey on t_a (actual rows=4.00 loops=1)
                      Index Cond: (id = ANY (ARRAY[ids.id, $2, $3, ..., $1024]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -2280,30 +2281,30 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (8 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_b.cid, t_a.id FROM t_b JOIN t_a ON t_b.parent_id = t_a.id WHERE t_b.parent_id = 1 OR t_b.val = 60 ORDER BY t_b.ord FOR UPDATE SKIP LOCKED;
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
- LockRows (actual rows=4 loops=1)
-   ->  Sort (actual rows=4 loops=1)
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ LockRows (actual rows=4.00 loops=1)
+   ->  Sort (actual rows=4.00 loops=1)
          Sort Key: t_b.ord
          Sort Method: quicksort
-         ->  YB Batched Nested Loop Join (actual rows=4 loops=1)
+         ->  YB Batched Nested Loop Join (actual rows=4.00 loops=1)
                Join Filter: (t_b.parent_id = t_a.id)
-               ->  YB Bitmap Table Scan on t_b (actual rows=4 loops=1)
+               ->  YB Bitmap Table Scan on t_b (actual rows=4.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 4
-                     ->  BitmapOr (actual rows=4 loops=1)
-                           ->  Bitmap Index Scan on t_b_parent_idx (actual rows=3 loops=1)
+                     ->  BitmapOr (actual rows=4.00 loops=1)
+                           ->  Bitmap Index Scan on t_b_parent_idx (actual rows=3.00 loops=1)
                                  Index Cond: (parent_id = 1)
                                  Storage Index Read Requests: 1
                                  Storage Index Read Ops: 1
                                  Storage Index Rows Scanned: 3
-                           ->  Bitmap Index Scan on t_b_val_idx (actual rows=1 loops=1)
+                           ->  Bitmap Index Scan on t_b_val_idx (actual rows=1.00 loops=1)
                                  Index Cond: (val = 60)
                                  Storage Index Read Requests: 1
                                  Storage Index Read Ops: 1
                                  Storage Index Rows Scanned: 1
-               ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+               ->  Index Scan using t_a_pkey on t_a (actual rows=2.00 loops=1)
                      Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
@@ -2354,21 +2355,21 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub.k, t_multi.v FROM (SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED) sub JOIN t_multi ON sub.k = t_multi.k1 LIMIT 3;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
          Join Filter: (sub.k = t_multi.k1)
-         ->  Subquery Scan on sub (actual rows=15 loops=1)
-               ->  LockRows (actual rows=15 loops=1)
-                     ->  Sort (actual rows=15 loops=1)
+         ->  Subquery Scan on sub (actual rows=15.00 loops=1)
+               ->  LockRows (actual rows=15.00 loops=1)
+                     ->  Sort (actual rows=15.00 loops=1)
                            Sort Key: t_asc.v
                            Sort Method: quicksort
-                           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                           ->  Seq Scan on t_asc (actual rows=15.00 loops=1)
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 1
                                  Storage Table Rows Scanned: 15
-         ->  Index Scan using t_multi_pkey on t_multi (actual rows=2 loops=2)
+         ->  Index Scan using t_multi_pkey on t_multi (actual rows=1.50 loops=2)
                Index Cond: (k1 = ANY (ARRAY[sub.k, $2, $3, ..., $1024]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 2
@@ -2420,37 +2421,37 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (12 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a JOIN locked_b ON locked_a.id = locked_b.parent_id ORDER BY locked_a.id, locked_b.cid;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Sort (actual rows=9 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Sort (actual rows=9.00 loops=1)
    Sort Key: locked_a.id, locked_b.cid
    Sort Method: quicksort
    CTE locked_a
-     ->  Limit (actual rows=3 loops=1)
-           ->  LockRows (actual rows=3 loops=1)
-                 ->  Sort (actual rows=3 loops=1)
+     ->  Limit (actual rows=3.00 loops=1)
+           ->  LockRows (actual rows=3.00 loops=1)
+                 ->  Sort (actual rows=3.00 loops=1)
                        Sort Key: t_a.ord
                        Sort Method: quicksort
-                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                       ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 9
    CTE locked_b
-     ->  Limit (actual rows=9 loops=1)
-           ->  LockRows (actual rows=9 loops=1)
-                 ->  Sort (actual rows=9 loops=1)
+     ->  Limit (actual rows=9.00 loops=1)
+           ->  LockRows (actual rows=9.00 loops=1)
+                 ->  Sort (actual rows=9.00 loops=1)
                        Sort Key: t_b.ord
                        Sort Method: quicksort
-                       ->  Seq Scan on t_b (actual rows=24 loops=1)
+                       ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 24
-   ->  Hash Join (actual rows=9 loops=1)
+   ->  Hash Join (actual rows=9.00 loops=1)
          Hash Cond: (locked_b.parent_id = locked_a.id)
-         ->  CTE Scan on locked_b (actual rows=9 loops=1)
-         ->  Hash (actual rows=3 loops=1)
+         ->  CTE Scan on locked_b (actual rows=9.00 loops=1)
+         ->  Hash (actual rows=3.00 loops=1)
                Buckets: 1024 (originally 1024)  Original Batches: 1
-               ->  CTE Scan on locked_a (actual rows=3 loops=1)
+               ->  CTE Scan on locked_a (actual rows=3.00 loops=1)
  Storage Read Requests: 14
  Storage Read Ops: 14
  Storage Rows Scanned: 45
@@ -2498,36 +2499,36 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (12 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Sort (actual rows=9 loops=1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Sort (actual rows=9.00 loops=1)
    Sort Key: sub_a.id, sub_b.cid
    Sort Method: quicksort
-   ->  Merge Join (actual rows=9 loops=1)
+   ->  Merge Join (actual rows=9.00 loops=1)
          Merge Cond: (sub_a.id = sub_b.parent_id)
-         ->  Sort (actual rows=3 loops=1)
+         ->  Sort (actual rows=3.00 loops=1)
                Sort Key: sub_a.id
                Sort Method: quicksort
-               ->  Subquery Scan on sub_a (actual rows=3 loops=1)
-                     ->  Limit (actual rows=3 loops=1)
-                           ->  LockRows (actual rows=3 loops=1)
-                                 ->  Sort (actual rows=3 loops=1)
+               ->  Subquery Scan on sub_a (actual rows=3.00 loops=1)
+                     ->  Limit (actual rows=3.00 loops=1)
+                           ->  LockRows (actual rows=3.00 loops=1)
+                                 ->  Sort (actual rows=3.00 loops=1)
                                        Sort Key: t_a.ord
                                        Sort Method: quicksort
-                                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                       ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                                              Storage Table Read Requests: 1
                                              Storage Table Read Ops: 1
                                              Storage Table Rows Scanned: 9
-         ->  Sort (actual rows=9 loops=1)
+         ->  Sort (actual rows=9.00 loops=1)
                Sort Key: sub_b.parent_id
                Sort Method: quicksort
-               ->  Subquery Scan on sub_b (actual rows=9 loops=1)
-                     ->  Limit (actual rows=9 loops=1)
-                           ->  LockRows (actual rows=9 loops=1)
-                                 ->  Sort (actual rows=9 loops=1)
+               ->  Subquery Scan on sub_b (actual rows=9.00 loops=1)
+                     ->  Limit (actual rows=9.00 loops=1)
+                           ->  LockRows (actual rows=9.00 loops=1)
+                                 ->  Sort (actual rows=9.00 loops=1)
                                        Sort Key: t_b.ord
                                        Sort Method: quicksort
-                                       ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                       ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                                              Storage Table Read Requests: 1
                                              Storage Table Read Ops: 1
                                              Storage Table Rows Scanned: 24
@@ -2573,34 +2574,34 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (6 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 2 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid FROM t_b ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a CROSS JOIN locked_b ORDER BY locked_a.id, locked_b.cid;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Sort (actual rows=8 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Sort (actual rows=8.00 loops=1)
    Sort Key: locked_a.id, locked_b.cid
    Sort Method: quicksort
    CTE locked_a
-     ->  Limit (actual rows=2 loops=1)
-           ->  LockRows (actual rows=2 loops=1)
-                 ->  Sort (actual rows=2 loops=1)
+     ->  Limit (actual rows=2.00 loops=1)
+           ->  LockRows (actual rows=2.00 loops=1)
+                 ->  Sort (actual rows=2.00 loops=1)
                        Sort Key: t_a.ord
                        Sort Method: quicksort
-                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                       ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 9
    CTE locked_b
-     ->  Limit (actual rows=4 loops=1)
-           ->  LockRows (actual rows=4 loops=1)
-                 ->  Sort (actual rows=4 loops=1)
+     ->  Limit (actual rows=4.00 loops=1)
+           ->  LockRows (actual rows=4.00 loops=1)
+                 ->  Sort (actual rows=4.00 loops=1)
                        Sort Key: t_b.ord
                        Sort Method: quicksort
-                       ->  Seq Scan on t_b (actual rows=24 loops=1)
+                       ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 24
-   ->  Nested Loop (actual rows=8 loops=1)
-         ->  CTE Scan on locked_a (actual rows=2 loops=1)
-         ->  CTE Scan on locked_b (actual rows=4 loops=2)
+   ->  Nested Loop (actual rows=8.00 loops=1)
+         ->  CTE Scan on locked_a (actual rows=2.00 loops=1)
+         ->  CTE Scan on locked_b (actual rows=4.00 loops=2)
  Storage Read Requests: 8
  Storage Read Ops: 8
  Storage Rows Scanned: 39
@@ -2649,37 +2650,37 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (16 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 6;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Limit (actual rows=6 loops=1)
-   ->  Sort (actual rows=6 loops=1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit (actual rows=6.00 loops=1)
+   ->  Sort (actual rows=6.00 loops=1)
          Sort Key: sub_a.id, sub_b.cid
          Sort Method: quicksort
-         ->  Merge Join (actual rows=12 loops=1)
+         ->  Merge Join (actual rows=12.00 loops=1)
                Merge Cond: (sub_a.id = sub_b.parent_id)
-               ->  Sort (actual rows=4 loops=1)
+               ->  Sort (actual rows=4.00 loops=1)
                      Sort Key: sub_a.id
                      Sort Method: quicksort
-                     ->  Subquery Scan on sub_a (actual rows=4 loops=1)
-                           ->  Limit (actual rows=4 loops=1)
-                                 ->  LockRows (actual rows=4 loops=1)
-                                       ->  Sort (actual rows=4 loops=1)
+                     ->  Subquery Scan on sub_a (actual rows=4.00 loops=1)
+                           ->  Limit (actual rows=4.00 loops=1)
+                                 ->  LockRows (actual rows=4.00 loops=1)
+                                       ->  Sort (actual rows=4.00 loops=1)
                                              Sort Key: t_a.ord
                                              Sort Method: quicksort
-                                             ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                             ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                                                    Storage Table Read Requests: 1
                                                    Storage Table Read Ops: 1
                                                    Storage Table Rows Scanned: 9
                ->  Sort (actual rows=12 loops=1)
                      Sort Key: sub_b.parent_id
                      Sort Method: quicksort
-                     ->  Subquery Scan on sub_b (actual rows=12 loops=1)
-                           ->  Limit (actual rows=12 loops=1)
-                                 ->  LockRows (actual rows=12 loops=1)
-                                       ->  Sort (actual rows=12 loops=1)
+                     ->  Subquery Scan on sub_b (actual rows=12.00 loops=1)
+                           ->  Limit (actual rows=12.00 loops=1)
+                                 ->  LockRows (actual rows=12.00 loops=1)
+                                       ->  Sort (actual rows=12.00 loops=1)
                                              Sort Key: t_b.ord
                                              Sort Method: quicksort
-                                             ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                             ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                                                    Storage Table Read Requests: 1
                                                    Storage Table Read Ops: 1
                                                    Storage Table Rows Scanned: 24
@@ -2725,24 +2726,24 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub.id, t_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 8 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Sort (actual rows=3 loops=1)
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Sort (actual rows=3.00 loops=1)
                Sort Key: sub.id, t_b.cid
                Sort Method: quicksort
-               ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=24.00 loops=1)
                      Join Filter: (sub.id = t_b.parent_id)
-                     ->  Subquery Scan on sub (actual rows=8 loops=1)
-                           ->  Limit (actual rows=8 loops=1)
-                                 ->  LockRows (actual rows=8 loops=1)
-                                       ->  Sort (actual rows=8 loops=1)
+                     ->  Subquery Scan on sub (actual rows=8.00 loops=1)
+                           ->  Limit (actual rows=8.00 loops=1)
+                                 ->  LockRows (actual rows=8.00 loops=1)
+                                       ->  Sort (actual rows=8.00 loops=1)
                                              Sort Key: t_a.ord
                                              Sort Method: quicksort
-                                             ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                             ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                                                    Storage Table Read Requests: 1
                                                    Storage Table Read Ops: 1
                                                    Storage Table Rows Scanned: 9
-                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=24.00 loops=1)
                            Index Cond: (parent_id = ANY (ARRAY[sub.id, $3, $4, ..., $1025]))
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -2799,24 +2800,24 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, sub.cid FROM t_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub ON t_a.id = sub.parent_id ORDER BY t_a.id, sub.cid LIMIT 4 FOR UPDATE SKIP LOCKED;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
- Limit (actual rows=4 loops=1)
-   ->  LockRows (actual rows=4 loops=1)
-         ->  Sort (actual rows=4 loops=1)
+ Limit (actual rows=4.00 loops=1)
+   ->  LockRows (actual rows=4.00 loops=1)
+         ->  Sort (actual rows=4.00 loops=1)
                Sort Key: t_a.id, sub.cid
                Sort Method: quicksort
-               ->  YB Batched Nested Loop Join (actual rows=12 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=12.00 loops=1)
                      Join Filter: (t_a.id = sub.parent_id)
-                     ->  Subquery Scan on sub (actual rows=12 loops=1)
-                           ->  Limit (actual rows=12 loops=1)
-                                 ->  LockRows (actual rows=12 loops=1)
-                                       ->  Sort (actual rows=12 loops=1)
+                     ->  Subquery Scan on sub (actual rows=12.00 loops=1)
+                           ->  Limit (actual rows=12.00 loops=1)
+                                 ->  LockRows (actual rows=12.00 loops=1)
+                                       ->  Sort (actual rows=12.00 loops=1)
                                              Sort Key: t_b.ord
                                              Sort Method: quicksort
-                                             ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                             ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                                                    Storage Table Read Requests: 1
                                                    Storage Table Read Ops: 1
                                                    Storage Table Rows Scanned: 24
-                     ->  Index Scan using t_a_pkey on t_a (actual rows=4 loops=1)
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=4.00 loops=1)
                            Index Cond: (id = ANY (ARRAY[sub.parent_id, $3, $4, ..., $1025]))
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -2862,25 +2863,25 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, t_b.cid FROM locked_a JOIN t_b ON locked_a.id = t_b.parent_id ORDER BY locked_a.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
+ Limit (actual rows=3.00 loops=1)
    CTE locked_a
-     ->  Limit (actual rows=6 loops=1)
-           ->  LockRows (actual rows=6 loops=1)
-                 ->  Sort (actual rows=6 loops=1)
+     ->  Limit (actual rows=6.00 loops=1)
+           ->  LockRows (actual rows=6.00 loops=1)
+                 ->  Sort (actual rows=6.00 loops=1)
                        Sort Key: t_a.ord
                        Sort Method: quicksort
-                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                       ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                              Storage Table Read Requests: 1
                              Storage Table Read Ops: 1
                              Storage Table Rows Scanned: 9
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Sort (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Sort (actual rows=3.00 loops=1)
                Sort Key: locked_a.id, t_b.cid
                Sort Method: quicksort
-               ->  YB Batched Nested Loop Join (actual rows=18 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=18.00 loops=1)
                      Join Filter: (locked_a.id = t_b.parent_id)
-                     ->  CTE Scan on locked_a (actual rows=6 loops=1)
-                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=18 loops=1)
+                     ->  CTE Scan on locked_a (actual rows=6.00 loops=1)
+                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=18.00 loops=1)
                            Index Cond: (parent_id = ANY (ARRAY[locked_a.id, $4, $5, ..., $1026]))
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
@@ -2933,38 +2934,38 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (15 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Sort (actual rows=3 loops=1)
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Sort (actual rows=3.00 loops=1)
                Sort Key: sub_a.id, sub_b.cid
                Sort Method: quicksort
-               ->  Merge Join (actual rows=9 loops=1)
+               ->  Merge Join (actual rows=9.00 loops=1)
                      Merge Cond: (sub_a.id = sub_b.parent_id)
-                     ->  Sort (actual rows=4 loops=1)
+                     ->  Sort (actual rows=4.00 loops=1)
                            Sort Key: sub_a.id
                            Sort Method: quicksort
-                           ->  Subquery Scan on sub_a (actual rows=6 loops=1)
-                                 ->  Limit (actual rows=6 loops=1)
-                                       ->  LockRows (actual rows=6 loops=1)
-                                             ->  Sort (actual rows=6 loops=1)
+                           ->  Subquery Scan on sub_a (actual rows=6.00 loops=1)
+                                 ->  Limit (actual rows=6.00 loops=1)
+                                       ->  LockRows (actual rows=6.00 loops=1)
+                                             ->  Sort (actual rows=6.00 loops=1)
                                                    Sort Key: t_a.ord
                                                    Sort Method: quicksort
-                                                   ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                                   ->  Seq Scan on t_a (actual rows=9.00 loops=1)
                                                          Storage Table Read Requests: 1
                                                          Storage Table Read Ops: 1
                                                          Storage Table Rows Scanned: 9
-                     ->  Sort (actual rows=9 loops=1)
+                     ->  Sort (actual rows=9.00 loops=1)
                            Sort Key: sub_b.parent_id
                            Sort Method: quicksort
-                           ->  Subquery Scan on sub_b (actual rows=9 loops=1)
-                                 ->  Limit (actual rows=9 loops=1)
-                                       ->  LockRows (actual rows=9 loops=1)
-                                             ->  Sort (actual rows=9 loops=1)
+                           ->  Subquery Scan on sub_b (actual rows=9.00 loops=1)
+                                 ->  Limit (actual rows=9.00 loops=1)
+                                       ->  LockRows (actual rows=9.00 loops=1)
+                                             ->  Sort (actual rows=9.00 loops=1)
                                                    Sort Key: t_b.ord
                                                    Sort Method: quicksort
-                                                   ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                                   ->  Seq Scan on t_b (actual rows=24.00 loops=1)
                                                          Storage Table Read Requests: 1
                                                          Storage Table Read Ops: 1
                                                          Storage Table Rows Scanned: 24
@@ -2983,6 +2984,8 @@ SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub_a.id, sub_b.cid FROM (SELE
 ROLLBACK;
 SELECT k FROM t_asc ORDER BY k FETCH FIRST 5 ROWS WITH TIES FOR UPDATE SKIP LOCKED;
 ERROR:  SKIP LOCKED and WITH TIES options cannot be used together
+LINE 1: SELECT k FROM t_asc ORDER BY k FETCH FIRST 5 ROWS WITH TIES ...
+                                                          ^
 SELECT DISTINCT k FROM t_asc FOR UPDATE SKIP LOCKED;
 ERROR:  FOR UPDATE is not allowed with DISTINCT clause
 SELECT k, count(*) FROM t_asc GROUP BY k FOR UPDATE SKIP LOCKED;
@@ -3123,19 +3126,19 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (3 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Sort (actual rows=3 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Sort (actual rows=3.00 loops=1)
                Sort Key: t_part.a
                Sort Method: quicksort
-               ->  Append (actual rows=10 loops=1)
-                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+               ->  Append (actual rows=10.00 loops=1)
+                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 5
-                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 5
@@ -3180,19 +3183,19 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (7 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a LIMIT 7 FOR UPDATE SKIP LOCKED;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Limit (actual rows=7 loops=1)
-   ->  LockRows (actual rows=7 loops=1)
-         ->  Sort (actual rows=7 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit (actual rows=7.00 loops=1)
+   ->  LockRows (actual rows=7.00 loops=1)
+         ->  Sort (actual rows=7.00 loops=1)
                Sort Key: t_part.a
                Sort Method: quicksort
-               ->  Append (actual rows=10 loops=1)
-                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+               ->  Append (actual rows=10.00 loops=1)
+                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 5
-                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 5
@@ -3233,13 +3236,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part WHERE a < 6 ORDER BY a FOR UPDATE SKIP LOCKED;
-                             QUERY PLAN                             
---------------------------------------------------------------------
- LockRows (actual rows=5 loops=1)
-   ->  Sort (actual rows=5 loops=1)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ LockRows (actual rows=5.00 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: t_part_1.a
          Sort Method: quicksort
-         ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+         ->  Seq Scan on t_part_lo t_part_1 (actual rows=5.00 loops=1)
                Storage Filter: (a < 6)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
@@ -3277,14 +3280,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (3 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part WHERE a < 6 ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Sort (actual rows=3 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Sort (actual rows=3.00 loops=1)
                Sort Key: t_part_1.a
                Sort Method: quicksort
-               ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+               ->  Seq Scan on t_part_lo t_part_1 (actual rows=5.00 loops=1)
                      Storage Filter: (a < 6)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 3
@@ -3326,13 +3329,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part_lo ORDER BY a FOR UPDATE SKIP LOCKED;
-                        QUERY PLAN                         
------------------------------------------------------------
- LockRows (actual rows=5 loops=1)
-   ->  Sort (actual rows=5 loops=1)
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ LockRows (actual rows=5.00 loops=1)
+   ->  Sort (actual rows=5.00 loops=1)
          Sort Key: a
          Sort Method: quicksort
-         ->  Seq Scan on t_part_lo (actual rows=5 loops=1)
+         ->  Seq Scan on t_part_lo (actual rows=5.00 loops=1)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
                Storage Table Rows Scanned: 5
@@ -3374,19 +3377,19 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (7 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a OFFSET 3 LIMIT 4 FOR UPDATE SKIP LOCKED;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Limit (actual rows=4 loops=1)
-   ->  LockRows (actual rows=7 loops=1)
-         ->  Sort (actual rows=7 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit (actual rows=4.00 loops=1)
+   ->  LockRows (actual rows=7.00 loops=1)
+         ->  Sort (actual rows=7.00 loops=1)
                Sort Key: t_part.a
                Sort Method: quicksort
-               ->  Append (actual rows=10 loops=1)
-                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+               ->  Append (actual rows=10.00 loops=1)
+                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 5
-                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 5
@@ -3427,25 +3430,25 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (5 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_part.a FROM t_part JOIN t_asc ON t_part.a = t_asc.k ORDER BY t_part.a LIMIT 5 FOR UPDATE OF t_part SKIP LOCKED;
-                                                 QUERY PLAN                                                  
--------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   ->  LockRows (actual rows=5 loops=1)
-         ->  Result (actual rows=5 loops=1)
-               ->  YB Batched Nested Loop Join (actual rows=5 loops=1)
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5.00 loops=1)
+   ->  LockRows (actual rows=5.00 loops=1)
+         ->  Result (actual rows=5.00 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=5.00 loops=1)
                      Join Filter: (t_part.a = t_asc.k)
                      Sort Keys: t_part.a
-                     ->  Index Scan using t_asc_pkey on t_asc (actual rows=15 loops=1)
+                     ->  Index Scan using t_asc_pkey on t_asc (actual rows=15.00 loops=1)
                            Storage Table Read Requests: 5
                            Storage Table Read Ops: 5
                            Storage Table Rows Scanned: 18
-                     ->  Append (actual rows=5 loops=2)
-                           ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_1 (actual rows=2 loops=2)
+                     ->  Append (actual rows=5.00 loops=2)
+                           ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_1 (actual rows=2.00 loops=2)
                                  Index Cond: (a = ANY (ARRAY[t_asc.k, $3, $4, ..., $1025]))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 2
                                  Storage Table Rows Scanned: 2
-                           ->  Index Scan using t_part_hi_pkey on t_part_hi t_part_2 (actual rows=5 loops=1)
+                           ->  Index Scan using t_part_hi_pkey on t_part_hi t_part_2 (actual rows=5.00 loops=1)
                                  Index Cond: (a = ANY (ARRAY[t_asc.k, $3, $4, ..., $1025]))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 3
@@ -3485,14 +3488,14 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 (3 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT id, status FROM t_queue ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED;
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Limit (actual rows=3 loops=1)
-   ->  LockRows (actual rows=3 loops=1)
-         ->  Sort (actual rows=3 loops=1)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Limit (actual rows=3.00 loops=1)
+   ->  LockRows (actual rows=3.00 loops=1)
+         ->  Sort (actual rows=3.00 loops=1)
                Sort Key: ord
                Sort Method: quicksort
-               ->  Seq Scan on t_queue (actual rows=10 loops=1)
+               ->  Seq Scan on t_queue (actual rows=10.00 loops=1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 10
@@ -3537,23 +3540,23 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 ROLLBACK;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) UPDATE t_queue SET status = 'processing' WHERE id IN (SELECT id FROM next) RETURNING id, status;
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Update on t_queue (actual rows=3 loops=1)
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Update on t_queue (actual rows=3.00 loops=1)
    Storage Table Write Requests: 3
    CTE next
-     ->  Limit (actual rows=3 loops=1)
-           ->  LockRows (actual rows=3 loops=1)
-                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=3 loops=1)
+     ->  Limit (actual rows=3.00 loops=1)
+           ->  LockRows (actual rows=3.00 loops=1)
+                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=3.00 loops=1)
                        Storage Table Read Requests: 1
                        Storage Table Read Ops: 1
                        Storage Table Rows Scanned: 3
-   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
          Join Filter: (t_queue.id = next.id)
-         ->  HashAggregate (actual rows=3 loops=1)
+         ->  HashAggregate (actual rows=3.00 loops=1)
                Group Key: next.id
-               ->  CTE Scan on next (actual rows=3 loops=1)
-         ->  Index Scan using t_queue_pkey on t_queue (actual rows=3 loops=1)
+               ->  CTE Scan on next (actual rows=3.00 loops=1)
+         ->  Index Scan using t_queue_pkey on t_queue (actual rows=3.00 loops=1)
                Index Cond: (id = ANY (ARRAY[next.id, $4, $5, ..., $1026]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -3597,23 +3600,23 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 ROLLBACK;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_queue WHERE id IN (SELECT id FROM next) RETURNING id;
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Delete on t_queue (actual rows=3 loops=1)
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Delete on t_queue (actual rows=3.00 loops=1)
    Storage Table Write Requests: 3
    CTE next
-     ->  Limit (actual rows=3 loops=1)
-           ->  LockRows (actual rows=3 loops=1)
-                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=3 loops=1)
+     ->  Limit (actual rows=3.00 loops=1)
+           ->  LockRows (actual rows=3.00 loops=1)
+                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=3.00 loops=1)
                        Storage Table Read Requests: 1
                        Storage Table Read Ops: 1
                        Storage Table Rows Scanned: 3
-   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
          Join Filter: (t_queue.id = next.id)
-         ->  HashAggregate (actual rows=3 loops=1)
+         ->  HashAggregate (actual rows=3.00 loops=1)
                Group Key: next.id
-               ->  CTE Scan on next (actual rows=3 loops=1)
-         ->  Index Scan using t_queue_pkey on t_queue (actual rows=3 loops=1)
+               ->  CTE Scan on next (actual rows=3.00 loops=1)
+         ->  Index Scan using t_queue_pkey on t_queue (actual rows=3.00 loops=1)
                Index Cond: (id = ANY (ARRAY[next.id, $4, $5, ..., $1026]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
@@ -3668,23 +3671,23 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 ROLLBACK;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) UPDATE t_queue SET status = 'processing' WHERE id IN (SELECT id FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED) RETURNING id, status;
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
- Update on t_queue (actual rows=5 loops=1)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Update on t_queue (actual rows=5.00 loops=1)
    Storage Table Write Requests: 5
-   ->  YB Batched Nested Loop Join (actual rows=5 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=5.00 loops=1)
          Join Filter: (t_queue.id = "ANY_subquery".id)
-         ->  HashAggregate (actual rows=5 loops=1)
+         ->  HashAggregate (actual rows=5.00 loops=1)
                Group Key: "ANY_subquery".id
-               ->  Subquery Scan on "ANY_subquery" (actual rows=5 loops=1)
-                     ->  Limit (actual rows=5 loops=1)
-                           ->  LockRows (actual rows=5 loops=1)
-                                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=5 loops=1)
+               ->  Subquery Scan on "ANY_subquery" (actual rows=5.00 loops=1)
+                     ->  Limit (actual rows=5.00 loops=1)
+                           ->  LockRows (actual rows=5.00 loops=1)
+                                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=5.00 loops=1)
                                        Storage Table Read Requests: 1
                                        Storage Table Read Ops: 1
                                        Storage Table Rows Scanned: 5
-         ->  Index Scan using t_queue_pkey on t_queue (actual rows=5 loops=1)
-               Index Cond: (id = ANY (ARRAY["ANY_subquery".id, $3, $4, ..., $1025]))
+         ->  Index Scan using t_queue_pkey on t_queue (actual rows=5.00 loops=1)
+               Index Cond: (id = ANY (ARRAY[unnamed_subquery.id, $3, $4, ..., $1025]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 1
                Storage Table Rows Scanned: 5
@@ -3734,34 +3737,34 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 ROLLBACK;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT a FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_part WHERE a IN (SELECT a FROM next) RETURNING a;
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
- Delete on t_part (actual rows=3 loops=1)
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Delete on t_part (actual rows=3.00 loops=1)
    Delete on t_part_lo t_part_4
    Delete on t_part_hi t_part_5
    Storage Table Write Requests: 3
    CTE next
-     ->  Limit (actual rows=3 loops=1)
-           ->  LockRows (actual rows=3 loops=1)
-                 ->  Sort (actual rows=3 loops=1)
+     ->  Limit (actual rows=3.00 loops=1)
+           ->  LockRows (actual rows=3.00 loops=1)
+                 ->  Sort (actual rows=3.00 loops=1)
                        Sort Key: t_part_1.a
                        Sort Method: quicksort
-                       ->  Append (actual rows=10 loops=1)
-                             ->  Seq Scan on t_part_lo t_part_2 (actual rows=5 loops=1)
+                       ->  Append (actual rows=10.00 loops=1)
+                             ->  Seq Scan on t_part_lo t_part_2 (actual rows=5.00 loops=1)
                                    Storage Table Read Requests: 1
                                    Storage Table Read Ops: 3
                                    Storage Table Rows Scanned: 5
-                             ->  Seq Scan on t_part_hi t_part_3 (actual rows=5 loops=1)
+                             ->  Seq Scan on t_part_hi t_part_3 (actual rows=5.00 loops=1)
                                    Storage Table Read Requests: 1
                                    Storage Table Read Ops: 3
                                    Storage Table Rows Scanned: 5
-   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=3.00 loops=1)
          Join Filter: (t_part.a = next.a)
-         ->  HashAggregate (actual rows=3 loops=1)
+         ->  HashAggregate (actual rows=3.00 loops=1)
                Group Key: next.a
-               ->  CTE Scan on next (actual rows=3 loops=1)
-         ->  Append (actual rows=3 loops=1)
-               ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_4 (actual rows=3 loops=1)
+               ->  CTE Scan on next (actual rows=3.00 loops=1)
+         ->  Append (actual rows=3.00 loops=1)
+               ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_4 (actual rows=3.00 loops=1)
                      Index Cond: (a = ANY (ARRAY[next.a, $4, $5, ..., $1026]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 2
@@ -3804,13 +3807,13 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
 ROLLBACK;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) INSERT INTO t_queue SELECT id + 100, status, ord FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED;
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
- Insert on t_queue (actual rows=0 loops=1)
-   ->  Subquery Scan on "*SELECT*" (actual rows=5 loops=1)
-         ->  Limit (actual rows=5 loops=1)
-               ->  LockRows (actual rows=5 loops=1)
-                     ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=5 loops=1)
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Insert on t_queue (actual rows=0.00 loops=1)
+   ->  Subquery Scan on unnamed_subquery (actual rows=5.00 loops=1)
+         ->  Limit (actual rows=5.00 loops=1)
+               ->  LockRows (actual rows=5.00 loops=1)
+                     ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=5.00 loops=1)
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 1
                            Storage Table Rows Scanned: 5

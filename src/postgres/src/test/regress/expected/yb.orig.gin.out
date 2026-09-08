@@ -367,22 +367,25 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa';
          QUERY PLAN          
 -----------------------------
  Seq Scan on jsonbs
+   Disabled: true
    Filter: (j ? 'aaa'::text)
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}';
               QUERY PLAN              
 --------------------------------------
  Seq Scan on jsonbs
+   Disabled: true
    Filter: (j ?| '{ggg,eee}'::text[])
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}';
               QUERY PLAN              
 --------------------------------------
  Seq Scan on jsonbs
+   Disabled: true
    Filter: (j ?& '{aaa,eee}'::text[])
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}';
                         QUERY PLAN                         
@@ -569,8 +572,9 @@ EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
 -----------------------------------------
  Aggregate
    ->  Seq Scan on partial
+         Disabled: true
          Filter: (v @@ '''b'''::tsquery)
-(3 rows)
+(4 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
                    QUERY PLAN                   
@@ -592,8 +596,9 @@ EXPLAIN (costs off) SELECT count(*) FROM partial WHERE a && ARRAY['e'];
 --------------------------------------
  Aggregate
    ->  Seq Scan on partial
+         Disabled: true
          Filter: (a && '{e}'::text[])
-(3 rows)
+(4 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial
     WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
@@ -619,8 +624,9 @@ EXPLAIN (costs off) SELECT count(*) FROM partial
 --------------------------------------------------------
  Aggregate
    ->  Seq Scan on partial
+         Disabled: true
          Filter: (j @? '$."g"[*]?(@ == "h")'::jsonpath)
-(3 rows)
+(4 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial
     WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];

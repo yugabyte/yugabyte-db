@@ -44,7 +44,7 @@ ALTER FUNCTION func_renamed(int) NOT LEAKPROOF;
 -- validate regress_alter_generic_user2 can operate on function
 SET SESSION AUTHORIZATION regress_alter_generic_user1;
 ALTER FUNCTION func_renamed(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
-ERROR:  must be member of role "regress_alter_generic_user2"
+ERROR:  must be able to SET ROLE "regress_alter_generic_user2"
 ALTER FUNCTION func_renamed(int) OWNER TO regress_alter_generic_user3;  -- OK
 ALTER FUNCTION func_renamed(int) RENAME TO func_renamed2;
 ALTER FUNCTION func_renamed2(int) SET SCHEMA alt_nsp1;

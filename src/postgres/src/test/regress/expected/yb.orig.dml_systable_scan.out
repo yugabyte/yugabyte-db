@@ -49,26 +49,26 @@ EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, depty
 --
 -- Existing db oid (template1).
 SELECT * FROM pg_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 1);
- oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | daticulocale | datcollversion |               datacl                
------+-----------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+-------------+--------------+----------------+-------------------------------------
-   1 | template1 |     10 |        6 | c              | t             | t            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
+ oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | datlocale | daticurules | datcollversion |               datacl                
+-----+-----------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+-------------+-----------+-------------+----------------+-------------------------------------
+   1 | template1 |     10 |        6 | c              | t             | t            | f              |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |           |             |                | {=c/postgres,postgres=CTc/postgres}
 (1 row)
 
 SELECT * FROM pg_database WHERE datname IN (SELECT datname FROM pg_database WHERE oid = 1);
- oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | daticulocale | datcollversion |               datacl                
------+-----------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+-------------+--------------+----------------+-------------------------------------
-   1 | template1 |     10 |        6 | c              | t             | t            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
+ oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | datlocale | daticurules | datcollversion |               datacl                
+-----+-----------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+-------------+-----------+-------------+----------------+-------------------------------------
+   1 | template1 |     10 |        6 | c              | t             | t            | f              |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |           |             |                | {=c/postgres,postgres=CTc/postgres}
 (1 row)
 
 -- Invalid (non-existing) db.
 SELECT * FROM pg_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 0);
- oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl 
------+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | datlocale | daticurules | datcollversion | datacl 
+-----+---------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+----------+-----------+-------------+----------------+--------
 (0 rows)
 
 SELECT * FROM pg_database WHERE datname IN (SELECT datname FROM pg_database WHERE oid = 0);
- oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl 
------+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | datlocale | daticurules | datcollversion | datacl 
+-----+---------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+----------+-----------+-------------+----------------+--------
 (0 rows)
 
 -- This is a query done by the pg_admin dashboard, testing compatiblity here.
@@ -144,13 +144,13 @@ EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE 
 
 -- Test execution.
 /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
- oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl 
------+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | datlocale | daticurules | datcollversion | datacl 
+-----+---------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+----------+-----------+-------------+----------------+--------
 (0 rows)
 
 /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
- oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl 
------+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | datlocale | daticurules | datcollversion | datacl 
+-----+---------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+----------+-----------+-------------+----------------+--------
 (0 rows)
 
 -- Test null mixed with valid (existing) options.
@@ -163,7 +163,7 @@ EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE 
 
 -- Test null(s) mixed with invalid (existing) options.
 SELECT * FROM pg_database WHERE datname IN ('non_existing_db1', test_null_pushdown(), 'non_existing_db2', test_null_pushdown());
- oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl 
------+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | datlocale | daticurules | datcollversion | datacl 
+-----+---------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+----------+-----------+-------------+----------------+--------
 (0 rows)
 

@@ -596,13 +596,15 @@ SET enable_bitmapscan = OFF;
 EXPLAIN (COSTS OFF)
 SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
 FROM quad_box_tbl;
-                   QUERY PLAN                   
-------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  WindowAgg
+   Window: w1 AS (ORDER BY ((b <-> '(123,456)'::point)) ROWS UNBOUNDED PRECEDING)
    ->  Sort
          Sort Key: ((b <-> '(123,456)'::point))
          ->  Seq Scan on quad_box_tbl
-(4 rows)
+               Disabled: true
+(6 rows)
 
 CREATE TEMP TABLE quad_box_tbl_ord_idx1 AS
 SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
@@ -619,14 +621,16 @@ WHERE seq.id IS NULL OR idx.id IS NULL;
 EXPLAIN (COSTS OFF)
 SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
 FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
-                           QUERY PLAN                            
------------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  WindowAgg
+   Window: w1 AS (ORDER BY ((b <-> '(123,456)'::point)) ROWS UNBOUNDED PRECEDING)
    ->  Sort
          Sort Key: ((b <-> '(123,456)'::point))
          ->  Seq Scan on quad_box_tbl
+               Disabled: true
                Storage Filter: (b <@ '(500,600),(200,300)'::box)
-(5 rows)
+(7 rows)
 
 CREATE TEMP TABLE quad_box_tbl_ord_idx2 AS
 SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id

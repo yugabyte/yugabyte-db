@@ -183,7 +183,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
  YB Batched Nested Loop Left Join
    Join Filter: (t3.b = t1.a)
    ->  YB Batched Nested Loop Join
-         Join Filter: (t1.a = t2.b)
+         Join Filter: (t2.b = t1.a)
          ->  Seq Scan on p1 t1
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -199,7 +199,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
  YB Batched Nested Loop Left Join
    Join Filter: (t3.b = t1.a)
    ->  YB Batched Nested Loop Join
-         Join Filter: (t1.a = t2.b)
+         Join Filter: (t2.b = t1.a)
          ->  Seq Scan on p1 t1
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -391,7 +391,7 @@ EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND 
  Sort
    Sort Key: t10.r1, t10.r2, t10.r3, t10.r4
    ->  YB Batched Nested Loop Join
-         Join Filter: ((t11.x = t12.y) AND (t10.r2 = t12.c2) AND (t10.r4 = t12.c4))
+         Join Filter: ((t12.y = t11.x) AND (t12.c2 = t10.r2) AND (t12.c4 = t10.r4))
          ->  Seq Scan on t12
          ->  YB Batched Nested Loop Join
                Join Filter: ((t11.c1 = t10.r1) AND (t11.c3 = t10.r3))
@@ -419,7 +419,7 @@ explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = 
  Sort
    Sort Key: s3.r1, s3.r2
    ->  YB Batched Nested Loop Join
-         Join Filter: ((s3.r2 = s2.r2) AND (s1.r3 = s2.r3))
+         Join Filter: ((s2.r2 = s3.r2) AND (s1.r3 = s2.r3))
          ->  Seq Scan on s2
          ->  YB Batched Nested Loop Join
                Join Filter: (s1.r1 = s3.r1)
@@ -496,38 +496,38 @@ INSERT INTO m2 SELECT i*5 FROM generate_series(1, 2000) i;
 ANALYZE m1;
 ANALYZE m2;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-                            QUERY PLAN                            
-------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=5 loops=1)
-   Join Filter: (t1.a = t2.a)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=5.00 loops=1)
+   Join Filter: (t2.a = t1.a)
    Rows Removed by Join Filter: 110
-   ->  Index Scan using m1_pkey on m1 t1 (actual rows=25 loops=1)
+   ->  Index Scan using m1_pkey on m1 t1 (actual rows=25.00 loops=1)
          Index Cond: (a <= (50)::money)
-   ->  Index Scan using m2_pkey on m2 t2 (actual rows=5 loops=1)
+   ->  Index Scan using m2_pkey on m2 t2 (actual rows=5.00 loops=1)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (7 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-                            QUERY PLAN                            
-------------------------------------------------------------------
- YB Batched Nested Loop Left Join (actual rows=10 loops=1)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ YB Batched Nested Loop Left Join (actual rows=10.00 loops=1)
    Join Filter: (t1.a = t2.a)
    Rows Removed by Join Filter: 35
-   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10 loops=1)
+   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10.00 loops=1)
          Index Cond: (a <= (50)::money)
-   ->  Index Scan using m1_pkey on m1 t2 (actual rows=5 loops=1)
+   ->  Index Scan using m1_pkey on m1 t2 (actual rows=5.00 loops=1)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (7 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
-                            QUERY PLAN                            
-------------------------------------------------------------------
- YB Batched Nested Loop Anti Join (actual rows=5 loops=1)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ YB Batched Nested Loop Anti Join (actual rows=5.00 loops=1)
    Join Filter: (t1.a = t2.a)
    Rows Removed by Join Filter: 45
-   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10 loops=1)
+   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10.00 loops=1)
          Index Cond: (a <= (50)::money)
-   ->  Index Scan using m1_pkey on m1 t2 (actual rows=5 loops=1)
+   ->  Index Scan using m1_pkey on m1 t2 (actual rows=5.00 loops=1)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (7 rows)
 
@@ -545,7 +545,7 @@ explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1
 -------------------------------------------------------------------------
  Limit
    ->  YB Batched Nested Loop Join
-         Join Filter: (q1.c2 = q2.c2)
+         Join Filter: (q2.c2 = q1.c2)
          Sort Keys: q1.c1
          ->  Index Scan using q1_pkey on q1
          ->  Index Scan using q2_pkey on q2
@@ -558,7 +558,7 @@ explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order b
  Limit
    ->  Result
          ->  YB Batched Nested Loop Join
-               Join Filter: (q1.c2 = q2.c2)
+               Join Filter: (q2.c2 = q1.c2)
                Sort Keys: q1.c1
                ->  Index Scan using q1_pkey on q1
                ->  Index Scan using q2_pkey on q2

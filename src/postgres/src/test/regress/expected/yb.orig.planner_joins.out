@@ -45,7 +45,7 @@ WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.h = t2.h)
+   Join Filter: (t2.h = t1.h)
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((yb_hash_code(h) = 49348) AND (r = 3))
    ->  Index Scan using t2_pkey on t2
@@ -91,7 +91,7 @@ WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t1.h = t2.h)
+   Join Filter: (t2.h = t1.h)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (yb_hash_code(h) = 49348)
    ->  Index Scan using t2_pkey on t2
@@ -196,7 +196,7 @@ ORDER BY t3.v3 DESC;
  Sort
    Sort Key: t3.v3 DESC
    ->  YB Batched Nested Loop Join
-         Join Filter: (t1.h = t2.h)
+         Join Filter: (t2.h = t1.h)
          ->  Merge Join
                Merge Cond: (t1.h = t3.h)
                ->  Index Scan using t1_pkey on t1
@@ -271,7 +271,7 @@ ORDER BY t3.v3 ASC;
 ----------------------------------------------------
  Nested Loop
    ->  Nested Loop
-         Join Filter: (t1.v1 = t2.v1)
+         Join Filter: (t2.v1 = t1.v1)
          ->  Index Scan using t2_v3_uniq_idx on t2
                Index Cond: (v3 = 2)
          ->  Index Scan using t1_pkey on t1
@@ -499,7 +499,7 @@ ORDER BY t3.v3 DESC;
  Sort
    Sort Key: t3.v3 DESC
    ->  YB Batched Nested Loop Join
-         Join Filter: (t1.v1 = t3.v1)
+         Join Filter: (t3.v1 = t1.v1)
          ->  YB Batched Nested Loop Left Join
                Join Filter: (t1.v3 = t2.v3)
                ->  Index Scan using t1_pkey on t1

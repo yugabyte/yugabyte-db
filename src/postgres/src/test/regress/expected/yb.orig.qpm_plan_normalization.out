@@ -198,6 +198,7 @@ WHERE query LIKE '%QPM NORMALIZE QUERY 4%';
        "Relation Name": "simple_table1",                                                                                +
        "Schema": "qpm_plan_normalization",                                                                              +
        "Alias": "simple_table1",                                                                                        +
+       "Disabled": false,                                                                                               +
        "Output": ["'?'::text", "'?'::jsonb", "'?'::jsonb", "convert_to('?'::text, '?'::name)", "'?'::text", "'?'::text"]+
      }                                                                                                                  +
    }                                                                                                                    +
@@ -221,6 +222,7 @@ WHERE query LIKE '%QPM NORMALIZE QUERY 5%';
        "Node Type": "Sort",                     +
        "Parallel Aware": false,                 +
        "Async Capable": false,                  +
+       "Disabled": false,                       +
        "Output": ["c1", "((c2 + ?))"],          +
        "Sort Key": ["((simple_table1.c2 + ?))"],+
        "Plans": [                               +
@@ -232,6 +234,7 @@ WHERE query LIKE '%QPM NORMALIZE QUERY 5%';
            "Relation Name": "simple_table1",    +
            "Schema": "qpm_plan_normalization",  +
            "Alias": "simple_table1",            +
+           "Disabled": false,                   +
            "Output": ["c1", "(c2 + ?)"]         +
          }                                      +
        ]                                        +
@@ -257,6 +260,7 @@ WHERE query LIKE '%QPM NORMALIZE QUERY 6%';
        "Node Type": "Sort",                        +
        "Parallel Aware": false,                    +
        "Async Capable": false,                     +
+       "Disabled": false,                          +
        "Output": ["((c1 + ?))", "(count(*))"],     +
        "Sort Key": ["((simple_table1.c1 + ?))"],   +
        "Plans": [                                  +
@@ -267,6 +271,7 @@ WHERE query LIKE '%QPM NORMALIZE QUERY 6%';
            "Parent Relationship": "Outer",         +
            "Parallel Aware": false,                +
            "Async Capable": false,                 +
+           "Disabled": false,                      +
            "Output": ["((c1 + ?))", "count(*)"],   +
            "Group Key": ["(simple_table1.c1 + ?)"],+
            "Plans": [                              +
@@ -278,6 +283,7 @@ WHERE query LIKE '%QPM NORMALIZE QUERY 6%';
                "Relation Name": "simple_table1",   +
                "Schema": "qpm_plan_normalization", +
                "Alias": "simple_table1",           +
+               "Disabled": false,                  +
                "Output": ["(c1 + ?)"]              +
              }                                     +
            ]                                       +

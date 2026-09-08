@@ -10,13 +10,13 @@ CREATE UNIQUE INDEX NONCONCURRENTLY t_ios_v1 ON t_ios (v1);
 INSERT INTO t_ios (k, v1, v2) (SELECT i, 10 - i, i FROM generate_series(1, 10) AS i);
 -- No conflict with either index.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (11, 11, 11), (12, 12, 12) ON CONFLICT DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Tuples Inserted: 2
    Conflicting Tuples: 0
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Index Read Requests: 1
@@ -32,13 +32,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (11, 11, 11), (12, 1
 
 -- Conflict with exactly one index.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 13, 100), (2, 14, 101) ON CONFLICT DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Tuples Inserted: 0
    Conflicting Tuples: 2
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
          Storage Table Rows Scanned: 2
@@ -52,14 +52,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 13, 100), (2, 14
 (15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 13, 100), (2, 14, 101) ON CONFLICT (k) DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: t_ios_pkey
    Tuples Inserted: 0
    Conflicting Tuples: 2
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
          Storage Table Rows Scanned: 2
@@ -73,13 +73,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 13, 100), (2, 14
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 13, 100), (2, 14, 101) ON CONFLICT (v1) DO NOTHING;
 ERROR:  duplicate key value violates unique constraint "t_ios_pkey"
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (13, 1, 100), (14, 2, 101) ON CONFLICT DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Tuples Inserted: 0
    Conflicting Tuples: 2
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
          Storage Index Read Requests: 1
@@ -93,14 +93,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (13, 1, 100), (14, 2
 (15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (13, 1, 100), (14, 2, 101) ON CONFLICT (v1) DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: t_ios_v1
    Tuples Inserted: 0
    Conflicting Tuples: 2
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Index Read Requests: 1
          Storage Index Read Ops: 2
          Storage Index Rows Scanned: 2
@@ -115,13 +115,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (13, 1, 100), (14, 2
 ERROR:  duplicate key value violates unique constraint "t_ios_v1"
 -- Conflict with different rows in both indexes.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 1, 100), (2, 2, 101) ON CONFLICT DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Tuples Inserted: 0
    Conflicting Tuples: 2
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
          Storage Table Rows Scanned: 2
@@ -140,14 +140,14 @@ CREATE UNIQUE INDEX NONCONCURRENTLY t_ios_v1_v2 ON t_ios (v1, v2);
 -- The IndexOnlyScan should also work with multi-column indexes.
 -- No conflict with multi-column index.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (100, 5, 100), (101, 100, 5) ON CONFLICT (v1, v2) DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: t_ios_v1_v2
    Tuples Inserted: 2
    Conflicting Tuples: 0
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Index Read Requests: 1
          Storage Index Read Ops: 2
          Storage Table Write Requests: 2
@@ -161,9 +161,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (100, 5, 100), (101,
 
 -- Conflict with multi-column index.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (102, 3, 7) ON CONFLICT (v1, v2) DO NOTHING;
-                  QUERY PLAN                   
------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: t_ios_v1_v2
    Tuples Inserted: 0
@@ -171,7 +171,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (102, 3, 7) ON CONFL
    Storage Index Read Requests: 1
    Storage Index Read Ops: 1
    Storage Index Rows Scanned: 1
-   ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
@@ -180,9 +180,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (102, 3, 7) ON CONFL
 (14 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (102, 3, 7) ON CONFLICT DO NOTHING;
-                  QUERY PLAN                   
------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Tuples Inserted: 0
    Conflicting Tuples: 1
@@ -191,7 +191,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (102, 3, 7) ON CONFL
    Storage Index Read Requests: 1
    Storage Index Read Ops: 1
    Storage Index Rows Scanned: 1
-   ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
  Storage Read Requests: 2
  Storage Read Ops: 2
  Storage Rows Scanned: 1
@@ -203,9 +203,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (102, 3, 7) ON CONFL
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 1, 100) ON CONFLICT (v1, v2) DO NOTHING;
 ERROR:  duplicate key value violates unique constraint "t_ios_pkey"
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 1, 100) ON CONFLICT DO NOTHING;
-                  QUERY PLAN                   
------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Insert on t_ios (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Tuples Inserted: 0
    Conflicting Tuples: 1
@@ -214,7 +214,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 1, 100) ON CONFL
    Storage Table Rows Scanned: 1
    Storage Index Read Requests: 1
    Storage Index Read Ops: 1
-   ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
  Storage Read Requests: 2
  Storage Read Ops: 2
  Storage Rows Scanned: 1
@@ -260,14 +260,14 @@ DROP INDEX idx_ios_p2_v1;
 -- IndexOnlyScan should be performed when all partitions share an arbiter index that is part of the same heirarchy.
 CREATE UNIQUE INDEX idx_ios_base_v1 ON t_ios_base (k, v1);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios_base VALUES (1, 1), (11, 11) ON CONFLICT (k, v1) DO NOTHING;
-                       QUERY PLAN                        
----------------------------------------------------------
- Insert on t_ios_base (actual rows=0 loops=1)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Insert on t_ios_base (actual rows=0.00 loops=1)
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: idx_ios_base_v1
    Tuples Inserted: 0
    Conflicting Tuples: 2
-   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2.00 loops=1)
          Storage Index Read Requests: 2
          Storage Index Read Ops: 2
          Storage Index Rows Scanned: 2

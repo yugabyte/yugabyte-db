@@ -81,9 +81,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p << polygon '((300,300),(400,600),(600
 -------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p << '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p << polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -97,9 +98,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p &< polygon '((300,300),(400,600),(600
 -------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p &< '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p &< polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -113,9 +115,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p && polygon '((300,300),(400,600),(600
 -------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p && '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p && polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -129,9 +132,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p &> polygon '((300,300),(400,600),(600
 -------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p &> '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p &> polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -145,9 +149,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p >> polygon '((300,300),(400,600),(600
 -------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p >> '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p >> polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -161,9 +166,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p <<| polygon '((300,300),(400,600),(60
 --------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p <<| '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p <<| polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -177,9 +183,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p &<| polygon '((300,300),(400,600),(60
 --------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p &<| '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p &<| polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -193,9 +200,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p |&> polygon '((300,300),(400,600),(60
 --------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p |&> '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p |&> polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -209,9 +217,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p |>> polygon '((300,300),(400,600),(60
 --------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p |>> '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p |>> polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -225,9 +234,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600
 -------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p <@ '((300,300),(400,600),(600,500),(700,200))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600,500),(700,200))';
  count 
@@ -241,9 +251,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p @> polygon '((340,550),(343,552),(341
 ---------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p @> '((340,550),(343,552),(341,553))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p @> polygon '((340,550),(343,552),(341,553))';
  count 
@@ -257,9 +268,10 @@ SELECT count(*) FROM quad_poly_tbl WHERE p ~= polygon '((200, 300),(210, 310),(2
 ---------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on quad_poly_tbl
+         Disabled: true
          Storage Filter: (p ~= '((200,300),(210,310),(230,290))'::polygon)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT count(*) FROM quad_poly_tbl WHERE p ~= polygon '((200, 300),(210, 310),(230, 290))';
  count 
@@ -276,11 +288,13 @@ FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600,500),(700,200))
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  WindowAgg
+   Window: w1 AS (ORDER BY ((p <-> '(123,456)'::point)) ROWS UNBOUNDED PRECEDING)
    ->  Sort
          Sort Key: ((p <-> '(123,456)'::point))
          ->  Seq Scan on quad_poly_tbl
+               Disabled: true
                Storage Filter: (p <@ '((300,300),(400,600),(600,500),(700,200))'::polygon)
-(5 rows)
+(7 rows)
 
 CREATE TEMP TABLE quad_poly_tbl_ord_idx2 AS
 SELECT rank() OVER (ORDER BY p <-> point '123,456') n, p <-> point '123,456' dist, id

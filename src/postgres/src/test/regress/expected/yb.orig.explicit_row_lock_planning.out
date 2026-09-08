@@ -173,7 +173,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 =
 ---------------------------------------------------------------------------------
  LockRows
    ->  YB Batched Nested Loop Join
-         Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
+         Join Filter: (yb_locks_t.k = yb_locks_t2.k1)
          ->  Seq Scan on yb_locks_t2
          ->  Index Scan using yb_locks_t_pkey on yb_locks_t
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
@@ -258,7 +258,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 =
 ---------------------------------------------------------------------------------
  LockRows (no-op)
    ->  YB Batched Nested Loop Join
-         Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
+         Join Filter: (yb_locks_t.k = yb_locks_t2.k1)
          ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t2
          ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
@@ -459,10 +459,11 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
        "Parallel Aware": false,        +
        "Async Capable": false,         +
        "Lock Type": "FOR UPDATE",      +
-       "Scan Direction": "NoMovement", +
+       "Scan Direction": "Forward",    +
        "Index Name": "yb_locks_t_pkey",+
        "Relation Name": "yb_locks_t",  +
        "Alias": "yb_locks_t",          +
+       "Disabled": false,              +
        "Index Cond": "(k = 5)"         +
      }                                 +
    }                                   +
@@ -524,6 +525,7 @@ EXECUTE yb_locks_plan_rr(1);
        "Parallel Aware": false,            +
        "Async Capable": false,             +
        "Executes": false,                  +
+       "Disabled": false,                  +
        "Plans": [                          +
          {                                 +
            "Node Type": "Index Scan",      +
@@ -531,10 +533,11 @@ EXECUTE yb_locks_plan_rr(1);
            "Parallel Aware": false,        +
            "Async Capable": false,         +
            "Lock Type": "FOR UPDATE",      +
-           "Scan Direction": "NoMovement", +
+           "Scan Direction": "Forward",    +
            "Index Name": "yb_locks_t_pkey",+
            "Relation Name": "yb_locks_t",  +
            "Alias": "yb_locks_t",          +
+           "Disabled": false,              +
            "Index Cond": "(k = $1)"        +
          }                                 +
        ]                                   +
