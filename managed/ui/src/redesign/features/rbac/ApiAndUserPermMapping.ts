@@ -305,6 +305,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/node_agents'
     },
+    UPGRADE_NODE_AGENT: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/upgrade/node-agent'
+    },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
     CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {
