@@ -46,6 +46,7 @@ class TraceObservingRpcCommand : public RpcCommand {
   std::string ToString() const override { return "TraceObservingRpcCommand"; }
 
   void Finished(const Status& status) override {
+    finished_observed_ = dist_trace::GetActiveSpanContext();
     finished_status_ = status;
     sent_.CountDown();
   }
@@ -58,12 +59,17 @@ class TraceObservingRpcCommand : public RpcCommand {
 
   const std::optional<dist_trace::trace::SpanContext>& observed() const { return observed_; }
 
+  const std::optional<dist_trace::trace::SpanContext>& finished_observed() const {
+    return finished_observed_;
+  }
+
   const Status& finished_status() const { return finished_status_; }
 
  private:
   const CoarseTimePoint deadline_;
   CountDownLatch sent_{1};
   std::optional<dist_trace::trace::SpanContext> observed_;
+  std::optional<dist_trace::trace::SpanContext> finished_observed_;
   Status finished_status_;
 };
 
@@ -118,6 +124,56 @@ TEST_F(RpcRetrierTraceTest, TraceContextCarriedAcrossRetry) {
 
   // Waits for DoRetry to drop back to kIdle, which the retrier's destructor requires.
   retrier->Abort();
+}
+
+// An expired deadline makes DoRetry give up via rpc->Finished(TimedOut), which must also run
+// under the retrier's trace context.
+TEST_F(RpcRetrierTraceTest, TraceContextCarriedToDeadlineFinished) {
+  const auto expected = dist_trace::MakeTestSpanContext(0x5a);
+  const auto deadline = CoarseMonoClock::Now() - MonoDelta::FromSeconds(1);
+
+  auto rpc = std::make_shared<TraceObservingRpcCommand>(deadline);
+  std::unique_ptr<RpcRetrier> retrier;
+  {
+    dist_trace::ScopedAdoptSpan scope(expected);
+    retrier = std::make_unique<RpcRetrier>(deadline, messenger_.get(), proxy_cache_.get());
+  }
+
+  ASSERT_OK(retrier->DelayedRetry(rpc.get(), STATUS(TryAgain, "Retry me")));
+  ASSERT_TRUE(rpc->WaitForSend());
+  ASSERT_TRUE(rpc->finished_status().IsTimedOut()) << rpc->finished_status();
+
+  ASSERT_TRUE(rpc->finished_observed().has_value());
+  ASSERT_EQ(rpc->finished_observed()->trace_id(), expected.trace_id());
+  ASSERT_EQ(rpc->finished_observed()->span_id(), expected.span_id());
+
+  retrier->Abort();
+}
+
+// Aborting a scheduled retry makes DoRetry bail out via the early rpc->Finished(Aborted), which
+// must also run under the retrier's trace context.
+TEST_F(RpcRetrierTraceTest, TraceContextCarriedToAbortFinished) {
+  const auto expected = dist_trace::MakeTestSpanContext(0x77);
+  const auto deadline = Deadline();
+
+  auto rpc = std::make_shared<TraceObservingRpcCommand>(deadline);
+  std::unique_ptr<RpcRetrier> retrier;
+  {
+    dist_trace::ScopedAdoptSpan scope(expected);
+    retrier = std::make_unique<RpcRetrier>(deadline, messenger_.get(), proxy_cache_.get());
+  }
+
+  // Long enough that Abort() wins the race against the scheduled retry firing.
+  ASSERT_OK(retrier->DelayedRetry(
+      rpc.get(), STATUS(TryAgain, "Retry me"), MonoDelta::FromSeconds(60)));
+  retrier->Abort();
+
+  ASSERT_TRUE(rpc->WaitForSend());
+  ASSERT_TRUE(rpc->finished_status().IsAborted()) << rpc->finished_status();
+
+  ASSERT_TRUE(rpc->finished_observed().has_value());
+  ASSERT_EQ(rpc->finished_observed()->trace_id(), expected.trace_id());
+  ASSERT_EQ(rpc->finished_observed()->span_id(), expected.span_id());
 }
 
 // Construct a retrier with no active trace context: the reactor thread re-sends with none.
