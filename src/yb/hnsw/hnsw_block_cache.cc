@@ -69,15 +69,22 @@ namespace {
 
 // Version 1: original layout.
 // Version 2: appends Header::storage_kind.
+// Version 3: appends Header::rerank_kind and Header::quantization_scale.
 //
 // The writer picks the lowest version that can represent the header, so a float32 index still
 // produces a byte-identical version-1 file readable by binaries that predate narrowed storage.
-// A version-2 file is not, so float16 is a one-way step for the chunks written while it is on.
+// Version-2 and -3 files are not, so enabling either is a one-way step for the chunks written
+// while it is on.
 constexpr uint8_t kSerializationVersionV1 = 1;
 constexpr uint8_t kSerializationVersionV2 = 2;
-constexpr uint8_t kMaxSupportedSerializationVersion = kSerializationVersionV2;
+constexpr uint8_t kSerializationVersionV3 = 3;
+constexpr uint8_t kMaxSupportedSerializationVersion = kSerializationVersionV3;
 
 uint8_t SerializationVersionFor(const Header& header) {
+  if (header.rerank_kind != vector_index::RerankStorageKind::kNone ||
+      header.storage_kind == vector_index::VectorStorageKind::kInt8) {
+    return kSerializationVersionV3;
+  }
   return header.storage_kind == vector_index::VectorStorageKind::kFloat32
       ? kSerializationVersionV1 : kSerializationVersionV2;
 }
@@ -104,6 +111,16 @@ template <class Type, class Value, class Writer>
 requires(std::is_enum_v<Value> && HasAppend<Type, Type, Writer>)
 void ConvertField(const Value& value, Writer& writer) {
   writer.template Append<Type>(static_cast<Type>(value));
+}
+
+// Floats go out as their bit pattern, keeping the on-disk form fixed-width and BlockWriter/
+// BlockReader dealing only in integers.
+template <class Writer>
+requires(HasAppend<uint32_t, uint32_t, Writer>)
+void ConvertFloatField(const float& value, Writer& writer) {
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  writer.template Append<uint32_t>(bits);
 }
 
 template <class Converter, class Type>
@@ -138,6 +155,13 @@ void ConvertField(Value& value, Reader& reader) {
   value = static_cast<Value>(reader.template Read<Type>());
 }
 
+template <class Reader>
+requires(HasRead<uint32_t, Reader>)
+void ConvertFloatField(float& value, Reader& reader) {
+  auto bits = reader.template Read<uint32_t>();
+  memcpy(&value, &bits, sizeof(value));
+}
+
 template <class Vector, class Reader>
 requires(HasRead<uint64_t, Reader>)
 void ConvertVector(size_t version, Vector& vector, Reader& reader) {
@@ -168,6 +192,10 @@ void Convert(size_t version, RefForConverter<Converter, Header> header, Converte
   ConvertVector(version, header.layers, serializer);
   if (version >= kSerializationVersionV2) {
     ConvertField<uint8_t>(header.storage_kind, serializer);
+  }
+  if (version >= kSerializationVersionV3) {
+    ConvertField<uint8_t>(header.rerank_kind, serializer);
+    ConvertFloatField(header.quantization_scale, serializer);
   }
   // Anything appended here must be consumed by this function: FileBlockCache::Load derives the
   // block count from the bytes the header converter leaves behind.

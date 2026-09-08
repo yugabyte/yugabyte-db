@@ -45,12 +45,25 @@ size_t CoordinateBytes(VectorStorageKind kind, size_t dimensions) {
       return dimensions * sizeof(float);
     case VectorStorageKind::kFloat16:
       return dimensions * sizeof(uint16_t);
+    case VectorStorageKind::kInt8:
+      return dimensions * sizeof(int8_t);
   }
   FATAL_INVALID_ENUM_VALUE(VectorStorageKind, kind);
 }
 
 void NarrowCoordinates(
     VectorStorageKind kind, const float* src, size_t dimensions, void* dst,
+    size_t* num_clamped) {
+  // CHECK, not DCHECK: with a zero scale every coordinate quantizes to the clamp limit, so in a
+  // release build this would silently write 127s over a whole chunk. Once per vector, not per
+  // coordinate.
+  CHECK_NE(kind, VectorStorageKind::kInt8)
+      << "kInt8 needs a scale: use the overload that takes one";
+  return NarrowCoordinates(kind, 0.0f, src, dimensions, dst, num_clamped);
+}
+
+void NarrowCoordinates(
+    VectorStorageKind kind, float scale, const float* src, size_t dimensions, void* dst,
     size_t* num_clamped) {
   switch (kind) {
     case VectorStorageKind::kFloat32:
@@ -74,12 +87,50 @@ void NarrowCoordinates(
       }
       return;
     }
+    case VectorStorageKind::kInt8: {
+      // Zero would make every coordinate infinite and a negative scale would invert the
+      // ordering; neither is recoverable downstream.
+      DCHECK_GT(scale, 0.0f);
+      const auto inv_scale = 1.0f / scale;
+      auto* out = static_cast<int8_t*>(dst);
+      size_t clamped = 0;
+      for (size_t i = 0; i != dimensions; ++i) {
+        // Checked before scaling so NaN is counted, not turned into a zero that passes the
+        // range test below.
+        if (PREDICT_FALSE(std::isnan(src[i]))) {
+          ++clamped;
+          out[i] = 0;
+          continue;
+        }
+        // Round before the range test, not after: a coordinate just past 127 steps rounds back
+        // to 127 and has lost nothing, so it is not clamping. The clamp itself is load-bearing --
+        // an out-of-range float -> int8_t conversion is undefined behaviour, not saturating.
+        auto value = std::round(src[i] * inv_scale);
+        if (PREDICT_FALSE(!(value >= -kMaxInt8 && value <= kMaxInt8))) {
+          ++clamped;
+          value = std::copysign(kMaxInt8, value);
+        }
+        out[i] = static_cast<int8_t>(value);
+      }
+      if (num_clamped) {
+        *num_clamped += clamped;
+      }
+      return;
+    }
   }
   FATAL_INVALID_ENUM_VALUE(VectorStorageKind, kind);
 }
 
 void WidenCoordinates(
     VectorStorageKind kind, const void* src, size_t dimensions, float* dst) {
+  // See the NarrowCoordinates counterpart: a zero scale decodes every coordinate to zero.
+  CHECK_NE(kind, VectorStorageKind::kInt8)
+      << "kInt8 needs a scale: use the overload that takes one";
+  return WidenCoordinates(kind, 0.0f, src, dimensions, dst);
+}
+
+void WidenCoordinates(
+    VectorStorageKind kind, float scale, const void* src, size_t dimensions, float* dst) {
   switch (kind) {
     case VectorStorageKind::kFloat32:
       memcpy(dst, src, dimensions * sizeof(float));
@@ -89,6 +140,14 @@ void WidenCoordinates(
         dst[i] = fp16_ieee_to_fp32_value(LoadU16(src, i));
       }
       return;
+    case VectorStorageKind::kInt8: {
+      DCHECK_GT(scale, 0.0f);
+      const auto* in = static_cast<const int8_t*>(src);
+      for (size_t i = 0; i != dimensions; ++i) {
+        dst[i] = static_cast<float>(in[i]) * scale;
+      }
+      return;
+    }
   }
   FATAL_INVALID_ENUM_VALUE(VectorStorageKind, kind);
 }

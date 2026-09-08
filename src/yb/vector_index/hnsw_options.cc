@@ -56,6 +56,8 @@ scalar_kind_t ScalarKindFromStorageKind(VectorStorageKind storage_kind) {
       return scalar_kind_t::f32_k;
     case VectorStorageKind::kFloat16:
       return scalar_kind_t::f16_k;
+    case VectorStorageKind::kInt8:
+      return scalar_kind_t::i8_k;
   }
   FATAL_INVALID_ENUM_VALUE(VectorStorageKind, storage_kind);
 }
@@ -72,7 +74,8 @@ std::string HNSWOptions::ToString() const {
       max_neighbors_per_vertex_base,
       ef_construction,
       robust_prune_alpha,
-      storage_kind);
+      storage_kind,
+      rerank_kind);
 }
 
 template <class Vector>

@@ -44,6 +44,7 @@ using namespace std::chrono_literals;
 using namespace yb::size_literals;
 
 DECLARE_bool(yb_hnsw_prefetch_neighbors);
+DECLARE_uint32(vector_index_rerank_overfetch_factor);
 
 METRIC_DEFINE_entity(table);
 
@@ -273,6 +274,7 @@ TEST_F(YbHnswTest, PrefetchMatchesSerialResolution) {
 // Narrowed coordinate storage
 // ------------------------------------------------------------------------------------------------
 
+using vector_index::RerankStorageKind;
 using vector_index::VectorStorageKind;
 
 namespace {
@@ -362,17 +364,23 @@ class YbHnswStorageTest : public VectorIndexTestBase {
 
   // With `reload`, the returned instance only ever saw the file -- i.e. a tserver restart.
   Result<std::unique_ptr<YbHnsw>> Import(
-      VectorStorageKind storage_kind, const std::string& name, bool reload = false) {
+      VectorStorageKind storage_kind, const std::string& name, bool reload = false,
+      RerankStorageKind rerank_kind = RerankStorageKind::kNone) {
     auto path = GetTestPath(name);
     auto result = std::make_unique<YbHnsw>(MakeMetricFactory(), block_cache_);
     // No payloads: keeps the 16-byte aux entry per vector this fixture's expectations assume.
     RETURN_NOT_OK(result->Import(
-        *hnswlib_index_, path, /* payloads= */ nullptr, storage_kind));
+        *hnswlib_index_, path, /* payloads= */ nullptr, storage_kind, rerank_kind));
     if (reload) {
       result = std::make_unique<YbHnsw>(MakeMetricFactory(), block_cache_);
       RETURN_NOT_OK(result->Init(path));
     }
     return result;
+  }
+
+  // The shipping int8 configuration: quantized traversal coordinates with an fp16 rerank copy.
+  Result<std::unique_ptr<YbHnsw>> ImportInt8(const std::string& name, bool reload = false) {
+    return Import(VectorStorageKind::kInt8, name, reload, RerankStorageKind::kFloat16);
   }
 
   vector_index::SearchOptions MakeSearchOptions(size_t max_results, size_t ef = 64) const {
@@ -401,6 +409,9 @@ TEST_F(YbHnswStorageTest, Float32KeepsFooterVersionOne) {
   ASSERT_OK(Import(VectorStorageKind::kFloat16, "f16.yb_hnsw"));
   ASSERT_EQ(ASSERT_RESULT(ReadFooterVersion(*Env::Default(), GetTestPath("f16.yb_hnsw"))), 2);
 
+  // Rerank tier and scale are version 3, so they must not push float16 files past version 2.
+  ASSERT_OK(ImportInt8("i8.yb_hnsw"));
+  ASSERT_EQ(ASSERT_RESULT(ReadFooterVersion(*Env::Default(), GetTestPath("i8.yb_hnsw"))), 3);
 }
 
 TEST_F(YbHnswStorageTest, HeaderReflectsStorageKind) {
@@ -457,8 +468,13 @@ TEST_F(YbHnswStorageTest, InitTakesStorageKindFromTheFile) {
 TEST_F(YbHnswStorageTest, SelfDistanceIsZero) {
   BuildHnswlibIndex(500);
 
-  for (auto storage_kind : {VectorStorageKind::kFloat32, VectorStorageKind::kFloat16}) {
-    auto index = ASSERT_RESULT(Import(storage_kind, Format("$0.yb_hnsw", storage_kind)));
+  for (auto storage_kind :
+       {VectorStorageKind::kFloat32, VectorStorageKind::kFloat16, VectorStorageKind::kInt8}) {
+    // int8 always has a rerank tier and the distance comes from it, so this covers both.
+    auto rerank_kind = storage_kind == VectorStorageKind::kInt8
+        ? RerankStorageKind::kFloat16 : RerankStorageKind::kNone;
+    auto index = ASSERT_RESULT(Import(
+        storage_kind, Format("$0.yb_hnsw", storage_kind), /* reload= */ false, rerank_kind));
     for (size_t i = 0; i != 20; ++i) {
       const auto& query = vectors_[i * (vectors_.size() / 20)];
       // A generous ef makes finding the exact match certain, so a failure is the codec.
@@ -554,6 +570,319 @@ TEST_F(YbHnswStorageTest, OutOfRangeCoordinatesStayFinite) {
     for (const auto& entry : results) {
       ASSERT_TRUE(std::isfinite(entry.distance)) << entry;
     }
+  }
+}
+
+
+// The scale is chunk-local and unrecoverable from anything else in the file, so it has to survive
+// the footer round trip bit for bit -- it is serialized as a bit pattern precisely because a
+// nearly-right scale would decode every record slightly wrong and look like a recall bug.
+TEST_F(YbHnswStorageTest, HeaderRoundTripsScaleAndRerankKind) {
+  BuildHnswlibIndex(200);
+
+  auto fresh = ASSERT_RESULT(ImportInt8("a.yb_hnsw"));
+  auto reloaded = ASSERT_RESULT(ImportInt8("b.yb_hnsw", /* reload= */ true));
+
+  ASSERT_EQ(fresh->header().storage_kind, VectorStorageKind::kInt8);
+  ASSERT_EQ(fresh->header().rerank_kind, RerankStorageKind::kFloat16);
+  ASSERT_GT(fresh->header().quantization_scale, 0.0f);
+
+  ASSERT_EQ(reloaded->header().storage_kind, VectorStorageKind::kInt8);
+  ASSERT_EQ(reloaded->header().rerank_kind, RerankStorageKind::kFloat16);
+  // Exact equality, not a tolerance: the field is serialized as a bit pattern, and a scale that
+  // decodes almost right would make every record slightly wrong and read as a recall bug.
+  ASSERT_EQ(reloaded->header().quantization_scale, fresh->header().quantization_scale);
+
+  // Encodings that do not quantize must not carry a scale, so a stray non-zero value here would
+  // mean the field is being set from something other than the data.
+  auto f16 = ASSERT_RESULT(Import(VectorStorageKind::kFloat16, "f16.yb_hnsw"));
+  ASSERT_EQ(f16->header().rerank_kind, RerankStorageKind::kNone);
+  ASSERT_EQ(f16->header().quantization_scale, 0.0f);
+}
+
+// Both copies live in one record, so vector_data_size is the only stride and the rerank copy is
+// found at a fixed offset inside it. Getting this arithmetic wrong reads the wrong bytes without
+// ever going out of bounds, which is why it is asserted rather than left to the search tests.
+TEST_F(YbHnswStorageTest, RecordLayoutIsInterleaved) {
+  BuildHnswlibIndex(200);
+
+  auto f32 = ASSERT_RESULT(Import(VectorStorageKind::kFloat32, "f32.yb_hnsw"));
+  auto i8 = ASSERT_RESULT(ImportInt8("i8.yb_hnsw"));
+
+  const auto record_overhead = f32->header().vector_data_size - dimensions_ * sizeof(float);
+  ASSERT_EQ(
+      i8->header().vector_data_size,
+      record_overhead + dimensions_ * sizeof(int8_t) + dimensions_ * sizeof(uint16_t));
+  ASSERT_EQ(i8->header().coordinates_size(), dimensions_ * sizeof(int8_t));
+
+  // 3 bytes per coordinate against float32's 4, so the whole file is smaller even though each
+  // vector is stored twice.
+  ASSERT_LT(i8->header().vector_data_size, f32->header().vector_data_size);
+  ASSERT_LT(
+      ASSERT_RESULT(Env::Default()->GetFileSize(GetTestPath("i8.yb_hnsw"))),
+      ASSERT_RESULT(Env::Default()->GetFileSize(GetTestPath("f32.yb_hnsw"))));
+}
+
+// The point of the design: int8 traversal costs recall, and reranking a modest over-fetch at
+// float16 gets it back. Asserting the un-reranked configuration is measurably worse is not
+// redundant -- without it the test passes just as happily when the rerank tier does nothing,
+// which is what a capped candidate budget produces.
+TEST_F(YbHnswStorageTest, Int8WithRerankMatchesFloat16Recall) {
+  constexpr size_t kNumVectors = 4000;
+  constexpr size_t kNumQueries = 200;
+  constexpr size_t kMaxResults = 10;
+
+  dimensions_ = 64;
+  BuildHnswlibIndex(kNumVectors);
+
+  auto f32 = ASSERT_RESULT(Import(VectorStorageKind::kFloat32, "f32.yb_hnsw"));
+  auto f16 = ASSERT_RESULT(Import(VectorStorageKind::kFloat16, "f16.yb_hnsw"));
+  auto i8 = ASSERT_RESULT(ImportInt8("i8.yb_hnsw"));
+  auto i8_bare = ASSERT_RESULT(Import(VectorStorageKind::kInt8, "i8_bare.yb_hnsw"));
+
+  std::vector<Vector> queries;
+  for (size_t i = 0; i != kNumQueries; ++i) {
+    queries.push_back(RandomVector());
+  }
+
+  auto measure_overlap = [this, &queries, &f32](YbHnsw& index) {
+    size_t common = 0;
+    for (const auto& query : queries) {
+      auto expected = f32->Search(query.data(), MakeSearchOptions(kMaxResults), context_);
+      auto actual = index.Search(query.data(), MakeSearchOptions(kMaxResults), context_);
+      common += CountCommon(expected, actual);
+    }
+    return static_cast<double>(common) / (queries.size() * kMaxResults);
+  };
+
+  const auto f16_overlap = measure_overlap(*f16);
+  const auto i8_overlap = measure_overlap(*i8);
+  const auto bare_overlap = measure_overlap(*i8_bare);
+
+  LOG(INFO) << "top-" << kMaxResults << " overlap with float32: float16 " << f16_overlap
+            << ", int8 + float16 rerank " << i8_overlap << ", int8 alone " << bare_overlap;
+
+  // Reranking cannot beat the encoding it reranks with, so float16's overlap is the ceiling; the
+  // margin absorbs graph non-determinism between the two files. That reranking ran at all is
+  // asserted deterministically below, not by comparing recall.
+  ASSERT_GE(i8_overlap, f16_overlap - 0.02);
+
+  // Deterministic proof the rerank ran: each reported distance must be exactly what the float16
+  // metric gives for that row, since that is what MakeResult computes. The un-reranked index
+  // reports the traversal's quantized distance, larger by 1/scale squared.
+  for (size_t i = 0; i != 20; ++i) {
+    auto query = RandomVector();
+    auto reranked = i8->Search(query.data(), MakeSearchOptions(kMaxResults), context_);
+    auto quantized = i8_bare->Search(query.data(), MakeSearchOptions(kMaxResults), context_);
+    ASSERT_EQ(reranked.size(), kMaxResults);
+    ASSERT_EQ(quantized.size(), kMaxResults);
+
+    for (const auto& entry : reranked) {
+      ASSERT_EQ(entry.distance, Float16Distance(query, VectorForId(entry.vector_id)))
+          << "reported distance is not the float16 metric's: " << entry;
+    }
+    // And without a rerank tier it is not, which is what makes the assertion above meaningful.
+    const auto& nearest = quantized.front();
+    ASSERT_NE(nearest.distance, Float16Distance(query, VectorForId(nearest.vector_id)))
+        << "un-reranked search reported a float16 distance: " << nearest;
+  }
+}
+
+// Over-fetching must work when ef <= max_num_results, the case a naive
+// min(max(ef, k), overfetch * k) budget silently breaks: it retains exactly k candidates, so
+// reranking reorders rather than corrects. Size assertions all still pass in that state, so this
+// compares behaviour across over-fetch factors instead.
+TEST_F(YbHnswStorageTest, OverFetchActuallyOverFetches) {
+  constexpr size_t kNumVectors = 4000;
+  constexpr size_t kNumQueries = 100;
+
+  dimensions_ = 64;
+  BuildHnswlibIndex(kNumVectors);
+
+  auto i8 = ASSERT_RESULT(ImportInt8("i8.yb_hnsw"));
+
+  std::vector<Vector> queries;
+  for (size_t i = 0; i != kNumQueries; ++i) {
+    queries.push_back(RandomVector());
+  }
+
+  // ef below, equal to, and above max_num_results, plus the k=1 boundary.
+  for (auto [max_results, ef] : std::initializer_list<std::pair<size_t, size_t>>{
+           {50, 10}, {50, 50}, {10, 64}, {1, 1}, {1, 64}}) {
+    std::vector<std::vector<std::string>> rendered_by_factor;
+    std::vector<double> total_distance_by_factor;
+    for (uint32_t factor : {1, 3}) {
+      google::FlagSaver flag_saver;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_rerank_overfetch_factor) = factor;
+      std::vector<std::string> rendered;
+      double total_distance = 0;
+      for (const auto& query : queries) {
+        auto actual = i8->Search(query.data(), MakeSearchOptions(max_results, ef), context_);
+        // Over-fetching is internal: the caller still gets exactly what it asked for.
+        ASSERT_EQ(actual.size(), std::min(max_results, kNumVectors))
+            << "max_results: " << max_results << ", ef: " << ef << ", factor: " << factor;
+        for (const auto& entry : actual) {
+          ASSERT_TRUE(std::isfinite(entry.distance)) << entry;
+          total_distance += entry.distance;
+        }
+        rendered.push_back(AsString(actual));
+      }
+      rendered_by_factor.push_back(std::move(rendered));
+      total_distance_by_factor.push_back(total_distance);
+    }
+
+    LOG(INFO) << "max_results: " << max_results << ", ef: " << ef
+              << " -- summed distance at factor 1: " << total_distance_by_factor[0]
+              << ", at factor 3: " << total_distance_by_factor[1];
+
+    // Reranking a superset cannot select a worse result, so summed over all queries a larger
+    // retained set must not be farther. Recall is not the assertion: it is not monotone in the
+    // budget, which also moves the traversal's termination bound.
+    ASSERT_LE(total_distance_by_factor[1], total_distance_by_factor[0] * 1.0001)
+        << "retaining more candidates produced farther results: max_results " << max_results
+        << ", ef " << ef;
+
+    // Where the over-fetch pushes the budget past max(ef, k) the search demonstrably does more
+    // work, so the answer has to change somewhere across these queries. Under the capped formula
+    // it would be identical for every one of them, which is the bug.
+    if (3 * max_results > std::max(ef, max_results)) {
+      ASSERT_NE(rendered_by_factor[0], rendered_by_factor[1])
+          << "factor 3 returned exactly what factor 1 did for all " << kNumQueries
+          << " queries, so the candidate budget is not growing: max_results " << max_results
+          << ", ef " << ef;
+    }
+  }
+}
+
+TEST_F(YbHnswStorageTest, Int8SurvivesReload) {
+  constexpr size_t kMaxResults = 10;
+  dimensions_ = 32;
+  BuildHnswlibIndex(2000);
+
+  auto fresh = ASSERT_RESULT(ImportInt8("a.yb_hnsw"));
+  auto reloaded = ASSERT_RESULT(ImportInt8("b.yb_hnsw", /* reload= */ true));
+
+  for (size_t i = 0; i != 100; ++i) {
+    auto query = RandomVector();
+    auto from_fresh = fresh->Search(query.data(), MakeSearchOptions(kMaxResults), context_);
+    auto from_reloaded = reloaded->Search(query.data(), MakeSearchOptions(kMaxResults), context_);
+    ASSERT_EQ(from_fresh.size(), from_reloaded.size());
+    for (size_t j = 0; j != from_fresh.size(); ++j) {
+      ASSERT_EQ(AsString(from_fresh[j]), AsString(from_reloaded[j]));
+    }
+  }
+}
+
+// A chunk whose coordinates are all zero would otherwise derive a zero scale, and dividing by it
+// turns every coordinate into an infinity -- which makes every distance NaN rather than failing.
+TEST_F(YbHnswStorageTest, Int8HandlesAnAllZeroChunk) {
+  dimensions_ = 8;
+  space_ = std::make_unique<hnswlib::L2Space>(dimensions_);
+  hnswlib_index_ = std::make_unique<HnswlibImpl>(
+      space_.get(), 64, /* M= */ 16, /* ef_construction= */ 100);
+  for (size_t i = 0; i != 32; ++i) {
+    vectors_.push_back(Vector(dimensions_, 0.0f));
+    hnswlib_index_->addPoint(vectors_.back().data(), vector_index::VectorId::GenerateRandom());
+  }
+
+  auto index = ASSERT_RESULT(ImportInt8("zeros.yb_hnsw"));
+  ASSERT_GT(index->header().quantization_scale, 0.0f);
+
+  auto results = index->Search(vectors_.front().data(), MakeSearchOptions(10), context_);
+  ASSERT_FALSE(results.empty());
+  for (const auto& entry : results) {
+    ASSERT_TRUE(std::isfinite(entry.distance)) << entry;
+    ASSERT_EQ(entry.distance, 0.0f) << entry;
+  }
+}
+
+// An infinite coordinate must not set the quantization scale: its reciprocal is zero, which would
+// quantize the whole chunk, well-behaved coordinates included, to zero -- silently destroying the
+// traversal while the reranked distances still look plausible.
+TEST_F(YbHnswStorageTest, Int8ScaleIgnoresNonFiniteCoordinates) {
+  dimensions_ = 8;
+  space_ = std::make_unique<hnswlib::L2Space>(dimensions_);
+  hnswlib_index_ = std::make_unique<HnswlibImpl>(
+      space_.get(), 64, /* M= */ 16, /* ef_construction= */ 100);
+
+  // Every coordinate is well below 4, so the expected scale comes from this and nothing else.
+  float max_finite = 0;
+  for (size_t i = 0; i != 32; ++i) {
+    auto vector = RandomVector();
+    for (auto coordinate : vector) {
+      max_finite = std::max(max_finite, std::fabs(coordinate));
+    }
+    vectors_.push_back(vector);
+    ids_.push_back(vector_index::VectorId::GenerateRandom());
+    hnswlib_index_->addPoint(vectors_.back().data(), ids_.back());
+  }
+
+  // One vector carrying an infinity and a NaN. hnswlib will compute non-finite distances to it
+  // while building, which is fine here: what is under test is the scale the writer derives.
+  auto poisoned = RandomVector();
+  poisoned[0] = std::numeric_limits<float>::infinity();
+  poisoned[1] = -std::numeric_limits<float>::infinity();
+  poisoned[2] = std::numeric_limits<float>::quiet_NaN();
+  vectors_.push_back(poisoned);
+  ids_.push_back(vector_index::VectorId::GenerateRandom());
+  hnswlib_index_->addPoint(vectors_.back().data(), ids_.back());
+
+  auto index = ASSERT_RESULT(ImportInt8("poisoned.yb_hnsw"));
+  const auto scale = index->header().quantization_scale;
+  ASSERT_TRUE(std::isfinite(scale)) << "an infinite coordinate set the scale";
+  ASSERT_GT(scale, 0.0f);
+  // Derived from the finite data alone. Compared against the largest finite magnitude among the
+  // healthy vectors, whose own coordinates are the only ones that should count.
+  ASSERT_LE(std::fabs(scale - max_finite / vector_index::kMaxInt8), 1e-9f)
+      << "scale " << scale << " does not match max finite magnitude " << max_finite;
+
+  // And the healthy vectors still quantize to distinguishable records: each is found at distance
+  // zero from itself, which cannot hold if every coordinate collapsed to the same byte.
+  for (size_t i = 0; i != 10; ++i) {
+    auto results = index->Search(
+        vectors_[i].data(), MakeSearchOptions(1, /* ef= */ 200), context_);
+    ASSERT_EQ(results.size(), 1);
+    ASSERT_EQ(results.front().distance, 0.0f) << "vector " << i;
+  }
+}
+
+// Same clamp hazard as float16, but a different failure: an out-of-range float -> int8_t
+// conversion is undefined behaviour rather than a saturation, so without the clamp the stored
+// byte is whatever the hardware happens to produce.
+TEST_F(YbHnswStorageTest, Int8ClampsOutOfRangeCoordinates) {
+  dimensions_ = 8;
+  space_ = std::make_unique<hnswlib::L2Space>(dimensions_);
+  hnswlib_index_ = std::make_unique<HnswlibImpl>(
+      space_.get(), 64, /* M= */ 16, /* ef_construction= */ 100);
+
+  for (size_t i = 0; i != 32; ++i) {
+    auto vector = RandomVector();
+    // One vector far outside the rest, so the scale it sets leaves every other coordinate in the
+    // bottom few steps of the range -- the outlier case the scale is most sensitive to.
+    if (i == 0) {
+      vector[0] = 1e4f;
+    }
+    vectors_.push_back(vector);
+    hnswlib_index_->addPoint(vector.data(), vector_index::VectorId::GenerateRandom());
+  }
+
+  auto index = ASSERT_RESULT(ImportInt8("outlier.yb_hnsw"));
+  for (size_t i = 0; i != 16; ++i) {
+    auto results = index->Search(RandomVector().data(), MakeSearchOptions(10), context_);
+    ASSERT_FALSE(results.empty());
+    for (const auto& entry : results) {
+      ASSERT_TRUE(std::isfinite(entry.distance)) << entry;
+      ASSERT_GE(entry.distance, 0.0f) << entry;
+    }
+  }
+
+  // A query well outside the chunk's range clamps rather than wrapping, and still returns
+  // finite, ordered results.
+  auto far_query = Vector(dimensions_, 1e9f);
+  auto results = index->Search(far_query.data(), MakeSearchOptions(5), context_);
+  ASSERT_FALSE(results.empty());
+  for (const auto& entry : results) {
+    ASSERT_TRUE(std::isfinite(entry.distance)) << entry;
   }
 }
 

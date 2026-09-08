@@ -49,6 +49,9 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     // the set isolates what narrowing the served records costs.
     auto float16_options = options;
     float16_options.storage_kind = vector_index::VectorStorageKind::kFloat16;
+    auto int8_options = options;
+    int8_options.storage_kind = vector_index::VectorStorageKind::kInt8;
+    int8_options.rerank_kind = vector_index::RerankStorageKind::kFloat16;
 
     indexes_.emplace_back(
         "usearch",
@@ -64,6 +67,11 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
         "hnswlib_f16_source",
         ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
             block_cache_, float16_options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
+            ->Create(vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kFalse));
+    indexes_.emplace_back(
+        "hnswlib_i8_source",
+        ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
+            block_cache_, int8_options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
             ->Create(vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kFalse));
     for (const auto& [_, index] : indexes_) {
       ASSERT_OK(index->Reserve(
@@ -87,7 +95,11 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
         "yb_hnsw_hnswlib_f16",
         ASSERT_RESULT(indexes_[2].second->SaveToFile(GetTestPath("2.yb_hnsw"))));
 
-    for (const auto& name : {"1.yb_hnsw", "2.yb_hnsw"}) {
+    indexes_.emplace_back(
+        "yb_hnsw_hnswlib_i8",
+        ASSERT_RESULT(indexes_[3].second->SaveToFile(GetTestPath("3.yb_hnsw"))));
+
+    for (const auto& name : {"1.yb_hnsw", "2.yb_hnsw", "3.yb_hnsw"}) {
       LOG(INFO) << name << " size: "
                 << ASSERT_RESULT(Env::Default()->GetFileSize(GetTestPath(name)));
     }
