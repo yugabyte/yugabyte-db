@@ -431,7 +431,11 @@ export const InstanceSettings = forwardRef<
                     </>
                   ))}
                 {deviceInfo && provider?.code === CloudType.gcp && useDedicatedNodes && (
-                  <StorageTypeField disabled={disableTserverFields} provider={provider} />
+                  <StorageTypeField
+                    disabled={disableTserverFields}
+                    isEditMode={editMode}
+                    provider={provider}
+                  />
                 )}
                 {ebsVolumeEnabled && provider?.code === CloudType.aws && (
                   <EBSVolumeField disabled={disableTserverFields || editMode} />
