@@ -416,7 +416,6 @@ size_t TSManager::NumLiveDescriptors() const {
 DbOidToHybridTimeMap AggregateYsqlDbOldestPinnedReadTimes(const TSDescriptorVector& descs) {
   DbOidToHybridTimeMap pins;
   for (const auto& desc : descs) {
-    all_pins_ready = all_pins_ready && desc->has_ysql_db_pins();
     for (const auto& [db_oid, pin] : desc->GetYsqlDbOldestPinnedReadTimes()) {
       auto [it, inserted] = pins.emplace(db_oid, pin);
       if (!inserted && pin < it->second) {
