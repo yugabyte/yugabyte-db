@@ -79,6 +79,14 @@ nostd::shared_ptr<trace::Span> StartServerSpan(
 // Buffers an attribute for the next RPC span started on this thread.
 void AddPendingRpcStringAttr(std::string key, std::string value);
 
+// Masks any active trace context by attaching an empty one for the returned token's lifetime.
+inline nostd::unique_ptr<opentelemetry::context::Token> DetachTraceContext() {
+  if (!IsDistTraceEnabled()) {
+    return nullptr;
+  }
+  return opentelemetry::context::RuntimeContext::Attach(opentelemetry::context::Context{});
+}
+
 // Holds the span context captured where it is constructed, so work that runs on another thread can
 // re-parent itself under it. Copying carries the captured context; it does not re-capture.
 class TraceParent {

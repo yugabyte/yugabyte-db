@@ -19,15 +19,21 @@
 #include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 
+DECLARE_string(otel_collector_traces_endpoint);
+
 namespace yb::dist_trace {
 
 // Enables distributed tracing for the lifetime of the object, pointed at an unreachable collector.
 class ScopedTestDistTrace {
  public:
-  ScopedTestDistTrace() { TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces"); }
+  ScopedTestDistTrace() : saved_endpoint_(FLAGS_otel_collector_traces_endpoint) {
+    TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
+  }
+
+  ~ScopedTestDistTrace() { TEST_SetOtelCollectorEndpoint(saved_endpoint_); }
 
  private:
-  google::FlagSaver flag_saver_;
+  std::string saved_endpoint_;
 };
 
 // Sampled, remote trace context whose trace and span id bytes are all `seed`.

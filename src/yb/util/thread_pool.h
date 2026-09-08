@@ -188,25 +188,18 @@ class TaskRecipient {
 
   template <NonReferenceType F>
   bool EnqueueFunctor(const F& f) {
-    return Enqueue(StampTraceContext(MakeFunctorThreadPoolTask<F, TaskType>(f)));
+    return Enqueue(MakeFunctorThreadPoolTask<F, TaskType>(f));
   }
 
   template <NonReferenceType F>
   bool EnqueueFunctor(F&& f) {
-    return Enqueue(StampTraceContext(MakeFunctorThreadPoolTask<F, TaskType>(std::move(f))));
+    return Enqueue(MakeFunctorThreadPoolTask<F, TaskType>(std::move(f)));
   }
 
   // Matches the interface of yb::ThreadPool::Submit.
   template <NonReferenceType F>
   Status Submit(const F& f) {
-    return EnqueueWithStatus(StampTraceContext(MakeFunctorThreadPoolTask<F, TaskType>(f)));
-  }
-
- private:
-  template <class Task>
-  Task* StampTraceContext(Task* task) {
-    task->set_trace_parent(dist_trace::GetActiveSpanContext());
-    return task;
+    return EnqueueWithStatus(MakeFunctorThreadPoolTask<F, TaskType>(f));
   }
 };
 
