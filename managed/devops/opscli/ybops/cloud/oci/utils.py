@@ -255,6 +255,9 @@ class OciCloudAdmin:
             return client_class(self.config, signer=signer)
         return client_class(self.config)
 
+    def _list_all(self, list_func, *args, **kwargs):
+        return oci.pagination.list_call_get_all_results(list_func, *args, **kwargs).data
+
     @property
     def compartment_id(self):
         if self._compartment_id is None:
@@ -351,8 +354,8 @@ class OciCloudAdmin:
 
     def get_shapes(self, compartment_id=None, availability_domain=None):
         comp_id = compartment_id or self.compartment_id
-        shapes = self.compute_client.list_shapes(comp_id, availability_domain=availability_domain)
-        return shapes.data
+        return self._list_all(
+            self.compute_client.list_shapes, comp_id, availability_domain=availability_domain)
 
     def get_instance_types(self, region=None):
         if region:
@@ -375,12 +378,11 @@ class OciCloudAdmin:
 
     def get_images(self, compartment_id=None, operating_system=None, shape=None):
         comp_id = compartment_id or self.compartment_id
-        images = self.compute_client.list_images(
+        return self._list_all(
+            self.compute_client.list_images,
             comp_id,
             operating_system=operating_system,
-            shape=shape
-        )
-        return images.data
+            shape=shape)
 
     def get_app_catalog_image(self, region, listing_id, resource_version=None):
         """Resolve a region-independent PIC listing to the region-specific image OCID."""
@@ -837,11 +839,11 @@ class OciCloudAdmin:
             self.set_region(region)
 
         comp_id = compartment_id or self.compartment_id
-        instances = self.compute_client.list_instances(comp_id)
+        instances = self._list_all(self.compute_client.list_instances, comp_id)
 
         results = []
         subnet_cache = {}
-        for instance in instances.data:
+        for instance in instances:
             if search_pattern and search_pattern not in instance.display_name:
                 continue
 
@@ -1017,8 +1019,9 @@ class OciCloudAdmin:
 
     def get_volume_attachments(self, instance_id=None, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
-        return self.compute_client.list_volume_attachments(
-            comp_id, instance_id=instance_id).data
+        return self._list_all(
+            self.compute_client.list_volume_attachments,
+            comp_id, instance_id=instance_id)
 
     def update_volume_size(self, volume_id, new_size_in_gbs):
         from oci.core.models import UpdateVolumeDetails
@@ -1027,7 +1030,8 @@ class OciCloudAdmin:
 
     def list_volumes_by_tags(self, tags, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
-        volumes = self.blockstorage_client.list_volumes(compartment_id=comp_id).data
+        volumes = self._list_all(
+            self.blockstorage_client.list_volumes, compartment_id=comp_id)
         matching_volumes = []
         for volume in volumes:
             if volume.lifecycle_state not in ("AVAILABLE", "PROVISIONING"):
