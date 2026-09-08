@@ -586,6 +586,10 @@ import { getCookie } from 'browser-cookie-utils';
   addSearchEvents();
   kapaAskAI();
 
+  window.addEventListener('OneTrustGroupsUpdated', () => {
+    activeGroups = window.OnetrustActiveGroups;
+  });
+
   document.addEventListener('keydown', (event) => {
     if (event.target.nodeName === 'TEXTAREA') {
       return;

@@ -5,7 +5,7 @@
  * end in the sidebar-tree.html file under `/layouts/partials/`.
  */
 (() => {
-  const activeGroups = window.OnetrustActiveGroups || '';
+  let activeGroups = window.OnetrustActiveGroups || '';
 
   /**
    * Check anchor multilines.
@@ -130,6 +130,10 @@
   if (currentLink) {
     ybScrollSidebar(currentLink);
   }
+
+  window.addEventListener('OneTrustGroupsUpdated', () => {
+    activeGroups = window.OnetrustActiveGroups;
+  });
 
   // Expand / collapse left navigation on click.
   sidenavCollapse.addEventListener('click', () => {

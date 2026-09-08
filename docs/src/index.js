@@ -1,8 +1,9 @@
 import Clipboard from 'clipboard';
-import { setCookie } from 'browser-cookie-utils';
+import { setCookie, deleteCookie } from 'browser-cookie-utils';
 
 const $ = window.jQuery;
-const activeGroups = window.OnetrustActiveGroups || '';
+
+let activeGroups = window.OnetrustActiveGroups || '';
 let yugabytePageFinderList = [];
 
 /**
@@ -259,10 +260,26 @@ function observeDocsHeaderHeight() {
   }
 }
 
+window.addEventListener('OneTrustGroupsUpdated', () => {
+  activeGroups = window.OnetrustActiveGroups;
+});
+
 $(document).ready(() => {
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
     $('body').addClass('is-safari');
+  }
+
+  if (activeGroups.indexOf('C0003') === -1) {
+    deleteCookie('leftMenuWidth');
+    deleteCookie('leftMenuShowHide');
+
+    deleteCookie('utm_check');
+    deleteCookie('utm_campaign');
+    deleteCookie('utm_content');
+    deleteCookie('utm_medium');
+    deleteCookie('utm_source');
+    deleteCookie('utm_term');
   }
 
   const pageFinderContainer = document.querySelectorAll('.page-finder .finder-panel .inner-container');
