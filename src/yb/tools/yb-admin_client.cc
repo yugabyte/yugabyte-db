@@ -33,12 +33,16 @@
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 
+#include <algorithm>
 #include <iomanip>
+#include <iostream>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -50,6 +54,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/common/xcluster_util.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_alterer.h"
@@ -59,6 +64,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/json_util.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/tablespace_parser.h"
@@ -67,6 +73,7 @@
 
 #include "yb/consensus/consensus.proxy.h"
 
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
@@ -1669,6 +1676,15 @@ Status DoListTablets(
       AddStringField("id", tablet_uuid, &json_tablet, &document.GetAllocator());
       AddStringField(
           "partition_debug_string", partition_debug_string, &json_tablet, &document.GetAllocator());
+      // Hex encodings of the raw partition keys. get_table_hash, and any driver built on it, pass
+      // these through as [start, end) bounds (empty = unbounded). partition_key_end is already
+      // exclusive.
+      AddStringField(
+          "partition_key_start_hex", strings::b2a_hex(partition.partition_key_start()),
+          &json_tablet, &document.GetAllocator());
+      AddStringField(
+          "partition_key_end_hex", strings::b2a_hex(partition.partition_key_end()),
+          &json_tablet, &document.GetAllocator());
       rapidjson::Value json_leader(rapidjson::kObjectType);
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
@@ -5034,32 +5050,49 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
   return Status::OK();
 }
 
-namespace {
-// Returns true if a tablet covering partition keys [tablet_start, tablet_end) overlaps the
-// requested range [range_start, range_end). An empty bound is unbounded: -inf for a start, +inf
-// for an end.
-bool PartitionRangeOverlaps(
-    Slice tablet_start, Slice tablet_end, Slice range_start, Slice range_end) {
-  // tablet_start < range_end
-  const bool below_range_end =
-      range_end.empty() || tablet_start.empty() || tablet_start.compare(range_end) < 0;
-  // range_start < tablet_end
-  const bool above_range_start =
-      tablet_end.empty() || range_start.empty() || range_start.compare(tablet_end) < 0;
-  return below_range_end && above_range_start;
-}
-}  // namespace
-
-Status ClusterAdminClient::GetTableXorHash(
-    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key) {
-  uint64_t xor_hash = 0;
-  uint64_t row_count = 0;
+// Hashes [start_key, end_key) of one table at one read time, folding the per-tablet answers into a
+// single total. Visits tablets in key order so a spent max_rows leaves nothing unhashed behind the
+// continuation key, and fails rather than combine tablets that hashed under different schemes.
+Result<TableHashTotals> ClusterAdminClient::ComputeTableXorHash(
+    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key,
+    std::ostream* verbose, uint64_t max_rows) {
+  TableHashTotals totals;
   const bool has_key_range = !start_key.empty() || !end_key.empty();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
   RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
-  std::cout << "Processing " << tablet_locations.size() << " tablets for table " << table_id
-            << std::endl;
+  if (verbose) {
+    *verbose << "Processing " << tablet_locations.size() << " tablets for table " << table_id
+             << std::endl;
+  }
+
+  // Bounds are compared against tablet partition keys below, so both have to live in the same byte
+  // space. For a hash table a partition key is a bare 2-byte hash, while the continuation key a
+  // capped scan hands back is a full encoded row key, which byte-compares as larger than almost
+  // every 2-byte bound. Lift both sides into the encoded space first. GetEncodedPartitionKey is the
+  // identity for a range table, so this is a no-op there.
+  const auto table_info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& partition_schema = table_info.partition_schema;
+  // A 2-byte key is a partition key and gets encoded; anything else is either empty or already an
+  // encoded continuation key, and passes through untouched.
+  auto to_encoded_key = [&partition_schema](Slice key) -> Result<std::string> {
+    if (key.size() != dockv::PartitionSchema::kPartitionKeySize) {
+      return key.ToBuffer();
+    }
+    return partition_schema.GetEncodedPartitionKey(key.ToBuffer());
+  };
+  const auto encoded_start_key = VERIFY_RESULT(to_encoded_key(start_key));
+  const auto encoded_end_key = VERIFY_RESULT(to_encoded_key(end_key));
+  // start_key is inclusive and end_key exclusive, so a bounded range must have start < end. The
+  // check belongs here rather than in the CLI because only the encoded forms are comparable: a
+  // hash continuation key and a 2-byte hash bound order differently as raw bytes. An empty bound is
+  // unbounded on that side and imposes no ordering constraint.
+  SCHECK(
+      encoded_start_key.empty() || encoded_end_key.empty() ||
+          encoded_start_key < encoded_end_key,
+      InvalidArgument,
+      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
 
   HybridTime ht;
   if (!read_ht) {
@@ -5080,17 +5113,55 @@ Status ClusterAdminClient::GetTableXorHash(
   } else {
     RETURN_NOT_OK(ht.FromUint64(read_ht));
   }
-  std::cout << "Read HT: " << ht << std::endl;
+  totals.read_ht = ht.ToUint64();
+  if (verbose) {
+    *verbose << "Read HT: " << ht << std::endl;
+  }
 
+  // The first tablet to answer, whose scheme every later one is held to. Empty until then, which is
+  // also how a range that hashed nothing leaves hash_scheme_version unset.
+  TabletId scheme_source_tablet;
+
+  // Each entry is (encoded partition_key_start, tablet). The encoded form is carried alongside so
+  // the sort below orders tablets in the same byte space as every other comparison here.
+  std::vector<std::pair<std::string, const master::TabletLocationsPB*>> overlapping;
+  overlapping.reserve(tablet_locations.size());
   for (const auto& location : tablet_locations) {
+    auto tablet_start = VERIFY_RESULT(to_encoded_key(location.partition().partition_key_start()));
     // When a key range is requested, skip tablets that do not overlap it. Each cluster resolves the
     // (logical) partition-key range to whatever tablets it happens to own, so this filtering is
     // cluster-independent even when tablet boundaries differ across clusters.
-    if (has_key_range &&
-        !PartitionRangeOverlaps(
-            location.partition().partition_key_start(),
-            location.partition().partition_key_end(), start_key, end_key)) {
-      continue;
+    if (has_key_range) {
+      const auto tablet_end =
+          VERIFY_RESULT(to_encoded_key(location.partition().partition_key_end()));
+      if (!PartitionRangeOverlaps(tablet_start, tablet_end, encoded_start_key, encoded_end_key)) {
+        continue;
+      }
+    }
+    overlapping.emplace_back(std::move(tablet_start), &location);
+  }
+  // The cap has to be spent on tablets in key order, otherwise the continuation key would report a
+  // resume point with unhashed tablets left behind it. Ordering is harmless when there is no cap.
+  // Sorting on the encoded start keeps this in the same byte space as the bounds comparisons above.
+  // Raw keys happen to sort the same way today, but relying on that would leave one comparison here
+  // reading a different space from every other.
+  std::sort(overlapping.begin(), overlapping.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.first < rhs.first;
+  });
+
+  for (const auto& [encoded_tablet_start, location_ptr] : overlapping) {
+    const auto& location = *location_ptr;
+    if (max_rows > 0 && totals.row_count >= max_rows) {
+      // Previous tablet hashed exactly the remaining budget. Continue from this tablet's start
+      // if it is still inside the requested range. Report the encoded form, not the raw partition
+      // key: a caller compares this against range bounds, which are encoded, and for a hash table
+      // the two spaces order differently. Handing back the raw 2-byte key lets a bound read as
+      // already passed, ending a range with tablets inside it still unhashed.
+      if ((encoded_start_key.empty() || encoded_tablet_start >= encoded_start_key) &&
+          (encoded_end_key.empty() || encoded_tablet_start < encoded_end_key)) {
+        totals.next_key = encoded_tablet_start;
+      }
+      break;
     }
 
     auto leader_replica = std::find_if(
@@ -5124,22 +5195,67 @@ Status ClusterAdminClient::GetTableXorHash(
     if (!end_key.empty()) {
       req.set_end_key(end_key.cdata(), end_key.size());
     }
+    if (max_rows > 0) {
+      req.set_max_rows(max_rows - totals.row_count);
+    }
     RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
     if (resp.has_error()) {
       // The server's message does not say which tablet or which server it came from.
       return StatusFromPB(resp.error().status())
           .CloneAndPrepend(Format("Tablet $0 on $1", location.tablet_id(), addr));
     }
-    std::cout << "Tablet ID: " << location.tablet_id() << std::endl;
-    std::cout << "\tRow count: " << resp.row_count() << std::endl;
-    std::cout << "\tXOR hash: " << resp.xor_hash() << std::endl;
-    std::cout << std::endl;
-    xor_hash ^= resp.xor_hash();
-    row_count += resp.row_count();
+    // A tserver that predates the field is reported as scheme 0, not as "same as everyone else":
+    // during a rolling upgrade it really is hashing differently from its upgraded peers.
+    const uint32_t tablet_scheme = resp.hash_scheme_version();
+    if (verbose) {
+      *verbose << "Tablet ID: " << location.tablet_id() << std::endl;
+      *verbose << "\tRow count: " << resp.row_count() << std::endl;
+      *verbose << "\tXOR hash: " << resp.xor_hash() << std::endl;
+      *verbose << "\tHash scheme version: " << tablet_scheme << std::endl;
+      *verbose << std::endl;
+    }
+    // Tablet hashes fold into one total only when every tablet hashed the same way. Mid-upgrade the
+    // leaders of one table can sit on binaries of different versions, and xoring their hashes
+    // together yields a number that matches nothing on either scheme.
+    if (scheme_source_tablet.empty()) {
+      totals.hash_scheme_version = tablet_scheme;
+      scheme_source_tablet = location.tablet_id();
+    } else if (tablet_scheme != *totals.hash_scheme_version) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Tablets of table $0 hashed under different schemes, so their hashes cannot be combined: "
+          "tablet $1 reports version $2, tablet $3 on $4 reports version $5. This is expected "
+          "while an upgrade is in progress; re-run once every tserver is on the same version.",
+          table_id, scheme_source_tablet, *totals.hash_scheme_version, location.tablet_id(), addr,
+          tablet_scheme);
+    }
+    totals.xor_hash ^= resp.xor_hash();
+    totals.row_count += resp.row_count();
+    if (max_rows > 0 && resp.has_next_key() && !resp.next_key().empty()) {
+      totals.next_key = resp.next_key();
+      break;
+    }
   }
 
-  std::cout << "Total row count: " << row_count << std::endl;
-  std::cout << "Total XOR hash: " << xor_hash << std::endl;
+  return totals;
+}
+
+// Prints the totals for `yb-admin get_table_hash`. ComputeTableXorHash does the hashing and streams
+// the per-tablet lines; this only reports the summary.
+Status ClusterAdminClient::GetTableXorHash(
+    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key, uint64_t max_rows) {
+  auto totals = VERIFY_RESULT(
+      ComputeTableXorHash(table_id, read_ht, start_key, end_key, &std::cout, max_rows));
+  std::cout << "Total row count: " << totals.row_count << std::endl;
+  std::cout << "Total XOR hash: " << totals.xor_hash << std::endl;
+  // Lets two hashes taken by hand be checked for comparability first. Absent when no tablet was
+  // hashed.
+  if (totals.hash_scheme_version) {
+    std::cout << "Hash scheme version: " << *totals.hash_scheme_version << std::endl;
+  }
+  if (!totals.next_key.empty()) {
+    std::cout << "Next key: " << strings::b2a_hex(totals.next_key) << std::endl;
+  }
   return Status::OK();
 }
 

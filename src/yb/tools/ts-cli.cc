@@ -889,6 +889,9 @@ Status TsAdminClient::DumpTabletData(
   }
   std::cout << "Row count: " << resp.row_count() << std::endl;
   std::cout << "XOR hash: " << resp.xor_hash() << std::endl;
+  // Which scheme this tserver hashed under. Two tservers' hashes are comparable only when this
+  // agrees; a server too old to report one shows 0.
+  std::cout << "Hash scheme version: " << resp.hash_scheme_version() << std::endl;
   return Status::OK();
 }
 

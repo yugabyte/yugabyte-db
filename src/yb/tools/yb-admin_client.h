@@ -32,6 +32,7 @@
 #pragma once
 
 #include <functional>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -62,6 +63,7 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_fwd.h"
 
+#include "yb/tools/table_hash.h"
 #include "yb/tools/yb-admin_cli.h"
 #include "yb/rpc/rpc_fwd.h"
 
@@ -541,9 +543,19 @@ class ClusterAdminClient {
   // List the uuids of all masters/tservers known to the master leader.
   Result<std::unordered_set<std::string>> ListAllKnownMasterUuids();
   Result<std::unordered_set<std::string>> ListAllKnownTabletServersUuids();
+
+  // get_table_hash: hash the table and print the per-tablet breakdown plus the totals, including
+  // the continuation key if max_rows stopped the scan early.
   Status GetTableXorHash(
       const TableId& table_id, uint64_t read_ht, Slice start_key = Slice(),
-      Slice end_key = Slice());
+      Slice end_key = Slice(), uint64_t max_rows = 0);
+
+  // Hash one table at read_ht without printing. verbose, if set, gets the human-readable
+  // per-tablet dump that get_table_hash prints. max_rows > 0 caps the scan for every partitioning
+  // scheme; next_key is set when the cap stops the scan before end_key.
+  Result<TableHashTotals> ComputeTableXorHash(
+      const TableId& table_id, uint64_t read_ht, Slice start_key = Slice(),
+      Slice end_key = Slice(), std::ostream* verbose = nullptr, uint64_t max_rows = 0);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

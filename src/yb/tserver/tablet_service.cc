@@ -226,6 +226,13 @@ DEFINE_test_flag(double, respond_write_with_abort_probability, 0.0,
 
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
+// Lets one tserver stand in for a build that hashes differently, so the mixed-version case is
+// reachable from a test rather than by running two builds.
+DEFINE_test_flag(int32, dump_tablet_data_hash_scheme_version, -1,
+    "Overrides the hash scheme version DumpTabletData reports. -1 reports the real one, 0 leaves "
+    "the field unset as a tserver from before it existed does, and a positive value reports that "
+    "version.");
+
 DECLARE_bool(disable_alter_vs_write_mutual_exclusion);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
@@ -4209,17 +4216,34 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
   }
   Slice start_key = req.has_start_key() ? Slice(req.start_key()) : Slice();
   Slice end_key = req.has_end_key() ? Slice(req.end_key()) : Slice();
+  const uint64_t max_rows = req.has_max_rows() ? req.max_rows() : 0;
+  std::string next_key;
   RETURN_NOT_OK(
       tablet::DumpTabletData(
           *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, max_read_time_wait,
-          deadline, xor_hash, row_count, target_table_id, start_key, end_key));
+          deadline, xor_hash, row_count, target_table_id, start_key, end_key, max_rows,
+          &next_key));
   DumpTabletDataResponsePB resp;
   resp.set_row_count(row_count);
   resp.set_xor_hash(xor_hash);
+  // Always sent, so a caller can tell "this server hashes the way I do" from "this server is too
+  // old to say", which differ during a rolling upgrade. A test may alter it to impersonate such a
+  // server; 0 means leave it unset, as that server would.
+  const auto scheme_version_override = FLAGS_TEST_dump_tablet_data_hash_scheme_version;
+  if (scheme_version_override < 0) {
+    resp.set_hash_scheme_version(tablet::kTabletDataHashSchemeVersion);
+  } else if (scheme_version_override > 0) {
+    resp.set_hash_scheme_version(scheme_version_override);
+  }
+  if (!next_key.empty()) {
+    resp.set_next_key(next_key);
+  }
 
   if (file) {
     RETURN_NOT_OK(file->Append(Format("\nRow count: $0\n", row_count)));
     RETURN_NOT_OK(file->Append(Format("XOR hash: $0\n", xor_hash)));
+    RETURN_NOT_OK(
+        file->Append(Format("Hash scheme version: $0\n", tablet::kTabletDataHashSchemeVersion)));
     RETURN_NOT_OK(file->Close());
   }
   return resp;

@@ -78,6 +78,9 @@ DEFINE_NON_RUNTIME_string(master_addresses, "localhost:7100",
     "Comma-separated list of YB Master server addresses");
 DEFINE_NON_RUNTIME_string(init_master_addrs, "", "host:port of any yb-master in a cluster");
 DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_NON_RUNTIME_uint64(max_rows_per_scan, 0,
+    "Stop a scan after this many rows (0 = unlimited). Used by get_table_hash. Applies to every "
+    "partitioning scheme: the scan returns a Next key to resume from.");
 
 // Command-specific flags
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
@@ -3056,13 +3059,10 @@ Status get_table_hash_action(
   if (args.size() >= 4 && !args[3].empty()) {
     end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[3]));
   }
-  // start_key is inclusive and end_key exclusive, so a bounded range must have start_key < end_key
-  // (raw partition-key byte order, matching the server's comparison). An empty bound is unbounded
-  // on that side and imposes no ordering constraint.
-  SCHECK(
-      start_key.empty() || end_key.empty() || start_key < end_key, InvalidArgument,
-      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
-  return client->GetTableXorHash(table_id, read_ht, start_key, end_key);
+  // The start < end ordering check lives in ComputeTableXorHash: a bound may be a continuation key
+  // from a capped scan, and only the server-side encoding makes such a bound comparable against a
+  // plain partition key.
+  return client->GetTableXorHash(table_id, read_ht, start_key, end_key, FLAGS_max_rows_per_scan);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";
