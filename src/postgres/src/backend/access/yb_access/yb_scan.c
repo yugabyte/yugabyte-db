@@ -63,6 +63,7 @@
 #include "utils/elog.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/resowner_private.h"
 #include "utils/selfuncs.h"
@@ -4695,6 +4696,11 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 	int			sampledrows;
 	bool		has_data = false;
 
+	MemoryContext perrowcxt = AllocSetContextCreate(CurrentMemoryContext,
+													"ybFetchSample row values",
+													ALLOCSET_DEFAULT_SIZES);
+	MemoryContext samplecxt = CurrentMemoryContext;
+
 	/*
 	 * Retrieve liverows and deadrows counters.
 	 * TODO: count deadrows
@@ -4715,23 +4721,27 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 										   &ybSample->exec_params));
 		}
 		YbcPgSysColumns syscols;
-		/* Fetch one row. */
+
+		MemoryContextSwitchTo(perrowcxt);
 		HandleYBStatus(YBCPgDmlFetch(ybSample->handle,
 									 tupdesc->natts,
 									 (uint64_t *) values,
 									 nulls,
 									 &syscols,
 									 &has_data));
+		MemoryContextSwitchTo(samplecxt);
 
 		if (has_data)
 		{
-			/* Make a heap tuple in current memory context */
 			rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
+
 			if (syscols.ybctid != NULL)
-				HEAPTUPLE_YBCTID(rows[numrows]) = PointerGetDatum(syscols.ybctid);
+				HEAPTUPLE_YBCTID(rows[numrows]) =
+					datumCopy(PointerGetDatum(syscols.ybctid), false, -1);
 			rows[numrows]->t_tableOid = relid;
 			++numrows;
 		}
+		MemoryContextReset(perrowcxt);
 	}
 
 	if (*YBCGetGFlags()->TEST_delay_after_table_analyze_ms > 0)
@@ -4739,6 +4749,7 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 		pg_usleep(*YBCGetGFlags()->TEST_delay_after_table_analyze_ms * 1000L);
 	}
 
+	MemoryContextDelete(perrowcxt);
 	pfree(values);
 	pfree(nulls);
 	/* Close the DocDB statement */
