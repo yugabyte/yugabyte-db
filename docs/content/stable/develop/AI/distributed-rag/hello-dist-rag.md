@@ -4,19 +4,17 @@ headerTitle: Hello Distributed RAG
 linkTitle: Hello Distributed RAG
 description: Build a RAG pipeline in SQL using the pg_dist_rag extension
 headcontent: Build a RAG ingestion pipeline with three SQL calls
-tags:
-  feature: tech-preview
 menu:
   stable_develop:
     identifier: tutorials-rag-hello-dist
-    parent: tutorials-ai-rag
-    weight: 41
+    parent: distributed-rag
+    weight: 20
 type: docs
 ---
 
-{{<tags/feature/tp idea="2537">}}In the [Hello RAG](../hello-rag/) tutorial, the application does all the ingestion work itself: it loads documents, splits them into chunks, calls the OpenAI embeddings API, and inserts each vector into a table you created by hand. That is roughly 100 lines of Python and a llama-index dependency before you can ask your first question.
+{{<tags/feature/tp idea="2537">}}In the [Hello RAG](../../hello-rag/) tutorial, the application does all the ingestion work itself: it loads documents, splits them into chunks, calls the OpenAI embeddings API, and inserts each vector into a table you created by hand. That is roughly 100 lines of Python and a llama-index dependency before you can ask your first question.
 
-This tutorial builds the same question-answering application using the [pg_dist_rag](../../../additional-features/pg-extensions/extension-pg-dist-rag/) extension, which turns document ingestion into a database operation. You register an S3 bucket as a document source, create a vector index, and build it — three SQL calls. RAG workers that ship with YugabyteDB crawl the bucket, chunk and embed each document, and write the vectors into a table that pg_dist_rag creates for you. Your application keeps only the part that is actually yours: asking questions.
+This tutorial builds the same question-answering application using the [pg_dist_rag](../) extension, which turns document ingestion into a database operation. You register an S3 bucket as a document source, create a vector index, and build it — three SQL calls. RAG workers that ship with YugabyteDB crawl the bucket, chunk and embed each document, and write the vectors into a table that pg_dist_rag creates for you. Your application keeps only the part that is actually yours: asking questions.
 
 | Ingestion step | Hello RAG | Hello Distributed RAG |
 | :--- | :--- | :--- |
@@ -33,21 +31,21 @@ Because the pipeline state lives in the database, you can watch ingestion progre
 ## Prerequisites
 
 - Python 3.11 (required by the RAG worker) and Python 3 for the application.
-- YugabyteDB {{<release "2026.1">}} or later with the pg_dist_rag extension.
+- YugabyteDB {{<release "2026.1.1">}} or later with the pg_dist_rag extension.
 - An [OpenAI API key](https://platform.openai.com/api-keys), exported as `OPENAI_API_KEY`.
 - AWS credentials for the RAG worker. The worker uses them to list the source bucket; any valid AWS credentials work for the public sample bucket, because it grants public read access.
 
 ## Set up YugabyteDB
 
-1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2026.1">}} or later.
+1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2026.1.1">}} or later.
 
-1. Start a single-node cluster using [yugabyted](../../../reference/configuration/yugabyted/).
+1. Start a single-node cluster using [yugabyted](../../../../reference/configuration/yugabyted/).
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1
     ```
 
-1. Connect to the cluster using [ysqlsh](../../../api/ysqlsh/) and enable the extensions:
+1. Connect to the cluster using [ysqlsh](../../../../api/ysqlsh/) and enable the extensions:
 
     ```sh
     ./bin/ysqlsh -U yugabyte
@@ -269,7 +267,8 @@ To ingest real content including internal docs, knowledge bases, and support arc
 
 ## Read more
 
-- [pg_dist_rag extension](../../../additional-features/pg-extensions/extension-pg-dist-rag/)
-- [Hello RAG](../hello-rag/)
-- [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/)
+- [Distributed RAG](../)
+- [Distributed RAG setup](../pg-dist-rag-setup/)
+- [Hello RAG](../../hello-rag/)
+- [pgvector extension](../../../../additional-features/pg-extensions/extension-pgvector/)
 - [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)

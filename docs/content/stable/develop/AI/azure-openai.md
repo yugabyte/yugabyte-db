@@ -10,7 +10,7 @@ menu:
   stable_develop:
     identifier: tutorials-azure-openai
     parent: tutorials-ai-rag
-    weight: 42
+    weight: 40
 type: docs
 ---
 
