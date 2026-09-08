@@ -24,6 +24,10 @@ Depending on your environment, you can save your YugabyteDB universe data to a v
 
 You can configure AWS S3 and S3-compatible storage as your backup target.
 
+{{< note title="Not for OCI Object Storage" >}}
+Do not use this Amazon S3 configuration for Oracle Cloud Infrastructure Object Storage. Create an [Oracle Cloud](#oracle-cloud-infrastructure) storage configuration instead.
+{{< /note >}}
+
 ### Prerequisites
 
 - S3-compatible storage requires S3 path style access.
@@ -343,18 +347,20 @@ For multi-region backup configurations with IAM enabled, you do not need to prov
 
 ## Oracle Cloud Infrastructure
 
-You can configure OCI Object Storage as your backup target. YugabyteDB Anywhere supports two authentication modes:
+You can configure OCI Object Storage as your backup target. YugabyteDB Anywhere supports two authentication modes; they are mutually exclusive:
 
-- **S3-compatible credentials**, using a Customer Secret Key and the S3-compatible Object Storage endpoint.
-- **OCI IAM**, using instance principal on the YugabyteDB Anywhere host.
+- **S3-compatible credentials**, using a Customer Secret Key and the S3-compatible Object Storage endpoint. Path-style access is always enabled for this mode.
+- **OCI IAM**, using instance principal. The YugabyteDB Anywhere host and all universe nodes must belong to a dynamic group with object-storage access.
+
+Do not use an OCI API signing key (User OCID, fingerprint, and PEM) as static storage credentials. Those fields apply to the [OCI provider](../../configure-yugabyte-platform/oci/) and [OCI KMS](../../security/create-kms-config/oci-kms/), not backup storage. Do not use an [Amazon S3](#amazon-s3) storage configuration for OCI Object Storage.
 
 ### Prerequisites
 
 - An Object Storage bucket in the compartment you will use for backups.
-- For S3-compatible mode, a Customer Secret Key (Access Key and Secret) for a user that can manage objects in the bucket. See [Customer Secret Keys](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/managingcredentials.htm#create-secret-key) in the OCI documentation.
-- For IAM mode, instance principal configured on the YugabyteDB Anywhere host (and on database nodes if they also authenticate natively). Refer to [Permissions to back up and restore](../../prepare/cloud-permissions/cloud-permissions-storage/).
+- For S3-compatible mode, a Customer Secret Key (Access Key and Secret) for a user that can manage objects in the bucket. In the OCI Console, create the key under **Identity > Users > Customer Secret Keys**. See [Customer Secret Keys](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/managingcredentials.htm#create-secret-key) in the OCI documentation.
+- For IAM mode, instance principal on the YugabyteDB Anywhere host and on every universe node. Refer to [Permissions to back up and restore](../../prepare/cloud-permissions/cloud-permissions-storage/).
 
-The Object Storage namespace is required for IAM mode. When you use a native HTTPS backup location, the namespace must match the `/n/<namespace>/` segment in the URL.
+The Object Storage namespace is required for IAM mode. When you use a native HTTPS backup location, the namespace must match the `/n/<namespace>/` segment in the URL. In S3-compatible mode the namespace is optional, but if you set it, it must match that segment.
 
 ### Create an OCI backup configuration
 
@@ -371,7 +377,9 @@ To configure OCI Object Storage, do the following:
     - S3-compatible: `s3://<bucket>[/<path>]`
     - Native HTTPS: `https://objectstorage.<region>.oraclecloud.com/n/<namespace>/b/<bucket>[/<path>]`
 
-    Do not use `/o/<object>` paths.
+    Native HTTPS also works on government (`objectstorage.<region>.oraclegovcloud.com`) and dedicated (`objectstorage.<region>.oci.customer-oci.com`) realms. An `s3://` location with IAM still uses the public OC1 endpoint (`objectstorage.<region>.oraclecloud.com`).
+
+    Do not use `/o/<object>` paths. Do not use Pre-Authenticated Request (PAR) URLs; a location that contains `/p/<token>/` is parsed, but the token is ignored.
 
 1. In the **OCI Region** field, enter the region of the bucket (for example, `us-sanjose-1`). For S3-compatible credentials this is also used as the signing region.
 
@@ -384,6 +392,92 @@ To configure OCI Object Storage, do the following:
     The S3 Host Base is the S3-compatible endpoint, in the form `<namespace>.compat.objectstorage.<region>.oraclecloud.com`. Path-style access is required and is applied automatically for OCI.
 
 1. Click **Save**.
+
+### Multi-region backup configuration (API)
+
+Currently, you can only configure multi-region OCI storage using the [YugabyteDB Anywhere API](../../anywhere-automation/anywhere-api/). Each `REGION_LOCATIONS` entry must include `LOCATION` and `REGION`. `REGION` is the universe placement region. For S3-compatible mode, each region location must also include `OCI_S3_HOST_BASE`.
+
+To create a storage configuration for multiple OCI regions with IAM:
+
+```bash
+curl -X POST \
+  'https://<yba-ip>/api/v1/customers/<customer-uuid>/configs' \
+  -H 'Content-Type: application/json' \
+  -H 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{
+    "configName": "oci-multi-region-iam",
+    "type": "STORAGE",
+    "name": "OCI",
+    "data": {
+      "BACKUP_LOCATION": "https://objectstorage.us-sanjose-1.oraclecloud.com/n/mytenancy/b/backup-sjc",
+      "OCI_REGION": "us-sanjose-1",
+      "OCI_NAMESPACE": "mytenancy",
+      "USE_OCI_IAM": true,
+      "REGION_LOCATIONS": [
+        {
+          "REGION": "us-sanjose-1",
+          "LOCATION": "https://objectstorage.us-sanjose-1.oraclecloud.com/n/mytenancy/b/backup-sjc"
+        },
+        {
+          "REGION": "us-ashburn-1",
+          "LOCATION": "https://objectstorage.us-ashburn-1.oraclecloud.com/n/mytenancy/b/backup-iad"
+        }
+      ]
+    }
+  }'
+```
+
+To create a storage configuration for multiple OCI regions with S3-compatible credentials:
+
+```bash
+curl -X POST \
+  'https://<yba-ip>/api/v1/customers/<customer-uuid>/configs' \
+  -H 'Content-Type: application/json' \
+  -H 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{
+    "configName": "oci-multi-region-s3",
+    "type": "STORAGE",
+    "name": "OCI",
+    "data": {
+      "BACKUP_LOCATION": "s3://backup-sjc",
+      "OCI_REGION": "us-sanjose-1",
+      "OCI_S3_ACCESS_KEY_ID": "<access-key>",
+      "OCI_S3_SECRET_ACCESS_KEY": "<secret-key>",
+      "OCI_S3_HOST_BASE": "mytenancy.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+      "USE_OCI_IAM": false,
+      "REGION_LOCATIONS": [
+        {
+          "REGION": "us-sanjose-1",
+          "LOCATION": "s3://backup-sjc",
+          "OCI_S3_HOST_BASE": "mytenancy.compat.objectstorage.us-sanjose-1.oraclecloud.com"
+        },
+        {
+          "REGION": "us-ashburn-1",
+          "LOCATION": "s3://backup-iad",
+          "OCI_S3_HOST_BASE": "mytenancy.compat.objectstorage.us-ashburn-1.oraclecloud.com"
+        }
+      ]
+    }
+  }'
+```
+
+Use the following configuration parameters:
+
+| Parameter | Description |
+| :--- | :--- |
+| `configName` | A meaningful name for your storage configuration. |
+| `type` | Must be `"STORAGE"`. |
+| `name` | Must be `"OCI"`. |
+| `data.BACKUP_LOCATION` | The default bucket in `s3://<bucket>[/<path>]` or native HTTPS form. |
+| `data.OCI_REGION` | Region of the default bucket (signing region for S3-compatible mode). |
+| `data.USE_OCI_IAM` | Set to `true` for instance principal. When `true`, do not include Customer Secret Key fields. |
+| `data.OCI_NAMESPACE` | Required when `USE_OCI_IAM` is `true`. |
+| `data.OCI_S3_ACCESS_KEY_ID`, `data.OCI_S3_SECRET_ACCESS_KEY`, `data.OCI_S3_HOST_BASE` | Required when `USE_OCI_IAM` is `false`. |
+| `data.REGION_LOCATIONS` | Optional. Array of region-specific locations. Each entry contains `REGION` (universe placement region) and `LOCATION`. For S3-compatible mode, each entry must also include `OCI_S3_HOST_BASE`. |
+
+{{< note title="Mutually exclusive authentication" >}}
+You cannot use both Customer Secret Keys and OCI IAM in the same configuration. When `USE_OCI_IAM` is `true`, do not include `OCI_S3_ACCESS_KEY_ID`, `OCI_S3_SECRET_ACCESS_KEY`, or `OCI_S3_HOST_BASE`.
+{{< /note >}}
 
 For more information on the S3-compatible API, see [Amazon S3 Compatibility API](https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/s3compatibleapi.htm) in the OCI documentation.
 

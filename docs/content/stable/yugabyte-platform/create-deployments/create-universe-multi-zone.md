@@ -117,6 +117,7 @@ Specify the instance to use for the universe nodes:
 #### Additional OCI fields
 
 - Choose the OCI **Volume Type** between Balanced, Higher Performance, and Lower Cost. The default is Balanced.
+- NVMe (local disk) instance types are not supported. Choose a remote block-volume instance type.
 
 ### Security Configurations
 

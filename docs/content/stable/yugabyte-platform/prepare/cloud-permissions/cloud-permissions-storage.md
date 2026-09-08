@@ -149,8 +149,10 @@ When backing up to and/or restoring from OCI Object Storage, YBA and DB nodes mu
 
 You can grant access in either of the following ways:
 
-- **S3-compatible credentials.** Create a Customer Secret Key for an OCI user that can manage objects in the bucket. Provide the Access Key, Secret Key, and S3-compatible host base (`<namespace>.compat.objectstorage.<region>.oraclecloud.com`) when creating the backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#oracle-cloud-infrastructure).
-- **OCI IAM (instance principal).** Attach a policy to the dynamic group of the YBA host (and database nodes, if they also authenticate natively) that grants object-storage access.
+- **S3-compatible credentials.** Create a [Customer Secret Key](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/managingcredentials.htm#create-secret-key) for an OCI user that can manage objects in the bucket (OCI Console: **Identity > Users > Customer Secret Keys**). Provide the Access Key, Secret Key, and S3-compatible host base (`<namespace>.compat.objectstorage.<region>.oraclecloud.com`) when creating the backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#oracle-cloud-infrastructure).
+- **OCI IAM (instance principal).** The YugabyteDB Anywhere host and all universe nodes must belong to a dynamic group with object-storage access. Attach a policy to that dynamic group.
+
+Do not use an API signing key (User OCID, fingerprint, and PEM) for storage; those credentials are for the [OCI provider](../../../configure-yugabyte-platform/oci/) and [OCI KMS](../cloud-permissions-ear/), not backup storage.
 
 The following permissions are required:
 
