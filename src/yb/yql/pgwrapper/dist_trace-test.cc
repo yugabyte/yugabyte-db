@@ -1935,7 +1935,7 @@ TEST_F(DistTraceTest, TestSharedMemorySpansReachTabletServer) {
       "ysql" /* client_service */, "TabletServer" /* server_service */));
 }
 
-// A request too large for the exchange falls back to RPC; the shmem span ends with an error.
+// A too-large request falls back to RPC: no shmem span, attributes land on the RPC span.
 TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
   static constexpr auto kTableName = "shmem_fallback_test";
   ASSERT_OK(CreateTable(kTableName, 1));
@@ -1950,22 +1950,18 @@ TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
       tp.trace_id, "rpc yb.tserver.PgClientService.Perform",
       "ysql" /* client_service */, "TabletServer" /* server_service */));
 
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        for (const auto& span : collector_.FindSpansByNamePrefix(
-                 tp.trace_id, kSharedMemoryPerformSpanName)) {
-          if (span.service_name == "ysql" &&
-              collector_.FindSpansByParent(tp.trace_id, span.span_id).empty()) {
-            EXPECT_EQ(span.status_code, otlp_trace::Status::STATUS_CODE_ERROR);
-            EXPECT_NE(span.status_message.find("falling back to RPC"), std::string::npos)
-                << span.status_message;
-            return true;
-          }
-        }
-        return false;
-      },
-      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
-      "Childless shared memory Perform span for the abandoned attempt"));
+  auto rpc_span = ASSERT_RESULT(WaitForSpanWithTableName(
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", kTableName));
+  ASSERT_EQ(rpc_span.service_name, "ysql");
+
+  for (const auto& span : collector_.FindSpansByNamePrefix(
+           tp.trace_id, kSharedMemoryPerformSpanName)) {
+    if (span.service_name == "ysql") {
+      ASSERT_FALSE(collector_.FindSpansByParent(tp.trace_id, span.span_id).empty())
+          << "Childless shared memory span left by the abandoned attempt";
+      ASSERT_NE(span.status_code, otlp_trace::Status::STATUS_CODE_ERROR) << span.status_message;
+    }
+  }
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
