@@ -9,6 +9,7 @@ import { UserPermission } from '@app/redesign/features/rbac/common/rbac_constant
 import {
   ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT,
   isOnboardingNewExperienceEnabled,
+  isOnboardingNewExperienceHydrated,
   setOnboardingNewExperienceEnabled,
   syncOnboardingNewExperienceEnabled
 } from './tour-progress';
@@ -16,6 +17,7 @@ import {
 export { ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT };
 export {
   isOnboardingNewExperienceEnabled,
+  isOnboardingNewExperienceHydrated,
   setOnboardingNewExperienceEnabled,
   syncOnboardingNewExperienceEnabled
 };
@@ -58,9 +60,13 @@ export const subscribeOnboardingNewExperienceChange = (
 
 /** React helper for SuperAdmin opt-in toggle state. */
 export const useOnboardingNewExperienceEnabled = (): boolean => {
-  const [enabled, setEnabled] = useState(isOnboardingNewExperienceEnabled);
+  // Tracks the unhydrated state too, so hydrating to false still re-renders subscribers
+  // that distinguish "unknown" from "off".
+  const [enabled, setEnabled] = useState<boolean | null>(() =>
+    isOnboardingNewExperienceHydrated() ? isOnboardingNewExperienceEnabled() : null
+  );
   useEffect(() => subscribeOnboardingNewExperienceChange(setEnabled), []);
-  return enabled;
+  return enabled === true;
 };
 
 export const useOnboardingFullscreenOverlayOpen = (): boolean => {
@@ -89,16 +95,25 @@ export const isCurrentUserSuperAdmin = (currentUserRole?: string): boolean => {
  *
  * SuperAdmin uses the in-memory mirror (hydrated from runtime config, updated by
  * the banner toggle) so the UI flips immediately without waiting for refetch.
+ *
+ * Returns undefined while neither source has loaded: callers must not route on an
+ * unhydrated flag, or a click during page load lands on the v1 UI with nothing to
+ * redirect it.
  */
 export const isUniverseRevampExperienceEnabled = (
   runtimeConfigs?: RunTimeConfig,
   currentUserRole?: string
-): boolean => {
-  if (isCurrentUserSuperAdmin(currentUserRole)) {
+): boolean | undefined => {
+  const isSuperAdmin = isCurrentUserSuperAdmin(currentUserRole);
+  if (isSuperAdmin && isOnboardingNewExperienceHydrated()) {
     return isOnboardingNewExperienceEnabled();
   }
-  return (
-    isV2CreateEditUniverseEnabled(runtimeConfigs as RunTimeConfig) &&
-    isNewUniverseExperienceForAllUsers(runtimeConfigs as RunTimeConfig)
-  );
+  if (!runtimeConfigs?.configEntries) {
+    return undefined;
+  }
+  // What the banner's mirror sync derives the SuperAdmin value from.
+  const isFeatureEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs);
+  return isSuperAdmin
+    ? isFeatureEnabled
+    : isFeatureEnabled && isNewUniverseExperienceForAllUsers(runtimeConfigs);
 };
