@@ -126,6 +126,9 @@ class TraceContextSerializer {
   size_t SerializedSize() const;
   uint8_t* SerializeToArray(uint8_t* out) const;
 
+  // Serialized size with/without a context set, computable before any span exists.
+  static size_t SerializedSizeFor(bool has_context);
+
  private:
   std::unique_ptr<TraceContextPB> trace_context_;
   size_t serialized_size_ = 0;

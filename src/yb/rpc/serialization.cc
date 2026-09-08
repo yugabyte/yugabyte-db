@@ -474,11 +474,20 @@ void TraceContextSerializer::SetTraceContext(
   constexpr uint32_t kVersion = 0;
   trace_context_->set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
   serialized_size_ = trace_context_->ByteSizeLong();
+  DCHECK_EQ(SerializedSize(), SerializedSizeFor(/* has_context= */ true));
 }
 
 size_t TraceContextSerializer::SerializedSize() const {
   return CodedOutputStream::VarintSize32(static_cast<uint32_t>(serialized_size_)) +
          serialized_size_;
+}
+
+size_t TraceContextSerializer::SerializedSizeFor(bool has_context) {
+  // 3 fixed64 fields (1-byte tag + 8 bytes each) + version_and_flags (1-byte tag + 1-byte varint,
+  // value is 0 or 1) = 29 plus the 1-byte length prefix; SetTraceContext DCHECKs this.
+  constexpr size_t kSizeWithContext = 30;
+  constexpr size_t kSizeWithoutContext = 1;  // Just the zero length prefix.
+  return has_context ? kSizeWithContext : kSizeWithoutContext;
 }
 
 uint8_t* TraceContextSerializer::SerializeToArray(uint8_t* out) const {
