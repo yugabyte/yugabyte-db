@@ -24,6 +24,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
@@ -1984,8 +1985,8 @@ TEST_F_EX(PgMiniTest, TruncateColocatedInvalidatesTombstoneCache, PgMiniTestSing
     auto cached = ctx->table_tombstone_time();
     ASSERT_TRUE(cached.has_value());
     ASSERT_FALSE(cached->is_valid());
-    // Serve-ready / AddTable should have armed the watermark (not left at kMax).
-    ASSERT_NE(ctx->tombstone_cache_watermark(), HybridTime::kMax);
+    // The read above probed the data and armed the watermark (not left at kMax).
+    ASSERT_TRUE(ctx->IsTombstoneCacheArmed());
   }
 
   ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
@@ -2107,15 +2108,22 @@ TEST_F_EX(PgMiniTest, TruncateColocatedAfterAlterSchema, PgMiniTestSingleNode) {
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
 
-  // Rebuild DocReadContext (copy resets watermark to kMax) then AlterSchema re-arms at SafeTime.
+  // ALTER rebuilds the DocReadContext, and nothing arms it: the watermark now comes from the
+  // first read's probe of the data, not from a clock reading taken at schema-change time.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN extra int", kTableName));
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
   auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
   ASSERT_FALSE(peers.empty());
-  auto table_info = ASSERT_RESULT(peers.front()->tablet_metadata()->GetTableInfo(kColocationId));
-  ASSERT_NE(table_info->doc_read_context->tombstone_cache_watermark(), HybridTime::kMax);
+  auto doc_read_context = [&]() {
+    auto table_info = CHECK_RESULT(peers.front()->tablet_metadata()->GetTableInfo(kColocationId));
+    return table_info->doc_read_context;
+  };
+  ASSERT_FALSE(doc_read_context()->IsTombstoneCacheArmed());
 
+  // The pinned read predates the truncate, so it must still see the rows. It is also the read that
+  // arms the context, and the probe it runs is unbounded, so it establishes a watermark above its
+  // own read time rather than caching the "no tombstone" that is correct only at that time.
   ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", pinned_us));
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
@@ -2123,6 +2131,13 @@ TEST_F_EX(PgMiniTest, TruncateColocatedAfterAlterSchema, PgMiniTestSingleNode) {
   ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  auto ctx = doc_read_context();
+  ASSERT_TRUE(ctx->IsTombstoneCacheArmed());
+  auto cached = ctx->table_tombstone_time();
+  ASSERT_TRUE(cached.has_value());
+  ASSERT_TRUE(cached->is_valid());
+  ASSERT_GE(ctx->tombstone_cache_watermark(), cached->hybrid_time());
 }
 
 // #32724 (d): an unarmed DocReadContext (watermark kMax) fails closed: cache ineligible.
@@ -2133,6 +2148,7 @@ TEST(DocReadContextTombstoneCacheTest, UnarmedWatermarkFailsClosed) {
   schema.set_colocation_id(42);
   auto ctx = docdb::DocReadContext::TEST_Create(schema);
   ASSERT_EQ(ctx.tombstone_cache_watermark(), HybridTime::kMax);
+  ASSERT_FALSE(ctx.IsTombstoneCacheArmed());
   ASSERT_FALSE(ctx.table_tombstone_time().has_value());
 
   // kMax is an "unarmed" sentinel, not a numeric bound, so no read_ht may be eligible, including
@@ -2151,9 +2167,17 @@ TEST(DocReadContextTombstoneCacheTest, UnarmedWatermarkFailsClosed) {
 
   // Arming makes it eligible again, which pins the assertions above to the watermark and not to
   // some unrelated reason for rejecting every read.
-  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  ASSERT_TRUE(ctx.ArmTombstoneCacheFromProbe(
+      HybridTime::FromMicros(100), DocHybridTime::kInvalid, ctx.tombstone_cache_generation()));
+  ASSERT_TRUE(ctx.IsTombstoneCacheArmed());
   ASSERT_TRUE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(100)));
   ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(99)));
+
+  // ResetTombstoneCache puts it back, which is what a data swap under a live context relies on.
+  ctx.ResetTombstoneCache();
+  ASSERT_FALSE(ctx.IsTombstoneCacheArmed());
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(100)));
 }
 
 // #32724 (e): set must stamp the caller's pre-fetch generation, not the post-truncate epoch.
@@ -2164,7 +2188,8 @@ TEST(DocReadContextTombstoneCacheTest, SetStampsCallerGeneration) {
   schema.set_colocation_id(42);
   auto ctx = docdb::DocReadContext::TEST_Create(schema);
 
-  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  ASSERT_TRUE(ctx.ArmTombstoneCacheFromProbe(
+      HybridTime::FromMicros(100), DocHybridTime::kInvalid, ctx.tombstone_cache_generation()));
   const auto gen_before = ctx.tombstone_cache_generation();
 
   // Truncate advances generation after the fetch, before set.
@@ -2191,7 +2216,9 @@ TEST(DocReadContextTombstoneCacheTest, RejectTombstoneAboveWatermark) {
   schema.set_colocation_id(42);
   auto ctx = docdb::DocReadContext::TEST_Create(schema);
 
-  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  ASSERT_TRUE(ctx.ArmTombstoneCacheFromProbe(
+      HybridTime::FromMicros(100), DocHybridTime::kInvalid, ctx.tombstone_cache_generation()));
+  ctx.clear_table_tombstone_time();
   const auto gen = ctx.tombstone_cache_generation();
 
   // Tombstone T > watermark: reject (would hide rows for watermark <= read_ht < T).
@@ -2210,6 +2237,112 @@ TEST(DocReadContextTombstoneCacheTest, RejectTombstoneAboveWatermark) {
   ctx.set_table_tombstone_time(DocHybridTime::kInvalid, gen);
   ASSERT_TRUE(ctx.table_tombstone_time().has_value());
   ASSERT_EQ(*ctx.table_tombstone_time(), DocHybridTime::kInvalid);
+}
+
+// #33607: a tombstone that applies while the probe is in flight must void the probe's result. The
+// notify has already set a watermark from the write itself; letting the probe store an "absent"
+// it read a moment earlier would resurrect exactly the rows that tombstone covers.
+TEST(DocReadContextTombstoneCacheTest, ArmFromProbeRejectsRacedGeneration) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+
+  const auto gen_before = ctx.tombstone_cache_generation();
+  ctx.OnTableTombstoneWritten(HybridTime::FromMicros(200));
+
+  ASSERT_FALSE(ctx.ArmTombstoneCacheFromProbe(
+      HybridTime::FromMicros(100), DocHybridTime::kInvalid, gen_before));
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+  // The notify's own watermark stands, so reads below the tombstone stay ineligible.
+  ASSERT_EQ(ctx.tombstone_cache_watermark(), HybridTime::FromMicros(200));
+
+  // A probe that starts after the notify is accepted.
+  ASSERT_TRUE(ctx.ArmTombstoneCacheFromProbe(
+      HybridTime::FromMicros(200), DocHybridTime(HybridTime::FromMicros(200), /*write_id=*/0),
+      ctx.tombstone_cache_generation()));
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+}
+
+class PgMiniTombstoneCacheRestoreTest : public PgMiniTestSingleNode {
+ protected:
+  void SetUp() override {
+    PgMiniTestSingleNode::SetUp();
+    snapshot_util_.SetProxy(&client_->proxy_cache());
+    snapshot_util_.SetCluster(cluster_.get());
+  }
+
+  client::SnapshotTestUtil snapshot_util_;
+};
+
+// #33607 gap 1: RestoreCheckpoint replaces the regular DB under DocReadContexts that survive the
+// swap, so a warm tombstone-time cache ends up describing data that no longer exists. Here the
+// cache holds the TRUNCATE's tombstone T and the restore takes the table back to before the
+// TRUNCATE: every restored row was written before T, so filtering against the stale cached T reads
+// the table as empty. RestoreCheckpoint has to drop those caches; the restore only rebuilds
+// contexts for tables named in the restore metadata, which is not all of them.
+TEST_F_EX(PgMiniTest, TombstoneCacheResetOnSnapshotRestore, PgMiniTombstoneCacheRestoreTest) {
+  const std::string kDbName = "tombstone_restore_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20007;
+  const auto kSnapshotInterval = 5s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util_.CreateSchedule(
+      kDbName, client::WaitSnapshot::kTrue, kSnapshotInterval));
+
+  // Warm the cache with "no tombstone" and pin the restore target ahead of the TRUNCATE.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+  const auto restore_time = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util_.WaitScheduleSnapshot(schedule_id, restore_time));
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_FALSE(peers.empty());
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  ASSERT_TRUE(DumpHasTableTombstone(tablet->TEST_DocDBDumpStr(), kColocationId))
+      << "TRUNCATE did not write a table-level tombstone (rewrite path taken?)";
+
+  // This read caches the tombstone, which is what the restore has to invalidate.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  auto snapshot_id = ASSERT_RESULT(
+      snapshot_util_.PickSuitableSnapshot(schedule_id, restore_time));
+  ASSERT_OK(snapshot_util_.RestoreSnapshot(snapshot_id, restore_time));
+
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3)
+      << "restored rows were filtered against a tombstone time cached from the pre-restore data";
+}
+
+// #33607: arming is monotone. A probe whose iterator snapshot predates an applied tombstone must
+// not walk the watermark back below it.
+TEST(DocReadContextTombstoneCacheTest, ArmFromProbeNeverLowersWatermark) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+
+  ASSERT_TRUE(ctx.ArmTombstoneCacheFromProbe(
+      HybridTime::FromMicros(300), DocHybridTime(HybridTime::FromMicros(300), /*write_id=*/0),
+      ctx.tombstone_cache_generation()));
+  ASSERT_TRUE(ctx.ArmTombstoneCacheFromProbe(
+      HybridTime::FromMicros(100), DocHybridTime::kInvalid, ctx.tombstone_cache_generation()));
+  ASSERT_EQ(ctx.tombstone_cache_watermark(), HybridTime::FromMicros(300));
 }
 
 // #32724 (f): RF3. A replica that held a warm cache while it was a follower must still see the
@@ -2241,17 +2374,15 @@ TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
         if (peers.size() != NumTabletServers()) {
           return false;
         }
-        // Arming happens later in the same apply, so wait for it too.
         for (const auto& peer : peers) {
           auto table_info = peer->tablet_metadata()->GetTableInfo(kColocationId);
-          if (!table_info.ok() || !(*table_info)->doc_read_context ||
-              (*table_info)->doc_read_context->tombstone_cache_watermark() == HybridTime::kMax) {
+          if (!table_info.ok() || !(*table_info)->doc_read_context) {
             return false;
           }
         }
         return true;
       },
-      30s * kTimeMultiplier, "Every replica of the colocated tablet armed the table"));
+      30s * kTimeMultiplier, "Every replica of the colocated tablet has the table"));
   const auto tablet_id = peers.front()->tablet_id();
 
   auto doc_read_context = [&](const tablet::TabletPeerPtr& peer) {
@@ -2260,15 +2391,15 @@ TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
     return table_info->doc_read_context;
   };
 
-  // Warm every replica with the pre-truncate "no tombstone" answer. The SELECT above only warmed
-  // the leader, and the replicas this test is about are the ones that are followers at apply time;
-  // stamping directly is the deterministic way to put them in that state.
+  // Warm every replica with the pre-truncate "no tombstone" answer. Only reads arm a context, and
+  // followers serve none, so the replicas this test is about would otherwise sit unarmed (cache
+  // off) and could not go stale at all. Arm them by hand at a watermark below any real hybrid time
+  // so the planted entry is eligible for every read - that is the poisoned state the apply-path
+  // notify has to clear.
   for (const auto& peer : peers) {
     auto ctx = doc_read_context(peer);
-    ASSERT_NE(ctx->tombstone_cache_watermark(), HybridTime::kMax)
-        << "replica " << peer->permanent_uuid() << " was never armed, so it cannot go stale and "
-        << "this test would not exercise anything";
-    ctx->set_table_tombstone_time(DocHybridTime::kInvalid, ctx->tombstone_cache_generation());
+    ASSERT_TRUE(ctx->ArmTombstoneCacheFromProbe(
+        HybridTime::FromMicros(1), DocHybridTime::kInvalid, ctx->tombstone_cache_generation()));
     ASSERT_TRUE(ctx->table_tombstone_time().has_value());
   }
 
