@@ -2501,8 +2501,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  // Call get changes.
-  auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
+  // A single DDL, plus a BEGIN and a COMMIT for each of the two txns, on top of the inserts.
+  const int expected_records_count = insert_count + 5;
+  auto change_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, /* cp = */ nullptr, /* tablet_idx = */ 0, /* safe_hybrid_time = */ -1,
+      /* wal_segment_index = */ 0, expected_records_count);
   size_t record_size = change_resp.records.size();
   ASSERT_GT(record_size, insert_count);
 

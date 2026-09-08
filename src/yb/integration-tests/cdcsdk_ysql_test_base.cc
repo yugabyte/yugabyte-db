@@ -41,6 +41,14 @@ DECLARE_bool(cdc_write_post_apply_metadata);
 
 namespace yb {
 namespace cdc {
+
+namespace {
+
+const auto kGetAllPendingChangesTimeout = MonoDelta::FromSeconds(300);
+const auto kGetAllPendingChangesRetryInterval = MonoDelta::FromMilliseconds(100);
+
+}  // namespace
+
 Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   yb::master::GetMasterClusterConfigRequestPB req;
   yb::master::GetMasterClusterConfigResponsePB resp;
@@ -2158,17 +2166,18 @@ CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChange
     const CDCSDKCheckpointPB* cp,
     int tablet_idx,
     int64 safe_hybrid_time,
-    int wal_segment_index) {
+    int wal_segment_index,
+    int expected_records_count) {
   GetAllPendingChangesResponse resp;
 
-  int prev_records = 0;
   CDCSDKCheckpointPB prev_checkpoint;
   int64 prev_safetime = safe_hybrid_time;
   int prev_index = wal_segment_index;
   const CDCSDKCheckpointPB* prev_checkpoint_ptr = cp;
   int count[8] = {};
+  const auto deadline = CoarseMonoClock::now() + kGetAllPendingChangesTimeout;
 
-  do {
+  for (;;) {
     GetChangesResponsePB change_resp;
     auto get_changes_result = GetChangesFromCDC(
         stream_id, tablets, prev_checkpoint_ptr, tablet_idx, prev_safetime, prev_index);
@@ -2191,8 +2200,16 @@ CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChange
     prev_checkpoint_ptr = &prev_checkpoint;
     prev_safetime = change_resp.has_safe_hybrid_time() ? change_resp.safe_hybrid_time() : -1;
     prev_index = change_resp.wal_segment_index();
-    prev_records = change_resp.cdc_sdk_proto_records_size();
-  } while (prev_records != 0);
+
+    if (change_resp.cdc_sdk_proto_records_size() != 0) {
+      continue;
+    }
+    if (std::cmp_greater_equal(resp.records.size(), expected_records_count) ||
+        CoarseMonoClock::now() >= deadline) {
+      break;
+    }
+    SleepFor(kGetAllPendingChangesRetryInterval);
+  }
 
 
   resp.checkpoint = prev_checkpoint;
