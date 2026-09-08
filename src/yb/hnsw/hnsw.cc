@@ -13,6 +13,10 @@
 
 #include "yb/hnsw/hnsw.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #include "usearch/index.hpp"
 
 #include "yb/hnsw/block_writer.h"
@@ -20,11 +24,15 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+#include "yb/vector_index/coordinate_codec.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_payload_map.h"
 
@@ -35,6 +43,13 @@ DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
 
 DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
     "Whether to keep new generated blocks in cache after YbHnsw index is built.");
+
+DEFINE_RUNTIME_bool(yb_hnsw_prefetch_neighbors, true,
+    "Whether a base layer search resolves and prefetches the record addresses of a node's "
+    "unvisited neighbours as a batch before computing any of their distances. Both settings "
+    "visit the same vectors and return the same results; batching only overlaps the cache "
+    "misses. Turn it off on an index small enough to sit in cache, where the prefetches are "
+    "pure overhead.");
 
 #define YB_MISALIGNED_STORE(ptr, type, field, value) \
   MisalignedAssign<decltype(type::field)>(ptr, offsetof(type, field), value)
@@ -69,6 +84,8 @@ class YbHnswIndexAdapter {
 
   virtual int16_t NodeLevel(size_t index) = 0;
   virtual vector_index::VectorId NodeKey(size_t index) = 0;
+  // Writes this node's coordinates into `out` in the encoding MakeHeader() declared. Must fill
+  // exactly vector_data_size - sizeof(VectorData) bytes.
   virtual void NodeCoordinates(size_t index, void* out) = 0;
   virtual NeighborsType Neighbors(size_t index, size_t level) = 0;
   virtual NeighborsType NeighborsBase(size_t index) = 0;
@@ -83,6 +100,9 @@ class YbHnswIndexAdapter {
     return payloads_->Get(index);
   }
 
+  // Coordinates NodeCoordinates() had to clamp. Zero for adapters that do not narrow.
+  virtual size_t NumClampedCoordinates() const { return 0; }
+
   virtual ~YbHnswIndexAdapter() = default;
 
  private:
@@ -90,6 +110,28 @@ class YbHnswIndexAdapter {
 };
 
 namespace {
+
+size_t RecordCoordinateBytes(const Header& header) {
+  return vector_index::CoordinateBytes(header.storage_kind, header.dimensions);
+}
+
+// Checks a header parsed from a file against itself, before anything reads a record through it.
+// A vector_data_size disagreeing with the encoding is otherwise silent: it reads past every
+// record into the next.
+Status ValidateHeader(const Header& header) {
+  // Range-checked before anything switches on it: CoordinateBytes ends in
+  // FATAL_INVALID_ENUM_VALUE, so a single corrupt footer byte would abort the process instead of
+  // failing this one file. The enum is contiguous from zero.
+  SCHECK_LT(
+      static_cast<size_t>(std::to_underlying(header.storage_kind)),
+      vector_index::kElementsInVectorStorageKind, Corruption,
+      Format("YbHnsw chunk has an unknown storage kind: $0", header));
+
+  SCHECK_EQ(
+      header.vector_data_size, sizeof(YbHnswVectorData) + RecordCoordinateBytes(header),
+      Corruption, Format("YbHnsw record size disagrees with its encoding: $0", header));
+  return Status::OK();
+}
 
 using VectorData = YbHnswVectorData;
 
@@ -135,6 +177,9 @@ class YbHnswBuilder {
 
   Result<std::pair<FileBlockCachePtr, Header>> Build() {
     header_ = inspector_.MakeHeader();
+    // ValidateHeader()'s invariant, on write: a mismatch means the adapter's MakeHeader and
+    // NodeCoordinates disagree about the record layout, producing an unreadable file.
+    DCHECK_EQ(header_.vector_data_size, sizeof(VectorData) + RecordCoordinateBytes(header_));
     PrepareVectors();
     VLOG_WITH_FUNC(4) << "Size: " << inspector_.Size() << ", header: " << header_.ToString();
 
@@ -149,6 +194,10 @@ class YbHnswBuilder {
     RETURN_NOT_OK(out_->Close());
     out_.reset();
     RETURN_NOT_OK(block_cache_.env().RenameFile(tmp_path, path_));
+    LOG_IF(WARNING, inspector_.NumClampedCoordinates() != 0)
+        << "YbHnsw " << path_ << ": clamped " << inspector_.NumClampedCoordinates()
+        << " coordinate(s) that this chunk's encoding cannot represent (storage_kind: "
+        << header_.storage_kind << "); searches involving those vectors will be less accurate";
     std::unique_ptr<RandomAccessFile> file;
     RETURN_NOT_OK(block_cache_.env().NewRandomAccessFile(path_, &file));
     auto file_block_cache = std::make_unique<FileBlockCache>(
@@ -474,11 +523,25 @@ SearchCacheScope::SearchCacheScope(SearchCache& cache, const YbHnsw& hnsw) : cac
   cache.Bind(hnsw.header_, *hnsw.file_block_cache_);
 }
 
-YbHnsw::YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache)
-    : metric_(std::move(metric)), block_cache_(std::move(block_cache)) {
+YbHnsw::YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache)
+    : YbHnsw(
+          [metric](size_t, vector_index::VectorStorageKind storage_kind) -> MetricPtr {
+            LOG_IF(DFATAL, storage_kind != vector_index::VectorStorageKind::kFloat32)
+                << "Fixed float32 metric cannot decode " << storage_kind << " records";
+            return std::make_unique<UsearchMetric>(metric);
+          },
+          std::move(block_cache)) {
+}
+
+YbHnsw::YbHnsw(MetricFactory metric_factory, BlockCachePtr block_cache)
+    : metric_factory_(std::move(metric_factory)), block_cache_(std::move(block_cache)) {
 }
 
 YbHnsw::~YbHnsw() = default;
+
+void YbHnsw::InitMetrics() {
+  metric_ = metric_factory_(header_.dimensions, header_.storage_kind);
+}
 
 Status YbHnsw::Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
@@ -486,6 +549,7 @@ Status YbHnsw::Import(
   YbHnswUsearchIndexAdapter inspector(index, payloads);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  InitMetrics();
   return Status::OK();
 }
 
@@ -493,8 +557,10 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
  public:
   YbHnswHnswlibIndexAdapter(
       std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index,
-      const vector_index::VectorPayloadMap* payloads)
-      : YbHnswIndexAdapter(payloads), index_(index) {}
+      const vector_index::VectorPayloadMap* payloads,
+      vector_index::VectorStorageKind storage_kind)
+      : YbHnswIndexAdapter(payloads), index_(index), storage_kind_(storage_kind),
+        dimensions_(index.get().data_size_ / sizeof(YbHnswBuilder::CoordinateType)) {}
 
   size_t Size() override {
     return index_.getCurrentElementCount();
@@ -507,8 +573,10 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   Header MakeHeader() override {
     Header result;
     result.max_block_size = FLAGS_yb_hnsw_max_block_size;
-    result.dimensions = index_.data_size_ / sizeof(YbHnswBuilder::CoordinateType);
-    result.vector_data_size = index_.data_size_ + sizeof(VectorData);
+    result.dimensions = dimensions_;
+    result.storage_kind = storage_kind_;
+    result.vector_data_size =
+        vector_index::CoordinateBytes(storage_kind_, dimensions_) + sizeof(VectorData);
     InitVectorDataAmountPerBlock(result, index_.getCurrentElementCount());
     result.max_level = index_.getMaxLevel();
     result.config.connectivity_base = index_.maxM_;
@@ -529,7 +597,19 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   }
 
   void NodeCoordinates(size_t index, void* out) override {
-    memcpy(out, index_.getDataByInternalId(CastIndex(index)), index_.data_size_);
+    const auto* coordinates =
+        pointer_cast<const YbHnswBuilder::CoordinateType*>(
+            index_.getDataByInternalId(CastIndex(index)));
+    if (storage_kind_ == vector_index::VectorStorageKind::kFloat32) {
+      memcpy(out, coordinates, index_.data_size_);
+    } else {
+      vector_index::NarrowCoordinates(
+          storage_kind_, coordinates, dimensions_, out, &num_clamped_);
+    }
+  }
+
+  size_t NumClampedCoordinates() const override {
+    return num_clamped_;
   }
 
   NeighborsType Neighbors(size_t index, size_t level) override {
@@ -553,15 +633,20 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   }
 
   const HnswlibIndex<YbHnsw::DistanceType>& index_;
+  const vector_index::VectorStorageKind storage_kind_;
+  const size_t dimensions_;
+  size_t num_clamped_ = 0;
 };
 
 Status YbHnsw::Import(
     const HnswlibIndex<DistanceType>& index,
     const std::string& path,
-    const vector_index::VectorPayloadMap* payloads) {
-  YbHnswHnswlibIndexAdapter inspector(index, payloads);
+    const vector_index::VectorPayloadMap* payloads,
+    vector_index::VectorStorageKind storage_kind) {
+  YbHnswHnswlibIndexAdapter inspector(index, payloads, storage_kind);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  InitMetrics();
   return Status::OK();
 }
 
@@ -570,6 +655,8 @@ Status YbHnsw::Init(const std::string& path) {
   RETURN_NOT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
   file_block_cache_ = std::make_unique<FileBlockCache>(*block_cache_, std::move(file));
   header_ = VERIFY_RESULT(file_block_cache_->Load());
+  RETURN_NOT_OK(ValidateHeader(header_));
+  InitMetrics();
   return Status::OK();
 }
 
@@ -583,6 +670,19 @@ YbHnsw::SearchResult YbHnsw::Search(
       query_vector, context.search_cache);
   SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
   return MakeResult(options.max_num_results, context);
+}
+
+YbHnsw::SearchResult YbHnsw::Search(
+    const CoordinateType* query_vector, const vector_index::SearchOptions& options,
+    YbHnswSearchContext& context) const {
+  if (header_.storage_kind == vector_index::VectorStorageKind::kFloat32) {
+    return Search(pointer_cast<const std::byte*>(query_vector), options, context);
+  }
+  auto& buffer = context.narrowed_query;
+  buffer.resize(vector_index::CoordinateBytes(header_.storage_kind, header_.dimensions));
+  vector_index::NarrowCoordinates(
+      header_.storage_kind, query_vector, header_.dimensions, buffer.data());
+  return Search(buffer.data(), options, context);
 }
 
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
@@ -659,11 +759,10 @@ void YbHnsw::SearchInBaseLayer(
     auto neighbors = cache.GetNeighborsInBaseLayer(vector);
     visited.reserve(visited.size() + std::ranges::size(neighbors));
 
-    for (auto neighbor : neighbors) {
-      if (visited.set(neighbor)) {
-        continue;
-      }
-      auto neighbor_dist = Distance(query_vector, neighbor, cache);
+    // Distance and heap update for one unvisited neighbour. Both loop shapes below invoke this
+    // in neighbour order, so best_dist evolves identically and the two produce the same results.
+    auto visit = [&](VectorNo neighbor, const std::byte* coordinates) {
+      auto neighbor_dist = Distance(query_vector, coordinates);
 
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
@@ -687,28 +786,58 @@ void YbHnsw::SearchInBaseLayer(
           best_dist = extra_top.empty() ? top.top().first : extra_top.top();
         }
       }
+    };
+
+    if (!FLAGS_yb_hnsw_prefetch_neighbors) {
+      for (auto neighbor : neighbors) {
+        if (visited.set(neighbor)) {
+          continue;
+        }
+        visit(neighbor, cache.CoordinatesPtr(neighbor));
+      }
+      continue;
+    }
+
+    // A record's address is pure arithmetic on the neighbour id, but the CPU cannot speculate
+    // through blocks_[index] and then through the record itself, so both loads stall. Filtering
+    // and resolving the whole neighbour batch before computing any distance lets those misses
+    // overlap each other, and gives the prefetches the length of the batch's distance
+    // computations to land -- more slack than a one-ahead cursor, which matters for the short
+    // int8 kernel.
+    //
+    // The visited filter must stay first: resolving addresses for already-visited neighbours
+    // would Take() blocks the search does not need, inflating used_blocks_ and Release().
+    auto& unvisited = context.unvisited;
+    unvisited.clear();
+    for (auto it = neighbors.begin(), end = neighbors.end(); it != end; ++it) {
+      auto neighbor = *it;
+      if (visited.set(neighbor)) {
+        continue;
+      }
+      if (auto next_it = it + 1; next_it != end) {
+        cache.PrefetchVectorHeaderBlock(*next_it);
+      }
+      auto* coordinates = cache.CoordinatesPtr(neighbor);
+      __builtin_prefetch(coordinates);
+      unvisited.emplace_back(neighbor, coordinates);
+    }
+
+    // Resolved addresses stay valid across visit(): the search holds a reference on every block
+    // it took, which keeps CachedBlock::Unload from freeing the contents until Release().
+    for (auto [neighbor, coordinates] : unvisited) {
+      visit(neighbor, coordinates);
     }
   }
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs) const {
+  DCHECK(metric_) << "Distance requested before Init/Import";
   return metric_->Distance(lhs, rhs);
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(
     const std::byte* lhs, size_t vector, SearchCache& cache) const {
   return Distance(lhs, cache.CoordinatesPtr(vector));
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
-    const std::byte* ptr) const {
-  auto start = MisalignedPtr<const CoordinateType>(ptr);
-  return boost::make_iterator_range(start, start + header_.dimensions);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
-    size_t vector, SearchCache& cache) const {
-  return MakeCoordinates(cache.CoordinatesPtr(vector));
 }
 
 const Header& YbHnsw::header() const {
@@ -720,7 +849,10 @@ const std::byte* SearchCache::Data(size_t index) {
   if (block) {
     return block;
   }
-  auto data = CHECK_RESULT(file_block_cache_->Take(index));
+  bool was_hit = false;
+  auto data = CHECK_RESULT(file_block_cache_->Take(index, &was_hit));
+  ++takes_;
+  hits_ += was_hit;
   used_blocks_.push_back(index);
   return block = data;
 }
@@ -733,6 +865,16 @@ void SearchCache::Bind(std::reference_wrapper<const Header> header, FileBlockCac
 }
 
 void SearchCache::Release() {
+  // One metrics update per search rather than one per block taken: a query touches roughly as
+  // many blocks as it visits vectors, and Take() is the only site that feeds these counters, so
+  // the totals are unchanged and only the update granularity is coarser.
+  if (takes_) {
+    auto& metrics = file_block_cache_->metrics();
+    metrics.query->IncrementBy(takes_);
+    metrics.hit->IncrementBy(hits_);
+    takes_ = 0;
+    hits_ = 0;
+  }
   for (auto block : used_blocks_) {
     blocks_[block] = nullptr;
     file_block_cache_->Release(block);
@@ -807,6 +949,11 @@ std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
   return VectorHeader(vector).raw() + offsetof(VectorData, coordinates);
+}
+
+void SearchCache::PrefetchVectorHeaderBlock(size_t vector) {
+  __builtin_prefetch(&blocks_[
+      header_->vector_data_block + vector / header_->vector_data_amount_per_block]);
 }
 
 HnswDistanceType UsearchMetric::Distance(

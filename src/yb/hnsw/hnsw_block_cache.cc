@@ -13,12 +13,16 @@
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
+#include <cstring>
+#include <type_traits>
+
 #include <boost/intrusive/list.hpp>
 
 #include "yb/hnsw/block_writer.h"
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/unique_lock.h"
@@ -63,6 +67,21 @@ namespace yb::hnsw {
 
 namespace {
 
+// Version 1: original layout.
+// Version 2: appends Header::storage_kind.
+//
+// The writer picks the lowest version that can represent the header, so a float32 index still
+// produces a byte-identical version-1 file readable by binaries that predate narrowed storage.
+// A version-2 file is not, so float16 is a one-way step for the chunks written while it is on.
+constexpr uint8_t kSerializationVersionV1 = 1;
+constexpr uint8_t kSerializationVersionV2 = 2;
+constexpr uint8_t kMaxSupportedSerializationVersion = kSerializationVersionV2;
+
+uint8_t SerializationVersionFor(const Header& header) {
+  return header.storage_kind == vector_index::VectorStorageKind::kFloat32
+      ? kSerializationVersionV1 : kSerializationVersionV2;
+}
+
 template <class Type, class Value, class Writer>
 concept HasAppend = requires(Writer& writer) {
   writer.template Append<Type>(std::declval<Value>());
@@ -74,9 +93,17 @@ concept HasRead = requires(Reader& reader) {
 };
 
 template <class Type, class Value, class Writer>
-requires(HasAppend<Type, Value, Writer>)
+requires(!std::is_enum_v<Value> && HasAppend<Type, Value, Writer>)
 void ConvertField(const Value& value, Writer& writer) {
   writer.template Append<Type>(value);
+}
+
+// Scoped enums do not convert implicitly, so they need their own overloads to serialize as
+// their underlying integer.
+template <class Type, class Value, class Writer>
+requires(std::is_enum_v<Value> && HasAppend<Type, Type, Writer>)
+void ConvertField(const Value& value, Writer& writer) {
+  writer.template Append<Type>(static_cast<Type>(value));
 }
 
 template <class Converter, class Type>
@@ -100,9 +127,15 @@ void ConvertVector(size_t version, const Vector& vector, Writer& writer) {
 }
 
 template <class Type, class Value, class Reader>
-requires(HasRead<Type, Reader>)
+requires(!std::is_enum_v<Value> && HasRead<Type, Reader>)
 void ConvertField(Value& value, Reader& reader) {
   value = reader.template Read<Type>();
+}
+
+template <class Type, class Value, class Reader>
+requires(std::is_enum_v<Value> && HasRead<Type, Reader>)
+void ConvertField(Value& value, Reader& reader) {
+  value = static_cast<Value>(reader.template Read<Type>());
 }
 
 template <class Vector, class Reader>
@@ -133,6 +166,11 @@ void Convert(size_t version, RefForConverter<Converter, Header> header, Converte
   ConvertField<uint64_t>(header.vector_data_block, serializer);
   ConvertField<uint64_t>(header.vector_data_amount_per_block, serializer);
   ConvertVector(version, header.layers, serializer);
+  if (version >= kSerializationVersionV2) {
+    ConvertField<uint8_t>(header.storage_kind, serializer);
+  }
+  // Anything appended here must be consumed by this function: FileBlockCache::Load derives the
+  // block count from the bytes the header converter leaves behind.
 }
 
 class WriteCounter {
@@ -150,16 +188,14 @@ class WriteCounter {
   size_t value_ = 0;
 };
 
-constexpr size_t kSerializationVersion = 1;
-
 template <class Out, class... Args>
-void Serialize(const Out& out, Args&&... args) {
-  Convert(kSerializationVersion, out, std::forward<Args&&>(args)...);
+void Serialize(uint8_t version, const Out& out, Args&&... args) {
+  Convert(version, out, std::forward<Args&&>(args)...);
 }
 
-size_t SerializedSize(const Header& header) {
+size_t SerializedSize(uint8_t version, const Header& header) {
   WriteCounter counter;
-  Convert(kSerializationVersion, header, counter);
+  Convert(version, header, counter);
   return counter.value();
 }
 
@@ -197,7 +233,7 @@ BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
       evict(METRIC_vector_index_cache_evict.Instantiate(entity)),
       remove(METRIC_vector_index_cache_remove.Instantiate(entity)),
       read_us(METRIC_vector_index_cache_read_us.Instantiate(entity)),
-      take_wait_us(METRIC_vector_index_cache_read_us.Instantiate(entity)) {
+      take_wait_us(METRIC_vector_index_cache_take_wait_us.Instantiate(entity)) {
 }
 
 struct CachedBlock {
@@ -236,13 +272,21 @@ struct CachedBlock {
     }
   }
 
-  Result<const std::byte*> Take(RandomAccessFile& file) {
-    cache->metrics().query->Increment();
-
+  // The cache_query/cache_hit counters are not touched here: they are reported through was_hit
+  // and accumulated by the caller, because at thousands of Take() calls per search the
+  // increments themselves showed up on the hot path.
+  Result<const std::byte*> Take(RandomAccessFile& file, bool* was_hit) {
+    // Written before any early return: both miss paths below would otherwise leave it untouched,
+    // making the counters depend on the caller having pre-initialized it.
+    if (was_hit) {
+      *was_hit = false;
+    }
     UniqueLock lock(mutex);
     ++use_count;
     if (content.data) {
-      cache->metrics().hit->Increment();
+      if (was_hit) {
+        *was_hit = true;
+      }
       auto result = content.data.get();
       auto need_handle = !handle && use_count == 1;
       lock.unlock();
@@ -333,14 +377,15 @@ struct CachedBlock {
 };
 
 DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
+  const auto version = SerializationVersionFor(header);
   DataBlock buffer(
     sizeof(uint8_t) +
-    SerializedSize(header) + sizeof(uint64_t) * blocks_.size() +
+    SerializedSize(version, header) + sizeof(uint64_t) * blocks_.size() +
     sizeof(uint32_t) + // CRC32
     sizeof(uint64_t)); // Size
   BlockWriter writer(buffer);
-  writer.Append<uint8_t>(kSerializationVersion);
-  Serialize(header, writer);
+  writer.Append<uint8_t>(version);
+  Serialize(version, header, writer);
   uint64_t sum = 0;
   for (const auto& block : blocks_) {
     sum += block.size;
@@ -409,7 +454,12 @@ Result<Header> FileBlockCache::Load() {
   RSTATUS_DCHECK_EQ(expected_crc, found_crc, Corruption, "Wrong footer CRC");
   Header header;
   SliceReader reader(footer_data);
-  size_t version = reader.Read<uint8_t>();
+  // Without this an unknown version is read and ignored, and the extra header fields it carries
+  // are consumed as block offsets.
+  auto version = reader.Read<uint8_t>();
+  SCHECK(
+      version >= kSerializationVersionV1 && version <= kMaxSupportedSerializationVersion,
+      Corruption, Format("Unsupported YbHnsw serialization version: $0", version));
   Deserialize(version, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
@@ -421,8 +471,12 @@ Result<Header> FileBlockCache::Load() {
   return header;
 }
 
-Result<const std::byte*> FileBlockCache::Take(size_t index) {
-  return blocks_[index].Take(*file_);
+Result<const std::byte*> FileBlockCache::Take(size_t index, bool* was_hit) {
+  return blocks_[index].Take(*file_, was_hit);
+}
+
+BlockCacheMetrics& FileBlockCache::metrics() const {
+  return block_cache_.metrics();
 }
 
 void FileBlockCache::Release(size_t index) {
