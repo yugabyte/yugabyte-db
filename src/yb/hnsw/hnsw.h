@@ -60,6 +60,10 @@ class SearchCache {
   std::pair<vector_index::VectorId, Slice> GetVectorIdAndPayload(size_t vector);
   const std::byte* CoordinatesPtr(size_t vector);
 
+  // Rerank copy, which follows the traversal coordinates in the same record. Only meaningful
+  // when the bound header has a rerank tier.
+  const std::byte* RerankCoordinatesPtr(size_t vector);
+
   // Prefetches the blocks_ slot that VectorHeader(vector) will load. The slot index is pure
   // arithmetic on the vector id, so it can be issued ahead of time, while the data-dependent
   // load of the slot itself is something the CPU cannot speculate through.
@@ -118,9 +122,11 @@ struct YbHnswSearchContext {
   NextQueue next;
   SearchCache search_cache;
 
-  // Query narrowed to the file's storage encoding. Grown once per pooled context and reused;
-  // unused when the file stores float32.
+  // Query narrowed to the file's storage encoding, then to its rerank encoding. Grown once per
+  // pooled context and reused. Both are live at once on a chunk with a rerank tier, so they
+  // cannot share storage; neither is used when the file stores float32.
   std::vector<std::byte> narrowed_query;
+  std::vector<std::byte> rerank_query;
 
   // Neighbours of the current node that passed the visited filter, with their record addresses
   // already resolved. Reused across calls; bounded by the neighbour count, i.e. by
@@ -176,12 +182,14 @@ class YbHnsw {
   Status Import(
     const HnswlibIndex<DistanceType>& index, const std::string& path,
     const vector_index::VectorPayloadMap* payloads,
-    vector_index::VectorStorageKind storage_kind = vector_index::VectorStorageKind::kFloat32);
+    vector_index::VectorStorageKind storage_kind = vector_index::VectorStorageKind::kFloat32,
+    vector_index::RerankStorageKind rerank_kind = vector_index::RerankStorageKind::kNone);
 
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
   Status Init(const std::string& path);
 
-  // Searches with a query already in this file's storage encoding.
+  // Searches with a query already in this file's storage encoding. Does not fill
+  // context.rerank_query, so on a file with a rerank tier the caller must have done so.
   SearchResult Search(
       const std::byte* query_vector, const vector_index::SearchOptions& options,
       YbHnswSearchContext& context) const;
@@ -195,6 +203,10 @@ class YbHnsw {
   // Distance between two records in this file's storage encoding. Full-precision callers must
   // narrow first -- see NarrowCoordinates.
   DistanceType Distance(const std::byte* lhs, const std::byte* rhs) const;
+
+  // Distance between two records in this file's rerank encoding, i.e. in true metric units.
+  // Only valid when this file has a rerank tier.
+  DistanceType RerankDistance(const std::byte* lhs, const std::byte* rhs) const;
 
   const Header& header() const;
 
@@ -210,12 +222,19 @@ class YbHnsw {
 
   DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
 
-  // Builds metric_ from header_, which must already be populated.
+  // Builds metric_ and rerank_metric_ from header_, which must already be populated.
   void InitMetrics();
+
+  // Candidates a search must retain so reranking them yields the true top max_num_results.
+  // Equal to max_num_results without a rerank tier, leaving the heap limits unchanged.
+  size_t RerankCandidateCount(size_t max_num_results) const;
 
   const MetricFactory metric_factory_;
   const BlockCachePtr block_cache_;
   MetricPtr metric_;
+
+  // Metric over the rerank copy. Null when header_.rerank_kind is kNone.
+  MetricPtr rerank_metric_;
 
   Header header_;
   FileBlockCachePtr file_block_cache_;

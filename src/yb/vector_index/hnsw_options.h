@@ -66,6 +66,10 @@ struct HNSWOptions {
   // unaffected: it always runs at the index's in-memory coordinate type.
   VectorStorageKind storage_kind = VectorStorageKind::kFloat32;
 
+  // Encoding of the rerank copy stored alongside them. Only meaningful with a lossy
+  // storage_kind, which in turn requires it.
+  RerankStorageKind rerank_kind = RerankStorageKind::kNone;
+
   std::string ToString() const;
 
   // Metric over Vector::value_type, the in-memory type the graph is built at.
