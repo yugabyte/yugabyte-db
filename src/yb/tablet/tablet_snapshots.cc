@@ -62,6 +62,9 @@ DEFINE_RUNTIME_int32(max_wait_for_aborting_transactions_during_restore_ms, 200,
                      "applying the raft restore operation to a tablet.");
 TAG_FLAG(max_wait_for_aborting_transactions_during_restore_ms, advanced);
 
+DEFINE_test_flag(bool, pause_create_checkpoint, false,
+    "If true, pause after acquiring checkpoint lock in CreateCheckpoint "
+    "until the flag is reset.");
 namespace yb {
 namespace tablet {
 
@@ -581,14 +584,20 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 }
 
 Status TabletSnapshots::CreateCheckpoint(
-    const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
+    const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in,
+    UseTryLock use_try_lock) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   auto temp_intents_dir = dir + kIntentsDBSuffix;
   auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
 
-  std::lock_guard lock(create_checkpoint_lock());
+  std::unique_lock lock(create_checkpoint_lock(), std::defer_lock);
+  if (!use_try_lock) {
+    lock.lock();
+  } else if (!lock.try_lock()) {
+      return STATUS(InternalError, "Unable to acquire checkpoint lock");
+  }
 
   if (!has_regular_db()) {
     LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
@@ -599,6 +608,8 @@ Status TabletSnapshots::CreateCheckpoint(
   auto parent_dir = DirName(dir);
   RETURN_NOT_OK_PREPEND(metadata().fs_manager()->CreateDirIfMissing(parent_dir),
                         Format("Unable to create checkpoints directory $0", parent_dir));
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_create_checkpoint);
 
   // Order does not matter because we flush both DBs and does not have parallel writes.
   Status status;

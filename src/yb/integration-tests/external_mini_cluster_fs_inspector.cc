@@ -82,6 +82,24 @@ Status ReadTabletSuperBlockOnTS(
   return pb_util::ReadPBContainerFromPath(&env, sb_path, sb);
 }
 
+namespace {
+
+vector<string> FilterSstFiles(const vector<string>& files) {
+  vector<string> sst_files;
+  for (const auto& file : files) {
+    uint64_t number;
+    rocksdb::FileType type;
+    string filename = std::filesystem::path(file).filename();
+    if (ParseFileName(filename, &number, &type) &&
+        (type == rocksdb::kTableFile || type == rocksdb::kTableSBlockFile)) {
+      sst_files.push_back(file);
+    }
+  }
+  return sst_files;
+}
+
+}  // namespace
+
 ExternalMiniClusterFsInspector::ExternalMiniClusterFsInspector(ExternalMiniCluster* cluster)
     : env_(Env::Default()),
       cluster_(CHECK_NOTNULL(cluster)) {
@@ -149,21 +167,14 @@ Result<vector<string>> ExternalMiniClusterFsInspector::ListTableSstFilesOnTS(
         continue;
       }
       auto table_sst_dir = JoinPathSegments(ts_rocksdb_dir, table);
-      vector<string> files = VERIFY_RESULT(RecursivelyListFilesInDir(table_sst_dir));
-      for (const auto& file : files) {
-        uint64_t number;
-        rocksdb::FileType type;
-        std::string filename = std::filesystem::path(file).filename();
-        if (ParseFileName(filename, &number, &type) &&
-            (type == rocksdb::kTableFile || type == rocksdb::kTableSBlockFile)) {
-          sst_files.push_back(file);
-        }
-      }
+      auto filtered = FilterSstFiles(VERIFY_RESULT(RecursivelyListFilesInDir(table_sst_dir)));
+      sst_files.insert(sst_files.end(), filtered.begin(), filtered.end());
       break;
     }
   }
   return sst_files;
 }
+
 
 Result<vector<string>> ExternalMiniClusterFsInspector::RecursivelyListFilesInDir(
   const string& path) {

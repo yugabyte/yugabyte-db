@@ -80,10 +80,16 @@ class TabletSnapshots : public TabletComponent {
   // YQL_TABLE_TYPE.
   // use_subdir_for_intents specifies whether to create intents DB checkpoint inside
   // <dir>/<kIntentsSubdir> or <dir>.<kIntentsDBSuffix>
+  // Parameter `use_try_lock` if true, will use try_lock instead of blocking lock. If the lock
+  // cannot be acquired, the function will return early. Currently only used by remote bootstrap
+  // caller to avoid multiple RPC threads blocking on the same checkpoint in case it takes longer
+  // than RPC timeouts.
+  YB_STRONGLY_TYPED_BOOL(UseTryLock);
   Status CreateCheckpoint(
       const std::string& dir,
       CreateIntentsCheckpointIn create_intents_checkpoint_in =
-          CreateIntentsCheckpointIn::kUseIntentsDbSuffix);
+          CreateIntentsCheckpointIn::kUseIntentsDbSuffix,
+      UseTryLock use_try_lock = UseTryLock::kFalse);
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }
