@@ -143,7 +143,7 @@ Refer to [Manage runtime configuration settings](../administer-yugabyte-platform
 
 - Enhanced Universe Configuration
 
-    Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology. In Guided mode, choose Region, Zone, Node, or None resilience; Expert mode gives you full control over replication factor and per-zone node counts. [Learn more](../create-deployments/create-universes-overview/#placement).
+    Set up and manage universes using a wizard in **Guided** or **Expert** mode to help you build the right topology. In **Guided** mode, choose Region, Zone, Node, or None resilience; **Expert** mode gives you full control over replication factor and per-zone node counts. [Learn more](../create-deployments/create-universes-overview/#placement).
 
 - Centralized universe settings
 

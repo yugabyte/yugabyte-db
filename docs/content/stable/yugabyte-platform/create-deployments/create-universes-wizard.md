@@ -32,7 +32,7 @@ type: docs
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with [dedicated nodes for YB-Master processes](../dedicated-master/).
 
-For planning considerations, including placement (Guided and Expert mode), hardware, and security, refer to [Plan your universe](../create-universes-overview/).
+For planning considerations, including placement (**Guided** and **Expert** mode), hardware, and security, refer to [Plan your universe](../create-universes-overview/).
 
 For information on modifying or scaling an existing universe, refer to [Modify universe](../../scale-deployments/edit-universe/).
 
@@ -82,7 +82,7 @@ For which mode to use, resilience options, and topology limits, refer to [Placem
 
 {{% tab header="Guided" lang="guide" %}}
 
-In Guided mode, you set the following:
+In **Guided** mode, you set the following:
 
 1. **Resilience**. Choose the outage domain (region, availability zone, node, or none) and how many of those outages to tolerate. Refer to [Guided mode](../create-universes-overview/#guided-mode).
 1. **Regions**. Select the regions where you want to locate the primary cluster. You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
@@ -92,7 +92,7 @@ In Guided mode, you set the following:
 
 {{% tab header="Expert" lang="expert" %}}
 
-In Expert mode, you set the following:
+In **Expert** mode, you set the following:
 
 1. **Regions**. Select the regions where you want to locate the primary cluster. You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
 1. **Replication factor**. Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). Refer to [Expert mode](../create-universes-overview/#expert-mode).

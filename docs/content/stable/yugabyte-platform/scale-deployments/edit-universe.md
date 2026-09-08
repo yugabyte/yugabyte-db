@@ -56,31 +56,19 @@ Navigate to the universe, select **Settings > Placement**, and on the **Primary 
 
 Either option displays the **Edit Placement** wizard.
 
-Using the wizard, you can specify placement using **Guided** or **Expert** mode. For the differences between modes and topology limits, refer to [Placement](../../create-deployments/create-universes-overview/#placement). When editing an existing universe, you can increase replication factor (Expert) or resilience (Guided) but you cannot decrease it. Refer to [Changing placement](../../create-deployments/create-universes-overview/#changing-placement).
+Using the wizard, you can specify placement using **Guided** or **Expert** mode. For the differences between modes and topology limits, refer to [Placement](../../create-deployments/create-universes-overview/#placement). When editing an existing universe, you can increase replication factor (**Expert**) or resilience (**Guided**) but you cannot decrease it. Refer to [Changing placement](../../create-deployments/create-universes-overview/#changing-placement).
 
-{{< tabpane text=true >}}
-
-{{% tab header="Guided" lang="guide" %}}
-
-In Guided mode, you set the following:
+In **Guided** mode, you set the following:
 
 1. **Resilience**. You can only _increase_ the resilience. Increasing resilience requires more nodes or availability zones.
 1. **Regions**. Select the regions where you want to locate the primary cluster.
 1. **Availability Zones and Nodes**. Select the zones, specify the number of nodes (the same in every zone), and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) regions.
 
-{{% /tab %}}
-
-{{% tab header="Expert" lang="expert" %}}
-
-In Expert mode, you set the following:
+In **Expert** mode, you set the following:
 
 1. **Regions**. Select the regions where you want to locate the primary cluster.
 1. {{<tags/feature/ea idea="56">}}**Replication Factor**. You can only _increase_ the replication factor. This change may also require more nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning.
 1. **Availability Zones and Nodes**. Select the zones (you can add extra zones depending on the number of regions and RF), specify the number of nodes **per zone**, and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) regions.
-
-{{% /tab %}}
-
-{{< /tabpane >}}
 
 When you are done, click **Review Changes**, confirm the summary, then click **Confirm and Apply**.
 

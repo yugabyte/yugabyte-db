@@ -24,7 +24,7 @@ The following best practices are recommended for production universes.
 | Feature | Recommendation |
 | :--- | :--- |
 | [Provider and region](#provider-and-region) | Deploy using a [provider configuration](../../configure-yugabyte-platform/) in the same cloud and regions as your application. YugabyteDB Anywhere supports AWS, Azure, GCP, on-premises, and Kubernetes. |
-| [Placement](#placement) | Region or Availability zone resilience, with a minimum of three nodes across multiple regions or AZs.<br>Use Guided mode for most topologies. |
+| [Placement](#placement) | Region or Availability zone resilience, with a minimum of three nodes across multiple regions or AZs.<br>Use **Guided** mode for most topologies. |
 | [Hardware](#hardware) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node. |
 | [YugabyteDB version](#yugabytedb-version) | Use a stable [LTS release](../../../releases/versioning/#stable-release-support-policy). |
 | [Staging universe](#staging-universe) | Use a staging universe to test application compatibility with database updates before upgrading your production universe. |
@@ -33,7 +33,7 @@ The following best practices are recommended for production universes.
 
 ## In depth
 
-{{<tags/ui/new>}} Placement in the following sections describes the New UI, which uses Guided and Expert modes. To enable the New UI, refer to [New experience](../../yba-overview/#enable-the-new-experience). For steps to create a universe, refer to [Create universes](../create-universes-wizard/).
+{{<tags/ui/new>}} Placement in the following sections describes the New UI, which uses **Guided** and **Expert** modes. To enable the New UI, refer to [New experience](../../yba-overview/#enable-the-new-experience). For steps to create a universe, refer to [Create universes](../create-universes-wizard/).
 
 ### Topology
 
@@ -117,17 +117,17 @@ When creating or modifying universe placement, you choose **Regular Cluster** (p
 | Node counts | The same in every availability zone | Can differ per availability zone |
 | Resilience | You choose the outage domain; YBA constrains regions, zones, and nodes to match | Inferred from your regions, zones, nodes, and RF |
 
-Guided is recommended for most users. Use Expert when you need different node counts per zone, a region and zone layout that Guided does not allow, or to set replication factor directly.
+**Guided** is recommended for most users. Use **Expert** when you need different node counts per zone, a region and zone layout that **Guided** does not allow, or to set replication factor directly.
 
 {{< note title="Classic UI" >}}
 
-The Classic UI does not have Guided or Expert mode. You set regions, replication factor, and per-zone node counts directly, similar to Expert mode. Refer to [Create universes (Classic UI)](../create-universe-multi-zone/).
+The Classic UI does not have **Guided** or **Expert** mode. You set regions, replication factor, and per-zone node counts directly, similar to Expert mode. Refer to [Create universes (Classic UI)](../create-universe-multi-zone/).
 
 {{< /note >}}
 
 #### Guided mode
 
-In Guided mode, start by selecting the cluster's resilience and the number of outages (1, 2, or 3) you want the cluster to tolerate without downtime. YBA then requires a matching number of regions, availability zones, and nodes, and applies replication factor automatically (`RF = 2 × outages + 1`).
+In **Guided** mode, start by selecting the cluster's resilience and the number of outages (1, 2, or 3) you want the cluster to tolerate without downtime. YBA then requires a matching number of regions, availability zones, and nodes, and applies replication factor automatically (`RF = 2 × outages + 1`).
 
 | Resilience | Resilient to | Minimum placement | RF |
 | :--- | :--- | :---: | :---: |
@@ -138,7 +138,7 @@ In Guided mode, start by selecting the cluster's resilience and the number of ou
 
 On Kubernetes, node-level resilience is labeled **Pod**.
 
-All availability zones have the same number of nodes. You cannot set per-zone counts in Guided mode; switch to Expert if you need that.
+All availability zones have the same number of nodes. You cannot set per-zone counts in **Guided** mode; switch to **Expert** if you need that.
 
 After you set resilience, select regions, then assign availability zones and the number of nodes per zone. For multi-region clusters, optionally rank [preferred](#preferred-region) regions.
 
@@ -146,7 +146,7 @@ After you set resilience, select regions, then assign availability zones and the
 
 - YugabyteDB can continue to do reads and writes even in case of a cloud region outage.
 - Requires exactly 3, 5, or 7 regions (matching the outage count you chose). You cannot use 2, 4, or 6 regions, or more than 7.
-- Each region typically contributes one availability zone; you cannot add extra zones in Guided region-level placement.
+- Each region typically contributes one availability zone; you cannot add extra zones in **Guided** region-level placement.
 - Recommended for production deployments that must survive a region outage.
 
 ##### Availability zone
@@ -171,13 +171,13 @@ Because cloud providers typically provide only 3–4 availability zones per regi
 - Operations that require a restart result in downtime (no rolling restart is possible).
 - For development and testing only.
 
-**Single-Node Cluster** is a separate option on the Placement page (not a Guided resilience type). It also deploys a single node with RF 1 and skips Guided and Expert mode.
+**Single-Node Cluster** is a separate option on the Placement page (not a **Guided** resilience type). It also deploys a single node with RF 1 and skips **Guided** and **Expert** mode.
 
 #### Expert mode
 
-In Expert mode, start by selecting one or more regions, then set the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) and place nodes in availability zones. YBA infers resilience from the combination of regions, zones, nodes, and RF (for example, RF 3 across 3 regions is region-level; RF 3 across 3 zones in one region is zone-level; RF 3 in a single zone is node-level).
+In **Expert** mode, start by selecting one or more regions, then set the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) and place nodes in availability zones. YBA infers resilience from the combination of regions, zones, nodes, and RF (for example, RF 3 across 3 regions is region-level; RF 3 across 3 zones in one region is zone-level; RF 3 in a single zone is node-level).
 
-Expert mode gives you more control, with the following rules:
+**Expert** mode gives you more control, with the following rules:
 
 - RF must be 1, 3, 5, or 7. RF 1 is not resilient to outages and is subject to downtime during operations that require a restart.
 - RF must be greater than or equal to the number of regions you selected. For example, 3 regions requires RF 3, 5, or 7.
@@ -187,9 +187,9 @@ Expert mode gives you more control, with the following rules:
 - You must select an availability zone for every zone row; blank zone selections are not allowed.
 - Maximum RF is 7, so you cannot place nodes in more than 7 regions.
 
-Use Expert when Guided cannot represent the topology you need — for example, different node counts per zone, two regions with zones distributed in a way Guided does not allow, or setting RF independently of a Guided resilience preset.
+Use **Expert** when **Guided** cannot represent the topology you need. For example, different node counts per zone, two regions with zones distributed in a way **Guided** does not allow, or setting RF independently of a **Guided** resilience preset.
 
-If you switch from Expert to Guided and the current placement is not a Guided-supported topology (for example, uneven node counts per zone), YBA warns you and **resets** the placement configuration.
+If you switch from **Expert** to **Guided** and the current placement is not a **Guided**-supported topology (for example, uneven node counts per zone), YBA warns you and **resets** the placement configuration.
 
 #### Preferred region
 
@@ -219,8 +219,8 @@ After the universe is created, you can change placement (regions, zones, and nod
 
 The following limitations apply when editing an existing universe:
 
-- You can increase replication factor (or Guided resilience that increases RF), but you _cannot decrease_ it. Increasing RF may also require more nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning.
-- If the current placement is not a topology Guided supports, Guided mode is unavailable and you must use Expert.
+- You can increase replication factor (or **Guided** resilience that increases RF), but you _cannot decrease_ it. Increasing RF may also require more nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning.
+- If the current placement is not a topology **Guided** supports, **Guided** mode is unavailable and you must use **Expert**.
 
 Read replicas and other advanced placement options are configured after the primary universe is created. Refer to [Add a read replica](../read-replicas/).
 
