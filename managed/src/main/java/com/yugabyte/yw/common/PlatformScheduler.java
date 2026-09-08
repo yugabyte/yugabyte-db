@@ -59,8 +59,13 @@ public class PlatformScheduler {
             boolean shouldRun = false;
             synchronized (lock) {
               // Synchronized block in shutdown and this should be serialized.
+              // Nothing scheduled runs during a switchover, runOnFollower included: the
+              // restore behind it drops and recreates every table, leaving open sessions
+              // unable to run their cached plans, and queries in flight hold the locks its
+              // DROP SCHEMA waits for.
               shouldRun =
                   !shutdownHookHandler.isShutdown()
+                      && !HighAvailabilityConfig.isSwitchOverInProgress()
                       && (runOnFollower || !HighAvailabilityConfig.isFollower())
                       && isRunning.compareAndSet(false, true);
             }
@@ -78,7 +83,7 @@ public class PlatformScheduler {
             } else {
               log.warn(
                   "Previous run of scheduler {} is in progress, is being shut down, or YBA is in"
-                      + " follower mode.",
+                      + " follower mode or a switchover.",
                   name);
             }
           } catch (Throwable t) {
