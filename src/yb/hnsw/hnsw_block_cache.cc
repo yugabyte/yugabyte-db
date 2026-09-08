@@ -304,6 +304,11 @@ struct CachedBlock {
   // and accumulated by the caller, because at thousands of Take() calls per search the
   // increments themselves showed up on the hot path.
   Result<const std::byte*> Take(RandomAccessFile& file, bool* was_hit) {
+    // Written before any early return: both miss paths below would otherwise leave it untouched,
+    // making the counters depend on the caller having pre-initialized it.
+    if (was_hit) {
+      *was_hit = false;
+    }
     UniqueLock lock(mutex);
     ++use_count;
     if (content.data) {
@@ -480,9 +485,9 @@ Result<Header> FileBlockCache::Load() {
   // Without this an unknown version is read and ignored, and the extra header fields it carries
   // are consumed as block offsets.
   auto version = reader.Read<uint8_t>();
-  SCHECK_LE(
-      version, kMaxSupportedSerializationVersion, Corruption,
-      Format("Unsupported YbHnsw serialization version: $0", version));
+  SCHECK(
+      version >= kSerializationVersionV1 && version <= kMaxSupportedSerializationVersion,
+      Corruption, Format("Unsupported YbHnsw serialization version: $0", version));
   Deserialize(version, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;

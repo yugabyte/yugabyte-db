@@ -54,7 +54,10 @@ size_t CoordinateBytes(VectorStorageKind kind, size_t dimensions) {
 void NarrowCoordinates(
     VectorStorageKind kind, const float* src, size_t dimensions, void* dst,
     size_t* num_clamped) {
-  DCHECK_NE(kind, VectorStorageKind::kInt8)
+  // CHECK, not DCHECK: with a zero scale every coordinate quantizes to the clamp limit, so in a
+  // release build this would silently write 127s over a whole chunk. Once per vector, not per
+  // coordinate.
+  CHECK_NE(kind, VectorStorageKind::kInt8)
       << "kInt8 needs a scale: use the overload that takes one";
   return NarrowCoordinates(kind, 0.0f, src, dimensions, dst, num_clamped);
 }
@@ -120,7 +123,8 @@ void NarrowCoordinates(
 
 void WidenCoordinates(
     VectorStorageKind kind, const void* src, size_t dimensions, float* dst) {
-  DCHECK_NE(kind, VectorStorageKind::kInt8)
+  // See the NarrowCoordinates counterpart: a zero scale decodes every coordinate to zero.
+  CHECK_NE(kind, VectorStorageKind::kInt8)
       << "kInt8 needs a scale: use the overload that takes one";
   return WidenCoordinates(kind, 0.0f, src, dimensions, dst);
 }

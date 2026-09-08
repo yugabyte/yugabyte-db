@@ -55,11 +55,13 @@ DEFINE_RUNTIME_uint32(vector_index_rerank_overfetch_factor, 2,
     "Multiplier applied to the requested result count to size the candidate set a vector index "
     "chunk with a rerank tier rescores at full precision before returning. 1 retains exactly the "
     "requested count, which makes reranking a no-op. Only affects chunks whose coordinates are "
-    "stored in a lossy encoding.");
+    "stored in a lossy encoding. Costs nothing while factor * LIMIT stays within ef_search, since "
+    "the search already retains that many candidates; past that it raises the candidate budget to "
+    "factor * LIMIT and the traversal does proportionally more work, which at the default 2 makes "
+    "a LIMIT 100 query at ef_search=100 explore 200 candidates rather than 100.");
 
 // Bounded because the value multiplies the candidates a search explores once it exceeds ef, so a
-// mistyped large value turns every query into a scan. 2 is sufficient in measurement; 3 adds
-// nothing.
+// mistyped large value turns every query into a scan.
 DEFINE_validator(vector_index_rerank_overfetch_factor,
     FLAG_COND_VALIDATOR(_value >= 1 && _value <= 64, "Must be between 1 and 64"));
 
@@ -138,6 +140,18 @@ size_t RecordCoordinateBytes(const Header& header) {
 // past every record into the next, and an unusable scale decodes coordinates to zero or infinity
 // -- and an infinite coordinate makes every distance NaN, corrupting the heaps' ordering.
 Status ValidateHeader(const Header& header) {
+  // Range-checked before anything switches on them: CoordinateBytes and StorageKindForRerank end
+  // in FATAL_INVALID_ENUM_VALUE, so a single corrupt footer byte would abort the process instead
+  // of failing this one file. Both enums are contiguous from zero.
+  SCHECK_LT(
+      static_cast<size_t>(std::to_underlying(header.storage_kind)),
+      vector_index::kElementsInVectorStorageKind, Corruption,
+      Format("YbHnsw chunk has an unknown storage kind: $0", header));
+  SCHECK_LT(
+      static_cast<size_t>(std::to_underlying(header.rerank_kind)),
+      vector_index::kElementsInRerankStorageKind, Corruption,
+      Format("YbHnsw chunk has an unknown rerank kind: $0", header));
+
   SCHECK_EQ(
       header.vector_data_size, sizeof(YbHnswVectorData) + RecordCoordinateBytes(header),
       Corruption, Format("YbHnsw record size disagrees with its encodings: $0", header));
@@ -570,6 +584,11 @@ size_t YbHnsw::RerankCandidateCount(size_t max_num_results) const {
     return max_num_results;
   }
   const size_t factor = FLAGS_vector_index_rerank_overfetch_factor;
+  // The flag validator rejects zero, but a test writing the flag directly bypasses it and zero
+  // would divide by zero below.
+  if (factor <= 1) {
+    return max_num_results;
+  }
   // Saturate rather than wrap: a wrap would silently return the wrong rows, where giving up the
   // over-fetch only gives up the recall reranking would have recovered.
   if (max_num_results > std::numeric_limits<size_t>::max() / factor) {
