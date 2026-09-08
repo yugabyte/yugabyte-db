@@ -32,14 +32,16 @@ message CloudInfoListPB {
 }
 
 // This represents one instance of a placement constraint for a table. It is
-// used to dictate what is the minimum number of expected replicas in a certain
-// cloud/region/zone combo.
+// used to dictate replica count bounds in a certain cloud/region/zone combo.
 message PlacementBlockPB {
   // The cloud, region and zone information for this placement block.
   optional CloudInfoPB cloud_info = 1;
 
   // The minimum number of replicas that should always be up in this placement.
   optional int32 min_num_replicas = 2;
+
+  // The upper bound on the number of replicas allowed in this placement.
+  optional int32 max_num_replicas = 3;
 }
 
 // This keeps track of the set of PlacementBlockPBs defining the placement
