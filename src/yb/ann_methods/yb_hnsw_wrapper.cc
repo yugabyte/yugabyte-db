@@ -19,6 +19,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 
+#include "yb/vector_index/coordinate_codec.h"
 #include "yb/vector_index/index_wrapper_base.h"
 
 namespace yb::ann_methods {
@@ -28,6 +29,7 @@ namespace {
 using vector_index::IndexableVectorType;
 using vector_index::VectorId;
 using vector_index::ValidDistanceResultType;
+using vector_index::VectorStorageKind;
 
 template<IndexableVectorType Vector>
 class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
@@ -36,7 +38,7 @@ class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIterator
   using Base = AbstractIterator<ValueType>;
 
   YbHnswIterator(const hnsw::YbHnsw& hnsw, size_t index)
-      : cache_scope_(cache_, hnsw), dimensions_(hnsw.header().dimensions), index_(index) {
+      : cache_scope_(cache_, hnsw), header_(hnsw.header()), index_(index) {
   }
 
   void Next() override {
@@ -44,13 +46,16 @@ class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIterator
   }
 
   ValueType Dereference() const override {
-    const auto* coordinates = cache_.CoordinatesPtr(index_);
     ValueType result;
     auto [vector_id, payload] = cache_.GetVectorIdAndPayload(index_);
     result.vector_id = vector_id;
-    result.vector.resize(dimensions_);
-    memcpy(result.vector.data(), coordinates, dimensions_ * sizeof(typename Vector::value_type));
     result.payload = payload;
+    result.vector.resize(header_.dimensions);
+    // Records may be narrower than Vector::value_type, so this decodes rather than copies; a
+    // memcpy would walk past the end of each record.
+    vector_index::WidenCoordinates(
+        header_.storage_kind, cache_.CoordinatesPtr(index_), header_.dimensions,
+        result.vector.data());
     return result;
   }
 
@@ -62,7 +67,7 @@ class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIterator
  private:
   mutable hnsw::SearchCache cache_;
   hnsw::SearchCacheScope cache_scope_;
-  const size_t dimensions_;
+  const hnsw::Header& header_;
   size_t index_;
 };
 
@@ -92,9 +97,12 @@ class YbHnswIndex :
 
   Status Import(
       const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
-      const vector_index::VectorPayloadMap* payloads) {
-    VLOG_WITH_FUNC(3) << "index: " << index.cur_element_count << ", path: " << path;
-    return index_.Import(index, path, payloads);
+      const vector_index::VectorPayloadMap* payloads,
+      VectorStorageKind storage_kind) {
+    VLOG_WITH_FUNC(3)
+        << "index: " << index.cur_element_count << ", path: " << path
+        << ", storage_kind: " << storage_kind;
+    return index_.Import(index, path, payloads, storage_kind);
   }
 
   std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> BeginImpl()
@@ -133,8 +141,21 @@ class YbHnswIndex :
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
-    return index_.Distance(
-        pointer_cast<const std::byte*>(lhs.data()), pointer_cast<const std::byte*>(rhs.data()));
+    const auto& header = index_.header();
+    if (header.storage_kind == VectorStorageKind::kFloat32) {
+      return index_.Distance(
+          pointer_cast<const std::byte*>(lhs.data()), pointer_cast<const std::byte*>(rhs.data()));
+    }
+    // The metric decodes this file's encoding, so full-precision arguments must go through the
+    // same narrowing the stored records did. Cold path (SearchExact and tests), so a scratch
+    // allocation per call is fine.
+    const auto bytes = vector_index::CoordinateBytes(header.storage_kind, header.dimensions);
+    std::vector<std::byte> buffer(bytes * 2);
+    vector_index::NarrowCoordinates(
+        header.storage_kind, lhs.data(), header.dimensions, buffer.data());
+    vector_index::NarrowCoordinates(
+        header.storage_kind, rhs.data(), header.dimensions, buffer.data() + bytes);
+    return index_.Distance(buffer.data(), buffer.data() + bytes);
   }
 
   Result<Vector> GetVector(VectorId vector_id) const override {
@@ -182,14 +203,25 @@ class YbHnswIndex :
   mutable LockFreeStack<SearchContextHolder> search_contexts_;
 };
 
+// Builds metrics from `options` for whichever encoding YbHnsw asks about: what Import is about
+// to write, or what Init read from a file's footer.
+hnsw::YbHnsw::MetricFactory MakeMetricFactory(const vector_index::HNSWOptions& options) {
+  return [options](size_t dimensions, VectorStorageKind storage_kind) {
+    return std::make_unique<hnsw::UsearchMetric>(
+        options.CreateStoredMetric(dimensions, storage_kind));
+  };
+}
+
 } // namespace
 
 template <class Vector, class DistanceResult>
 Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
     const hnsw::BlockCachePtr& block_cache, const vector_index::VectorPayloadMap* payloads) {
+  // The usearch index owns its own float32 metric; narrowed storage is not wired through this
+  // backend, so the chunk is written and served at full precision.
   auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
-      std::make_unique<hnsw::UsearchMetric>(index.metric()), block_cache);
+      index.metric(), block_cache);
   RETURN_NOT_OK(result->Import(index, path, payloads));
   return result;
 }
@@ -200,8 +232,9 @@ Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
     const vector_index::VectorPayloadMap* payloads) {
   auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
-      std::make_unique<hnsw::UsearchMetric>(options.CreateMetric<Vector>()), block_cache);
-  RETURN_NOT_OK(result->Import(index, path, payloads));
+      MakeMetricFactory(options), block_cache);
+  RETURN_NOT_OK(
+      result->Import(index, path, payloads, options.storage_kind));
   return result;
 }
 
@@ -220,7 +253,7 @@ template <class Vector, class DistanceResult>
 vector_index::VectorIndexIfPtr<Vector, DistanceResult> CreateYbHnsw(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
   return std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
-      std::make_unique<hnsw::UsearchMetric>(options.CreateMetric<Vector>()), block_cache);
+      MakeMetricFactory(options), block_cache);
 }
 
 template
