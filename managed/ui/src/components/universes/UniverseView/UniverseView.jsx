@@ -636,9 +636,12 @@ export const UniverseView = (props) => {
               <Link to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}>
                 <YBButton
                   btnClass="universe-button btn btn-lg btn-orange"
-                  disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                  disabled={
+                    isDisabled(currentCustomer.data.features, 'universe.create') ||
+                    !isDefinedNotNull(isNewV2CreateUniverseUIEnabled)
+                  }
                   btnText="Create Universe"
-                  btnIcon="fa fa-plus"
+                  btnIcon={`fa ${isDefinedNotNull(isNewV2CreateUniverseUIEnabled) ? 'fa-plus' : 'fa-spinner fa-pulse'}`}
                   data-testid="UniverseList-CreateUniverse"
                 />
               </Link>

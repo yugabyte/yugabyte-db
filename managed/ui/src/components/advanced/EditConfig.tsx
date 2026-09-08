@@ -60,7 +60,7 @@ export const EditConfig: FC<EditConfigData> = ({
       configData.type === 'Boolean' ? configData.configValue === 'true' : configData.configValue
   };
   const isEditUniverseV2Config =
-    configData.configKey === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI;
+    configData.configKey === RuntimeConfigKey.ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS;
 
   const handleSubmit = async (
     values: EditConfigDataValues,
