@@ -10,7 +10,8 @@ DROP EXTENSION "uuid-ossp";
 
 DROP EXTENSION hypopg;
 
-DROP EXTENSION pg_stat_monitor;
+-- YB_TODO_PG19MERGE: see pgonly_extensions_create.sql.
+-- DROP EXTENSION pg_stat_monitor;
 
 DROP EXTENSION pgaudit;
 

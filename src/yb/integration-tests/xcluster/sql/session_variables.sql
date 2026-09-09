@@ -34,14 +34,14 @@ CREATE TABLE table_in_different_tablespace_with_range_sharding(id INT PRIMARY KE
 
 -- Test session variables that control string literal parsing.
 RESET ALL;
-SET standard_conforming_strings = off;
-CREATE TABLE nonconforming_strings_table (
+CREATE TABLE backslash_literal_table (
   x text DEFAULT 'a\nb'
 );
+-- backslash_quote governs \' only inside an escape string, so the default has
+-- to be an E'' literal for this to exercise it.
 SET backslash_quote = on;
-SET escape_string_warning = on;
 CREATE TABLE table_with_backslash_quoted (
-  x text DEFAULT 'it\'s ok' -- fix syntax highlighting: '
+  x text DEFAULT E'it\'s ok' -- fix syntax highlighting: '
 );
 
 

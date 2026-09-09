@@ -23,8 +23,6 @@ X("default_tablespace")
 /* This affects whether a table is range or hash started. */
 X("yb_use_hash_splitting_by_default")
 
-/* Settings that affect parsing of string literals. */
-X("standard_conforming_strings")
 /* Settings that affect parsing of dates, times, and intervals. */
 X("datestyle")
 X("timezone")
