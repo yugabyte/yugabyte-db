@@ -2,13 +2,19 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.common.NodeAgentClient;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -16,6 +22,7 @@ import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -30,6 +37,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -68,6 +76,39 @@ public class ResizeNode extends UpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+    if (confGetter.getGlobalConf(GlobalConfKeys.ociFailFastMultiVolumeInstanceTypeChange)) {
+      validateOciInstanceTypeChangeVolumes(universe);
+    }
+  }
+
+  private void validateOciInstanceTypeChangeVolumes(Universe universe) {
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    for (Cluster cluster : taskParams().clusters) {
+      Cluster currentCluster = universe.getCluster(cluster.uuid);
+      if (currentCluster == null) {
+        continue;
+      }
+      UserIntent currentIntent = currentCluster.userIntent;
+      UserIntent newIntent = cluster.userIntent;
+      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+        if (providerGetter.apply(node).getCloudCode() != Common.CloudType.oci) {
+          continue;
+        }
+        if (Objects.equals(
+            newIntent.getInstanceTypeForNode(node), currentIntent.getInstanceTypeForNode(node))) {
+          continue;
+        }
+        DeviceInfo deviceInfo = currentIntent.getDeviceInfoForNode(node);
+        if (deviceInfo != null && deviceInfo.numVolumes != null && deviceInfo.numVolumes > 1) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Cannot change instance type on OCI when more than one data volume is attached"
+                      + " (found %d). OCI allows at most one boot volume and one secondary volume.",
+                  deviceInfo.numVolumes));
+        }
+      }
+    }
   }
 
   @Override
