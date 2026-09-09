@@ -3824,7 +3824,12 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
   }
   if (!status.ok()) {
     // TODO: Do something with the status on failure?
-    LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status << "\n" << GetStackTrace();
+    // Aborted is routine here: rounds are aborted on shutdown and on leader change. Symbolizing a
+    // stack trace can stall the process for minutes under sanitizers, so trace only unexpected
+    // failures, or when verbose logging is requested.
+    const bool with_stack_trace = !status.IsAborted() || VLOG_IS_ON(1);
+    LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status
+                          << (with_stack_trace ? "\n" + GetStackTrace() : std::string());
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
