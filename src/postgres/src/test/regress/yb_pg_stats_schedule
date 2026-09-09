@@ -1,0 +1,10 @@
+# src/test/regress/yb_pg_stats_schedule
+#
+####################################################################################################
+# Port of upstream stats.sql (pg_stat_* cumulative stats, including last_analyze).
+####################################################################################################
+# tenk2 is required by yb.port.stats (seq/idx scan counters).
+test: yb.depd.tenk1
+test: yb.depd.tenk2
+
+test: yb.port.stats
