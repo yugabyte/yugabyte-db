@@ -154,7 +154,13 @@ export const InstanceSettings = forwardRef<
       earKmsConfig: earKMSConfig
     },
     resolver: yupResolver(
-      InstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code, !!useDedicatedNodes)
+      InstanceSettingsValidationSchema(
+        t,
+        useK8CustomResources,
+        provider?.code,
+        !!useDedicatedNodes,
+        maxVolumeCount
+      )
     )
   });
   usePersistStepFormValues(methods.watch, methods.getValues, saveInstanceSettings);
@@ -529,11 +535,7 @@ export const InstanceSettings = forwardRef<
           }
 
           return (
-            <YBAccordion
-              defaultExpanded
-              titleContent={<>{t('master')}</>}
-              sx={{ width: '100%' }}
-            >
+            <YBAccordion defaultExpanded titleContent={<>{t('master')}</>} sx={{ width: '100%' }}>
               <Box>
                 {masterNodesBadge}
                 {sameCheckbox}

@@ -9,14 +9,15 @@ import {
 export const RRInstanceSettingsValidationSchema = (
   t: TFunction,
   useK8CustomResources: boolean,
-  provider: CloudType | undefined
+  provider: CloudType | undefined,
+  maxVolumeCount = 32
 ) => {
   const isK8s = provider === 'kubernetes';
   const requireInstanceFields = !isK8s || (isK8s && !useK8CustomResources);
   const volumeInfoSchema =
     isK8s && useK8CustomResources
-      ? K8VolumeInfoValidationSchema(t)
-      : DeviceInfoValidationSchema(t);
+      ? K8VolumeInfoValidationSchema(t, maxVolumeCount)
+      : DeviceInfoValidationSchema(t, maxVolumeCount);
 
   return Yup.object().shape({
     imageBundleUUID: Yup.string()
