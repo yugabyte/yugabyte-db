@@ -170,6 +170,9 @@ Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
+val bouncyCastleFipsVersion = "2.1.1"
+val bouncyCastleUtilFipsVersion = "2.1.7"
+
 libraryDependencies ++= Seq(
   javaJdbc,
   caffeine,
@@ -192,9 +195,14 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
-  "org.bouncycastle" % "bc-fips" % "2.1.0",
-  "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
-  "org.bouncycastle" % "bctls-fips" % "2.1.20",
+  // bc-fips is the FIPS 140-3 validated module itself, so it tracks the newest *certified*
+  // build rather than the newest published one: 2.1.1 is CMVP certificate #4943 (17 Jan 2025),
+  // while 2.1.2 and 2.1.3 carry no certificate of their own. The rest are outside the validated
+  // boundary and track latest. See the dependencyOverrides below - declaring them is not enough.
+  "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion,
+  "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion,
+  "org.bouncycastle" % "bcpkix-fips" % "2.1.12",
+  "org.bouncycastle" % "bctls-fips" % "2.1.24",
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
   // AWS SDK 2.x dependencies
@@ -1056,6 +1064,12 @@ runPlatform := {
   )
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
+
+// bcpkix-fips and bctls-fips depend on bcutil-fips by version range, and bcutil-fips depends on
+// bc-fips by range, so a plain declaration loses to the range: a build declaring bc-fips 2.1.0
+// was resolving 2.1.3, an uncertified module. Only an override fixes the FIPS module version.
+dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
+dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.122-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b11"
