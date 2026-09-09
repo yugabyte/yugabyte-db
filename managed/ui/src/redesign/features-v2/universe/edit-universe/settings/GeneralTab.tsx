@@ -1,19 +1,16 @@
-import { useState } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toUpper } from 'lodash';
+import { browserHistory } from 'react-router';
 import { useQuery } from 'react-query';
 import { fetchProviderList } from '@app/api/admin';
 
-import { mui, YBMaps, YBSelect, YBTag, YBAlert, AlertVariant } from '@yugabyte-ui-library/core';
+import { mui, YBMaps, YBSelect, YBTag } from '@yugabyte-ui-library/core';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   extractGeoPartitionsFromUniverse,
   extractRegionsAndNodeDataFromUniverse
 } from '../../geo-partition/add/AddGeoPartitionUtils';
-import {
-  StyledInfoRowNew
-} from '../../create-universe/components/DefaultComponents';
-import { ClusterType } from '@app/redesign/helpers/dtos';
+import { StyledInfoRowNew } from '../../create-universe/components/DefaultComponents';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import { ybFormatDate } from '@app/redesign/helpers/DateUtils';
@@ -27,6 +24,8 @@ import {
   isKubernetesUniverse,
   useEditUniverseContext
 } from '../EditUniverseUtils';
+import { EditUniverseTabs } from '../EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '../editUniverseTabUtils';
 
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { LinuxVersion } from '../components';
@@ -35,6 +34,7 @@ import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 import { PROVIDER_TYPES } from '@app/config';
 import { Star } from '@material-ui/icons';
 import CopyIcon from '../../../../assets/copy_blue.svg';
+import TreeIcon from '@app/redesign/assets/tree-icon.svg';
 
 const { Box, styled, Typography, Grid2, Divider, MenuItem } = mui;
 
@@ -63,11 +63,44 @@ const StyledCardHeader = styled(Typography)(({ theme }) => ({
   color: theme.palette.common.black
 }));
 
+const StyledSection = styled(Box)(() => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '24px',
+  width: '100%'
+}));
+
+const StyledClusterSubsection = styled(Box)(() => ({
+  display: 'flex',
+  gap: '16px',
+  alignItems: 'flex-start',
+  width: '100%'
+}));
+
+const StyledClusterTitle = styled(Typography)(({ theme }) => ({
+  fontSize: '13px',
+  fontWeight: 600,
+  lineHeight: '16px',
+  color: theme.palette.grey[600]
+}));
+
 const StyledYBSelect = styled(YBSelect)(() => ({
   zIndex: 1000,
   margin: '8px',
   width: '200px',
   height: '32px'
+}));
+
+const ViewMoreLink = styled('a')(({ theme }) => ({
+  color: theme.palette.primary[600],
+  fontSize: '13px',
+  fontWeight: 400,
+  lineHeight: '16px',
+  textDecoration: 'underline',
+  textDecorationStyle: 'solid',
+  textUnderlinePosition: 'from-font',
+  marginLeft: '40px',
+  cursor: 'pointer'
 }));
 
 enum MapViewMode {
@@ -85,6 +118,37 @@ const MAP_CONTAINER_PROPS = {
   zoom: 2,
   center: [0, 0] as [number, number]
 };
+
+const ClusterSubsection = ({ title, children }: { title: string; children: ReactNode }) => (
+  <StyledClusterSubsection>
+    <TreeIcon style={{ width: 24, height: 24, flexShrink: 0 }} />
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0, flex: 1 }}>
+      <StyledClusterTitle>{title}</StyledClusterTitle>
+      {children}
+    </Box>
+  </StyledClusterSubsection>
+);
+
+const RegionTags = ({
+  regions,
+  defaultRegionUuid
+}: {
+  regions: Region[];
+  defaultRegionUuid?: string;
+}) => (
+  <Box sx={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+    {regions.map((region: Region) => (
+      <YBTag
+        key={region.uuid ?? region.code}
+        variant="light"
+        size="large"
+        endIcon={region.uuid === defaultRegionUuid ? <Star /> : undefined}
+      >
+        {getFlagFromRegion(region.code)} {region.name} ({region.code})
+      </YBTag>
+    ))}
+  </Box>
+);
 
 export const GeneralTab = () => {
   const { universeData, providerRegions } = useEditUniverseContext();
@@ -133,6 +197,22 @@ export const GeneralTab = () => {
 
   const currentProvider = providers?.find(
     (provider) => provider.uuid === primaryCluster?.provider_spec?.provider
+  );
+
+  const universeUuid = universeData?.info?.universe_uuid ?? '';
+  const placementRoute = getEditUniverseSettingsRoute(universeUuid, EditUniverseTabs.PLACEMENT);
+  const hardwareRoute = getEditUniverseSettingsRoute(universeUuid, EditUniverseTabs.HARDWARE);
+
+  const navigateToSettingsTab = (route: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    browserHistory.push(route);
+  };
+
+  const primaryRegions = r.regions.filter(
+    (region: Region) => (region as any).clusterType === ClusterSpecClusterType.PRIMARY
+  );
+  const readReplicaRegions = r.regions.filter(
+    (region: Region) => (region as any).clusterType === ClusterSpecClusterType.ASYNC
   );
 
   return (
@@ -185,7 +265,7 @@ export const GeneralTab = () => {
           </StyledInfoRowNew>
           <StyledInfoRowNew>
             <div>
-              <span className="header">{t('provider')}</span>{' '}
+              <span className="header">{t('infrastructureProvider')}</span>{' '}
               <span className="value">
                 <Grid2 container alignItems="center" gap={0.5}>
                   {providerIcon}
@@ -194,7 +274,7 @@ export const GeneralTab = () => {
               </span>
             </div>
             <div>
-              <span className="header">{t('providerConfig')}</span>{' '}
+              <span className="header">{t('providerConfiguration')}</span>{' '}
               <span className="value">{currentProvider?.name}</span>
             </div>
             <div>
@@ -233,43 +313,80 @@ export const GeneralTab = () => {
           </StyledInfoRowNew>
         </StyledGeneralInfoNew>
         <Divider />
-        <StyledInfoRowNew>
-          <div>
-            <span className="header">{t('primaryCluster')}</span>{' '}
-            <span className="value" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {r.regions.map((region: Region) => {
-                if ((region as any).clusterType !== ClusterType.PRIMARY) return null;
-                return (
-                  <YBTag
-                    key={region.code}
-                    variant="light"
-                    size="large"
-                    endIcon={
-                      region.uuid ===
-                      primaryCluster?.placement_spec?.cloud_list[0].default_region ? (
-                        <Star />
-                      ) : undefined
-                    }
-                  >
-                    {getFlagFromRegion(region.code)} {region.name} ({region.code})
-                  </YBTag>
-                );
-              })}
-            </span>
-          </div>
-        </StyledInfoRowNew>
+        <StyledSection>
+          <StyledCardHeader>{t('regionsAndPlacement')}</StyledCardHeader>
+          <ClusterSubsection title={t('primaryCluster')}>
+            <RegionTags
+              regions={primaryRegions}
+              defaultRegionUuid={primaryCluster?.placement_spec?.cloud_list[0].default_region}
+            />
+          </ClusterSubsection>
+          {readReplicaCluster && (
+            <ClusterSubsection title={t('readReplica')}>
+              <RegionTags
+                regions={readReplicaRegions}
+                defaultRegionUuid={readReplicaCluster.placement_spec?.cloud_list[0].default_region}
+              />
+            </ClusterSubsection>
+          )}
+          <ViewMoreLink
+            href={placementRoute}
+            data-testid="general-tab-view-more-placement"
+            onClick={navigateToSettingsTab(placementRoute)}
+          >
+            {t('viewMorePlacement')}
+          </ViewMoreLink>
+        </StyledSection>
         <Divider />
-        <StyledInfoRowNew>
-          <div>
-            <span className="header">{t('cpuArch')}</span>
-            <span className="value">{universeData?.info?.arch}</span>
-          </div>
-          <LinuxVersion />
-          <div>
-            <span className="header">{t('defaultInstanceType')}</span>
-            <span className="value">{primaryCluster?.node_spec?.instance_type ?? '-'}</span>
-          </div>
-        </StyledInfoRowNew>
+        <StyledSection>
+          <StyledCardHeader>{t('hardware')}</StyledCardHeader>
+          <ClusterSubsection title={t('primaryCluster')}>
+            <StyledInfoRowNew>
+              <div>
+                <span className="header">{t('cpuArch')}</span>
+                <span className="value">{universeData?.info?.arch}</span>
+              </div>
+              <LinuxVersion cluster={primaryCluster} />
+              <div>
+                <span className="header">{t('instanceType')}</span>
+                <span className="value">{primaryCluster?.node_spec?.instance_type ?? '-'}</span>
+              </div>
+            </StyledInfoRowNew>
+          </ClusterSubsection>
+          {readReplicaCluster && (
+            <ClusterSubsection title={t('readReplica')}>
+              <StyledInfoRowNew>
+                <div>
+                  <span className="header">{t('cpuArch')}</span>
+                  <span className="value sameline">
+                    {universeData?.info?.arch}
+                    <YBTag
+                      variant="dark"
+                      size="small"
+                      customSx={{ color: '#4E5F6D', background: '#E9EEF2' }}
+                    >
+                      {t('sameAsPrimaryCluster')}
+                    </YBTag>
+                  </span>
+                </div>
+                <LinuxVersion cluster={readReplicaCluster} />
+                <div>
+                  <span className="header">{t('instanceType')}</span>
+                  <span className="value">
+                    {readReplicaCluster.node_spec?.instance_type ?? '-'}
+                  </span>
+                </div>
+              </StyledInfoRowNew>
+            </ClusterSubsection>
+          )}
+          <ViewMoreLink
+            href={hardwareRoute}
+            data-testid="general-tab-view-more-hardware"
+            onClick={navigateToSettingsTab(hardwareRoute)}
+          >
+            {t('viewMoreHardware')}
+          </ViewMoreLink>
+        </StyledSection>
       </StyledArea>
     </Box>
   );

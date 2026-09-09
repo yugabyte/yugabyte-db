@@ -52,6 +52,9 @@ export const NonDedicatedView = () => {
       {readReplicaCluster && (
         <InstanceCard
           title={t('rrInstance', { keyPrefix: 'readReplica.addRR' })}
+          arch={universeData?.info?.arch}
+          cluster={readReplicaCluster}
+          sameAsPrimaryCluster
           nodeSpec={readReplicaCluster.node_spec}
           storageSpec={readReplicaCluster.node_spec?.storage_spec}
           isK8s={isK8s}

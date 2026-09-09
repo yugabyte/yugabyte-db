@@ -8,7 +8,7 @@ import {
   ImageBundle,
   ImageBundleType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ClusterSpec, ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { useEditUniverseContext, getClusterByType } from '../EditUniverseUtils';
 import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from '../../create-universe/fields';
 import { AWSProvider } from '@app/components/configRedesign/providerRedesign/types';
@@ -16,12 +16,11 @@ import { CircularProgress } from '@material-ui/core';
 import { StyledInfoRow } from '../../create-universe/components/DefaultComponents';
 import ArrowCircleUp from '@app/redesign/assets/arrow_circle_up.svg';
 
-export const LinuxVersion = () => {
+export const LinuxVersion = ({ cluster }: { cluster?: ClusterSpec }) => {
   const { universeData } = useEditUniverseContext();
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.general' });
-  const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const targetCluster = cluster ?? getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
 
-  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const dispatch = useDispatch();
 
   const { data: providers, isLoading: isProvidersLoading } = useQuery(
@@ -31,14 +30,14 @@ export const LinuxVersion = () => {
   );
 
   const currentProvider = providers?.find(
-    (provider) => provider.uuid === primaryCluster?.provider_spec.provider
+    (provider) => provider.uuid === targetCluster?.provider_spec.provider
   );
 
-  const imageBundleUsed:
-    | ImageBundle
-    | undefined = ((currentProvider as AWSProvider)?.imageBundles?.find(
-    (imgBundle: any) => imgBundle?.uuid === primaryCluster?.provider_spec?.image_bundle_uuid
-  ) as unknown) as ImageBundle;
+  const imageBundleUsed: ImageBundle | undefined = (
+    currentProvider as AWSProvider
+  )?.imageBundles?.find(
+    (imgBundle: any) => imgBundle?.uuid === targetCluster?.provider_spec?.image_bundle_uuid
+  ) as unknown as ImageBundle;
 
   return (
     <StyledInfoRow>

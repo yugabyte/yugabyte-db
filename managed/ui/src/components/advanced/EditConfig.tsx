@@ -13,7 +13,6 @@ import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos
 import { isEmptyObject } from '../../utils/ObjectUtils';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 import { YBBanner, YBBannerVariant } from '../common/descriptors';
-import { DEFAULT_RELEASE_NOTES_URL } from '../../redesign/features-v2/onboarding/universe-revamp/modals/HelperComponent';
 
 const CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE = {
   Bytes: 'BytesTooltipMessage',
@@ -164,7 +163,7 @@ export const EditConfig: FC<EditConfigData> = ({
                       components={{
                         experienceLink: (
                           <a
-                            href={DEFAULT_RELEASE_NOTES_URL}
+                            href="https://docs.yugabyte.com/stable/yugabyte-platform/yba-overview/#new-experience"
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
