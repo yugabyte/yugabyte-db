@@ -960,7 +960,20 @@ class OciCloudAdmin:
 
     def change_instance_type(self, instance_id, new_shape, ocpus=None, memory_in_gbs=None):
         shape_config = None
-        if "Flex" in new_shape and (ocpus or memory_in_gbs):
+        if "Flex" in new_shape:
+            if ocpus is None or memory_in_gbs is None:
+                current_config = getattr(
+                    self.get_instance(instance_id), "shape_config", None)
+                if current_config:
+                    if ocpus is None:
+                        ocpus = getattr(current_config, "ocpus", None)
+                    if memory_in_gbs is None:
+                        memory_in_gbs = getattr(current_config, "memory_in_gbs", None)
+            if ocpus is None or memory_in_gbs is None:
+                raise YBOpsRuntimeError(
+                    "OCPUs and memory are required to change instance {} to Flex shape {} "
+                    "(ocpus={}, memory_in_gbs={})".format(
+                        instance_id, new_shape, ocpus, memory_in_gbs))
             shape_config = UpdateInstanceShapeConfigDetails(
                 ocpus=ocpus,
                 memory_in_gbs=memory_in_gbs

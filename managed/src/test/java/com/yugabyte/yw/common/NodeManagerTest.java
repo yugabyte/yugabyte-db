@@ -818,6 +818,18 @@ public class NodeManagerTest extends FakeDBApplication {
         if (!cloud.equals(Common.CloudType.onprem)) {
           expectedCommand.add("--instance_type");
           expectedCommand.add(createParams.instanceType);
+          if (cloud.equals(Common.CloudType.oci)
+              && createParams.instanceType != null
+              && createParams.instanceType.contains("Flex")) {
+            InstanceType flexType =
+                InstanceType.get(testData.provider.getUuid(), createParams.instanceType);
+            if (flexType != null) {
+              expectedCommand.add("--ocpus");
+              expectedCommand.add(String.valueOf(flexType.getNumCores()));
+              expectedCommand.add("--memory_in_gbs");
+              expectedCommand.add(String.valueOf(flexType.getMemSizeGB()));
+            }
+          }
           expectedCommand.add("--cloud_subnet");
           expectedCommand.add(createParams.subnetId);
           if (createParams.secondarySubnetId != null) {
@@ -1147,6 +1159,18 @@ public class NodeManagerTest extends FakeDBApplication {
         ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
+        if (cloud.equals(Common.CloudType.oci)
+            && citTaskParams.instanceType != null
+            && citTaskParams.instanceType.contains("Flex")) {
+          InstanceType flexType =
+              InstanceType.get(testData.provider.getUuid(), citTaskParams.instanceType);
+          if (flexType != null) {
+            expectedCommand.add("--ocpus");
+            expectedCommand.add(String.valueOf(flexType.getNumCores()));
+            expectedCommand.add("--memory_in_gbs");
+            expectedCommand.add(String.valueOf(flexType.getMemSizeGB()));
+          }
+        }
         expectedCommand.add("--pg_max_mem_mb");
         expectedCommand.add("0");
         break;
@@ -1275,6 +1299,29 @@ public class NodeManagerTest extends FakeDBApplication {
           .run(eq(expectedCommand), any(ShellProcessContext.class));
       idx++;
     }
+  }
+
+  @Test
+  public void testChangeInstanceTypeCommandOciFlexPassesOcpus() {
+    TestData t = getTestData(testData.get(0).customer, Common.CloudType.oci).get(0);
+    String flexType = "VM.Standard.E6.Flex";
+    InstanceType.upsert(t.provider.getUuid(), flexType, 4.0, 32.0, new InstanceTypeDetails());
+    ChangeInstanceType.Params params = new ChangeInstanceType.Params();
+    buildValidParams(
+        t,
+        params,
+        Universe.saveDetails(
+            createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
+    params.instanceType = flexType;
+    List<String> expectedCommand = t.baseCommand;
+    expectedCommand.addAll(
+        nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t, NODE_IPS[0]));
+    reset(shellProcessHandler);
+    nodeManager.nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params);
+    verify(shellProcessHandler, times(1)).run(eq(expectedCommand), any(ShellProcessContext.class));
+    assertTrue(expectedCommand.contains("--ocpus"));
+    assertEquals("4.0", expectedCommand.get(expectedCommand.indexOf("--ocpus") + 1));
+    assertEquals("32.0", expectedCommand.get(expectedCommand.indexOf("--memory_in_gbs") + 1));
   }
 
   @Test
