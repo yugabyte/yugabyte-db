@@ -54,7 +54,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -359,7 +358,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       // Since in V2 API is based on partial updates,
       // we cannot detect the case when these fields are removed (during dedicated mode switch)
       // Keeping these fields will lead to error in validation.
-      clearMasterFieldsIfNotDedicated(cluster.userIntent);
+      clearNonDedicatedFields(cluster.userIntent);
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
@@ -581,8 +580,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             || clusterAddSpec.getNodeSpec().getDedicatedNodes() == null)) {
       newReadReplica.userIntent.dedicatedNodes = false;
     }
-    // Copied from a dedicated primary; clear master fields for non-dedicated RR.
-    clearMasterFieldsIfNotDedicated(newReadReplica.userIntent);
+    // Copied from a dedicated primary; clear fields for non-dedicated RR.
+    clearNonDedicatedFields(newReadReplica.userIntent);
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
@@ -601,8 +600,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
   }
 
-  // Drop master settings cloned from a dedicated primary onto a non-dedicated cluster.
-  private static void clearMasterFieldsIfNotDedicated(UserIntent userIntent) {
+  // Drop settings cloned from a dedicated primary onto a non-dedicated cluster.
+  private static void clearNonDedicatedFields(UserIntent userIntent) {
     if (userIntent == null || userIntent.dedicatedNodes) {
       return;
     }
@@ -610,7 +609,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     userIntent.masterDeviceInfo = null;
     UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
     if (overrides != null && overrides.getPerProcess() != null) {
-      overrides.getPerProcess().remove(ServerType.MASTER);
+      // Otherwise after dedicated->non-dedicated switch, any tserver overrides that remain will
+      // take precedence over the main field (which the UI uses for non-dedicated configuration).
+      overrides.getPerProcess().clear();
     }
   }
 

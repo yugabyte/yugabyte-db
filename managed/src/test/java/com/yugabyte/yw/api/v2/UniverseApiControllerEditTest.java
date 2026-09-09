@@ -83,6 +83,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -440,6 +441,32 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
           intent.dedicatedNodes = true;
           intent.masterInstanceType = "m5.large";
           intent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+          UUID azUUID =
+              univ.getUniverseDetails()
+                  .getPrimaryCluster()
+                  .getOverallPlacement()
+                  .azStream()
+                  .map(az -> az.uuid)
+                  .findFirst()
+                  .get();
+          UniverseDefinitionTaskParams.UserIntentOverrides o =
+              new UniverseDefinitionTaskParams.UserIntentOverrides();
+          UniverseDefinitionTaskParams.AZOverrides az =
+              new UniverseDefinitionTaskParams.AZOverrides();
+          az.updatePerProcess(ServerType.TSERVER, ppd -> ppd.setInstanceType("overriden"));
+          o.setAzOverrides(Map.of(azUUID, az));
+
+          UniverseDefinitionTaskParams.PerProcessDetails ppd =
+              new UniverseDefinitionTaskParams.PerProcessDetails();
+          ppd.setDeviceInfo(intent.masterDeviceInfo);
+          o.setPerProcess(
+              Map.of(
+                  ServerType.TSERVER,
+                  new UniverseDefinitionTaskParams.PerProcessDetails(),
+                  ServerType.MASTER,
+                  ppd));
+          intent.setUserIntentOverrides(o);
           univ.setUniverseDetails(univ.getUniverseDetails());
         },
         false);
@@ -473,6 +500,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(primaryCluster.userIntent.dedicatedNodes, is(false));
     assertThat(primaryCluster.userIntent.masterInstanceType, is(nullValue()));
     assertThat(primaryCluster.userIntent.masterDeviceInfo, is(nullValue()));
+    assertTrue(
+        MapUtils.isEmpty(primaryCluster.userIntent.getUserIntentOverrides().getPerProcess()));
   }
 
   @Test
