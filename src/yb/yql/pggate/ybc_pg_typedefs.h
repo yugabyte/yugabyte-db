@@ -918,7 +918,7 @@ typedef struct {
   bool is_hash_partitioned;
   const char* tablet_state;
   YbcPgOid pg_table_oid;
-  /* Leader-replica disk sizes from master; has_disk_size false when unavailable. */
+  /* Tablet leader disk sizes from master; has_disk_size false when unavailable. */
   bool has_disk_size;
   int64_t sst_files_disk_size;
   int64_t wal_files_disk_size;

@@ -6115,12 +6115,19 @@ yb_tablegroup_size(PG_FUNCTION_ARGS)
 	int64_t		size = 0;
 	int32_t		num_missing_tablets = 0;
 	HeapTuple	tuple;
+	char		grpname[NAMEDATALEN];
 
 	tuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(tablegroup_oid));
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup with OID %u does not exist", tablegroup_oid)));
+
+	/* Copy the name and release before the RPC so we do not hold the cache pin. */
+	strlcpy(grpname,
+			NameStr(((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->grpname),
+			sizeof(grpname));
+	ReleaseSysCache(tuple);
 
 	HandleYBStatus(YBCPgGetTablegroupDiskSize(tablegroup_oid,
 											  MyDatabaseId,
@@ -6129,15 +6136,12 @@ yb_tablegroup_size(PG_FUNCTION_ARGS)
 											  &num_missing_tablets));
 	if (num_missing_tablets > 0)
 	{
-		Form_pg_yb_tablegroup form = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
-
 		elog(NOTICE,
 			 "%d tablets of tablegroup %s did not provide disk size "
 			 "estimates, and were not added to the displayed totals.",
 			 num_missing_tablets,
-			 NameStr(form->grpname));
+			 grpname);
 	}
-	ReleaseSysCache(tuple);
 
 	PG_RETURN_INT64(size);
 }
@@ -9358,7 +9362,7 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * NULL, and start_range/end_range contain the decoded range partition key
  * boundaries.
  * Leader is provided as a separate column for simpler querying.
- * tablet_attrs is a json object with leader-replica disk size fields when
+ * tablet_attrs is a json object with tablet leader disk size fields when
  * available: sst_bytes, wal_bytes, uncompressed_sst_bytes, total_bytes
  * (sst+wal), and optionally vector_index_bytes. NULL when sizes are
  * unavailable or the row is privilege-masked.

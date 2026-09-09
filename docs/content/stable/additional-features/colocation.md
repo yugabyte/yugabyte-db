@@ -183,7 +183,7 @@ SELECT pg_size_pretty(yb_tablegroup_size(tablegroup_oid))
 FROM yb_table_properties('my_table'::regclass);
 ```
 
-`pg_table_size()` remains empty for individual colocated tables because they share storage with the parent tablet. Values are leader-replica estimates (same semantics as `pg_table_size` for non-colocated tables); multiply by the replication factor for cluster-wide disk footprint.
+`pg_table_size()` remains empty for individual colocated tables because they share storage with the parent tablet. Values are tablet leader estimates (same semantics as `pg_table_size` for non-colocated tables); multiply by the replication factor for cluster-wide disk footprint.
 
 ## Limitations and considerations
 
