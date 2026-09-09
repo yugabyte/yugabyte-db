@@ -1024,6 +1024,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after hyperdisk resize in gcp (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> ociFailFastMultiVolumeInstanceTypeChange =
+      new ConfKeyInfo<>(
+          "yb.oci.fail_fast_multi_volume_instance_type_change",
+          ScopeType.GLOBAL,
+          "Fail fast OCI instance type change with multiple volumes",
+          "When enabled, ResizeNode precheck fails instance type changes if the node has more than"
+              + " one data volume. OCI UpdateInstance allows at most one boot volume and one"
+              + " secondary volume.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
