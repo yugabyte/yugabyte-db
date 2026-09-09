@@ -1142,7 +1142,12 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	/* description related to lwlocks */
 	for (i = 0; i < LWTRANCHE_FIRST_USER_DEFINED; ++i)
 	{
-		if (i == 0 || i == 10 || i == 45)	/* deprecated, see lwlocknames.txt */
+		/*
+		 * BuiltinTrancheNames[] is built with designated initializers from
+		 * lwlocklist.h, so every id that does not name a lock is a NULL hole
+		 * rather than a missing entry.  Skip the ids that come back NULL.
+		 */
+		if (pgstat_get_wait_event(PG_WAIT_LWLOCK | i) == NULL)
 			continue;
 
 		yb_insert_pg_events(PG_WAIT_LWLOCK | i, tupdesc, tupstore);
