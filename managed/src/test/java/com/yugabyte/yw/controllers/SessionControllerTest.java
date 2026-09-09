@@ -413,6 +413,288 @@ public class SessionControllerTest {
     assertAuditEntry(1, customer.getUuid());
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // allow_local_login_with_sso == false restricts local login to SuperAdmins holding a local YBA
+  // account (PLAT-22335). LDAP and OIDC SuperAdmins must use SSO; API tokens are never gated.
+  // ---------------------------------------------------------------------------------------------
+
+  private void restrictLocalLogin(boolean restricted) {
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.use_oauth", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.allow_local_login_with_sso", String.valueOf(!restricted));
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+  }
+
+  /** Mirrors RBACController.setRoleBindings: SuperAdmin lives only in the role binding. */
+  private Users nonPrimarySuperAdmin(Customer customer, String email) {
+    Users user = ModelFactory.testUser(customer, email, Users.Role.ConnectOnly);
+    RoleBinding.getAll(user.getUuid()).forEach(RoleBinding::delete);
+    RoleBinding.create(
+        user,
+        RoleBinding.RoleBindingType.Custom,
+        Role.get(customer.getUuid(), Users.Role.SuperAdmin.name()),
+        // Derived from the role, not users.role -- exactly what populateSystemRoleResourceGroups
+        // does. Deriving it from a ConnectOnly user yields a restricted resource group.
+        ResourceGroup.getSystemDefaultResourceGroup(
+            customer.getUuid(), user.getUuid(), Users.Role.SuperAdmin));
+    return user;
+  }
+
+  private Users superAdminOfType(Customer customer, String email, UserType userType) {
+    Users user = ModelFactory.testUser(customer, email, Users.Role.SuperAdmin);
+    user.setUserType(userType);
+    user.save();
+    return user;
+  }
+
+  private Result login(String email) throws Exception {
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", email);
+    loginJson.put("password", "password");
+    return routeWithYWErrHandler(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+  }
+
+  private void assertLoginRejected(Result result) {
+    assertEquals(UNAUTHORIZED, result.status());
+    assertThat(
+        Json.parse(contentAsString(result)).get("error").toString(),
+        allOf(notNullValue(), containsString("Local login is not permitted")));
+  }
+
+  private static String allowLocalLoginKeyUrl(Customer customer) {
+    return String.format(
+        "/api/v1/customers/%s/runtime_config/%s/key/yb.security.allow_local_login_with_sso",
+        customer.getUuid(), ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
+  }
+
+  @Test
+  public void testPrimarySuperAdminAllowedWhenLocalLoginRestricted() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.testUser(customer, "primary-sa@customer.com", Users.Role.SuperAdmin);
+    restrictLocalLogin(true);
+
+    Result result = login("primary-sa@customer.com");
+    assertEquals(OK, result.status());
+    assertNotNull(Json.parse(contentAsString(result)).get("authToken"));
+  }
+
+  @Test
+  public void testNonPrimarySuperAdminAllowedWhenLocalLoginRestricted() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    nonPrimarySuperAdmin(customer, "rbac-sa@customer.com");
+    restrictLocalLogin(true);
+
+    // PLAT-22335: SuperAdmin lives in the role binding, while users.role still reads ConnectOnly.
+    Result result = login("rbac-sa@customer.com");
+    assertEquals(OK, result.status());
+    assertNotNull(Json.parse(contentAsString(result)).get("authToken"));
+  }
+
+  @Test
+  public void testLdapSuperAdminRejectedWithoutBindingWhenLocalLoginRestricted() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    superAdminOfType(customer, "ldap-sa@customer.com", UserType.ldap);
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
+    restrictLocalLogin(true);
+
+    // Denied without a bind, so they never authenticate and fall to the generic rejection rather
+    // than the gate's message -- deliberate: a specific message here would let an unauthenticated
+    // caller distinguish an LDAP account from a local or nonexistent one.
+    Result result = login("ldap-sa@customer.com");
+    assertEquals(UNAUTHORIZED, result.status());
+    assertThat(
+        Json.parse(contentAsString(result)).get("error").toString(),
+        allOf(notNullValue(), containsString("Invalid User Credentials")));
+    // The bind must never be attempted: loginWithLdap provisions users and rewrites role bindings.
+    verify(ldapUtil, never()).loginWithLdap(any());
+
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
+  }
+
+  @Test
+  public void testOidcSuperAdminRejectedWhenLocalLoginRestricted() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    superAdminOfType(customer, "oidc-sa@customer.com", UserType.oidc);
+    restrictLocalLogin(true);
+
+    assertLoginRejected(login("oidc-sa@customer.com"));
+  }
+
+  @Test
+  public void testSsoRefusedForRbacGrantedLocalSuperAdmin() throws Exception {
+    startApp(false);
+    authorizeUserMockSetup(); // authorize "test@yugabyte.com"
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    R__Sync_System_Roles.syncSystemRoles();
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    nonPrimarySuperAdmin(customer, "test@yugabyte.com");
+
+    // users.role still reads ConnectOnly, so the legacy check let this user through and
+    // findUserByEmailOrCreateNewUser would then strip their SuperAdmin binding.
+    Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/third_party_login"));
+    assertEquals(FORBIDDEN, result.status());
+    assertThat(
+        Json.parse(contentAsString(result)).get("error").toString(),
+        allOf(notNullValue(), containsString("SuperAdmin is not allowed login via SSO")));
+  }
+
+  @Test
+  public void testSsoStillAllowedForExternalSuperAdmin() throws Exception {
+    startApp(false);
+    authorizeUserMockSetup(); // authorize "test@yugabyte.com"
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.oidc_enable_auto_create_users", "false");
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    R__Sync_System_Roles.syncSystemRoles();
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    superAdminOfType(customer, "test@yugabyte.com", UserType.ldap);
+
+    // The block is scoped to local accounts, so an SSO-provisioned SuperAdmin keeps SSO -- the
+    // second half of the rule the original comment states, and what PLAT-17540 added.
+    Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
+    assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());
+  }
+
+  @Test
+  public void testWrongPasswordDoesNotRevealThatAnAccountIsExternal() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    superAdminOfType(customer, "oidc-sa@customer.com", UserType.oidc);
+    restrictLocalLogin(true);
+
+    // Without a valid password the response must be indistinguishable from a nonexistent account,
+    // so /api/login cannot be used to enumerate accounts or classify their auth backend. The
+    // account-type message is only reachable once the caller has proved they own the account.
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "oidc-sa@customer.com");
+    loginJson.put("password", "definitely-wrong");
+    Result wrongPassword =
+        routeWithYWErrHandler(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    loginJson.put("email", "no-such-user@customer.com");
+    Result noSuchUser =
+        routeWithYWErrHandler(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+
+    assertEquals(UNAUTHORIZED, wrongPassword.status());
+    assertEquals(noSuchUser.status(), wrongPassword.status());
+    assertEquals(contentAsString(noSuchUser), contentAsString(wrongPassword));
+  }
+
+  @Test
+  public void testNonSuperAdminRejectedWhenLocalLoginRestricted() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.testUser(customer, "admin@customer.com", Users.Role.Admin);
+    restrictLocalLogin(true);
+
+    assertLoginRejected(login("admin@customer.com"));
+  }
+
+  @Test
+  public void testGroupDerivedSuperAdminAllowedWhenLocalLoginRestricted() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer, "group-sa@customer.com", Users.Role.ConnectOnly);
+    RoleBinding.getAll(user.getUuid()).forEach(RoleBinding::delete);
+    GroupMappingInfo group =
+        GroupMappingInfo.create(
+            customer.getUuid(),
+            Role.get(customer.getUuid(), "ConnectOnly").getRoleUUID(),
+            "sa-group",
+            GroupType.LDAP);
+    RoleBinding.create(
+        group,
+        RoleBinding.RoleBindingType.Custom,
+        Role.get(customer.getUuid(), Users.Role.SuperAdmin.name()),
+        ResourceGroup.getSystemDefaultResourceGroup(
+            customer.getUuid(), user.getUuid(), Users.Role.SuperAdmin));
+    user.setGroupMemberships(new HashSet<>(Arrays.asList(group.getGroupUUID())));
+    user.save();
+    restrictLocalLogin(true);
+
+    // SuperAdmin reached only by traversing group memberships.
+    assertEquals(OK, login("group-sa@customer.com").status());
+  }
+
+  @Test
+  public void testAllRolesAllowedWhenLocalLoginNotRestricted() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.testUser(customer, "primary-sa@customer.com", Users.Role.SuperAdmin);
+    nonPrimarySuperAdmin(customer, "rbac-sa@customer.com");
+    ModelFactory.testUser(customer, "admin@customer.com", Users.Role.Admin);
+    restrictLocalLogin(false);
+
+    for (String email :
+        ImmutableList.of("primary-sa@customer.com", "rbac-sa@customer.com", "admin@customer.com")) {
+      assertEquals("login for " + email, OK, login(email).status());
+    }
+  }
+
+  @Test
+  public void testLocalLoginUnaffectedWhenSsoDisabled() throws Exception {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.testUser(customer, "admin@customer.com", Users.Role.Admin);
+    // The gate is scoped to SSO deployments; the flag alone must not restrict anything.
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.use_oauth", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.allow_local_login_with_sso", "false");
+
+    assertEquals(OK, login("admin@customer.com").status());
+  }
+
+  @Test
+  public void testApiTokenUnaffectedForEverySuperAdminFlavour() {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    String primaryToken =
+        ModelFactory.testUser(customer, "primary-sa@customer.com", Users.Role.SuperAdmin)
+            .upsertApiToken();
+    String nonPrimaryToken =
+        nonPrimarySuperAdmin(customer, "rbac-sa@customer.com").upsertApiToken();
+    String ldapToken =
+        superAdminOfType(customer, "ldap-sa@customer.com", UserType.ldap).upsertApiToken();
+    restrictLocalLogin(true);
+
+    // Even the flavours denied local login keep full API access, including re-enabling the flag.
+    for (String apiToken : ImmutableList.of(primaryToken, nonPrimaryToken, ldapToken)) {
+      assertEquals(
+          OK,
+          FakeApiHelper.doRequestWithApiTokenAndTextBody(
+                  app, "PUT", allowLocalLoginKeyUrl(customer), apiToken, "true")
+              .status());
+      settableRuntimeConfigFactory
+          .globalRuntimeConf()
+          .setValue("yb.security.allow_local_login_with_sso", "false");
+    }
+  }
+
+  @Test
+  public void testSessionTokenFollowsTheSameRuleAsLogin() {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users localSa =
+        ModelFactory.testUser(customer, "primary-sa@customer.com", Users.Role.SuperAdmin);
+    Users ldapSa = superAdminOfType(customer, "ldap-sa@customer.com", UserType.ldap);
+    String localAuth = localSa.createAuthToken();
+    String ldapAuth = ldapSa.createAuthToken();
+    String ldapApi = ldapSa.upsertApiToken();
+    restrictLocalLogin(true);
+
+    String url = allowLocalLoginKeyUrl(customer);
+    assertEquals(OK, FakeApiHelper.doRequestWithAuthToken(app, "GET", url, localAuth).status());
+    assertEquals(
+        UNAUTHORIZED, FakeApiHelper.doRequestWithAuthToken(app, "GET", url, ldapAuth).status());
+    assertEquals(OK, FakeApiHelper.doRequestWithApiToken(app, "GET", url, ldapApi).status());
+  }
+
   @Test
   public void testLoginWithInvalidPassword()
       throws InterruptedException, ExecutionException, TimeoutException {

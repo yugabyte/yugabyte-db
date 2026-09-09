@@ -61,6 +61,22 @@ public class FakeApiHelper {
     return route(app, request);
   }
 
+  public static Result doRequestWithApiToken(
+      Application app, String method, String url, String apiToken) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url).header(TokenAuthenticator.API_TOKEN_HEADER, apiToken);
+    return route(app, request);
+  }
+
+  public static Result doRequestWithApiTokenAndTextBody(
+      Application app, String method, String url, String apiToken, String body) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url)
+            .header(TokenAuthenticator.API_TOKEN_HEADER, apiToken)
+            .bodyText(body);
+    return route(app, request);
+  }
+
   public static Result doRequestWithCustomHeaders(
       Application app, String method, String url, Map<String, String> headers) {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url);
