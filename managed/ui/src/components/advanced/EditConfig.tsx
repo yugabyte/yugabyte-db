@@ -164,7 +164,7 @@ export const EditConfig: FC<EditConfigData> = ({
                       components={{
                         experienceLink: (
                           <a
-                            href={DEFAULT_RELEASE_NOTES_URL}
+                            href="https://docs.yugabyte.com/stable/yugabyte-platform/yba-overview/#new-experience"
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{

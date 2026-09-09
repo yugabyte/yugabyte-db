@@ -1,23 +1,33 @@
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ClusterNodeSpec, ClusterStorageSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { StyledContent, StyledHeader } from './Component';
-import { mui, YBButton } from '@yugabyte-ui-library/core';
-
 import {
-  StyledInfoRow,
-  StyledInfoRowNew
-} from '../../create-universe/components/DefaultComponents';
+  ClusterNodeSpec,
+  ClusterSpec,
+  ClusterSpecClusterType,
+  ClusterStorageSpec
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType } from '@app/redesign/helpers/dtos';
+import { StyledContent, StyledHeader } from './Component';
+import { mui, YBButton, YBTag } from '@yugabyte-ui-library/core';
+
+import { StyledInfoRow } from '../../create-universe/components/DefaultComponents';
 import { LinuxVersion } from '../components';
 
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
-import { useEditUniverseContext, useIsUniverseReady, withUniverseResource } from '../EditUniverseUtils';
+import {
+  getClusterByType,
+  useEditUniverseContext,
+  useIsUniverseReady,
+  withUniverseResource
+} from '../EditUniverseUtils';
 interface InstanceCardProps {
   title: string;
   arch?: string;
+  cluster?: ClusterSpec;
+  sameAsPrimaryCluster?: boolean;
   nodeSpec?: ClusterNodeSpec;
   storageSpec?: ClusterStorageSpec;
   isK8s?: boolean;
@@ -30,6 +40,8 @@ const { Divider } = mui;
 export const InstanceCard: FC<InstanceCardProps> = ({
   title,
   arch,
+  cluster,
+  sameAsPrimaryCluster = false,
   nodeSpec,
   storageSpec,
   isK8s = false,
@@ -40,6 +52,13 @@ export const InstanceCard: FC<InstanceCardProps> = ({
   const { universeData } = useEditUniverseContext();
   const universeUUID = universeData?.info?.universe_uuid;
   const isUniverseReady = useIsUniverseReady();
+  const primaryCluster = universeData
+    ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
+    : undefined;
+  const providerCode =
+    cluster?.placement_spec?.cloud_list?.[0]?.code ??
+    primaryCluster?.placement_spec?.cloud_list?.[0]?.code;
+  const isAws = providerCode === CloudType.aws;
   return (
     <StyledContent>
       <StyledHeader>
@@ -64,13 +83,24 @@ export const InstanceCard: FC<InstanceCardProps> = ({
       </StyledHeader>
       {arch && (
         <>
-          <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
+          <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px', alignItems: 'center' }}>
             <div>
               <span className="header">{t('cpuArch', { keyPrefix: 'editUniverse.general' })}</span>
-              <span className="value">{arch}</span>
+              <span className="value sameline">
+                {arch}
+                {sameAsPrimaryCluster && (
+                  <YBTag
+                    variant="dark"
+                    size="small"
+                    customSx={{ color: '#4E5F6D', background: '#E9EEF2' }}
+                  >
+                    {t('sameAsPrimaryCluster', { keyPrefix: 'editUniverse.general' })}
+                  </YBTag>
+                )}
+              </span>
             </div>
             <div>
-              <LinuxVersion />
+              <LinuxVersion cluster={cluster} />
             </div>
           </StyledInfoRow>
           <Divider />
@@ -131,7 +161,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
               </span>
             </div>
             <div>
-              <span className="header">{t('ebsType')}</span>
+              <span className="header">{t(isAws ? 'ebsType' : 'ssdType')}</span>
               <span className="value">{storageSpec?.storage_type ?? '-'}</span>
             </div>
             <div>

@@ -50,7 +50,7 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
       <StyledSubText>
         {t('subText')}
         <StyledLink
-          href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/scale-deployments/instance-tags/"
+          href="https://docs.yugabyte.com/stable/yugabyte-platform/scale-deployments/instance-tags/"
           target="_blank"
           rel="noopener noreferrer"
         >

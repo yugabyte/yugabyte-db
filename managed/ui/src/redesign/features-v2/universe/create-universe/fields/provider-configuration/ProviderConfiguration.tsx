@@ -23,8 +23,10 @@ import {
 //icons
 import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
-interface ProviderConfigurationFieldProps<T extends FieldValues>
-  extends Omit<YBSelectProps, 'name' | 'control'> {
+interface ProviderConfigurationFieldProps<T extends FieldValues> extends Omit<
+  YBSelectProps,
+  'name' | 'control'
+> {
   name: Path<T>;
   label: string;
   placeholder?: string;
@@ -101,7 +103,7 @@ export const ProviderConfigurationField = <T extends FieldValues>({
             <YBLabel error={!!fieldState.error}>
               {label}
               <YBTooltip title={t('providerTooltip')} placement="top-start">
-                <span style={{ marginTop: '4px' }}>
+                <span style={{ marginTop: '6px' }}>
                   <InfoIcon />
                 </span>
               </YBTooltip>
@@ -109,14 +111,12 @@ export const ProviderConfigurationField = <T extends FieldValues>({
             <Box sx={{ flex: 1 }}>
               <YBAutoComplete
                 loading={isLoading}
-                value={(value as unknown) as Record<string, string>}
-                options={(filteredProviders as unknown) as Record<string, string>[]}
+                value={value as unknown as Record<string, string>}
+                options={filteredProviders as unknown as Record<string, string>[]}
                 getOptionLabel={(option: Record<string, string> | string) =>
                   typeof option === 'string' ? option : option.name
                 }
-                isOptionEqualToValue={(option, selectedValue) =>
-                  option.uuid === selectedValue.uuid
-                }
+                isOptionEqualToValue={(option, selectedValue) => option.uuid === selectedValue.uuid}
                 filterSelectedOptions={false}
                 onChange={handleChange}
                 ybInputProps={{
