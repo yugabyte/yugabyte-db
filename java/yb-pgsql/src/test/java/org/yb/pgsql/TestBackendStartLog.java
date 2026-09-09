@@ -40,8 +40,8 @@ import org.yb.util.BuildTypeUtil;
 import com.google.common.net.HostAndPort;
 
 /**
- * Tests the YBC_LOG_INFO line emitted
- * from BackendInitialize() in src/postgres/src/backend/postmaster/postmaster.c.
+ * Tests the YBC_LOG_INFO line emitted from
+ * src/postgres/src/backend/tcop/backend_startup.c.
  * eg. "Started client backend with pid: 11236, database_name: colocated,
  *     application_name: ysqlsh, remote_ps_data: 127.0.0.1(60220)"
  */
@@ -50,7 +50,7 @@ import com.google.common.net.HostAndPort;
 public class TestBackendStartLog extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestBackendStartLog.class);
 
-  // Matches the payload portion of the BackendInitialize() log line in postmaster.c.
+  // Matches the payload portion of the log line in backend_startup.c.
   private static final Pattern START_LOG_PATTERN = Pattern.compile(
       "Started (?<started>[^,]+?) with pid: (?<pid>\\d+), "
     + "database_name: (?<db>[^,]+?), "
@@ -197,8 +197,8 @@ public class TestBackendStartLog extends BasePgSQLTest {
 
     @Override
     public void handleLine(String line) {
-      // Only consider lines whose glog file stamp is postmaster.c.
-      int pmIdx = line.indexOf("postmaster.c:");
+      // Only consider lines whose glog file stamp is backend_startup.c.
+      int pmIdx = line.indexOf("backend_startup.c:");
       if (pmIdx < 0) {
         return;
       }
