@@ -1580,7 +1580,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               "PGPASSFILE",
               "value",
               Util.getDataDirectoryPath(
-                      universeFromDB, universeFromDB.getMasterLeaderNode(), this.config)
+                      universeFromDB, universeFromDB.getMasterLeaderNodeOrThrow(), this.config)
                   + "/yw-data/.pgpass"));
       masterOverrides.put("extraEnv", masterExtraEnv);
     }

@@ -1245,6 +1245,24 @@ public class Universe extends Model {
   }
 
   /**
+   * Find the current master leader node, failing loudly when it is missing. Prefer this over {@link
+   * #getMasterLeaderNode()} on paths that cannot make progress without a master leader, so that a
+   * missing leader surfaces as an actionable error instead of a NullPointerException.
+   *
+   * @return NodeDetails of the master leader, never null
+   * @throws RuntimeException if the universe has no reachable master leader
+   */
+  @JsonIgnore
+  public NodeDetails getMasterLeaderNodeOrThrow() {
+    NodeDetails masterLeaderNode = getMasterLeaderNode();
+    if (masterLeaderNode == null) {
+      throw new RuntimeException(
+          "Could not find the master leader node in universe " + getUniverseUUID());
+    }
+    return masterLeaderNode;
+  }
+
+  /**
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty

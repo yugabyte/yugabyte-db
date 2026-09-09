@@ -2890,7 +2890,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       @Nullable Predicate<DumpEntitiesResponse> moreStopCondition,
       NodeUIApiHelper nodeUIApiHelper) {
     // Wait for a maximum of 10 seconds for url to succeed.
-    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNodeOrThrow();
     HostAndPort masterLeaderHostPort =
         HostAndPort.fromParts(
             masterLeaderNode.cloudInfo.private_ip, masterLeaderNode.masterHttpPort);
