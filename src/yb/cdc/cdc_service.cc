@@ -5755,6 +5755,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
 
   // Get an exclusive lock to prevent multiple threads from trying to delete the same VirtualWAL
   // instance.
+  auto stream_id = xrepl::StreamId::Nil();
   {
     std::lock_guard l(mutex_);
     RPC_CHECK_AND_RETURN_ERROR(
@@ -5762,13 +5763,16 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
         STATUS_FORMAT(
             NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
-    const auto& stream_id = session_virtual_wal_[session_id]->GetStreamId();
-    const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
+    stream_id = session_virtual_wal_[session_id]->GetStreamId();
     stream_to_session_.erase(stream_id);
-    if (!curr_status.ok()) {
-      VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
-    }
     session_virtual_wal_.erase(session_id);
+  }
+
+  // mutex_ is a spinlock, so the blocking cdc_state write must stay outside of it. During tserver
+  // shutdown that write retries until client RPCs are aborted, and the heartbeat thread spinning
+  // on mutex_ would keep TabletServer::Shutdown from ever reaching that abort.
+  if (!PersistActivePidInSlotEntry(stream_id, 0ULL).ok()) {
+    VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
   }
 
   LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
@@ -5786,6 +5790,7 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
   VLOG_WITH_FUNC(2) << "Received expired session ids: " << AsString(expired_session_ids)
                     << " for virtual WAL batch cleanup";
 
+  std::vector<xrepl::StreamId> stream_ids;
   {
     std::lock_guard l(mutex_);
     for (auto it = expired_session_ids.begin(); it != expired_session_ids.end(); ++it) {
@@ -5794,17 +5799,21 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
                           << " does not have a virtual WAL associated with it";
         continue;
       }
-      const auto& stream_id = session_virtual_wal_[*it]->GetStreamId();
+      const auto stream_id = session_virtual_wal_[*it]->GetStreamId();
       LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request for session_id: " << *it
                           << " and stream_id: " << stream_id;
-      const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
+      stream_ids.push_back(stream_id);
       stream_to_session_.erase(stream_id);
-      if (!curr_status.ok()) {
-        VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
-      }
       if (session_virtual_wal_.erase(*it)) {
         LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }
+    }
+  }
+
+  // Persist outside mutex_, see DestroyVirtualWALForCDC.
+  for (const auto& stream_id : stream_ids) {
+    if (!PersistActivePidInSlotEntry(stream_id, 0ULL).ok()) {
+      VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
     }
   }
 }
