@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import io.fabric8.kubernetes.api.model.Config;
@@ -410,7 +411,8 @@ public class CloudProviderHelper {
     }
     switch (provider.getCloudCode()) {
       case aws:
-      case azu: // Fall through to the common code.
+      case azu:
+      case oci: // Fall through to the common code.
         // TODO: Add this validation. But there is a bad test.
         //  if (anyProviderRegion == null || anyProviderRegion.isEmpty()) {
         //    throw new YWServiceException(BAD_REQUEST, "Must have at least one region");
@@ -454,6 +456,10 @@ public class CloudProviderHelper {
       AzureCloudInfo azuCloudInfo = CloudInfoInterface.get(provider);
       azuCloudInfo.setAzuHostedZoneId(hostedZoneId);
       azuCloudInfo.setAzuHostedZoneName(hostedZoneData.asText());
+    } else if (provider.getCloudCode().equals(CloudType.oci)) {
+      OCICloudInfo ociCloudInfo = CloudInfoInterface.get(provider);
+      ociCloudInfo.setOciHostedZoneId(hostedZoneId);
+      ociCloudInfo.setOciHostedZoneName(hostedZoneData.asText());
     }
   }
 

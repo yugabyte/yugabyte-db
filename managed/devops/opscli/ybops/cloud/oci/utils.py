@@ -27,6 +27,7 @@ from oci.core import (
     BlockstorageClient,
     ComputeManagementClient,
 )
+from oci.dns import DnsClient
 from oci.identity import IdentityClient
 from oci.core.models import (
     CaptureConsoleHistoryDetails,
@@ -47,6 +48,7 @@ from oci.core.models import (
     UpdateInstanceDetails,
     UpdateInstanceShapeConfigDetails
 )
+from oci.dns.models import RecordDetails, UpdateDomainRecordsDetails
 
 # Sticky launch fields copied from an Instance Configuration when seeding a
 # plain LaunchInstance. YBA-owned fields (shape, image, subnet, metadata, ...)
@@ -238,6 +240,7 @@ class OciCloudAdmin:
         self._network_client = None
         self._blockstorage_client = None
         self._identity_client = None
+        self._dns_client = None
         self._compartment_id = None
 
     @property
@@ -281,6 +284,12 @@ class OciCloudAdmin:
         if self._blockstorage_client is None:
             self._blockstorage_client = self._build_client(BlockstorageClient)
         return self._blockstorage_client
+
+    @property
+    def dns_client(self):
+        if self._dns_client is None:
+            self._dns_client = self._build_client(DnsClient)
+        return self._dns_client
 
     @property
     def identity_client(self):
@@ -1044,6 +1053,33 @@ class OciCloudAdmin:
 
         update_details = UpdateInstanceDetails(freeform_tags=current_tags)
         self.compute_client.update_instance(instance_id, update_details)
+
+    def get_dns_zone(self, zone_id):
+        return self.dns_client.get_zone(zone_id).data
+
+    def upsert_dns_record_set(self, zone_id, domain_name_prefix, ip_list):
+        fqdn = "{}.{}".format(domain_name_prefix, self.get_dns_zone(zone_id).name)
+        records = [
+            RecordDetails(domain=fqdn, rtype="A", rdata=ip, ttl=DNS_RECORD_SET_TTL)
+            for ip in ip_list
+        ]
+        logging.info("[app] Setting {} A record(s) on {}".format(len(records), fqdn))
+        self.dns_client.update_domain_records(
+            zone_id, fqdn, UpdateDomainRecordsDetails(items=records))
+
+    def delete_dns_record_set(self, zone_id, domain_name_prefix):
+        try:
+            fqdn = "{}.{}".format(domain_name_prefix, self.get_dns_zone(zone_id).name)
+            logging.info("[app] Deleting records on {}".format(fqdn))
+            self.dns_client.delete_domain_records(zone_id, fqdn)
+        except oci.exceptions.ServiceError as e:
+            # A zone or record that is already gone must not wedge universe destroy.
+            if e.status == 404:
+                logging.warning(
+                    "[app] DNS zone {} or its records for {} not found; "
+                    "nothing to delete".format(zone_id, domain_name_prefix))
+                return
+            raise
 
     def get_console_history(self, instance_id):
         details = CaptureConsoleHistoryDetails(instance_id=instance_id)

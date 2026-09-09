@@ -233,6 +233,7 @@ libraryDependencies ++= Seq(
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-dns" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.77.2",
