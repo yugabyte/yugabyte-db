@@ -1850,6 +1850,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
     VLOG_WITH_PREFIX(2) << "RequestStatusTablet()";
+    initial_heartbeat_deadline_.store(AdjustDeadline(deadline), std::memory_order_release);
     auto transaction = transaction_->shared_from_this();
     if (metadata_.status_tablet.empty()) {
       manager_->PickStatusTablet(
@@ -2336,6 +2337,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             << " to " << *new_pg_session_req_version;
         pg_session_req_version_ = *new_pg_session_req_version;
       }
+      // The CREATED heartbeat gates ready_, so retrying it forever leaves every waiter (the first
+      // write, the commit) blocked with no way to observe its own deadline. Give up once the
+      // requester that asked for the status tablet has run out of time.
+      if (transaction_status == TransactionStatus::CREATED && !send_to_new_tablet &&
+          CoarseMonoClock::now() >= initial_heartbeat_deadline_.load(std::memory_order_acquire)) {
+        NotifyWaiters(status, "Heartbeat", SetReady::kTrue);
+        return;
+      }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
       SendHeartbeat(transaction_status, metadata_.transaction_id, transaction, send_to_new_tablet);
@@ -2660,6 +2669,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       subtxn_table_mutation_counter_map_ GUARDED_BY(mutation_count_mutex_);
 
   std::atomic<bool> requested_status_tablet_{false};
+  // Deadline of the requester that triggered the initial status tablet request. Bounds the retries
+  // of the CREATED heartbeat, which gates ready_.
+  std::atomic<CoarseTimePoint> initial_heartbeat_deadline_{CoarseTimePoint::max()};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
   internal::RemoteTabletPtr old_status_tablet_ GUARDED_BY(mutex_);
   std::atomic<TransactionState> state_{TransactionState::kRunning};
