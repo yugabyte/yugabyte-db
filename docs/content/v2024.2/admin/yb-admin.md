@@ -1492,7 +1492,7 @@ The output should show the schedule ID we just deleted.
 
 Creates a clone of a YSQL database or YCQL keyspace as of a point in time. The clone is a new database or keyspace on the same cluster. The source must have a [snapshot schedule](#create-snapshot-schedule) that covers the clone time.
 
-For YSQL, you can also clone using `CREATE DATABASE ... TEMPLATE ... AS OF`. See [Instant database cloning](../../manage/backup-restore/instant-db-cloning/).
+For YSQL, you can also clone using `CREATE DATABASE ... TEMPLATE ... AS OF`. See [Clone to PIT](../../manage/backup-restore/point-in-time-recovery/clone/).
 
 **Syntax**
 

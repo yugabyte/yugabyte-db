@@ -670,7 +670,7 @@ When an operator schedule triggers a backup, a corresponding CR is automatically
 
 Operator schedules maintain owner references to their respective YugabyteDB Anywhere universes. This ensures that when you delete a source universe, its associated schedule is also deleted.
 
-The operator's backup schedule also supports Point-In-Time Recovery (PITR) from a backup. See [Create a scheduled backup policy with PITR](../../back-up-restore-universes/schedule-data-backups/#create-a-scheduled-backup-policy-with-pitr) for more details.
+The operator's backup schedule also supports Point-In-Time Recovery (PITR) from a backup. See [Create a scheduled backup policy](../../back-up-restore-universes/schedule-data-backups/#create-a-scheduled-backup-policy) for more details.
 
 **Setup**
 

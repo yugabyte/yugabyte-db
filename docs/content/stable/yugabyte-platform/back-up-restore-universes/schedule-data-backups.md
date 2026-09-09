@@ -54,7 +54,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
     Specify the interval between backups or select **Use cron expression (UTC)**.
 
-    Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (supported in YugabyteDB Anywhere v2.16 or later, and YugabyteDB v2.16 or later only). The incremental backup intervals must be shorter than the full scheduled backup frequency.
+    Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups. The incremental backup intervals must be shorter than the full scheduled backup frequency.
 
     Specify the time period to retain a backup, or select **Keep indefinitely** to never delete the backup.
 
