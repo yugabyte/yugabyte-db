@@ -5555,4 +5555,53 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         // otherwise an empty collection
         .orElse(Collections.emptyList());
   }
+
+  private UniverseDefinitionTaskParams.PartitionInfo buildPartition(
+      AvailabilityZone az, int partitionRf, int azRf, int numNodes, boolean defaultPartition) {
+    PlacementInfo placement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az.getUuid(), placement, azRf, numNodes, true);
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partition.setDefaultPartition(defaultPartition);
+    partition.setReplicationFactor(partitionRf);
+    partition.setPlacement(placement);
+    return partition;
+  }
+
+  @Test
+  public void testValidatePartitionRejectsNodesLessThanRf() {
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        buildPartition(testData.get(0).az1, 3, 3, 2, true);
+
+    UnsupportedOperationException ex =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () ->
+                PlacementInfoUtil.validatePartition(
+                    partition, false /* geoPartitioned */, ClusterType.PRIMARY));
+    assertTrue(
+        ex.getMessage().contains("Number of nodes 2 cannot be less than the replication factor 3"));
+  }
+
+  @Test
+  public void testValidatePartitionsRFReject() {
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        buildPartition(testData.get(0).az1, 4, 4, 4, true);
+
+    UserIntent intent = new UserIntent();
+    intent.replicationFactor = 3;
+    intent.numNodes = 3;
+    Cluster primary = new Cluster(ClusterType.PRIMARY, intent);
+    primary.setPartitions(Collections.singletonList(partition));
+
+    UnsupportedOperationException ex =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> PlacementInfoUtil.validatePartitions(primary));
+    assertTrue(ex.getMessage().contains("Replication factor 4 not allowed"));
+
+    Cluster async = new Cluster(ClusterType.ASYNC, intent);
+    async.setPartitions(Collections.singletonList(partition));
+    PlacementInfoUtil.validatePartitions(async);
+  }
 }
