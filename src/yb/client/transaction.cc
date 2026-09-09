@@ -1919,6 +1919,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       std::weak_ptr<YBTransaction> weak_transaction = transaction;
       auto send_new_heartbeat = [this, weak_transaction, status, promoting](const Status&) {
+        // TODO(#16670): start an independent span here, linked to the originating span.
+        auto detach_token = dist_trace::DetachTraceContext();
         if (auto transaction = weak_transaction.lock()) {
           SendHeartbeat(status, metadata_.transaction_id, transaction,
                         SendHeartbeatToNewTablet(promoting));

@@ -402,6 +402,21 @@ class OtlpHttpCollector {
     return std::nullopt;
   }
 
+  // Collect all spans with exactly the given name.
+  std::vector<Span> FindSpansByName(
+      const std::string& trace_id, std::string_view span_name) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    std::vector<Span> result;
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return result;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name == span_name) {
+        result.push_back(span);
+      }
+    }
+    return result;
+  }
+
   // Collect all spans whose name starts with span_name_prefix.
   std::vector<Span> FindSpansByNamePrefix(
       const std::string& trace_id, std::string_view span_name_prefix) const EXCLUDES(mutex_) {
@@ -1014,6 +1029,19 @@ class DistTraceRpcTimeoutTest : public DistTraceRpcTest {
     DistTraceRpcTest::ConfigureDistTraceOptions(options);
     options->extra_tserver_flags.push_back("--ysql_client_read_write_timeout_ms=100");
     options->extra_tserver_flags.push_back("--pg_client_extra_timeout_ms=0");
+  }
+};
+
+class DistTraceTxnHeartbeatTest : public DistTraceTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceTest::ConfigureDistTraceOptions(options);
+    // 50ms heartbeats: a leaked heartbeat sequence emits ~20 UpdateTransaction spans over the
+    // test's 1s window.
+    options->extra_tserver_flags.push_back("--transaction_heartbeat_usec=50000");
+    // Keep ROLLBACK from sending UpdateTransaction(IMMEDIATE_CLEANUP) to participants, so
+    // heartbeats are the only UpdateTransaction the transaction could produce.
+    options->extra_tserver_flags.push_back("--TEST_disable_proactive_txn_cleanup_on_abort=true");
   }
 };
 
@@ -2044,6 +2072,56 @@ TEST_F(DistTraceTest, TestApplyTaskCarriesTraceContextToMaster) {
   ASSERT_OK(collector_.WaitForLocalHopToRemoteSpan(
       tp.trace_id, "rpc yb.tserver.TabletServerService.UpdateTransaction",
       "Master" /* downstream_service */));
+}
+
+TEST_F(DistTraceTxnHeartbeatTest, TestTxnHeartbeatsNotTraced) {
+  static constexpr auto kTableName = "txn_heartbeat_test";
+  ASSERT_OK(CreateTable(kTableName, 1));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100, 'hb')", kTableName));
+  ASSERT_OK(conn_->Fetch("SELECT pg_sleep(1)"));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+
+  // The abort RPC ends after every heartbeat this transaction sent, so once its span has been
+  // exported, leaked heartbeat spans would have arrived too.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithName(
+            tp.trace_id, "rpc yb.tserver.TabletServerService.AbortTransaction");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "AbortTransaction RPC span to appear in trace"));
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 2ms);
+
+  auto update_txn_spans = collector_.FindSpansByName(
+      tp.trace_id, "rpc yb.tserver.TabletServerService.UpdateTransaction");
+  for (const auto& span : update_txn_spans) {
+    auto chain = span.op_name;
+    std::string root_query;
+    for (auto parent_id = span.parent_span_id; !parent_id.empty();) {
+      auto parent = collector_.FindSpanBySpanId(tp.trace_id, parent_id);
+      if (!parent) {
+        chain += Format(" <- (unexported $0)", parent_id);
+        break;
+      }
+      if (!parent->query_text.empty()) {
+        root_query = parent->query_text;
+      }
+      chain += parent->query_text.empty()
+          ? Format(" <- $0", parent->op_name)
+          : Format(" <- $0 ['$1']", parent->op_name, parent->query_text);
+      parent_id = parent->parent_span_id;
+    }
+    LOG(INFO) << "UpdateTransaction span in trace: service=" << span.service_name
+              << ", chain: " << chain;
+    ASSERT_EQ(root_query, "ROLLBACK") << "UpdateTransaction outside ROLLBACK: " << chain;
+  }
+  // Allow ROLLBACK's one-shot status update (client + server span); more means leaked heartbeats.
+  ASSERT_LE(update_txn_spans.size(), 2) << "heartbeat spans leaked, see chains above";
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
