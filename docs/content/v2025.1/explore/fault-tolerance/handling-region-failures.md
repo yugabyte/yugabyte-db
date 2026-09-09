@@ -18,6 +18,10 @@ YugabyteDB is resilient to a single-domain failure in a deployment with a replic
 Although you could use an RF 3 cluster, an RF 5 cluster provides quicker failover; with two replicas in the preferred regions, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region.
 {{</tip>}}
 
+{{<note>}}
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
+{{</note>}}
+
 ## Setup
 
 Consider a scenario where you have deployed your database across three regions - us-west, us-east, and us-central. Typically, you choose one region as the [preferred region](../../multi-region-deployments/synchronous-replication-ysql/#preferred-region) for your database. This is the region where your applications are active. Then determine which region is closest to the preferred to be the failover region for your applications, and set this region as your second preferred region for the database. The third region needs no explicit setting and automatically becomes the third preferred region.
@@ -34,10 +38,6 @@ Consider a scenario where you have deployed your database across three regions -
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
-
-{{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
-{{</note>}}
 
 In the following illustration, the leaders are in us-east (the preferred region), which is also where the applications are active. The standby application is in us-central and will be the failover. This has been set as the second preferred region for the database.
 

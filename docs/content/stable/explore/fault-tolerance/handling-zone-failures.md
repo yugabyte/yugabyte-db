@@ -14,6 +14,10 @@ type: docs
 
 YugabyteDB is resilient to a single-domain failure in a deployment with a replication factor (RF) of 3. To survive zone failures, you deploy across multiple zones. Let's see how YugabyteDB survives a zone failure.
 
+{{<note>}}
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
+{{</note>}}
+
 ## Setup
 
 Consider a setup where YugabyteDB is deployed across three zones in a single region (us-east-1). Say it is an RF 3 cluster with leaders and followers distributed across the 3 zones with 3 tablets (A, B, and C).
@@ -53,7 +57,7 @@ To simulate the failure of the 2nd zone locally, you can just stop the second no
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes) {{</note>}}
+To stop a node in YugabyteDB Anywhere, on the **Nodes** tab of your universe, click **Actions > Enter Maintenance Mode** for the node you want to stop.
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
@@ -62,10 +66,6 @@ To simulate the failure of the 2nd zone locally, you can just stop the second no
 
 {{</nav/panels>}}
 <!-- end nav tabs -->
-
-{{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
-{{</note>}}
 
 For example, in the following illustration, tablet B has lost its leader.
 
