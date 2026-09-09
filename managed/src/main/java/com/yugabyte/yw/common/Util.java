@@ -181,24 +181,11 @@ public class Util {
 
   public static final int POSTGRES_PASSWORD_LENGTH = 20;
 
-  private static final int POSTGRES_PASSWORD_MAX_ATTEMPTS = 100;
-
   /**
-   * Safe-set for generated Postgres passwords. '$' is excluded: the password is interpolated into a
-   * $$-quoted DO block, where '$$' closes the block early, and into unquoted words of the shell
-   * command lines that write .pgpass, where the shell substitutes '$' followed by almost anything.
+   * Safe-set of characters for generated Postgres passwords.
    */
   public static final String POSTGRES_PASSWORD_ALLOWED_CHARS =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@^*0123456789";
-
-  /**
-   * Characters that break one of the layers a Postgres password passes through: '$' as above, quote
-   * and backslash characters that terminate or escape the enclosing SQL literal, ':' and ';' that
-   * split a .pgpass field or a shell command, '%' that Postgres format() reads as a placeholder,
-   * and the remaining shell metacharacters and whitespace.
-   */
-  public static final Pattern POSTGRES_PASSWORD_UNSAFE_CHARS =
-      Pattern.compile("[$'\"\\\\`:;%|&<>(){}\\[\\]?~#\\s]");
 
   public static final double EPSILON = 0.000001d;
 
@@ -1915,25 +1902,9 @@ public class Util {
     return doWithCorrelationId(null, function);
   }
 
-  /** Checks that a password survives the SQL and shell layers it is interpolated into. */
-  public static boolean isPostgresCompatiblePassword(String password) {
-    return StringUtils.isNotEmpty(password)
-        && !POSTGRES_PASSWORD_UNSAFE_CHARS.matcher(password).find();
-  }
-
   public static String getPostgresCompatiblePassword() {
-    for (int attempt = 0; attempt < POSTGRES_PASSWORD_MAX_ATTEMPTS; attempt++) {
-      String password =
-          RandomStringUtils.secureStrong()
-              .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
-      if (isPostgresCompatiblePassword(password)) {
-        return password;
-      }
-    }
-    throw new IllegalStateException(
-        "Failed to generate a postgres compatible password after "
-            + POSTGRES_PASSWORD_MAX_ATTEMPTS
-            + " attempts");
+    return RandomStringUtils.secureStrong()
+            .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
   }
 
   public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {
