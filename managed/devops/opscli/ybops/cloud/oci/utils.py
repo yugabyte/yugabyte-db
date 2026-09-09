@@ -754,17 +754,26 @@ class OciCloudAdmin:
             logging.error(
                 "Instance creation failed partially for {}, cleaning up instance {} "
                 "and {} volume(s)".format(instance_name, instance.id, len(created_volume_ids)))
-            for vol_id in created_volume_ids:
-                try:
-                    self.blockstorage_client.delete_volume(vol_id)
-                except Exception as vol_err:
-                    logging.warning(
-                        "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
             try:
-                self.compute_client.terminate_instance(instance.id)
+                # Detaches and deletes the attached data volumes before terminating.
+                # OCI rejects deleting a volume that is still attached, and instance
+                # termination only detaches data volumes, it does not delete them.
+                self.terminate_instance(instance.id)
             except Exception as term_err:
                 logging.warning(
                     "Failed to cleanup instance {}: {}".format(instance.id, term_err))
+            # Catches volumes that were created but never attached, and any the
+            # termination path could not delete.
+            for vol_id in created_volume_ids:
+                try:
+                    self.delete_volume(vol_id)
+                except oci.exceptions.ServiceError as vol_err:
+                    if vol_err.status != 404:
+                        logging.warning(
+                            "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
+                except Exception as vol_err:
+                    logging.warning(
+                        "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
             raise
 
     def _wait_for_instance_network(self, instance_id, instance_name, region, timeout=120):
