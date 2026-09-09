@@ -515,7 +515,11 @@ class SysCatalogTable {
 
   scoped_refptr<Counter> peer_write_count;
 
-  std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
+  // Visit() runs concurrently on the leader initialization thread and on background task threads,
+  // so the lazily populated metric map needs its own lock.
+  std::mutex visitor_duration_metrics_mutex_;
+  std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_
+      GUARDED_BY(visitor_duration_metrics_mutex_);
 
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 

@@ -933,6 +933,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   }));
 
   auto duration = CoarseMonoClock::Now() - start;
+  std::lock_guard metrics_lock(visitor_duration_metrics_mutex_);
   string id = Format("num_entries_with_type_$0_loaded", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
     string description = id + " metric for SysCatalogTable::Visit";
