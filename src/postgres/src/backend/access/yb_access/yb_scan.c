@@ -1776,12 +1776,40 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 				AttrNumber	attnum =
 					scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
 
-				col_values[j] = YBCNewConstant(ybScan->handle,
-											   ybc_get_atttypid(scan_plan->bind_desc,
-																attnum),
-											   current->sk_collation,
-											   current->sk_argument,
-											   false);
+				/*
+				 * Do not bind NULL as a constant: on this branch
+				 * EncodeRowKeyForBound / GetKeyValue only treat a NULL
+				 * PgExpr* as an open DocDB bound (kLowest/kHighest). A
+				 * null QLValuePB FATAL's with "Unsupported datatype in
+				 * PrimitiveValue: 0", while is_null=false with a null
+				 * datum SEGV's for varlena. Master maps IsNull the same
+				 * way as a missing component
+				 * (PgReadRange::AsKeyEntryValue).
+				 */
+				if ((current->sk_flags & SK_ISNULL) != 0)
+				{
+					/*
+					 * Unlike the else branch and the master PG diff (which
+					 * only pass is_null into YBCNewConstant), an unbound
+					 * component is a looser DocDB key than true NULL row
+					 * semantics, so Postgres must recheck. Master also
+					 * clears inclusivity via
+					 * is_inclusive && !null_found in PgReadRange; this
+					 * branch has no such pggate handling, so do it here.
+					 */
+					col_values[j] = NULL;
+					needs_recheck = true;
+					is_inclusive = false;
+				}
+				else
+				{
+					col_values[j] = YBCNewConstant(ybScan->handle,
+												   ybc_get_atttypid(scan_plan->bind_desc,
+																	attnum),
+												   current->sk_collation,
+												   current->sk_argument,
+												   false /* is_null */ );
+				}
 			}
 
 			if (is_column_specified)
