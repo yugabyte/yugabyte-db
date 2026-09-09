@@ -488,13 +488,13 @@ public class TestYsqlMetrics extends BasePgSQLTest {
           statement,
           "INSERT INTO test SELECT s, 'value' FROM generate_series(1, 500) AS s",
           INSERT_STMT_METRIC,
-          "INSERT INTO test SELECT s, $1 FROM generate_series($3, $4) AS s");
+          "INSERT INTO test SELECT s, $1 FROM generate_series($2, $3) AS s");
       testStatement(
           statement,
           "EXECUTE foo('value', 1, 500)",
           INSERT_STMT_METRIC,
           preparedStmtSql);
-      testStatement(statement, "CALL proc(10)", OTHER_STMT_METRIC);
+      testStatement(statement, "CALL proc(10)", OTHER_STMT_METRIC, "CALL proc($1)");
       testStatement(statement, "DO $$ BEGIN CALL proc(10); END $$", OTHER_STMT_METRIC);
     }
   }
@@ -509,7 +509,8 @@ public class TestYsqlMetrics extends BasePgSQLTest {
           "RETURN 0; END; $$ LANGUAGE PLPGSQL");
       final String query = "EXPLAIN(COSTS OFF, ANALYZE) SELECT func(500)";
       ResultSet result = statement.executeQuery(query);
-      AggregatedValue stat = getStatementStat(query);
+      AggregatedValue stat =
+          getStatementStat("EXPLAIN(COSTS OFF, ANALYZE) SELECT func($1)");
       assertEquals(1, stat.count);
       while(result.next()) {
         final String row = result.getString(1);

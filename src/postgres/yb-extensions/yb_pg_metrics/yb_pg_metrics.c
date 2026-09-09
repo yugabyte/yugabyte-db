@@ -981,11 +981,6 @@ ybpgm_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 *    the nested PORTAL for now.
 	 * 3- ExecutorEnd()
 	 */
-	if (prev_ExecutorStart)
-		prev_ExecutorStart(queryDesc, eflags);
-	else
-		standard_ExecutorStart(queryDesc, eflags);
-
 	/*
 	 * PORTAL run can be nested inside another PORTAL, and we only run metric
 	 * routines for the top level portal statement. The current design of
@@ -994,21 +989,19 @@ ybpgm_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * For now, as a workaround, "queryDesc" attribute is used as an indicator
 	 * for logging metric. Whenever "time value" is not null, it is logged at
 	 * the end of a portal run.
-	 * - When starting, we allocate "queryDesc->totaltime".
-	 * - When ending, we check for "queryDesc->totaltime". If not null, its
+	 * - When starting, we ask the executor for query level instrumentation.
+	 *   It has to be requested before the executor starts, because that is
+	 *   where the executor allocates and starts it.
+	 * - When ending, we check for "queryDesc->query_instr". If not null, its
 	 *   metric is log.
 	 */
-	/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists. */
-#if 0
-	if (isTopLevelStatement() && !queryDesc->totaltime)
-	{
-		MemoryContext oldcxt;
+	if (isTopLevelStatement())
+		queryDesc->query_instr_options |= INSTRUMENT_TIMER;
 
-		oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
-		queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER, false);
-		MemoryContextSwitchTo(oldcxt);
-	}
-#endif
+	if (prev_ExecutorStart)
+		prev_ExecutorStart(queryDesc, eflags);
+	else
+		standard_ExecutorStart(queryDesc, eflags);
 }
 
 static void
@@ -1084,19 +1077,14 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	 *   For example, CURSOR execution can have many nested portal and nested
 	 *   statement. The metric for all of the nested items are not processed.
 	 * - However, it's difficult to know the starting and ending point of a
-	 *   statement, we check for not null "queryDesc->totaltime".
+	 *   statement, we check for not null "queryDesc->query_instr".
 	 * - The design for this metric module for using global state variables is
 	 *   very flawed, so we use this not-null check for now.
 	 */
-	/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists. */
-	if (isTopLevelStatement() && /* queryDesc->totaltime && */
+	if (isTopLevelStatement() && queryDesc->query_instr &&
 		!ybpgm_IsTserverInternalConn())
 	{
-#if 0
-		InstrEndLoop(queryDesc->totaltime);
-		const uint64_t time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
-#endif
-		const uint64_t time = 0;
+		const uint64_t time = INSTR_TIME_GET_MICROSEC(queryDesc->query_instr->total);
 		const uint64 rows_count = queryDesc->estate->es_processed;
 
 		ybpgm_Store(type, time, rows_count);
