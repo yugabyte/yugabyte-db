@@ -724,7 +724,7 @@ public class CustomerTaskManager {
             });
   }
 
-  private boolean isTaskRetryable(CustomerTask task, TaskInfo taskInfo) {
+  public boolean isTaskRetryable(CustomerTask task, TaskInfo taskInfo) {
     return commissioner.isTaskRetryable(
         taskInfo,
         tf -> {
