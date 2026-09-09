@@ -1018,7 +1018,9 @@ public class PlacementInfoUtil {
   }
 
   public static void validatePartition(
-      UniverseDefinitionTaskParams.PartitionInfo p, boolean geoPartitioned) {
+      UniverseDefinitionTaskParams.PartitionInfo p,
+      boolean geoPartitioned,
+      ClusterType clusterType) {
     if (geoPartitioned) {
       if (StringUtils.isEmpty(p.getName())) {
         throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
@@ -1040,6 +1042,9 @@ public class PlacementInfoUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incorrect replicas for partition " + p.getName() + ": should be non-zero");
     }
+
+    verifyNumNodesAndRF(
+        clusterType, getNodeCountInPlacement(p.getPlacement()), p.getReplicationFactor());
 
     int numberOfReplicas =
         p.getPlacement()
@@ -1087,7 +1092,8 @@ public class PlacementInfoUtil {
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    PlacementInfoUtil.validatePartition(p, cluster.isGeoPartitioned());
+                    PlacementInfoUtil.validatePartition(
+                        p, cluster.isGeoPartitioned(), cluster.clusterType);
                     if (cluster.isGeoPartitioned()) {
                       if (!names.add(p.getName())) {
                         throw new PlatformServiceException(
@@ -1658,8 +1664,10 @@ public class PlacementInfoUtil {
         }
       }
     }
-
-    verifyNumNodesAndRF(oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    if (CollectionUtils.isEmpty(newCluster.getPartitions())) {
+      verifyNumNodesAndRF(
+          oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    }
   }
 
   // Helper API to verify number of nodes and replication factor requirements.

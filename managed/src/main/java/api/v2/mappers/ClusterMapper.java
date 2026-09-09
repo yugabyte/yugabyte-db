@@ -130,6 +130,9 @@ public interface ClusterMapper {
   @Mapping(target = "placementSpec", ignore = true)
   @Mapping(target = "partitionsSpec", ignore = true)
   @Mapping(target = "nodeSpec", ignore = true)
+  // These two fields are related to placement.
+  @Mapping(target = "replicationFactor", ignore = true)
+  @Mapping(target = "numNodes", ignore = true)
   ClusterSpec deepCopyInheritableClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
 
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
@@ -140,6 +143,8 @@ public interface ClusterMapper {
   @Mapping(target = "placementSpec", ignore = true)
   @Mapping(target = "partitionsSpec", ignore = true)
   @Mapping(target = "nodeSpec", ignore = true)
+  // Related to placement.
+  @Mapping(target = "numNodes", ignore = true)
   ClusterEditSpec deepCopyInheritableClusterEditSpec(
       ClusterSpec source, @MappingTarget ClusterEditSpec target);
 
