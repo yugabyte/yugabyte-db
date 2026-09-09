@@ -79,6 +79,7 @@ YbDdlTransactionState
 YbDefaultSysScan
 YbDefaultSysScanData
 YbDetailSorter
+YbDocdbOidToRelidEntry
 YbDoubleCounters
 YbDropProfileStmt
 YbEndFn_t
