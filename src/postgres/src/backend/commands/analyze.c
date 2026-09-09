@@ -378,7 +378,9 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	save_nestlevel = NewGUCNestLevel();
 
 	/* measure elapsed time iff autovacuum logging requires it */
-	if (IsAutoVacuumWorkerProcess() && params->log_min_duration >= 0)
+	if ((IsAutoVacuumWorkerProcess() ||
+		 YbIsAutoAnalyzeProcess()) &&	/* YB */
+		params->log_min_duration >= 0)
 	{
 		if (track_io_timing)
 		{
@@ -777,7 +779,9 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	vac_close_indexes(nindexes, Irel, NoLock);
 
 	/* Log the action if appropriate */
-	if (IsAutoVacuumWorkerProcess() && params->log_min_duration >= 0)
+	if ((IsAutoVacuumWorkerProcess() ||
+		 YbIsAutoAnalyzeProcess()) &&	/* YB */
+		params->log_min_duration >= 0)
 	{
 		TimestampTz endtime = GetCurrentTimestamp();
 

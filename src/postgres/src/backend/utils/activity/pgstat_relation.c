@@ -26,6 +26,9 @@
 #include "utils/rel.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "yb_internal_conn.h"
+
 
 /* Record that's written to 2PC state file when pgstat state is persisted */
 typedef struct TwoPhasePgStatRecord
@@ -328,7 +331,8 @@ pgstat_report_analyze(Relation rel,
 	if (resetcounter)
 		tabentry->changes_since_analyze = 0;
 
-	if (IsAutoVacuumWorkerProcess())
+	if (IsAutoVacuumWorkerProcess() ||
+		YbIsAutoAnalyzeProcess())	/* YB */
 	{
 		tabentry->autovac_analyze_timestamp = GetCurrentTimestamp();
 		tabentry->autovac_analyze_count++;

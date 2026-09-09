@@ -27,6 +27,7 @@
 
 #include <string.h>
 
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb_internal_conn.h"
 
 const YbInternalConnKindDescriptor
@@ -121,4 +122,11 @@ YbIsInternalConnBackendType(BackendType backendType)
 {
 	return YbLookupInternalConnKindByBackendType(backendType) !=
 		YB_INTERNAL_CONN_KIND_NONE;
+}
+
+bool
+YbIsAutoAnalyzeProcess(void)
+{
+	return yb_use_internal_auto_analyze_service_conn ||
+		MyBackendType == YB_AUTO_ANALYZE_BACKEND;
 }
