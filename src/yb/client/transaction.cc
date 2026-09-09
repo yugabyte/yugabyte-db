@@ -1599,10 +1599,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
+    auto* status_tablet = status_tablet_.get();
+    auto old_status_tablet = old_status_tablet_;
+    lock.unlock();
+
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
             deadline,
-            status_tablet_.get(),
+            status_tablet,
             manager_->client(),
             &req,
             [this, transaction](const auto& status, const auto& req, const auto& resp) {
@@ -1610,8 +1614,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             }),
         &commit_handle_);
 
-    auto old_status_tablet = old_status_tablet_;
-    lock.unlock();
     SendAbortToOldStatusTabletIfNeeded(deadline, transaction, old_status_tablet);
   }
 
@@ -2296,9 +2298,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
       if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress() ||
-          manager_->IsClosing()) {
+          status.IsDeleted() || manager_->IsClosing()) {
         // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
+        // IsDeleted - Transaction was aborted remotely, and then status tablet was deleted.
         // We want to notify waiters for RUNNING if we are in kPromoting state -- this is heartbeat
         // to old status tablet during promotion, and SetError will cause the PROMOTED heartbeat to
         // new status tablet to be skipped if it has not started yet. It's OK even if it actually
@@ -2311,7 +2314,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           SetError(status, "Heartbeat");
         }
         // If state is committed, then we should not cleanup.
-        if (status.IsExpired() &&
+        if ((status.IsExpired() || status.IsDeleted()) &&
             (state == TransactionState::kRunning || state == TransactionState::kPromoting)) {
            std::function<void(void)> remote_abort_callback;
           {

@@ -2442,7 +2442,7 @@ bool MetaCache::DoLookupTabletById(
         if (use_cache) {
           if (!include_deleted) {
             tablet = std::nullopt;
-            status = STATUS(NotFound, "Tablet deleted");
+            status = STATUS(Deleted, "Tablet deleted");
           }
           return true;
         }
