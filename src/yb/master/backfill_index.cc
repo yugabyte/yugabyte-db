@@ -1057,8 +1057,7 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
     LOG_WITH_PREFIX(WARNING) << "failed to backfill the index: " << AsString(failed_indexes)
                             << " due to " << s;
     RETURN_NOT_OK_PREPEND(
-        MarkIndexesAsFailed(failed_indexes, s.message().ToBuffer()),
-        "Couldn't mark indexes as failed");
+        MarkIndexesAsFailed(failed_indexes, s), "Couldn't mark indexes as failed");
     return CheckIfDone();
   }
 
@@ -1081,31 +1080,31 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
 }
 
 Status BackfillTable::MarkIndexesAsFailed(
-    const std::unordered_set<TableId>& failed_indexes, const string& message) {
+    const std::unordered_set<TableId>& failed_indexes, const Status& failure_status) {
   if (indexes_to_build() == failed_indexes) {
     state_.store(State::kFailed, std::memory_order_release);
     StopLivenessMonitor();
     backfill_job_->SetState(MonitoredTaskState::kFailed);
   }
-  return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, message);
+  return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, failure_status);
 }
 
 Status BackfillTable::MarkAllIndexesAsFailed() {
-  return MarkIndexesAsFailed(indexes_to_build(), "failed");
+  return MarkIndexesAsFailed(indexes_to_build(), STATUS(InternalError, "failed"));
 }
 
 Status BackfillTable::MarkAllIndexesAsSuccess() {
   const auto index_ids = indexes_to_build();
   RETURN_NOT_OK(master_->xcluster_manager()->MarkIndexBackfillCompleted(index_ids, epoch_));
-  return MarkIndexesAsDesired(index_ids, BackfillJobPB::SUCCESS, "");
+  return MarkIndexesAsDesired(index_ids, BackfillJobPB::SUCCESS, Status::OK());
 }
 
 Status BackfillTable::MarkIndexesAsDesired(
     const std::unordered_set<TableId>& index_ids_set, BackfillJobPB_State state,
-    const string message) {
+    const Status& failure_status) {
   VLOG_WITH_PREFIX(3) << "Marking " << yb::ToString(index_ids_set)
                       << " as " << BackfillJobPB_State_Name(state)
-                      << " due to " << message;
+                      << " due to " << failure_status;
   if (!index_ids_set.empty()) {
     auto l = indexed_table_->LockForWrite();
     auto& indexed_table_pb = l.mutable_data()->pb;
@@ -1131,10 +1130,12 @@ Status BackfillTable::MarkIndexesAsDesired(
       IndexInfoPB* idx_pb = indexed_table_pb.mutable_indexes(i);
       if (index_ids_set.find(idx_pb->table_id()) != index_ids_set.end()) {
         // Should this also move to the BackfillJob instead?
-        if (!message.empty()) {
-          idx_pb->set_backfill_error_message(message);
+        if (!failure_status.ok()) {
+          idx_pb->set_backfill_error_message(failure_status.message().ToBuffer());
+          StatusToPB(failure_status, idx_pb->mutable_backfill_status());
         } else {
           idx_pb->clear_backfill_error_message();
+          idx_pb->clear_backfill_status();
         }
         idx_pb->clear_is_backfill_deferred();
 

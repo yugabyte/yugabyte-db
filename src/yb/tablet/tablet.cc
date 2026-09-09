@@ -3395,21 +3395,26 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
     LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
                  << libpq_error_msg;
+    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
+    // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
+    // the PostgreSQL error code it failed with, rather than XX000.
+    const auto keep_pg_error_code = [&pg_error_code](Status status) {
+      return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
+    };
     // The 2 spaces after ERROR: is necessary to match the error message.
     constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
     if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
-      return STATUS(TryAgain, libpq_error_msg);
+      return keep_pg_error_code(STATUS(TryAgain, libpq_error_msg));
     }
     // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
     // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
     // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
     // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
-    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
     if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
-      return STATUS(IllegalState, Format(
-          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy));
+      return keep_pg_error_code(STATUS(IllegalState, Format(
+          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
     }
-    return STATUS(IllegalState, libpq_error_msg);
+    return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
   }
   const auto [returned_spec, num_rows_backfilled_in_index, num_rows_scanned] = *result;
   PgsqlBackfillSpecPB spec;
