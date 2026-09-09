@@ -5788,4 +5788,40 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, TargetWaitsForReplicatedBackfill
   VerifyIndex("Replicated backfill index ready on consumer after backfill unblocked");
 }
 
+TEST_F(XClusterDDLReplicationTest, CreatePartitionSkipsDefaultPartitionScanOnTarget) {
+  // CREATE TABLE ... PARTITION OF should skip scanning the default partition (since this scan was
+  // already done on the source).
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(producer_conn_->Execute(R"(
+    CREATE TABLE parted (key int PRIMARY KEY) PARTITION BY RANGE (key);
+    CREATE TABLE parted_default PARTITION OF parted DEFAULT;
+  )"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Forcefully insert a row on the target side that would cause a default partition scan to fail.
+  ASSERT_OK(consumer_conn_->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+  ASSERT_OK(consumer_conn_->Execute("INSERT INTO parted VALUES (150)"));
+  ASSERT_OK(consumer_conn_->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+
+  // Create a partition, it should skip the scan and thus proceed normally.
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE parted_p1 PARTITION OF parted FOR VALUES FROM (100) TO (200)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(
+          "SELECT COUNT(*) FROM pg_class WHERE relname = 'parted_p1'")),
+      1);
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO parted VALUES (120)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT COUNT(*) FROM parted_p1")), 1);
+
+  // Ensure that the source still has regular behaviour (does the scan).
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO parted VALUES (250)"));
+  ASSERT_NOK_STR_CONTAINS(
+      producer_conn_->Execute(
+          "CREATE TABLE parted_p2 PARTITION OF parted FOR VALUES FROM (200) TO (300)"),
+      "would be violated by some row");
+}
+
 }  // namespace yb
