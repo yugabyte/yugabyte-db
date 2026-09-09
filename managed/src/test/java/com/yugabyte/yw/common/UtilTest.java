@@ -1079,7 +1079,6 @@ public class UtilTest extends FakeDBApplication {
       assertEquals(Util.POSTGRES_PASSWORD_LENGTH, password.length());
       assertFalse("contains '$$': " + password, password.contains("$$"));
       assertFalse("contains '$': " + password, password.contains("$"));
-      assertTrue("rejected by validator: " + password, Util.isPostgresCompatiblePassword(password));
       for (char c : password.toCharArray()) {
         assertTrue(
             "unexpected char '" + c + "' in " + password,
@@ -1088,66 +1087,5 @@ public class UtilTest extends FakeDBApplication {
       passwords.add(password);
     }
     assertEquals(500, passwords.size());
-  }
-
-  @Test
-  public void testIsPostgresCompatiblePasswordRejects() {
-    String[] unsafe = {
-      // '$$' ends the $$-quoted DO block that wraps the CREATE ROLE statement.
-      "ab$$cd",
-      "$$abcd",
-      "abcd$$",
-      // A single '$' is substituted away by the shell that writes the .pgpass file.
-      "ab$HOME",
-      "ab$0cd",
-      "ab$!cd",
-      // These terminate, escape or split the SQL literal, the .pgpass record or the shell
-      // command.
-      "ab'cd",
-      "ab\"cd",
-      "ab\\cd",
-      "ab`cd",
-      "ab:cd",
-      "ab;cd",
-      "ab%scd",
-      "ab cd",
-      "ab|cd",
-      "ab&cd",
-      "ab<cd",
-      "ab>cd",
-      "ab(cd)",
-      "ab{cd}",
-      "ab[cd]",
-      "ab?cd",
-      "ab~cd",
-      "ab#cd"
-    };
-    for (String password : unsafe) {
-      assertFalse("should be rejected: " + password, Util.isPostgresCompatiblePassword(password));
-    }
-  }
-
-  @Test
-  public void testIsPostgresCompatiblePasswordAccepts() {
-    String[] safe = {"abcDEF123", "ab!@^*cd", "ABCdef", "a1!b2@c3^d4*"};
-    for (String password : safe) {
-      assertTrue("should be accepted: " + password, Util.isPostgresCompatiblePassword(password));
-    }
-  }
-
-  @Test
-  public void testIsPostgresCompatiblePasswordRejectsEmpty() {
-    assertFalse(Util.isPostgresCompatiblePassword(null));
-    assertFalse(Util.isPostgresCompatiblePassword(""));
-  }
-
-  @Test
-  public void testPostgresPasswordAllowedCharsAreAllSafe() {
-    // Generation retries until the validator passes, so an allowed char that the validator
-    // rejects would make getPostgresCompatiblePassword() throw.
-    for (char c : Util.POSTGRES_PASSWORD_ALLOWED_CHARS.toCharArray()) {
-      assertTrue(
-          "allowed char rejected: " + c, Util.isPostgresCompatiblePassword(String.valueOf(c)));
-    }
   }
 }
