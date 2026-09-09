@@ -1520,3 +1520,184 @@ RESET yb_enable_base_scans_cost_model;
 DROP FUNCTION explain_first_batch(text);
 DROP TABLE fb_outer;
 DROP TABLE fb_inner;
+
+-------------------------------------------------------------------------
+-- #33788: a join clause that references the batched outer relation, the
+-- inner relation and a third relation that only supplies a scalar parameter
+-- to the inner index scan: w3.v < w1.b + w2.c, with w1 batched into the w3
+-- index condition and w2 joined above the batched join.  The clause has no
+-- batched form, so it is withheld from the inner scan and must be applied by
+-- the batched nested loop join right above, where w1's values are available
+-- per tuple.  Without it, every row satisfying the other two conditions is
+-- returned (36 instead of 19).  Baselines with batching disabled and with a
+-- hash join produce the same rows.
+-------------------------------------------------------------------------
+CREATE TABLE w1 (a INT PRIMARY KEY, b INT);
+CREATE TABLE w2 (j INT PRIMARY KEY, c INT);
+CREATE TABLE w3 (k INT, j INT, v INT, PRIMARY KEY (k ASC, j ASC));
+CREATE TABLE w4 (j INT PRIMARY KEY, c INT);
+INSERT INTO w1 SELECT g, g % 3 FROM generate_series(1, 8) g;
+INSERT INTO w2 SELECT g, g % 2 FROM generate_series(1, 8) g;
+INSERT INTO w3 SELECT g, g, 1 FROM generate_series(1, 8) g;
+INSERT INTO w4 SELECT g, g % 2 FROM generate_series(1, 8) g;
+ANALYZE w1, w2, w3, w4;
+
+-- The scalar parameter (w2) comes from the join directly above the batched
+-- join.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+
+-- Baseline: same join order with batching disabled.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 1)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 1)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+
+-- Baseline: hash join between w1 and w3 under a plain nested loop for w2,
+-- which has no equality condition to hash on.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin on)
+  Set(enable_mergejoin off)
+  Set(enable_nestloop off)
+  Set(enable_material off)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((w2 (w1 w3)))
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin on)
+  Set(enable_mergejoin off)
+  Set(enable_nestloop off)
+  Set(enable_material off)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((w2 (w1 w3)))
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+
+-- The scalar parameter (w2) comes from two joins above the batched join; the
+-- withheld clause passes through the intermediate batched join on w4.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w4.j = w1.a AND w3.v < w1.b + w2.c;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w4.j = w1.a AND w3.v < w1.b + w2.c;
+
+-- The scalar parameter comes from the intermediate relation (w4) itself.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
+
+DROP TABLE w1, w2, w3, w4;

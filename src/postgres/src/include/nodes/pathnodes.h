@@ -1252,6 +1252,14 @@ typedef struct PathTarget
  * in join cases it's NIL because the set of relevant clauses varies depending
  * on how the join is formed.  The relevant clauses will appear in each
  * parameterized join path's joinrestrictinfo list, instead.
+ *
+ * YB: yb_ppi_relegated_clauses lists the clauses that are movable into a base
+ * relation path but were withheld from ppi_clauses because they reference a
+ * batched outer relation without having a batched form.  Pushing such a clause
+ * into the scan would reference that relation with a scalar parameter while
+ * the same relation is referenced with a batched array elsewhere in the scan.
+ * The join directly above the path applies them instead (see
+ * get_joinrel_parampathinfo).  Like ppi_clauses, it is NIL in join cases.
  */
 typedef struct ParamPathInfo
 {
@@ -1263,6 +1271,7 @@ typedef struct ParamPathInfo
 
 	/* Yugabyte attributes */
 	Relids		yb_ppi_req_outer_batched;	/* outer rels that can be batched */
+	List	   *yb_ppi_relegated_clauses;	/* clauses withheld from ppi_clauses */
 } ParamPathInfo;
 
 
