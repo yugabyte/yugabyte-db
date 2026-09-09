@@ -226,8 +226,7 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
     verify(
         "", "log_min_messages='foo'", "", "",
         "invalid value.*log_min_messages.*"
-        "Available values:.* "
-        "info, notice, warning, error, log, fatal, panic",
+        "Unrecognized log level",
         "");
 
     // HBA validation
