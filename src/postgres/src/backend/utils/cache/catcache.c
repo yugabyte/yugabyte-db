@@ -3543,19 +3543,11 @@ yb_log_catcache_stats(PG_FUNCTION_ARGS)
 	PGPROC	   *proc;
 	ProcNumber	procNumber = INVALID_PROC_NUMBER;
 
-	proc = BackendPidGetProc(pid);
-
 	/*
 	 * See if the process with given pid is a backend or an auxiliary process.
-	 *
-	 * If the given process is a backend, use its backend id in
-	 * SendProcSignal() later to speed up the operation. Otherwise, don't do
-	 * that because auxiliary processes (except the startup process) don't
-	 * have a valid backend id.
 	 */
-	if (proc != NULL)
-		procNumber = proc->vxid.procNumber;
-	else
+	proc = BackendPidGetProc(pid);
+	if (proc == NULL)
 		proc = AuxiliaryPidGetProc(pid);
 
 	/*
@@ -3578,6 +3570,7 @@ yb_log_catcache_stats(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
+	procNumber = GetNumberFromPGProc(proc);
 	if (SendProcSignal(pid, YB_PROCSIG_LOG_CATCACHE_STATS, procNumber) < 0)
 	{
 		ereport(WARNING,

@@ -484,10 +484,13 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		/* 1-based index */
 		for (curr_backend = 1; curr_backend <= num_backends; ++curr_backend)
 		{
-			const PgBackendStatus *beentry = pgstat_get_beentry_by_proc_number(curr_backend - 1);
-			if (!beentry)
+			const LocalPgBackendStatus *local_beentry =
+				pgstat_get_local_beentry_by_index(curr_backend);
+
+			if (!local_beentry)
 				break;
-			txn_infos[curr_backend - 1].session_id = beentry->yb_session_id;
+			txn_infos[curr_backend - 1].session_id =
+				local_beentry->backendStatus.yb_session_id;
 		}
 		yb_txn_rpc_timestamp = GetCurrentTimestamp();
 		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
@@ -2621,7 +2624,7 @@ pg_stat_have_stats(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(pgstat_have_entry(kind, dboid, objid));
 }
 
-/* Returns backend_allocated_mem_bytes from the process's beid */
+/* Returns backend_allocated_mem_bytes from the process's proc number */
 Datum
 yb_pg_stat_get_backend_allocated_mem_bytes(PG_FUNCTION_ARGS)
 {
@@ -2640,18 +2643,18 @@ yb_pg_stat_get_backend_allocated_mem_bytes(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(result);
 }
 
-/* Returns rss_mem_bytes from the process's beid */
+/* Returns rss_mem_bytes from the process's proc number */
 Datum
 yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
 {
 	if (!yb_enable_memory_tracking)
 		PG_RETURN_NULL();
 
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	int64		result;
 	LocalPgBackendStatus *local_beentry;
 
-	if ((local_beentry = pgstat_get_local_beentry_by_index(beid)) == NULL)
+	if ((local_beentry = pgstat_get_local_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	result = local_beentry->yb_backend_rss_mem_bytes;
@@ -2659,18 +2662,18 @@ yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(result);
 }
 
-/* Returns rss_mem_bytes from the process's beid */
+/* Returns pss_mem_bytes from the process's proc number */
 Datum
 yb_pg_stat_get_backend_pss_mem_bytes(PG_FUNCTION_ARGS)
 {
 	if (!yb_enable_memory_tracking)
 		PG_RETURN_NULL();
 
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	int64		result;
 	LocalPgBackendStatus *local_beentry;
 
-	if ((local_beentry = pgstat_get_local_beentry_by_index(beid)) == NULL)
+	if ((local_beentry = pgstat_get_local_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	result = local_beentry->yb_backend_pss_mem_bytes;
