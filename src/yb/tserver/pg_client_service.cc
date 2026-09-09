@@ -892,6 +892,10 @@ class OpenTableQuery : public OpenTableQueryBase<PgOpenTableRequestPB, PgOpenTab
   }
 };
 
+[[nodiscard]] bool IsPIDExists(pid_t pid) {
+  return !(getsid(pid) == -1 && errno == ESRCH);
+}
+
 }  // namespace
 
 class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistryContext {
@@ -1032,31 +1036,28 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       }
     }
 
-    context->ListenConnectionShutdown([this, session_id, pid = req.pid()]() {
-#if defined(__APPLE__)
-      auto delay = 250ms;
-#else
-      auto delay = RegularBuildVsSanitizers(50ms, 1000ms);
-#endif
-      messenger_.scheduler().Schedule([this, session_id, pid](const Status& status) {
-        if (!status.ok()) {
-          // Task was aborted.
-          return;
-        }
-        CheckSessionShutdown(pid, session_id);
-        // Give some time for process to exit after connection shutdown.
-      }, delay);
+    context->ListenConnectionShutdown([this, session_id, pid = req.pid()] {
+      constexpr auto kCheckTimeout = 1000ms;
+      ScheduleCheckSessionShutdown(pid, session_id, CoarseMonoClock::Now() + kCheckTimeout);
     });
 
     return session_registry_.Insert(std::move(session_info));
   }
 
-  void CheckSessionShutdown(pid_t pid, int64_t session_id) {
-    auto sid = getsid(pid);
-    if (sid != -1 || errno != ESRCH) {
-      return;
+  void ScheduleCheckSessionShutdown(pid_t pid, int64_t session_id, CoarseTimePoint deadline) {
+    messenger_.scheduler().Schedule([this, session_id, pid, deadline](const Status& status) {
+      if (status.ok()) {
+        CheckSessionShutdown(pid, session_id, deadline);
+      }
+    }, RegularBuildVsSanitizers(50ms, 500ms));
+  }
+
+  void CheckSessionShutdown(pid_t pid, int64_t session_id, CoarseTimePoint deadline) {
+    if (!IsPIDExists(pid)) {
+      session_registry_.Expire(session_id);
+    } else if (deadline > CoarseMonoClock::Now()) {
+      ScheduleCheckSessionShutdown(pid, session_id, deadline);
     }
-    session_registry_.Expire(session_id);
   }
 
   void OpenTable(

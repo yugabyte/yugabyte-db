@@ -867,6 +867,10 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
   return Format("Type not supported: $0", type);
 }
 
+int PGConn::BackendPID() const {
+  return PQbackendPID(impl_.get());
+}
+
 // Escape a string for use as a SQL string literal, i.e. a value that appears in a SQL statement
 // like `SELECT * FROM t WHERE name = '<escaped>'`.  Single quotes are doubled and, when the input
 // contains backslashes, E'...' (escape string) syntax is used so that backslash sequences are
@@ -995,8 +999,7 @@ Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
 }
 
 PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
-    : process_("perf",
-               PerfArguments(CHECK_RESULT(conn->FetchRow<PGUint32>("SELECT pg_backend_pid()")))) {
+    : process_("perf", PerfArguments(conn->BackendPID())) {
 
   CHECK_OK(process_.Start());
 }
@@ -1031,6 +1034,15 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .connect_timeout = connect_timeout,
        .yb_internal_conn_kind = std::string(yb_internal_conn_kind),
        .should_stop = std::move(should_stop)});
+}
+
+Result<bool> TryTerminateBackendWithRunningQuery(
+    PGConn& conn, int backend_pid, uint32_t min_query_running_time_msecs) {
+  return conn.FetchRow<bool>(
+      Format(
+          "SELECT COUNT(pg_terminate_backend(pid)) > 0 FROM pg_stat_activity WHERE " \
+          "pid=$0 AND state='active' AND query_start < NOW() - interval '$1 msec'",
+          backend_pid, min_query_running_time_msecs));
 }
 
 } // namespace yb::pgwrapper

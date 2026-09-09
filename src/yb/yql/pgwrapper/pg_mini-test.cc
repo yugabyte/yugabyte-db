@@ -277,9 +277,8 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
       cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
   // The first Connect() to a fresh DB spawns an internal libpq backend
   // (TriggerRelcacheInitConnection) whose session lingers in sessions_
-  // for the platform's ListenConnectionShutdown delay (up to 250ms on
-  // macOS, 1s under sanitizers). Poll until it drains instead of
-  // asserting immediately.
+  // for the platform's ListenConnectionShutdown delay.
+  // Poll until it drains instead of asserting immediately.
   ASSERT_OK(WaitFor([client_service, expected_count = connections.size() + kAshConnection]() {
     return client_service->TEST_SessionsCount() == expected_count;
   }, 5s, "relcache-init session cleanup"));
