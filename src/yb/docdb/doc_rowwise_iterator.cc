@@ -528,13 +528,9 @@ Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_k
 // Arm the tombstone cache of a context that has never been armed, from the tablet's own data.
 //
 // Probing at an unbounded read time finds the newest table tombstone whatever hybrid time it
-// carries, which is exactly what the watermark has to bound. The alternative - arming at the
-// tablet's SafeTime - only bounds tombstones written by this tablet's raft ops, and silently
-// resurrects rows for the two ways a tombstone gets in carrying a foreign clock: applied at the
-// producer's hybrid time on an xCluster target, or restored inside a snapshot (#33607).
-//
-// The probe subsumes this read's own lookup unless the read predates the tombstone it found, so
-// the common path costs the same single seek as before.
+// carries, which is exactly what the watermark has to bound - see ArmTombstoneCacheFromProbe for
+// why no clock reading can do that. The probe subsumes this read's own lookup unless the read
+// predates the tombstone it found, so the common path costs the same single seek as before.
 Result<DocHybridTime> DocRowwiseIterator::ProbeAndArmTableTombstoneCache(
     Slice root_doc_key, HybridTime read_ht) const {
   const auto gen_before = doc_read_context_.tombstone_cache_generation();
@@ -548,11 +544,9 @@ Result<DocHybridTime> DocRowwiseIterator::ProbeAndArmTableTombstoneCache(
 
   if (!latest.is_valid()) {
     // No tombstone anywhere in this table's data, so "absent" answers every read time and any
-    // watermark would be sound. Arm at read_ht rather than at the lowest hybrid time to keep the
-    // field's meaning uniform - a time at which this replica verified it knows the whole tombstone
-    // story - which is what every other reader of the watermark assumes. The cost is that reads
-    // pinned below read_ht stay ineligible and pay a lookup. A read with no usable read time just
-    // leaves the context unarmed for the next one.
+    // watermark would be sound. Arm at read_ht anyway, so the field keeps one meaning everywhere -
+    // a time at which this replica verified it knows the whole tombstone story. The cost is that
+    // reads pinned below read_ht stay ineligible and pay a lookup.
     if (usable_watermark(read_ht)) {
       doc_read_context_.ArmTombstoneCacheFromProbe(read_ht, DocHybridTime::kInvalid, gen_before);
     }
