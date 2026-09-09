@@ -1,5 +1,0 @@
-# contrib/adminpack/yb_schedule
-
-# Since the upstream postgres test works fine without modifications
-# (currently), don't bother porting it to yb_pg_adminpack.
-test: adminpack

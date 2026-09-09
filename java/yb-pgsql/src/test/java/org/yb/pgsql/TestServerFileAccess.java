@@ -135,19 +135,6 @@ public class TestServerFileAccess extends BasePgSQLTest {
       };
       runCommandsHelper(statement, file_fdw_commands);
 
-      // Test adminpack extension
-      statement.execute("CREATE EXTENSION adminpack");
-
-      String[] adminpack_commands = {
-        "SELECT pg_file_write('tmp.txt', 'line', 'false')",
-        "SELECT pg_file_rename('a.txt', 'b.txt')",
-        "SELECT pg_file_unlink('tmp.txt')",
-        "SELECT pg_logdir_ls()",
-        // TODO: pg_file_sync was introduced in Postgres 13
-        // "SELECT pg_file_sync('tmp.txt');",
-      };
-      runCommandsHelper(statement, adminpack_commands);
-
       // Test orafce extension
       statement.execute("CREATE EXTENSION orafce");
       statement.execute("INSERT INTO utl_file.utl_file_dir VALUES ('/tmp/test_dir', 'test_dir')");
