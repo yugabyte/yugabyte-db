@@ -108,7 +108,7 @@ To simulate bringing back a node online locally, you can just start the stopped 
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To restart a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode). {{</note>}}
+To restart the node in YugabyteDB Anywhere, on the **Nodes** tab of your universe, click **Actions > Exit Maintenance Mode** for the node you want to start.
 {{</nav/panel>}}
 
 {{</nav/panels>}}

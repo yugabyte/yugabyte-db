@@ -159,15 +159,21 @@ A node status displayed in the UI is not always entirely indicative of the node'
 If the universe uses NFS for backup storage, make sure the NFS mount is added to `/etc/fstab` on the node. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
 {{< /warning >}}
 
+When performing maintenance on universe nodes, use YugabyteDB Anywhere to stop and start node processes by entering and exiting maintenance mode.
+
 ### Enter maintenance mode
 
-If a node needs to be briefly taken out of service (for example, to perform a quick OS patch), you can click its associated **Actions > Enter Maintenance Mode**. It is expected that this node will be returned to service soon through the **Actions > Exit Maintenance Mode** operation.
+If a node needs to be briefly taken out of service (for example, to perform a quick OS patch), on the **Nodes** tab, click the associated **Actions > Enter Maintenance Mode**.
+
+It is expected that this node will be returned to service soon using **Actions > Exit Maintenance Mode**.
 
 After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
 Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never under-replicated.
 
-In general, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor of 3.
+Typically, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor of 3.
+
+Note that if you don't exit maintenance mode after a set period of time (15 minutes by default), data will be removed from the node and re-replicated to other nodes (if any) in the same fault domain.
 
 ### Exit maintenance mode
 
