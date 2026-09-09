@@ -35,7 +35,6 @@ namespace rocksdb {
 
 class BlockBuilder;
 class BlockHandle;
-class WritableFile;
 class TableBuilder;
 
 class PlainTableBuilder: public TableBuilder {

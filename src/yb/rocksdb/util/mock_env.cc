@@ -295,11 +295,11 @@ class MockWritableFile : public WritableFile {
   }
   Status Close() override { return file_->Fsync(); }
 
-  Status Flush() override { return Status::OK(); }
+  Status Flush(FlushMode mode) override { return Status::OK(); }
 
   Status Sync() override { return file_->Fsync(); }
 
-  uint64_t GetFileSize() override { return file_->Size(); }
+  uint64_t Size() const override { return file_->Size(); }
 
   const std::string& filename() const override { return file_->filename(); }
 

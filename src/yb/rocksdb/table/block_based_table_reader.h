@@ -51,7 +51,6 @@ class InternalKeyComparator;
 class Iterator;
 class TableCache;
 class TableReader;
-class WritableFile;
 struct BlockBasedTableOptions;
 struct EnvOptions;
 struct ReadOptions;

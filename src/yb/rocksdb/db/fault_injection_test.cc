@@ -158,9 +158,10 @@ class TestWritableFile : public WritableFile {
   Status Append(const Slice& data) override;
   Status Truncate(uint64_t size) override { return target_->Truncate(size); }
   Status Close() override;
-  Status Flush() override;
+  Status Flush(FlushMode mode) override;
   Status Sync() override;
   bool IsSyncThreadSafe() const override { return true; }
+  uint64_t Size() const override { return target_->Size(); }
   const std::string& filename() const override { return target_->filename(); }
 
  private:
@@ -431,8 +432,8 @@ Status TestWritableFile::Close() {
   return s;
 }
 
-Status TestWritableFile::Flush() {
-  Status s = target_->Flush();
+Status TestWritableFile::Flush(FlushMode mode) {
+  Status s = target_->Flush(mode);
   if (s.ok() && env_->IsFilesystemActive()) {
     state_.pos_at_last_flush_ = state_.pos_;
   }
