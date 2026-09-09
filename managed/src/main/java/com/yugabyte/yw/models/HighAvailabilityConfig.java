@@ -210,6 +210,14 @@ public class HighAvailabilityConfig extends Model {
         || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.isLeader()).orElse(false);
   }
 
+  /**
+   * True between the start of a restore on a standby and the end of its promotion. Scheduled work
+   * is held off for that window - the restore drops and recreates every table underneath it.
+   */
+  public static boolean isSwitchOverInProgress() {
+    return isSwitchOverInProgress;
+  }
+
   public static void setSwitchOverInProgress(boolean isSwitchOverInProgress) {
     HighAvailabilityConfig.isSwitchOverInProgress = isSwitchOverInProgress;
   }

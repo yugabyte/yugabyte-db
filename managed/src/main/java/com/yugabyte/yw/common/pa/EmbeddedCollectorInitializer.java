@@ -24,6 +24,8 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +58,12 @@ public class EmbeddedCollectorInitializer {
     this.metricService = metricService;
   }
 
+  /** How long a caller acting on a just-happened change waits for a running sync to finish. */
+  private static final Duration SYNC_LOCK_WAIT = Duration.ofSeconds(30);
+
+  /** Held for the duration of a sync; see {@link #initializeInternal}. */
+  private final ReentrantLock syncLock = new ReentrantLock();
+
   public void start() {
     log.info("Started Embedded PA Collector initialization");
     // Recurring, and runs on followers too. The initializer is what pushes local PA URLs and
@@ -70,18 +78,69 @@ public class EmbeddedCollectorInitializer {
         this::initializeAll);
   }
 
-  private void initializeAll() {
-    initializeInternal(Customer.getAll());
+  /** The recurring tick. Gives up rather than queue behind a sync that is already running. */
+  public void initializeAll() {
+    initializeInternal(Customer.getAll(), Duration.ZERO);
   }
 
   public void initialize(Customer customer) {
-    initializeInternal(ImmutableList.of(customer));
+    initializeInternal(ImmutableList.of(customer), SYNC_LOCK_WAIT);
   }
 
-  private void initializeInternal(List<Customer> customers) {
+  /**
+   * Syncs every customer on the scheduler's thread, for a caller that has just promoted this YBA.
+   *
+   * <p>Off the caller's thread because a promotion must not depend on a call to Perf Advisor that
+   * calls straight back into YBA. Not delayed, because by then the switchover flag is clear and
+   * {@link HighAvailabilityConfig#isFollower()} - which decides {@code collection_enabled} -
+   * reports this instance as the leader.
+   */
+  public void syncNow() {
+    platformScheduler.scheduleOnce(
+        getClass().getSimpleName() + "-oneOff", Duration.ZERO, this::syncAllWaitingForTurn);
+  }
+
+  private void syncAllWaitingForTurn() {
+    initializeInternal(Customer.getAll(), SYNC_LOCK_WAIT);
+  }
+
+  /**
+   * Runs one sync at a time.
+   *
+   * <p>The recurring tick and the one-off after a promotion are separate schedules with separate
+   * re-entrancy guards, so nothing else keeps them from overlapping, and two syncs in flight leave
+   * the collector holding whichever push finished last. Waiting for the lock also orders the
+   * post-promotion sync after a tick that started before the promotion, so the new role is what
+   * lands on the collector.
+   *
+   * <p>{@code lockWait} of zero is for the tick - another sync is already doing the work and the
+   * next tick is a minute away. Explicit callers wait, but only up to a bound: they hold a request
+   * thread or a scheduler thread with a shallow queue.
+   */
+  private void initializeInternal(List<Customer> customers, Duration lockWait) {
     if (customers.isEmpty()) {
       return;
     }
+    boolean acquired = false;
+    try {
+      acquired = syncLock.tryLock(lockWait.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      log.warn("Interrupted waiting for the embedded PA collector sync lock");
+      return;
+    }
+    if (!acquired) {
+      log.info("Another embedded PA collector sync is in progress, skipping this one");
+      return;
+    }
+    try {
+      syncCustomers(customers);
+    } finally {
+      syncLock.unlock();
+    }
+  }
+
+  private void syncCustomers(List<Customer> customers) {
     String embeddedPaUrl = configFactory.staticApplicationConf().getString("yb.pa.url");
     String embeddedPaToken = configFactory.staticApplicationConf().getString("yb.pa.api_token");
     String platformUrl = configFactory.staticApplicationConf().getString("yb.platform.url");

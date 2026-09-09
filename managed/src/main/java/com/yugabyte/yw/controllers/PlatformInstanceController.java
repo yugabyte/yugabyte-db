@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
@@ -56,6 +57,8 @@ public class PlatformInstanceController extends AuthenticatedController {
   @Inject private RuntimeConfGetter runtimeConfGetter;
 
   @Inject CustomerTaskManager taskManager;
+
+  @Inject private EmbeddedCollectorInitializer embeddedCollectorInitializer;
 
   @ApiOperation(
       notes = "Available since YBA version 2.20.0.",
@@ -346,6 +349,11 @@ public class PlatformInstanceController extends AuthenticatedController {
           }
           return null;
         });
+    // The restored DB still carries the old leader's PA registration - its YBA URL, its
+    // Prometheus URL and collection_enabled=false for this instance. Kicked off here rather than
+    // from inside the promotion, which must not be failable by an external call to a service that
+    // calls back into YBA.
+    embeddedCollectorInitializer.syncNow();
     auditService()
         .createAuditEntry(
             request,

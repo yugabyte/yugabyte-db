@@ -28,10 +28,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
-import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.PlatformInstance.State;
@@ -45,6 +43,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -79,6 +78,11 @@ public class PlatformReplicationManager {
 
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
+  // Postgres raises "cached plan must not change result type" as feature_not_supported.
+  private static final String STALE_PLAN_SQL_STATE = "0A000";
+
+  private static final int MAX_CAUSE_DEPTH = 20;
+
   // Format is backup_26-02-05-20-42.tgz.
   private static final Pattern BACKUP_FILE_PATTERN =
       Pattern.compile("([a-zA-Z]+_)(\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2})(\\..*)");
@@ -103,8 +107,6 @@ public class PlatformReplicationManager {
 
   private final OperatorResourceRestorer operatorResourceRestorer;
 
-  private final EmbeddedCollectorInitializer embeddedCollectorInitializer;
-
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
           .name("yba_ha_last_backup_seconds")
@@ -126,8 +128,7 @@ public class PlatformReplicationManager {
       PrometheusConfigHelper prometheusConfigHelper,
       ConfigHelper configHelper,
       RuntimeConfGetter confGetter,
-      OperatorResourceRestorer operatorResourceRestorer,
-      EmbeddedCollectorInitializer embeddedCollectorInitializer) {
+      OperatorResourceRestorer operatorResourceRestorer) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
@@ -135,7 +136,6 @@ public class PlatformReplicationManager {
     this.configHelper = configHelper;
     this.confGetter = confGetter;
     this.operatorResourceRestorer = operatorResourceRestorer;
-    this.embeddedCollectorInitializer = embeddedCollectorInitializer;
     this.schedule = new AtomicReference<>();
   }
 
@@ -368,7 +368,9 @@ public class PlatformReplicationManager {
     }
     // Promote the new local leader first because the remote demotion response is ignored for
     // eventual consistency. Otherwise, all of them be in standby if local promotion is done later.
-    persistLocalInstancePromotion(config, newLeader);
+    retryOnStalePlan(
+        "promotion of " + newLeader.getAddress(),
+        () -> persistLocalInstancePromotion(config, newLeader));
     // Attempt to ensure all remote instances are in follower state.
     // Remotely demote any instance reporting to be a leader.
     config
@@ -398,6 +400,46 @@ public class PlatformReplicationManager {
             });
   }
 
+  /**
+   * Runs an operation again if it failed only because its session predated the restore.
+   *
+   * <p>Postgres discards the offending plan when it raises "cached plan must not change result
+   * type", so the retry succeeds. Worth retrying here in particular: this transaction carries the
+   * leader flag, and losing it leaves a follower with the rest of the promotion applied.
+   */
+  @VisibleForTesting
+  void retryOnStalePlan(String description, Runnable operation) {
+    try {
+      operation.run();
+    } catch (RuntimeException e) {
+      if (!isStalePlanError(e)) {
+        throw e;
+      }
+      log.warn("Retrying {} after a stale prepared plan error: {}", description, e.getMessage());
+      operation.run();
+    }
+  }
+
+  @VisibleForTesting
+  static boolean isStalePlanError(Throwable throwable) {
+    // The message is the definitive marker; the SQL state is matched too in case a driver words
+    // it differently, and a genuine feature_not_supported costs one retry that fails the same
+    // way. Depth-bounded because a cause chain can be cyclic: Throwable rejects only a throwable
+    // that causes itself, not a pair that cause each other.
+    Throwable t = throwable;
+    for (int depth = 0; t != null && depth < MAX_CAUSE_DEPTH; t = t.getCause(), depth++) {
+      String message = t.getMessage();
+      if (message != null && message.contains("cached plan must not change result type")) {
+        return true;
+      }
+      if (t instanceof SQLException sqlException
+          && STALE_PLAN_SQL_STATE.equals(sqlException.getSQLState())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @Transactional
   private void persistLocalInstancePromotion(
       HighAvailabilityConfig config, PlatformInstance localInstance) {
@@ -412,16 +454,6 @@ public class PlatformReplicationManager {
     // Finally, switch the prometheus configuration to read from swamper targets directly.
     switchPrometheusToStandalone();
     oneOffSync();
-    // Refresh the embedded PA collector state right after promotion so the local PA gets
-    // pointed at the local YBA URL and its customer_metadata.collection_enabled is flipped
-    // back to true before the recurring EmbeddedCollectorInitializer schedule fires (~1 min).
-    try {
-      for (Customer customer : Customer.getAll()) {
-        embeddedCollectorInitializer.initialize(customer);
-      }
-    } catch (Exception e) {
-      log.warn("Failed to eagerly refresh embedded PA collector after promotion", e);
-    }
   }
 
   /**
@@ -1056,6 +1088,7 @@ public class PlatformReplicationManager {
       log.error("Restore failed: {}", response.message);
     } else {
       log.info("Platform backup restored successfully");
+      terminateOtherDbSessions();
       DB.cacheManager().clearAll();
       DataSource ds = DB.getDefault().dataSource();
       if (ds instanceof HikariDataSource hds && hds.getHikariPoolMXBean() != null) {
@@ -1068,6 +1101,30 @@ public class PlatformReplicationManager {
       fileDataService.syncFileData(AppConfigHelper.getStoragePath(), true);
     }
     return response.code == 0;
+  }
+
+  /**
+   * Kills every other session on the YBA DB after a restore.
+   *
+   * <p>The restore drops and recreates the public schema without touching live sessions, and
+   * softEvictConnections below can only close a connection that is idle or returned to the pool. A
+   * session in the middle of a statement has to be ended server-side, which also makes its owner
+   * fail fast rather than carry on against a schema that no longer exists.
+   *
+   * <p>Best effort: a backend that does not allow this must not fail the restore.
+   */
+  private void terminateOtherDbSessions() {
+    try {
+      int terminated =
+          DB.sqlQuery(
+                  "SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
+                      + " WHERE datname = current_database() AND pid <> pg_backend_pid()")
+              .findList()
+              .size();
+      log.info("Terminated {} other DB session(s) after restore", terminated);
+    } catch (Exception e) {
+      log.warn("Could not terminate other DB sessions after restore: {}", e.getMessage());
+    }
   }
 
   /**
