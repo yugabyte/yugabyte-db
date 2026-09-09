@@ -5241,9 +5241,13 @@ yb_errmsg_va(const char *fmt, va_list args)
 			else
 			{
 				Assert(ttype == 's');
-				/* char * parameter, we can get exact size */
+				/*
+				 * char * parameter, we can get exact size.  pg_snprintf
+				 * formats a NULL string as "(null)", so size it accordingly.
+				 */
 				FORMAT_ONE_VALUE(edata, onefmt, char *, nstars,
-								 strlen(value) + 1);
+								 value != NULL ? strlen(value) + 1 :
+								 sizeof("(null)"));
 			}
 		}
 		else if (yb_is_char_in_str(ttype, INT_TYPES))

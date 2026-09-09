@@ -2028,4 +2028,11 @@ YbgInitDefaultLocale(void)
 	Assert(default_locale == NULL || default_locale == &yb_docdb_default_locale);
 
 	default_locale = &yb_docdb_default_locale;
+
+	/*
+	 * YbGate does not run InitializeGUCOptions(), so these GUC-backed
+	 * variables would otherwise stay NULL.  Assign their boot_val.
+	 */
+	locale_monetary = "C";
+	locale_numeric = "C";
 }
