@@ -254,40 +254,46 @@ DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(
-            FLAGS_master_ts_rpc_timeout_ms, FLAGS_refresh_waiter_timeout_ms),
+            FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms),
+            FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Requires master_ts_rpc_timeout_ms to be >= refresh_waiter_timeout_ms"),
     FLAG_DELAYED_COND_VALIDATOR(
-        !_value || !FLAGS_enable_object_lock_fastpath || FLAGS_pg_client_use_shared_memory,
+        !_value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+            FINAL_FLAG_VALUE(pg_client_use_shared_memory),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true"));
 
 DEFINE_validator(pg_client_use_shared_memory,
     FLAG_DELAYED_COND_VALIDATOR(
-      _value || !FLAGS_enable_object_lock_fastpath || !FLAGS_enable_object_locking_for_table_locks,
+      _value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "pg_client_use_shared_memory must be true with enable_object_locking_for_table_locks and "
       "enable_object_lock_fastpath on"));
 
 DEFINE_validator(enable_object_lock_fastpath,
     FLAG_DELAYED_COND_VALIDATOR(
-      !_value || FLAGS_pg_client_use_shared_memory || !FLAGS_enable_object_locking_for_table_locks,
+      !_value || FINAL_FLAG_VALUE(pg_client_use_shared_memory) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true when "
       "enable_object_locking_for_table_locks is on"));
 
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_DELAYED_COND_VALIDATOR(
-        (!_value || FLAGS_ysql_yb_ddl_rollback_enabled),
+        (!_value || FINAL_FLAG_VALUE(ysql_yb_ddl_rollback_enabled)),
         "ysql_yb_ddl_rollback_enabled must be enabled"),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-        ::yb::flags_internal::compare_less_equal(_value, FLAGS_master_ts_rpc_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+        ::yb::flags_internal::compare_less_equal(
+            _value, FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms)),
         "Must be <= master_ts_rpc_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_validator(master_ts_rpc_timeout_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-            ::yb::flags_internal::compare_greater_equal(_value, FLAGS_refresh_waiter_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+            ::yb::flags_internal::compare_greater_equal(
+                _value, FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Must be >= refresh_waiter_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key,

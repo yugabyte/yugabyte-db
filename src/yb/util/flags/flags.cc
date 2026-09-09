@@ -482,7 +482,14 @@ bool ValidateAllowedPreviewFlagsCsv(std::string* err_msg, const string& allowed_
   for (const auto& flag : flag_infos) {
     unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
-    if (!IsPreviewFlagUpdateAllowed(flag, tags, flag.current_value, allowed_flags_csv, err_msg)) {
+    const std::string* current_value = &flag.current_value;
+    if (const auto* proposed = flags_internal::GetProposedFlagValues()) {
+      auto it = proposed->find(flag.name);
+      if (it != proposed->end()) {
+        current_value = &it->second;
+      }
+    }
+    if (!IsPreviewFlagUpdateAllowed(flag, tags, *current_value, allowed_flags_csv, err_msg)) {
       return false;
     }
   }
@@ -499,7 +506,10 @@ bool IsFlagUpdateAllowed(
   }
 
   return IsPreviewFlagUpdateAllowed(
-      flag_info, tags, new_value, FLAGS_allowed_preview_flags_csv, err_msg);
+      flag_info, tags, new_value,
+      flags_internal::GetFinalFlagValue(
+          FLAGS_allowed_preview_flags_csv, "allowed_preview_flags_csv"),
+      err_msg);
 }
 
 // Validates that the requested updates to vmodule can be made.
@@ -742,6 +752,26 @@ bool RefreshFlagsFile(const std::string& filename) {
 }
 
 namespace flags_internal {
+
+namespace {
+
+thread_local const std::map<std::string, std::string>* tls_proposed_flag_values = nullptr;
+
+}  // namespace
+
+ProposedFlagValues::ProposedFlagValues(std::map<std::string, std::string> values)
+    : values_(std::move(values)), previous_(tls_proposed_flag_values) {
+  tls_proposed_flag_values = &values_;
+}
+
+ProposedFlagValues::~ProposedFlagValues() {
+  tls_proposed_flag_values = previous_;
+}
+
+const std::map<std::string, std::string>* GetProposedFlagValues() {
+  return tls_proposed_flag_values;
+}
+
 string SetFlagInternal(
     const void* flag_ptr, const char* flag_name, const string& new_value,
     const gflags::FlagSettingMode set_mode) {

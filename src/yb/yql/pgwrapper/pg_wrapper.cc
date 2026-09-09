@@ -71,13 +71,15 @@
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_bool(openssl_require_fips);
+DECLARE_bool(enable_qos);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
 DEFINE_NON_RUNTIME_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_validator(postmaster_cgroup,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value.empty() || !yb::tserver::TServerCgroupManagementEnabled(),
+        _value.empty() ||
+            !yb::tserver::TServerCgroupManagementEnabled(FINAL_FLAG_VALUE(enable_qos)),
         "postmaster_cgroup cannot be set when tserver cgroup management is enabled "
         "(enable_qos)"));
 

@@ -304,10 +304,10 @@ constexpr auto kYsqlIdentConfCsvFlag = "ysql_ident_conf_csv";
 
 namespace {
 
-uint16_t GetPostgresPort() {
+uint16_t GetPostgresPort(const std::string& pgsql_proxy_bind_address) {
   yb::HostPort postgres_address;
   CHECK_OK(postgres_address.ParseString(
-      FLAGS_pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
+      pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
   return postgres_address.port();
 }
 
@@ -316,10 +316,10 @@ bool PostgresAndYsqlConnMgrPortValidator(const char* flag_name, uint32 value) {
   // pgsql_proxy_bind_address.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (!FLAGS_enable_ysql_conn_mgr) {
+  if (!FINAL_FLAG_VALUE(enable_ysql_conn_mgr)) {
     return true;
   }
-  const auto pg_port = GetPostgresPort();
+  const auto pg_port = GetPostgresPort(FINAL_FLAG_VALUE(pgsql_proxy_bind_address));
   if (value == pg_port) {
     if (pg_port != pgwrapper::PgProcessConf::kDefaultPort) {
       LOG_FLAG_VALIDATION_ERROR(flag_name, value)
@@ -344,7 +344,7 @@ bool ValidateEnableYsqlConnMgr(const char* flag_name, bool value) {
   // This validation depends on the value of other flag(s): start_pgsql_proxy, enable_ysql.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (!FLAGS_start_pgsql_proxy && !FLAGS_enable_ysql) {
+  if (!FINAL_FLAG_VALUE(start_pgsql_proxy) && !FINAL_FLAG_VALUE(enable_ysql)) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "YSQL must be enabled to start the YSQL connection manager.";
     return false;

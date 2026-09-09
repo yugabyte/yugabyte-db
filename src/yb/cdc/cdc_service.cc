@@ -73,6 +73,7 @@
 
 #include "yb/tserver/service_util.h"
 
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -237,7 +238,8 @@ static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
   // log_min_seconds_to_retain, update_min_cdc_indices_interval_secs.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  uint32 min_allowed = FLAGS_log_min_seconds_to_retain + FLAGS_update_min_cdc_indices_interval_secs;
+  uint32 min_allowed = FINAL_FLAG_VALUE(log_min_seconds_to_retain) +
+                       FINAL_FLAG_VALUE(update_min_cdc_indices_interval_secs);
   if (value == 0 || value < min_allowed) {
     return true;
   }

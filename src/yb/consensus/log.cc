@@ -232,12 +232,12 @@ DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
 
 DEFINE_validator(cdc_intent_retention_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value <= static_cast<uint64_t>(FLAGS_cdc_wal_retention_time_secs) * 1000,
+        _value <= static_cast<uint64_t>(FINAL_FLAG_VALUE(cdc_wal_retention_time_secs)) * 1000,
         "Must be no larger than cdc_wal_retention_time_secs * 1000"));
 
 DEFINE_validator(cdc_wal_retention_time_secs,
     FLAG_DELAYED_COND_VALIDATOR(
-        FLAGS_cdc_intent_retention_ms <= static_cast<uint64_t>(_value) * 1000,
+        FINAL_FLAG_VALUE(cdc_intent_retention_ms) <= static_cast<uint64_t>(_value) * 1000,
         "Must be at least cdc_intent_retention_ms (in seconds)"));
 
 DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
