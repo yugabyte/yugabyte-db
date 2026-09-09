@@ -527,13 +527,15 @@ public class TestPgSelect extends BasePgSQLTest {
       statement.execute("insert into t1 values (4,null), (5,null)");
       statement.execute(String.format(createIndex, "t1", colOrder));
 
-      // Test IS NULL on pkey column.
+      // Test IS NULL on pkey column. A primary key column is NOT NULL, so the
+      // planner proves the qual constant-false and drops the scan altogether
+      // rather than pushing the condition down -- strictly better than a scan.
       query = "select * from t1 where a IS NULL";
       assertNoRows(statement, query);
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
-      assertTrue("Expect pushdown for IS NULL",
-                 explainOutput.contains("Index Cond: (a IS NULL)"));
+      assertTrue("Expect the scan to be dropped for a NOT NULL column",
+                 explainOutput.contains("One-Time Filter: false"));
       assertFalse("Expect DocDB to filter fully",
                   explainOutput.contains("Rows Removed by"));
 
