@@ -22,6 +22,12 @@ YugabyteDB's transactional DDL provides similar guarantees for rolling back DDL 
 
 {{<tags/feature/ea idea="1677">}} Support for transactional DDL is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `ysql_yb_ddl_transaction_block_enabled` to true.
 
+{{< warning title="Warning" >}}
+
+Do not enable transactional DDL if you are using CDC. Transactional DDL currently doesn't support CDC in both [logical replication](../../../architecture/docdb-replication/cdc-logical-replication/) (PostgreSQL) and the [gRPC protocol](../../../architecture/docdb-replication/change-data-capture/). See [Limitations](#limitations).
+
+{{< /warning >}}
+
 ## Rollback capabilities
 
 All DDLs supported in YugabyteDB provide the same rollback capabilities as PostgreSQL. These include DDLs on tables, indexes, roles, and materialized views.
