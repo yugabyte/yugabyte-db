@@ -7,6 +7,13 @@ BUILD_ID ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_id')
 
 # go compile options
 GOOS ?= linux
+
+# The FIPS 140-3 validated build of the Go Cryptographic Module: v1.0.0 is CMVP certificate
+# #5247. Building with it links that module and defaults the binary to GODEBUG=fips140=on, which
+# "go version -m <binary>" records. Overridable so a build can be pointed at a newer module once
+# one is certified, but the default is the certified one - not the newest.
+GOFIPS140 ?= v1.0.0
+
 GOARCH ?= amd64
 
 # Build Tags
@@ -186,7 +193,7 @@ ${PREREQS_DIR}/${YSQL_DUMP_CLIENT_BUNDLE}:
 
 yba-ctl: config test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
-	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
+	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOFIPS140=${GOFIPS140} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
@@ -205,7 +212,7 @@ ${PACKAGE_NAME}: prereqs yba-ctl
 licensectl: test ${BIN_DIR}/${LICENSE_GEN}
 ${BIN_DIR}/${LICENSE_GEN}:
 	cd licensectl && \
-	  CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o ../$@
+	  CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOFIPS140=${GOFIPS140} go build -a -o ../$@
 
 .PHONY: clean clean-bin clean-prereqs clean-package
 clean: clean-bin clean-prereqs clean-package
