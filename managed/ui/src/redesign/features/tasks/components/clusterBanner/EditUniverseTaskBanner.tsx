@@ -23,7 +23,8 @@ import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
 import { useTaskActionMutations } from '../../hooks/useTaskActionMutations';
 import { getIsEditUniverseTask } from '../../TaskUtils';
 import { Task, TaskState } from '../../dtos';
-import { RetryConfirmModal, RollbackConfirmModal } from '../drawerComp/TaskDetailActions';
+import { RetryConfirmModal } from '../drawerComp/TaskDetailActions';
+import { EditUniverseRollbackConfirmModal } from './EditUniverseRollbackConfirmModal';
 import { OperationBannerProgressContent } from './OperationBannerProgressContent';
 import { OperationBannerLoadingIcon } from './operationBannerIcons';
 
@@ -89,12 +90,16 @@ export const EditUniverseTaskBanner = ({
     keyPrefix: TRANSLATION_KEY_PREFIX
   });
   const { t: tToast } = useTranslation('translation', { keyPrefix: 'toast' });
-  const { retryTaskMutation, rollbackTaskMutation } = useTaskActionMutations(task, universeUuid, {
-    retryCompleted: tToast('retryUniverseUpdateTaskSuccess'),
-    rollbackCompleted: tToast('rollbackUniverseUpdateTaskSuccess'),
-    retryFailedLabel: tToast('retryUniverseUpdateTaskFailedLabel'),
-    rollbackFailedLabel: tToast('rollbackUniverseUpdateTaskFailedLabel')
-  });
+  const { retryTaskMutation, rollbackTaskMutation } = useTaskActionMutations(
+    task.id,
+    universeUuid,
+    {
+      retryCompleted: tToast('retryUniverseUpdateTaskSuccess'),
+      rollbackCompleted: tToast('rollbackUniverseUpdateTaskSuccess'),
+      retryFailedLabel: tToast('retryUniverseUpdateTaskFailedLabel'),
+      rollbackFailedLabel: tToast('rollbackUniverseUpdateTaskFailedLabel')
+    }
+  );
   const isTaskActionInFlight = retryTaskMutation.isLoading || rollbackTaskMutation.isLoading;
 
   if (!getIsEditUniverseTask(task)) {
@@ -233,7 +238,7 @@ export const EditUniverseTaskBanner = ({
           })
         }
       />
-      <RollbackConfirmModal
+      <EditUniverseRollbackConfirmModal
         visible={isRollbackConfirmModalOpen}
         onClose={() => setIsRollbackConfirmModalOpen(false)}
         onSubmit={() =>

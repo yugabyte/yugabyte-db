@@ -104,6 +104,7 @@
       "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed",
       "retryUniverseUpdateTaskFailedLabel": "Failed to retry universe update task",
       "retryUniverseUpdateTaskSuccess": "Universe updated",
+      "retryUniverseRollbackTaskFailedLabel": "Failed to retry universe rollback task",
       "rollbackUniverseUpdateTaskFailedLabel": "Failed to roll back universe update task",
       "rollbackUniverseUpdateTaskSuccess": "Universe rolled back to a stable state."
     },
@@ -3103,6 +3104,30 @@
           "retry": "Retry",
           "rollBack": "Roll Back",
           "rollBackHelperText": "Restores stable state"
+        },
+        "rollbackConfirmModal": {
+          "title": "Confirm Rollback",
+          "message": "This rollback won't affect your existing database servers. It only removes newly created resources that haven't been put into use.",
+          "submitLabel": "Roll Back"
+        }
+      },
+      "editUniverseRollbackTaskBanner": {
+        "inProgress": {
+          "title": "Rolling back universe update...",
+          "description": "Restoring the Universe to its state before the update."
+        },
+        "failed": {
+          "title": "Failed to roll back universe update.",
+          "description": "The universe update failed, and the rollback attempt also failed. No other operations can run until the universe is restored to a stable state."
+        },
+        "precheckFailed": {
+          "title": "Rollback pre-check found issues.",
+          "description": "The universe update failed, and the rollback pre-flight check also found issues. No other operations can run until the universe is restored to a stable state."
+        },
+        "actions": {
+          "viewDetails": "View Details",
+          "retryRollback": "Retry Rollback",
+          "retryUniverseUpdate": "Retry Universe Update"
         }
       },
       "simple": {

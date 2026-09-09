@@ -269,6 +269,9 @@ export const getIsEditUniverseTask = (task: Task): boolean =>
   UNIVERSE_TASK_TARGETS.includes(task.target) &&
   !getIsPreCheckTask(task);
 
+export const getIsEditUniverseRollbackTask = (task: Task): boolean =>
+  task.type === TaskType.ROLLBACK_EDIT_UNIVERSE && UNIVERSE_TASK_TARGETS.includes(task.target);
+
 /** Non-precheck software upgrade, rollback, or finalize — matches DB upgrade cluster banners (excludes precheck-only). */
 export const getIsSoftwareUpgradeLockingTask = (task: Task): boolean =>
   getIsDbUpgradeTask(task) || getIsDbUpgradeRollbackTask(task) || getIsDbUpgradeFinalizeTask(task);

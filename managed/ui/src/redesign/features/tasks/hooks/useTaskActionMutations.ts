@@ -22,8 +22,6 @@ import { rollbackTask as rollbackCustomerTask } from '@app/v2/api/task/task';
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import type { YBATaskRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-import { Task } from '../dtos';
-
 interface TaskActionToastMessages {
   /** Toast shown when the retried task completes successfully. */
   retryCompleted?: string;
@@ -58,7 +56,7 @@ interface TaskActionToastMessages {
  * `mutate(undefined, { onSettled })`; they run after the shared handlers.
  */
 export const useTaskActionMutations = (
-  task: Task,
+  taskUuid: string,
   universeUuid: string | undefined,
   messages?: TaskActionToastMessages
 ) => {
@@ -97,7 +95,7 @@ export const useTaskActionMutations = (
   };
 
   const retryTaskMutation = useMutation<YBPTask, Error | AxiosError>(
-    () => api.retryTask(task.id),
+    () => api.retryTask(taskUuid),
     {
       onSuccess: (response) => {
         refreshTaskRelatedContext();
@@ -117,7 +115,7 @@ export const useTaskActionMutations = (
   );
 
   const rollbackTaskMutation = useMutation<YBATaskRespResponse, Error | AxiosError>(
-    () => rollbackCustomerTask(task.id, {}),
+    () => rollbackCustomerTask(taskUuid, {}),
     {
       onSuccess: (response) => {
         refreshTaskRelatedContext();
