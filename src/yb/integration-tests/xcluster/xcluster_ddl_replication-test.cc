@@ -71,6 +71,7 @@ DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
@@ -4278,6 +4279,128 @@ TEST_F(XClusterDDLReplicationTest, MatViewWithPartitions) {
 
   // Verify the materialized view is gone on the consumer.
   ASSERT_NOK(consumer_conn_->FetchAllAsString("SELECT * FROM pmv_renamed ORDER BY b"));
+}
+
+class XClusterDDLReplicationMatViewTest : public XClusterDDLReplicationTest {
+ public:
+  // Creates base_tbl and mat_view on the source and waits for them to replicate.
+  Status CreateMatViewAndVerify(bool with_unique_index) {
+    RETURN_NOT_OK(producer_conn_->Execute("CREATE TABLE base_tbl(a int PRIMARY KEY, b text)"));
+    RETURN_NOT_OK(producer_conn_->Execute("INSERT INTO base_tbl VALUES (1,'x'),(2,'y'),(3,'z')"));
+    RETURN_NOT_OK(producer_conn_->Execute(
+        "CREATE MATERIALIZED VIEW mat_view AS SELECT a, b FROM base_tbl WHERE a > 1"));
+    if (with_unique_index) {
+      RETURN_NOT_OK(producer_conn_->Execute("CREATE UNIQUE INDEX mat_view_a_key ON mat_view(a)"));
+    }
+    return VerifyMatViewRows("create");
+  }
+
+  // Runs the statements on the source, then checks mat_view matches on both sides.
+  Status RefreshMatViewAndVerify(
+      const std::vector<std::string>& statements, const std::string& step_name) {
+    for (const auto& statement : statements) {
+      RETURN_NOT_OK(producer_conn_->Execute(statement));
+    }
+    return VerifyMatViewRows(step_name);
+  }
+
+  Status VerifyMatViewRows(const std::string& step_name) {
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    const auto kSelectMatViewRows = "SELECT * FROM mat_view ORDER BY a";
+    auto producer_rows = VERIFY_RESULT(producer_conn_->FetchAllAsString(kSelectMatViewRows));
+    auto consumer_rows = VERIFY_RESULT(consumer_conn_->FetchAllAsString(kSelectMatViewRows));
+    LOG(INFO) << "mat_view rows after " << step_name << ": " << producer_rows;
+    SCHECK_EQ(
+        producer_rows, consumer_rows, IllegalState,
+        Format("mat_view rows differ after $0", step_name));
+    return Status::OK();
+  }
+
+  // Makes postgres on both clusters believe a major version upgrade is in progress or not.
+  Status SetUpgradeInProgress(bool in_progress) {
+    // The only supported compatibility mode is upgrading from PG11.
+    constexpr int32_t kUpgradeCompatibilityVersion = 11;
+    const int32_t version = in_progress ? kUpgradeCompatibilityVersion : 0;
+    RETURN_NOT_OK(SET_FLAG(ysql_yb_major_version_upgrade_compatibility, version));
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto value = VERIFY_RESULT(
+              consumer_conn_->FetchRow<std::string>("SHOW yb_major_version_upgrade_compatibility"));
+          return value == std::to_string(version);
+        },
+        kTimeout, "Wait for postgres to reload yb_major_version_upgrade_compatibility");
+  }
+};
+
+TEST_F(XClusterDDLReplicationMatViewTest, RefreshMatViewConcurrently) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(CreateMatViewAndVerify(/*with_unique_index=*/true));
+
+  // CONCURRENTLY performs some nested DDLs, ensure that we can handle it.
+  ASSERT_OK(RefreshMatViewAndVerify(
+      {"INSERT INTO base_tbl VALUES (4,'w')", "DELETE FROM base_tbl WHERE a = 2",
+       "REFRESH MATERIALIZED VIEW CONCURRENTLY mat_view"},
+      "concurrent refresh"));
+
+  // Same, but the REFRESH is not a top level command.
+  ASSERT_OK(RefreshMatViewAndVerify(
+      {"INSERT INTO base_tbl VALUES (5,'v')",
+       "DO $$ BEGIN REFRESH MATERIALIZED VIEW CONCURRENTLY mat_view; END $$"},
+      "nested concurrent refresh"));
+}
+
+// Ensure the target respects the source's yb_refresh_matview_in_place setting.
+TEST_F(XClusterDDLReplicationMatViewTest, RefreshMatViewWithInPlaceDefault) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_refresh_matview_in_place=true";
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(CreateMatViewAndVerify(/*with_unique_index=*/false));
+
+  ASSERT_OK(RefreshMatViewAndVerify(
+      {"SET yb_refresh_matview_in_place = false", "INSERT INTO base_tbl VALUES (4,'w')",
+       "REFRESH MATERIALIZED VIEW mat_view", "RESET yb_refresh_matview_in_place"},
+      "rewrite refresh"));
+
+  ASSERT_OK(RefreshMatViewAndVerify(
+      {"SET yb_refresh_matview_in_place = true", "INSERT INTO base_tbl VALUES (5,'v')",
+       "REFRESH MATERIALIZED VIEW mat_view", "RESET yb_refresh_matview_in_place"},
+      "explicit in-place refresh"));
+
+  ASSERT_OK(RefreshMatViewAndVerify(
+      {"DELETE FROM base_tbl WHERE a = 2", "REFRESH MATERIALIZED VIEW mat_view"},
+      "default in-place refresh"));
+}
+
+TEST_F(XClusterDDLReplicationMatViewTest, RefreshMatViewRewriteDuringTargetUpgrade) {
+  // Simulate an upgrade scenario where a matview is refreshed on the source via table rewrite, but
+  // the target is in the middle of an upgrade, and can't follow the table rewrite path.
+  // Ensure that this REFRESH is blocked until the upgrade completes (similar to CREATE TABLE).
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(CreateMatViewAndVerify(/*with_unique_index=*/false));
+
+  // The upgrade flag is process wide, so capture the rewrite on the source first with replication
+  // paused, then flip the flag before the target gets to replay it.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO base_tbl VALUES (4,'w')"));
+  ASSERT_OK(producer_conn_->Execute("REFRESH MATERIALIZED VIEW mat_view"));
+  ASSERT_OK(SetUpgradeInProgress(true));
+
+  // The target should reject the rewrite and leave the materialized view as is.
+  StringWaiterLogSink rejected_log_sink(
+      "cannot rewrite materialized view \"mat_view\" during a YSQL major version upgrade");
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+  ASSERT_OK(rejected_log_sink.WaitFor(kTimeout));
+
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM mat_view ORDER BY a")),
+      "2, y; 3, z");
+
+  // Once the upgrade is over the rewrite can go through.
+  ASSERT_OK(SetUpgradeInProgress(false));
+  ASSERT_OK(VerifyMatViewRows("rewrite refresh after upgrade"));
 }
 
 class XClusterTargetBlockingTest : public XClusterDDLReplicationTest {
