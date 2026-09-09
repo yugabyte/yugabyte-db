@@ -77,9 +77,11 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
 
 Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default.
 
-If a Kubernetes universe does not pin a user in `podSecurityContext`, upgrading the universe to v2026.1.2 or later migrates the database pods to a non-root user.
+If a non-OpenShift Kubernetes universe does not pin a user in `podSecurityContext`, upgrading the universe to v2026.1.2 or later migrates the database pods to a non-root user.
 
-To keep running as root, set `podSecurityContext.runAsUser` to `0` in your Helm overrides before you upgrade. See [Run as non-root](../../configure-yugabyte-platform/kubernetes/#run-as-non-root).
+To keep running as root on a non-OpenShift universe, set `podSecurityContext.runAsUser` to `0` in your Helm overrides before you upgrade. See [Run as non-root](../../configure-yugabyte-platform/kubernetes/#run-as-non-root).
+
+This does not apply to OpenShift. OpenShift always runs pods as non-root and enforces that policy itself, not through `podSecurityContext`.
 
 ## Backups and point-in-time-recovery
 

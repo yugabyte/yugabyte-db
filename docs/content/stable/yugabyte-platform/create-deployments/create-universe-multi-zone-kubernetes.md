@@ -210,9 +210,11 @@ tserver:
 
 #### Run as root
 
-Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default. If you upgrade a universe that does not pin a user in `podSecurityContext`, the pods migrate to the non-root user from the image.
+This override does not apply to OpenShift. OpenShift always runs YugabyteDB pods as non-root and enforces that policy itself, not through `podSecurityContext`.
 
-To keep running as root, add the following overrides before you upgrade:
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default. If you upgrade a non-OpenShift universe that does not pin a user in `podSecurityContext`, the pods migrate to the non-root user from the image.
+
+To keep running as root on a non-OpenShift universe, add the following overrides before you upgrade:
 
 ```yaml
 podSecurityContext:

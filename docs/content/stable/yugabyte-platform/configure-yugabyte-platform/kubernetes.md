@@ -276,6 +276,12 @@ serviceEndpoints:
 
 Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and Kubernetes pods run as a non-root user by default.
 
+{{< note title="OpenShift" >}}
+
+This section does not apply to OpenShift. OpenShift always runs YugabyteDB pods as non-root and enforces that policy itself, not through `podSecurityContext`. Do not set or modify `podSecurityContext` on OpenShift; doing so can cause the pods to fail. For OpenShift, see [Create OpenShift provider configuration](../openshift/).
+
+{{< /note >}}
+
 In versions earlier than v2026.1.2, use the following overrides to run YugabyteDB as a non-root user:
 
 ```yml
@@ -290,9 +296,9 @@ podSecurityContext:
 
 This is the default starting in v2026.1.2.
 
-You cannot change the user of a running universe after it has been created. If you upgrade a universe to v2026.1.2 or later and you haven't pinned a user in `podSecurityContext`, the pods migrate to the non-root user from the image. Disabling `podSecurityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
+If you upgrade a non-OpenShift universe to v2026.1.2 or later and you haven't pinned a user in `podSecurityContext`, the pods migrate to the non-root user from the image. Disabling `podSecurityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
 
-To keep running as root, set the following override before you upgrade:
+To keep running as root on a non-OpenShift universe, set the following override before you upgrade:
 
 ```yml
 podSecurityContext:

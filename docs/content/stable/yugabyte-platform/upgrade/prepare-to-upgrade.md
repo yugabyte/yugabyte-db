@@ -41,9 +41,11 @@ In addition, both python and python3 must symbolically link to Python 3. Refer t
 
 Starting in YugabyteDB Anywhere v2026.1.2, YugabyteDB Anywhere Docker images are STIG-compliant and hardened, and run as a non-root user by default.
 
-If your Kubernetes installation does not pin a user in `securityContext`, upgrading to v2026.1.2 or later migrates the YugabyteDB Anywhere pods to a non-root user.
+If your non-OpenShift Kubernetes installation does not pin a user in `securityContext`, upgrading to v2026.1.2 or later migrates the YugabyteDB Anywhere pods to a non-root user.
 
-To keep running as root, set `securityContext.runAsUser` to `0` in your Helm values before you upgrade. See [Run containers as non-root](../../install-yugabyte-platform/install-software/kubernetes/#run-containers-as-non-root).
+To keep running as root on a non-OpenShift installation, set `securityContext.runAsUser` to `0` in your Helm values before you upgrade. See [Run containers as non-root](../../install-yugabyte-platform/install-software/kubernetes/#run-containers-as-non-root).
+
+This does not apply to OpenShift. OpenShift always runs containers as non-root and enforces that policy itself, not through `securityContext`.
 
 ## cron-based universes
 

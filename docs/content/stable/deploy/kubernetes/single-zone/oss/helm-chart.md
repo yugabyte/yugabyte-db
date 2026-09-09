@@ -459,14 +459,19 @@ helm install yugabyte --version {{<yb-version version="stable" format="short">}}
 
 Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and Helm deployments run as a non-root user by default (UID 10001).
 
-If you upgrade an existing Helm deployment that does not pin a user in `podSecurityContext`, the pods migrate to the non-root user from the image. Disabling `podSecurityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
+{{< note title="OpenShift" >}}
+
+This section does not apply to OpenShift. OpenShift always runs YugabyteDB pods as non-root and enforces that policy itself, not through `podSecurityContext`. Do not set or modify `podSecurityContext` on OpenShift.
+
+{{< /note >}}
+
+If you upgrade an existing non-OpenShift Helm deployment that does not pin a user in `podSecurityContext`, the pods migrate to the non-root user from the image. Disabling `podSecurityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
 
 To keep running as root, add the following to your values file before you upgrade:
 
 ```yaml
 podSecurityContext:
   enabled: true
-  runAsNonRoot: false
   runAsUser: 0
 ```
 
@@ -488,7 +493,7 @@ gflags.tserver.placement_cloud=myk8s-cloud,gflags.tserver.placement_region=myk8s
 
 You can upgrade the software on the YugabyteDB cluster with the following command. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.
 
-Starting in v2026.1.2, the Docker image runs as a non-root user by default. If you haven't pinned a user in `podSecurityContext`, this upgrade migrates the pods to a non-root user. To keep running as root, see [Run as non-root](#run-as-non-root).
+Starting in v2026.1.2, the Docker image runs as a non-root user by default. If you haven't pinned a user in `podSecurityContext` on a non-OpenShift deployment, this upgrade migrates the pods to a non-root user. To keep running as root on a non-OpenShift deployment, see [Run as non-root](#run-as-non-root).
 
 ```sh
 helm repo update

@@ -449,9 +449,15 @@ postgres:
 
 ### Run containers as non-root
 
-Starting in YugabyteDB Anywhere v2026.1.2, YugabyteDB Anywhere Docker images are STIG-compliant and hardened, and run as a non-root user by default.
+Starting in YugabyteDB Anywhere v2026.1.2, YugabyteDB Anywhere Docker images are STIG-compliant and hardened. These images now ship with a non-root user (UID: 10001) as the default.
 
-The PostgreSQL and Nginx containers always run as non-root. In versions earlier than v2026.1.2, set the following values to run the remaining containers as non-root:
+{{< note title="OpenShift" >}}
+
+This section does not apply to OpenShift. OpenShift always runs YugabyteDB Anywhere containers as non-root and enforces that policy itself, not through `securityContext`. Do not set or modify `securityContext` on OpenShift; doing so can cause the containers to fail. For OpenShift, see [Install YugabyteDB Anywhere on OpenShift](../openshift/).
+
+{{< /note >}}
+
+The PostgreSQL containers always run as non-root. In versions earlier than v2026.1.2, set the following values to run the remaining containers as non-root:
 
 ```yaml
 securityContext:
@@ -460,11 +466,9 @@ securityContext:
 
 This is the default starting in v2026.1.2.
 
-This value is not supported on OpenShift, which runs all the containers of YugabyteDB Anywhere as non-root by default. Modifying `securityContext` on OpenShift could cause the containers to fail.
+If you upgrade a non-OpenShift installation to v2026.1.2 or later and you haven't pinned a user in `securityContext`, the pods migrate to the non-root user from the image. Disabling `securityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
 
-If you upgrade an existing installation to v2026.1.2 or later and you haven't pinned a user in `securityContext`, the pods migrate to the non-root user from the image. Disabling `securityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
-
-To keep running as root, add the following to your values file before you upgrade:
+To keep running as root on a non-OpenShift installation, add the following to your values file before you upgrade:
 
 ```yaml
 securityContext:
