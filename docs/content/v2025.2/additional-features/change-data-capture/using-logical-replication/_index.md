@@ -102,6 +102,8 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
     DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
 
+- CDC currently doesn't support [Transactional DDL](../../../explore/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
+
 - There should be a primary key on the table you want to stream the changes from.
 
 - CDC is not supported on tables that are also the target of xCluster replication (see issue {{<issue 15534>}}). However, both CDC and xCluster can work simultaneously on the same source tables.
