@@ -2,6 +2,7 @@ package org.yb.yugabyted;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
@@ -75,7 +76,9 @@ public class TestHealthCheckAPI extends BaseYbdClientTest {
     }
   }
 
-  @Test(timeout = 60000)
+  // No hardcoded timeout: yugabyted node startup alone takes over 50s under TSAN, so rely on
+  // BaseYBTest's build-type-adjusted METHOD_TIMEOUT.
+  @Test
   public void testHealthCheckAPI() throws Exception {
 
     boolean testsPassed = false;
@@ -91,6 +94,12 @@ public class TestHealthCheckAPI extends BaseYbdClientTest {
 
       HostAndPort leaderMasterHostAndPort = syncClient.getLeaderMasterHostAndPort();
       LOG.info("Leader host and port: " + leaderMasterHostAndPort);
+
+      // most_recent_uptime is the live tserver uptime in seconds, so it ticks between the
+      // yugabyted-ui call and the direct master call below. Bracket the proxied value between
+      // two direct reads rather than requiring equality with the later one.
+      int uptimeBeforeFromMaster = new JSONObject(
+          fetchHealthCheck(host, webPort, "/api/v1/health-check")).getInt("most_recent_uptime");
 
       // Fetching health-check response from yugabyted-ui api
       String jsonResponse = fetchHealthCheck(leaderMasterHostAndPort.getHost(),
@@ -123,7 +132,9 @@ public class TestHealthCheckAPI extends BaseYbdClientTest {
       assertEquals("Dead nodes mismatch", deadNodesFromMaster, deadNodesFromUI);
       assertEquals("Under-replicated tablets mismatch", underReplicatedFromMaster,
         underReplicatedFromUI);
-      assertEquals("Uptime mismatch", uptimeFromMaster, uptimeFromUI);
+      assertTrue("Uptime mismatch: " + uptimeFromUI + " is outside ["
+          + uptimeBeforeFromMaster + ", " + uptimeFromMaster + "]",
+          uptimeFromUI >= uptimeBeforeFromMaster && uptimeFromUI <= uptimeFromMaster);
 
       testsPassed = true;
 

@@ -641,6 +641,13 @@ parse_yb_build_cmd_line "${original_args[@]}"
 # Finished parsing command-line arguments, post-processing them.
 # -------------------------------------------------------------------------------------------------
 
+# org.yb.yugabyted tests start the cluster with "yugabyted --ui=true", and yugabyted silently
+# starts without the UI when $BUILD_ROOT/gobin/yugabyted-ui is missing, so those tests only fail
+# with a refused connection. Jenkins gets that binary from the package build step.
+if [[ -n ${java_test_name} && ${java_test_name} == org.yb.yugabyted.* ]]; then
+  build_yugabyted_ui=true
+fi
+
 if is_apple_silicon && [[ -z ${YB_TARGET_ARCH:-} ]]; then
   # Use arm64 by default on an Apple Silicon machine.
   YB_TARGET_ARCH=arm64
