@@ -4,7 +4,7 @@ import { browserHistory } from 'react-router';
 import { useQuery } from 'react-query';
 import { fetchProviderList } from '@app/api/admin';
 
-import { mui, YBMaps, YBSelect, YBTag } from '@yugabyte-ui-library/core';
+import { mui, YBMaps, YBTag } from '@yugabyte-ui-library/core';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   extractGeoPartitionsFromUniverse,
@@ -36,7 +36,7 @@ import { Star } from '@material-ui/icons';
 import CopyIcon from '../../../../assets/copy_blue.svg';
 import TreeIcon from '@app/redesign/assets/tree-icon.svg';
 
-const { Box, styled, Typography, Grid2, Divider, MenuItem } = mui;
+const { Box, styled, Typography, Grid2, Divider } = mui;
 
 const StyledArea = styled('div')(({ theme }) => ({
   padding: '16px',
@@ -84,11 +84,16 @@ const StyledClusterTitle = styled(Typography)(({ theme }) => ({
   color: theme.palette.grey[600]
 }));
 
-const StyledYBSelect = styled(YBSelect)(() => ({
-  zIndex: 1000,
-  margin: '8px',
-  width: '200px',
-  height: '32px'
+const ViewMoreLink = styled('a')(({ theme }) => ({
+  color: theme.palette.primary[600],
+  fontSize: '13px',
+  fontWeight: 400,
+  lineHeight: '16px',
+  textDecoration: 'underline',
+  textDecorationStyle: 'solid',
+  textUnderlinePosition: 'from-font',
+  marginLeft: '40px',
+  cursor: 'pointer'
 }));
 
 const ViewMoreLink = styled('a')(({ theme }) => ({

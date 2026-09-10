@@ -14,13 +14,14 @@ import {
   PlacementRegion,
   Universe
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
 import {
-  AWS_CLOUD_OPTION,
-  AZURE_CLOUD_OPTION,
-  GCP_CLOUD_OPTION,
-  K8S_CLOUD_OPTION,
-  OCI_CLOUD_OPTION,
-  ON_PREM_CLOUD_OPTION
+  AZURE_CLOUD_CIRCLED,
+  GCP_CLOUD_CIRCLED,
+  OCI_CLOUD_CIRCLED,
+  K8S_CLOUD_CIRCLED,
+  ON_PREM_CLOUD_CIRCLED,
+  AWS_CLOUD_CIRCLED
 } from '@yugabyte-ui-library/core';
 import { EditUniverseContext } from './EditUniverseContext';
 import {
@@ -45,17 +46,17 @@ export const getProviderIcon = (providerCode?: string) => {
 
   switch (providerCode) {
     case CloudType.aws:
-      return AWS_CLOUD_OPTION.icon;
+      return AWS_CLOUD_CIRCLED;
     case CloudType.gcp:
-      return GCP_CLOUD_OPTION.icon;
+      return GCP_CLOUD_CIRCLED;
     case CloudType.azu:
-      return AZURE_CLOUD_OPTION.icon;
+      return AZURE_CLOUD_CIRCLED;
     case CloudType.onprem:
-      return ON_PREM_CLOUD_OPTION.icon;
+      return ON_PREM_CLOUD_CIRCLED;
     case CloudType.kubernetes:
-      return K8S_CLOUD_OPTION.icon;
+      return K8S_CLOUD_CIRCLED;
     case CloudType.oci:
-      return OCI_CLOUD_OPTION.icon;
+      return OCI_CLOUD_CIRCLED;
     default:
       return null;
   }
