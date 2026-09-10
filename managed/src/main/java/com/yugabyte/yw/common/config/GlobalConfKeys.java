@@ -2374,8 +2374,8 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.ui.enable_new_universe_experience_for_all_users",
           ScopeType.GLOBAL,
-          "Whether to enable new universe experience for all users",
-          "Whether to enable new universe experience for all users",
+          "Enable new universe experience for all users",
+          "Enable new universe experience for all users",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> nodeAgentDescribeMaxOutputBufferLines =
