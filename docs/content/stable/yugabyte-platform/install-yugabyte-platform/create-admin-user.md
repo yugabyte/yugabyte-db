@@ -48,41 +48,41 @@ Sign in to YugabyteDB Anywhere using your new credentials.
 
 ## Recover Super Admin access
 
-If all local users are removed and LDAP or OIDC is unavailable, YugabyteDB Anywhere can become inaccessible. To restore access, create a local Super Admin directly in the YugabyteDB Anywhere Postgres database using `add_superadmin_user.py`.
+If all local users are removed and LDAP or OIDC is unavailable, YugabyteDB Anywhere can become inaccessible. To restore access, create a local Super Admin directly in the YugabyteDB Anywhere database using `add_superadmin_user.py`.
 
 1. Log in to the YugabyteDB Anywhere host and go to `yb_devops_home`.
-1. Run the script with `py_wrapper.sh`, providing an email, password, and install type.
+1. Run the script with `py_wrapper.sh`, providing an email, password, and install type. For example:
 
-Standalone Postgres:
+    Standalone Postgres:
 
-```sh
-./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
-  --email admin@example.com --password 'Secret123!' -t standalone
-```
+    ```sh
+    ./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
+      --email admin@example.com --password 'password123' -t standalone
+    ```
 
-Docker-based Postgres:
+    Docker-based Postgres:
 
-```sh
-export DOCKER_POSTGRES_CONTAINER=yugaware-postgres
-export POSTGRES_USER=postgres
-export POSTGRES_DB=yugaware
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=5432
-./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
-  --email admin@example.com --password 'Secret123!' -t docker
-```
+    ```sh
+    export DOCKER_POSTGRES_CONTAINER=yugaware-postgres
+    export POSTGRES_USER=postgres
+    export POSTGRES_DB=yugaware
+    export POSTGRES_HOST=localhost
+    export POSTGRES_PORT=5432
+    ./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
+      --email admin@example.com --password 'password123' -t docker
+    ```
 
-Kubernetes:
+    Kubernetes:
 
-```sh
-./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
-  -t kubernetes -e admin@example.com -p 'Secret123!' \
-  -n yb-platform -f /path/to/kubeconfig
-```
+    ```sh
+    ./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
+      -t kubernetes -e admin@example.com -p 'password123' \
+      -n yb-platform -f /path/to/kubeconfig
+    ```
 
 1. Sign in to YugabyteDB Anywhere with the new local Super Admin user.
 
-Use `--customer-uuid` if customer auto-resolution is ambiguous (for example, multi-customer setups). Use `--application-conf` if the default path to `application.conf` does not apply. For all options, run `./bin/py_wrapper.sh ./bin/add_superadmin_user.py --help`.
+If your installation has more than one account and the script can't determine which one to use, or if the default path to `application.conf` does not apply, see the script help for additional options: `./bin/py_wrapper.sh ./bin/add_superadmin_user.py --help`.
 
 ## Change your account information
 
