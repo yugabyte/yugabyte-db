@@ -164,9 +164,11 @@ public class TestIndexBackfill extends BasePgSQLTest {
       long tableOid = getRowList(
           stmt.executeQuery("SELECT oid FROM pg_class WHERE relname = 'test'")).get(0).getLong(0);
 
-      // Two entries in pg_depend table, one for pg_type and the other for pg_constraint
+      // pg_depend rows for the table: its composite type, the primary key
+      // constraint, and the primary key column's not-null constraint.
+      final int expectedTableDependCount = 3;
       assertQuery(stmt, "SELECT COUNT(*) FROM pg_depend WHERE refobjid=" + tableOid,
-          new Row(2));
+          new Row(expectedTableDependCount));
 
       stmt.executeUpdate("INSERT INTO test VALUES (1, 1)");
       stmt.executeUpdate("INSERT INTO test VALUES (2, 1)");
@@ -186,7 +188,7 @@ public class TestIndexBackfill extends BasePgSQLTest {
       // Make sure index has no leftovers
       assertNoRows(stmt, "SELECT oid FROM pg_class WHERE relname = 'test_v'");
       assertQuery(stmt, "SELECT COUNT(*) FROM pg_depend WHERE refobjid=" + tableOid,
-          new Row(2));
+          new Row(expectedTableDependCount));
       assertQuery(stmt, "SELECT * FROM test WHERE v = 1",
           new Row(1, 1), new Row(2, 1));
 
