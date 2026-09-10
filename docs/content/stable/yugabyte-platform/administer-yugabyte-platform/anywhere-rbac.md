@@ -28,7 +28,7 @@ YugabyteDB Anywhere includes built-in roles. You can also define custom roles fo
 
 The following built-in roles are available:
 
-- **Super Admin** is the first user that is created during installation. This role has the highest level of privilege and allows all read and write actions on all YugabyteDB Anywhere resources. Additional Super Admin users can be provisioned through LDAP or OIDC group mappings when enabled. Refer to [SuperAdmin LDAP/SSO user support](../superadmin-ldap-sso-users/). Super Admin can perform the following:
+- **Super Admin** is the first user that is created during installation. This role has the highest level of privilege and allows all read and write actions on all YugabyteDB Anywhere resources. You can also provision Super Admin users through [LDAP](../ldap-authentication/#assign-superadmin-via-group-mapping) or [OIDC](../oidc-authentication/#assign-superadmin-via-group-mapping) group mapping when enabled. Super Admin can perform the following:
 
   - Manage all resources, including universes, nodes, backup, restore, and provider configurations.
   - Manage the user access control by creating and managing users.

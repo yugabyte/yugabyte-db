@@ -28,7 +28,7 @@ YugabyteDB Anywhere includes built-in roles. You can also define custom roles fo
 
 The following built-in roles are available:
 
-- **Super Admin** is the first user that is created during installation. This role has the highest level of privilege and allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin. Super Admin can perform the following:
+- **Super Admin** is the first user that is created during installation. This role has the highest level of privilege and allows all read and write actions on all YugabyteDB Anywhere resources. You can also provision Super Admin users through [LDAP](../ldap-authentication/#assign-superadmin-via-group-mapping) or [OIDC](../oidc-authentication/#assign-superadmin-via-group-mapping) group mapping when enabled. Super Admin can perform the following:
 
   - Manage all resources, including universes, nodes, backup, restore, and provider configurations.
   - Manage the user access control by creating and managing users.
@@ -95,6 +95,8 @@ To modify a user, do the following:
 1. Click **Edit User**.
 
 To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
+
+Admin users cannot delete Super Admin users. Super Admin users cannot delete their own account from the UI.
 
 ### Manage custom roles
 
