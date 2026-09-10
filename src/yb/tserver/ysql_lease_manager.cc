@@ -25,6 +25,7 @@
 #include "yb/tserver/ysql_lease_poller.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
@@ -36,6 +37,9 @@ DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
     "Whether tservers should monitor their ysql op lease and kill their hosted pg "
     "sessions when it expires. Only available as a flag for tests.");
 
+DEFINE_test_flag(bool, pause_ysql_lease_refresh_after_epoch_update, false,
+    "Pause after publishing a new ysql lease epoch but before resetting the local "
+    "lock manager.");
 DEFINE_test_flag(uint64, delay_ysql_lease_expiry_pg_kill_ms, 0,
     "Delay between a tserver detecting YSQL lease expiry and killing hosted PG sessions.");
 
@@ -142,11 +146,16 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
                  "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
                  lease_refresh_info.lease_epoch());
       restart_pg = true;
+      if (ts_local_lock_manager_ && ts_local_lock_manager_->IsBootstrapped()) {
+        ts_local_lock_manager_->StartShutdown();
+      }
     }
     lease_expiry_time_ = new_lease_expiry_time;
     lease_is_live_ = true;
     lease_epoch_ = lease_refresh_info.lease_epoch();
   }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_ysql_lease_refresh_after_epoch_update);
 
   // It is safer to end the pg-sessions after resetting the local lock manager.
   // This way, if a new session gets created it will also be reset. But that is better than
