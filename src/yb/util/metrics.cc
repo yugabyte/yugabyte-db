@@ -532,12 +532,6 @@ Status Counter::SetUpPreAggregationForPrometheus(
   return Status::OK();
 }
 
-Counter::~Counter() {
-  if (aggregated_prometheus_value_holder_ != nullptr) {
-    aggregated_prometheus_value_holder_->IncrementBy(-value());
-  }
-}
-
 bool Counter::IsPreAggregated() const {
   return aggregated_prometheus_value_holder_ != nullptr;
 }
