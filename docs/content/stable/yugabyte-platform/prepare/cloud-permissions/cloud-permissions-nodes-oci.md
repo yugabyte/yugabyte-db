@@ -76,6 +76,12 @@ If you will use an Instance Configuration OCID when adding regions, also grant:
 Allow group yba-admins to read instance-configurations in compartment <compartment>
 ```
 
+If you will set a **DNS Zone OCID** on the provider, also grant the following in the compartment that contains the zone:
+
+```properties
+Allow group yba-admins to manage dns in compartment <compartment>
+```
+
 For more information on writing policies, see [How Policies Work](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/policies.htm) in the OCI documentation.
 
 To grant the required access, you do one of the following:

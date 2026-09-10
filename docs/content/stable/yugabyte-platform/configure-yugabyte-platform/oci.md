@@ -121,7 +121,9 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 **Default Region**. Region used as the default for OCI API calls (for example, `us-ashburn-1`).
 
-**DNS Zone OCID**. Leave this field empty. YugabyteDB Anywhere does not manage records in [OCI DNS](https://docs.oracle.com/en-us/iaas/Content/DNS/Concepts/dnszonemanagement.htm).
+**DNS Zone OCID**. Optional. OCID of a private [OCI DNS](https://docs.oracle.com/en-us/iaas/Content/DNS/Tasks/privatedns.htm) zone (`ocid1.dns-zone...`) where YugabyteDB Anywhere manages A records for universes created with this provider. YBA creates, updates, and deletes the records as nodes are added, removed, or undergo maintenance.
+
+Use a private zone you created, in a view attached to the VCN's resolver. Do not use the VCN's OCI-managed `*.oraclevcn.com` zone; OCI rejects record changes on protected zones. The provider credentials must be able to manage DNS in the compartment that contains the zone; see [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-oci/).
 
 ### Regions
 
