@@ -2392,6 +2392,7 @@ Result<std::string> Version::FindTargetKey(
   // it self-corrects when an earlier cut landed off target.
   const uint64_t max_deviation = static_cast<uint64_t>(
       (target_size - low_cross) * FLAGS_find_target_key_max_deviation_ratio);
+  uint64_t candidates_examined = 0;
 
   // Walk the files once, draining each of its useful candidates before moving on, and stop when the
   // list runs out. A later file's candidate can in principle make an earlier one useful again, but
@@ -2411,6 +2412,11 @@ Result<std::string> Version::FindTargetKey(
       }
 
       const uint64_t candidate_cross = VERIFY_RESULT(Cross(*candidate));
+      ++candidates_examined;
+      VLOG_WITH_FUNC(3) << "candidate: " << Slice(*candidate).ToDebugHexString()
+                        << " cross: " << candidate_cross << " window: [" << low_cross << ", "
+                        << high_cross << "] target: " << target_size;
+
       // Only a Cross strictly inside the window subdivides it. Anything else means this file is
       // spent: the window would not move, so the next call returns the same key. Breaking here
       // carries termination for the inner loop, not just accuracy -- keep it in any refactor.
@@ -2425,7 +2431,6 @@ Result<std::string> Version::FindTargetKey(
         high_buf = std::move(*candidate);
         high_cross = candidate_cross;
       }
-      // TODO: VLOG the search progress
     }
   }
 
@@ -2477,6 +2482,16 @@ Result<std::string> Version::FindTargetKey(
   if (!resolved) {
     return STATUS(Incomplete, "Failed to locate a data key near the target Cross key");
   }
+
+  RLOG(InfoLogLevel::INFO_LEVEL, info_log_,
+      "[%s] FindTargetKey: SST files: %zu candidates: %" PRIu64 " target: %s chosen: %s "
+      "off by: %s of %s allowed key: %s",
+      cfd_->GetName().c_str(), table_readers.size(), candidates_examined,
+      BytesToHumanString(target_size).c_str(),
+      BytesToHumanString(prefer_low ? low_cross : high_cross).c_str(),
+      BytesToHumanString(chosen_dist).c_str(), BytesToHumanString(max_deviation).c_str(),
+      Slice{*resolved}.ToDebugHexString().c_str());
+
   return std::move(*resolved);
 }
 
