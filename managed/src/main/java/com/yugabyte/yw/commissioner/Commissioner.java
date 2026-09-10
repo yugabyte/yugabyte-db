@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
@@ -60,7 +59,6 @@ import java.util.function.Predicate;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
-import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 
 @Singleton
@@ -105,20 +103,16 @@ public class Commissioner {
 
   private final RuntimeConfGetter runtimeConfGetter;
 
-  private final GFlagsValidation gFlagsValidation;
-
   // Provider breaks Guice cycle: some computers -> handlers -> Commissioner.
   private final Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers;
 
   @Inject
   public Commissioner(
-      ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
       TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
       RuntimeConfGetter runtimeConfGetter,
-      GFlagsValidation gFlagsValidation,
       Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
@@ -126,7 +120,6 @@ public class Commissioner {
     this.taskQueue = taskQueue;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
-    this.gFlagsValidation = gFlagsValidation;
     this.taskRollbackComputers = taskRollbackComputers;
     this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool");
@@ -307,6 +300,23 @@ public class Commissioner {
           .forEach((backup) -> backup.transitionState(BackupState.Stopping));
     }
     return success;
+  }
+
+  /**
+   * Initiates platform shutdown: seals the task executor, aborts in-flight tasks after the given
+   * timeout, then runs application shutdown hooks once tasks have drained. Does not wait for
+   * completion. YBA is no longer usable after this call, until it is restarted.
+   *
+   * @param abortTimeout how long running tasks may continue before abort is forced
+   * @return true if shutdown was initiated by this call
+   */
+  public boolean initiateShutdown(Duration abortTimeout) {
+    return taskExecutor.shutdownAsync(abortTimeout);
+  }
+
+  /** Returns whether the task executor is shutting down and how many tasks remain. */
+  public TaskExecutor.ShutdownStatus getShutdownStatus() {
+    return taskExecutor.getShutdownStatus();
   }
 
   /**

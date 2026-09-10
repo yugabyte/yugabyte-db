@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.common.annotations.VisibleForTesting;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,7 +34,8 @@ public class ShutdownHookHandler {
 
   private final ExecutorService shutdownExecutor;
   private final Map<Object, Hook<?>> hooks;
-  private final AtomicBoolean isShutdown = new AtomicBoolean();
+  private final AtomicBoolean isShutdownInitiated = new AtomicBoolean();
+  private final AtomicBoolean isShutdownComplete = new AtomicBoolean();
   // Setting this to true makes it behave like addStopHook of ApplicationLifecycle
   // that invokes the hooks serially.
   private boolean isSerialShutdown = false;
@@ -123,49 +123,61 @@ public class ShutdownHookHandler {
    *
    * @return Returns true if it is being shut down, else false.
    */
-  public boolean isShutdown() {
-    return isShutdown.get();
+  public boolean isShutdownInitiated() {
+    return isShutdownInitiated.get();
   }
 
-  @VisibleForTesting
-  void onApplicationShutdown() {
-    if (!isShutdown.compareAndSet(false, true)) {
+  /**
+   * Method to check if shutdown is complete.
+   *
+   * @return Returns true if it is complete, else false.
+   */
+  public boolean isShutdownComplete() {
+    return isShutdownComplete.get();
+  }
+
+  public void onApplicationShutdown() {
+    if (!isShutdownInitiated.compareAndSet(false, true)) {
       log.error("Application is already shut down");
       return;
     }
-    Util.YBA_SHUTDOWN_STARTED = true;
-    List<Hook<?>> list = new ArrayList<>(hooks.values());
-    Collections.sort(list);
-    int pos = 0;
-    while (pos < list.size()) {
-      Map<Hook<?>, Future<?>> futures = new HashMap<>();
-      Hook<?> currHook = list.get(pos);
-      futures.put(currHook, shutdownExecutor.submit(currHook));
-      pos++;
-      if (!isSerialShutdown) {
-        // Hooks with the same weights are executed concurrently.
-        for (; pos < list.size(); pos++) {
-          currHook = list.get(pos);
-          if (list.get(pos - 1).getWeight() == currHook.getWeight()) {
-            futures.put(currHook, shutdownExecutor.submit(currHook));
-          } else {
-            break;
+    try {
+      Util.YBA_SHUTDOWN_STARTED = true;
+      List<Hook<?>> list = new ArrayList<>(hooks.values());
+      Collections.sort(list);
+      int pos = 0;
+      while (pos < list.size()) {
+        Map<Hook<?>, Future<?>> futures = new HashMap<>();
+        Hook<?> currHook = list.get(pos);
+        futures.put(currHook, shutdownExecutor.submit(currHook));
+        pos++;
+        if (!isSerialShutdown) {
+          // Hooks with the same weights are executed concurrently.
+          for (; pos < list.size(); pos++) {
+            currHook = list.get(pos);
+            if (list.get(pos - 1).getWeight() == currHook.getWeight()) {
+              futures.put(currHook, shutdownExecutor.submit(currHook));
+            } else {
+              break;
+            }
           }
         }
+        // Wait for completion of the previously submitted shutdown hooks.
+        futures
+            .entrySet()
+            .forEach(
+                entry -> {
+                  try {
+                    entry.getValue().get();
+                  } catch (Exception e) {
+                    log.warn("Failed to wait for shutdown of hook {}", entry.getKey(), e);
+                  }
+                });
       }
-      // Wait for completion of the previously submitted shutdown hooks.
-      futures
-          .entrySet()
-          .forEach(
-              entry -> {
-                try {
-                  entry.getValue().get();
-                } catch (Exception e) {
-                  log.warn("Failed to wait for shutdown of hook {}", entry.getKey(), e);
-                }
-              });
+      Kamon.stop();
+      shutdownExecutor.shutdownNow();
+    } finally {
+      isShutdownComplete.set(true);
     }
-    Kamon.stop();
-    shutdownExecutor.shutdownNow();
   }
 }
