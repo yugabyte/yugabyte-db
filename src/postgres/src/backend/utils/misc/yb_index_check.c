@@ -24,9 +24,11 @@
  */
 
 #include "postgres.h"
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/heap.h"
+#include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_collation.h"
@@ -42,14 +44,18 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "pg_yb_utils.h"
+#include "storage/lmgr.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "utils/rls.h"
 #include "utils/syscache.h"
 
 static void yb_index_check_internal(Oid indexoid);
+static List *lock_index_check_relations(Oid indexoid);
+static void validate_index_check_rls(List *leaf_indexes);
 
 #define IndRelDetail(indexrel)	\
 	"index: '%s'", RelationGetRelationName(indexrel)
@@ -555,18 +561,6 @@ check_spurious_index_rows(Relation baserel, Relation indexrel)
 	return index_rowcount;
 }
 
-static void
-partitioned_index_check(Oid parentindexId)
-{
-	ListCell *lc;
-	foreach (lc, find_inheritance_children(parentindexId, AccessShareLock))
-	{
-		Oid childindexId = ObjectIdGetDatum(lfirst_oid(lc));
-		/* TODO: A new read time can be used for each partition. */
-		yb_index_check_internal(childindexId);
-	}
-}
-
 static int64
 get_expected_index_rowcount(Relation baserel, Relation indexrel)
 {
@@ -613,16 +607,15 @@ get_expected_index_rowcount(Relation baserel, Relation indexrel)
 	return expected_rowcount;
 }
 
+/*
+ * Check a single leaf index. lock_index_check_relations() already holds
+ * AccessShareLock on indexrel and baserel; release those locks when done.
+ */
 static void
 yb_index_check_internal(Oid indexoid)
 {
-	Relation indexrel = RelationIdGetRelation(indexoid);
-
-	if (indexrel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
-	{
-		RelationClose(indexrel);
-		return partitioned_index_check(indexoid);
-	}
+	/* lock_index_check_relations() already holds AccessShareLock on indexrel/baserel. */
+	Relation indexrel = relation_open(indexoid, NoLock);
 
 	if (indexrel->rd_rel->relkind != RELKIND_INDEX)
 		elog(ERROR, "Object is not an index");
@@ -637,14 +630,7 @@ yb_index_check_internal(Oid indexoid)
 	if (!indexrel->rd_index->indisvalid)
 		elog(ERROR, "Index '%s' is marked invalid", RelationGetRelationName(indexrel));
 
-	/* YB doesn't have separate PK index, hence it is always consistent */
-	if (indexrel->rd_index->indisprimary)
-	{
-		RelationClose(indexrel);
-		return;
-	}
-
-	Relation baserel = RelationIdGetRelation(indexrel->rd_index->indrelid);
+	Relation baserel = relation_open(indexrel->rd_index->indrelid, NoLock);
 
 	/* Check for spurious index rows */
 	int64 actual_index_rowcount = 0;
@@ -671,14 +657,129 @@ yb_index_check_internal(Oid indexoid)
 						expected_index_rowcount, actual_index_rowcount),
 				 errdetail(IndRelDetail(indexrel))));
 
-	RelationClose(indexrel);
-	RelationClose(baserel);
+	relation_close(indexrel, AccessShareLock);
+	relation_close(baserel, AccessShareLock);
+}
+
+/*
+ * Acquire lock on every base table and index and return the leaf indexes to
+ * scan. There are three concurrent operations we want to protect against:
+ *
+ * 1. DDL on the table/index: AccessShareLock blocks most DDL, including DROP,
+ *    TRUNCATE, non-concurrent DETACH PARTITION and most ALTER TABLEs.
+ *    DML is left unblocked.
+ *
+ * 2. ATTACH PARTITION: AccessShareLock is insufficient here, as ATTACH
+ *    PARTITION takes ShareUpdateExclusiveLock. Instead the partition list
+ *    is saved as leaf_indexes at the time of the check, so a
+ *    partition attached after this point is not checked.
+ *
+ * 3. ALTER ROLE ... BYPASSRLS and role membership changes: PG does not
+ *    acquire a relation lock to block these, so we skip this check. We
+ *    perform the check with the permissions the caller held at function-call
+ *    time.
+ *
+ * For partitioned indexes, find_all_inheritors() provides recursive index
+ * descendants. Only RELKIND_INDEX leaves have storage and are scanned; an
+ * intermediate RELKIND_PARTITIONED_INDEX never does.
+ * Every index is lock-held before its pg_index row is read, so
+ * IndexGetRelation() always finds a base relation.
+ * YB doesn't have separate PK index, hence it is always consistent.
+ * Locks on leaf indexes and their base tables are released by
+ * yb_index_check_internal() when that leaf's check ends.
+ */
+static List *
+lock_index_check_relations(Oid indexoid)
+{
+	List	   *all_indexes;
+	List	   *leaf_indexes = NIL;
+	ListCell   *lc;
+
+	/* find_all_inheritors() locks the descendants, but not indexoid itself. */
+	LockRelationOid(indexoid, AccessShareLock);
+	all_indexes = find_all_inheritors(indexoid, AccessShareLock, NULL);
+
+	foreach(lc, all_indexes)
+	{
+		Oid			current_indexoid = lfirst_oid(lc);
+		Oid			baserelid = IndexGetRelation(current_indexoid, false);
+		Relation	indexrel;
+		bool		scannable;
+
+		LockRelationOid(baserelid, AccessShareLock);
+
+		indexrel = relation_open(current_indexoid, NoLock);
+		scannable = (indexrel->rd_rel->relkind == RELKIND_INDEX &&
+					 !indexrel->rd_index->indisprimary);
+		relation_close(indexrel, NoLock);
+
+		if (scannable)
+			leaf_indexes = lappend_oid(leaf_indexes, current_indexoid);
+		else /* nothing to scan here, release locks */
+		{
+			UnlockRelationOid(current_indexoid, AccessShareLock);
+			UnlockRelationOid(baserelid, AccessShareLock);
+		}
+	}
+
+	list_free(all_indexes);
+	return leaf_indexes;
+}
+
+/*
+ * Fail early before scan work: reject callers for whom RLS would filter rows
+ * on any base table we would scan.
+ *
+ * Not covered: ALTER ROLE ... BYPASSRLS and role membership changes take no
+ * relation lock, so no lock here can order against them.
+ */
+static void
+validate_index_check_rls(List *leaf_indexes)
+{
+	ListCell   *lc;
+
+	foreach(lc, leaf_indexes)
+	{
+		Oid			leaf_indexoid = lfirst_oid(lc);
+		Oid			baserelid = IndexGetRelation(leaf_indexoid, false);
+
+		/*
+		 * check_enable_rls returns RLS_ENABLED if RLS would filter rows for
+		 * this user.
+		 */
+		if (check_enable_rls(baserelid,
+							 InvalidOid /* checkAsUser = current user */ ,
+							 true) == RLS_ENABLED)
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied for function yb_index_check"),
+					 errdetail("Row-level security is enabled on table \"%s\", and the current user has insufficient privileges to bypass it.",
+							   get_rel_name(baserelid)),
+					 errhint("User must be a superuser, owner of the table, or have the BYPASSRLS privilege to check indexes on tables with row-level security enabled.")));
+	}
 }
 
 Datum
 yb_index_check(PG_FUNCTION_ARGS)
 {
-	Oid indexoid = PG_GETARG_OID(0);
-	yb_index_check_internal(indexoid);
+	Oid			indexoid = PG_GETARG_OID(0);
+	char		relkind = get_rel_relkind(indexoid);
+	List	   *leaf_indexes;
+	ListCell   *lc;
+
+	if (relkind != RELKIND_INDEX && relkind != RELKIND_PARTITIONED_INDEX)
+		elog(ERROR, "Object is not an index");
+
+	/*
+	 * Lock every relation we will touch, collect the leaf indexes to scan, and
+	 * reject callers subject to row-level security before doing any work.
+	 */
+	leaf_indexes = lock_index_check_relations(indexoid);
+
+	validate_index_check_rls(leaf_indexes);
+
+	foreach(lc, leaf_indexes)
+		yb_index_check_internal(lfirst_oid(lc));
+
 	PG_RETURN_VOID();
 }
