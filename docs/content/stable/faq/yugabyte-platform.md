@@ -135,6 +135,8 @@ If you have already installed YugabyteDB Anywhere and it is running, the script 
 Automatically provision on-premises nodes
 {{</lead>}}
 
+For existing universes, starting in YugabyteDB Anywhere v2026.1.2.0, you can migrate nodes to node agent using [Reprovision universe nodes](/stable/yugabyte-platform/manage-deployments/reprovision-nodes/).
+
 In addition, for on-premises providers, there are three legacy methods (now deprecated) for preparing a node, depending on the level of access provided to YugabyteDB Anywhere, as follows:
 
 - _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YugabyteDB Anywhere (for example, the `ec2-user` for an AWS EC2 instance). YugabyteDB Anywhere then automatically provisions nodes, including installing node agent.

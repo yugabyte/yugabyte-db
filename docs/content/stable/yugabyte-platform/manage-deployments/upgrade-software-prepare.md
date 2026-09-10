@@ -65,13 +65,15 @@ To update your universes to use systemd:
 
 YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you can upgrade to v2025.2 or later, all your universes must be using node agent. (Note that this does not apply to universes deployed on Kubernetes.)
 
-To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>More>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
+To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions > More > Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
+
+Starting in v2026.1.2.0, you can instead click **Actions > More > Reprovision Universe Nodes**, which migrates nodes to node agent and user-level systemd in a single rolling operation. See [Reprovision universe nodes](../reprovision-nodes/).
 
 You can configure YugabyteDB Anywhere to automatically update universes to node agent in the background. Refer to [Prepare to upgrade YugabyteDB Anywhere](../../upgrade/prepare-to-upgrade/#node-agent).
 
 ## Transparent hugepages
 
-Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
+Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by [reprovisioning nodes](../reprovision-nodes/) (v2026.1.2.0 and later), or by following the [node patching](../upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
 
 ## Backups and point-in-time-recovery
 
