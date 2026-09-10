@@ -3069,6 +3069,10 @@
         "Aborted": "Aborted",
         "Paused": "Paused"
       },
+      "originalTask": {
+        "label": "Original Task",
+        "loading": "Loading..."
+      },
       "progress": {
         "title": "Progress",
         "complete": "{{progress}}% Completed",

@@ -8,7 +8,9 @@
  */
 
 import { cloneElement } from 'react';
+import { find } from 'lodash';
 import { useDispatch, useSelector } from 'react-redux';
+import type { TaskStatus } from '@app/redesign/helpers/api';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksFailure,
@@ -41,6 +43,34 @@ export const isTaskRunning = (task: Task): boolean => {
  */
 export const isTaskFailed = (task: Task): boolean =>
   [TaskState.FAILURE, TaskState.ABORTED].includes(task.status);
+
+/** Same label as the Tasks table Type column: `${typeName} ${target}`. */
+export const getTaskTypeColumnLabel = (task: Pick<Task, 'typeName' | 'target'>): string =>
+  `${task.typeName} ${task.target}`;
+
+/**
+ * Resolve the type-column label for a task UUID from Redux when present, otherwise from
+ * `GET /tasks/{uuid}` plus the drawer task's target type when both tasks share a target.
+ */
+export const getOriginalTaskTypeColumnLabel = (
+  originalTaskUUID: string,
+  customerTaskList: Task[] | undefined | null,
+  taskStatus: TaskStatus | undefined,
+  contextTask: Task
+): string | undefined => {
+  const listTask = find(customerTaskList ?? [], { id: originalTaskUUID });
+  if (listTask) {
+    return getTaskTypeColumnLabel(listTask);
+  }
+  if (!taskStatus) {
+    return undefined;
+  }
+  if (taskStatus.targetUUID === contextTask.targetUUID) {
+    const typeName = taskStatus.type.replace(/([a-z])([A-Z])/g, '$1 $2');
+    return `${typeName} ${contextTask.target}`;
+  }
+  return taskStatus.type.replace(/([a-z])([A-Z])/g, '$1 $2');
+};
 
 /**
  * Checks if a task supports before and after data.
