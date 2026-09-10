@@ -75,8 +75,26 @@ TEST_F(SstStatsCollectorTest, PropertiesRoundTrip) {
   EXPECT_EQ(parsed.coprefix_subtotals.begin()->second.rows, 1);
   EXPECT_EQ(parsed.coprefix_subtotals.begin()->second.entries, 2);
   EXPECT_EQ(parsed.coprefix_subtotals.begin()->second.reclaimable_entries, 1);
+  EXPECT_FALSE(parsed.coprefix_subtotals_truncated);
 
   EXPECT_NOK(SstStatsFromProperties(rocksdb::UserCollectedProperties()));
+}
+
+TEST_F(SstStatsCollectorTest, CoprefixSubtotalsTruncationIsVisible) {
+  // A colocated tablet with more tables than fit under the size cap: the parsed map is a prefix
+  // and coprefix_subtotals_truncated says so, distinguishing it from "no subtotals".
+  SstStats s;
+  for (int i = 0; i < 400; ++i) {
+    // Distinct 8-byte coprefixes; 400 x ~40 chars each overruns the 4 KiB cap.
+    std::string coprefix = "coprefix" + std::to_string(i);
+    s.coprefix_subtotals[coprefix] = {.entries = 1, .rows = 1};
+  }
+  rocksdb::UserCollectedProperties properties;
+  SstStatsToProperties(s, &properties);
+  const auto parsed = ASSERT_RESULT(SstStatsFromProperties(properties));
+  EXPECT_TRUE(parsed.coprefix_subtotals_truncated);
+  EXPECT_LT(parsed.coprefix_subtotals.size(), s.coprefix_subtotals.size());
+  EXPECT_GT(parsed.coprefix_subtotals.size(), 0);
 }
 
 TEST_F(SstStatsCollectorTest, CollectorEndToEnd) {

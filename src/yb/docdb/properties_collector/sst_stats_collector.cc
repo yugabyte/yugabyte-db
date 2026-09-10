@@ -99,13 +99,17 @@ std::string SerializeCoprefixSubtotals(const std::map<std::string, CoprefixSubto
   return result;
 }
 
-Result<std::map<std::string, CoprefixSubtotal>> ParseCoprefixSubtotals(const std::string& text) {
+Result<std::map<std::string, CoprefixSubtotal>> ParseCoprefixSubtotals(
+    const std::string& text, bool* truncated) {
   std::map<std::string, CoprefixSubtotal> result;
   if (text.empty()) {
     return result;
   }
   for (const auto& item : StringSplit(text, ';')) {
     if (item == "...") {
+      // The serializer appends this marker when it stopped below the size cap: the map here is a
+      // prefix of the tablet's tables, not all of them.
+      *truncated = true;
       continue;
     }
     const auto fields = StringSplit(item, ':');
@@ -270,7 +274,8 @@ Result<SstStats> SstStatsFromProperties(const rocksdb::UserCollectedProperties& 
   stats.droppable_age_bytes = VERIFY_RESULT(GetAgeBands(properties, K::kDroppableAgeBytes));
   const auto subtotals = Find(properties, K::kCoprefixSubtotals);
   if (subtotals != properties.end()) {
-    stats.coprefix_subtotals = VERIFY_RESULT(ParseCoprefixSubtotals(subtotals->second));
+    stats.coprefix_subtotals = VERIFY_RESULT(
+        ParseCoprefixSubtotals(subtotals->second, &stats.coprefix_subtotals_truncated));
   }
   return stats;
 }
