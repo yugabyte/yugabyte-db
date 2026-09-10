@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -34,10 +36,17 @@ import org.apache.commons.collections4.CollectionUtils;
 @Abortable
 @Retryable
 public class ProvisionUniverseNodes extends UpgradeTaskBase {
+  private volatile RuntimeInfo runtimeInfo;
 
   @Inject
   protected ProvisionUniverseNodes(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
+  }
+
+  /** Task runtime progress info. */
+  public static class RuntimeInfo {
+    @JsonProperty("provisionedNodeUuids")
+    Set<UUID> provisionedNodeUuids = ConcurrentHashMap.newKeySet();
   }
 
   @Override
@@ -123,6 +132,8 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+    // Load the runtime info for this task run.
+    runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
   }
 
   @Override
@@ -136,6 +147,12 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
           taskParams().clusters = universe.getUniverseDetails().clusters;
 
           for (NodeDetails node : nodeSet) {
+            if (runtimeInfo.provisionedNodeUuids.contains(node.nodeUuid)) {
+              log.info(
+                  "Skipping node {} because it has already been provisioned in this task run.",
+                  node.nodeName);
+              continue;
+            }
             Set<ServerType> processTypes = new LinkedHashSet<>();
             if (node.isMaster) {
               processTypes.add(ServerType.MASTER);
@@ -161,11 +178,13 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
             // control, re-issuing the stop would fail. Gating on the node state and marking the
             // node Stopped before re-provisioning keeps this idempotent across retries.
             if (node.state == NodeState.Live) {
-              for (ServerType processType : processTypes) {
-                createServerControlTask(node, processType, "stop")
-                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-              }
-
+              // This also blacklist tablet leaders on the node before stopping the tserver process.
+              stopProcessesOnNodes(
+                  singleNode,
+                  processTypes,
+                  false /* remove master from quorum */,
+                  false /* deconfigure */,
+                  SubTaskGroupType.StoppingNodeProcesses);
               // Intentionally short-lived: it flips to Reprovisioning right below. Persisting
               // Stopped here is the point at which the node leaves Live, so a retry that fails
               // anywhere in the re-provisioning that follows will skip the stop above.
@@ -175,7 +194,6 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
 
             createSetNodeStateTasks(singleNode, getNodeState())
                 .setSubTaskGroupType(getTaskSubGroupType());
-
             createSetupYNPTask(universe, singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             boolean isYbPrebuiltImage = false;
@@ -186,7 +204,6 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
                 .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             createWaitForNodeAgentTasks(singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
             for (ServerType processType : processTypes) {
               if (processType.equals(ServerType.CONTROLLER)) {
                 createStartYbcTasks(singleNode)
@@ -206,16 +223,22 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
                     .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               }
             }
-
             createWaitForKeyInMemoryTasks(singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
+            if (processTypes.contains(ServerType.TSERVER)) {
+              removeFromLeaderBlackListIfAvailable(
+                  singleNode, SubTaskGroupType.StartingNodeProcesses);
+            }
             createSetNodeStateTasks(singleNode, NodeState.Live)
-                .setSubTaskGroupType(getTaskSubGroupType());
+                .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses)
+                .setAfterGroupRunListener(
+                    g ->
+                        updateRuntimeInfo(
+                            RuntimeInfo.class,
+                            info -> info.provisionedNodeUuids.add(singleNode.get(0).nodeUuid)));
           }
-
           createUpdateUniverseFieldsTask(u -> u.getUniverseDetails().installNodeAgent = false)
-              .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+              .setSubTaskGroupType(SubTaskGroupType.Configuring);
         });
   }
 }
