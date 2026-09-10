@@ -2096,12 +2096,40 @@ DefineIndex(ParseState *pstate,
 														attmap,
 														NULL);
 
-					/*
-					 * YB: Clear split_options so the child's DefineIndex
-					 * derives them from the yb_presplit reloption already
-					 * present in the copied options list.
-					 */
-					childStmt->split_options = NULL;
+					if (IsYugaByteEnabled())
+					{
+						ListCell   *opt;
+
+						/*
+						 * YB: Clear split_options so the child's DefineIndex
+						 * derives them from the yb_presplit reloption instead.
+						 */
+						childStmt->split_options = NULL;
+
+						/*
+						 * YB: generateClonedIndexStmt() drops yb_presplit when
+						 * it copies the parent index's reloptions, because its
+						 * other callers clone an index onto an unrelated
+						 * relation where the parent's split points do not
+						 * apply.  Here the child is a partition of the very
+						 * table the statement targets, so it must be split the
+						 * way the statement asked for.  Carry yb_presplit over
+						 * from the original statement, where
+						 * YbSyncSplitOptionsAndPresplit() has already recorded
+						 * any SPLIT clause.
+						 */
+						foreach(opt, stmt->options)
+						{
+							DefElem    *def = (DefElem *) lfirst(opt);
+
+							if (strcmp(def->defname, "yb_presplit") == 0)
+							{
+								childStmt->options =
+									lappend(childStmt->options, copyObject(def));
+								break;
+							}
+						}
+					}
 
 					/*
 					 * Recurse as the starting user ID.  Callee will use that
