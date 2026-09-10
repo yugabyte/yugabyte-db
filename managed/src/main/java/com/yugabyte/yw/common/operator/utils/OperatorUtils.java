@@ -321,6 +321,15 @@ public class OperatorUtils {
   }
 
   /**
+   * True once HA has demoted this YBA to standby. The active instance owns the CRs, so a demoted
+   * instance that keeps reconciling fights it over the same Kubernetes cluster. Checked on every CR
+   * event rather than at startup because a role flip does not restart YBA.
+   */
+  public boolean isHaFollower() {
+    return HighAvailabilityConfig.isFollower();
+  }
+
+  /**
    * Resolves the YBA universe backing a YBUniverse custom resource, given that resource's name and
    * namespace.
    *
