@@ -2360,6 +2360,100 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitTabletDoingRBS) {
   ASSERT_OK(WaitForTabletSplitCompletion(2));
 }
 
+TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitFullyReplicatedTabletDoingRBS) {
+  // A tablet that already has RF running voters must not be split while a fourth replica is being
+  // remote bootstrapped as PRE_VOTER. While the copy is in progress the destination reports the
+  // peer without a consensus state, so the master records it with member type UNKNOWN_MEMBER_TYPE
+  // rather than PRE_VOTER, and the check must not depend on seeing PRE_VOTER. Unlike
+  // DoNotSplitTabletDoingRBS, no voter is removed first, so the under-replication path does not
+  // apply here.
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows());
+
+  BuildTServerMap();
+
+  const auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto tablet_id = tablet->id();
+  const auto leader_idx = ASSERT_RESULT(GetLeaderIdx(tablet));
+  const auto leader_ts = cluster_->mini_tablet_server(leader_idx)->server();
+  const auto leader_id = leader_ts->permanent_uuid();
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto follower_id = cluster_->mini_tablet_server(follower_idx)->server()->permanent_uuid();
+  LOG(INFO) << "Source tablet id " << tablet_id;
+
+  // Start RBS of a fourth replica but pause it before downloading the WAL.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
+  AddTabletToNewTServer(tablet_id, leader_id, consensus::PeerMemberType::PRE_VOTER);
+
+  const auto new_ts_idx = cluster_->num_tablet_servers() - 1;
+  const auto new_ts_id = cluster_->mini_tablet_server(new_ts_idx)->server()->permanent_uuid();
+
+  // Wait for the destination's own heartbeat. From here on the replica is NOT_STARTED in the
+  // master's map and its member type is whatever the consensus-less report left there.
+  ASSERT_OK(itest::WaitUntilTabletInState(tablet, new_ts_id, tablet::NOT_STARTED));
+  {
+    const auto replicas = tablet->GetReplicaLocations();
+    const auto it = replicas->find(new_ts_id);
+    ASSERT_NE(it, replicas->end());
+    LOG(INFO) << "Bootstrapping replica as seen by the master: " << it->second.ToString();
+    ASSERT_NE(it->second.member_type, consensus::PeerMemberType::VOTER);
+  }
+
+  // The config change rebuilt the replica map, which leaves the original replicas in state UNKNOWN
+  // until each reports again. Wait for them, so that the refusal below can only be due to the
+  // bootstrapping replica and not to a voter that is momentarily "not running".
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (const auto& [ts_uuid, replica] : *tablet->GetReplicaLocations()) {
+      if (ts_uuid != new_ts_id &&
+          (replica.member_type != consensus::PeerMemberType::VOTER ||
+           replica.state != tablet::RaftGroupStatePB::RUNNING)) {
+        return false;
+      }
+    }
+    return true;
+  }, 20s * kTimeMultiplier, "Waiting for the original replicas to report RUNNING."));
+
+  // The check must refuse the split even though the tablet has exactly RF running voters. This is
+  // the regression assertion: the previous check only rejected PRE_VOTER and counted VOTERs, so it
+  // returned OK here.
+  {
+    const auto status = master::CheckLiveReplicasForSplit(
+        tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "being bootstrapped");
+  }
+
+  // Let the split manager run a few times; nothing must be split while the RBS is paused.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+  ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
+
+  // Let the RBS finish. The new peer is promoted to VOTER, which makes the tablet over-replicated,
+  // so still no split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto replicas = tablet->GetReplicaLocations();
+    const auto it = replicas->find(new_ts_id);
+    return it != replicas->end() && it->second.member_type == consensus::PeerMemberType::VOTER &&
+           it->second.state == tablet::RaftGroupStatePB::RUNNING;
+  }, 60s * kTimeMultiplier, "Waiting for the new replica to become a running voter."));
+  {
+    const auto status = master::CheckLiveReplicasForSplit(
+        tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "over replicated");
+  }
+  ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
+
+  // Remove one of the original followers to get back to RF voters; the split must now go through.
+  ASSERT_OK(itest::RemoveServer(
+      ts_map_[leader_id].get(), tablet_id, ts_map_[follower_id].get(), std::nullopt, kRpcTimeout));
+  ASSERT_OK(itest::WaitForTabletConfigChange(tablet, follower_id, consensus::REMOVE_SERVER));
+  ASSERT_OK(WaitForTabletSplitCompletion(2));
+}
+
 TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitOverReplicatedTablet) {
   // Test should not schedule automatic tablet split on over-replicated tablet.
 

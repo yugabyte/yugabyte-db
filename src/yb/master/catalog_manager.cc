@@ -3452,6 +3452,23 @@ Status CatalogManager::DoSplitTablet(
             source_tablet_info->tablet_id(),
             status);
       }
+
+      // Re-check the replica set right before the children are registered. The same check ran when
+      // the candidate was picked, up to a background-task interval ago, and a replica add (remote
+      // bootstrap) may have started since. Children are created with the parent's committed Raft
+      // config, so splitting now would copy the bootstrapping peer into both children.
+      const auto replication_info =
+          VERIFY_RESULT(GetTableReplicationInfoNoDefault(source_tablet_info->table()));
+      status = CheckLiveReplicasForSplit(
+          source_tablet_info->tablet_id(), *source_tablet_info->GetReplicaLocations(),
+          CatalogManagerUtil::GetReplicationFactor(replication_info));
+      if (!status.ok()) {
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Tablet split candidate $0 is no longer a valid split candidate: $1",
+            source_tablet_info->tablet_id(),
+            status);
+      }
     }
     // After this point, we expect to split the tablet.
 
