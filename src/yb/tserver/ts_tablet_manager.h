@@ -451,6 +451,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
 
+  // Background task that recomputes each tablet's DocDB SST statistics aggregate.
+  void ResyncSstStats();
+
   // Background task that emits metrics.
   void EmitMetrics();
 
@@ -861,6 +864,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // on the server, accounting for hardlinks.
   std::unique_ptr<TsDataSizeMetrics> ts_data_size_metrics_;
   std::unique_ptr<rpc::Poller> data_size_metric_updater_;
+
+  // Recomputes each tablet's DocDB SST statistics aggregate from its whole live file set.
+  std::unique_ptr<rpc::Poller> sst_stats_resync_poller_;
 
   std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 
