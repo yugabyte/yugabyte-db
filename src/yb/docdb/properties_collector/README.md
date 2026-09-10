@@ -171,11 +171,23 @@ Per row: one `DocKey::EncodedSize` walk, up to a handful of covering-write decod
 histogram increments. No allocation in steady state, no atomics, no floating point. The acceptance
 bar is end-to-end flush and compaction throughput with the flag on versus off.
 
+## The tablet aggregate
+
+`SstStatsAggregator` sums the additive scalars over one tablet's live files. It is maintained from
+the tablet's RocksDB event listener and resynced periodically from `DB::GetPropertiesOfAllTables`
+(`TableProperties::Add` drops `user_collected_properties`, so the built-in aggregation cannot be
+used). Both paths are needed: the listener because a full compaction that reclaims the garbage must
+be visible to the trigger at once rather than a resync interval later, the resync because the file
+set also changes without any event -- DB open, remote bootstrap, snapshot restore, split
+inheritance.
+
+The distributions do not aggregate this way. Bucket-wise merging is exact, but a set of files that
+shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per tablet against
+~250 bytes for the scalars, so tablet-level distributions are built on demand instead.
+
 ## Boundaries
 
-This component only produces the per-file record. Its consumers are separate: a per-tablet
-in-memory aggregate fed by the RocksDB listener (`TableProperties::Add` does not merge
-`user_collected_properties`, so aggregation goes through `SstStatsFromProperties`), the
+This component produces the per-file record and the per-tablet sum of it. The rest is separate: the
 `docdb_sst_*` Prometheus gauges for humans (additive scalars only; this metrics system exports no
 bucket vectors), and a full-compaction trigger clause that reads the aggregate directly. Every
 consumer must account for **coverage**: files that predate the collector carry no statistics, and a
