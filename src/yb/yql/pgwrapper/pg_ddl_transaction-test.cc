@@ -965,6 +965,10 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
       }
     }
   }
+  ASSERT_FALSE(table_id_after_drop.empty());
+  // Hold the TableInfo now: once the rollback below deletes this table, the catalog manager's
+  // background cleanup erases it from its table map and GetTableInfo returns null.
+  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN b", kTableName));
   ASSERT_OK(conn.Execute("RELEASE SAVEPOINT b"));
   ASSERT_OK(conn.Execute("SAVEPOINT c"));
@@ -986,9 +990,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_EQ(table_schema.columns()[1].name(), "a");
   ASSERT_EQ(table_schema.columns()[2].name(), "b");
 
-  ASSERT_FALSE(table_id_after_drop.empty());
   ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
-  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN e TEXT", kTableName));
