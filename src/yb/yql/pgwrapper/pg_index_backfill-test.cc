@@ -19,6 +19,7 @@
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
@@ -518,6 +519,7 @@ TEST_P(PgIndexBackfillTest, Unique) {
   const auto msg = status.message().ToBuffer();
   ASSERT_TRUE(msg.find("duplicate key value violates unique constraint") != std::string::npos)
       << status;
+  ASSERT_EQ(PgsqlError::ValueFromStatus(status), YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) << status;
 }
 
 // Make sure that indexes created in postgres nested DDL work and skip backfill (optimization).

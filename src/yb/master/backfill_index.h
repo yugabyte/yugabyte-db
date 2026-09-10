@@ -200,10 +200,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status MarkAllIndexesAsSuccess();
 
   Status MarkIndexesAsFailed(
-      const std::unordered_set<TableId>& indexes, const Status& failure_status);
+      const std::unordered_set<TableId>& indexes, const Status& backfill_status);
   Status MarkIndexesAsDesired(
       const std::unordered_set<TableId>& index_ids, BackfillJobPB_State state,
-      const Status& failure_status);
+      const Status& backfill_status);
 
   Status AlterTableStateToAbort();
   Status AlterTableStateToSuccess();

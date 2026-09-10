@@ -150,6 +150,8 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_backfill_error_message(backfill_error_message_);
   if (!backfill_status_.ok()) {
     StatusToPB(backfill_status_, pb->mutable_backfill_status());
+  } else {
+    pb->clear_backfill_status();
   }
   pb->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill_);
   pb->set_num_rows_backfilled_in_index(num_rows_backfilled_in_index_);
