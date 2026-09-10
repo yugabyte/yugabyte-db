@@ -10,10 +10,15 @@ BEGIN;
     proallargtypes, proargmodes, proargnames, proargdefaults, protrftypes,
     prosrc, probin, prosqlbody, proconfig, proacl) VALUES
     (8116, 'yb_tablegroup_size', 11, 10, 12, 1, 0, 0, '-', 'f',
-     false, false, true, false, 'v', 's', 1, 0, 20, '26',
+     false, false, true, false, 'v', 'r', 1, 0, 20, '26',
      NULL, NULL, NULL, NULL, NULL,
      'yb_tablegroup_size', NULL, NULL, NULL, NULL)
   ON CONFLICT DO NOTHING;
+
+  -- Restrict parallel use: this function RPCs to master for disk size.
+  UPDATE pg_catalog.pg_proc
+     SET proparallel = 'r'
+   WHERE oid = 8116 AND proparallel IS DISTINCT FROM 'r';
 
   INSERT INTO pg_catalog.pg_description (
     objoid, classoid, objsubid, description

@@ -12364,7 +12364,7 @@
 
 { oid => '8116',
   descr => 'Disk size in bytes of a tablegroup colocation parent tablet (leader SST+WAL)',
-  proname => 'yb_tablegroup_size', provolatile => 'v',
+  proname => 'yb_tablegroup_size', provolatile => 'v', proparallel => 'r',
   prorettype => 'int8', proargtypes => 'oid',
   prosrc => 'yb_tablegroup_size' },
 ]
