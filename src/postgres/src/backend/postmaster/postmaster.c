@@ -2491,15 +2491,14 @@ retry1:
 									 "YbInternalConnKind wire names.")));
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && !YbIsAuthPassthroughInProgress(port)
 					 && strcmp(nameptr, "yb_dist_traceparent") == 0)
 			{
 				/*
-				 * Stash traceparent for InitPostgres, which turns it into the
-				 * corresponding GUC. Skipped under auth passthrough, where this
-				 * allocates in the auth transaction's context.
+				 * Not a registered GUC, so consume it here even when auth
+				 * passthrough discards it: it must not reach guc_options.
 				 */
-				port->yb_dist_traceparent = pstrdup(valptr);
+				if (!YbIsAuthPassthroughInProgress(port))
+					port->yb_dist_traceparent = pstrdup(valptr);
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{

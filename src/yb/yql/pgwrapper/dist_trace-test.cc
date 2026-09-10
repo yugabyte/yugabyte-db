@@ -1079,6 +1079,24 @@ class DistTraceTxnHeartbeatTest : public DistTraceTest {
   }
 };
 
+class DistTraceConnMgrTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->replication_factor = 1;
+    options->enable_ysql_conn_mgr = true;
+    // Any non-empty endpoint enables tracing, which yb_dist_tracecontext requires; no
+    // collector needs to listen.
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "otel_collector_traces_endpoint");
+    options->extra_tserver_flags.push_back(
+        "--otel_collector_traces_endpoint=http://127.0.0.1:1");
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+};
+
 }  // namespace
 
 TEST_F(DistTraceTest, TestTraceparentComment) {
@@ -2604,6 +2622,30 @@ TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterPkRewriteOnPublishedTable) {
   ASSERT_EQ(
       ASSERT_RESULT(conn_->FetchRow<std::string>(
           "SELECT count(*)::text FROM pk_rewrite_test")), "2");
+}
+
+TEST_F(DistTraceConnMgrTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TraceparentStartupParamViaConnMgr)) {
+  const auto tp = GenerateTraceparent();
+
+  // Direct backend connection: the startup param populates yb_dist_tracecontext.
+  auto direct_conn = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .traceparent = tp.full,
+  }).Connect());
+  ASSERT_EQ(
+      ASSERT_RESULT(direct_conn.FetchRow<std::string>("SHOW yb_dist_tracecontext")),
+      Format("traceparent='$0'", tp.full));
+
+  // Conn mgr replays the startup packet under auth passthrough; the param must be discarded.
+  auto conn_mgr_conn = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->ysql_port(),
+      .traceparent = tp.full,
+  }).Connect());
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_mgr_conn.FetchRow<std::string>("SHOW yb_dist_tracecontext")), "");
 }
 
 }  // namespace yb::pgwrapper
