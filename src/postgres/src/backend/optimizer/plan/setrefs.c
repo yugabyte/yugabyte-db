@@ -187,6 +187,10 @@ static List *set_windowagg_runcondition_references(PlannerInfo *root,
 												   List *runcondition,
 												   Plan *plan);
 
+/* YB declarations */
+static void yb_fix_merge_scan_saops(PlannerInfo *root,
+									YbMergeScanInfo *yb_merge_scan_info,
+									int rtoffset, double num_exec);
 
 /*****************************************************************************
  *
@@ -654,6 +658,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				splan->indexorderbyorig =
 					fix_scan_list(root, splan->indexorderbyorig,
 								  rtoffset, NUM_EXEC_QUAL(plan));
+				yb_fix_merge_scan_saops(root, splan->yb_merge_scan_info,
+										rtoffset, NUM_EXEC_QUAL(plan));
 			}
 			break;
 		case T_IndexOnlyScan:
@@ -1460,6 +1466,8 @@ set_indexonlyscan_references(PlannerInfo *root,
 	/* indextlist must NOT be transformed to reference index columns */
 	plan->indextlist = fix_scan_list(root, plan->indextlist,
 									 rtoffset, NUM_EXEC_TLIST((Plan *) plan));
+	yb_fix_merge_scan_saops(root, plan->yb_merge_scan_info,
+							rtoffset, NUM_EXEC_QUAL((Plan *) plan));
 
 	pfree(index_itlist);
 
@@ -3749,4 +3757,34 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 	fix_expr_common(context, node);
 	return expression_tree_walker(node, extract_query_dependencies_walker,
 								  (void *) context);
+}
+
+/*
+ * yb_fix_merge_scan_saops
+ *		Do set_plan_refs processing on the merge scan SAOPs of an index scan.
+ *
+ * These are the scalar array ops the planner pinned as merge scan stream keys
+ * (see yb_merge_scan.c).  Their left-hand side holds Vars of the scanned
+ * relation, so they need the same range table offsetting as every other
+ * expression on the node. Otherwise EXPLAIN VERBOSE, which deparses them
+ * as "Merge Cond", resolves a varno still at its subquery-local value
+ * against an unrelated entry of the flat range table.
+ */
+static void
+yb_fix_merge_scan_saops(PlannerInfo *root, YbMergeScanInfo *yb_merge_scan_info,
+						int rtoffset, double num_exec)
+{
+	ListCell   *lc;
+
+	if (yb_merge_scan_info == NULL)
+		return;
+
+	foreach(lc, yb_merge_scan_info->saop_cols)
+	{
+		YbMergeScanSaopColInfo *saop_col =
+			lfirst_node(YbMergeScanSaopColInfo, lc);
+
+		saop_col->saop = (ScalarArrayOpExpr *)
+			fix_scan_expr(root, (Node *) saop_col->saop, rtoffset, num_exec);
+	}
 }
