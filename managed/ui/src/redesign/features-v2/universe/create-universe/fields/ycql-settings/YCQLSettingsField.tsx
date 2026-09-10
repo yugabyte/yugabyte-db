@@ -17,7 +17,7 @@ import { YCQL_FIELD, YCQL_AUTH_FIELD, YCQL_PASSWORD_FIELD, YCQL_CONFIRM_PWD } fr
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box } = mui;
 
@@ -49,9 +49,11 @@ export const YCQField: FC<YCQLProps> = ({ disabled }) => {
               dataTestId="ycql-settings-field"
               disabled={disabled}
             />
-            <span>
-              <InfoIcon />
-            </span>
+            <YBTooltip title={t('ycqlSettings.enableYCQLHelper')}>
+              <span>
+                <InfoIcon />
+              </span>
+            </YBTooltip>
           </div>
         </Box>
       </Box>

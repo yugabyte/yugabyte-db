@@ -28,6 +28,8 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -193,15 +195,6 @@ void MasterTabletServer::get_ysql_db_catalog_version(
       *last_breaking_version = UINT64_MAX;
     }
   };
-  // Ensure that we are currently the Leader before handling catalog version.
-  {
-    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-    if (!l.IsInitializedAndIsLeader()) {
-      LOG(WARNING) << l.failed_status_string();
-      fill_vers();
-      return;
-    }
-  }
 
   Status s = db_oid == kPgInvalidOid
                  ? master_->catalog_manager()->GetYsqlCatalogVersion(
@@ -339,6 +332,11 @@ const std::string& MasterTabletServer::permanent_uuid() const {
 Result<std::string> MasterTabletServer::GetUniverseUuid() const {
   LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
   return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
+}
+
+std::optional<docdb::ObjectLockSharedStateHolder>
+MasterTabletServer::AllocateObjectLockSharedState() const {
+  return std::nullopt;
 }
 
 rpc::ServiceIfPtr MasterTabletServer::CreateCDCService(

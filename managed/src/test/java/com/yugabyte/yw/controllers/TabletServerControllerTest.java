@@ -21,19 +21,19 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Result;
 
 public class TabletServerControllerTest extends FakeDBApplication {
   private TabletServerController tabletController;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private ListTabletServersResponse mockResponse;
   private final HostAndPort testHostAndPort = HostAndPort.fromString("0.0.0.0").withDefaultPort(11);
 
   @Before
   public void setUp() throws Exception {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockClient.listTabletServers()).thenReturn(mockResponse);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(testHostAndPort);

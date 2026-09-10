@@ -5,14 +5,13 @@ package com.yugabyte.yw.commissioner.tasks;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -23,9 +22,12 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
+import java.util.TreeSet;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 @Abortable
@@ -58,24 +60,66 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
     if (isFirstTry) {
       taskParams().verifyParams(getUniverse(), getNodeState(), isFirstTry);
       Universe universe = getUniverse();
-      for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        if (cluster.userIntent.providerType == CloudType.onprem) {
-          Provider provider =
-              Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-          if (provider.getDetails().skipProvisioning) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "ProvisionUniverseNodes is not supported for on-prem universes with"
-                    + " manual provisioning (skip_provisioning enabled).");
-          }
-        }
-      }
+      validateNodes(universe);
     }
+  }
+
+  /**
+   * Returns a set for node names to process. If it is not provided in task params, using that of
+   * for all the universe nodes;
+   *
+   * @return
+   */
+  private Set<String> getNodeNames() {
+    if (!CollectionUtils.isEmpty(taskParams().nodeNames)) {
+      return new HashSet<>(taskParams().nodeNames);
+    }
+    // An empty (or null) nodeNames set means "all nodes" - preserve the existing behavior.
+    return getUniverse().getNodes().stream()
+        .map(NodeDetails::getNodeName)
+        .collect(Collectors.toSet());
   }
 
   @Override
   protected MastersAndTservers calculateNodesToBeRestarted() {
-    return fetchNodes(UpgradeOption.ROLLING_UPGRADE);
+    MastersAndTservers allNodes = fetchNodes(UpgradeOption.ROLLING_UPGRADE);
+    Set<String> nodeNames = getNodeNames();
+    // Only re-provision the nodes explicitly requested in the API, keeping the computed
+    // restart order intact.
+    return new MastersAndTservers(
+        allNodes.mastersList.stream()
+            .filter(node -> nodeNames.contains(node.nodeName))
+            .collect(Collectors.toList()),
+        allNodes.tserversList.stream()
+            .filter(node -> nodeNames.contains(node.nodeName))
+            .collect(Collectors.toList()));
+  }
+
+  // Rejects the request if any requested node name is not part of the universe, so an invalid
+  // selection fails fast instead of silently re-provisioning nothing (or the wrong nodes).
+  // Also verifying that all the nodes are not manually provisioned.
+  private void validateNodes(Universe universe) {
+    Set<String> unknownNodeNames = new TreeSet<>(getNodeNames());
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    for (NodeDetails node : universe.getNodes()) {
+      if (unknownNodeNames.remove(node.nodeName)) {
+        Provider provider = providerGetter.apply(node);
+        if (provider.isManualOnprem()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "ProvisionUniverseNodes is not supported for on-prem universes with"
+                  + " manual provisioning (skip_provisioning enabled).");
+        }
+      }
+    }
+    if (!unknownNodeNames.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "The following node names do not exist in universe "
+              + universe.getUniverseUUID()
+              + ": "
+              + unknownNodeNames);
+    }
   }
 
   @Override
@@ -108,22 +152,42 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
 
             List<NodeDetails> singleNode = Collections.singletonList(node);
 
-            createSetNodeStateTasks(singleNode, getNodeState())
-                .setSubTaskGroupType(getTaskSubGroupType());
-
+            // This talks to the master leader, so it must run irrespective of the node state.
             createCheckNodesAreSafeToTakeDownTask(
                 Collections.singletonList(MastersAndTservers.from(node, processTypes)),
                 getTargetSoftwareVersion(),
                 false);
 
-            for (ServerType processType : processTypes) {
-              createServerControlTask(node, processType, "stop")
-                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+            // Stop the processes only when the node is still Live. On retry, the node may already
+            // be past Live (Stopped/Reprovisioning) because a previous attempt removed the node
+            // agent as part of re-provisioning. Since the node agent is mandatory for server
+            // control, re-issuing the stop would fail. Gating on the node state and marking the
+            // node Stopped before re-provisioning keeps this idempotent across retries.
+            if (node.state == NodeState.Live) {
+              for (ServerType processType : processTypes) {
+                createServerControlTask(node, processType, "stop")
+                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+              }
+
+              // Intentionally short-lived: it flips to Reprovisioning right below. Persisting
+              // Stopped here is the point at which the node leaves Live, so a retry that fails
+              // anywhere in the re-provisioning that follows will skip the stop above.
+              createSetNodeStateTasks(singleNode, NodeState.Stopped)
+                  .setSubTaskGroupType(getTaskSubGroupType());
             }
+
+            createSetNodeStateTasks(singleNode, getNodeState())
+                .setSubTaskGroupType(getTaskSubGroupType());
 
             createSetupYNPTask(universe, singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-            createYNPProvisioningTask(universe, singleNode, false)
+            createYNPProvisioningTask(
+                    universe,
+                    singleNode,
+                    (n, p) -> {
+                      p.isSoftwarePresent = true;
+                      p.isDataPresent = true;
+                    })
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             createInstallNodeAgentTasks(universe, singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);

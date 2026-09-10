@@ -43,6 +43,8 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
 

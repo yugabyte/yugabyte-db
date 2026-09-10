@@ -63,10 +63,11 @@ func (u userCheck) Execute() Result {
 	// User is not found, fail if we are not allowed to create it. Otherwise, ask for explicit
 	// permission. This is to ensure that the customer is okay with the user being created
 	// by the install workflow.
-	if uname != "yugabyte" {
+	if uname != common.DefaultServiceUser {
 		res.Error = fmt.Errorf("custom user '%s' is expected to exist, please create the user or "+
-			"update the config back to the default user.", uname)
+			"update the config back to the default user", uname)
 		res.Status = StatusCritical
+		return res
 	}
 	prompt := fmt.Sprintf("Create the '%s' user to run YugabyteDB Anywhere services:", uname)
 	if !common.UserConfirm(prompt, common.DefaultNone) {

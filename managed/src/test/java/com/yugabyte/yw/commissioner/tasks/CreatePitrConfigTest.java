@@ -36,14 +36,14 @@ import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ListSnapshotsResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterTypes;
 
 public class CreatePitrConfigTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final String TEST_KEYSPACE = "test-keyspace";
   private static final String TEST_KEYSPACE_ID = "87d2d6473b3645f7ba56d9e3f7dae239";
@@ -54,7 +54,7 @@ public class CreatePitrConfigTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUpBase();
     defaultUniverse = ModelFactory.createUniverse();
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 

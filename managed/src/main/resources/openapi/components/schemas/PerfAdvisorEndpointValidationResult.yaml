@@ -1,0 +1,32 @@
+title: PerfAdvisorEndpointValidationResult
+description: |
+  PerfAdvisorEndpointValidationResult
+
+  The result of probing both of an endpoint's destinations from a collector. Reported whole rather
+  than failing on the first problem, because a new destination usually has both endpoints wrong and
+  one round trip per mistake is a poor way to find that out.
+type: object
+properties:
+  valid:
+    description: True when every check passed.
+    type: boolean
+    readOnly: true
+  checks:
+    description: One entry per probed endpoint.
+    type: array
+    items:
+      type: object
+      properties:
+        field:
+          description: |
+            The property the operator has to fix, so a caller can attach the message to the right
+            input.
+          type: string
+          example: collectionEndpoint
+        ok:
+          type: boolean
+        message:
+          description: 'What went wrong, written for the operator. Unset when the check passed.'
+          type: string
+          example: 'The Collection API at https://byoc.cloud.yugabyte.com rejected these credentials'
+    readOnly: true

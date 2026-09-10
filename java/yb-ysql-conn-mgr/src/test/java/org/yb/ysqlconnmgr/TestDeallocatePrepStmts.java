@@ -15,9 +15,9 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 import static org.yb.ysqlconnmgr.PgWireProtocol.*;
 
@@ -61,9 +61,6 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    // Deallocate support has been added only in optimized
-    // extended query protocol mode.
-    // GH: #30412 Adds the support in unoptimized mode as well.
     builder.addCommonTServerFlag(
       "ysql_conn_mgr_optimized_extended_query_protocol", "true");
     builder.addCommonTServerFlag("ysql_conn_mgr_log_settings",
@@ -95,13 +92,15 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   }
 
   @Test
-  public void testClosePacket() throws Exception {
+  public void testCloseNeverDeallocates() throws Exception {
     // The following test, tests behaviour of CLOSE packet with conn mgr.
-    // It tests if:
+    // CLOSE is a full no-op: the client gets CloseComplete and the backend
+    // retains the prepared statement whether its plan is valid or not;
+    // reclamation happens only via LRU trim at detach. It tests if:
     // 1. CLOSE packet sent for valid prepared statement then DB doesn't
     // deallocate the prepared statement.
-    // 2. CLOSE packet sent for invalid prepared statement then DB
-    // deallocates the prepared statement.
+    // 2. CLOSE packet sent for invalid prepared statement doesn't deallocate
+    // it either.
     // 3. CLOSE packet is sent on backend where entry does not exist, it should
     // be no-op similar to PG.
 
@@ -166,25 +165,30 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         try {
           pstmt.execute();
           LOG.info("JDBC internally retried after getting cache plan error");
-          // JDBC must have sent CLOSE packet on getting cache plan error.
-          // The invalid prepared statement must have been deallocated & conn mgr would have
-          // removed it's entry from server hashmap.
-          // The followed PARSE must have succeeded by creating a new cache plan on server.
+          // JDBC must have sent CLOSE packet on getting cache plan error,
+          // followed by a PARSE under a new name which succeeded by creating
+          // a new cache plan on server.
         }
         catch (Exception e) {
           LOG.error("Got an unexpected error while executing prepared statement: ", e);
           fail("Got an unexpected error while executing prepared statement: " + e.getMessage());
         }
 
+        // The CLOSE sent during the retry is a no-op, so the invalidated
+        // prepared statement is retained on the backend alongside the two
+        // valid ones (first prepare + retry's re-prepare).
         rs = stmt.executeQuery(queryPgPreparedStatements);
+        int rowCount = 0;
+        boolean invalidStmtRetained = false;
         while (rs.next()) {
-          assertNotEquals("Prepared statement " + rs.getString("name") +
-                      " should have been deallocated",
-                      secondPrepareTime, rs.getString("prepare_time"));
+          rowCount++;
+          if (secondPrepareTime.equals(rs.getString("prepare_time"))) {
+            invalidStmtRetained = true;
+          }
         }
-
-        // This ensures after ALTER TABLE, the prepared statement became invalid and
-        // got deallocated.
+        assertEquals(3, rowCount);
+        assertTrue("Invalidated prepared statement should be retained on the backend",
+                   invalidStmtRetained);
 
         // Wait for single backend to get expired out.
         Thread.sleep(4 * IDLE_TIME * 1000);
@@ -335,22 +339,22 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         stmt.execute("DEALLOCATE ALL");
         rs = stmt.executeQuery(QUERY_ALL_PREP_STMTS);
         matchCount = 0;
+        boolean sqlStmtFound = false;
         while (rs.next()) {
           String name = rs.getString("name");
           String statement = rs.getString("statement");
           LOG.info("name: {}, statement: {}", name, statement);
           if (statement.equals(SELECT_QUERY1) ||
               statement.equals(SELECT_QUERY2) ||
-              statement.equals(SELECT_QUERY3) ||
-              name.equals("testplan")) matchCount++;
+              statement.equals(SELECT_QUERY3)) matchCount++;
+          if (name.equals("testplan")) sqlStmtFound = true;
         }
-        assertEquals("Expected all of the prepared statements to be " +
-                      "deallocated since connection is sticky",
-                      0, matchCount);
+        assertEquals("Expected protocol-level prepared statements to be " +
+                      "retained by DEALLOCATE ALL even on a sticky connection",
+                      3, matchCount);
+        assertFalse("Expected SQL-level prepared statement to be dropped " +
+                      "by DEALLOCATE ALL", sqlStmtFound);
 
-        // Make sure conn mgr server hashmaps are updated.
-        // JDBC send CLOSE followed by PARSE with new name, so prev statements
-        // has been evicted from server hashmaps can't be verified here.
         pstmt1.execute();
         pstmt2.execute();
         pstmt3.execute();
@@ -413,12 +417,12 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
     pstmt3.execute();
   }
 
-  // Verifies that DEALLOCATE drops all invalid protocol-level prepared
-  // statements and preserves valid ones across four plan-invalidation
-  // triggers. Each round follows the same pattern: confirm DEALLOCATE of an
-  // unknown name is a no-op while plans are valid, trigger invalidation,
-  // then confirm DEALLOCATE drops the now-invalid plans and re-execution
-  // re-creates them.
+  // Verifies that DEALLOCATE of a name the backend doesn't know is a silent
+  // no-op for conn mgr clients (vanilla PG raises "prepared statement does
+  // not exist"), and that protocol-level prepared statements survive it
+  // regardless of plan validity. Each round triggers a plan invalidation,
+  // confirms DEALLOCATE still retains the (now-invalid) statements, and
+  // confirms re-execution succeeds via Bind-time replan.
   //
   // Invalidation triggers tested (in order):
   //   1. CREATE TEMP TABLE: adds pg_temp to the effective search_path.
@@ -428,7 +432,7 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   //   4. DROP SCHEMA: removes a schema from the effective search_path,
   //                    detected by OverrideSearchPathMatchesCurrent.
   @Test
-  public void testDeallocateDueToPlanInvalidation() throws Exception {
+  public void testDeallocateNoOpAcrossPlanInvalidation() throws Exception {
 
     Properties props = new Properties();
     props.setProperty("prepareThreshold", "1");
@@ -453,11 +457,11 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       // Round 1: CREATE TEMP TABLE adds pg_temp to search_path.
       stmt.execute("CREATE TEMP TABLE test_table(id int)");
       stmt.execute("DEALLOCATE RandomName");
-      assertEquals("Plans should be dropped after CREATE TEMP TABLE", 0,
+      assertEquals("Plans should be retained after CREATE TEMP TABLE", 3,
                     countMatchingPrepStmts(stmt));
 
       reExecutePrepStmts(pstmt1, pstmt2, pstmt3);
-      assertEquals("Plans should be re-created after re-execution", 3,
+      assertEquals("Plans should be retained after re-execution", 3,
                     countMatchingPrepStmts(stmt));
     }
 
@@ -475,35 +479,44 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
 
       stmt.execute("CREATE SCHEMA test_schema");
       stmt.execute("DEALLOCATE RandomName");
-      assertEquals("Plans should be dropped after CREATE SCHEMA", 0,
+      assertEquals("Plans should be retained after CREATE SCHEMA", 3,
                     countMatchingPrepStmts(stmt));
 
       reExecutePrepStmts(pstmt1, pstmt2, pstmt3);
-      assertEquals("Plans should be re-created after re-execution", 3,
+      assertEquals("Plans should be retained after re-execution", 3,
                     countMatchingPrepStmts(stmt));
 
-      // Round 3: SET search_path changes the effective namespace path.
-      stmt.execute("SET search_path TO test_schema, public");
+      // Round 3: changing search_path changes the effective namespace path.
+      // Use set_config instead of a literal SET statement: pgjdbc detects
+      // "SET search_path" and invalidates its client-side statement cache,
+      // which would re-prepare everything under new names.
+      stmt.execute(
+          "SELECT set_config('search_path', 'test_schema, public', false)");
       stmt.execute("DEALLOCATE RandomName");
-      assertEquals("Plans should be dropped after SET search_path", 0,
+      assertEquals("Plans should be retained after search_path change", 3,
                     countMatchingPrepStmts(stmt));
 
       reExecutePrepStmts(pstmt1, pstmt2, pstmt3);
-      assertEquals("Plans should be re-created after re-execution", 3,
+      assertEquals("Plans should be retained after re-execution", 3,
                     countMatchingPrepStmts(stmt));
 
       // Round 4: DROP SCHEMA removes a schema from the effective path.
       stmt.execute("DROP SCHEMA test_schema CASCADE");
       stmt.execute("DEALLOCATE RandomName");
-      assertEquals("Plans should be dropped after DROP SCHEMA", 0,
+      assertEquals("Plans should be retained after DROP SCHEMA", 3,
+                    countMatchingPrepStmts(stmt));
+
+      reExecutePrepStmts(pstmt1, pstmt2, pstmt3);
+      assertEquals("Plans should be retained after re-execution", 3,
                     countMatchingPrepStmts(stmt));
     }
   }
 
-  // Verifies deallocation (via CLOSE) and re-prepare of same name prepared
-  // statement before SYNC is a successful operation with conneciton manager.
-  // Along with it, verifies if error come in between, conn mgr state should
-  // be restored correctly.
+  // Verifies Close and re-prepare of same name prepared statement before SYNC
+  // is a successful operation with connection manager, including when the
+  // statement's cached plan has been invalidated (the re-Parse is forwarded
+  // as a ForceParse, which drops the invalid plan and recreates the
+  // statement), and including when an error occurs mid-pipeline.
   //
   // Wire sequence:
   //   Pipeline 1: Parse(s1, "SELECT 1") + Bind(s1) + Execute + Sync
@@ -512,11 +525,10 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   //   Pipeline 4: Close(s1) + Parse(bad SQL) + Parse(s1) + Sync
   //   Pipeline 5: Parse(s1) + Bind(s1) + Execute + Sync
   //
-  // Without the close-hashmap fix, the Close in pipeline 2 would evict the
-  // server-hashmap entry, causing the subsequent Bind in pipeline 3 to fail
-  // with "operator was not prepared by this client".
+  // Close is a full no-op (the backend just replies CloseComplete), so the
+  // Bind in pipeline 3 must find s1 still live on the backend.
   @Test
-  public void testCloseThenReparseSameStmtUsesDeferredEviction() throws Exception {
+  public void testCloseThenReparseSameStmt() throws Exception {
     Map<String, String> tserverFlags = new HashMap<>();
     tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
     tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
@@ -570,9 +582,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       assertEquals("Unexpected trailing bytes after pipeline 1",
           0, in.available());
 
-      // Invalidate s1's cached plan via a search_path change. So
-      // pipeline 2 CLOSE could actually deallocate the prep stmt
-      // as plan would become invalid.
+      // Invalidate s1's cached plan via a search_path change, so the
+      // ForceParse in pipeline 2 exercises its drop-if-invalid path.
       out.write(buildQuery("SET search_path TO pg_catalog, public"));
       out.flush();
       LOG.info("Sent: SET search_path TO pg_catalog, public");
@@ -590,12 +601,10 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
           0, in.available());
 
       // Pipeline 2: Close(s1) + re-Parse(s1) + Bind(s1) + Execute + Sync.
-      // Conn mgr would forward force parse on receiving parse packet after
-      // close packet.
-      // The customCloseComplete would defer the removal of entry from server
-      // hashmap until RFQ by adding it in close hashmap. The
-      // forceParseComplete would remove the entry from close hashmap to avoid
-      // deleting the entry from server hashmap.
+      // Close is a no-op returning CloseComplete. The re-Parse is forwarded
+      // as a ForceParse: the backend drops the invalidated plan and recreates
+      // the statement, then acks with YbParseComplete which re-records it in
+      // the server hashmap.
       pipeline.reset();
       pipeline.write(buildClosePreparedStatement("s1"));
       pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
@@ -628,8 +637,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
           0, in.available());
 
       // Pipeline 3: Bind(s1) + Execute + Sync.
-      // s1 must still be live on the backend because the deferred close was
-      // cancelled by the NoParseParseComplete in pipeline 2.
+      // s1 must still be live on the backend: the Close in pipeline 2 was a
+      // no-op and the re-Parse's ack re-recorded it in the server hashmap.
       pipeline.reset();
       pipeline.write(buildBind("s1", new String[0]));
       pipeline.write(buildExecute());
@@ -648,8 +657,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         PgMessage msg = readMessageSkipNotice(in);
         LOG.info("pipeline 3 [" + i + "]: " + msg);
         if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 3 (deferred close was not "
-              + "cancelled): " + new String(msg.body, StandardCharsets.UTF_8));
+          fail("Unexpected error in pipeline 3 (s1 not live after no-op "
+              + "Close): " + new String(msg.body, StandardCharsets.UTF_8));
         }
         assertEquals("pipeline 3 type mismatch at " + i,
             expected[i], msg.type);
@@ -675,10 +684,11 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
           0, in.available());
 
       // Pipeline 4: Close(s1) + Parse(bad SQL) + Parse(s1) + Sync.
-      // Close(s1), backend sends CloseComplete, Odyssey defers eviction
-      //                   into yb_close_prep_stmts.
+      // Close(s1): no-op, backend sends CloseComplete.
       // Parse(bad SQL): backend returns ErrorResponse; so all subsequent messages
-      //                   are discarded by the backend until Sync.
+      //                   are discarded by the backend until Sync. The discarded
+      //                   Parse(s1) never acks, so the server hashmap needs no
+      //                   reconciliation.
       // Expected wire responses: CloseComplete, ErrorResponse, ReadyForQuery.
       pipeline.reset();
       pipeline.write(buildClosePreparedStatement("s1"));
@@ -729,7 +739,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         LOG.info("pipeline 5 [" + i + "]: " + msg);
         if (msg.type == BE_ERROR_RESPONSE) {
           fail("Unexpected error in pipeline 5 (s1 was not re-parsed after "
-              + "drain): " + new String(msg.body, StandardCharsets.UTF_8));
+              + "the failed pipeline): " +
+              new String(msg.body, StandardCharsets.UTF_8));
         }
         assertEquals("pipeline 5 type mismatch at " + i,
             expected[i], msg.type);
@@ -742,9 +753,10 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
     }
   }
 
-  // Verifies deallocation (via DEALLOCATE ALL) and re-prepare of same name
-  // prepared statement before SYNC is a successful operation with connection
-  // manager.
+  // Verifies DEALLOCATE ALL (a protocol-level-statement no-op under conn mgr)
+  // followed by re-prepare of the same name before SYNC is a successful
+  // operation with connection manager, and that a bare Bind in the next
+  // pipeline still finds the statement.
   // Wire sequence:
   //   Pipeline 1 : Parse(s1,"SELECT 1") + Bind(s1) + Execute + Sync
   //   SET search_path (invalidates s1's cached plan)
@@ -806,8 +818,9 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       assertEquals("Unexpected trailing bytes after pipeline 1",
           0, in.available());
 
-      // Invalidate s1's cached plan so that the backend will re-plan when it
-      // re-creates the statement after the DEALLOCATE ALL.
+      // Invalidate s1's cached plan so that the re-Parse in pipeline 2
+      // exercises ForceParse's drop-if-invalid path (DEALLOCATE ALL itself
+      // retains the statement).
       out.write(buildQuery("SET search_path TO pg_catalog, public"));
       out.flush();
       LOG.info("Sent: SET search_path TO pg_catalog, public");
@@ -852,8 +865,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         PgMessage msg = readMessageSkipNotice(in);
         LOG.info("pipeline 2 [" + i + "]: " + msg);
         if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 2 (deferred eviction after "
-              + "DEALLOCATE ALL was not cancelled): " +
+          fail("Unexpected error in pipeline 2 (re-parse of s1 after "
+              + "DEALLOCATE ALL failed): " +
               new String(msg.body, StandardCharsets.UTF_8));
         }
         assertEquals("pipeline 2 type mismatch at " + i,
@@ -863,8 +876,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
           0, in.available());
 
       // Pipeline 3: Bind(s1) + Execute + Sync.
-      // s1 was re-created in pipeline 2 (deferred eviction cancelled), so a
-      // bare Bind must succeed without any prior Parse in this pipeline.
+      // s1 was re-created in pipeline 2, so a bare Bind must succeed without
+      // any prior Parse in this pipeline.
       pipeline.reset();
       pipeline.write(buildBind("s1", new String[0]));
       pipeline.write(buildExecute());
@@ -883,8 +896,180 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         PgMessage msg = readMessageSkipNotice(in);
         LOG.info("pipeline 3 [" + i + "]: " + msg);
         if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 3 (s1 not live after DEALLOCATE ALL "
-              + "deferred eviction was cancelled): " +
+          fail("Unexpected error in pipeline 3 (s1 not live after "
+              + "DEALLOCATE ALL + re-parse): " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 3 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 3",
+          0, in.available());
+
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
+  // The conn mgr retain semantics must not leak to regular PG clients: on a
+  // direct PG connection, DEALLOCATE keeps vanilla behavior for
+  // protocol-level prepared statements.
+  @Test
+  public void testVanillaDeallocateOnDirectPgConnection() throws Exception {
+    Properties props = new Properties();
+    // Make sure to use named prepared statements.
+    props.setProperty("prepareThreshold", "1");
+    String queryPgPreparedStatements =
+        "SELECT name FROM pg_prepared_statements WHERE statement = '" +
+        SELECT_QUERY1 + "'";
+    setUpTestTableAndCleanBackends();
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+            .connect(props);
+        Statement stmt = conn.createStatement()) {
+
+      PreparedStatement pstmt = conn.prepareStatement(SELECT_QUERY1);
+      pstmt.execute();
+      ResultSet rs = stmt.executeQuery(queryPgPreparedStatements);
+      assertTrue("Expected the protocol-level prepared statement to exist",
+          rs.next());
+      String name = rs.getString("name");
+      assertFalse(rs.next());
+
+      // DEALLOCATE <name> of a protocol-level prepared statement drops it.
+      stmt.execute(String.format("DEALLOCATE \"%s\"", name));
+      rs = stmt.executeQuery(queryPgPreparedStatements);
+      assertFalse("Expected DEALLOCATE to drop the protocol-level prepared " +
+          "statement on a direct PG connection", rs.next());
+
+      // DEALLOCATE of a nonexistent statement raises an error.
+      try {
+        stmt.execute("DEALLOCATE RandomName");
+        fail("Expected DEALLOCATE of a nonexistent prepared statement to " +
+            "fail on a direct PG connection");
+      } catch (SQLException e) {
+        assertTrue("Unexpected error: " + e.getMessage(),
+            e.getMessage().contains(
+                "prepared statement \"randomname\" does not exist"));
+      }
+
+      // DEALLOCATE ALL drops protocol-level prepared statements. Count only
+      // the statements this test created: with prepareThreshold=1 the
+      // verification query itself gets server-prepared before executing and
+      // would otherwise see itself.
+      PreparedStatement pstmt2 = conn.prepareStatement(SELECT_QUERY2);
+      pstmt2.execute();
+      stmt.execute("DEALLOCATE ALL");
+      rs = stmt.executeQuery(QUERY_ALL_PREP_STMTS);
+      while (rs.next()) {
+        String statement = rs.getString("statement");
+        assertFalse("Expected DEALLOCATE ALL to drop \"" + statement +
+            "\" on a direct PG connection",
+            statement.equals(SELECT_QUERY1) || statement.equals(SELECT_QUERY2));
+      }
+    }
+  }
+
+  // A Bind of a statement whose only Parse failed surfaces the parse error
+  // (conn mgr misses the server hashmap and redeploys the statement, and the
+  // redeploy fails the same way) instead of tearing down the connection, and
+  // the name remains reusable afterwards.
+  //
+  // Wire sequence:
+  //   Pipeline 1: Parse(s2, bad SQL) + Sync             -> Error + RFQ
+  //   Pipeline 2: Bind(s2) + Execute + Sync             -> Error + RFQ
+  //   Pipeline 3: Parse(s2, "SELECT 1") + Bind(s2) + Execute + Sync
+  @Test
+  public void testBindAfterFailedParse() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    LOG.info("Connecting raw socket to Odyssey at " + addr);
+
+    final int SOCKET_TIMEOUT_MS = 10000;
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete, connection is ready");
+
+      // Pipeline 1: the only Parse of s2 fails.
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("s2", "THIS IS NOT VALID SQL $$$$", new int[0]));
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 1: P(s2, bad SQL)+Sync");
+
+      PgMessage msg = readMessageSkipNotice(in);
+      LOG.info("pipeline 1 [0]: " + msg);
+      assertEquals("Expected an error for the bad Parse",
+          BE_ERROR_RESPONSE, msg.type);
+      String errorBody = new String(msg.body, StandardCharsets.UTF_8);
+      assertTrue("Expected a syntax error, got: " + errorBody,
+          errorBody.contains("syntax error"));
+      msg = readMessageSkipNotice(in);
+      LOG.info("pipeline 1 [1]: " + msg);
+      assertEquals(BE_READY_FOR_QUERY, msg.type);
+      assertEquals("Unexpected trailing bytes after pipeline 1",
+          0, in.available());
+
+      // Pipeline 2: bare Bind of s2. Conn mgr redeploys the (bad) statement
+      // and the resulting parse error is surfaced to the client.
+      pipeline.reset();
+      pipeline.write(buildBind("s2", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 2: B(s2)+E+Sync");
+
+      msg = readMessageSkipNotice(in);
+      LOG.info("pipeline 2 [0]: " + msg);
+      assertEquals("Expected an error for the Bind of a failed Parse",
+          BE_ERROR_RESPONSE, msg.type);
+      errorBody = new String(msg.body, StandardCharsets.UTF_8);
+      assertTrue("Expected the redeploy to surface the syntax error, got: " +
+          errorBody, errorBody.contains("syntax error"));
+      msg = readMessageSkipNotice(in);
+      LOG.info("pipeline 2 [1]: " + msg);
+      assertEquals(BE_READY_FOR_QUERY, msg.type);
+      assertEquals("Unexpected trailing bytes after pipeline 2",
+          0, in.available());
+
+      // Pipeline 3: the name is reusable with a valid query.
+      pipeline.reset();
+      pipeline.write(buildParse("s2", "SELECT 1", new int[0]));
+      pipeline.write(buildBind("s2", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 3: P(s2)+B(s2)+E+Sync");
+
+      char[] expected = {
+          BE_PARSE_COMPLETE,
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 3 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 3: " +
               new String(msg.body, StandardCharsets.UTF_8));
         }
         assertEquals("pipeline 3 type mismatch at " + i,

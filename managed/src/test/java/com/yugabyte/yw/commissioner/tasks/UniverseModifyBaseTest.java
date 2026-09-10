@@ -63,7 +63,7 @@ import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.util.PeerInfo;
 import play.libs.Json;
@@ -83,7 +83,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected ShellResponse dummyShellResponse;
   protected ShellResponse preflightResponse;
 
-  protected YBClient mockClient;
+  protected YBClientApi mockClient;
 
   protected Hook hook1, hook2;
   protected HookScope hookScope1, hookScope2;
@@ -141,7 +141,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
               }
               return dummyShellResponse;
             });
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -222,6 +222,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
       mockMasterAndPeerRoles(mockClient, () -> dbMasters);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       lenient()
           .when(
               mockNodeUniverseManager.runCommand(
@@ -366,12 +367,12 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     return accessKey;
   }
 
-  public static void mockMasterAndPeerRoles(YBClient client, Collection<String> masters) {
+  public static void mockMasterAndPeerRoles(YBClientApi client, Collection<String> masters) {
     mockMasterAndPeerRoles(client, () -> masters);
   }
 
   public static void mockMasterAndPeerRoles(
-      YBClient client, Supplier<Collection<String>> masterSupplier) {
+      YBClientApi client, Supplier<Collection<String>> masterSupplier) {
     try {
       ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
       doAnswer(
@@ -410,7 +411,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   }
 
   public static void mockGetMasterRegistrationResponse(
-      YBClient client, List<String> addedIps, List<String> removedIps) {
+      YBClientApi client, List<String> addedIps, List<String> removedIps) {
     /* reimplement once correct RPC method is used
     List<GetMasterRegistrationResponse> responses = new ArrayList<>();
     responses.addAll(

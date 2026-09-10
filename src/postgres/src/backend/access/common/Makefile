@@ -13,6 +13,11 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	yb_cost.o \
+	yb_lockrows.o \
+	yb_parallel_scan.o \
+	yb_target.o \
+	\
 	attmap.o \
 	bufmask.o \
 	detoast.o \

@@ -110,11 +110,9 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 
-- Transaction savepoints are supported starting from v2025.1.4.0. Issue {{<issue 10936>}}.
+- Transaction savepoints are not supported in versions earlier than v2025.1.4.0. Issue {{<issue 10936>}}.
 
 - Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
-
-- Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue {{<issue 24918>}}.
 
 - A replication slot should be consumed by at most one consumer at a time. However, there is currently no locking mechanism to enforce this. As a result, you should ensure that multiple consumers do not consume from a slot simultaneously. Tracked in issue {{<issue 20755>}}.
 

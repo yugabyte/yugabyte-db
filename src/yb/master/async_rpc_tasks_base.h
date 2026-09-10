@@ -387,6 +387,13 @@ class AsyncTabletLeaderTask : public RetryingTSRpcTaskWithTable {
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       const scoped_refptr<TableInfo>& table, LeaderEpoch epoch);
 
+  // Variant that allows callers to bound concurrency via a throttler. The throttler may be
+  // nullptr, in which case the task runs un-throttled (same as the constructor above).
+  AsyncTabletLeaderTask(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+      AsyncTaskThrottlerBase* async_task_throttler);
+
   ~AsyncTabletLeaderTask();
 
   std::string description() const override;

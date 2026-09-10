@@ -28,8 +28,8 @@ yba universe file-collection create --name <universe-name> \
 ### Options
 
 ```
-      --file-paths string          [Optional*] Comma-separated list of file paths to collect from each node. Paths can be absolute or relative to the yugabyte home directory. [33mAt least one of file-paths or directory-paths is required.
-      --directory-paths string     [Optional*] Comma-separated list of directory paths to collect files from. [33mAt least one of file-paths or directory-paths is required.
+      --file-paths string          [Optional] Comma-separated list of file paths to collect from each node. Paths can be absolute or relative to the yugabyte home directory. At least one of file-paths or directory-paths is required.
+      --directory-paths string     [Optional] Comma-separated list of directory paths to collect files from. At least one of file-paths or directory-paths is required.
       --max-depth int32            [Optional] Maximum depth for directory traversal (1-10). (default 1)
       --max-file-size-bytes int    [Optional] Maximum size of individual files to collect in bytes (default 10MB). (default 10485760)
       --max-total-size-bytes int   [Optional] Maximum total size of all files per node in bytes (default 100MB). (default 104857600)

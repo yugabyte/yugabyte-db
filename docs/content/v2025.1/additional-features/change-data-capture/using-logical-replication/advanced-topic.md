@@ -105,7 +105,7 @@ CREATE PUBLICATION PUB FOR ALL TABLES;
 -- Start consumption through a replication slot.
 
 CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
--- Since the publication was created for ALL TABLES, alter publication is not requirred.
+-- Since the publication was created for ALL TABLES, alter publication is not required.
 ```
 
 ### YugabyteDB semantics

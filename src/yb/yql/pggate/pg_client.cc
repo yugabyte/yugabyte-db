@@ -13,6 +13,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include <chrono>
 #include <concepts>
 #include <mutex>
 
@@ -53,6 +54,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_shared_mem.h"
@@ -161,22 +163,11 @@ class PgTimeout {
   std::pair<CoarseTimePoint, MonoDelta> GetDeadlineAndTimeoutForRPC(
       CoarseTimePoint rpc_deadline = CoarseTimePoint()) const {
 
-    const CoarseTimePoint now = CoarseMonoClock::now();
-    const MonoDelta operation_timeout = GetOperationTimeout<T>();
+    const auto now = CoarseMonoClock::now();
+    const auto operation_timeout = GetOperationTimeout<T>();
 
     // Prioritize the minimum of RPC and global deadline, if supplied.
-    CoarseTimePoint deadline = MinDeadline(rpc_deadline, global_deadline_);
-
-    // If an RPC is being scheduled while we're in the grace period, it is likely that the
-    // statement timer has already fired in postgres. Therefore check for interrupts.
-    if (PREDICT_FALSE(
-        global_deadline_ != CoarseTimePoint() &&
-        global_deadline_ - MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms) < now)) {
-      YBCCheckForInterrupts();
-    }
-
-    // Assert that the global deadline is not in the past.
-    DCHECK(deadline == CoarseTimePoint() || now < deadline);
+    auto deadline = MinDeadline(rpc_deadline, global_deadline_);
 
     // If an operation timeout is applicable, apply it to further clamp the deadline.
     if (operation_timeout.Initialized()) {
@@ -188,7 +179,15 @@ class PgTimeout {
       deadline = now + GetDefaultRpcTimeout();
     }
 
-    return std::make_pair(deadline, deadline - now);
+    // If an RPC is being scheduled while we're in the grace period, it is likely that the
+    // statement timer has already fired in postgres. Therefore check for interrupts.
+    if (global_deadline_ != CoarseTimePoint() &&
+        (global_deadline_ - FLAGS_pg_client_extra_timeout_ms * 1ms) < now &&
+        !CheckForPgInterrupts().ok()) [[unlikely]] {
+        deadline = now;
+    }
+
+    return {deadline, deadline - now};
   }
 
  private:
@@ -227,9 +226,28 @@ class PgTimeout {
 };
 
 constexpr int32_t kUnknownClusterConfigVersion = -1;
-} // namespace
 
-namespace {
+class BigSharedMemoryDescriptor {
+ public:
+  uint64_t id() const { return id_; }
+  void* data() const { return region_.get_address(); }
+
+  static Result<BigSharedMemoryDescriptor> Make(const std::string& instance_id, uint64_t id) {
+    auto object = VERIFY_RESULT(InterprocessSharedMemoryObject::Open(
+        tserver::MakeSharedMemoryBigSegmentName(instance_id, id)));
+    return BigSharedMemoryDescriptor(id, std::move(object), VERIFY_RESULT(object.Map()));
+  }
+
+ private:
+  BigSharedMemoryDescriptor(
+      uint64_t id, InterprocessSharedMemoryObject&& object, InterprocessMappedRegion&& region)
+      : id_(id), object_(std::move(object)), region_(std::move(region)) {
+  }
+
+  uint64_t id_;
+  InterprocessSharedMemoryObject object_;
+  InterprocessMappedRegion region_;
+};
 
 class FetchBigDataCallback {
  public:
@@ -501,16 +519,16 @@ struct PgClientData : public FetchBigDataCallback {
       if (Traits::AllowNotReady()) {
         return Traits::NotReady();
       }
-      data_id = tserver::kTooBigResponseMask;
+      data_id = tserver::kTooBigResponseMark;
     } else {
-      data_id = (**exchange_result).size() ^ tserver::kTooBigResponseMask;
-      if (data_id & tserver::kBigSharedMemoryMask) {
-        return FetchBigSharedMemory<Res>(data_id ^ tserver::kBigSharedMemoryMask);
+      data_id = (**exchange_result).size() ^ tserver::kTooBigResponseMark;
+      if (data_id & tserver::kBigSharedMemoryMark) {
+        return FetchBigSharedMemory<Res>(data_id ^ tserver::kBigSharedMemoryMark);
       }
       fetching_big_data = true;
     }
     lock.unlock();
-    if (data_id != tserver::kTooBigResponseMask) {
+    if (data_id != tserver::kTooBigResponseMark) {
       big_data_fetcher->FetchBigData(data_id, this);
     }
     if (Traits::AllowNotReady()) {
@@ -725,6 +743,12 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   uint64_t SessionID() { return session_id_; }
+
+  void PublishOldestReadPointSerialNo(uint64_t serial_no) {
+    if (session_shared_mem_) {
+      session_shared_mem_->SetOldestReadPointSerialNo(serial_no);
+    }
+  }
 
   void Heartbeat(bool create) {
     {
@@ -1183,29 +1207,30 @@ class PgClient::Impl : public BigDataFetcher {
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
     };
-    return PrepareAndSend<AcquireObjectLockData>(method, req, &object_locks_arena_).Get().status;
+    return VERIFY_RESULT(
+        PrepareAndSend<AcquireObjectLockData>(method, req, &object_locks_arena_).Get()).status;
   }
 
   bool TryAcquireObjectLockInSharedMemory(
       SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
       docdb::ObjectLockFastpathLockType lock_type) {
-    if (!FLAGS_enable_object_lock_fastpath) {
-      return false;
+    if (auto lock_shared = GetObjectLockSharedState()) {
+      return (*lock_shared)->Lock({
+          .subtxn_id = subtxn_id,
+          .database_oid = lock_id.db_oid,
+          .relation_oid = lock_id.relation_oid,
+          .object_oid = lock_id.object_oid,
+          .object_sub_oid = lock_id.object_sub_oid,
+          .lock_type = lock_type});
     }
+    return false;
+  }
 
-    auto* lock_shared = PgSharedMemoryManager().SharedData()->object_lock_state();
-    if (!lock_shared || !session_shared_mem_) {
-      LOG(WARNING) << "Not using object locking fastpath: shared memory not ready";
-      return false;
+  bool TryReleaseAllObjectLocksInSharedMemory() {
+    if (auto lock_shared = GetObjectLockSharedState()) {
+      return (*lock_shared)->UnlockAll();
     }
-    return lock_shared->Lock({
-        .owner = SHARED_MEMORY_LOAD(session_shared_mem_->object_locking_data()),
-        .subtxn_id = subtxn_id,
-        .database_oid = lock_id.db_oid,
-        .relation_oid = lock_id.relation_oid,
-        .object_oid = lock_id.object_oid,
-        .object_sub_oid = lock_id.object_sub_oid,
-        .lock_type = lock_type});
+    return false;
   }
 
   void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) override {
@@ -1234,16 +1259,12 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<Slice> FetchBigSharedMemory(uint64_t id, size_t size) override {
-    if (id != big_shared_memory_id_) {
-      big_mapped_region_ = {};
-      big_shared_memory_object_ = {};
-      big_shared_memory_object_ = VERIFY_RESULT(InterprocessSharedMemoryObject::Open(
-          tserver::MakeSharedMemoryBigSegmentName(session_shared_mem_->instance_id(), id)));
-      big_mapped_region_ = VERIFY_RESULT(big_shared_memory_object_.Map());
+    if (!big_shared_memory_ || big_shared_memory_->id() != id) {
+      big_shared_memory_.emplace(
+          VERIFY_RESULT(BigSharedMemoryDescriptor::Make(session_shared_mem_->instance_id(), id)));
     }
     return Slice(
-        static_cast<const char*>(big_mapped_region_.get_address()),
-        size + sizeof(std::atomic<bool>));
+        static_cast<const char*>(big_shared_memory_->data()), size + sizeof(std::atomic<bool>));
   }
 
   void SetBigSharedMemoryResponsePending(bool pending) override {
@@ -1960,11 +1981,11 @@ class PgClient::Impl : public BigDataFetcher {
     return Status::OK();
   }
 
-  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+  Result<RemoteExecData> RemoteExec(
       std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
       const std::vector<std::optional<std::string>>& params) {
     tserver::PgRemoteExecRequestPB req;
-    tserver::PgRemoteExecResponsePB resp;
+    RemoteExecData data;
 
     req.set_query(query.data(), query.size());
     req.set_tserver_uuid(tserver_uuid.data(), tserver_uuid.size());
@@ -1981,16 +2002,21 @@ class PgClient::Impl : public BigDataFetcher {
         CoarseMonoClock::now() +
         MonoDelta::FromMilliseconds(FLAGS_remote_pg_query_execution_rpc_timeout_ms));
 
+    auto* controller = PrepareController<tserver::PgRemoteExecRequestPB>(deadline);
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RemoteExec,
-        req, resp, PggateRPC::kRemotePgExec, deadline));
+        req, data.resp, PggateRPC::kRemotePgExec, controller));
 
-    RETURN_NOT_OK(ResponseStatus(resp));
+    RETURN_NOT_OK(ResponseStatus(data.resp));
 
-    if (resp.reached_size_limit()) {
+    if (data.resp.reached_size_limit()) {
       LOG(WARNING) << "Reached max RPC size limit for remote pg exec query. "
                       "Received truncated response.";
     }
-    return resp;
+
+    if (data.resp.has_rows_sidecar()) {
+      data.rows_data = VERIFY_RESULT(controller->ExtractSidecar(data.resp.rows_sidecar()));
+    }
+    return data;
   }
 
  private:
@@ -2038,20 +2064,16 @@ class PgClient::Impl : public BigDataFetcher {
         yb_debug_log_docdb_requests &&
         std::ranges::any_of(kDebugLogRPCs, [rpc_enum](auto value) { return value == rpc_enum; });
 
-    if (log_detail) {
-      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.ShortDebugString();
-    }
+    LOG_IF_WITH_FUNC(INFO, log_detail) << GetTypeName<Req>() << ":\n " << req.ShortDebugString();
 
-    auto watcher = wait_event_watcher_(wait_event, rpc_enum);
+    auto watcher = wait_event_watcher_(wait_event, rpc_enum, 0 /* aux */);
     const auto s = (proxy.*func)(req, &resp, controller);
 
-    if (log_detail) {
-      LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n"
-                << "status " << s << "\n" << resp.ShortDebugString();
-    }
+    LOG_IF_WITH_FUNC(INFO, log_detail)
+        << GetTypeName<Resp>() << " response:\n"
+        << "status " << s << "\n" << resp.ShortDebugString();
 
-    // Check for interrupts are executing sync RPC.
-    YBCCheckForInterrupts();
+    RETURN_NOT_OK(CheckForPgInterrupts());
 
     return s;
   }
@@ -2084,6 +2106,26 @@ class PgClient::Impl : public BigDataFetcher {
         PrepareController<Req>(std::forward<Args>(args)...), wait_event);
   }
 
+  std::optional<RobustLentObjectReference<docdb::ObjectLockSharedState>>
+  GetObjectLockSharedState() {
+    if (!FLAGS_enable_object_lock_fastpath) {
+      return std::nullopt;
+    }
+
+    if (!session_shared_mem_) {
+      LOG(WARNING) << "Not using object locking fastpath: session shared memory not ready";
+      return std::nullopt;
+    }
+
+    auto lock_shared = session_shared_mem_->object_locking_data().get();
+    if (!lock_shared) {
+      LOG(WARNING) << "Not using object locking fastpath: locking shared memory not ready";
+      return std::nullopt;
+    }
+
+    return std::make_optional(std::move(lock_shared));
+  }
+
   struct ClusterConfig {
     std::atomic<int32_t> version{kUnknownClusterConfigVersion};
     std::mutex mutex;
@@ -2107,9 +2149,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   const WaitEventWatcher& wait_event_watcher_;
 
-  uint64_t big_shared_memory_id_;
-  InterprocessSharedMemoryObject big_shared_memory_object_;
-  InterprocessMappedRegion big_mapped_region_;
+  std::optional<BigSharedMemoryDescriptor> big_shared_memory_;
   bool big_shared_memory_response_pending_ = false;
   ThreadSafeArena object_locks_arena_;
   std::atomic<uint64_t>& next_perform_op_serial_no_;
@@ -2159,6 +2199,10 @@ void PgClient::SetLockTimeout(int lock_timeout_ms) {
 }
 
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
+
+void PgClient::PublishOldestReadPointSerialNo(uint64_t serial_no) {
+  impl_->PublishOldestReadPointSerialNo(serial_no);
+}
 
 Result<PgTableDescPtr> PgClient::OpenTable(
     const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
@@ -2341,6 +2385,10 @@ bool PgClient::TryAcquireObjectLockInSharedMemory(
   return impl_->TryAcquireObjectLockInSharedMemory(subtxn_id, pg_lock_id, lock_type);
 }
 
+bool PgClient::TryReleaseAllObjectLocksInSharedMemory() {
+  return impl_->TryReleaseAllObjectLocksInSharedMemory();
+}
+
 Status PgClient::AcquireObjectLock(
     tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
     bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
@@ -2502,7 +2550,7 @@ Status PgClient::GetYbSystemTableInfo(
   return impl_->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
 }
 
-Result<tserver::PgRemoteExecResponsePB> PgClient::RemoteExec(
+Result<RemoteExecData> PgClient::RemoteExec(
     std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
     const std::vector<std::optional<std::string>>& params) {
   return impl_->RemoteExec(query, database_name, tserver_uuid, params);

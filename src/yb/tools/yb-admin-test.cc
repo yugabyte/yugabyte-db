@@ -32,7 +32,11 @@
 // Tests for the yb-admin command-line tool.
 
 #include <algorithm>
+#include <map>
 #include <regex>
+#include <thread>
+#include <tuple>
+#include <unordered_set>
 
 #include <boost/algorithm/string.hpp>
 #include <gtest/gtest.h>
@@ -67,6 +71,7 @@
 #include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
@@ -205,6 +210,69 @@ class AdminCliTest : public AdminTestBase {
 
   TmpDirProvider tmp_dir_;
 };
+
+// Verify the "did you mean" help for a misspelled operation, none of which needs a running
+// cluster (the operation is checked before yb-admin connects to the master): prefix matches,
+// fuzzy (edit-distance) matches, and that an invalid operation no longer dumps the full command
+// list (the original complaint in the issue) while running with no operation still prints the
+// full usage as help.
+TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
+  const auto exe_path = GetAdminToolPath();
+  constexpr auto kUnusedMasterAddress = "127.0.0.1:0";
+  // This marker only appears in the full usage/command listing (which is printed to stdout).
+  constexpr auto kFullUsageMarker = "<operation> must be one of";
+  std::string output;
+  std::string error;
+
+  // Prefix match: an unambiguous typo suggests the single command it is a prefix of.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(
+          exe_path, "--master_addresses", kUnusedMasterAddress, "list_snapshot_schedule"),
+      /* output */ nullptr, &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_snapshot_schedules");
+
+  // Prefix match: a prefix of several commands lists every candidate and a hint, and must not dump
+  // the full command list on either stream.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_table"), &output,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tables");
+  ASSERT_STR_CONTAINS(error, "list_tablets");
+  ASSERT_STR_CONTAINS(error, "to see all available operations");
+  ASSERT_STR_NOT_CONTAINS(output, kFullUsageMarker);
+  ASSERT_STR_NOT_CONTAINS(error, kFullUsageMarker);
+
+  // Fuzzy match: a transposition ("tabels" instead of "tables") is not a prefix but is close.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_tabels"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tables");
+
+  // Fuzzy match: a missing leading character ("ist_tables") is one edit away from "list_tables".
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "ist_tables"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "list_tables");
+
+  // An empty operation is a prefix of every command, but should not list all of them.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, ""), nullptr, &error));
+  ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
+
+  // A far-off garbage string is beyond the edit-distance tolerance, so nothing is suggested.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "zzzzzzzzzzzzzzzzzz"),
+      nullptr, &error));
+  ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
+
+  // Running with no operation at all should still print the full usage as help on stdout.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress), &output, &error));
+  ASSERT_STR_CONTAINS(output, kFullUsageMarker);
+}
 
 // Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
@@ -1123,6 +1191,794 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashKeyRangeRangeSharded) {
   ASSERT_EQ(lo_hash ^ mid_hash ^ hi_hash, full_hash);
 }
 
+namespace {
+
+// Pulls "Total row count", "Total XOR hash" and the optional "Next key" out of get_table_hash
+// output. The returned next key is empty when the scan covered the whole requested range.
+std::tuple<uint64_t, uint64_t, std::string> ParseHashTotals(const std::string& output) {
+  const auto row_prefix = "Total row count: ";
+  const auto hash_prefix = "Total XOR hash: ";
+  const auto next_prefix = "Next key: ";
+  auto rp = output.find(row_prefix);
+  auto hp = output.find(hash_prefix);
+  CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+  auto rows = std::stoull(output.substr(rp + strlen(row_prefix)));
+  auto hash = std::stoull(output.substr(hp + strlen(hash_prefix)));
+  std::string next_key;
+  auto np = output.find(next_prefix);
+  if (np != std::string::npos) {
+    auto start = np + strlen(next_prefix);
+    auto end = output.find('\n', start);
+    next_key = output.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    boost::trim(next_key);
+  }
+  return {rows, hash, next_key};
+}
+
+} // namespace
+
+// Cap a range-table hash at N rows, resume from Next key, and check the XOR of the pieces equals
+// the uncapped full-table hash.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRows) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE range_cap_tbl (k TEXT, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES (('d'), ('h'))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO range_cap_tbl (k, v) SELECT chr(96 + i), i FROM generate_series(1, 10) i"));
+
+  auto tables = ASSERT_RESULT(
+      client_->ListTables("range_cap_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto [full_rows, full_hash, full_next] =
+      ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, 10);
+  ASSERT_TRUE(full_next.empty());
+
+  auto [cap_rows, cap_hash, next_key] = ParseHashTotals(ASSERT_RESULT(
+      CallAdmin("--max_rows_per_scan", "4", "get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(cap_rows, 4);
+  ASSERT_FALSE(next_key.empty());
+
+  auto [rest_rows, rest_hash, rest_next] = ParseHashTotals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), next_key, std::string())));
+  ASSERT_EQ(rest_rows, 6);
+  ASSERT_TRUE(rest_next.empty());
+  ASSERT_EQ(cap_rows + rest_rows, full_rows);
+  ASSERT_EQ(cap_hash ^ rest_hash, full_hash);
+}
+
+// Every page of a capped scan has to be read at one pinned time. Each page is a separate yb-admin
+// invocation, and with read-ht left at 0 each one picks its own current time, so under concurrent
+// writes the pages describe different states of the table and folding them together produces a
+// total that never existed. Passing the first page's Read HT to the rest is what makes the fold
+// equal an uncapped scan at that time.
+//
+// Rows are inserted between pages here so that this is actually exercised rather than assumed. They
+// land after the pinned time, so every page has to be blind to them.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsPinnedReadTimeIgnoresLaterWrites) {
+  BuildAndStart();
+
+  constexpr int kNumRows = 20;
+  constexpr int kCap = 3;
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE TABLE paged_writes (k INT, v INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO paged_writes (k, v) SELECT i, i FROM generate_series(1, $0) i", kNumRows));
+
+  auto tables =
+      ASSERT_RESULT(client_->ListTables("paged_writes", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+
+  // Taken before any of the interleaved inserts exist, and used by every page below.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto [full_rows, full_hash, full_next] =
+      ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, kNumRows);
+  ASSERT_TRUE(full_next.empty());
+
+  const auto cap_arg = std::to_string(kCap);
+  constexpr int kMaxWindows = 4 * kNumRows / kCap;
+  std::string next_key;
+  uint64_t total_rows = 0;
+  uint64_t total_hash = 0;
+  int windows = 0;
+  int extra_key = kNumRows + 1;
+  do {
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
+        "--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64(), next_key,
+        std::string())));
+    total_rows += rows;
+    total_hash ^= hash;
+    next_key = next;
+    ++windows;
+    // Written between two pages and therefore after the pinned time. The key is above every
+    // existing one, so it sits past the resume point the next page starts from, which is exactly
+    // where a page reading at its own current time would pick it up.
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO paged_writes (k, v) VALUES ($0, $1)", extra_key, extra_key));
+    ++extra_key;
+  } while (!next_key.empty() && windows < kMaxWindows);
+
+  ASSERT_TRUE(next_key.empty()) << "table not drained after " << windows << " windows";
+  ASSERT_GT(windows, 1) << "the cap never paged, so no write ever landed between two pages";
+  // The pages fold to the table exactly as it stood at the pinned time.
+  ASSERT_EQ(total_rows, full_rows);
+  ASSERT_EQ(total_hash, full_hash);
+
+  // The inserts really did land, so the agreement above is the pinned read time holding them out
+  // rather than there having been nothing to hold out.
+  auto later_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  auto [later_rows, later_hash, later_next] = ParseHashTotals(
+      ASSERT_RESULT(CallAdmin("get_table_hash", table_id, later_ht.ToUint64())));
+  ASSERT_TRUE(later_next.empty());
+  ASSERT_EQ(later_rows, kNumRows + windows);
+  ASSERT_NE(later_hash, full_hash);
+}
+
+// Same row cap on a hash-partitioned table. A hash tablet is a 2-byte hash band that a 2-byte
+// partition key cannot address into, so a capped scan that stops partway through a band reports an
+// encoded row key as its Next key. Drain the table one capped window at a time and check that the
+// windows partition it exactly.
+//
+// The tablet count and the cap are both load-bearing. A tablet bound for SPLIT INTO n is a bare
+// 2-byte hash at i * 65536 / n, while a continuation key is a full encoded row key that always
+// begins with kUInt16Hash ('G' == 0x47). Comparing the two without lifting the bound into the
+// encoded space -- the bug this test guards -- drops every tablet whose end sorts at or below
+// 0x47xx. At 3 tablets the only bounds are 0x5555 and 0xAAAA and the last tablet is unbounded, so
+// no tablet is ever skippable and the raw comparison behaves exactly like the correct one: the
+// test passed either way. 8 tablets puts bounds at 0x2000 and 0x4000, below 0x47xx, and a cap
+// small enough to stop the first window inside the lowest band makes the next window resume from a
+// key that a raw comparison reads as already past those two tablets, silently dropping their rows.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsHashPartitioned) {
+  BuildAndStart();
+
+  constexpr int kNumTablets = 8;
+  constexpr int kNumRows = 100;
+  // Well under the ~kNumRows / kNumTablets rows of the lowest band, so the first window stops
+  // inside it rather than clearing it.
+  constexpr int kCap = 5;
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE hash_cap_tbl (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO $0 TABLETS",
+      kNumTablets));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO hash_cap_tbl (k, v) SELECT i, i FROM generate_series(1, $0) i", kNumRows));
+
+  auto tables = ASSERT_RESULT(
+      client_->ListTables("hash_cap_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto [full_rows, full_hash, full_next] =
+      ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, kNumRows);
+  ASSERT_TRUE(full_next.empty());
+
+  const auto cap_arg = std::to_string(kCap);
+  auto [cap_rows, cap_hash, next_key] = ParseHashTotals(ASSERT_RESULT(
+      CallAdmin("--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(cap_rows, kCap);
+  ASSERT_FALSE(next_key.empty());
+
+  // A scan stopped mid-band has to hand back an encoded row key, not a partition bound: a 2-byte
+  // bound cannot name a row inside a band. A partition bound is 2 bytes, so 4 hex characters;
+  // anything longer is not one.
+  ASSERT_GT(next_key.size(), 4U)
+      << "Next key " << next_key << " is a 2-byte partition bound, but the first window stopped "
+      << "inside a tablet and must resume from an encoded row key";
+  // And the resume point has to land in one of the low bands (below the 0x4000 bound), because
+  // those are the only ones a raw bound comparison would wrongly skip. Without this the windows
+  // below could partition the table correctly whether or not the bounds are lifted into the
+  // encoded space, which is what made the 3-tablet version of this test unable to fail.
+  const auto next_key_hash = next_key.substr(2, 4);
+  ASSERT_LT(next_key_hash, "4000")
+      << "Next key " << next_key << " resumes in hash band 0x" << next_key_hash
+      << ", at or above the 0x4000 tablet bound; no tablet below it can be wrongly skipped, so "
+      << "this window cannot detect a raw partition-bound comparison";
+
+  uint64_t total_rows = cap_rows;
+  uint64_t total_hash = cap_hash;
+  // kNumRows in windows of kCap needs kNumRows / kCap scans, plus one per window that ends exactly
+  // on a tablet boundary. The bound only keeps a bug from looping forever.
+  constexpr int kMaxWindows = 4 * kNumRows / kCap;
+  int windows = 1;
+  for (; windows < kMaxWindows && !next_key.empty(); ++windows) {
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
+        "--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64(), next_key,
+        std::string())));
+    total_rows += rows;
+    total_hash ^= hash;
+    next_key = next;
+  }
+  ASSERT_TRUE(next_key.empty()) << "Table not drained after " << windows << " windows";
+  ASSERT_EQ(total_rows, full_rows);
+  ASSERT_EQ(total_hash, full_hash);
+}
+
+// A cap that runs out exactly as a tablet ends resumes from the next tablet's start, which is the
+// one continuation key not taken from a row. It still has to be reported encoded, like every other
+// one: callers compare a continuation key against range bounds, which are encoded, and a bare
+// 2-byte hash sorts above almost every encoded key. Reported raw, a bound reads as already passed,
+// so a range is declared covered with whole tablets inside it never hashed -- a clean result over
+// rows nobody read.
+//
+// get_table_hash alone cannot show this, because it re-encodes a 2-byte key on the way back in and
+// so drains the table either way. Only the byte space of the key it hands out distinguishes them.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashNextKeyIsEncodedOnTabletBoundary) {
+  BuildAndStart();
+
+  constexpr int kNumTablets = 8;
+  constexpr int kNumRows = 100;
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE boundary_cap_tbl (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO $0 TABLETS",
+      kNumTablets));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO boundary_cap_tbl (k, v) SELECT i, i FROM generate_series(1, $0) i", kNumRows));
+
+  auto tables = ASSERT_RESULT(
+      client_->ListTables("boundary_cap_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto [full_rows, full_hash, full_next] =
+      ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, kNumRows);
+  ASSERT_TRUE(full_next.empty());
+
+  // The leading tablet is the one reporting an empty start. Capping at exactly the number of rows
+  // below its end is what lands the scan on the boundary instead of inside a tablet: the tablet is
+  // hashed whole, so it returns no continuation key of its own, and the next tablet is where the
+  // spent budget is noticed.
+  auto json_out = ASSERT_RESULT(
+      CallAdmin("list_tablets", "ysql.yugabyte", "boundary_cap_tbl", "0", "JSON"));
+  boost::erase_all(json_out, "\n");
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(json_out));
+  std::string first_end_hex;
+  for (const auto& entry : ASSERT_RESULT(root["tablets"].GetArray())) {
+    const auto start = ASSERT_RESULT(entry["partition_key_start_hex"].GetString());
+    if (start.empty()) {
+      first_end_hex = ASSERT_RESULT(entry["partition_key_end_hex"].GetString());
+      break;
+    }
+  }
+  ASSERT_FALSE(first_end_hex.empty()) << "no leading tablet in list_tablets output";
+
+  auto [first_rows, first_hash, first_next] = ParseHashTotals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), std::string(), first_end_hex)));
+  ASSERT_TRUE(first_next.empty());
+  ASSERT_GT(first_rows, 0U) << "leading tablet holds no rows, so no cap can end on its boundary";
+
+  auto [cap_rows, cap_hash, next_key] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
+      "--max_rows_per_scan", std::to_string(first_rows), "get_table_hash", table_id,
+      ht.ToUint64())));
+  ASSERT_EQ(cap_rows, first_rows);
+  ASSERT_EQ(cap_hash, first_hash);
+  ASSERT_FALSE(next_key.empty()) << "cap ran out with tablets still unhashed, so a key is owed";
+
+  // An encoded hash key is kUInt16Hash ('G' == 0x47) followed by the 2-byte hash, so 6 hex
+  // characters. Neither check alone is enough: a raw key may itself begin 0x47, and a longer key
+  // may be an encoded row key rather than an encoded bound.
+  ASSERT_EQ(next_key.substr(0, 2), "47")
+      << "Next key " << next_key << " does not begin with kUInt16Hash, so it is not encoded";
+  ASSERT_GT(next_key.size(), 4U)
+      << "Next key " << next_key << " is a bare 2-byte partition bound, not an encoded key";
+
+  // The rest of the table still hashes from it, so nothing was skipped or counted twice.
+  auto [rest_rows, rest_hash, rest_next] = ParseHashTotals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), next_key, std::string())));
+  ASSERT_TRUE(rest_next.empty());
+  ASSERT_EQ(cap_rows + rest_rows, full_rows);
+  ASSERT_EQ(cap_hash ^ rest_hash, full_hash);
+}
+
+// The same values in a different arrangement have to hash differently, or a cross-cluster
+// comparison calls a target that has visibly lost data a match. Each pair of tables below is
+// created from identical DDL, so the two hold the same column ids and differ only in where the
+// values sit. Every pair hashed identically before per-column and per-row identity went into the
+// hash.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashDistinguishesValuePlacement) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+
+  // One tablet, so the hash is over a single scan and nothing depends on how rows land.
+  auto table_hash = [&](const std::string& name, const std::string& values) -> Result<uint64_t> {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY, x INT, y INT) SPLIT INTO 1 TABLETS", name));
+    RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO $0 (k, x, y) VALUES $1", name, values));
+    auto tables = VERIFY_RESULT(client_->ListTables(name, /* exclude_ysql = */ false, "yugabyte"));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("expected exactly one table named $0", name));
+    auto output = VERIFY_RESULT(CallAdmin("get_table_hash", tables.front().table_id()));
+    return std::get<1>(ParseHashTotals(output));
+  };
+
+  // Identical data in two identically shaped tables still has to hash the same, or nothing about
+  // the hash is comparable across clusters in the first place.
+  const auto same_a = ASSERT_RESULT(table_hash("placement_same_a", "(1, 5, 7), (2, 8, 9)"));
+  const auto same_b = ASSERT_RESULT(table_hash("placement_same_b", "(1, 5, 7), (2, 8, 9)"));
+  ASSERT_EQ(same_a, same_b);
+
+  // Values swapped between two same-typed columns of one row.
+  const auto swapped_columns =
+      ASSERT_RESULT(table_hash("placement_swapped_cols", "(1, 7, 5), (2, 8, 9)"));
+  ASSERT_NE(same_a, swapped_columns);
+
+  // Two columns of one row holding the same value: the pair used to cancel out, leaving the row
+  // hashing as if it carried its key alone.
+  const auto equal_fives = ASSERT_RESULT(table_hash("placement_equal_fives", "(1, 5, 5)"));
+  const auto equal_sevens = ASSERT_RESULT(table_hash("placement_equal_sevens", "(1, 7, 7)"));
+  ASSERT_NE(equal_fives, equal_sevens);
+  const auto key_only_null = ASSERT_RESULT(table_hash("placement_key_only", "(1, NULL, NULL)"));
+  ASSERT_NE(equal_fives, key_only_null);
+
+  // The same value moved between two rows of the same column, which is the shape a misapplied
+  // update takes.
+  const auto rows_ab = ASSERT_RESULT(table_hash("placement_rows_ab", "(1, 5, 0), (2, 7, 0)"));
+  const auto rows_ba = ASSERT_RESULT(table_hash("placement_rows_ba", "(1, 7, 0), (2, 5, 0)"));
+  ASSERT_NE(rows_ab, rows_ba);
+
+  // A value shared by two rows, versus the same rows with that column nulled out on both.
+  const auto shared_value = ASSERT_RESULT(table_hash("placement_shared", "(1, 5, 0), (2, 5, 0)"));
+  const auto shared_nulled =
+      ASSERT_RESULT(table_hash("placement_nulled", "(1, NULL, 0), (2, NULL, 0)"));
+  ASSERT_NE(shared_value, shared_nulled);
+}
+
+// list_tablets JSON exposes partition_key_*_hex so a verify driver can hash range tablets one at a
+// time.
+TEST_F(AdminCliTestWithYSQL, TestListTabletsJsonPartitionKeyHex) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE range_hex_tbl (k TEXT, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES (('d'), ('h'))"));
+
+  string json_out = ASSERT_RESULT(
+      CallAdmin("list_tablets", "ysql.yugabyte", "range_hex_tbl", "0", "JSON"));
+  boost::erase_all(json_out, "\n");
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(json_out));
+  auto tablets = ASSERT_RESULT(root["tablets"].GetArray());
+  ASSERT_EQ(tablets.size(), 3);
+
+  size_t empty_starts = 0;
+  size_t empty_ends = 0;
+  std::unordered_set<std::string> starts;
+  std::unordered_set<std::string> ends;
+  for (const auto& entry : tablets) {
+    auto start = ASSERT_RESULT(entry["partition_key_start_hex"].GetString());
+    auto end = ASSERT_RESULT(entry["partition_key_end_hex"].GetString());
+    if (start.empty()) {
+      empty_starts++;
+    } else {
+      starts.insert(start);
+    }
+    if (end.empty()) {
+      empty_ends++;
+    } else {
+      ends.insert(end);
+    }
+  }
+  // Three tablets: [-inf, k1), [k1, k2), [k2, +inf). Internal bounds must match.
+  ASSERT_EQ(empty_starts, 1);
+  ASSERT_EQ(empty_ends, 1);
+  ASSERT_EQ(starts.size(), 2);
+  ASSERT_EQ(ends.size(), 2);
+  ASSERT_EQ(starts, ends);
+}
+
+// The workflow a verify driver runs: read the tablet bounds out of list_tablets, hash each tablet
+// as a key range, and expect the pieces to reconstruct the table. It works only if the two commands
+// agree on what a bound is, so the hex list_tablets prints has to be exactly what get_table_hash
+// accepts. The encoding differs between hash and range partitioning, so both are covered here.
+TEST_F(AdminCliTestWithYSQL, TestListTabletsHexBoundsHashWholeTable) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE rt_range_tbl (k TEXT, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES (('d'), ('h'))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO rt_range_tbl (k, v) SELECT chr(96 + i), i FROM generate_series(1, 10) i"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE rt_hash_tbl (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO 8 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO rt_hash_tbl (k, v) SELECT i, i FROM generate_series(1, 100) i"));
+
+  // Hashes one table a tablet at a time, using only what list_tablets reports, and returns the
+  // combined row count, combined hash and the number of tablets it visited.
+  auto hash_by_tablet = [this](const TableId& table_id, const std::string& table_name,
+                               uint64_t read_ht) -> Result<std::tuple<uint64_t, uint64_t, size_t>> {
+    auto json_out =
+        VERIFY_RESULT(CallAdmin("list_tablets", "ysql.yugabyte", table_name, "0", "JSON"));
+    boost::erase_all(json_out, "\n");
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(json_out));
+    uint64_t rows = 0;
+    uint64_t hash = 0;
+    size_t tablets = 0;
+    for (const auto& entry : VERIFY_RESULT(root["tablets"].GetArray())) {
+      // An outer tablet reports an empty bound, which get_table_hash reads as unbounded -- so the
+      // ends of the table need no special handling by the driver, and get none here.
+      auto start = VERIFY_RESULT(entry["partition_key_start_hex"].GetString());
+      auto end = VERIFY_RESULT(entry["partition_key_end_hex"].GetString());
+      auto [tablet_rows, tablet_hash, next] = ParseHashTotals(
+          VERIFY_RESULT(CallAdmin("get_table_hash", table_id, read_ht, start, end)));
+      SCHECK(
+          next.empty(), IllegalState,
+          Format("uncapped scan of one tablet of $0 returned a continuation key", table_name));
+      rows += tablet_rows;
+      hash ^= tablet_hash;
+      ++tablets;
+    }
+    return std::make_tuple(rows, hash, tablets);
+  };
+
+  auto table_id = [this](const std::string& name) -> Result<TableId> {
+    auto tables = VERIFY_RESULT(client_->ListTables(name, /* exclude_ysql = */ false, "yugabyte"));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("expected one table named $0", name));
+    return tables.front().table_id();
+  };
+
+  // One read time for every scan, or the pieces would be under no obligation to recombine.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  // Range partitioning: the bounds are encoded range keys of arbitrary length.
+  {
+    const auto id = ASSERT_RESULT(table_id("rt_range_tbl"));
+    auto [full_rows, full_hash, full_next] =
+        ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", id, ht.ToUint64())));
+    ASSERT_EQ(full_rows, 10);
+    ASSERT_TRUE(full_next.empty());
+
+    auto [rows, hash, tablets] = ASSERT_RESULT(hash_by_tablet(id, "rt_range_tbl", ht.ToUint64()));
+    ASSERT_EQ(tablets, 3);
+    ASSERT_EQ(rows, full_rows);
+    ASSERT_EQ(hash, full_hash);
+  }
+
+  // Hash partitioning: the bounds are bare 2-byte hashes, which the server has to encode into
+  // doc-key form before comparing them against anything.
+  {
+    const auto id = ASSERT_RESULT(table_id("rt_hash_tbl"));
+    auto [full_rows, full_hash, full_next] =
+        ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", id, ht.ToUint64())));
+    ASSERT_EQ(full_rows, 100);
+    ASSERT_TRUE(full_next.empty());
+
+    auto [rows, hash, tablets] = ASSERT_RESULT(hash_by_tablet(id, "rt_hash_tbl", ht.ToUint64()));
+    ASSERT_EQ(tablets, 8);
+    ASSERT_EQ(rows, full_rows);
+    ASSERT_EQ(hash, full_hash);
+  }
+}
+
+// The row cap at its boundaries. A driver scans until the Next key comes back empty, so a cap that
+// reports a continuation key with nothing behind it costs a wasted scan, and one that reports none
+// with rows still behind it drops them silently. The interesting case is a cap spent exactly at a
+// tablet edge, where the tablet itself has nothing left to resume from and the continuation has to
+// come from the next tablet's start instead.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsBoundaries) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  // Ten rows 'a'..'j' over three tablets, holding 3, 4 and 3 of them.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE cap_edge_tbl (k TEXT, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES (('d'), ('h'))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO cap_edge_tbl (k, v) SELECT chr(96 + i), i FROM generate_series(1, 10) i"));
+
+  auto tables = ASSERT_RESULT(
+      client_->ListTables("cap_edge_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto [full_rows, full_hash, full_next] =
+      ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, 10);
+  ASSERT_TRUE(full_next.empty());
+
+  // A cap spent exactly on the first tablet's last row. The tablet's own scan ended because it ran
+  // out of rows, not because of the cap, so it has no row to continue from; the continuation has to
+  // name where the next tablet starts.
+  {
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
+        CallAdmin("--max_rows_per_scan", "3", "get_table_hash", table_id, ht.ToUint64())));
+    ASSERT_EQ(rows, 3);
+    ASSERT_FALSE(next.empty())
+        << "a cap spent at a tablet edge left seven rows unhashed and reported the scan complete";
+
+    auto [rest_rows, rest_hash, rest_next] = ParseHashTotals(ASSERT_RESULT(
+        CallAdmin("get_table_hash", table_id, ht.ToUint64(), next, std::string())));
+    ASSERT_EQ(rest_rows, 7);
+    ASSERT_TRUE(rest_next.empty());
+    ASSERT_EQ(hash ^ rest_hash, full_hash);
+  }
+
+  // A cap equal to the row count is spent on the table's last row, and there is nothing to resume.
+  {
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
+        CallAdmin("--max_rows_per_scan", "10", "get_table_hash", table_id, ht.ToUint64())));
+    ASSERT_EQ(rows, 10);
+    ASSERT_EQ(hash, full_hash);
+    ASSERT_TRUE(next.empty()) << "a cap spent on the last row must report the scan complete";
+  }
+
+  // A cap the scan never reaches is an uncapped scan.
+  {
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
+        CallAdmin("--max_rows_per_scan", "11", "get_table_hash", table_id, ht.ToUint64())));
+    ASSERT_EQ(rows, 10);
+    ASSERT_EQ(hash, full_hash);
+    ASSERT_TRUE(next.empty());
+  }
+
+  // A cap of one, which makes every tablet edge a window edge as well.
+  {
+    uint64_t total_rows = 0;
+    uint64_t total_hash = 0;
+    std::string next;
+    int windows = 0;
+    constexpr int kMaxWindows = 40;
+    do {
+      auto [rows, hash, window_next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
+          "--max_rows_per_scan", "1", "get_table_hash", table_id, ht.ToUint64(), next,
+          std::string())));
+      ASSERT_LE(rows, 1);
+      total_rows += rows;
+      total_hash ^= hash;
+      next = window_next;
+      ++windows;
+    } while (!next.empty() && windows < kMaxWindows);
+
+    ASSERT_TRUE(next.empty()) << "table not drained after " << windows << " windows";
+    ASSERT_EQ(total_rows, full_rows);
+    ASSERT_EQ(total_hash, full_hash);
+    ASSERT_EQ(windows, 10) << "ten rows one at a time should take ten windows, not " << windows;
+  }
+}
+
+// Paging through a COLOCATED child table, which is the one continuation key path the other cap
+// tests never reach. A colocated row's DocKey carries a table id prefix that a non-colocated row
+// does not, and the key handed back is the tuple id, meaning that prefix stripped off, so passing
+// it back as a start bound has to put it on again. The strip and the re-add have to be exact
+// inverses: leave the prefix on and the next scan looks for a key prefixed twice and finds nothing;
+// take off too much and it resumes early and hashes rows it already counted.
+//
+// The second table sharing the tablet is what gives the prefix something to get wrong. With one
+// table a bound that lost or doubled its prefix would still select the same rows; with two, a
+// mishandled prefix reaches into another table's key space and the row count says so.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsColocatedChild) {
+  BuildAndStart();
+
+  constexpr int kNumRows = 20;
+  constexpr int kCap = 3;
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE pagedb WITH colocation = true"));
+  auto db = ASSERT_RESULT(cluster_->ConnectToDB("pagedb"));
+
+  ASSERT_OK(db.Execute("CREATE TABLE paged (id INT, name TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(db.ExecuteFormat(
+      "INSERT INTO paged (id, name) SELECT i, 'v' || i FROM generate_series(1, $0) i", kNumRows));
+  // Shares the colocated tablet with `paged`.
+  ASSERT_OK(db.Execute("CREATE TABLE neighbour (id INT, name TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(db.ExecuteFormat(
+      "INSERT INTO neighbour (id, name) SELECT i, 'n' || i FROM generate_series(1, $0) i",
+      kNumRows));
+
+  auto tables = ASSERT_RESULT(client_->ListTables("paged", /* exclude_ysql = */ false, "pagedb"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto [full_rows, full_hash, full_next] =
+      ParseHashTotals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, kNumRows);
+  ASSERT_TRUE(full_next.empty());
+
+  const auto cap_arg = std::to_string(kCap);
+  constexpr int kMaxWindows = 4 * kNumRows / kCap;
+  std::string next_key;
+  uint64_t total_rows = 0;
+  uint64_t total_hash = 0;
+  int windows = 0;
+  do {
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
+        "--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64(), next_key,
+        std::string())));
+    total_rows += rows;
+    total_hash ^= hash;
+    next_key = next;
+    ++windows;
+  } while (!next_key.empty() && windows < kMaxWindows);
+
+  ASSERT_TRUE(next_key.empty()) << "table not drained after " << windows << " windows";
+  ASSERT_GT(windows, 1) << "the cap never paged, so no continuation key was ever fed back";
+  // Exactly the rows of `paged`, so the paging neither stopped short nor crossed into `neighbour`.
+  ASSERT_EQ(total_rows, full_rows);
+  ASSERT_EQ(total_hash, full_hash);
+}
+
+// A row cap needs a concrete table id. A colocation parent covers several tables with independent
+// key spaces, so one continuation key cannot say where to resume, and the server rejects the
+// combination rather than returning a key that means nothing.
+//
+// This also covers the scheme version line, which every get_table_hash prints and which a caller
+// comparing two hashes by hand is supposed to read first.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsRejectsColocationParent) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE capdb WITH colocation = true"));
+  auto capdb = ASSERT_RESULT(cluster_->ConnectToDB("capdb"));
+  ASSERT_OK(capdb.Execute("CREATE TABLE cap_colo_a (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(capdb.Execute("CREATE TABLE cap_colo_b (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(capdb.Execute("INSERT INTO cap_colo_a SELECT g, g FROM generate_series(1, 20) g"));
+  ASSERT_OK(capdb.Execute("INSERT INTO cap_colo_b SELECT g, g FROM generate_series(1, 10) g"));
+
+  const auto parent_table = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "capdb"));
+
+  // Uncapped, the parent id is a valid request: it hashes the whole tablet.
+  auto output = ASSERT_RESULT(CallAdmin("get_table_hash", parent_table));
+  auto [rows, hash, next] = ParseHashTotals(output);
+  ASSERT_EQ(rows, 30);
+  ASSERT_TRUE(next.empty());
+  ASSERT_STR_CONTAINS(output, "Hash scheme version: ");
+
+  auto result = CallAdmin("--max_rows_per_scan", "5", "get_table_hash", parent_table);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "max_rows requires a concrete table id");
+}
+
+// Folding together hashes taken under two different schemes is what the version field exists to
+// prevent: mid-upgrade the leaders of one table sit on binaries that hash differently, and xoring
+// their answers yields a number that matches nothing on either scheme.
+// TEST_dump_tablet_data_hash_scheme_version lets one tserver stand in for such a binary.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashRefusesToCombineSchemes) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE scheme_tbl (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO 6 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO scheme_tbl (k, v) SELECT i, i FROM generate_series(1, 60) i"));
+
+  auto tables = ASSERT_RESULT(
+      client_->ListTables("scheme_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+
+  auto leader_uuids = [this]() -> Result<std::unordered_set<std::string>> {
+    auto json_out = VERIFY_RESULT(
+        CallAdmin("list_tablets", "ysql.yugabyte", "scheme_tbl", "json", "include_followers"));
+    boost::erase_all(json_out, "\n");
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(json_out));
+    std::unordered_set<std::string> uuids;
+    for (const auto& entry : VERIFY_RESULT(root["tablets"].GetArray())) {
+      auto leader = entry["leader"];
+      uuids.insert(VERIFY_RESULT(leader["uuid"].GetString()));
+    }
+    return uuids;
+  };
+
+  // The override is only observable if one scan reaches both an overridden leader and a normal one,
+  // so the table's leaders have to sit on more than one tserver. They are placed that way, but
+  // placement settles asynchronously, and a tablet without a leader yet has no uuid to read.
+  std::string overridden_uuid;
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        auto uuids = leader_uuids();
+        if (!uuids.ok() || uuids->size() < 2) {
+          return false;
+        }
+        overridden_uuid = *uuids->begin();
+        return true;
+      },
+      60s * kTimeMultiplier, "tablet leaders spread over at least two tservers"));
+
+  ExternalTabletServer* overridden = nullptr;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (cluster_->tablet_server(i)->uuid() == overridden_uuid) {
+      overridden = cluster_->tablet_server(i);
+      break;
+    }
+  }
+  ASSERT_NE(overridden, nullptr) << "no tserver has uuid " << overridden_uuid;
+
+  // Every tserver hashes the same way to begin with.
+  ASSERT_OK(CallAdmin("get_table_hash", table_id));
+
+  // One now reports a version none of the others do.
+  ASSERT_OK(cluster_->SetFlag(overridden, "TEST_dump_tablet_data_hash_scheme_version", "2"));
+  auto mismatch = CallAdmin("get_table_hash", table_id);
+  ASSERT_NOK(mismatch);
+  ASSERT_STR_CONTAINS(mismatch.status().ToString(), "hashed under different schemes");
+
+  // One now reports nothing at all, as a tserver predating the field does. That has to read as a
+  // different scheme rather than as agreement -- a check that only compared the versions it was
+  // given would let this through and report a blended total.
+  ASSERT_OK(cluster_->SetFlag(overridden, "TEST_dump_tablet_data_hash_scheme_version", "0"));
+  auto absent = CallAdmin("get_table_hash", table_id);
+  ASSERT_NOK(absent);
+  ASSERT_STR_CONTAINS(absent.status().ToString(), "hashed under different schemes");
+
+  // And once it agrees again the scan combines the tablets and reports the scheme it used.
+  ASSERT_OK(cluster_->SetFlag(overridden, "TEST_dump_tablet_data_hash_scheme_version", "-1"));
+  auto output = ASSERT_RESULT(CallAdmin("get_table_hash", table_id));
+  auto [rows, hash, next] = ParseHashTotals(output);
+  ASSERT_EQ(rows, 60);
+  ASSERT_NE(hash, 0);
+  ASSERT_TRUE(next.empty());
+  ASSERT_STR_CONTAINS(output, "Hash scheme version: 1");
+}
+
+// A bound longer than a partition key is taken as a continuation key from an earlier capped scan.
+// Only a real one qualifies: a byte string that is merely long is bad input, and scanning it as a
+// key would match nothing and report an empty range as a successful hash of zero rows.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashRejectsMalformedHashBound) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE bad_bound_tbl (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO 4 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO bad_bound_tbl (k, v) SELECT i, i FROM generate_series(1, 40) i"));
+
+  auto tables = ASSERT_RESULT(
+      client_->ListTables("bad_bound_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  // Two bytes is a partition key, which is what an ordinary key range is made of.
+  ASSERT_OK(CallAdmin("get_table_hash", table_id, ht.ToUint64(), "8000", std::string()));
+
+  // One byte is too short to be either kind of bound.
+  auto too_short = CallAdmin("get_table_hash", table_id, ht.ToUint64(), "80", std::string());
+  ASSERT_NOK(too_short);
+  ASSERT_STR_CONTAINS(too_short.status().ToString(), "requires a 2-byte partition key bound");
+
+  // Longer, but not an encoded row key: 0x00 is not the marker a hash row key opens with.
+  auto not_a_row_key =
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), "00112233445566", std::string());
+  ASSERT_NOK(not_a_row_key);
+  ASSERT_STR_CONTAINS(
+      not_a_row_key.status().ToString(), "does not begin like an encoded row key");
+
+  // A continuation key from a real capped scan still resumes, so the check above rejects malformed
+  // bounds without rejecting the bounds this command hands out.
+  auto [capped_rows, capped_hash, next] = ParseHashTotals(ASSERT_RESULT(
+      CallAdmin("--max_rows_per_scan", "3", "get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(capped_rows, 3);
+  ASSERT_FALSE(next.empty());
+  auto [rest_rows, rest_hash, rest_next] = ParseHashTotals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), next, std::string())));
+  ASSERT_EQ(capped_rows + rest_rows, 40);
+  ASSERT_TRUE(rest_next.empty());
+  ASSERT_EQ(capped_hash ^ rest_hash, std::get<1>(ParseHashTotals(
+      ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())))));
+}
+
 // Test that partition ranges are displayed in correct format for both hash and range partitioning
 // (similar to the :9000/tablets endpoint format)
 TEST_F(AdminCliTestWithYSQL, TestPartitionRangeFormat) {
@@ -1869,6 +2725,9 @@ TEST_F_EX(AdminCliTest, TestSplitTabletMultiWay, AdminCliListTabletsTest) {
   workload.StopAndJoin();
   LOG(INFO) << "Number of rows inserted: " << workload.rows_inserted();
 
+  // Flush to SST. Size-based split (FLAGS_use_cross_split_key_detection_algorithm) needs SST data.
+  ASSERT_OK(CallAdmin("flush_table", keyspace, table_name));
+
   // Verify multi-way split is disallowed when gFlag is disabled.
   constexpr int kSplitFactor = 5;
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_enable_multi_way_tablet_split", "false"));
@@ -2498,6 +3357,65 @@ TEST_F(AdminCliTest, TestRemoveTabletServer) {
   EXPECT_EQ(find_tserver_result, std::nullopt);
 }
 
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/32681:
+// list_tablet_server_log_locations must not abort on DEAD tservers, and must
+// sort alive tservers ahead of dead ones.
+TEST_F(AdminCliTest, TestListTabletServerLogLocationsWithDeadTServer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+
+  // Kill tserver 0 (the one that sorts first by host/port) and keep tserver 1
+  // alive, so alive-first ordering must actively reorder the two entries rather
+  // than coincidentally matching the host/port tie-break.
+  auto* dead_ts = cluster_->tablet_server(0);
+  auto* alive_ts = cluster_->tablet_server(1);
+  const auto dead_uuid = dead_ts->uuid();
+  const auto alive_uuid = alive_ts->uuid();
+
+  // Helper: extract the LogLocation column for a given tserver UUID.
+  auto log_location_for = [](const std::string& output, const std::string& uuid) -> std::string {
+    std::smatch match;
+    if (!std::regex_search(output, match, std::regex(uuid + R"(\s+\S+\s+(\S+))"))) {
+      return "";
+    }
+    return match[1].str();
+  };
+
+  // While both are alive, both report a real log directory (no N/A).
+  auto output_alive = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
+  ASSERT_STR_CONTAINS(output_alive, dead_uuid);
+  ASSERT_STR_CONTAINS(output_alive, alive_uuid);
+  ASSERT_STR_NOT_CONTAINS(output_alive, "N/A");
+
+  dead_ts->Shutdown();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&cluster_client, &dead_uuid]() -> Result<bool> {
+        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(dead_uuid));
+        return tserver && !tserver->alive();
+      },
+      30s, "tserver not marked dead"));
+
+  // Must succeed (not connect-timeout abort) and list both tservers.
+  auto output = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
+  ASSERT_STR_CONTAINS(output, dead_uuid);
+  ASSERT_STR_CONTAINS(output, alive_uuid);
+
+  // Alive tserver reports a real log location; dead tserver reports N/A.
+  ASSERT_NE(log_location_for(output, alive_uuid), "N/A");
+  ASSERT_NE(log_location_for(output, alive_uuid), "");
+  ASSERT_EQ(log_location_for(output, dead_uuid), "N/A");
+
+  // Alive tserver sorts ahead of the dead one.
+  const auto alive_pos = output.find(alive_uuid);
+  const auto dead_pos = output.find(dead_uuid);
+  ASSERT_NE(alive_pos, std::string::npos);
+  ASSERT_NE(dead_pos, std::string::npos);
+  ASSERT_LT(alive_pos, dead_pos);
+}
+
 TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {
   std::string test_namespace = "pg_namespace_cdc";
   BuildAndStart();
@@ -2588,6 +3506,247 @@ TEST_F(AdminCliTest, TestGetTableXorHash) {
   ASSERT_GT(row_count2, 100);
   ASSERT_NE(xor_hash2, 0);
   ASSERT_NE(xor_hash, xor_hash2);
+}
+
+// DB-21953: get_table_hash at a read_ht below the history-retention cutoff must fail with
+// SnapshotTooOld, not return a wrong hash over a compacted view. Before the fix it returned OK.
+TEST_F(AdminCliTest, TestGetTableHashRejectsTooOldReadTime) {
+  // No history retention, so one compaction pushes the cutoff past any earlier read time.
+  std::vector<std::string> ts_flags = {
+    "--timestamp_history_retention_interval_sec=0"s,
+  };
+  std::vector<std::string> master_flags;
+  BuildAndStart(ts_flags, master_flags);
+
+  const auto table_name =
+      YBTableName(YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "too_old_table");
+  client::TableHandle table;
+  ASSERT_OK(table.Create(
+      table_name, /* num_tablets */ 1, client::YBSchema(schema_), client_.get()));
+
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(table_name);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(200);
+  workload.StopAndJoin();
+
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+
+  // Grab a read time that's valid now; it'll fall below the cutoff once we compact.
+  const auto too_old_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  // Reading at it now works (still within the window).
+  ASSERT_OK(CallAdmin("get_table_hash", table_id, too_old_ht.ToUint64()));
+
+  // More writes + compaction GC the history below the cutoff and push the cutoff past too_old_ht.
+  workload.Start();
+  workload.WaitInserted(workload.rows_inserted() + 200);
+  workload.StopAndJoin();
+
+  // Cutoff tracks safe time, so sleep to make sure too_old_ht is strictly behind it.
+  SleepFor(2s * kTimeMultiplier);
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+
+  // Now the same read must be rejected, not return a stale hash.
+  auto result = CallAdmin("get_table_hash", table_id, too_old_ht.ToUint64());
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Snapshot too old");
+
+  // A default (safe time) read still works -- only the too-old path is rejected.
+  ASSERT_OK(CallAdmin("get_table_hash", table_id));
+}
+
+// get_table_hash tests. It only talks to leaders, whose safe time cannot be held back without
+// costing them their majority, so these tests use a read time ahead of the cluster's clock instead.
+class AdminCliGetTableHashReadTimeTest : public AdminCliTest {
+ protected:
+  // Brings up the cluster with a populated multi-tablet YCQL table in hash_table_id_.
+  void StartClusterWithTable() {
+    BuildAndStart();
+
+    const auto table_name = YBTableName(
+        YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "read_time_table");
+    client::TableHandle table;
+    ASSERT_OK(table.Create(
+        table_name, /* num_tablets */ 3, client::YBSchema(schema_), client_.get()));
+
+    TestYcqlWorkload workload(cluster_.get());
+    workload.set_table_name(table_name);
+    workload.Setup();
+    workload.Start();
+    workload.WaitInserted(100);
+    workload.StopAndJoin();
+
+    auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+    ASSERT_EQ(1, tables.size());
+    hash_table_id_ = tables.front().table_id();
+  }
+
+  // A read time no replica has reached, but inside dump_tablet_data_max_read_time_ahead_ms so it
+  // counts as lag, not as a caller error. Recompute per command: yb-admin startup eats a second or
+  // two.
+  Result<uint64_t> ReadTimeAheadOfClock(int64_t seconds) {
+    return VERIFY_RESULT(cluster_->master()->GetServerTime()).AddSeconds(seconds).ToUint64();
+  }
+
+  // Reads get_table_hash's whole-table {row count, XOR hash} back out of its stdout.
+  static Result<std::pair<uint64_t, uint64_t>> Totals(const std::string& output) {
+    const auto value = [&output](const char* prefix) -> Result<uint64_t> {
+      auto pos = output.find(prefix);
+      SCHECK_NE(
+          pos, std::string::npos, NotFound,
+          Format("'$0' missing from output: $1", prefix, output));
+      return std::stoull(output.substr(pos + strlen(prefix)));
+    };
+    auto row_count = VERIFY_RESULT(value("Total row count: "));
+    auto xor_hash = VERIFY_RESULT(value("Total XOR hash: "));
+    return std::make_pair(row_count, xor_hash);
+  }
+
+  std::string hash_table_id_;
+};
+
+// A read time nothing has reached must be reported as such, not answered with whatever happens to
+// be applied. With a zero wait, straight away.
+TEST_F(AdminCliGetTableHashReadTimeTest, TestGetTableHashReadTimeNotReachedFailsFast) {
+  ASSERT_NO_FATALS(StartClusterWithTable());
+
+  const auto past_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  // Safe time trails the present. Let it move past past_ht before asking with a zero wait.
+  SleepFor(2s * kTimeMultiplier);
+
+  // A read time the tablets have reached does not involve the wait at all.
+  ASSERT_OK(CallAdmin(
+      "--read_time_wait_ms", 0, "get_table_hash", hash_table_id_, past_ht.ToUint64()));
+
+  const auto start = MonoTime::Now();
+  auto result = CallAdmin(
+      "--read_time_wait_ms", 0, "get_table_hash", hash_table_id_,
+      ASSERT_RESULT(ReadTimeAheadOfClock(10)));
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+  ASSERT_STR_CONTAINS(result.status().ToString(), "behind by");
+  // Zero means zero: it did not sit out the 10s gap.
+  ASSERT_LT(MonoTime::Now() - start, MonoDelta::FromSeconds(30));
+
+  // A key range narrows which rows get hashed. It must not narrow away the read-time check.
+  result = CallAdmin(
+      "--read_time_wait_ms", 0, "get_table_hash", hash_table_id_,
+      ASSERT_RESULT(ReadTimeAheadOfClock(10)),
+      /* start_key_hex */ "8000", /* end_key_hex */ std::string());
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+}
+
+// Given time to wait, get_table_hash waits instead of failing, and answers with the same data as a
+// read at that time once it is in the past.
+TEST_F(AdminCliGetTableHashReadTimeTest, TestGetTableHashWaitsForReadTime) {
+  ASSERT_NO_FATALS(StartClusterWithTable());
+
+  const auto past_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  SleepFor(2s * kTimeMultiplier);
+  const auto past_totals = ASSERT_RESULT(Totals(
+      ASSERT_RESULT(CallAdmin("get_table_hash", hash_table_id_, past_ht.ToUint64()))));
+  ASSERT_GT(past_totals.first, 0ULL);
+  ASSERT_NE(past_totals.second, 0ULL);
+
+  // Nothing writes between the two read times, so the totals have to match.
+  const auto future_totals = ASSERT_RESULT(Totals(ASSERT_RESULT(CallAdmin(
+      "--read_time_wait_ms", 30000, "get_table_hash", hash_table_id_,
+      ASSERT_RESULT(ReadTimeAheadOfClock(8))))));
+  ASSERT_EQ(future_totals, past_totals);
+}
+
+// DB-21953: get_table_hash registers its read time with the retention policy, which also pins the
+// history cutoff for the whole call. That pin is what stops a compaction running alongside the scan
+// from garbage-collecting row versions the scan still needs.
+//
+// To actually exercise the pin we need a scan that opens more than one iterator at the same read
+// time: a single open iterator is already safe, since it holds onto its RocksDB files until it
+// finishes. A colocated tablet gives us exactly that -- one whole-tablet scan walks each colocated
+// table with its own iterator, all under a single read time T. So we get the scan going on the
+// first table, kick off a compaction (with history retention off it would push the cutoff past T
+// and drop the old versions), and then check that the rest of the scan still reads the data as it
+// was at T.
+//
+// TEST_fetch_next_delay_ms slows the scan down so the compaction reliably lands in the middle of
+// it. With the fix the cutoff stays pinned and the totals match the pre-update baseline; without it
+// the second table reads the compacted view and the hash comes back wrong.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashPinsCutoffDuringConcurrentCompaction) {
+  std::vector<std::string> ts_flags = {
+    "--timestamp_history_retention_interval_sec=0"s,
+  };
+  std::vector<std::string> master_flags;
+  BuildAndStart(ts_flags, master_flags);
+
+  // Two colocated tables sharing one tablet, so one whole-tablet scan opens two iterators in turn.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE codb WITH colocation = true"));
+  auto codb = ASSERT_RESULT(cluster_->ConnectToDB("codb"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_a (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_b (k int PRIMARY KEY, v int)"));
+  constexpr int kRowsPerTable = 50;
+  ASSERT_OK(codb.ExecuteFormat(
+      "INSERT INTO colo_a SELECT g, g * 10 FROM generate_series(1, $0) g", kRowsPerTable));
+  ASSERT_OK(codb.ExecuteFormat(
+      "INSERT INTO colo_b SELECT g, g * 7  FROM generate_series(1, $0) g", kRowsPerTable));
+
+  // The colocation parent id addresses the whole tablet (both tables).
+  const auto parent_table = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "codb"));
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  // Read time T captured while every row still holds its original value.
+  const auto read_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  auto [baseline_rows, baseline_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", parent_table, read_ht.ToUint64())));
+  ASSERT_EQ(baseline_rows, 2 * kRowsPerTable);
+
+  // Overwrite every row in both tables *after* T. The old values now sit below T; a compaction
+  // whose cutoff passes T would GC them, so a fresh iterator reading at T would miss those rows.
+  ASSERT_OK(codb.Execute("UPDATE colo_a SET v = v + 100000"));
+  ASSERT_OK(codb.Execute("UPDATE colo_b SET v = v + 100000"));
+
+  // Slow every per-table scan (both tables have column "v") so the whole-tablet scan stays in
+  // flight long enough for a compaction to land between its two per-table iterators.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_column", "v"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_ms", "200"));
+
+  // Whole-tablet scan in the background under a single read time T.
+  Result<std::string> scan_output = STATUS(Uninitialized, "");
+  std::thread scan_thread([&] {
+    scan_output = CallAdmin("get_table_hash", parent_table, read_ht.ToUint64());
+  });
+  auto joiner = ScopeExit([&scan_thread] {
+    if (scan_thread.joinable()) {
+      scan_thread.join();
+    }
+  });
+
+  // Wait long enough for the scan to register read time T and open the first table's iterator (the
+  // FetchNext delay keeps it on the first table for ~kRowsPerTable * 200ms), then compact. The
+  // compaction completes well before the scan moves on to the second table's fresh iterator.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+
+  scan_thread.join();
+
+  // The pinned scan must still see the original (pre-update) data across both tables.
+  ASSERT_OK(scan_output);
+  auto [scan_rows, scan_hash] = parse_totals(*scan_output);
+  ASSERT_EQ(scan_rows, baseline_rows);
+  ASSERT_EQ(scan_hash, baseline_hash);
 }
 
 // Test get_table_hash with a partition-key sub-range on a (non-colocated) hash-partitioned table.

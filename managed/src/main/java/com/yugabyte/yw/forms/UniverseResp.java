@@ -137,8 +137,10 @@ public class UniverseResp {
         .getPrimaryCluster()
         .userIntent
         .getAllProviderUUIDs()
-        .iterator()
-        .next();
+        .stream()
+        .sorted()
+        .findFirst()
+        .get();
   }
 
   private static void fillRegions(Collection<Universe> universes) {

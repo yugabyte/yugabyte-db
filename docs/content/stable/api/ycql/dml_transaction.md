@@ -151,6 +151,6 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
 
 ## See also
 
-- [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update/)
-- [`DELETE`](../dml_delete/)
+- [INSERT](../dml_insert)
+- [UPDATE](../dml_update/)
+- [DELETE](../dml_delete/)

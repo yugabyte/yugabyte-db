@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <limits.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -344,10 +345,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		DefaultTargetSessionAttrs, NULL,
 		"Target-Session-Attrs", "", 15, /* sizeof("prefer-standby") = 15 */
 	offsetof(struct pg_conn, target_session_attrs)},
-
-	{"yb_auto_analyze", NULL, NULL, NULL,
-		"YB-Auto-Analyze", "", 6, /* sizeof("false") = 6 */
-	offsetof(struct pg_conn, yb_auto_analyze)},
 
 	/*
 	 * Wire name of one of the YbInternalConnKind values (see
@@ -1009,7 +1006,7 @@ parse_comma_separated_list(char **startptr, bool *more)
 	char	   *p;
 	char	   *s = *startptr;
 	char	   *e;
-	int			len;
+	size_t		len;
 
 	/*
 	 * Search for the end of the current element; a comma or end-of-string
@@ -4195,8 +4192,6 @@ freePGconn(PGconn *conn)
 		free(conn->rowBuf);
 	if (conn->target_session_attrs)
 		free(conn->target_session_attrs);
-	if (conn->yb_auto_analyze)
-		free(conn->yb_auto_analyze);
 	if (conn->yb_internal_conn_kind)
 		free(conn->yb_internal_conn_kind);
 	termPQExpBuffer(&conn->errorMessage);
@@ -5111,7 +5106,21 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	/* concatenate values into a single string with newline terminators */
 	size = 1;					/* for the trailing null */
 	for (i = 0; values[i] != NULL; i++)
+	{
+		if (values[i]->bv_len >= INT_MAX ||
+			size > (INT_MAX - (values[i]->bv_len + 1)))
+		{
+			appendPQExpBuffer(errorMessage,
+							  libpq_gettext("connection info string size exceeds the maximum allowed (%d)\n"),
+							  INT_MAX);
+			ldap_value_free_len(values);
+			ldap_unbind(ld);
+			return 3;
+		}
+
 		size += values[i]->bv_len + 1;
+	}
+
 	if ((result = malloc(size)) == NULL)
 	{
 		appendPQExpBufferStr(errorMessage,

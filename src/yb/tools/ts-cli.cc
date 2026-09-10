@@ -36,6 +36,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/schema.h"
@@ -72,6 +73,8 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 
 using yb::cdc::CDCServiceProxy;
 using yb::cdc::UpdateCdcReplicatedIndexRequestPB;
@@ -99,6 +102,8 @@ using yb::tserver::DeleteTabletRequestPB;
 using yb::tserver::DeleteTabletResponsePB;
 using yb::tserver::FlushTabletsRequestPB;
 using yb::tserver::FlushTabletsResponsePB;
+using yb::tserver::GetSplitKeyRequestPB;
+using yb::tserver::GetSplitKeyResponsePB;
 using yb::tserver::IsTabletServerReadyRequestPB;
 using yb::tserver::IsTabletServerReadyResponsePB;
 using yb::tserver::ListMasterServersRequestPB;
@@ -124,6 +129,7 @@ const char* const kCurrentHybridTime = "current_hybrid_time";
 const char* const kStatus = "status";
 const char* const kCountIntents = "count_intents";
 const char* const kFlushTabletOp = "flush_tablet";
+const char* const kGetSplitKeyOp = "get_split_key";
 const char* const kFlushAllTabletsOp = "flush_all_tablets";
 const char* const kFlushVectorIndexOp = "flush_vector_index";
 const char* const kCompactTabletOp = "compact_tablet";
@@ -164,6 +170,10 @@ TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
 
 DEFINE_NON_RUNTIME_bool(exclude_vector_indexes, false,
     "If true, vector indexes are excluded from compaction operations.");
+
+DEFINE_NON_RUNTIME_uint32(read_time_wait_ms, kDumpTabletDataMaxReadTimeWaitMsDefault,
+    "dump_tablet_data: how long the server may wait for safe time to reach read_ht before failing. "
+    "0 fails immediately. Ignored when no read_ht is given.");
 
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
@@ -265,6 +275,9 @@ class TsAdminClient {
   // If 'tablet_id' is empty string, flush or compact all tablets.
   Status FlushOrCompactTablets(bool is_compaction, const TabletId& tablet_id);
 
+  // Prints the split keys that would divide the given tablet into 'split_factor' pieces.
+  Status GetSplitKey(const TabletId& tablet_id, int split_factor);
+
   // For a given tablet, flush or compact vector index chunks for the provided vector indexes.
   // If vector indexes are empty, do the operation for all vector indexes for the given tablet.
   Status FlushOrCompactVectorIndex(
@@ -298,7 +311,8 @@ class TsAdminClient {
       const std::string& txn_id_str, const std::string& subtxn_id);
 
   Status DumpTabletData(
-      const std::string& tablet_id, const std::string& dest_path, int64_t read_ht);
+      const std::string& tablet_id, const std::string& dest_path, int64_t read_ht,
+      uint32_t read_time_wait_ms);
 
   Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 
@@ -719,6 +733,29 @@ Status TsAdminClient::FlushOrCompactVectorIndex(
       is_compaction, tablet_id, vector_index_ids, tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY);
 }
 
+Status TsAdminClient::GetSplitKey(const TabletId& tablet_id, int split_factor) {
+  GetSplitKeyRequestPB req;
+  GetSplitKeyResponsePB resp;
+  RpcController rpc;
+
+  req.set_tablet_id(tablet_id);
+  req.set_split_factor(split_factor);
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK_PREPEND(ts_proxy_->GetSplitKey(req, &resp, &rpc), "GetSplitKey() failed");
+
+  if (resp.has_error()) {
+    return STATUS(IOError, "Failed to get split key: ", resp.error().ShortDebugString());
+  }
+
+  for (const auto& partition_key : resp.split_partition_keys()) {
+    std::cout << "Partition split key: " << strings::b2a_hex(partition_key) << std::endl;
+  }
+  for (const auto& encoded_key : resp.split_encoded_keys()) {
+    std::cout << "Encoded split key: " << strings::b2a_hex(encoded_key) << std::endl;
+  }
+  return Status::OK();
+}
+
 Status TsAdminClient::ReloadCertificates() {
   CHECK(initted_);
 
@@ -857,7 +894,8 @@ Status TsAdminClient::ReleaseAllLocksForTxn(
 }
 
 Status TsAdminClient::DumpTabletData(
-    const std::string& tablet_id, const std::string& dest_path, int64_t read_ht) {
+    const std::string& tablet_id, const std::string& dest_path, int64_t read_ht,
+    uint32_t read_time_wait_ms) {
   CHECK(initted_);
   tserver::DumpTabletDataRequestPB req;
   tserver::DumpTabletDataResponsePB resp;
@@ -870,6 +908,7 @@ Status TsAdminClient::DumpTabletData(
   if (read_ht > 0) {
     req.set_read_ht(read_ht);
   }
+  req.set_max_wait_ms(read_time_wait_ms);
   RETURN_NOT_OK(ts_proxy_->DumpTabletData(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -880,6 +919,9 @@ Status TsAdminClient::DumpTabletData(
   }
   std::cout << "Row count: " << resp.row_count() << std::endl;
   std::cout << "XOR hash: " << resp.xor_hash() << std::endl;
+  // Which scheme this tserver hashed under. Two tservers' hashes are comparable only when this
+  // agrees; a server too old to report one shows 0.
+  std::cout << "Hash scheme version: " << resp.hash_scheme_version() << std::endl;
   return Status::OK();
 }
 
@@ -937,6 +979,7 @@ void SetUsage(const char* argv0) {
       << "  " << kStatus << "\n"
       << "  " << kCountIntents << "\n"
       << "  " << kFlushTabletOp << " <tablet_id>\n"
+      << "  " << kGetSplitKeyOp << " <tablet_id> [<split_factor>]\n"
       << "  " << kFlushAllTabletsOp << "\n"
       << "  " << kFlushVectorIndexOp << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kCompactTabletOp << " <tablet_id> [-exclude-vector-indexes]\n"
@@ -952,7 +995,8 @@ void SetUsage(const char* argv0) {
       << "  " << kClearUniverseUuidOp << "\n"
       << "  " << kClearYCQLMetaDataCacheOnServerOp << "\n"
       << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n"
-      << "  " << kDumpTabletDataOp << " <tablet_id> (<dest_path> | HASH_ONLY) [read_ht]\n"
+      << "  " << kDumpTabletDataOp
+      << " <tablet_id> (<dest_path> | HASH_ONLY) [read_ht] [-read_time_wait_ms <ms>]\n"
       << "  " << kCdcReleaseBarriersOnTabletOp << " <tablet_id>\n";
   google::SetUsageMessage(str.str());
 }
@@ -1148,6 +1192,21 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.FlushOrCompactTablets(op == kCompactTabletOp, tablet_id),
         "Unable to flush or compact tablet");
+  } else if (op == kGetSplitKeyOp) {
+    if (argc < 3) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+    }
+
+    std::string tablet_id = argv[2];
+    int split_factor = 2;
+    if (argc > 3) {
+      auto parsed_split_factor = CheckedStoi(argv[3]);
+      RETURN_NOT_OK_PREPEND_FROM_MAIN(
+          ResultToStatus(parsed_split_factor), "Invalid split_factor");
+      split_factor = *parsed_split_factor;
+    }
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.GetSplitKey(tablet_id, split_factor), "Unable to get split key for tablet");
   } else if (op == kCompactAllTabletsOp || op == kFlushAllTabletsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
@@ -1220,7 +1279,8 @@ static int TsCliMain(int argc, char** argv) {
       dest_path = "";
     }
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
-        client.DumpTabletData(argv[2], dest_path, read_ht), "Unable to dump tablet data");
+        client.DumpTabletData(argv[2], dest_path, read_ht, FLAGS_read_time_wait_ms),
+        "Unable to dump tablet data");
   } else if (op == kCdcReleaseBarriersOnTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 

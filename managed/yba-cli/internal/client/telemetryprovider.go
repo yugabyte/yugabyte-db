@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
+	ybav2client "github.com/yugabyte/platform-go-client/v2"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
@@ -35,6 +36,21 @@ func (a *AuthAPIClient) DeleteTelemetryProvider(
 	tpUUID string,
 ) ybaclient.TelemetryProviderAPIDeleteTelemetryProviderRequest {
 	return a.APIClient.TelemetryProviderAPI.DeleteTelemetryProvider(a.ctx, a.CustomerUUID, tpUUID)
+}
+
+// ListTelemetryProviderTypes fetches the provider types this YBA supports, along with
+// whether each is allowed for logs and for metrics. v2 API.
+func (a *AuthAPIClient) ListTelemetryProviderTypes() ybav2client.TelemetryProviderAPIListTelemetryProviderTypesRequest {
+	return a.APIv2Client.TelemetryProviderAPI.ListTelemetryProviderTypes(a.ctx, a.CustomerUUID)
+}
+
+// TelemetryProviderTypesYBAVersionCheck checks if the telemetry provider types API can be used
+func (a *AuthAPIClient) TelemetryProviderTypesYBAVersionCheck() (bool, string, error) {
+	allowedVersions := YBAMinimumVersion{
+		Stable:  util.YBAAllowTelemetryProviderTypesMinStableVersion,
+		Preview: util.YBAAllowTelemetryProviderTypesMinPreviewVersion,
+	}
+	return a.CheckValidYBAVersion(allowedVersions)
 }
 
 // TelemetryProviderYBAVersionCheck checks if the new TelemetryProvider management API can be used

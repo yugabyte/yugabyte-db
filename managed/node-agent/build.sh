@@ -136,6 +136,20 @@ get_ynp_executable_name(){
     echo "$name"
 }
 
+stage_shared_templates() {
+    # gcp-fed-creds.json.j2 is owned by YBA (managed/src/main/resources/federation) so YBA and
+    # node-agent render the same external_account credential from one source. Stage YBA's copy into
+    # the node-agent templates (this file is git-ignored under resources/templates/server).
+    local shared_src="$project_dir/../src/main/resources/federation/gcp-fed-creds.json.j2"
+    local dest_dir="$project_dir/resources/templates/server"
+    if [ -f "$shared_src" ]; then
+        mkdir -p "$dest_dir"
+        cp -f "$shared_src" "$dest_dir/gcp-fed-creds.json.j2"
+    else
+        echo "WARN: shared template not found at $shared_src"
+    fi
+}
+
 prepare() {
     setup_protoc
     generate_golang_grpc_files
@@ -210,8 +224,9 @@ run_test() {
     echo "Running tests in ${dir}..."
     set +e
     go clean -testcache
-    local json_file="target/test-reports/tmp_results_${dir}.json"
-    local xml_file="target/test-reports/node_agent_test_results_${dir}.xml"
+    mkdir -p "target/test-reports/${dir}"
+    local json_file="target/test-reports/${dir}/tmp_results.json"
+    local xml_file="target/test-reports/${dir}/node_agent_test_results.xml"
     go test -json -short --tags testonly ./"$dir"/... > "$json_file"
     if [ -s "$json_file" ]; then
         go-junit-report -parser gojson -set-exit-code -iocopy -out "$xml_file" < "$json_file"
@@ -230,10 +245,12 @@ run_tests() {
     pushd "$project_dir"
     mkdir -p target/test-reports
     if [ -n "$testone_path" ]; then
-        run_test "$testone_path"
-        if [ $? -ne 0 ]; then
-            failed_tests+=("$testone_path")
-        fi
+        # E.g testone app/task/module.
+        local test_files=$(find "${testone_path}" -name '*_test.go')
+        for test_file in $test_files; do
+            local test_dir=$(dirname "$test_file")
+            run_test "$test_dir"
+        done
     else
         for dir in */ ; do
             # Remove trailing slash.
@@ -285,6 +302,10 @@ package_for_platform() {
     # Follow the symlinks.
     cp -Lf ../version.txt "${version_dir}"/version.txt
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
+    # Stage YBA's canonical gcp-fed-creds.json.j2 into resources/templates/server so the copy below
+    # picks it up. Only the package needs it (the node renders it at runtime); the build/test flows
+    # don't, so this is here rather than in prepare().
+    stage_shared_templates
     pushd "$project_dir/resources"
     cp -rf templates/* "$templates_dir/"
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh

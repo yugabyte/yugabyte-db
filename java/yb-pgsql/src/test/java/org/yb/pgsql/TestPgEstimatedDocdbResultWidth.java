@@ -605,13 +605,13 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
         "test_table", 33);
       testDocdbResultWidhEstimationHelper(stmt,
         "/*+ IndexOnlyScan(test_table test_index_1) */ SELECT 0 FROM test_table",
-        "test_table", 178);
+        "test_table", 177);
       testDocdbResultWidhEstimationHelper(stmt,
         "/*+ IndexOnlyScan(test_table test_index_2) */ SELECT 0 FROM test_table",
         "test_table", 113);
       testDocdbResultWidhEstimationHelper(stmt,
         "/*+ IndexOnlyScan(test_table test_index_3) */ SELECT 0 FROM test_table",
-        "test_table", 127);
+        "test_table", 128);
 
       stmt.execute("CREATE INDEX test_index_4 ON test_table " +
         "((sqrt(v1)::text || v3), (sqrt(v2)::text || v4))");
@@ -619,14 +619,14 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       // Without running ANALYZE, the result width is incorrect for test_index_4
       testDocdbResultWidhEstimationHelper(stmt,
         "/*+ IndexOnlyScan(test_table test_index_4) */ SELECT 0 FROM test_table",
-        "test_table", 48);
+        "test_table", 49);
 
       stmt.execute("ANALYZE test_table");
 
       // After running ANALYZE, result width is updated for test_index_4
       testDocdbResultWidhEstimationHelper(stmt,
         "/*+ IndexOnlyScan(test_table test_index_4) */ SELECT 0 FROM test_table",
-        "test_table", 136);
+        "test_table", 137);
     }
   }
 

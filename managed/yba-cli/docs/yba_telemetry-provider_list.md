@@ -20,7 +20,7 @@ yba telemetryprovider list
 
 ```
   -n, --name string   [Optional] Name of the telemetry provider.
-  -t, --type string   [Optional] Type of the telemetry provider. Allowed values: datadog, loki, splunk, awscloudwatch, gcpcloudmonitoring.
+  -t, --type string   [Optional] Type of the telemetry provider. Allowed values (case insensitive): datadog, loki, splunk, awscloudwatch, gcpcloudmonitoring, dynatrace, s3, otlp.
   -h, --help          help for list
 ```
 

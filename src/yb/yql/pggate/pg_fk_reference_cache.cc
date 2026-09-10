@@ -19,6 +19,8 @@
 
 #include "nodes/lockoptions.h"
 
+#include "yb/common/common.pb.h"
+
 #include "yb/gutil/port.h"
 
 #include "yb/util/flags/flag_tags.h"

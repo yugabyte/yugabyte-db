@@ -50,6 +50,11 @@ class HashUtil {
   static const uint64_t MURMUR_PRIME = 0xc6a4a7935bd1e995;
   static const int MURMUR_R = 47;
 
+  // Constants of the Murmur3 fmix64 finalizer, used by MixHash64 below.
+  static constexpr uint64_t MURMUR3_FMIX_C1 = 0xff51afd7ed558ccdULL;
+  static constexpr uint64_t MURMUR3_FMIX_C2 = 0xc4ceb9fe1a85ec53ULL;
+  static constexpr int MURMUR3_FMIX_R = 33;
+
   /// Murmur2 hash implementation returning 64-bit hashes.
   static constexpr uint64_t MurmurHash2_64(const char* input, size_t len, uint64_t seed) {
     uint64_t h = seed ^ (len * MURMUR_PRIME);
@@ -93,6 +98,19 @@ class HashUtil {
 
   static constexpr uint64_t MurmurHash2_64(std::string_view input, uint64_t seed) {
     return MurmurHash2_64(input.data(), input.length(), seed);
+  }
+
+  /// 64-bit avalanche step: the fmix64 finalizer from Murmur3, also used by SplitMix64. It is a
+  /// bijection, and flipping one input bit flips about half the output bits, which is what makes a
+  /// small integer usable as a seed or salt: xoring an id in directly would disturb only the bottom
+  /// few bits.
+  static constexpr uint64_t MixHash64(uint64_t x) {
+    x ^= x >> MURMUR3_FMIX_R;
+    x *= MURMUR3_FMIX_C1;
+    x ^= x >> MURMUR3_FMIX_R;
+    x *= MURMUR3_FMIX_C2;
+    x ^= x >> MURMUR3_FMIX_R;
+    return x;
   }
 };
 

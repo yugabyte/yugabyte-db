@@ -200,4 +200,9 @@ CompactionFileExcluderPtr DBImpl::TEST_SetExcludeFromCompaction(
   }
 }
 
+yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
+}
+
 }  // namespace rocksdb

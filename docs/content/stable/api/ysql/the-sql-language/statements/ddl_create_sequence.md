@@ -180,9 +180,9 @@ nextval
 
 ## See also
 
-- [`ALTER SEQUENCE`](../ddl_alter_sequence)
-- [`DROP SEQUENCE`](../ddl_drop_sequence)
-- [`currval()`](../../../exprs/sequence_functions/func_currval)
-- [`lastval()`](../../../exprs/sequence_functions/func_lastval)
-- [`nextval()`](../../../exprs/sequence_functions/func_nextval)
-- [`setval()`](../../../exprs/sequence_functions/func_setval)
+- [ALTER SEQUENCE](../ddl_alter_sequence)
+- [DROP SEQUENCE](../ddl_drop_sequence)
+- [currval()](../../../exprs/sequence_functions/func_currval)
+- [lastval()](../../../exprs/sequence_functions/func_lastval)
+- [nextval()](../../../exprs/sequence_functions/func_nextval)
+- [setval()](../../../exprs/sequence_functions/func_setval)

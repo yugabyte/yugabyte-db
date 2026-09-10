@@ -1,4 +1,10 @@
 -- Regression tests for UPDATE/DELETE single row operations.
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (COSTS OFF)'
 -- Expression pushdown is disabled.
 SET yb_enable_expression_pushdown to off;
 
@@ -498,6 +504,8 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = v2 + null 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = v2 + 3 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = abs(v1), v2 = power(v2,2) WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = 2, v2 = v2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = NULL WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints SET v1 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints SET v2 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints2 SET v1 = 2 WHERE k = 1;
@@ -511,12 +519,16 @@ DELETE FROM single_row_not_null_constraints where k = 3;
 SELECT * FROM single_row_not_null_constraints ORDER BY k;
 UPDATE single_row_not_null_constraints SET v1 = abs(v1), v2 = power(v2,2) WHERE k = 1;
 SELECT * FROM single_row_not_null_constraints ORDER BY k;
+-- Identity SET on NOT NULL must succeed via non-single-row path (GH-32716).
+UPDATE single_row_not_null_constraints SET v1 = 3, v2 = v2 WHERE k = 1;
+-- Should fail constraint check.
+UPDATE single_row_not_null_constraints SET v2 = NULL WHERE k = 1;
+SELECT * FROM single_row_not_null_constraints ORDER BY k;
 -- Should fail constraint check.
 UPDATE single_row_not_null_constraints SET v2 = v2 + null WHERE k = 1;
 -- Should update 0 rows (non-existent key).
 UPDATE single_row_not_null_constraints SET v2 = v2 + 2 WHERE k = 4;
 SELECT * FROM single_row_not_null_constraints ORDER BY k;
-
 
 INSERT INTO single_row_check_constraints(k,v1, v2) values (1,1,1), (2,2,2), (3,3,3);
 UPDATE single_row_check_constraints SET v1 = 2 WHERE k = 1;
@@ -920,6 +932,38 @@ INSERT into pk VALUES (1000);
 EXPLAIN(costs off) UPDATE pk SET a = 1002 WHERE a = 1000;
 UPDATE pk SET a = 1002 WHERE a = 1000;
 
+-- Test NOT NULL constraint enforcement in single-row UPDATE when parent and
+-- child column orders don't match.
+-- GH issue: https://github.com/yugabyte/yugabyte-db/issues/32472.
+CREATE TABLE pk_nn (k int, a int, b int NOT NULL, PRIMARY KEY (k))
+    PARTITION BY RANGE (k);
+CREATE TABLE pk_nn1 (b int NOT NULL, a int, k int NOT NULL, PRIMARY KEY (k));
+ALTER TABLE pk_nn ATTACH PARTITION pk_nn1 FOR VALUES FROM (1) TO (100);
+CREATE TABLE pk_nn2 (a int, b int NOT NULL, k int NOT NULL, PRIMARY KEY (k));
+ALTER TABLE pk_nn ATTACH PARTITION pk_nn2 FOR VALUES FROM (100) TO (200);
+INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
+-- All plans should USE single-row.  Setting NOT NULL column b to NULL should
+-- fail on either partition; updating only 'a' should succeed without checking
+-- the unmodified column b.
+\set Q1 'b = NULL'
+\set Q2 'a = 11'
+\set R1 '5'
+\set R2 '105'
+\set query ':P UPDATE pk_nn SET :Q WHERE k = :R;'
+\i :run_query
+SELECT * FROM pk_nn ORDER BY k;
+-- Same misfire via dropped columns: CREATE TABLE ... PARTITION OF does not
+-- materialize the parent's dropped columns, so the leaf's attribute numbers
+-- differ from the root's even though the column order matches.
+CREATE TABLE pk_nn_drop (k int, dropme int, a int, b int NOT NULL,
+    PRIMARY KEY (k)) PARTITION BY RANGE (k);
+ALTER TABLE pk_nn_drop DROP COLUMN dropme;
+CREATE TABLE pk_nn_drop1 PARTITION OF pk_nn_drop FOR VALUES FROM (1) TO (100);
+INSERT INTO pk_nn_drop VALUES (5, 10, 20);
+\set query ':P UPDATE pk_nn_drop SET :Q WHERE k = 5;'
+\i :run_query
+SELECT * FROM pk_nn_drop ORDER BY k;
+
 -- Test single-shard transactions in a partition table.
 -- The absence of flushes and storage scans in the EXPLAIN plan indicate the use
 -- of single-shard transactions.
@@ -1017,6 +1061,18 @@ COMMIT;
 SELECT * FROM t_simple ORDER BY k;
 SELECT * FROM t_temp ORDER BY k;
 
+-- Test to validate that NOT NULL constraints are enforced for partitioned tables.
+CREATE TABLE single_row_not_null_constraints_partitioned (k int PRIMARY KEY, v1 int NOT NULL, v2 int NOT NULL) PARTITION BY RANGE (k);
+CREATE TABLE not_null_constraints_partitioned_1 PARTITION OF single_row_not_null_constraints_partitioned FOR VALUES FROM (1) TO (10);
+CREATE TABLE not_null_constraints_partitioned_default PARTITION OF single_row_not_null_constraints_partitioned DEFAULT;
+INSERT INTO not_null_constraints_partitioned_1 VALUES (1, 1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints_partitioned SET v1 = v1 + 1, v2 = v2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints_partitioned SET v2 = NULL WHERE k = 1;
+UPDATE single_row_not_null_constraints_partitioned SET v1 = v1 + 1, v2 = v2 WHERE k = 1;
+-- Should fail constraint check.
+UPDATE single_row_not_null_constraints_partitioned SET v2 = NULL WHERE k = 1;
+SELECT * FROM single_row_not_null_constraints_partitioned ORDER BY k;
+
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -1046,6 +1102,8 @@ DROP TABLE array_t4;
 DROP TABLE json_t1;
 DROP TABLE p_test;
 DROP TABLE pk;
+DROP TABLE pk_nn;
+DROP TABLE pk_nn_drop;
 DROP TABLE t_simple;
 DROP TABLE t_temp;
 DROP TYPE rt;

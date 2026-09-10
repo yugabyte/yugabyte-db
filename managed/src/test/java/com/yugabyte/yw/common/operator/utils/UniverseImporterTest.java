@@ -11,8 +11,11 @@ import static org.junit.Assert.assertTrue;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
@@ -21,6 +24,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class UniverseImporterTest extends FakeDBApplication {
@@ -312,5 +316,37 @@ public class UniverseImporterTest extends FakeDBApplication {
     assertNull(overrides.getResource());
     assertNull(overrides.getMaster());
     assertNull(overrides.getTserver());
+  }
+
+  /**
+   * The universe CR points at the KMSConfig CR by name, and the operator resolves that name back to
+   * the config UUID. Getting the name wrong leaves encryption at rest permanently unresolvable, so
+   * it has to be derived the same way the imported KMSConfig CR is named.
+   */
+  @Test
+  public void testSetEncryptionAtRestSpecFromUniverse() {
+    // A universe that never had encryption at rest leaves the block off entirely.
+    universeImporter.setEncryptionAtRestSpecFromUniverse(testSpec, testUniverse);
+    assertNull(testSpec.getEncryptionAtRest());
+
+    KmsConfig kmsConfig =
+        KmsConfig.createKMSConfig(
+            testCustomer.getUuid(), KeyProvider.AWS, Json.newObject(), "My KMS Config");
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.encryptionAtRestConfig = new EncryptionAtRestConfig();
+          universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled = true;
+          universeDetails.encryptionAtRestConfig.kmsConfigUUID = kmsConfig.getConfigUUID();
+          universe.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(testUniverse.getUniverseUUID(), updater);
+    testUniverse = Universe.getOrBadRequest(testUniverse.getUniverseUUID());
+
+    universeImporter.setEncryptionAtRestSpecFromUniverse(testSpec, testUniverse);
+
+    assertNotNull(testSpec.getEncryptionAtRest());
+    assertEquals("my-kms-config", testSpec.getEncryptionAtRest().getKmsConfig());
+    assertTrue(testSpec.getEncryptionAtRest().getEnabled());
   }
 }

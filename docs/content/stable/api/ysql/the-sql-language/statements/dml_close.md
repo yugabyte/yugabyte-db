@@ -92,6 +92,6 @@ And this is the result from _fetch all from "Cur-Two"_:
 
 ## See also
 
-- [`DECLARE`](../dml_declare)
-- [`MOVE`](../dml_move)
-- [`FETCH`](../dml_fetch)
+- [DECLARE](../dml_declare)
+- [MOVE](../dml_move)
+- [FETCH](../dml_fetch)

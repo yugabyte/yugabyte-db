@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -71,6 +73,7 @@ import play.libs.Json;
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected int leaderBacklistWaitTimeMs;
+  protected boolean reconcilePgDataOwnershipToRoot = false;
   public static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
   protected final KubernetesManagerFactory kubernetesManagerFactory;
 
@@ -94,6 +97,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected boolean isSkipPrechecks() {
     return false;
+  }
+
+  protected TelemetryConfig getDesiredTelemetryConfig() {
+    return ExportTelemetryConfig.getForUniverse(taskParams().getUniverseUUID())
+        .map(ExportTelemetryConfig::getTelemetryConfig)
+        .orElse(null);
   }
 
   public static class KubernetesPlacement {
@@ -493,18 +502,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This will always be false in the case of a new universe.
       if (activeDeploymentConfigs.containsKey(azUUID)) {
         // Helm Upgrade
-        // Potential changes:
-        // 1) Adding masters: Do not want either old masters or tservers to be rolled.
-        // 2) Adding tservers:
-        //    a) No masters changed, that means the master addresses are the same. Do not need
-        //       to set partition on tserver or master.
-        //    b) Masters changed, that means the master addresses changed, and we don't want to
-        //       roll the older pods (or the new masters, since they will be in shell mode).
-        int tserverPartition = currNumMasters != newNumMasters ? currNumTservers : 0;
-        int masterPartition =
-            currNumMasters != newNumMasters
-                ? (serverType == ServerType.MASTER ? currNumMasters : newNumMasters)
-                : 0;
+        // This is a scale operation that should only bring up the newly added pods; it must not
+        // roll any existing pod. Never set partition to 0 here: a prior non-restart change may
+        // have advanced the StatefulSet template without rolling pods, and partition 0 would make
+        // the controller reconcile (restart) all existing pods at once. So always set partition to
+        // the count of pods that must be protected (new pods come up via the replica increase
+        // regardless of partition):
+        // 1) Adding masters: protect existing masters/tservers; new masters start in shell mode.
+        // 2) Adding tservers: protect existing tservers and all masters (master addresses are
+        //    unchanged when only tservers are added).
+        int tserverPartition = currNumTservers;
+        int masterPartition = serverType == ServerType.MASTER ? currNumMasters : newNumMasters;
         helmInstalls.addSubTask(
             createKubernetesExecutorTaskForServerType(
                 universeName,
@@ -1176,7 +1184,61 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         rootCAUUID,
         false /* useExistingServerCert */,
         skipAZs,
-        null /* targetUniverseState */);
+        null /* targetUniverseState */,
+        false /* useNewMasterDeviceInfo */,
+        false /* useNewTserverDeviceInfo */);
+  }
+
+  /**
+   * Same as the overload above, but allows the caller to control whether the Helm overrides use the
+   * target (new) device info for the master/tserver StatefulSets. This is needed by edit-universe
+   * flows: a HELM_UPGRADE re-renders the whole release (both master and tserver StatefulSets), so
+   * the storage stanza must reflect what the cluster has already converged to (e.g. after a disk
+   * resize). Otherwise the still-stale persisted intent would be rendered and Kubernetes rejects
+   * the immutable volumeClaimTemplates update on the StatefulSet.
+   */
+  public void upgradePodsTask(
+      String universeName,
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      CommandType commandType,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      PodUpgradeParams podUpgradeParams,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      Set<UUID> skipAZs,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo) {
+    upgradePodsTask(
+        universeName,
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        softwareVersion,
+        universeOverridesStr,
+        azsOverrides,
+        newNamingStyle,
+        isReadOnlyCluster,
+        commandType,
+        enableYbc,
+        ybcSoftwareVersion,
+        podUpgradeParams,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        false /* useExistingServerCert */,
+        skipAZs,
+        null /* targetUniverseState */,
+        useNewMasterDeviceInfo,
+        useNewTserverDeviceInfo);
   }
 
   public void upgradePodsTask(
@@ -1198,7 +1260,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID rootCAUUID,
       boolean useExistingServerCert,
       Set<UUID> skipAZs,
-      @Nullable Universe targetUniverseState) {
+      @Nullable Universe targetUniverseState,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -1386,7 +1450,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               null /* previousGflagsChecksumMap */,
               ysqlMajorVersionUpgradeState,
               rootCAUUID,
-              useExistingServerCert);
+              useExistingServerCert,
+              useNewMasterDeviceInfo,
+              useNewTserverDeviceInfo);
         }
 
         addParallelTasks(
@@ -1586,15 +1652,23 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
         Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
 
+        // This scale-down helm upgrade only reduces the replica count; it must not roll any
+        // surviving pod. Set partition to the post-scale-down pod counts (never 0) so a prior
+        // non-restart template change cannot trigger a simultaneous restart of remaining pods.
+        int masterPartition = newPlacement.masters.getOrDefault(azUUID, 0);
+        int tserverPartition = newPlacement.tservers.getOrDefault(azUUID, 0);
         helmDeletes.addSubTask(
-            createKubernetesExecutorTask(
+            createKubernetesExecutorTaskForServerType(
                 universeName,
                 CommandType.HELM_UPGRADE,
                 tempPI,
                 azCode,
                 masterAddresses,
                 ybSoftwareVersion,
+                ServerType.EITHER,
                 config,
+                masterPartition,
+                tserverPartition,
                 universeOverrides,
                 azOverrides,
                 isReadOnlyCluster,
@@ -1611,16 +1685,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0),
                 isReadOnlyCluster));
         // New Masters are up, garbage colllect the extra master volumes now.
-        pvcDeletes.addSubTask(
-            garbageCollectMasterVolumes(
-                universeName,
-                taskParams().nodePrefix,
-                azCode,
-                config,
-                newPlacement.masters.getOrDefault(azUUID, 0),
-                isReadOnlyCluster,
-                taskParams().useNewHelmNamingStyle,
-                taskParams().getUniverseUUID()));
+        // Read-only clusters have no master StatefulSets/PVCs, so skip master volume GC there.
+        if (!isReadOnlyCluster) {
+          pvcDeletes.addSubTask(
+              garbageCollectMasterVolumes(
+                  universeName,
+                  taskParams().nodePrefix,
+                  azCode,
+                  config,
+                  newPlacement.masters.getOrDefault(azUUID, 0),
+                  isReadOnlyCluster,
+                  taskParams().useNewHelmNamingStyle,
+                  taskParams().getUniverseUUID()));
+        }
       } else {
         // Delete the helm deployments.
         helmDeletes.addSubTask(
@@ -1999,6 +2076,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.azCode = azCode;
     params.providerUUID = providerUUID;
     params.universeDetails = taskParams();
+    params.telemetryConfig = getDesiredTelemetryConfig();
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             taskParams().nodePrefix,
@@ -2234,6 +2312,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
       params.universeDetails = taskParams();
       params.universeConfig = universe.getConfig();
+      params.telemetryConfig = getDesiredTelemetryConfig();
     }
     // Case when new Universe is being created, we set the gflag "master_join_existing_cluster"
     // to 'false'.
@@ -2249,6 +2328,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.setEnableYbc(enableYbc);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
+    // pg_data only lives on the tserver pods, so the master StatefulSet never needs the reconcile.
+    params.reconcilePgDataOwnershipToRoot =
+        reconcilePgDataOwnershipToRoot && serverType == ServerType.TSERVER;
     // full move for AZs runs after disk resize, set params accordingly
     if (oldMasterDiskSize != null) {
       params.oldMasterDiskSize = oldMasterDiskSize;
@@ -2298,6 +2380,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.commandType = CommandType.HELM_UPGRADE;
     params.universeDetails = taskParams();
     params.universeConfig = universe.getConfig();
+    params.telemetryConfig = getDesiredTelemetryConfig();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.azCode = az;
     params.helmReleaseName =
@@ -2582,6 +2665,60 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID,
       boolean useExistingServerCert) {
+    createSingleKubernetesExecutorTaskForServerType(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        config,
+        masterPartition,
+        tserverPartition,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        podName,
+        newDiskSize,
+        ignoreErrors,
+        enableYbc,
+        ybcSoftwareVersion,
+        usePreviousGflagsChecksum,
+        previousGflagsChecksumMap,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        useExistingServerCert,
+        false /* useNewMasterDeviceInfo */,
+        false /* useNewTserverDeviceInfo */);
+  }
+
+  public void createSingleKubernetesExecutorTaskForServerType(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName,
+      String newDiskSize,
+      boolean ignoreErrors,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      boolean usePreviousGflagsChecksum,
+      Map<ServerType, String> previousGflagsChecksumMap,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      boolean useExistingServerCert,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName(), ignoreErrors);
     subTaskGroup.addSubTask(
         getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -2606,8 +2743,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             previousGflagsChecksumMap,
             false /* usePreviousCertChecksum */,
             null /* previousCertChecksum */,
-            false /* useNewMasterDeviceInfo */,
-            false /* useNewTserverDeviceInfo */,
+            useNewMasterDeviceInfo,
+            useNewTserverDeviceInfo,
             ysqlMajorVersionUpgradeState,
             rootCAUUID,
             useExistingServerCert));
@@ -2770,6 +2907,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
     params.universeName = universeName;
+    params.telemetryConfig = getDesiredTelemetryConfig();
     // sending in the entire taskParams only for selected commandTypes that need it
     if (commandType == CommandType.HELM_INSTALL) {
       params.universeDetails = taskParams();
@@ -2779,6 +2917,30 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       if (useNewMasterDeviceInfo || useNewTserverDeviceInfo) {
         // Only update the deviceInfo all other things remain same
         params.universeDetails = universe.getUniverseDetails();
+        // Carry over the target instance type / node resource spec from the task params.
+        // Rendering the storage stanza from the new device info (below) requires switching the
+        // base universeDetails to the persisted (DB) copy, which still holds the pre-edit instance
+        // type. Callers that also change the instance type (edit-universe) would otherwise have
+        // their resource change silently dropped by this Helm upgrade. This is a no-op for callers
+        // that do not change the instance type (e.g. disk resize / full move), since the copied
+        // values are identical to what is already persisted.
+        Cluster taskDeviceCluster =
+            isReadOnlyCluster
+                ? taskParams().getReadOnlyClusters().get(0)
+                : taskParams().getPrimaryCluster();
+        Cluster paramsDeviceCluster =
+            isReadOnlyCluster
+                ? params.universeDetails.getReadOnlyClusters().get(0)
+                : params.universeDetails.getPrimaryCluster();
+        if (taskDeviceCluster != null && paramsDeviceCluster != null) {
+          paramsDeviceCluster.userIntent.instanceType = taskDeviceCluster.userIntent.instanceType;
+          paramsDeviceCluster.userIntent.masterInstanceType =
+              taskDeviceCluster.userIntent.masterInstanceType;
+          paramsDeviceCluster.userIntent.tserverK8SNodeResourceSpec =
+              taskDeviceCluster.userIntent.tserverK8SNodeResourceSpec;
+          paramsDeviceCluster.userIntent.masterK8SNodeResourceSpec =
+              taskDeviceCluster.userIntent.masterK8SNodeResourceSpec;
+        }
         if (useNewTserverDeviceInfo) {
           if (isReadOnlyCluster) {
             params.universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo =
@@ -2846,6 +3008,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.podName = podName;
     params.newDiskSize = newDiskSize;
+    // pg_data only lives on the tserver pods, so the master StatefulSet never needs the reconcile.
+    params.reconcilePgDataOwnershipToRoot =
+        reconcilePgDataOwnershipToRoot && serverType == ServerType.TSERVER;
     params.setEnableYbc(enableYbc);
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
@@ -2909,6 +3074,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
       params.universeDetails = taskParams();
       params.universeConfig = universe.getConfig();
+      params.telemetryConfig = getDesiredTelemetryConfig();
     }
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
@@ -2937,6 +3103,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.updateStrategy = KubernetesCommandExecutor.UpdateStrategy.OnDelete;
+    // pg_data only lives on the tserver pods, so the master StatefulSet never needs the reconcile.
+    params.reconcilePgDataOwnershipToRoot =
+        reconcilePgDataOwnershipToRoot && serverType == ServerType.TSERVER;
     params.setEnableYbc(enableYbc);
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
@@ -2988,6 +3157,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.universeName = universeName;
     params.universeDetails = taskParams();
     params.universeConfig = universe.getConfig();
+    params.telemetryConfig = getDesiredTelemetryConfig();
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
     }

@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.PlatformInstance.State;
+import com.zaxxer.hikari.HikariDataSource;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -42,6 +43,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -59,6 +61,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pekko.actor.Cancellable;
@@ -74,6 +77,11 @@ public class PlatformReplicationManager {
   public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
+
+  // Postgres raises "cached plan must not change result type" as feature_not_supported.
+  private static final String STALE_PLAN_SQL_STATE = "0A000";
+
+  private static final int MAX_CAUSE_DEPTH = 20;
 
   // Format is backup_26-02-05-20-42.tgz.
   private static final Pattern BACKUP_FILE_PATTERN =
@@ -360,7 +368,9 @@ public class PlatformReplicationManager {
     }
     // Promote the new local leader first because the remote demotion response is ignored for
     // eventual consistency. Otherwise, all of them be in standby if local promotion is done later.
-    persistLocalInstancePromotion(config, newLeader);
+    retryOnStalePlan(
+        "promotion of " + newLeader.getAddress(),
+        () -> persistLocalInstancePromotion(config, newLeader));
     // Attempt to ensure all remote instances are in follower state.
     // Remotely demote any instance reporting to be a leader.
     config
@@ -388,6 +398,46 @@ public class PlatformReplicationManager {
                     ignored.getMessage());
               }
             });
+  }
+
+  /**
+   * Runs an operation again if it failed only because its session predated the restore.
+   *
+   * <p>Postgres discards the offending plan when it raises "cached plan must not change result
+   * type", so the retry succeeds. Worth retrying here in particular: this transaction carries the
+   * leader flag, and losing it leaves a follower with the rest of the promotion applied.
+   */
+  @VisibleForTesting
+  void retryOnStalePlan(String description, Runnable operation) {
+    try {
+      operation.run();
+    } catch (RuntimeException e) {
+      if (!isStalePlanError(e)) {
+        throw e;
+      }
+      log.warn("Retrying {} after a stale prepared plan error: {}", description, e.getMessage());
+      operation.run();
+    }
+  }
+
+  @VisibleForTesting
+  static boolean isStalePlanError(Throwable throwable) {
+    // The message is the definitive marker; the SQL state is matched too in case a driver words
+    // it differently, and a genuine feature_not_supported costs one retry that fails the same
+    // way. Depth-bounded because a cause chain can be cyclic: Throwable rejects only a throwable
+    // that causes itself, not a pair that cause each other.
+    Throwable t = throwable;
+    for (int depth = 0; t != null && depth < MAX_CAUSE_DEPTH; t = t.getCause(), depth++) {
+      String message = t.getMessage();
+      if (message != null && message.contains("cached plan must not change result type")) {
+        return true;
+      }
+      if (t instanceof SQLException sqlException
+          && STALE_PLAN_SQL_STATE.equals(sqlException.getSQLState())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Transactional
@@ -799,11 +849,24 @@ public class PlatformReplicationManager {
     private final boolean excludePADatabase;
     // Whether to exclude PA collector collected data files from the backup or not.
     private final boolean excludePAFiles;
+    // When true, dump only the whitelisted PA "configuration" tables (data-only). Mutually
+    // exclusive with excludePADatabase. Used only by the HA replication path so the standby
+    // PA sees the same customer / universe metadata and runtime config as the active PA
+    // without inheriting the active's metrics / anomalies / support-bundle data.
+    private final boolean includePaConfigOnly;
     // Where to output the platform backup
     private final String outputDirectory;
 
     public CreatePlatformBackupParams() {
-      this(true, true, true, true, replicationHelper.getBackupDir().toString());
+      this(
+          true /* excludePrometheus */,
+          true /* excludeReleases */,
+          StringUtils.isBlank(
+              confGetter.getStaticConf().getString("yb.pa.url")) /* excludePADatabase */,
+          true /* excludePAFiles */,
+          StringUtils.isNotBlank(
+              confGetter.getStaticConf().getString("yb.pa.url")) /* includePaConfigOnly */,
+          replicationHelper.getBackupDir().toString());
     }
 
     public CreatePlatformBackupParams(
@@ -812,10 +875,27 @@ public class PlatformReplicationManager {
         boolean excludePADatabase,
         boolean excludePAFiles,
         String outputDirectory) {
+      this(
+          excludePrometheus,
+          excludeReleases,
+          excludePADatabase,
+          excludePAFiles,
+          false /* includePaConfigOnly */,
+          outputDirectory);
+    }
+
+    public CreatePlatformBackupParams(
+        boolean excludePrometheus,
+        boolean excludeReleases,
+        boolean excludePADatabase,
+        boolean excludePAFiles,
+        boolean includePaConfigOnly,
+        String outputDirectory) {
       this.excludePrometheus = excludePrometheus;
       this.excludeReleases = excludeReleases;
       this.excludePADatabase = excludePADatabase;
       this.excludePAFiles = excludePAFiles;
+      this.includePaConfigOnly = includePaConfigOnly;
       this.outputDirectory = outputDirectory;
     }
 
@@ -835,6 +915,9 @@ public class PlatformReplicationManager {
       }
       if (excludePAFiles) {
         commandArgs.add("--exclude_pa_files");
+      }
+      if (includePaConfigOnly) {
+        commandArgs.add("--include_pa_config_only");
       }
       commandArgs.add("--disable_version_check");
 
@@ -935,8 +1018,16 @@ public class PlatformReplicationManager {
   }
 
   public boolean restoreBackupOnStandby(HighAvailabilityConfig config, File input) {
+    // HA sync path: the archive contains a --include_pa_config_only PA dump (whitelisted tables,
+    // data-only). Pass excludePADatabase=false so the script picks it up; it will detect
+    // the pa_ts_config_only.marker file and use the config-only restore path automatically.
     boolean succeeded =
-        restoreBackup(input, false /* k8sRestoreYbaDbOnRestart */, false /*skipOldFiles*/);
+        restoreBackup(
+            input,
+            false /* k8sRestoreYbaDbOnRestart */,
+            false /* skipOldFiles */,
+            false /* excludePADatabase */,
+            true /* excludePAFiles */);
     // Apply stored operator resources to Kubernetes whose persisted resourceVersion
     // is strictly greater than the live Kubernetes version, or that are absent.
     if (succeeded && confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
@@ -997,7 +1088,12 @@ public class PlatformReplicationManager {
       log.error("Restore failed: {}", response.message);
     } else {
       log.info("Platform backup restored successfully");
+      terminateOtherDbSessions();
       DB.cacheManager().clearAll();
+      DataSource ds = DB.getDefault().dataSource();
+      if (ds instanceof HikariDataSource hds && hds.getHikariPoolMXBean() != null) {
+        hds.getHikariPoolMXBean().softEvictConnections();
+      }
       // Wait for DB connection to be available after restore.
       // Restore wipes out tables, invalidating the underlying connections.
       Util.waitForDBConnection(5);
@@ -1005,6 +1101,30 @@ public class PlatformReplicationManager {
       fileDataService.syncFileData(AppConfigHelper.getStoragePath(), true);
     }
     return response.code == 0;
+  }
+
+  /**
+   * Kills every other session on the YBA DB after a restore.
+   *
+   * <p>The restore drops and recreates the public schema without touching live sessions, and
+   * softEvictConnections below can only close a connection that is idle or returned to the pool. A
+   * session in the middle of a statement has to be ended server-side, which also makes its owner
+   * fail fast rather than carry on against a schema that no longer exists.
+   *
+   * <p>Best effort: a backend that does not allow this must not fail the restore.
+   */
+  private void terminateOtherDbSessions() {
+    try {
+      int terminated =
+          DB.sqlQuery(
+                  "SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
+                      + " WHERE datname = current_database() AND pid <> pg_backend_pid()")
+              .findList()
+              .size();
+      log.info("Terminated {} other DB session(s) after restore", terminated);
+    } catch (Exception e) {
+      log.warn("Could not terminate other DB sessions after restore: {}", e.getMessage());
+    }
   }
 
   /**

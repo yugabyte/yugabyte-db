@@ -24,7 +24,8 @@ class PgDocMetrics;
 
 class FlushFuture {
  public:
-  FlushFuture(PerformFuture&& future, PgSession& session, PgDocMetrics& metrics);
+  FlushFuture(
+      PerformFuture&& future, PgSession& session, PgDocMetrics& metrics, PgOid relation_oid);
 
   Status Get();
   bool Ready() const;
@@ -33,6 +34,9 @@ class FlushFuture {
   PerformFuture future_;
   PgSession* session_;
   PgDocMetrics* metrics_;
+  // OID of the relation the flushed operations belong to, kPgInvalidOid when they belong to
+  // more than one.
+  PgOid relation_oid_;
 };
 
 } // namespace yb::pggate

@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/master/master_ysql_lease.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
@@ -22,8 +24,10 @@
 #include "yb/tserver/ysql_lease_manager.h"
 #include "yb/tserver/ysql_lease_poller.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -31,6 +35,9 @@ using namespace std::placeholders;
 DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
     "Whether tservers should monitor their ysql op lease and kill their hosted pg "
     "sessions when it expires. Only available as a flag for tests.");
+
+DEFINE_test_flag(uint64, delay_ysql_lease_expiry_pg_kill_ms, 0,
+    "Delay between a tserver detecting YSQL lease expiry and killing hosted PG sessions.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_ysql);
@@ -277,6 +284,12 @@ std::optional<CoarseTimePoint> YSQLLeaseManager::Impl::CheckLeaseStatusInner() {
   }
   // todo(zdrudi): make this a fatal?
   LOG(INFO) << "Lease has expired, killing pg sessions.";
+  if (FLAGS_TEST_delay_ysql_lease_expiry_pg_kill_ms != 0) {
+    LOG(INFO) << "TEST: sleeping for " << FLAGS_TEST_delay_ysql_lease_expiry_pg_kill_ms
+              << "ms before killing pg sessions.";
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_ysql_lease_expiry_pg_kill_ms);
+    LOG(INFO) << "TEST: done sleeping, proceeding to kill pg sessions.";
+  }
   WARN_NOT_OK(server_.KillPg(), "Couldn't stop PG");
   return {};
 }

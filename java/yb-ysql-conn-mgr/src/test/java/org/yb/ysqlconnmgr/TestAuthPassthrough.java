@@ -5,8 +5,15 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
+import static org.yb.ysqlconnmgr.PgWireProtocol.*;
 
 import com.google.gson.JsonObject;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -153,6 +160,98 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
     }
   }
 
+  // Reproduce the control-backend buffer leak on a mid-relay client disconnect.
+  //
+  // On a successful auth the control backend reports its GUC state as a burst of
+  // ParameterStatus packets followed by ReadyForQuery. If the external client
+  // drops the connection after AuthenticationOk but before that burst has been
+  // relayed, the connection manager can no longer forward those packets. Before
+  // the fix it aborted the relay and returned the control backend to the pool
+  // with the remaining ParameterStatus + ReadyForQuery bytes still unread,
+  // desyncing the next auth that reused the backend.
+  //
+  // Auth is disabled (trust) for this test so a raw wire-level client can reach
+  // AuthenticationOk without implementing md5/scram. Passthrough still runs
+  // (ysql_conn_mgr_use_auth_backend=false), so the GUC ParameterStatus burst is
+  // still emitted -- exactly the packets whose relay we interrupt.
+  @Test
+  public void testClientDisconnectDuringGucRelay() throws Exception {
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ysql_enable_auth", "false");
+    flags.put("ysql_conn_mgr_use_auth_backend", "false");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
+
+    final String user = "yugabyte";
+
+    // Wire-level client: run the startup handshake only as far as
+    // AuthenticationOk, then abruptly reset the connection.
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    LOG.info("Connecting raw socket to Odyssey at " + addr);
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(30_000);
+      // SO_LINGER 0 => close() sends a TCP RST, so the connection manager's next
+      // write to this client fails deterministically instead of buffering.
+      socket.setSoLinger(true, 0);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      out.write(buildStartupMessage(user, "yugabyte"));
+      out.flush();
+
+      // Read until AuthenticationOk (authType 0). Deliberately do NOT drain to
+      // ReadyForQuery: closing here is what strands the GUC ParameterStatus +
+      // ReadyForQuery packets on the control backend.
+      boolean gotAuthOk = false;
+      for (int i = 0; i < 20 && !gotAuthOk; i++) {
+        PgMessage msg = readMessage(in);
+        LOG.info("Wire client received: " + msg);
+        if (msg.type == BE_AUTHENTICATION) {
+          int authType = ByteBuffer.wrap(msg.body).getInt(0);
+          assertEquals("Expected AuthenticationOk under trust auth", 0, authType);
+          gotAuthOk = true;
+        } else if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected ErrorResponse during startup: "
+              + new String(msg.body, StandardCharsets.UTF_8));
+        }
+      }
+      assertTrue("Did not receive AuthenticationOk from server", gotAuthOk);
+    }
+    // Socket closed (RST) right after AuthenticationOk, mid GUC relay. Wait for the
+    // backend to be reset.
+    Thread.sleep(1000);
+
+    // The control backend must have been drained and returned to the pool clean:
+    // a fresh connection reusing it should authenticate and run a query. Use a
+    // single connection attempt so a desynced backend fails the test instead of
+    // being masked by a driver retry.
+    ConnectionBuilder builder = getConnectionBuilder();
+    int maxAttempts = builder.getMaxConnectionAttempts();
+    builder.setMaxConnectionAttempts(1);
+    try (Connection connection = builder
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser(user)
+             .connect();
+        Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT 1");
+      assertTrue("Expected a row from SELECT 1", rs.next());
+      assertEquals("Expected SELECT 1 to return 1", 1, rs.getInt(1));
+    } finally {
+      builder.setMaxConnectionAttempts(maxAttempts);
+    }
+
+    // The control backend should have been retained (drained, not closed).
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+    JsonObject pool = getPool("control_connection", "control_connection");
+    assertNotNull("Expected a control_connection pool", pool);
+    int numPhysicalConn = pool.get("active_physical_connections").getAsInt()
+        + pool.get("idle_physical_connections").getAsInt();
+    assertEquals("Control backend should be retained after client disconnect", 1,
+        numPhysicalConn);
+  }
+
   // Verify that a password change in pg_authid is picked up by auth passthrough
   // and the old password is rejected despite tserver response cache prefetching.
   @Test
@@ -274,20 +373,32 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
     void run(Statement adminStatement) throws Exception;
   }
 
-  // Restarts the cluster with tserver response cache enabled for auth, then
-  // runs the supplied action with a direct-to-PG admin connection.
+  // Runs the supplied action with a direct-to-PG admin connection against a cluster that has the
+  // tserver response cache enabled for auth, once per authentication mode.
+  //
+  // The response cache for auth was introduced for auth backend mode, where a fresh backend
+  // authenticates every logical connection, and was later extended to auth passthrough, where a
+  // pooled control backend does it. Both can answer from state that is only refreshed when the
+  // node's shared memory catalog version advances -- the cached prefetch is keyed on that version,
+  // and a pooled backend's catalog caches are invalidated by it -- so a privilege DDL has to reach
+  // it before returning. The modes are covered here rather than in the class flags because
+  // ysql_conn_mgr_use_auth_backend is not runtime settable.
   private void withAuthCacheCluster(AdminAction action) throws Exception {
-    Map<String, String> flags = new HashMap<>();
-    flags.put("ysql_enable_read_request_cache_for_connection_auth", "true");
-    restartClusterWithAdditionalFlags(Collections.EMPTY_MAP, flags);
+    for (boolean useAuthBackend : new boolean[] {false, true}) {
+      LOG.info("Running with ysql_conn_mgr_use_auth_backend={}", useAuthBackend);
+      Map<String, String> flags = new HashMap<>();
+      flags.put("ysql_enable_read_request_cache_for_connection_auth", "true");
+      flags.put("ysql_conn_mgr_use_auth_backend", Boolean.toString(useAuthBackend));
+      restartClusterWithAdditionalFlags(Collections.EMPTY_MAP, flags);
 
-    try (Connection adminConn = getConnectionBuilder()
-             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
-             .withUser(ADMIN_USERNAME)
-             .withPassword(ADMIN_PASSWORD)
-             .connect();
-         Statement adminStmt = adminConn.createStatement()) {
-      action.run(adminStmt);
+      try (Connection adminConn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+               .withUser(ADMIN_USERNAME)
+               .withPassword(ADMIN_PASSWORD)
+               .connect();
+           Statement adminStmt = adminConn.createStatement()) {
+        action.run(adminStmt);
+      }
     }
   }
 

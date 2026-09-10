@@ -12,7 +12,7 @@ import api.v2.mappers.DrConfigMapper;
 import api.v2.models.DrConfigInfo;
 import api.v2.models.DrConfigSpec;
 import api.v2.models.DrConfigUniverseReplicationState;
-import api.v2.models.TableType;
+import api.v2.models.XClusterTableType;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
@@ -88,7 +88,7 @@ public class DrConfigMapperTest extends FakeDBApplication {
     assertEquals("dr-test", spec.getName());
     assertEquals(sourceUniverse.getUniverseUUID(), spec.getPrimaryUniverseUuid());
     assertEquals(targetUniverse.getUniverseUUID(), spec.getDrReplicaUniverseUuid());
-    assertEquals(TableType.YSQL, spec.getTableType());
+    assertEquals(XClusterTableType.YSQL, spec.getTableType());
     assertEquals(DrConfigSpec.TypeEnum.TXN, spec.getType());
     assertEquals(86400L, spec.getPitrRetentionPeriodSec().longValue());
     assertEquals(3600L, spec.getPitrSnapshotIntervalSec().longValue());

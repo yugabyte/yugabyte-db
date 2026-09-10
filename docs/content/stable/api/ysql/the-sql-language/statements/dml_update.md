@@ -120,6 +120,6 @@ yugabyte=# SELECT * FROM sample ORDER BY k1;
 
 ## See also
 
-- [`DELETE`](../dml_delete/)
-- [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select/)
+- [DELETE](../dml_delete/)
+- [INSERT](../dml_insert)
+- [SELECT](../dml_select/)

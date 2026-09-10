@@ -37,11 +37,14 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   }
 
   if (slice[0] == dockv::KeyEntryTypeAsChar::kTransactionId) {
-    if (slice.size() == TransactionId::StaticSize() + 1) {
+    Slice suffix = slice.WithoutPrefix(TransactionId::StaticSize() + 1);
+    if (suffix.empty()) {
       return KeyType::kTransactionMetadata;
-    } else if (slice.size() == TransactionId::StaticSize() + 2) {
+    } else if (suffix.size() == 1) {
       // Key for post-apply transaction metadata is [prefix] [transaction id] 00.
       return KeyType::kPostApplyTransactionMetadata;
+    } else if (suffix[0] == dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime) {
+      return KeyType::kTransactionMetadataUpdate;
     } else {
       return KeyType::kReverseTxnKey;
     }

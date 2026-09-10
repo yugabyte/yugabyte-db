@@ -27,6 +27,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/util/tsan_util.h"

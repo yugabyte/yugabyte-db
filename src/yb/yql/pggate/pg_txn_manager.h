@@ -15,12 +15,14 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <memory>
 #include <optional>
 #include <utility>
 
 #include "yb/common/clock.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/object_lock_shared_fwd.h"
@@ -38,6 +40,7 @@
 #include "yb/yql/pggate/pg_callbacks.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
@@ -53,17 +56,20 @@ YB_DEFINE_ENUM(PgIsolationLevel,
 
 YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
+YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
+YB_STRONGLY_TYPED_BOOL(SkipReadTimeOptions);
+YB_STRONGLY_TYPED_BOOL(IsCatalogSnapshot);
 
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
   uint64_t read_time_serial_no; // Read time serial number
-  bool is_clamped; // Whether the uncertainty window is clamped
 };
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
-      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool enable_table_locking);
+      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+      std::atomic<uint64_t>& next_read_time_serial_no);
 
   ~PgTxnManager();
 
@@ -104,6 +110,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
+  bool IsSerializableIsolation() const {
+    return isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION;
+  }
   bool IsDdlMode() const { return ddl_state_.has_value(); }
   bool IsDdlModeWithRegularTransactionBlock() const {
     return ddl_state_.has_value() && ddl_state_->use_regular_transaction_block;
@@ -116,8 +125,26 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
+  // Users can request the deferrable mode via:
+  // (1) DEFERRABLE READ ONLY setting in transaction blocks
+  // (2) SET yb_read_after_commit_visibility = 'deferred';
+  //
+  // The feature doesn't apply for non read-only serializable isolation txns and fast-path
+  // transactions because:
+  // (1) Serializable isolation txns don't face read restart errors because
+  //    they use the latest timestamp for reading.
+  // (2) Fast-path txns don't face read restart errors because
+  //    they pick a read time after conflict resolution.
+  bool ShouldDeferReadPoint() const {
+    return (read_only_ && deferrable_) ||
+           yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY;
+  }
+
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
-      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
+      tserver::PgPerformOptionsPB& options, NonTransactionalWrites ops_has_non_transactional_writes,
+      std::optional<ReadTimeAction> read_time_action = {},
+      SkipReadTimeOptions skip_read_time_options = SkipReadTimeOptions::kFalse,
+      IsCatalogSnapshot is_catalog_snapshot = IsCatalogSnapshot::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -176,8 +203,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  private:
   class SerialNo {
    public:
-    SerialNo();
-    SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
+    explicit SerialNo(std::atomic<uint64_t>& next_read_time_serial_no);
+    void Set(uint64_t txn_serial_no, uint64_t read_time_serial_no);
     void IncTxn(bool preserve_read_time_history, YbcReadPointHandle catalog_read_time_serial_no);
     void IncReadTime();
     void IncMaxReadTime();
@@ -191,6 +218,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
     }
 
    private:
+    uint64_t NextReadTimeSerialNo();
+
+    std::atomic<uint64_t>& next_read_time_serial_no_;
     uint64_t txn_;
     uint64_t read_time_;
     // Txn may have multiple valid read time values (i.e. multiple read times inside
@@ -207,6 +237,22 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void ResetTxnAndSession();
   void StartNewSession();
   Status RecreateTransaction(SavePriority save_priority);
+  Status SetupReadTimeOptions(
+      tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
+      std::optional<ReadTimeAction> read_time_action,
+      NonTransactionalWrites ops_has_non_transactional_writes,
+      SkipReadTimeOptions skip_read_time_options,
+      IsCatalogSnapshot is_catalog_snapshot);
+  bool ShouldResetReadTime(std::optional<ReadTimeAction> read_time_action) const;
+  bool ShouldClamp() const;
+  void ClampCatalogReadTime(
+      tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options) const;
+  Status CheckConflictsAcrossReadTimeOptions(
+      const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
+      std::optional<ReadTimeAction> read_time_action,
+      tserver::ReadTimeManipulation manipulation,
+      NonTransactionalWrites ops_has_non_transactional_writes,
+      bool need_defer_read_point) const;
 
   bool UsesFollowerReads() const;
 
@@ -224,7 +270,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info);
 
-  Status CheckSnapshotTimeConflict() const;
+  Status CheckConflictWithCrossTxnSnapshotTime(
+      std::optional<ReadTimeAction> read_time_action = {},
+      NonTransactionalWrites ops_has_non_transactional_writes = NonTransactionalWrites::kFalse,
+      bool has_read_time = false, bool restart_transaction = false) const;
 
   // ----------------------------------------------------------------------------------------------
 
@@ -235,7 +284,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
-  bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;
@@ -260,7 +308,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
   bool using_table_locks_ = false;
-  bool snapshot_read_time_is_used_ = false;
+  bool crosstxn_snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 
   YbcPgCallbacks pg_callbacks_;
@@ -283,7 +331,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   const bool enable_table_locking_;
 
-  std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
+  std::unordered_map<YbcReadPointHandle, uint64_t> crosstxn_explicit_snapshot_read_time_;
   bool is_read_time_history_cutoff_disabled_{false};
   bool clamp_uncertainty_window_{false};
 

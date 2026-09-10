@@ -232,8 +232,10 @@ public class TestYbAsh extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       String tableName = "test_table";
 
-      // Queries inside extension scripts
-      statement.execute("DROP EXTENSION IF EXISTS pg_stat_statements");
+      // Queries inside extension scripts.
+      // CASCADE drops the gv$ global-view wrappers that now depend on
+      // pg_stat_statements by default.
+      statement.execute("DROP EXTENSION IF EXISTS pg_stat_statements CASCADE");
       statement.execute("CREATE EXTENSION pg_stat_statements");
 
       // Queries inside triggers

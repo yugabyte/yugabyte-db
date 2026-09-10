@@ -5,6 +5,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
@@ -94,7 +95,8 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		}
 	} else {
 		taskStatus.ExitStatus.Error = s.cmdInfo.StdErr
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			taskStatus.ExitStatus.Code = exitErr.ExitCode()
 		}
 		err = util.NewStatusError(taskStatus.ExitStatus.Code, err)

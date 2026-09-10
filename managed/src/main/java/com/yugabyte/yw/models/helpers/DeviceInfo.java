@@ -62,14 +62,17 @@ public class DeviceInfo {
     sb.append("volSize=").append(volumeSize);
     sb.append(", numVols=").append(numVolumes);
     sb.append(", mountPoints=").append(mountPoints);
+    // Print every field compared by equals(), including the ones the storage type does not
+    // provision: omitting them makes an equals() mismatch look like two identical objects.
+    sb.append(", storageClass=").append(storageClass);
+    if (diskIops != null) {
+      sb.append(", iops=").append(diskIops);
+    }
+    if (throughput != null) {
+      sb.append(", throughput=").append(throughput);
+    }
     if (storageType != null) {
       sb.append(", storageType=").append(storageType);
-      if (diskIops != null && storageType.isIopsProvisioning()) {
-        sb.append(", iops=").append(diskIops);
-      }
-      if (throughput != null && storageType.isThroughputProvisioning()) {
-        sb.append(", throughput=").append(throughput);
-      }
     }
     return sb.toString();
   }

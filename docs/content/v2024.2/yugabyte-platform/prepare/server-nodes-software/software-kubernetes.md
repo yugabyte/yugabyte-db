@@ -74,7 +74,10 @@ helm install -n kube-system --version 5.0.0 kube-state-metrics prometheus-commun
 
 ## Install cert-manager
 
-You can use [cert-manager](https://cert-manager.io/) to manage certificates for your cluster. To use cert-manager to manage universe certificates, ensure that it is running on your Kubernetes cluster before you create your [Kubernetes provider configuration](../../../configure-yugabyte-platform/kubernetes/).
+You can use [cert-manager](https://cert-manager.io/) to manage certificates for your cluster.
+
+- To use cert-manager for the YugabyteDB Anywhere UI TLS certificate, ensure that it is running on your Kubernetes cluster before you [install YugabyteDB Anywhere](../../../install-yugabyte-platform/install-software/kubernetes/#use-cert-manager).
+- To use cert-manager to manage universe certificates, ensure that it is running on your Kubernetes cluster before you create your [Kubernetes provider configuration](../../../configure-yugabyte-platform/kubernetes/).
 
 For more information, refer to [Add certificates](../../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
 

@@ -5,13 +5,26 @@ package api.v2.controllers;
 import api.v2.handlers.AuthenticationHandler;
 import api.v2.models.AuthGroupToRolesMapping;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import java.util.List;
 import java.util.UUID;
 import play.mvc.Http;
 
 public class AuthenticationApiControllerImp extends AuthenticationApiControllerImpInterface {
 
-  @Inject AuthenticationHandler authHandler;
+  private final AuthenticationHandler authHandler;
+
+  @Inject
+  public AuthenticationApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      AuthenticationHandler authHandler) {
+    super(auditService, config, gFlagsAuditHandler);
+    this.authHandler = authHandler;
+  }
 
   @Override
   public List<AuthGroupToRolesMapping> listMappings(Http.Request request, UUID cUUID)

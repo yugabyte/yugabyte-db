@@ -1,4 +1,5 @@
-x-yba-api-visibility: internal
+x-yba-api-visibility: preview
+x-yba-api-since: 2026.1.2.0
 title: AuditLogsTelemetrySpec
 type: object
 description: Audit logs (YSQL/YCQL). Omit or set to null to disable.

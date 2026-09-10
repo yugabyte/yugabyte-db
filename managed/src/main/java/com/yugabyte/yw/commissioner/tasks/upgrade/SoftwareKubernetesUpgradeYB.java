@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
@@ -25,6 +26,7 @@ import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 @Slf4j
 @Abortable
 @Retryable
+@CanRollback
 public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
@@ -98,6 +100,7 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           boolean catalogUpgradeCompleted = false;
 
           if (ysqlMajorVersionUpgrade) {
+            boolean rollbackMasters = false;
             if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
               YsqlMajorCatalogUpgradeState state =
                   softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
@@ -111,6 +114,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 log.info(
                     "YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
                 createRollbackYsqlMajorVersionCatalogUpgradeTask();
+                // Masters stay on PG15 after catalog rollback; roll them to the previous image
+                // before CREATE USER so DDLs are allowed again.
+                rollbackMasters = true;
               } else if (state.equals(
                   YsqlMajorCatalogUpgradeState
                       .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK)) {
@@ -120,19 +126,32 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                     "YSQL catalog upgrade is in a pending state. Proceeding with all upgrade"
                         + " subtasks.");
               }
+            } else if (requireAdditionalSuperUserForCatalogUpgrade
+                && softwareUpgradeHelper.isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
+                    universe, "15")) {
+              // Partial master upgrade (e.g. abort after first master): PG15 catalog leader blocks
+              // DDLs needed to create yugabyte_upgrade. Match VM recovery by rolling masters back.
+              rollbackMasters = true;
             }
 
-            // Set ysql_yb_major_version_upgrade_compatibility to 11 for tservers for ysql major
-            // upgrade.
-            // This gflag change also reverts the master in case of a retry to enable DDLs for the
-            // upgrade
-            // user, as it performs a helm upgrade with the previous Yugabyte image which can revert
-            // masters
-            // if they are on a different version. Fortunately, this works in our favor as during a
-            // retry we
-            // want to revert masters to the previous version and proceed with the ysql major
-            // upgrade.
             if (!catalogUpgradeCompleted) {
+              if (rollbackMasters) {
+                log.info(
+                    "Rolling back master before upgrade to enable DDLs to create upgrade user.");
+                createUpgradeTask(
+                    getUniverse(),
+                    currentVersion,
+                    true /* upgradeMasters */,
+                    false /* upgradeTservers */,
+                    taskParams().isEnableYbc(),
+                    confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+                    getSoftwareUpgradeContext(
+                        currentVersion, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS));
+              }
+
+              // Set ysql_yb_major_version_upgrade_compatibility to 11 for masters/tservers for
+              // ysql major upgrade (non-restart helm). Master image revert on retry is handled by
+              // the rolling createUpgradeTask above when mixed/failed masters are detected.
               createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
                   universe, currentVersion, YsqlMajorVersionUpgradeState.IN_PROGRESS);
 

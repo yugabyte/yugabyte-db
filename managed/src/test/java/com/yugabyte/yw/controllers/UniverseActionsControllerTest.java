@@ -45,6 +45,8 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -115,6 +117,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    PlacementInfo placementInfo = placement(p);
+
     InstanceType i =
         InstanceType.upsert(
             p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -139,8 +143,18 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
-    createBodyJson.set("clusters", clustersArray(userIntentJson, Json.newObject()));
-    createBodyJson.set("nodeDetailsSet", Json.newArray());
+
+    UUID clusterUUID = UUID.randomUUID();
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("placementInfo", Json.toJson(placementInfo));
+    clusterJson.put("uuid", clusterUUID.toString());
+    createBodyJson.set("clusters", Json.newArray().add(clusterJson));
+
+    createBodyJson.set(
+        "nodeDetailsSet",
+        nodeDetailsSetJson(
+            placementInfo, clusterUUID, NodeDetails.NodeState.ToBeAdded, i.getInstanceTypeCode()));
     createBodyJson.put("nodePrefix", "demo-node");
 
     String createUrl = "/api/customers/" + customer.getUuid() + "/universes";

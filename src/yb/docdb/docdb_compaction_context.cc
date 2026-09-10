@@ -34,6 +34,7 @@
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -50,6 +51,31 @@ DECLARE_uint64(ysql_packed_row_size_limit);
 
 DEFINE_test_flag(bool, keep_intent_doc_ht, false,
                  "Whether to keep intent doc hybrid time when packing column during compaction.");
+
+DEFINE_RUNTIME_bool(docdb_keep_unmerged_column_tombstones_over_packed_row, true,
+    "During compaction, keep a column tombstone that was not merged into the packed row it "
+    "shadows when that packed row participates in the same compaction (e.g. the merge is "
+    "skipped because packed row is disabled via flags). Setting this to false reverts to the "
+    "old behavior of garbage-collecting such tombstones, which resurrects deleted column "
+    "values.");
+
+METRIC_DEFINE_counter(tablet, docdb_column_tombstones_kept_unmerged,
+    "Unmerged Column Tombstones Kept over Packed Row",
+    yb::MetricUnit::kKeys,
+    "Number of times compaction kept a column tombstone over the packed row it shadows because "
+    "the tombstone could not be merged into that row. Every later compaction that sees the same "
+    "tombstone counts it again, so this tracks compaction activity rather than how many "
+    "tombstones are stuck. Only a compaction whose input includes the packed row can count, so a "
+    "flat series on its own is not proof of health. The intended check is comparative: once "
+    "packing is enabled and a full compaction has completed, this should stop incrementing.");
+
+METRIC_DEFINE_counter(tablet, docdb_column_tombstones_dropped_unmerged,
+    "Unmerged Column Tombstones Dropped over Packed Row",
+    yb::MetricUnit::kKeys,
+    "Number of times compaction dropped a column tombstone over the packed row it shadows "
+    "without merging it into that row, resurrecting the deleted column value. Only non-zero "
+    "when docdb_keep_unmerged_column_tombstones_over_packed_row is false. Counts decisions and "
+    "has the same coverage limits as docdb_column_tombstones_kept_unmerged.");
 
 namespace yb::docdb {
 
@@ -116,6 +142,29 @@ class LazyHybridTime {
 
 constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
 
+Result<CompactionSchemaInfo> GetCompactionSchemaInfoForCoprefix(
+    SchemaPackingProvider* schema_packing_provider, Slice coprefix,
+    HistoryCutoff history_cutoff) {
+  SCHECK_NOTNULL(schema_packing_provider);
+  HybridTime chosen_ht = GetHistoryCutoffForKey(coprefix, history_cutoff);
+  if (coprefix.empty()) {
+    return schema_packing_provider->CotablePacking(
+        Uuid::Nil(), kLatestSchemaVersion, chosen_ht);
+  } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kColocationId)) {
+    if (coprefix.size() != sizeof(ColocationId)) {
+      return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
+    }
+    uint32_t colocation_id = BigEndian::Load32(coprefix.data());
+    return schema_packing_provider->ColocationPacking(
+        colocation_id, kLatestSchemaVersion, chosen_ht);
+  } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId)) {
+    auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
+    return schema_packing_provider->CotablePacking(
+        cotable_id, kLatestSchemaVersion, chosen_ht);
+  }
+  return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
+}
+
 class PackedRowData {
  public:
   PackedRowData(PackedRowFeed* feed, SchemaPackingProvider* provider,
@@ -146,6 +195,19 @@ class PackedRowData {
 
   bool repack_allowed() const {
     return active() && repack_allowed_;
+  }
+
+  // Whether the active row is being built from individual columns (StartPacking), as opposed to
+  // being picked up from an existing packed row (ProcessPackedRow). Only meaningful while a row
+  // is active.
+  bool packing_from_individual_columns() const {
+    DCHECK(active());
+    return packing_from_individual_columns_;
+  }
+
+  // Write time of the active packed row.
+  const EncodedDocHybridTime& packed_row_doc_ht() const {
+    return encoded_doc_ht_;
   }
 
   bool ColumnDeleted(ColumnId column_id) const {
@@ -198,6 +260,7 @@ class PackedRowData {
     control_fields_size_ = control_fields_size;
     encoded_doc_ht_ = encoded_row_doc_ht;
     repack_allowed_ = repack_allowed;
+    packing_from_individual_columns_ = false;
 
     old_value_.Assign(full_value);
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
@@ -224,6 +287,7 @@ class PackedRowData {
     encoded_doc_ht_ = encoded_doc_ht;
     old_value_slice_ = Slice();
     repack_allowed_ = true;
+    packing_from_individual_columns_ = true;
     return InitPacker();
   }
 
@@ -482,24 +546,8 @@ class PackedRowData {
   }
 
   Result<CompactionSchemaInfo> GetCompactionSchemaInfo(Slice coprefix) {
-    HybridTime chosen_ht = GetHistoryCutoffForKey(coprefix, history_cutoff_);
-    if (coprefix.empty()) {
-      return schema_packing_provider_->CotablePacking(
-          Uuid::Nil(), kLatestSchemaVersion, chosen_ht);
-    } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kColocationId)) {
-      if (coprefix.size() != sizeof(ColocationId)) {
-        return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
-      }
-      uint32_t colocation_id = BigEndian::Load32(coprefix.data());
-      return schema_packing_provider_->ColocationPacking(
-          colocation_id, kLatestSchemaVersion, chosen_ht);
-    } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId)) {
-      auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
-      return schema_packing_provider_->CotablePacking(
-          cotable_id, kLatestSchemaVersion, chosen_ht);
-    } else {
-      return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
-    }
+    return GetCompactionSchemaInfoForCoprefix(
+        schema_packing_provider_, coprefix, history_cutoff_);
   }
 
  private:
@@ -531,6 +579,8 @@ class PackedRowData {
 
   bool packing_started_ = false; // Whether we have started packing the row.
   bool repack_allowed_ = false;
+  // See packing_from_individual_columns().
+  bool packing_from_individual_columns_ = false;
 
   // Use fake coprefix as default value.
   // So we will trigger table change on the first record.
@@ -564,26 +614,30 @@ class PackedRowData {
 
 class VectorMetadataFilter {
  public:
-  virtual ~VectorMetadataFilter() = default;
-  virtual Result<rocksdb::FilterDecision> Filter(Slice key, Slice value) {
-    // Dummy filter by default.
-    return rocksdb::FilterDecision::kKeep;
+  VectorMetadataFilter(
+      rocksdb::CompactionReason compaction_reason,
+      const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider,
+      HistoryCutoff history_cutoff,
+      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider)
+      : compaction_reason_(compaction_reason),
+        key_bounds_(key_bounds),
+        schema_packing_provider_(schema_packing_provider),
+        history_cutoff_(history_cutoff),
+        iterator_provider_(vector_metadata_iterator_provider) {
+    VLOG(1) << "VectorMetadataFilter: compaction_reason: " << compaction_reason_
+            << ", key_bounds: " << (key_bounds_ ? key_bounds_->ToString() : "none")
+            << ", schema_packing_provider: " << (schema_packing_provider_ != nullptr)
+            << ", iterator_provider: " << (iterator_provider_ != nullptr);
   }
-};
 
-using VectorMetadataFilterPtr = std::unique_ptr<VectorMetadataFilter>;
-
-class VectorMetadataFilterImpl : public VectorMetadataFilter {
- public:
-  VectorMetadataFilterImpl(
-      const KeyBounds& key_bounds,
-      const DocVectorMetadataIteratorProvider& vector_metadata_iterator_provider)
-      : key_bounds_(key_bounds), provider_(vector_metadata_iterator_provider) {
-    VLOG(1) << "VectorMetadataFilter: key_bounds: " << key_bounds.ToString();
-  }
-
-  Result<rocksdb::FilterDecision> Filter(Slice key, Slice value) override {
+  // Discards reverse mappings whose ybctid is outside tablet key bounds. Runs for every
+  // compaction reason so parent-inherited entries on split children get cleaned up eagerly,
+  // not only during the async post-split compaction. Tombstone -> live-entry lookup remains
+  // post-split-only (see DoFilter).
+  Result<rocksdb::FilterDecision> Filter(Slice key, Slice value) {
     DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+
     auto decision = DoFilter(key, value);
     VLOG_WITH_FUNC(4)
         << "key: " << key.ToDebugHexString() << ", "
@@ -592,16 +646,76 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
     return decision;
   }
 
+  // Discards the entry if (1) colocation is gone or (2) vector column was deleted.
+  Result<rocksdb::FilterDecision> FilterRetained(Slice key, Slice value) {
+    DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+
+    if (!schema_packing_provider_) {
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    // Tombstones are passed through the standard Feed overwrite/retention flow.
+    // Legacy raw ybctid values have no packing association - leave them alone.
+    if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) ||
+        !value.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata)) {
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    auto decision = DoFilterRetained(value);
+    VLOG_WITH_FUNC(4)
+        << "key: " << key.ToDebugHexString() << ", "
+        << "value: " << value.ToDebugHexString() << ", "
+        << "decision: " << decision;
+    return decision;
+  }
+
  private:
+  bool HasKeyBounds() const {
+    return key_bounds_ && key_bounds_->IsInitialized();
+  }
+
+  bool IsPostSplitCompaction() const {
+    return compaction_reason_ == rocksdb::CompactionReason::kPostSplitCompaction;
+  }
+
   rocksdb::FilterDecision DoFilterYbctid(Slice ybctid) {
-    return IsWithinBounds(&key_bounds_, ybctid)
+    DCHECK(HasKeyBounds());
+
+    // Discarding an out-of-bounds live entry is safe in any compaction reason: tablet key bounds
+    // never re-expand after a split and the child never serves the sibling's rows. Reverse-mapping
+    // keys sit outside the row-coprefix regions covered by GetLiveRanges() and are therefore
+    // included in every compaction's live ranges, so a non-post-split compaction may legitimately
+    // observe parent-inherited entries for the sibling's range before the async post-split
+    // compaction runs (or if it is skipped once parent_data_compacted is set).
+    return IsWithinBounds(key_bounds_, ybctid)
         ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
   }
 
+  Result<rocksdb::FilterDecision> DoFilterValue(Slice value) {
+    auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
+
+    // Sanity checks:
+    // 1. The caller guarantees value is not a tombstone.
+    // 2. Post-split compaction is not used for colocated tables.
+    DCHECK(!decoded.IsTombstone()) << "Unexpected tombstone while filtering reverse mapping value";
+    DCHECK(!IsPostSplitCompaction() || decoded.table_key_prefix.empty());
+
+    return DoFilterYbctid(decoded.ybctid);
+  }
+
   Result<rocksdb::FilterDecision> DoFilter(Slice key, Slice value) {
-    DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+    if (!HasKeyBounds()) {
+      return rocksdb::FilterDecision::kKeep;
+    }
+
     if (!value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
-      return DoFilterYbctid(value);
+      return DoFilterValue(value);
+    }
+
+    // Tombstones are left to the standard Feed flow. Only post-split needs the corresponding
+    // live value's ybctid so DoFilterValue can apply key-bounds filtering.
+    if (!iterator_provider_ || !IsPostSplitCompaction()) {
+      return rocksdb::FilterDecision::kKeep;
     }
 
     // Special handling for the tombstoned entries: need to find entry's corresponding ybctid.
@@ -614,45 +728,99 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
 
     // Make sure extracted entry matches the specified key.
     if (!entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
-      LOG_WITH_FUNC(DFATAL)
-          << "Unable to locate vector index reverse mapping"
+      // Single tombstone with no vector_id -> ybctid mapping left in the tablet: safe to drop
+      // as the mapping pair has been already dropped somewhere in the past, otherwise it should
+      // have been found by the Seek() above.
+      VLOG_WITH_FUNC(2)
+          << "Discarding orphaned vector index reverse mapping tombstone"
           << ", expected: " << key.Prefix(dockv::kEncodedDocVectorKeyStaticSize).ToDebugHexString()
           << ", located: " << entry.key.ToDebugHexString();
+      return rocksdb::FilterDecision::kDiscard;
+    }
+
+    return DoFilterValue(entry.value);
+  }
+
+  Result<rocksdb::FilterDecision> DoFilterRetained(Slice value) {
+    auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
+
+    // Sanity checks: caller already filters out legacy / tombstone values.
+    if (decoded.IsTombstone()) {
+      LOG(DFATAL) << "Unexpected tombstone while filtering reverse mapping value: "
+                  << value.ToDebugHexString();
+      return rocksdb::FilterDecision::kKeep;
+    }
+    if (decoded.column_id == kInvalidColumnId) {
+      LOG(DFATAL) << "Unexpected invalid column id in V1 vector reverse mapping: "
+                  << value.ToDebugHexString();
       return rocksdb::FilterDecision::kKeep;
     }
 
-    return DoFilterYbctid(entry.value);
+    // TODO(vector_index): Vector reverse-mapping keys sort by vector_id, so table_key_prefix
+    // (which lives in the value) does not cluster the way it does for row keys. Still, for
+    // a tablet with a single V1-owning table every entry carries the same coprefix, and even
+    // in the multi-coprefix case the last-seen coprefix's packing could be cached to avoid
+    // repeated provider lookups.
+    auto packing = GetCompactionSchemaInfoForCoprefix(
+        schema_packing_provider_, decoded.table_key_prefix, history_cutoff_);
+    if (!packing.ok()) {
+      if (packing.status().IsNotFound()) {
+        // Indexed table / colocation is gone.
+        // TODO(vector_index): xCluster DDL may replicate colocated data before the table exists
+        // locally (same "upcoming table" case as SubDocKey missing-schema handling / #28314). For
+        // those coprefixes packing is also NotFound, but rows must be kept. Align reverse-mapping
+        // GC with that path later if V1 reverse mappings can appear in that window.
+        return rocksdb::FilterDecision::kDiscard;
+      }
+
+      // Any non-NotFound failure here would otherwise abort the entire compaction. Hence, using
+      // a DFATAL and keep the record: GC will retry on the next compaction.
+      LOG(DFATAL) << "Unexpected packing lookup failure for V1 reverse mapping, coprefix: "
+                  << decoded.table_key_prefix.ToDebugHexString()
+                  << ", status: " << packing.status();
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    if (packing->deleted_cols.contains(decoded.column_id)) {
+      return rocksdb::FilterDecision::kDiscard;
+    }
+
+    return rocksdb::FilterDecision::kKeep;
   }
 
   Status EnsureIteratorCreated() {
     if (iterator()) {
       return Status::OK();
     }
+    SCHECK_NOTNULL(iterator_provider_);
     iterator_holder_ =
-        VERIFY_RESULT(provider_.CreateVectorMetadataIterator(ReadHybridTime::Max(), nullptr));
+        VERIFY_RESULT(iterator_provider_->CreateVectorMetadataIterator(
+            ReadHybridTime::Max(), nullptr));
     SCHECK_NOTNULL(iterator());
     return Status::OK();
   }
 
   inline IntentAwareIterator* iterator() {
-    return std::get<docdb::IntentAwareIteratorPtr>(iterator_holder_).get();
+    return iterator_holder_.iter.get();
   }
 
-  const KeyBounds& key_bounds_;
-  const DocVectorMetadataIteratorProvider& provider_;
+  rocksdb::CompactionReason compaction_reason_;
+  const KeyBounds* key_bounds_;
+  SchemaPackingProvider* schema_packing_provider_;
+  HistoryCutoff history_cutoff_;
+  DocVectorMetadataIteratorProvider* iterator_provider_;
   IntentAwareIteratorWithBounds iterator_holder_;
 };
 
-static VectorMetadataFilterPtr CreateVectorMetadataFilter(
-    rocksdb::CompactionReason compaction_reason, const KeyBounds* key_bounds,
+std::unique_ptr<VectorMetadataFilter> CreateVectorMetadataFilter(
+    rocksdb::CompactionReason compaction_reason,
+    const KeyBounds* key_bounds,
+    SchemaPackingProvider* schema_packing_provider,
+    HistoryCutoff history_cutoff,
     DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider) {
-  VLOG_WITH_FUNC(1) << "compaction_reason: " << compaction_reason;
-  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction &&
-      vector_metadata_iterator_provider && key_bounds && key_bounds->IsInitialized()) {
-    return std::make_unique<VectorMetadataFilterImpl>(
-      *key_bounds, *vector_metadata_iterator_provider);
-  }
-  return std::make_unique<VectorMetadataFilter>();
+  return std::make_unique<VectorMetadataFilter>(
+      compaction_reason, key_bounds, schema_packing_provider, history_cutoff,
+      vector_metadata_iterator_provider);
 }
 
 class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed {
@@ -665,7 +833,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       rocksdb::BoundaryValuesExtractor* boundary_extractor,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
-      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider)
+      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider,
+      const CompactionMetrics& metrics)
       : next_feed_(*next_feed),
         retention_directive_(retention),
         // Use max write id, to be sure that entries with hybrid time equals to history cutoff
@@ -685,7 +854,9 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
         boundary_extractor_(boundary_extractor),
         packed_row_(this, schema_packing_provider, retention_directive_.history_cutoff),
         vector_metadata_filter_(CreateVectorMetadataFilter(
-            compaction_reason, key_bounds_, vector_metadata_iterator_provider)) {
+            compaction_reason, key_bounds_, schema_packing_provider,
+            retention_directive_.history_cutoff, vector_metadata_iterator_provider)),
+        metrics_(metrics) {
     // TODO: switch this to VLOG if it becomes too chatty.
     LOG(DETAIL)
         << "DocDB compaction feed, min_other_data_ht: " << encoded_min_other_data_ht_.ToString()
@@ -901,7 +1072,9 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   PendingEntry* first_pending_row_ = nullptr;
   PendingEntry** last_pending_row_next_ = &first_pending_row_;
 
-  VectorMetadataFilterPtr vector_metadata_filter_;
+  std::unique_ptr<VectorMetadataFilter> vector_metadata_filter_;
+
+  const CompactionMetrics metrics_;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -1178,6 +1351,13 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return Status::OK();
   }
 
+  // Filtering vector index reverse mapping records past history cutoff.
+  if (key_type == dockv::KeyEntryType::kVectorIndexMetadata &&
+      VERIFY_RESULT(vector_metadata_filter_->FilterRetained(key, value)) ==
+          rocksdb::FilterDecision::kDiscard) {
+    return Status::OK();
+  }
+
   Slice value_slice = value;
   Slice intent_doc_ht;
   ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::DecodeWithIntentDocHt(
@@ -1285,9 +1465,50 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
   // TODO(vector_index): optimization https://github.com/yugabyte/yugabyte-db/issues/28755.
+  //
+  // Exception: a column tombstone can shadow a value stored inside a packed row rather than a
+  // standalone entry. The overwrite logic above never rewrites the packed row itself, so removing
+  // such a tombstone is only safe when it was merged into the packed row (ProcessColumn consumed
+  // the entry above and we never get here) or when no live packed row for this doc key
+  // participates in the compaction (packed_row_ is not active). If the row is packed but the
+  // merge did not happen -- e.g. packing is disabled via gflags so can_start_packing() is false,
+  // or repack is not allowed for this row -- dropping the tombstone would resurrect the
+  // pre-delete column value. Keep it; a later compaction that performs the merge collects it.
+  bool keeping_unmerged_column_tombstone = false;
   if (value_type == dockv::ValueEntryType::kTombstone && !CanHaveOtherDataBefore(encoded_doc_ht)) {
-    DVLOG_WITH_FUNC(4) << "Skipping due to Tombstoned value and no data before";
-    return Status::OK();
+    if (!packed_row_.active()) {
+      DVLOG_WITH_FUNC(4) << "Skipping due to Tombstoned value and no data before";
+      return Status::OK();
+    }
+    if (!FLAGS_docdb_keep_unmerged_column_tombstones_over_packed_row) {
+      // Only a tombstone that genuinely shadows a carried packed row resurrects a value when
+      // dropped; the individual-columns exemption is the one the RSTATUS_DCHECK below spells out.
+      if (!packed_row_.packing_from_individual_columns() &&
+          encoded_doc_ht > packed_row_.packed_row_doc_ht()) {
+        IncrementCounter(metrics_.column_tombstones_dropped_unmerged);
+      }
+      DVLOG_WITH_FUNC(4) << "Skipping due to Tombstoned value and no data before";
+      return Status::OK();
+    }
+    // A tombstone shadows a carried packed row, never the other way around: the packed row put
+    // its own write time on the overwrite stack at the doc key level (see overwrite_ handling
+    // above), so a tombstone the packed row overwrites -- one written before it, e.g. before a
+    // row delete + re-insert -- was already dropped by the encoded_doc_ht < prev_overwrite_ht
+    // check. A row being built from individual columns by StartPacking is exempt: there the
+    // tombstone can legitimately be older (e.g. a YCQL upsert rewrote the liveness column after
+    // the column delete), and keeping it is still correct since a newer-or-equal entry wins on
+    // read.
+    RSTATUS_DCHECK(
+        packed_row_.packing_from_individual_columns() ||
+            encoded_doc_ht > packed_row_.packed_row_doc_ht(),
+        Corruption,
+        "Column tombstone older than the packed row it should shadow: $0 ($1) vs $2",
+        dockv::SubDocKey::DebugSliceToString(key), encoded_doc_ht.ToString(),
+        packed_row_.packed_row_doc_ht().ToString());
+    keeping_unmerged_column_tombstone = true;
+    VLOG_WITH_FUNC(3)
+        << "Keeping unmerged column tombstone over active packed row: "
+        << dockv::SubDocKey::DebugSliceToString(key);
   }
 
   // If the entry has the TTL flag, delete the entry.
@@ -1348,6 +1569,13 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value = new_value_buffer_.AsSlice();
   }
 
+  // Counted here rather than at the decision above because the TTL-expiry branch drops the entry
+  // on the same !CanHaveOtherDataBefore condition that guards the tombstone block, so a tombstone
+  // can be kept and then dropped a few lines later. Only tombstones that reach the output count.
+  if (keeping_unmerged_column_tombstone) {
+    IncrementCounter(metrics_.column_tombstones_kept_unmerged);
+  }
+
   VLOG_WITH_FUNC(4) << "Feed next at the end";
   return ForwardToNextFeed(internal_key, new_value);
 }
@@ -1369,7 +1597,8 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
       rocksdb::BoundaryValuesExtractor* boundary_extractor,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
-      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider);
+      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider,
+      const CompactionMetrics& metrics);
 
   ~DocDBCompactionContext() = default;
 
@@ -1417,13 +1646,14 @@ DocDBCompactionContext::DocDBCompactionContext(
     rocksdb::BoundaryValuesExtractor* boundary_extractor,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
-    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider)
+    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider,
+    const CompactionMetrics& metrics)
     : history_cutoff_(retention.history_cutoff),
       key_bounds_(key_bounds),
       feed_(std::make_unique<DocDBCompactionFeed>(
           compaction_reason, next_feed, std::move(retention), hybrid_time_limits,
           boundary_extractor, key_bounds, schema_packing_provider,
-          vector_metadata_iterator_provider)) {
+          vector_metadata_iterator_provider, metrics)) {
 }
 
 storage::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
@@ -1501,15 +1731,31 @@ bool CompactionSchemaInfo::keep_write_time() const {
 
 // ------------------------------------------------------------------------------------------------
 
+CompactionMetrics CreateCompactionMetrics(const MetricEntityPtr& tablet_metric_entity) {
+  if (!tablet_metric_entity) {
+    return CompactionMetrics();
+  }
+  return CompactionMetrics {
+    .column_tombstones_kept_unmerged =
+        METRIC_docdb_column_tombstones_kept_unmerged.Instantiate(tablet_metric_entity),
+    .column_tombstones_dropped_unmerged =
+        METRIC_docdb_column_tombstones_dropped_unmerged.Instantiate(tablet_metric_entity),
+  };
+}
+
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
     const CompactionHybridTimeLimitsProvider& compaction_hybrid_time_limit_provider,
     SchemaPackingProvider* schema_packing_provider,
-    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider) {
+    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider,
+    const CompactionMetrics& metrics) {
+  // Capturing the counters by value keeps them referenced for the life of the DB, so
+  // RetireOldMetrics cannot reap an untouched counter and the series reads 0 from tablet open
+  // rather than being absent. Alerting depends on that distinction.
   return std::make_shared<rocksdb::CompactionContextFactory>(
       [retention_policy, key_bounds, compaction_hybrid_time_limit_provider,
-       schema_packing_provider, vector_metadata_iterator_provider](
+       schema_packing_provider, vector_metadata_iterator_provider, metrics](
           rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {
       return std::make_unique<DocDBCompactionContext>(
           options.compaction_reason,
@@ -1521,7 +1767,8 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
           options.boundary_extractor,
           key_bounds,
           schema_packing_provider,
-          vector_metadata_iterator_provider);
+          vector_metadata_iterator_provider,
+          metrics);
   });
 }
 

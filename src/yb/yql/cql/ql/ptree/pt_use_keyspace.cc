@@ -19,6 +19,8 @@
 
 #include "yb/common/redis_constants_common.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/status.h"
 
 #include "yb/yql/cql/ql/ptree/sem_context.h"

@@ -42,6 +42,15 @@ METRIC_DEFINE_gauge_uint64(tablet, log_wal_size, "Size of WAL Files",
                            yb::MetricUnit::kBytes,
                            "Size of wal files");
 
+METRIC_DEFINE_gauge_int64(tablet, log_wal_sync_overdue_ms, "WAL Sync Overdue",
+                          yb::MetricUnit::kMilliseconds,
+                          "Milliseconds by which the oldest unsynced WAL entry has exceeded "
+                          "interval_durable_wal_write_ms. 0 when every entry is fsynced or still "
+                          "within the interval, and when the interval does not apply "
+                          "(durable_wal_write, or the interval disabled). Aggregated as the "
+                          "maximum across tablets.",
+                          {0, yb::AggregationFunction::kMax} /* optional_args */);
+
 METRIC_DEFINE_event_stats(table, log_sync_latency, "Log Sync Latency",
                                yb::MetricUnit::kMicroseconds,
                                "Microseconds spent on synchronizing the log segment file");

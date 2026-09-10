@@ -268,127 +268,108 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 	yb_evict_prep_stmt_by_keyhash(server, context, keyhash);
 }
 
-void yb_backend_register_close_prep_stmt(od_server_t *server, char *context,
-					 char *data, uint32_t size)
+static void yb_backend_record_prep_stmt(od_server_t *server, char *context,
+					char *orig_name,
+					uint32_t orig_name_len,
+					char *description,
+					uint32_t description_len, int refcnt)
 {
 	od_instance_t *instance = server->global->instance;
+	od_client_t *client = server->client;
 
-	if (server->yb_close_prep_stmts == NULL)
+	/*
+	 * The ack was consumed after client has detached. We might
+	 * need client->id to compute server_key, so do early return.
+	 * This only results in an additional ForceParse and has no
+	 * correctness consequences.
+	 */
+	if (client == NULL)
 		return;
 
-	char *keyhash_str;
-	uint32_t keyhash_str_len;
-	int rc = kiwi_fe_read_yb_server_keyhash(data, size, &keyhash_str,
-						&keyhash_str_len);
-	if (rc == -1) {
-		od_error(&instance->logger, context, NULL, server,
-			 "failed to parse close-complete message from server");
+	int server_key_len = 0;
+	char *server_key = yb_prepare_server_key(
+		orig_name, orig_name_len, description, description_len,
+		client->id.id,
+		instance->config.yb_optimized_extended_query_protocol
+			? 0 : strlen(client->id.id),
+		&server_key_len);
+	if (server_key == NULL) {
+		od_error(&instance->logger, context, client, server,
+			 "failed to allocate server key, "
+			 "skipping prep_stmts update");
 		return;
 	}
 
-	yb_od_hash_64_t stmt_hash = strtoull(keyhash_str, NULL, 16);
-	/*
-	 * We want to store stmt_hash as a key in the hashmap so we are computing
-	 * it's hash to insert it into the hashmap.
-	 */
-	yb_od_hash_64_t keyhash = yb_od_murmur_hash_64(&stmt_hash,
-						       sizeof(stmt_hash));
+	yb_od_hash_64_t keyhash =
+		yb_od_murmur_hash_64(server_key, server_key_len);
+	od_hashmap_elt_t key_desc = { server_key, server_key_len };
 
-	od_hashmap_elt_t key = { .data = &stmt_hash, .len = sizeof(stmt_hash) };
-	int dummy = 0;
-	od_hashmap_elt_t value = { .data = &dummy, .len = sizeof(dummy) };
+	od_hashmap_elt_t value = { &refcnt, sizeof(int) };
 	od_hashmap_elt_t *value_ptr = &value;
 
-	if (od_hashmap_insert(server->yb_close_prep_stmts, keyhash, &key,
-			      &value_ptr) < 0) {
-		od_error(&instance->logger, context, NULL, server,
-			 "failed to insert %016" PRIx64
-			 " into close hashmap (oom)",
-			 stmt_hash);
-		return;
-	}
-
-	od_debug(&instance->logger, context, NULL, server,
-		 "registered %016" PRIx64 " for deferred close eviction",
-		 stmt_hash);
+	if (od_hashmap_insert(server->prep_stmts, keyhash, &key_desc,
+			      &value_ptr) == 0) {
+		yb_lru_on_new_insert(server, keyhash, &key_desc);
+		od_debug(&instance->logger, context, client, server,
+			 "recorded %016" PRIx64 " in server prep_stmts",
+			 keyhash);
+	} else
+		yb_lru_on_cache_hit(server, keyhash, &key_desc);
+	free(server_key);
 }
 
-void yb_backend_unregister_close_prep_stmt(od_server_t *server, char *context,
-					   char *data, uint32_t size)
+int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
+				uint32_t size, YbParseType *yb_parse_type)
 {
 	od_instance_t *instance = server->global->instance;
 
-	if (server->yb_close_prep_stmts == NULL)
-		return;
+	char *stmt_name;
+	char *description;
+	uint32_t description_len;
+	char *orig_name;
+	uint32_t orig_name_len;
+	char wire_parse_type;
 
-	char *keyhash_str;
-	uint32_t keyhash_str_len;
-	int rc = kiwi_fe_read_yb_server_keyhash(data, size, &keyhash_str,
-						&keyhash_str_len);
+	int rc = kiwi_fe_read_yb_parse_complete(data, size, &wire_parse_type,
+						&stmt_name, &description,
+						&description_len, &orig_name,
+						&orig_name_len);
 	if (rc == -1) {
-		od_error(&instance->logger, context, NULL, server,
-			 "failed to parse force parse complete message from server");
-		return;
+		od_error(&instance->logger, context, server->client, server,
+			 "failed to read yb parse complete packet");
+		return -1;
 	}
 
-	yb_od_hash_64_t stmt_hash = strtoull(keyhash_str, NULL, 16);
-	yb_od_hash_64_t keyhash = yb_od_murmur_hash_64(&stmt_hash,
-						       sizeof(stmt_hash));
+	*yb_parse_type = (YbParseType)wire_parse_type;
 
-	od_hashmap_elt_t *matched_keys = NULL;
-	int matched_count = 0;
-	if (yb_od_hashmap_find_key_and_remove(server->yb_close_prep_stmts,
-					      keyhash, &matched_keys,
-					      &matched_count)) {
-		if (matched_count > 1) {
-			od_error(&instance->logger, context, NULL, server,
-					"Got a hashmap collision for %016" PRIx64
-					". Cancelled %d deferred close entries:",
-					keyhash, matched_count);
-			for (int i = 0; i < matched_count; i++) {
-				yb_od_log_key_hexdump(&instance->logger,
-								context, server, i,
-								(const char *)matched_keys[i].data,
-								matched_keys[i].len);
-				free(matched_keys[i].data);
-			}
-			free(matched_keys);
-		} else {
-			od_debug(&instance->logger, context, NULL, server,
-				"cancelled deferred close for %016" PRIx64,
-				stmt_hash);
-		}
-	} else {
-		od_debug(&instance->logger, context, NULL, server,
-			 "no deferred close pending for %016" PRIx64,
-			 stmt_hash);
+	switch (*yb_parse_type) {
+	case YB_PARSE_NORMAL:
+		/* Only used for unnamed prep stmts, no need to update state */
+		break;
+	case YB_PARSE_REDEPLOY:
+		if (orig_name[0] == '\0')
+			break;
+		yb_backend_record_prep_stmt(server, context, orig_name,
+					    orig_name_len, description,
+					    description_len, 1);
+		break;
+	case YB_PARSE_FORCE:
+		yb_backend_record_prep_stmt(server, context, orig_name,
+					    orig_name_len, description,
+					    description_len, 0);
+		break;
+	default:
+		od_error(&instance->logger, context, server->client, server,
+			 "unexpected YbParse type %d", *yb_parse_type);
+		return -1;
 	}
-}
 
-typedef struct yb_backend_close_drain_arg {
-	od_server_t *server;
-	char *context;
-} yb_backend_close_drain_arg_t;
-
-static void yb_backend_close_drain_visit(od_hashmap_elt_t *key,
-					 od_hashmap_elt_t *value, void *arg)
-{
-	(void)value;
-	yb_backend_close_drain_arg_t *darg = arg;
-	yb_od_hash_64_t stmt_hash = 0;
-	if (key->len == sizeof(stmt_hash))
-		memcpy(&stmt_hash, key->data, sizeof(stmt_hash));
-	yb_evict_prep_stmt_by_keyhash(darg->server, darg->context, stmt_hash);
-}
-
-void yb_backend_drain_close_prep_stmts(od_server_t *server, char *context)
-{
-	if (server->yb_close_prep_stmts == NULL)
-		return;
-
-	yb_backend_close_drain_arg_t arg = { server, context };
-	yb_od_hashmap_drain(server->yb_close_prep_stmts,
-			    yb_backend_close_drain_visit, &arg);
+	if (yb_od_parse_queue_dequeue(&server->parse_queue) != 0) {
+		od_error(&instance->logger, context, server->client, server,
+			 "failed to dequeue parse queue");
+		return -1;
+	}
+	return 0;
 }
 
 void od_backend_error(od_server_t *server, char *context, char *data,
@@ -488,19 +469,32 @@ int od_backend_ready(od_server_t *server, char *data, uint32_t size)
 	// sticky, and then assumes the usual code workflow of being outside the 
 	// transaction block.
 	if (status == 'I' || status == 'i') {
+		od_route_t *route = server->route;
 		if (status == 'i') {
 			if(!yb_is_control_pool(server->route)) {
 				/* increment only if becoming sticky for the first time */
-				if (!server->yb_sticky_connection)
-					((od_route_t *)(server->route))->server_pool.yb_count_sticky++;
-	
+				if (!server->yb_sticky_connection) {
+					/*
+					 * YB: guard the route-shared sticky counter with the route
+					 * lock. od_router_attach/od_router_detach mutate the same
+					 * counter under this lock, so an unlocked update here races
+					 * with connection churn (e.g. on ysql lease loss).
+					 */
+					od_route_lock(route);
+					route->server_pool.yb_count_sticky++;
+					od_route_unlock(route);
+				}
+
 				server->yb_sticky_connection = true;
 			}
 			*kiwi_header_data((kiwi_header_t *)data) = 'I';
 		} else {
 			/* decrement only if transitioning from sticky to unsticky */
-			if (server->yb_sticky_connection)
-				((od_route_t *)(server->route))->server_pool.yb_count_sticky--;
+			if (server->yb_sticky_connection) {
+				od_route_lock(route);
+				route->server_pool.yb_count_sticky--;
+				od_route_unlock(route);
+			}
 			server->yb_sticky_connection = false;
 		}
 		/* no active transaction */
@@ -625,9 +619,9 @@ static inline int od_backend_startup(od_server_t *server,
 		strcpy(user_name, (char *)client->startup.user.value);
 		user_name_len = client->startup.user.value_len;
 
-		yb_logical_conn_type[0] = (client->yb_external_client->tls) ?
-						  YB_LOGICAL_ENCRYPTED_CONN :
-						  YB_LOGICAL_UNENCRYPTED_CONN;
+		yb_logical_conn_type[0] = (client->yb_external_client->startup.yb_ssl_established) ?
+					  YB_LOGICAL_ENCRYPTED_CONN :
+					  YB_LOGICAL_UNENCRYPTED_CONN;
 	}
 	else
 	{
@@ -659,16 +653,18 @@ static inline int od_backend_startup(od_server_t *server,
 	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("database"));
 	yb_kiwi_set_fe_arg(&argv[argc++], db_name, db_name_len);
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_use_tserver_key_auth"));
+		YB_NAME_AND_SIZEOF(YB_YCM_USE_TSERVER_KEY_AUTH));
 	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "0" : "1", 2);
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_is_client_ysqlconnmgr"));
+			YB_NAME_AND_SIZEOF(YB_YCM_IS_CLIENT_YSQLCONNMGR));
 	yb_kiwi_set_fe_arg(&argv[argc++], "1", 2);
-	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("yb_authonly"));
-	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "1" : "0", 2);
-	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("yb_is_control_conn"));
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   yb_is_control_pool(server->route) ? "1" : "0", 2);
+			   YB_NAME_AND_SIZEOF(YB_YCM_AUTHONLY));
+	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "1" : "0", 2);
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			   YB_NAME_AND_SIZEOF(YB_YCM_IS_CONTROL_CONN));
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			yb_is_control_pool(server->route) ? "1" : "0", 2);
 
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
@@ -685,13 +681,13 @@ static inline int od_backend_startup(od_server_t *server,
 	if (is_authenticating) {
 		/* override the remote host sent to the auth backend. */
 		yb_kiwi_set_fe_arg(&argv[argc++],
-				   YB_NAME_AND_SIZEOF("yb_auth_remote_host"));
+				   YB_NAME_AND_SIZEOF(YB_YCM_AUTH_REMOTE_HOST));
 		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_client_address,
 				   strlen(client->yb_client_address) + 1);
 
 		/* send the connection type to the auth backend. */
 		yb_kiwi_set_fe_arg(&argv[argc++],
-				   YB_NAME_AND_SIZEOF("yb_logical_conn_type"));
+				   YB_NAME_AND_SIZEOF(YB_YCM_LOGICAL_CONN_TYPE));
 		yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
 	}
 
@@ -827,10 +823,10 @@ static inline int od_backend_startup(od_server_t *server,
 			}
 
 			/* Explicitly ignoring these variables. We don't want to replay these */
-			if ((name_len == sizeof("yb_is_client_ysqlconnmgr") &&
-			     strcmp(name, "yb_is_client_ysqlconnmgr") == 0) ||
-			    (name_len == sizeof("yb_use_tserver_key_auth") &&
-			     strcmp(name, "yb_use_tserver_key_auth") == 0)) {
+			if ((name_len == sizeof(YB_YCM_IS_CLIENT_YSQLCONNMGR) &&
+			     strcmp(name, YB_YCM_IS_CLIENT_YSQLCONNMGR) == 0) ||
+			    (name_len == sizeof(YB_YCM_USE_TSERVER_KEY_AUTH) &&
+			     strcmp(name, YB_YCM_USE_TSERVER_KEY_AUTH) == 0)) {
 				machine_msg_free(msg);
 				break;
 			}
@@ -1142,14 +1138,14 @@ static inline int od_backend_connect_to(od_server_t *server, char *context,
 	/* log server connection */
 	if (instance->config.log_session) {
 		if (host) {
-			od_log(&instance->logger, context, server->client,
+			yb_od_session(&instance->logger, context, server->client,
 			       server,
 			       "new server connection %s:%d (connect time: %d usec, "
 			       "resolve time: %d usec)",
 			       host, port, (int)time_connect,
 			       (int)time_resolve);
 		} else {
-			od_log(&instance->logger, context, server->client,
+			yb_od_session(&instance->logger, context, server->client,
 			       server,
 			       "new server connection %s (connect time: %d usec, resolve "
 			       "time: %d usec)",
@@ -1510,35 +1506,24 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 					 machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
-		} else if (type == YB_BE_PARSE_PREPARE_ERROR_RESPONSE) {
+		} else if (type == YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) {
 			od_backend_evict_server_hashmap(server, context,
 				machine_msg_data(msg), machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
-		} else if (type == YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) {
-			if (instance->config.yb_enable_dealloc_reconciliation)
-				yb_backend_register_close_prep_stmt(server, context,
-					machine_msg_data(msg), machine_msg_size(msg));
-			else
-				od_backend_evict_server_hashmap(server, context,
-					machine_msg_data(msg), machine_msg_size(msg));
+		} else if (type == YB_BE_YB_PARSE_COMPLETE) {
+			YbParseType yb_parse_type;
+			int rc = yb_backend_update_prep_stmt(
+				server, context, machine_msg_data(msg),
+				machine_msg_size(msg), &yb_parse_type);
 			machine_msg_free(msg);
-			continue;
-		} else if (type == YB_BE_FORCE_PARSE_COMPLETE) {
-			if (instance->config.yb_enable_dealloc_reconciliation)
-				yb_backend_unregister_close_prep_stmt(server, context,
-					machine_msg_data(msg), machine_msg_size(msg));
-			machine_msg_free(msg);
-			continue;
-		} else if (type == YB_BE_PARSE_NO_PARSE_COMPLETE ||
-				   type == KIWI_BE_PARSE_COMPLETE) {
-			int res = yb_od_parse_queue_dequeue(&server->parse_queue);
-			machine_msg_free(msg);
-			if (res != 0) {
-				od_error(&instance->logger, context, server->client, server,
-					 "failed to dequeue parse queue");
+			if (rc == -1)
 				return -1;
-			}
+			continue;
+		} else if (type == KIWI_BE_PARSE_COMPLETE) {
+			od_error(&instance->logger, context, server->client, server,
+				 "unexpected ParseComplete packet from server");
+			machine_msg_free(msg);
 			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
@@ -1548,16 +1533,13 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				machine_msg_free(msg);
 				return 0;
 			}
-		}
-		else if (type == YB_BE_SYNC_ACK) {
+		} else if (type == YB_BE_SYNC_ACK) {
 			/*
 			 * If SYNC present at head of parse queue means all parses in this
 			 * SYNC boundary were acknowledged (success path). Otherwise, some
 			 * parses were silently dropped after an error -- evict stale entries.
 			 */
 			yb_drain_parse_queue_till_sync(server, server->client);
-			if (instance->config.yb_enable_dealloc_reconciliation)
-				yb_backend_drain_close_prep_stmts(server, context);
 			machine_msg_free(msg);
 			continue;
 		}

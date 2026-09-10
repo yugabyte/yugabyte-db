@@ -17,6 +17,14 @@
         "awsHostedZoneName" : {
           "type" : "string"
         },
+        "enableFederatedIam" : {
+          "description" : "Enable GCS-on-AWS cross-cloud federated IAM on this provider's DB nodes (GCP Workload Identity Federation). Requires the federated IAM audience below.",
+          "type" : "boolean"
+        },
+        "federatedIamAudience" : {
+          "description" : "GCP Workload Identity Federation audience (//iam.googleapis.com/projects/.../providers/...), used when federated IAM is enabled. The DB node renders the external_account credential from it.",
+          "type" : "string"
+        },
         "hostVpcId" : {
           "readOnly" : true,
           "type" : "string"
@@ -681,12 +689,6 @@
         },
         {
           "properties" : {
-            "apiKey" : {
-              "description" : "API key",
-              "maxLength" : 2147483647,
-              "minLength" : 1,
-              "type" : "string"
-            },
             "routingKey" : {
               "description" : "Routing key",
               "maxLength" : 2147483647,
@@ -695,7 +697,6 @@
             }
           },
           "required" : [
-            "apiKey",
             "routingKey"
           ],
           "type" : "object"
@@ -975,6 +976,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -1003,7 +1006,8 @@
             "YBA_NODE_DISK_USAGE",
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
-            "YBA_K8S_DISK_USAGE"
+            "YBA_K8S_DISK_USAGE",
+            "OTEL_COLLECTOR_RESTART"
           ],
           "type" : "string"
         },
@@ -1174,6 +1178,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -1202,7 +1208,8 @@
             "YBA_NODE_DISK_USAGE",
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
-            "YBA_K8S_DISK_USAGE"
+            "YBA_K8S_DISK_USAGE",
+            "OTEL_COLLECTOR_RESTART"
           ],
           "type" : "string"
         },
@@ -1469,6 +1476,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -1497,7 +1506,8 @@
             "YBA_NODE_DISK_USAGE",
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
-            "YBA_K8S_DISK_USAGE"
+            "YBA_K8S_DISK_USAGE",
+            "OTEL_COLLECTOR_RESTART"
           ],
           "type" : "string"
         },
@@ -2092,6 +2102,9 @@
             "DeletePACollectorConfig",
             "PACollectorRegister",
             "PACollectorUnregister",
+            "CreatePerfAdvisorEndpoint",
+            "EditPerfAdvisorEndpoint",
+            "DeletePerfAdvisorEndpoint",
             "UpgradeKubernetesOverrides",
             "UpgradeCerts",
             "UpgradeTLS",
@@ -2195,10 +2208,12 @@
             "UpdateAdditionalServicesState",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "ManageCrossCloudFederation",
             "RunScript",
             "CreateFileCollection",
             "DownloadFileCollection",
-            "DeleteFileCollection"
+            "DeleteFileCollection",
+            "UpdateClusters"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2277,6 +2292,7 @@
             "SupportBundle",
             "TelemetryProvider",
             "PACollector",
+            "PerfAdvisorEndpoint",
             "GFlags",
             "Hook",
             "HookScope",
@@ -2409,6 +2425,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -2497,6 +2516,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -2575,6 +2599,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -2629,6 +2656,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -2670,6 +2698,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -2735,6 +2764,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -2746,6 +2776,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2792,6 +2823,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -2880,6 +2912,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -2931,6 +2964,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -2955,6 +2989,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -2989,7 +3026,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -3175,6 +3213,26 @@
       },
       "required" : [
         "availabilityZones"
+      ],
+      "type" : "object"
+    },
+    "AzNodesSpec" : {
+      "properties" : {
+        "azCode" : {
+          "type" : "string"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
       ],
       "type" : "object"
     },
@@ -3848,6 +3906,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelDBBackups" : {
           "description" : "Parallel DB backups",
           "format" : "int32",
@@ -4062,6 +4125,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -4333,6 +4397,10 @@
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
         },
+        "crossCloudFederationAudience" : {
+          "description" : "Cross-cloud federation GCP audience captured at backup time",
+          "type" : "string"
+        },
         "customerUuid" : {
           "description" : "Customer UUID",
           "format" : "uuid",
@@ -4446,6 +4514,11 @@
           "description" : "User name of the current tables owner",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -4516,6 +4589,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -4619,6 +4693,39 @@
         "storageConfigUUID",
         "timeTakenPartial"
       ],
+      "type" : "object"
+    },
+    "BashComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as a label/sub-directory.",
+          "type" : "string"
+        },
+        "linuxUser" : {
+          "description" : "Linux user to run the script as on the node.",
+          "type" : "string"
+        },
+        "params" : {
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [collect_top_stats, --remote_tar_path, /tmp/top.tar.gz, ...].",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "remoteTarPath" : {
+          "description" : "Path on the node where the script writes the tar. May contain ${nodeName} which is substituted per node.",
+          "type" : "string"
+        },
+        "scriptPath" : {
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Script execution timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
       "type" : "object"
     },
     "Basic Auth information" : {
@@ -4777,6 +4884,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -4855,10 +4967,22 @@
     },
     "BundleDetails" : {
       "properties" : {
+        "bashComponentSpecs" : {
+          "description" : "Specs that drive the node-level BashComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/BashComponentSpec"
+          },
+          "type" : "array"
+        },
         "components" : {
           "items" : {
             "enum" : [
               "UniverseLogs",
+              "FilesComponent",
+              "BashComponent",
+              "YSQLComponent",
+              "YCQLComponent",
+              "YbAdminComponent",
               "OutputFiles",
               "ErrorFiles",
               "CoreFiles",
@@ -4874,9 +4998,17 @@
               "YbaMetadata",
               "PrometheusMetrics",
               "PerfAdvisor",
-              "ApplicationLogs"
+              "ApplicationLogs",
+              "YBAComponent"
             ],
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "filesComponentSpecs" : {
+          "description" : "Specs that drive the generic node-level FilesComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/FilesComponentSpec"
           },
           "type" : "array"
         },
@@ -4889,6 +5021,13 @@
           "description" : "Max number of most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "nodeNames" : {
+          "description" : "Names of the universe nodes node-level components were collected from. Empty or null means every node in the universe was considered.",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
         },
         "paDumpEndDate" : {
           "description" : "End date to filter Perf Advisor data",
@@ -4945,9 +5084,38 @@
               "PROMETHEUS",
               "TSERVER_EXPORT",
               "CQL_EXPORT",
-              "YSQL_EXPORT"
+              "YSQL_EXPORT",
+              "KUBERNETES"
             ],
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "ybAdminComponentSpecs" : {
+          "description" : "Specs that drive the node-level YbAdminComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YbAdminComponentSpec"
+          },
+          "type" : "array"
+        },
+        "ybaComponentSpecs" : {
+          "description" : "Specs that drive the global-level YBAComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YbaComponentSpec"
+          },
+          "type" : "array"
+        },
+        "ycqlComponentSpecs" : {
+          "description" : "Specs that drive the node-level YCQLComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YCQLComponentSpec"
+          },
+          "type" : "array"
+        },
+        "ysqlComponentSpecs" : {
+          "description" : "Specs that drive the node-level YSQLComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YSQLComponentSpec"
           },
           "type" : "array"
         }
@@ -5306,6 +5474,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -5391,6 +5562,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -5475,6 +5651,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -5529,6 +5708,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -5570,6 +5750,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -5635,6 +5816,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -5646,6 +5828,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5692,6 +5875,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -5780,6 +5964,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -5831,6 +6016,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -5855,6 +6041,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -5889,7 +6078,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -6019,6 +6209,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "pitrConfigUUID" : {
           "description" : "PITR Config UUID",
           "format" : "uuid",
@@ -6120,6 +6315,10 @@
         },
         "cloud" : {
           "description" : "The node's cloud provider",
+          "type" : "string"
+        },
+        "id" : {
+          "description" : "The cloud provider's instance identifier",
           "type" : "string"
         },
         "instance_type" : {
@@ -6294,7 +6493,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         },
@@ -6336,7 +6536,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         },
@@ -6365,7 +6566,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         }
@@ -6616,22 +6818,39 @@
         "compressor" : {
           "type" : "string"
         },
-        "offloadable" : {
-          "type" : "boolean"
-        },
         "serverCert" : {
           "type" : "string"
         },
+        "serverCertExpirySecs" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "serverCertLocalPath" : {
+          "type" : "string"
+        },
         "serverKey" : {
+          "type" : "string"
+        },
+        "serverKeyLocalPath" : {
+          "type" : "string"
+        },
+        "signerPrivateKey" : {
+          "type" : "string"
+        },
+        "signerPublicKey" : {
           "type" : "string"
         }
       },
       "required" : [
         "certPath",
         "compressor",
-        "offloadable",
         "serverCert",
-        "serverKey"
+        "serverCertExpirySecs",
+        "serverCertLocalPath",
+        "serverKey",
+        "serverKeyLocalPath",
+        "signerPrivateKey",
+        "signerPublicKey"
       ],
       "type" : "object"
     },
@@ -6773,6 +6992,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -7452,6 +7676,12 @@
         "id" : {
           "description" : "Customer task UUID",
           "format" : "uuid",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state), if any",
+          "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "percentComplete" : {
@@ -8394,6 +8624,39 @@
       },
       "type" : "object"
     },
+    "FilesComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as a label/sub-directory.",
+          "type" : "string"
+        },
+        "linuxUser" : {
+          "description" : "Linux user to run the script as on the node.",
+          "type" : "string"
+        },
+        "params" : {
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [create_universe_logs_bundle, --mount_path, /mnt/d0, ...].",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "remoteTarPath" : {
+          "description" : "Path on the node where the script writes the tar. May contain ${nodeName} which is substituted per node.",
+          "type" : "string"
+        },
+        "scriptPath" : {
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Script execution timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "FinalizeUpgradeInfoResponse" : {
       "description" : "Finalize Upgrade Info Response",
       "properties" : {
@@ -8452,6 +8715,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -8538,6 +8804,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -8616,6 +8887,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -8670,6 +8944,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -8711,6 +8986,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -8776,6 +9052,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -8787,6 +9064,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8833,6 +9111,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -8921,6 +9200,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -8972,6 +9252,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -8996,6 +9277,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -9030,7 +9314,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -9273,6 +9558,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -9364,6 +9652,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -9448,6 +9741,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -9502,6 +9798,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -9543,6 +9840,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -9608,6 +9906,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -9619,6 +9918,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9665,6 +9965,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -9753,6 +10054,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -9804,6 +10106,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -9828,6 +10131,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -9862,7 +10168,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -10271,11 +10578,16 @@
         "imageBundleUuid" : {
           "format" : "uuid",
           "type" : "string"
+        },
+        "providerUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "required" : [
         "clusterUuid",
-        "imageBundleUuid"
+        "imageBundleUuid",
+        "providerUuid"
       ],
       "type" : "object"
     },
@@ -10821,6 +11133,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -10906,6 +11221,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -10987,6 +11307,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -11041,6 +11364,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -11082,6 +11406,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -11147,6 +11472,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -11158,6 +11484,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11204,6 +11531,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -11292,6 +11620,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -11343,6 +11672,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -11367,6 +11697,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -11401,7 +11734,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -11577,6 +11911,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -11662,6 +11999,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -11740,6 +12082,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -11794,6 +12139,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -11835,6 +12181,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -11900,6 +12247,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -11911,6 +12259,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11957,6 +12306,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -12045,6 +12395,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -12096,6 +12447,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -12120,6 +12472,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -12154,7 +12509,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -12910,6 +13266,10 @@
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
         },
+        "crossCloudFederationAudience" : {
+          "description" : "Cross-cloud federation GCP audience captured at backup time",
+          "type" : "string"
+        },
         "customerUuid" : {
           "description" : "Customer UUID",
           "format" : "uuid",
@@ -13023,6 +13383,11 @@
           "description" : "User name of the current tables owner",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -13093,6 +13458,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -13334,6 +13700,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "config" : {
           "$ref" : "#/definitions/Config",
           "description" : "Node agent configuration",
@@ -13545,6 +13917,12 @@
             "ARM64",
             "AMD64"
           ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
@@ -14381,8 +14759,11 @@
       ],
       "type" : "object"
     },
-    "NodeSpecification" : {
+    "NodeSpec" : {
       "properties" : {
+        "backupProxyConfig" : {
+          "$ref" : "#/definitions/ProxyConfig"
+        },
         "cgroupSize" : {
           "format" : "int32",
           "type" : "integer"
@@ -14395,26 +14776,16 @@
         },
         "k8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"
-        },
-        "proxyConfig" : {
-          "$ref" : "#/definitions/ProxyConfig"
-        }
-      },
-      "type" : "object"
-    },
-    "NodesSpecification" : {
-      "properties" : {
-        "masterSpecification" : {
-          "$ref" : "#/definitions/NodeSpecification"
-        },
-        "tserverSpecification" : {
-          "$ref" : "#/definitions/NodeSpecification"
         }
       },
       "type" : "object"
     },
     "OCICloudInfo" : {
       "properties" : {
+        "ociAuthType" : {
+          "description" : "OCI authentication type (API_KEY or INSTANCE_PRINCIPAL)",
+          "type" : "string"
+        },
         "ociCompartmentId" : {
           "description" : "OCI Compartment OCID",
           "type" : "string"
@@ -14451,6 +14822,22 @@
             "HOSTVPC"
           ],
           "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "OCIRegionCloudInfo" : {
+      "properties" : {
+        "instanceTemplate" : {
+          "description" : "The OCI Instance Configuration OCID to use for nodes created in this region.",
+          "type" : "string"
+        },
+        "vnet" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.</b> Use provider.imageBundle instead",
           "type" : "string"
         }
       },
@@ -14569,9 +14956,17 @@
     },
     "OnPremCloudInfo" : {
       "properties" : {
+        "enableFederatedIam" : {
+          "description" : "WARNING: This is a preview API that could change. Enable GCS-on-AWS cross-cloud federated IAM on this provider's DB nodes (nodes must be AWS VMs).",
+          "type" : "boolean"
+        },
         "enableMultiTenancy" : {
           "description" : "WARNING: This is a preview API that could change.",
           "type" : "boolean"
+        },
+        "federatedIamAudience" : {
+          "description" : "WARNING: This is a preview API that could change. GCP Workload Identity Federation audience used when federated IAM is enabled.",
+          "type" : "string"
         },
         "useClockbound" : {
           "description" : "WARNING: This is a preview API that could change.",
@@ -14594,6 +14989,11 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by PACollectorSync",
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "inUseStatus" : {
           "description" : "In Use Status",
@@ -14657,19 +15057,23 @@
           "description" : "Whether advanced observability (metrics export) is enabled",
           "type" : "boolean"
         },
-        "dataMountPoints" : {
-          "description" : "Data mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
+        "mode" : {
+          "description" : "How the universe is registered with the collector",
+          "enum" : [
+            "BASIC",
+            "ADVANCED",
+            "ONLINE"
+          ],
+          "type" : "string"
         },
-        "otherMountPoints" : {
-          "description" : "Other mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
+        "paEndpointName" : {
+          "description" : "Perf Advisor Endpoint name, set for ONLINE mode only",
+          "type" : "string"
+        },
+        "paEndpointUuid" : {
+          "description" : "Perf Advisor Endpoint UUID, set for ONLINE mode only",
+          "format" : "uuid",
+          "type" : "string"
         },
         "universeName" : {
           "description" : "Universe name (from YBA, or null if universe was deleted)",
@@ -14688,6 +15092,24 @@
         "advancedObservability" : {
           "description" : "Whether advanced observability (metrics export to Prometheus) is enabled",
           "type" : "boolean"
+        },
+        "mode" : {
+          "description" : "How the universe is registered with the collector",
+          "enum" : [
+            "BASIC",
+            "ADVANCED",
+            "ONLINE"
+          ],
+          "type" : "string"
+        },
+        "paEndpointName" : {
+          "description" : "Perf Advisor Endpoint name, set for ONLINE mode only",
+          "type" : "string"
+        },
+        "paEndpointUuid" : {
+          "description" : "Perf Advisor Endpoint UUID, set for ONLINE mode only",
+          "format" : "uuid",
+          "type" : "string"
         },
         "success" : {
           "description" : "Whether the universe is registered with PA Collector",
@@ -14708,6 +15130,11 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by PACollectorSync",
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "metricsPassword" : {
           "description" : "Metrics API Password",
@@ -15907,6 +16334,9 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "local" : {
+          "type" : "boolean"
+        },
         "state" : {
           "enum" : [
             "LEADER",
@@ -15926,6 +16356,7 @@
         "address",
         "instance_state",
         "is_leader",
+        "local",
         "state",
         "uuid",
         "ybaVersion"
@@ -16294,9 +16725,6 @@
           },
           "type" : "object"
         },
-        "baseNodesSpecification" : {
-          "$ref" : "#/definitions/NodesSpecification"
-        },
         "enableLoadBalancer" : {
           "type" : "boolean"
         },
@@ -16321,11 +16749,8 @@
           },
           "type" : "object"
         },
-        "perAZOverrides" : {
-          "additionalProperties" : {
-            "$ref" : "#/definitions/NodesSpecification"
-          },
-          "type" : "object"
+        "nodesSpecs" : {
+          "$ref" : "#/definitions/RootNodesSpec"
         },
         "providerType" : {
           "enum" : [
@@ -16347,6 +16772,11 @@
           "type" : "string"
         }
       },
+      "required" : [
+        "nodesSpecs",
+        "providerType",
+        "providerUUID"
+      ],
       "type" : "object"
     },
     "ProvisionUniverseNodesParams" : {
@@ -16393,6 +16823,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -16487,6 +16920,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -16565,6 +17003,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -16619,6 +17060,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -16660,6 +17102,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -16725,6 +17168,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -16736,6 +17180,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16782,6 +17227,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -16870,6 +17316,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -16921,6 +17368,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -16945,6 +17393,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -16979,7 +17430,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -17097,6 +17549,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -17182,6 +17637,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -17260,6 +17720,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -17314,6 +17777,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -17355,6 +17819,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -17420,6 +17885,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -17431,6 +17897,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17477,6 +17944,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -17565,6 +18033,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -17616,6 +18085,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -17640,6 +18110,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -17674,7 +18147,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -17866,6 +18340,9 @@
         },
         "kubernetes" : {
           "$ref" : "#/definitions/KubernetesRegionInfo"
+        },
+        "oci" : {
+          "$ref" : "#/definitions/OCIRegionCloudInfo"
         }
       },
       "type" : "object"
@@ -17985,6 +18462,32 @@
         "latitude",
         "longitude",
         "name"
+      ],
+      "type" : "object"
+    },
+    "RegionNodesSpec" : {
+      "properties" : {
+        "azNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/AzNodesSpec"
+          },
+          "type" : "array"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionCode" : {
+          "type" : "string"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
       ],
       "type" : "object"
     },
@@ -18146,6 +18649,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -18240,6 +18746,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -18324,6 +18835,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -18378,6 +18892,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -18419,6 +18934,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -18484,6 +19000,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -18495,6 +19012,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18541,6 +19059,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -18629,6 +19148,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -18680,6 +19200,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -18704,6 +19225,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -18738,7 +19262,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -19012,6 +19537,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -19097,6 +19625,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -19175,6 +19708,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -19229,6 +19765,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -19270,6 +19807,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -19335,6 +19873,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -19346,6 +19885,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19392,6 +19932,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -19480,6 +20021,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -19531,6 +20073,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -19555,6 +20098,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -19589,7 +20135,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -19826,6 +20373,11 @@
         },
         "nodeIp" : {
           "description" : "Node IP",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "parallelism" : {
@@ -20237,6 +20789,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "pitrConfigUUID" : {
           "description" : "PITR Config UUID",
           "format" : "uuid",
@@ -20569,6 +21126,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -20654,6 +21214,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -20732,6 +21297,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -20786,6 +21354,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -20827,6 +21396,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -20892,6 +21462,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -20903,6 +21474,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20949,6 +21521,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -21037,6 +21610,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -21088,6 +21662,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -21112,6 +21687,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -21146,7 +21724,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -21193,6 +21772,23 @@
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
+      "type" : "object"
+    },
+    "RootNodesSpec" : {
+      "properties" : {
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/RegionNodesSpec"
+          },
+          "type" : "array"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -21458,6 +22054,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -21499,6 +22096,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -21564,6 +22162,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -21575,6 +22174,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21621,6 +22221,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -21709,6 +22310,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -21760,6 +22362,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -21784,6 +22387,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -21818,7 +22424,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -21885,6 +22492,7 @@
               "DeletePitrConfig",
               "RestoreSnapshotSchedule",
               "EditUniverse",
+              "RollbackEditUniverse",
               "EditKubernetesUniverse",
               "ExternalScript",
               "ImportIntoTable",
@@ -21926,6 +22534,7 @@
               "DeleteXClusterConfig",
               "SyncXClusterConfig",
               "CreateSupportBundle",
+              "CreateSupportBundleV2",
               "CreateXClusterConfig",
               "EditXClusterConfig",
               "RestartXClusterConfig",
@@ -21991,6 +22600,7 @@
               "RestoreYbaBackup",
               "RestoreContinuousBackup",
               "EnableNodeAgentInUniverse",
+              "ManageCrossCloudFederationUniverse",
               "DecommissionNode",
               "CloneNamespace",
               "TlsToggleKubernetes",
@@ -22002,6 +22612,7 @@
               "OperatorImportUniverse",
               "RegisterUniverseWithPACollector",
               "UnregisterUniverseFromPACollector",
+              "UpgradeNodeAgent",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -22048,6 +22659,7 @@
               "SwamperTargetsFileUpdate",
               "UniverseUpdateSucceeded",
               "RegisterUniverseWithPaCollector",
+              "PushPaExportConfig",
               "UnregisterUniverseFromPaCollector",
               "UpdateAndPersistGFlags",
               "UpdateAndPersistKubernetesOverrides",
@@ -22136,6 +22748,7 @@
               "SetRestoreHiddenState",
               "RestorePreflightValidate",
               "BackupPreflightValidate",
+              "BackupStorageConfigValidate",
               "WaitForLeadersOnPreferredOnly",
               "EnableEncryptionAtRest",
               "DisableEncryptionAtRest",
@@ -22187,6 +22800,7 @@
               "TransferXClusterCerts",
               "CreateTableSpaces",
               "ManageOtelCollector",
+              "ManageCloudFederation",
               "UpdateAndPersistAuditLoggingConfig",
               "UpdateAndPersistQueryLoggingConfig",
               "UpdateAndPersistMetricsExportConfig",
@@ -22211,6 +22825,9 @@
               "UpdateUniverseIntent",
               "UpdateConsistencyCheck",
               "FreezeUniverse",
+              "MarkRollbackUnsafe",
+              "RestoreUniverseDetailsFromDelta",
+              "ConfirmEditRollbackMembership",
               "QueryLdapServer",
               "DbLdapSync",
               "CheckForClusterServers",
@@ -22245,7 +22862,8 @@
               "OperatorImportResource",
               "UpdateParentTaskParams",
               "SaveSoftwareUpgradeProgress",
-              "CheckDuplicateInstance"
+              "CheckDuplicateInstance",
+              "RunUpgradeNodeAgent"
             ],
             "type" : "string"
           },
@@ -22395,6 +23013,11 @@
           ],
           "type" : "string"
         },
+        "isKubernetesOperatorControlled" : {
+          "description" : "True if this schedule is controlled by the Kubernetes operator",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "nextExpectedTask" : {
           "description" : "Next expected task time",
           "example" : "2022-12-12T13:07:18Z",
@@ -22461,6 +23084,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -22502,6 +23126,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -22567,6 +23192,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -22578,6 +23204,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22624,6 +23251,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -22712,6 +23340,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -22763,6 +23392,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -22787,6 +23417,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -22821,7 +23454,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -23031,6 +23665,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -23116,6 +23753,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -23194,6 +23836,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -23248,6 +23893,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -23289,6 +23935,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -23354,6 +24001,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -23365,6 +24013,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23411,6 +24060,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -23499,6 +24149,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -23550,6 +24201,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -23574,6 +24226,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -23608,7 +24263,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -23984,6 +24640,11 @@
           "items" : {
             "enum" : [
               "UniverseLogs",
+              "FilesComponent",
+              "BashComponent",
+              "YSQLComponent",
+              "YCQLComponent",
+              "YbAdminComponent",
               "OutputFiles",
               "ErrorFiles",
               "CoreFiles",
@@ -23999,7 +24660,8 @@
               "YbaMetadata",
               "PrometheusMetrics",
               "PerfAdvisor",
-              "ApplicationLogs"
+              "ApplicationLogs",
+              "YBAComponent"
             ],
             "type" : "string"
           },
@@ -24094,7 +24756,8 @@
               "PROMETHEUS",
               "TSERVER_EXPORT",
               "CQL_EXPORT",
-              "YSQL_EXPORT"
+              "YSQL_EXPORT",
+              "KUBERNETES"
             ],
             "type" : "string"
           },
@@ -24198,6 +24861,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -24283,6 +24949,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -24361,6 +25032,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -24415,6 +25089,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -24456,6 +25131,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -24521,6 +25197,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -24532,6 +25209,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24578,6 +25256,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -24666,6 +25345,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -24717,6 +25397,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -24741,6 +25422,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -24775,7 +25459,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -24874,6 +25559,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -25157,14 +25847,26 @@
     },
     "TaskApiFilter" : {
       "properties" : {
+        "completionDateRangeEnd" : {
+          "description" : "Include tasks completed on or before this time (completion_time). May be set alone or with completion_date_range_start. Tasks with null completion_time (still in progress) are excluded when either completion bound is set.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "completionDateRangeStart" : {
+          "description" : "Include tasks completed on or after this time (completion_time). May be set alone or with completion_date_range_end. Tasks with null completion_time (still in progress) are excluded when either completion bound is set.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
         "dateRangeEnd" : {
-          "description" : "The end date to filter paged query.",
+          "description" : "Include tasks created on or before this time (create_time). May be set alone or with date_range_start.",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "dateRangeStart" : {
-          "description" : "The start date to filter paged query.",
+          "description" : "Include tasks created on or after this time (create_time). May be set alone or with date_range_end.",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
@@ -25245,6 +25947,7 @@
               "SoftwareUpgradeYB",
               "FinalizeUpgrade",
               "RollbackUpgrade",
+              "RollbackEditUniverse",
               "GFlagsUpgrade",
               "KubernetesOverridesUpgrade",
               "EditKubernetesUniverse",
@@ -25286,6 +25989,7 @@
               "PrecheckNode",
               "Abort",
               "CreateSupportBundle",
+              "CreateSupportBundleV2",
               "CreateTableSpaces",
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
@@ -25316,6 +26020,7 @@
               "RestoreYbaBackup",
               "RestoreContinuousBackup",
               "EnableNodeAgent",
+              "ManageCrossCloudFederation",
               "Decommission",
               "CloneNamespace",
               "UpdateOOMServiceState",
@@ -25537,6 +26242,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -25625,6 +26333,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -25703,6 +26416,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -25757,6 +26473,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -25798,6 +26515,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -25863,6 +26581,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -25874,6 +26593,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25920,6 +26640,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -26008,6 +26729,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -26059,6 +26781,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -26083,6 +26806,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -26117,7 +26843,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -26228,6 +26955,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -26319,6 +27049,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -26397,6 +27132,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -26451,6 +27189,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -26492,6 +27231,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -26557,6 +27297,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -26568,6 +27309,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26614,6 +27356,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -26702,6 +27445,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -26753,6 +27497,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -26777,6 +27522,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -26811,7 +27559,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -26989,6 +27738,11 @@
           "description" : "Error message",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -27065,6 +27819,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -27151,6 +27908,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -27232,6 +27994,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -27286,6 +28051,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -27327,6 +28093,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -27392,6 +28159,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -27403,6 +28171,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -27449,6 +28218,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -27537,6 +28307,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -27588,6 +28359,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -27612,6 +28384,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -27646,7 +28421,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -27731,6 +28507,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -27813,6 +28592,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -27891,6 +28675,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -27945,6 +28732,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -27986,6 +28774,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -28051,6 +28840,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -28062,6 +28852,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28108,6 +28899,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -28196,6 +28988,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -28247,6 +29040,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -28271,6 +29065,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -28305,7 +29102,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -28389,6 +29187,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -28471,6 +29272,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -28550,6 +29356,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -28604,6 +29413,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -28645,6 +29455,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -28710,6 +29521,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -28721,6 +29533,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28767,6 +29580,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -28855,6 +29669,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -28906,6 +29721,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -28930,6 +29746,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -28964,7 +29783,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -29146,17 +29966,17 @@
           "type" : "integer"
         },
         "sendBatchMaxSize" : {
-          "description" : "Maximum batch size for query logs exporter",
+          "description" : "Maximum batch size for logs exporter",
           "format" : "int32",
           "type" : "integer"
         },
         "sendBatchSize" : {
-          "description" : "Batch size for query logs exporter",
+          "description" : "Batch size for logs exporter",
           "format" : "int32",
           "type" : "integer"
         },
         "sendBatchTimeoutSeconds" : {
-          "description" : "Maximum batch timeout for query logs exporter in seconds",
+          "description" : "Maximum batch timeout for logs exporter in seconds",
           "format" : "int32",
           "type" : "integer"
         }
@@ -29312,6 +30132,14 @@
       },
       "type" : "object"
     },
+    "UniverseSettings" : {
+      "properties" : {
+        "expertMode" : {
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
     "UnusedIndexFinderResponse" : {
       "properties" : {
         "current_database" : {
@@ -29417,6 +30245,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -29554,6 +30387,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -29639,6 +30475,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -29717,6 +30558,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -29771,6 +30615,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -29812,6 +30657,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -29877,6 +30723,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -29888,6 +30735,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -29934,6 +30782,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -30022,6 +30871,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -30073,6 +30923,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -30097,6 +30948,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -30131,7 +30985,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -30754,6 +31609,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -30862,6 +31720,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -30948,6 +31811,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -31002,6 +31868,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -31043,6 +31910,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -31108,6 +31976,7 @@
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
+            "ManageCrossCloudFederationUniverse",
             "DecommissionNode",
             "CloneNamespace",
             "TlsToggleKubernetes",
@@ -31119,6 +31988,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -31165,6 +32035,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -31253,6 +32124,7 @@
             "SetRestoreHiddenState",
             "RestorePreflightValidate",
             "BackupPreflightValidate",
+            "BackupStorageConfigValidate",
             "WaitForLeadersOnPreferredOnly",
             "EnableEncryptionAtRest",
             "DisableEncryptionAtRest",
@@ -31304,6 +32176,7 @@
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
+            "ManageCloudFederation",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -31328,6 +32201,9 @@
             "UpdateUniverseIntent",
             "UpdateConsistencyCheck",
             "FreezeUniverse",
+            "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -31362,7 +32238,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -31531,7 +32408,6 @@
       "description" : "xcluster config object",
       "properties" : {
         "automaticDdlMode" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "createTime" : {
@@ -31827,7 +32703,6 @@
       "description" : "xcluster get response",
       "properties" : {
         "automaticDdlMode" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "createTime" : {
@@ -32053,7 +32928,6 @@
         }
       },
       "required" : [
-        "bootstrapParams",
         "tables"
       ],
       "type" : "object"
@@ -32397,15 +33271,37 @@
         }
       },
       "required" : [
-        "enabled",
-        "excludedCategories",
-        "excludedKeyspaces",
-        "excludedUsers",
-        "includedCategories",
-        "includedKeyspaces",
-        "includedUsers",
-        "logLevel"
+        "enabled"
       ],
+      "type" : "object"
+    },
+    "YCQLComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as output file label.",
+          "type" : "string"
+        },
+        "keyspace" : {
+          "description" : "Optional keyspace for ycqlsh -k.",
+          "type" : "string"
+        },
+        "outputFileName" : {
+          "description" : "Output file name written under the per-node bundle directory.",
+          "type" : "string"
+        },
+        "queries" : {
+          "description" : "YCQL statements to execute (each runs as ycqlsh -e).",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "timeoutSecs" : {
+          "description" : "Command timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
       "type" : "object"
     },
     "YSQLAuditConfig" : {
@@ -32488,18 +33384,44 @@
         }
       },
       "required" : [
-        "classes",
         "enabled",
         "logCatalog",
         "logClient",
-        "logLevel",
         "logParameter",
-        "logParameterMaxSize",
         "logRelation",
         "logRows",
         "logStatement",
         "logStatementOnce"
       ],
+      "type" : "object"
+    },
+    "YSQLComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as output file label.",
+          "type" : "string"
+        },
+        "dbName" : {
+          "description" : "Database name for ysqlsh -d.",
+          "type" : "string"
+        },
+        "outputFileName" : {
+          "description" : "Output file name written under the per-node bundle directory.",
+          "type" : "string"
+        },
+        "queries" : {
+          "description" : "YSQL statements to execute (each runs as ysqlsh -c).",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "timeoutSecs" : {
+          "description" : "Command timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
       "type" : "object"
     },
     "YSQLQueryLogConfig" : {
@@ -32569,6 +33491,68 @@
         "logMinErrorStatement",
         "logStatement"
       ],
+      "type" : "object"
+    },
+    "YbAdminComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as output file label.",
+          "type" : "string"
+        },
+        "outputFileName" : {
+          "description" : "Output file name written under the per-node bundle directory.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Command timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "ybAdminArgs" : {
+          "description" : "Additional arguments after the subcommand.",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "ybAdminCommand" : {
+          "description" : "yb-admin subcommand (e.g. list_tables).",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "YbaComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as a label/sub-directory.",
+          "type" : "string"
+        },
+        "linuxUser" : {
+          "description" : "Ignored for local YBA execution; accepted for API parity with node-level specs.",
+          "type" : "string"
+        },
+        "params" : {
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [create_application_logs_bundle, --log_dir, /var/log/yba, ...].",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "remoteTarPath" : {
+          "description" : "Path on the YBA host where the script writes the tar before it is untarred.",
+          "type" : "string"
+        },
+        "scriptPath" : {
+          "description" : "Path on the YBA host to the script file to execute locally (e.g. bin/yba_utils.sh). May be relative to yb.devops.home.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Script execution timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
       "type" : "object"
     },
     "YbcThrottleParameters" : {
@@ -43218,6 +44202,11 @@
               "items" : {
                 "enum" : [
                   "UniverseLogs",
+                  "FilesComponent",
+                  "BashComponent",
+                  "YSQLComponent",
+                  "YCQLComponent",
+                  "YbAdminComponent",
                   "OutputFiles",
                   "ErrorFiles",
                   "CoreFiles",
@@ -43233,7 +44222,8 @@
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "PerfAdvisor",
-                  "ApplicationLogs"
+                  "ApplicationLogs",
+                  "YBAComponent"
                 ],
                 "type" : "string"
               },
@@ -43248,6 +44238,11 @@
               "items" : {
                 "enum" : [
                   "UniverseLogs",
+                  "FilesComponent",
+                  "BashComponent",
+                  "YSQLComponent",
+                  "YCQLComponent",
+                  "YbAdminComponent",
                   "OutputFiles",
                   "ErrorFiles",
                   "CoreFiles",
@@ -43263,7 +44258,8 @@
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "PerfAdvisor",
-                  "ApplicationLogs"
+                  "ApplicationLogs",
+                  "YBAComponent"
                 ],
                 "type" : "string"
               },
@@ -44253,7 +45249,8 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/audit_log_config" : {
       "post" : {
-        "description" : "WARNING: This is a preview API that could change. Modifies the audit logging configuration for a universe.",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2026.1.2.0.</b></p> Use the v2 POST /api/v2/customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs API instead. Modifies the audit logging configuration for a universe.",
         "operationId" : "modifyAuditLogging",
         "parameters" : [
           {
@@ -44306,7 +45303,7 @@
             "apiKeyAuth" : [ ]
           }
         ],
-        "summary" : "Modify Audit Logging Configuration",
+        "summary" : "Modify Audit Logging Configuration - deprecated",
         "tags" : [
           "Universe Upgrades Management"
         ]
@@ -44916,6 +45913,15 @@
             "name" : "uniUUID",
             "required" : true,
             "type" : "string"
+          },
+          {
+            "default" : 10,
+            "description" : "Maximum number of most recent health check entries to return. Defaults to 10.",
+            "format" : "int32",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "type" : "integer"
           }
         ],
         "responses" : {
@@ -52528,6 +53534,9 @@
     },
     {
       "name" : "Node instances"
+    },
+    {
+      "name" : "PA Proxy"
     },
     {
       "name" : "PITR management"

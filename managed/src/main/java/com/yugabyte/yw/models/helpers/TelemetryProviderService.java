@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -41,6 +42,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -54,6 +56,11 @@ import org.apache.commons.collections4.CollectionUtils;
 public class TelemetryProviderService {
 
   public static final String LOKI_PUSH_ENDPOINT = "/loki/api/v1/push";
+
+  // Loki's native OTLP ingestion path (Loki 3.0+). The dedicated `loki` exporter was deprecated
+  // upstream on 2024-07-09 and removed from otel-collector-contrib in 0.131.0, so Loki log export
+  // now goes over OTLP HTTP against this path instead of LOKI_PUSH_ENDPOINT.
+  public static final String LOKI_OTLP_LOGS_ENDPOINT = "/otlp/v1/logs";
   public static final String WS_CLIENT_KEY = "yb.ws";
   private final BeanValidator beanValidator;
   private final RuntimeConfGetter confGetter;
@@ -269,6 +276,23 @@ public class TelemetryProviderService {
     Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
     // Iterate through all universe details and check if any of them have an audit log config.
     for (Universe universe : allUniverses) {
+      // The unified export config is the source of truth, and only audit/query/metrics are
+      // mirrored back into universe details - master/tserver/conn-mgr/controller/node-agent/ynp
+      // log export exist only here. Checking just the mirrored fields let a provider referenced
+      // by one of those be deleted, stranding a dangling exporterUuid that breaks every later
+      // collector-config regeneration for the universe.
+      Optional<ExportTelemetryConfig> exportConfig =
+          ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID());
+      if (exportConfig.isPresent()
+          && exportConfig.get().getTelemetryConfig() != null
+          && exportConfig
+              .get()
+              .getTelemetryConfig()
+              .referencedExporterUuids()
+              .contains(providerUUID)) {
+        return true;
+      }
+
       UserIntent primaryUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
       if (primaryUserIntent.getAuditLogConfig() != null

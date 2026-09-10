@@ -178,10 +178,53 @@ message InstallOtelCollectorInput {
     uint32 ysqlAuditLogRetentionDays = 11;
     // Days to keep gzipped YCQL audit log archives on the node. 0 = disabled.
     uint32 ycqlAuditLogRetentionDays = 12;
+    // When true, skip the heavy otel-collector install steps (package
+    // upload/untar, service unit placement) and only rewrite the audit-log
+    // cleanup env file + refresh the on-node zip_purge_yb_logs.sh script.
+    // Used to propagate audit-log setting changes even when otel-collector
+    // is not being (re)installed.
+    bool refreshScriptOnly = 13;
 }
 
 message InstallOtelCollectorOutput {
     int32 pid = 1;
+}
+
+// Input to set up cross-cloud federated IAM on a DB node, so YBC can reach GCS
+// backup storage using the node's own AWS identity.
+message ConfigureCloudFederationInput {
+    // Federation direction; computed per node by YBA.
+    enum FlowDirection {
+        FLOW_DIRECTION_UNSPECIFIED = 0;
+        GCS_ON_AWS = 1;  // AWS DB node -> GCS storage
+    }
+    FlowDirection flowDirection = 1;
+    string ybHomeDir = 2;
+    // When false, federation artifacts on this node are torn down.
+    bool enabled = 3;
+    // Air-gapped node: skip package downloads, fail fast if a tool is missing.
+    bool isAirgap = 4;
+    // Writable temp dir provided by YBA (some nodes have a non-writable /tmp). Field 6 is reserved
+    // for the S3-on-GCP config oneof arm.
+    string remoteTmp = 7;
+    oneof config {
+        GcsOnAwsConfig gcsOnAws = 5;
+    }
+}
+
+// GCP Workload Identity Federation audience for an AWS node writing to GCS.
+// The node renders the full external_account JSON from this audience; the rest
+// of the credential (type, token_url, IMDS credential_source) is fixed in the
+// gcp-fed-creds.json.j2 template. The audience comes from provider YNP config.
+message GcsOnAwsConfig {
+    string audience = 1;
+}
+
+message ConfigureCloudFederationOutput {
+    // True if the handler (re)wrote artifacts and restarted YBC; false on a no-op reconcile.
+    bool changed = 1;
+    // Human-readable reason, e.g. "creds drift" or "already configured".
+    string detail = 2;
 }
 
 message SetupCGroupInput {

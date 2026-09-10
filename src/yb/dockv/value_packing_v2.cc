@@ -17,6 +17,8 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_packing.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb::dockv {
 
 namespace {

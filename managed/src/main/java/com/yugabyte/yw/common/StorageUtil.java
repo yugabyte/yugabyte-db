@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -71,6 +72,10 @@ public interface StorageUtil {
 
   public default boolean isIamEnabled(CustomerConfig config) {
     return false;
+  }
+
+  public default boolean isImmutableStorageEnabled(CustomerConfig config) {
+    return ((CustomerConfigStorageData) config.getDataObject()).immutableStorage;
   }
 
   public default org.yb.ybc.ProxyConfig createYbcProxyConfig(

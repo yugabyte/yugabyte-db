@@ -31,6 +31,8 @@
 //
 #include <gtest/gtest.h>
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/os-util.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"

@@ -46,7 +46,7 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_table_scan_options.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 
@@ -61,6 +61,11 @@ static bool SampleHeapTupleVisible(TableScanDesc scan, Buffer buffer,
 static BlockNumber heapam_scan_get_blocks_done(HeapScanDesc hscan);
 
 static const TableAmRoutine heapam_methods;
+
+/* YB functions */
+static int64 ybIndexBuildRowsDone(YbPushdownExprs *yb_pushdown,
+								  uint64_t yb_rows_scanned_before,
+								  double reltuples);
 
 
 /* ------------------------------------------------------------------------
@@ -1199,10 +1204,10 @@ heapam_index_build_range_scan(Relation heapRelation,
 
 	/* YB variables */
 	MemoryContext oldcontext = CurrentMemoryContext;
-	int			yb_tuples_done = 0;
 	YbPushdownExprs *yb_pushdown = NULL;
 	List	   *yb_local_quals = NIL;
 	List	   *yb_rel_colrefs = NIL;
+	uint64_t	yb_rows_scanned_before = 0;
 
 	/*
 	 * sanity checks
@@ -1259,6 +1264,9 @@ heapam_index_build_range_scan(Relation heapRelation,
 				.quals = yb_rel_remote_quals, .colrefs = yb_rel_colrefs
 			},
 												 estate);
+
+		if (yb_pushdown)
+			yb_rows_scanned_before = YbGetTableRowsScanned();
 	}
 
 	/*
@@ -1306,23 +1314,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 		else
 			snapshot = SnapshotAny;
 
-		if (IsYBRelation(heapRelation) && !is_system_catalog &&
-			yb_enable_index_backfill_scan_optimization)
-		{
-			scan = ybc_heap_beginscan_for_index_build(heapRelation,
-													  snapshot,
-													  indexInfo,
-													  yb_pushdown);
-		}
-		else
-		{
-			scan = table_beginscan_strat(heapRelation,	/* relation */
-										 snapshot,	/* snapshot */
-										 0, /* number of keys */
-										 NULL,	/* scan key */
-										 true,	/* buffer access strategy OK */
-										 allow_sync);	/* syncscan OK? */
-		}
+		YbTableScanOptions yb_options = {.rel_pushdown = yb_pushdown};
+		YbTableScanOptions *yb_opts_ptr = &yb_options;
 
 		if (IsYBRelation(heapRelation))
 		{
@@ -1339,8 +1332,20 @@ heapam_index_build_range_scan(Relation heapRelation,
 				exec_params->out_param = bfresult;
 				exec_params->is_index_backfill = true;
 			}
-			scan->ybscan->exec_params = exec_params;
+
+			yb_options.exec_params = exec_params;
+			yb_options.index_info = indexInfo;
+			yb_options.rowmark = YBC_NO_ROW_MARK;
+			yb_opts_ptr = &yb_options;
 		}
+
+		scan = table_beginscan_strat_yb(heapRelation,
+										snapshot,
+										0,	/* nkeys */
+										NULL,	/* keys */
+										true,	/* allow_strat */
+										allow_sync,
+										yb_opts_ptr);
 	}
 	else
 	{
@@ -1743,7 +1748,9 @@ heapam_index_build_range_scan(Relation heapRelation,
 			{
 				if (IsYBRelation(indexRelation) && !indexInfo->ii_Concurrent)
 					pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
-												 ++yb_tuples_done);
+												 ybIndexBuildRowsDone(yb_pushdown,
+																	  yb_rows_scanned_before,
+																	  reltuples));
 				continue;
 			}
 		}
@@ -1821,7 +1828,9 @@ heapam_index_build_range_scan(Relation heapRelation,
 			MemoryContextReset(econtext->ecxt_per_tuple_memory);
 			if (!indexInfo->ii_Concurrent)
 				pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
-											 ++yb_tuples_done);
+											 ybIndexBuildRowsDone(yb_pushdown,
+																  yb_rows_scanned_before,
+																  reltuples));
 		}
 	}
 
@@ -1842,6 +1851,29 @@ heapam_index_build_range_scan(Relation heapRelation,
 
 		pgstat_progress_update_param(PROGRESS_SCAN_BLOCKS_DONE,
 									 blks_done);
+	}
+
+	/*
+	 * In case of predicate pushdown:
+	 * - The reltuples value is inaccurate as it only counts the rows returned
+	 *   by DocDB.  Overwrite it with what ybIndexBuildRowsDone returns.  It's
+	 *   fine to delay this to now because nothing reads the count it
+	 *   accumulated.
+	 * - The PROGRESS_CREATEIDX_TUPLES_DONE stat is inaccurate if the last row
+	 *   was filtered out by the predicate.  Perform a final update of that
+	 *   stat (in case the last row was not filtered out, this is a no-op).
+	 */
+	if (yb_pushdown)
+	{
+		int64		yb_rows_done = ybIndexBuildRowsDone(yb_pushdown,
+														yb_rows_scanned_before,
+														reltuples);
+
+		reltuples = (double) yb_rows_done;
+
+		if (!indexInfo->ii_Concurrent)
+			pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+										 yb_rows_done);
 	}
 
 	if (IsYBRelation(indexRelation))
@@ -2741,4 +2773,22 @@ Datum
 heap_tableam_handler(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_POINTER(&heapam_methods);
+}
+
+/*
+ * Rows of the base table an index build has processed so far, not the rows
+ * that reached the index.  Postgres counts them as it scans, except where
+ * DocDB evaluates the predicate of a partial index, since postgres then sees
+ * only the rows that satisfy it and the rows DocDB read are the count instead.
+ * That holds only while the predicate is a filter over the rows DocDB reads
+ * rather than a bind on the key range, which would leave rows unread.
+ */
+static int64
+ybIndexBuildRowsDone(YbPushdownExprs *yb_pushdown,
+					 uint64_t yb_rows_scanned_before,
+					 double reltuples)
+{
+	return (yb_pushdown ?
+			(int64) (YbGetTableRowsScanned() - yb_rows_scanned_before) :
+			(int64) reltuples);
 }

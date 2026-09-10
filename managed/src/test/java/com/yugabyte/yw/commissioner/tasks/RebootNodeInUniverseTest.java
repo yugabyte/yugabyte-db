@@ -39,7 +39,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -91,7 +91,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
 
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     try {
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);

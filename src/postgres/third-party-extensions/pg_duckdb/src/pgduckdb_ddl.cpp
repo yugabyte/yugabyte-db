@@ -428,6 +428,15 @@ DuckdbHandleDDLPost(PlannedStmt *pstmt) {
 	}
 }
 
+static void
+YbRejectDuckdbTableAmInLakeIoMode() {
+	if (pgduckdb::YbIsLakeIoMode()) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("the \"duckdb\" table access method is not supported")));
+	}
+}
+
 /*
  * Returns true if we need to run the post hook
  */
@@ -460,6 +469,7 @@ DuckdbHandleDDLPre(PlannedStmt *pstmt, const char *query_string) {
 		char *access_method = stmt->accessMethod ? stmt->accessMethod : default_table_access_method;
 		bool is_duckdb_table = strcmp(access_method, "duckdb") == 0;
 		if (is_duckdb_table) {
+			YbRejectDuckdbTableAmInLakeIoMode();
 			if (pgduckdb::top_level_duckdb_ddl_type != pgduckdb::DDLType::NONE) {
 				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				                errmsg("Only one DuckDB table can be created in a single statement")));
@@ -486,6 +496,7 @@ DuckdbHandleDDLPre(PlannedStmt *pstmt, const char *query_string) {
 		char *access_method = stmt->into->accessMethod ? stmt->into->accessMethod : default_table_access_method;
 		bool is_duckdb_table = strcmp(access_method, "duckdb") == 0;
 		if (is_duckdb_table) {
+			YbRejectDuckdbTableAmInLakeIoMode();
 			if (pgduckdb::top_level_duckdb_ddl_type != pgduckdb::DDLType::NONE) {
 				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				                errmsg("Only one DuckDB table can be created in a single statement")));
@@ -549,6 +560,10 @@ DuckdbHandleDDLPre(PlannedStmt *pstmt, const char *query_string) {
 		if (!needs_planning) {
 			// If we don't need planning let's not do anything though.
 			return false;
+		}
+
+		if (pgduckdb::NeedsDuckdbExecution(original_query)) {
+			pgduckdb::YbCheckAllowedDuckdbQuery(original_query);
 		}
 
 		MemoryContext oldcontext = CurrentMemoryContext;
@@ -677,6 +692,15 @@ DuckdbHandleDDLPre(PlannedStmt *pstmt, const char *query_string) {
 		return false;
 	} else if (IsA(parsetree, AlterTableStmt)) {
 		auto stmt = castNode(AlterTableStmt, parsetree);
+		/*
+		 * YB: block converting a table to the duckdb access method
+		 * (ALTER TABLE ... SET ACCESS METHOD duckdb) in lake_io mode.
+		 */
+		foreach_node(AlterTableCmd, cmd, stmt->cmds) {
+			if (cmd->subtype == AT_SetAccessMethod && cmd->name != NULL && strcmp(cmd->name, "duckdb") == 0) {
+				YbRejectDuckdbTableAmInLakeIoMode();
+			}
+		}
 		Oid relation_oid = RangeVarGetRelid(stmt->relation, AccessShareLock, false);
 		Relation relation = RelationIdGetRelation(relation_oid);
 		/*

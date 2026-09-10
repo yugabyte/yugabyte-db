@@ -49,7 +49,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ReplayingDecoder;
-import io.netty.handler.timeout.ReadTimeoutException;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.Signal;
 
 import org.slf4j.Logger;
@@ -70,6 +70,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -144,6 +145,9 @@ public class TabletClient extends ReplayingDecoder<Void> {
 
   private final long socketReadTimeoutMs;
 
+  /** When the last RPC was written out, used to filter out spurious idle timeouts. */
+  private volatile long lastSendTimeNanos = System.nanoTime();
+
   public TabletClient(AsyncYBClient client, String uuid) {
     this.ybClient = client;
     this.uuid = uuid;
@@ -195,6 +199,7 @@ public class TabletClient extends ReplayingDecoder<Void> {
   }
 
   private <R> ByteBuf encode(final YRpc<R> rpc) {
+    lastSendTimeNanos = System.nanoTime();
     final int rpcid = this.rpcid.incrementAndGet();
     ByteBuf payload;
     final String service = rpc.serviceName();
@@ -737,6 +742,28 @@ public class TabletClient extends ReplayingDecoder<Void> {
 
 
   @Override
+  public void userEventTriggered(final ChannelHandlerContext ctx, final Object evt)
+      throws Exception {
+    if (!(evt instanceof IdleStateEvent)) {
+      super.userEventTriggered(ctx, evt);
+      return;
+    }
+    // An RPC sent just before the idle deadline must get a full timeout window for its response:
+    // the deadline is computed from the last activity on the connection, so on a long-idle
+    // connection it can expire right after the RPC was written. Ignoring the event postpones the
+    // timeout by another window, so an unresponsive server is still detected.
+    if (System.nanoTime() - lastSendTimeNanos
+            < TimeUnit.MILLISECONDS.toNanos(socketReadTimeoutMs)) {
+      return;
+    }
+    LOG.warn(getPeerUuidLoggingString() + "Encountered a read timeout");
+    // Invalidate all the RPCs right _now_, so that the ReplayingDecoder does not keep decoding
+    // while the channel is being closed.
+    cleanup(ctx.channel());
+    ctx.close();
+  }
+
+  @Override
   public void exceptionCaught(final ChannelHandlerContext ctx,
                               final Throwable cause) {
     final Channel c = ctx.channel();
@@ -744,11 +771,6 @@ public class TabletClient extends ReplayingDecoder<Void> {
     if (cause instanceof RejectedExecutionException) {
       LOG.warn(getPeerUuidLoggingString() + "RPC rejected by the executor," +
                " ignore this if we're shutting down", cause);
-    } else if (cause instanceof ReadTimeoutException) {
-      LOG.warn(getPeerUuidLoggingString() + "Encountered a read timeout");
-      // Doing the cleanup here since we want to invalidate all the RPCs right _now_, and not let
-      // the ReplayingDecoder continue decoding through Channels.close() below.
-      cleanup(c);
     } else {
       LOG.warn(getPeerUuidLoggingString() + "Unexpected exception " + cause.getMessage() +
                " from downstream on " + c, cause);

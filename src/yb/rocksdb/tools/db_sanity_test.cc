@@ -30,6 +30,7 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/filter_policy.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

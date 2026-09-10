@@ -52,6 +52,12 @@ public class PauseUniverse extends UniverseTaskBase {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot pause universe with ephemeral storage");
       }
+      if (universe.getNodes() != null && !universe.allNodesLive()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Pause Universe task requires all nodes to be in a live state from Yugabyte Anywhere"
+                + " side.");
+      }
     }
   }
 

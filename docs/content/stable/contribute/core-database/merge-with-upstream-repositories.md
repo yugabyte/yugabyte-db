@@ -542,7 +542,7 @@ We are trying to merge to `v0.103-0` (which doesn't exist at the time of writing
 
 The steps that follow will use pgaudit as an example.
 
-This merge can technically be handled similarly as [direct-descendant merge](#squash-direct-descendant-merge).
+This merge can technically be handled similarly as [direct-descendant merge](#subtree-direct-descendant-merge).
 See [squash non-direct-descendant merge](#squash-non-direct-descendant-merge) for whether an alternate strategy can be used instead, then proceed below.
 
 Suppose that YugabyteDB was based off a yugabyte/pgaudit repo `yb-pg11` branch constructed from `1.3.2` with commit [455cde5ec3a4374b18ad551aaabe6d60761b6503](https://github.com/pgaudit/pgaudit/commit/455cde5ec3a4374b18ad551aaabe6d60761b6503) cherry-picked.

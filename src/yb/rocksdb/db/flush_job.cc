@@ -244,8 +244,9 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
   const uint64_t start_micros = db_options_.env->NowMicros();
   auto file_number_holder = file_numbers_provider_->NewFileNumber();
   auto file_number = file_number_holder.Last();
-  // path 0 for level 0 file.
-  meta->fd = FileDescriptor(file_number, 0, 0, 0);
+  const uint32_t flush_path_id =
+      SafePathId(mutable_cf_options_.target_path_id, db_options_.db_paths.size());
+  meta->fd = FileDescriptor(file_number, flush_path_id, 0, 0);
 
   Status s;
   {

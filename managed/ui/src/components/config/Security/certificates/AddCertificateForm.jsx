@@ -447,7 +447,7 @@ export default class AddCertificateForm extends Component {
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
                         <Alert bsStyle="danger" variant="danger">
-                          Certificate adding has been failed:
+                          Certificate addition failed:
                           <br />
                           {JSON.stringify(addCertificate.error)}
                         </Alert>
@@ -539,7 +539,7 @@ export default class AddCertificateForm extends Component {
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
                         <Alert bsStyle="danger" variant="danger">
-                          Certificate adding has been failed:
+                          Certificate addition failed:
                           <br />
                           {JSON.stringify(addCertificate.error)}
                         </Alert>
@@ -573,7 +573,7 @@ export default class AddCertificateForm extends Component {
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
                         <Alert bsStyle="danger" variant="danger">
-                          Certificate adding has been failed:
+                          Certificate addition failed:
                           <br />
                           {JSON.stringify(addCertificate.error)}
                         </Alert>

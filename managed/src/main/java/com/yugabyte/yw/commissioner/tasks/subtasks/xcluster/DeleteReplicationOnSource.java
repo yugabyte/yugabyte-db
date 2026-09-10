@@ -15,12 +15,16 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.CommonNet;
 import org.yb.client.MasterErrorException;
 import org.yb.client.XClusterDeleteOutboundReplicationGroupResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
+import org.yb.util.NetUtil;
 
 @Slf4j
 public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
@@ -55,6 +59,7 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
     String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig;
@@ -62,6 +67,10 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
     // When the parent task is FailoverDrConfig, we need to use a lower timeout for the client to
     // speed up the failover.
     Optional<TaskInfo> parentTaskOptional = TaskInfo.maybeGet(this.getUserTaskUUID());
+    boolean isParentTaskSwitchover =
+        parentTaskOptional
+            .map(parentTask -> parentTask.getTaskType() == TaskType.SwitchoverDrConfig)
+            .orElse(false);
     boolean isParentTaskFailover =
         parentTaskOptional
             .map(parentTask -> parentTask.getTaskType() == TaskType.FailoverDrConfig)
@@ -89,10 +98,37 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
       clientConfig =
           ybcClientConfigFactory.create(sourceUniverseMasterAddresses, sourceUniverseCertificate);
     }
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
+      Set<CommonNet.HostPortPB> targetMasterAddresses =
+          new HashSet<>(
+              NetUtil.parseStringsAsPB(
+                  targetUniverse.getMasterAddresses(
+                      false /* mastersQueryable */, true /* getSecondary */)));
       try {
-        XClusterDeleteOutboundReplicationGroupResponse response =
-            client.xClusterDeleteOutboundReplicationGroup(xClusterConfig.getReplicationGroupName());
+        XClusterDeleteOutboundReplicationGroupResponse response;
+        try {
+          response =
+              client.xClusterDeleteOutboundReplicationGroup(
+                  xClusterConfig.getReplicationGroupName(), targetMasterAddresses);
+          if (response.hasError()) {
+            throw new RuntimeException(response.errorMessage());
+          }
+        } catch (Exception e) {
+          // During automatic DDL mode switchover, the DeleteOutboundReplicationGroup RPC must
+          // succeed with the target master addresses so the OID on the new primary universe is
+          // bumped. Older DB versions used by non-automatic mode do not support this argument.
+          if (isParentTaskSwitchover && xClusterConfig.isAutomaticDdlMode()) {
+            throw new RuntimeException(e);
+          }
+          log.warn(
+              "Failed to delete outbound replication group {} with target master addresses. Error:"
+                  + " {}. Retrying without target master addresses",
+              xClusterConfig.getReplicationGroupName(),
+              e.getMessage());
+          response =
+              client.xClusterDeleteOutboundReplicationGroup(
+                  xClusterConfig.getReplicationGroupName());
+        }
         if (response.hasError()) {
           throw new RuntimeException(
               String.format(

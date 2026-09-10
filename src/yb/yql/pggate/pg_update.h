@@ -27,9 +27,10 @@ class PgUpdate final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kUpdate> {
   static Result<std::unique_ptr<PgUpdate>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
-      YbcPgTransactionSetting transaction_setting, bool skip_intents_write) {
+      YbcPgTransactionSetting transaction_setting,
+      const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
     std::unique_ptr<PgUpdate> result{new PgUpdate{pg_session, transaction_setting}};
-    RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_write));
+    RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_info));
     return result;
   }
 

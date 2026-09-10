@@ -13,6 +13,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
@@ -22,6 +23,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.AssertHelper;
@@ -166,6 +168,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.healthCheckTHPSettings)))
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(true);
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(
             i -> {
@@ -519,7 +522,11 @@ public class HealthCheckerTest extends FakeDBApplication {
           univ.setUniverseDetails(details);
         });
     setupAlertingData(null, false, false);
-    validateNoDevopsCall();
+    healthChecker.checkCustomer(defaultCustomer);
+    // Even though the universe is busy (update in progress by a non-backup task), we still refresh
+    // the health/metrics scripts on the nodes (6 = 3 nodes x 2 scripts) so they never go stale, but
+    // we skip running the health check command itself.
+    verifyNodeUniverseManager(6, 0);
   }
 
   @Test
@@ -547,7 +554,10 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, false, false, false, YB_ALERT_TEST_EMAIL));
-    verifyNodeUniverseManager(shouldCheck ? 6 : 0, shouldCheck ? 3 : 0);
+    // The health/metrics scripts (6 = 3 nodes x 2 scripts) are always refreshed on the nodes, even
+    // when the universe is busy with a task, so they never go stale. The health check command
+    // (3 = one per node) only runs when the universe is not busy.
+    verifyNodeUniverseManager(6, shouldCheck ? 3 : 0);
   }
 
   @Test
@@ -688,6 +698,57 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     assertThat(
         expectedCommand.getValue(), equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py")));
+  }
+
+  @Test
+  public void testCheckSingleUniverse_YnpVersionCheckEnabled() {
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(true);
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.<String, Object>of("ynp_version", "1.2.3"));
+
+    assertThat(
+        runSingleUniverseAndCaptureNodeHealthCommand(),
+        equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py", "--yba_ynp_version=1.2.3")));
+  }
+
+  @Test
+  public void testCheckSingleUniverse_YnpVersionCheckDisabled() {
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(false);
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.<String, Object>of("ynp_version", "1.2.3"));
+
+    // Without --yba_ynp_version the node script skips check_ynp_version altogether, so it
+    // publishes no yb_node_ynp_version metric and the YNP_VERSION_SKEW alert cannot fire on a
+    // missing version file either (PLAT-22229).
+    assertThat(
+        runSingleUniverseAndCaptureNodeHealthCommand(),
+        equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py")));
+  }
+
+  @Test
+  public void testCheckSingleUniverse_YnpVersionCheckEnabledWithoutYbaVersion() {
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(true);
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(Collections.emptyMap());
+
+    // YBA cannot determine its own YNP version, so there is nothing to compare against and the
+    // check is skipped even though the config is enabled.
+    assertThat(
+        runSingleUniverseAndCaptureNodeHealthCommand(),
+        equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py")));
+  }
+
+  private List<String> runSingleUniverseAndCaptureNodeHealthCommand() {
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, true, false);
+
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
+
+    ArgumentCaptor<List<String>> command = ArgumentCaptor.forClass(List.class);
+    verify(mockNodeUniverseManager, atLeastOnce())
+        .runCommand(any(), any(), command.capture(), any());
+    return command.getValue();
   }
 
   @Test

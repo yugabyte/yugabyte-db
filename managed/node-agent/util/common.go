@@ -39,6 +39,9 @@ const (
 	DefaultShell             = "/bin/bash"
 	PlatformApiTokenHeader   = "X-AUTH-YW-API-TOKEN"
 	PlatformJwtTokenHeader   = "X-AUTH-YW-API-JWT"
+	// Marks a YBA API call as made by YNP so that YBA can tell YNP driven changes to a
+	// YNP managed provider apart from user driven ones.
+	PlatformYnpRequestHeader = "X-YBA-YNP-REQUEST"
 	JwtUserIdClaim           = "userId"
 	JwtClientIdClaim         = "clientId"
 	JwtClientTypeClaim       = "clientType"
@@ -56,8 +59,10 @@ const (
 	RequestLogLevelHeader    = "x-request-log-level"
 
 	// Cert names.
-	NodeAgentCertFile = "node_agent.crt"
-	NodeAgentKeyFile  = "node_agent.key"
+	NodeAgentCertFile    = "node_agent.crt"
+	NodeAgentKeyFile     = "node_agent.key"
+	SignerPublicKeyFile  = "signer.pub"
+	SignerPrivateKeyFile = "signer.key"
 
 	NodePort = "9070"
 
@@ -211,6 +216,20 @@ func PlatformRegisterAgentEndpoint(cuuid string) string {
 // Returns the platform endpoint for getting a node agent by IP.
 func PlatformGetNodeAgentEndpoint(cuuid string, ip string) string {
 	return fmt.Sprintf("/api/v1/customers/%s/node_agents?nodeIp=%s", cuuid, ip)
+}
+
+// Returns the platform endpoint for looking up a certificate UUID by label/name.
+func PlatformGetCertificateEndpoint(cuuid string, certificateName string) string {
+	return fmt.Sprintf(
+		"/api/customers/%s/certificates/%s",
+		cuuid,
+		url.PathEscape(certificateName),
+	)
+}
+
+// Returns the platform endpoint for listing certificates for a customer.
+func PlatformGetCertificatesEndpoint(cuuid string) string {
+	return fmt.Sprintf("/api/customers/%s/certificates", cuuid)
 }
 
 // Returns the platform endpoint for unregistering a node agent.
@@ -468,13 +487,15 @@ func ScanDir(dir string, callback func(os.FileInfo) (bool, error)) error {
 	return nil
 }
 
-// IsPexEnvAvailable returns true if pexEnv directory exists or there is no error.
-func IsPexEnvAvailable() bool {
-	fInfo, err := os.Stat(PexEnvDir())
-	if err != nil {
-		return false
-	}
-	return fInfo.IsDir()
+// RemoveSubfolders deletes all immediate subdirectories under dir.
+// Non-directory entries in dir are left untouched.
+func RemoveSubfolders(dir string) error {
+	return ScanDir(dir, func(fInfo os.FileInfo) (bool, error) {
+		if !fInfo.IsDir() {
+			return true, nil
+		}
+		return true, os.RemoveAll(path.Join(dir, fInfo.Name()))
+	})
 }
 
 // Indexable refers to indexable type.

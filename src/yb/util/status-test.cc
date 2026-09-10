@@ -42,9 +42,11 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 
 using std::string;

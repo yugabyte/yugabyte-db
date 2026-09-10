@@ -349,7 +349,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
     "handler_latency_yb_tserver_TabletServerService_ListTablets_sum",
     "handler_latency_yb_tserver_TabletServerService_ListTablets_count",
     "handler_latency_yb_tserver_TabletServerService_ListTabletsForTabletServer_sum"};
-  FLAGS_metrics_snapshotter_tserver_metrics_whitelist =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_snapshotter_tserver_metrics_whitelist) =
     boost::algorithm::join(tserver_metrics, ",");
 
   // rf1 cluster.

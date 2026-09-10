@@ -40,8 +40,14 @@ public class BackupPreflightValidate extends AbstractTaskBase {
     }
 
     public Params(BackupTableParams backupTableParams, boolean ybcBackup) {
+      this(backupTableParams, ybcBackup, true);
+    }
+
+    public Params(
+        BackupTableParams backupTableParams, boolean ybcBackup, boolean validateStorageConfig) {
       this.backupTableParams = backupTableParams;
       this.ybcBackup = ybcBackup;
+      this.validateStorageConfig = validateStorageConfig;
       this.storageConfigUUID = backupTableParams.storageConfigUUID;
       this.customerUUID = backupTableParams.customerUuid;
       this.universeUUID = backupTableParams.getUniverseUUID();
@@ -51,6 +57,7 @@ public class BackupPreflightValidate extends AbstractTaskBase {
     public UUID customerUUID;
     public UUID universeUUID;
     public boolean ybcBackup;
+    public boolean validateStorageConfig = true;
     public BackupTableParams backupTableParams;
   }
 
@@ -75,7 +82,9 @@ public class BackupPreflightValidate extends AbstractTaskBase {
       CustomerConfig storageConfig =
           configService.getOrBadRequest(taskParams().customerUUID, taskParams().storageConfigUUID);
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      backupHelper.validateStorageConfigForBackupOnUniverse(storageConfig, universe);
+      if (taskParams().validateStorageConfig) {
+        backupHelper.validateStorageConfigForBackupOnUniverse(storageConfig, universe);
+      }
 
       if (confGetter.getConfForScope(universe, UniverseConfKeys.enableNfsBackupPrecheck)) {
         try {

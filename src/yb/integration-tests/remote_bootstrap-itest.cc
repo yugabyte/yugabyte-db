@@ -241,8 +241,27 @@ class RemoteBootstrapITest : public CreateTableITestBase {
                                                            const MonoDelta& timeout,
                                                            vector<string>* tablet_ids);
 
-  void AddNewPeerWithDiskspaceCheck(const int num_tablet_servers);
-  void ReplacePeerWithDiskspaceCheck(const int num_tablet_servers);
+  // How the target tserver is made to report that it has run out of disk space.
+  enum class DiskFullMode {
+    // For trips rbs_data_size_to_disk_space_ratio_threshold
+    kDataToFreeSpaceRatio,
+    // For reject_writes_min_disk_space_pct
+    kMinDiskSpacePct,
+    // For reject_writes_min_disk_space_mb
+    kMinDiskSpaceMb,
+  };
+
+  struct DiskFullFlags {
+    // Flags that make the target tserver report insufficient disk space.
+    std::vector<std::pair<std::string, std::string>> to_set;
+    // Flag change that clears the condition.
+    std::pair<std::string, std::string> to_clear;
+  };
+
+  static DiskFullFlags GetDiskFullFlags(DiskFullMode mode);
+
+  void AddNewPeerWithDiskspaceCheck(const int num_tablet_servers, DiskFullMode mode);
+  void ReplacePeerWithDiskspaceCheck(const int num_tablet_servers, DiskFullMode mode);
 
   Result<master::GetTableLocationsResponsePB> GetTableLocations(
       const master::MasterClientProxy& proxy, const std::string& table_id,
@@ -1067,14 +1086,30 @@ void RemoteBootstrapITest::CreateTableAssignLeaderAndWaitForTabletServersReady(
 
   // Elect leaders on each tablet for term 1. All leaders will be on TS leader_index.
   const string kLeaderUuid = cluster_->tablet_server(leader_index)->uuid();
+  TServerDetails* const desired_leader = ts_map_[kLeaderUuid].get();
   for (const string& tablet_id : *tablet_ids) {
-    ASSERT_OK(itest::StartElection(ts_map_[kLeaderUuid].get(), tablet_id, timeout));
+    ASSERT_OK(itest::StartElection(desired_leader, tablet_id, timeout));
   }
 
   for (const string& tablet_id : *tablet_ids) {
-    TServerDetails* leader_ts = nullptr;
-    ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
-    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, leader_ts, tablet_id, timeout));
+    // The master's create-table leader hint can win term 1 before the election started above,
+    // which then loses. Step the elected leader down in favor of the requested one.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          TServerDetails* leader_ts = nullptr;
+          if (!FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts).ok()) {
+            return false;
+          }
+          if (leader_ts == desired_leader) {
+            return true;
+          }
+          WARN_NOT_OK(
+              itest::LeaderStepDown(leader_ts, tablet_id, desired_leader, timeout),
+              "Step down in favor of the requested leader failed");
+          return false;
+        },
+        timeout, "Leader of tablet " + tablet_id + " is on TS " + kLeaderUuid));
+    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, desired_leader, tablet_id, timeout));
   }
 }
 
@@ -1722,6 +1757,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
       "--consensus_rpc_timeout_ms=300",
       "--TEST_delay_removing_peer_with_failed_tablet_secs=10",
       "--memstore_size_mb=1",
+      "--rocksdb_disable_compactions=true",
       // Increase the number of missed heartbeats used to detect leader failure since in slow
       // testing instances it is very easy to miss the default (6) heartbeats since they are being
       // sent very fast (50ms).
@@ -2428,16 +2464,66 @@ TEST_F(RemoteBootstrapITest, TestNewPeerStaysPreVoterIfUnableToCatchUp) {
 }
 
 TEST_F(RemoteBootstrapITest, TestRBSAddNewPeerWithDiskspaceCheck) {
-  AddNewPeerWithDiskspaceCheck(3);
+  AddNewPeerWithDiskspaceCheck(3, DiskFullMode::kDataToFreeSpaceRatio);
+}
+
+TEST_F(RemoteBootstrapITest, TestRBSAddNewPeerWithMinDiskSpacePctCheck) {
+  AddNewPeerWithDiskspaceCheck(3, DiskFullMode::kMinDiskSpacePct);
+}
+
+TEST_F(RemoteBootstrapITest, TestRBSAddNewPeerWithMinDiskSpaceMbCheck) {
+  AddNewPeerWithDiskspaceCheck(3, DiskFullMode::kMinDiskSpaceMb);
 }
 
 TEST_F(RemoteBootstrapITest, TestRBSReplacePeerWithDiskspaceCheck) {
-  ReplacePeerWithDiskspaceCheck(3);
+  ReplacePeerWithDiskspaceCheck(3, DiskFullMode::kDataToFreeSpaceRatio);
+}
+
+TEST_F(RemoteBootstrapITest, TestRBSReplacePeerWithMinDiskSpacePctCheck) {
+  ReplacePeerWithDiskspaceCheck(3, DiskFullMode::kMinDiskSpacePct);
+}
+
+TEST_F(RemoteBootstrapITest, TestRBSReplacePeerWithMinDiskSpaceMbCheck) {
+  ReplacePeerWithDiskspaceCheck(3, DiskFullMode::kMinDiskSpaceMb);
+}
+
+// Each mode disables the checks it is not exercising, so that only one of them can fail the RBS.
+RemoteBootstrapITest::DiskFullFlags RemoteBootstrapITest::GetDiskFullFlags(DiskFullMode mode) {
+  switch (mode) {
+    case DiskFullMode::kDataToFreeSpaceRatio:
+      // reject_writes_when_disk_full disables both free space thresholds at once.
+      return {.to_set = {{"rbs_data_size_to_disk_space_ratio_threshold", "0.9"},
+                         {"TEST_simulate_free_space_bytes", "0"},
+                         {"reject_writes_when_disk_full", "false"}},
+              .to_clear = {"TEST_simulate_free_space_bytes", "-1"}};
+    case DiskFullMode::kMinDiskSpacePct:
+      // Require the whole disk capacity to be free, which the simulated free space never is. 4GB
+      // is above the MB threshold that to_clear falls back to, so the RBS then succeeds no matter
+      // how full the host's disk really is. reject_writes_when_disk_full has to be turned on
+      // explicitly because it defaults to false in ASAN builds.
+      return {.to_set = {{"TEST_simulate_free_space_bytes", "4294967296"},
+                         {"reject_writes_when_disk_full", "true"},
+                         {"reject_writes_min_disk_space_pct", "100"},
+                         {"rbs_data_size_to_disk_space_ratio_threshold", "0"}},
+              .to_clear = {"reject_writes_min_disk_space_pct", "0"}};
+    case DiskFullMode::kMinDiskSpaceMb:
+      // Require 10TB of free space to simulate a full disk.
+      return {.to_set = {{"TEST_simulate_free_space_bytes", "4294967296"},
+                         {"reject_writes_when_disk_full", "true"},
+                         {"reject_writes_min_disk_space_mb", "10485760"},
+                         {"reject_writes_min_disk_space_pct", "0"},
+                         {"rbs_data_size_to_disk_space_ratio_threshold", "0"}},
+              .to_clear = {"reject_writes_min_disk_space_mb", "0"}};
+  }
+  FATAL_INVALID_ENUM_VALUE(DiskFullMode, mode);
 }
 
 // The test simulates a scenario where remote bootstrap of a new tablet peer initially
 // fails due to insufficient disk space, and succeeds once disk space clears up.
-void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_servers) {
+void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(
+    const int num_tablet_servers, DiskFullMode mode) {
+  const auto [disk_full_flags, cleared_flag] = GetDiskFullFlags(mode);
+
   ASSERT_NO_FATALS(StartCluster({}, {}, num_tablet_servers));
 
   // the tserver on which we will add a replica
@@ -2471,8 +2557,7 @@ void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_ser
   ASSERT_OK(cluster_->tablet_server(ts_to_add_peer)
                 ->Restart(
                     ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-                    {std::make_pair("rbs_data_size_to_disk_space_ratio_threshold", "0.9"),
-                     std::make_pair("TEST_simulate_free_space_bytes", "0")}));
+                    disk_full_flags));
   LOG(INFO) << "Adding tserver with uuid " << ts_to_add_peer_details->uuid();
   ASSERT_OK(itest::AddServer(
       leader_ts, tablet_id, ts_to_add_peer_details, PeerMemberType::PRE_VOTER, std::nullopt,
@@ -2489,8 +2574,8 @@ void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_ser
   ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(
       1, leader_ts, tablet_id, timeout, PeerMemberType::PRE_VOTER));
 
-  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_add_peer),
-                              "TEST_simulate_free_space_bytes", "-1"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(ts_to_add_peer), cleared_flag.first, cleared_flag.second));
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(ts_to_add_peer, tablet_id, TABLET_DATA_READY));
   LOG(INFO) << "Tablet " << tablet_id << " in state TABLET_DATA_READY in tablet server "
             << ts_to_add_peer_details->uuid();
@@ -2510,7 +2595,10 @@ void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_ser
 // The test simulates a scenario where remote bootstrap of an existing (about to be replaced)
 // tablet peer initially fails due to insufficient disk space, and succeeds once disk space
 // clears up.
-void RemoteBootstrapITest::ReplacePeerWithDiskspaceCheck(const int num_tablet_servers) {
+void RemoteBootstrapITest::ReplacePeerWithDiskspaceCheck(
+    const int num_tablet_servers, DiskFullMode mode) {
+  const auto [disk_full_flags, cleared_flag] = GetDiskFullFlags(mode);
+
   ASSERT_NO_FATALS(StartCluster({}, {}, num_tablet_servers));
 
   // the tserver on which we will replace a replica
@@ -2542,11 +2630,9 @@ void RemoteBootstrapITest::ReplacePeerWithDiskspaceCheck(const int num_tablet_se
   // Find out who's leader.
   ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
 
-  ASSERT_OK(cluster_->SetFlag(
-      cluster_->tablet_server(ts_to_replace_peer), "TEST_simulate_free_space_bytes", "0"));
-  ASSERT_OK(cluster_->SetFlag(
-      cluster_->tablet_server(ts_to_replace_peer), "rbs_data_size_to_disk_space_ratio_threshold",
-      "0.9"));
+  for (const auto& [flag, value] : disk_full_flags) {
+    ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer), flag, value));
+  }
   ASSERT_OK(itest::DeleteTablet(
       ts_to_replace_peer_details, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
@@ -2561,8 +2647,8 @@ void RemoteBootstrapITest::ReplacePeerWithDiskspaceCheck(const int num_tablet_se
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
       ts_to_replace_peer, tablet_id, TABLET_DATA_TOMBSTONED));
 
-  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
-                              "rbs_data_size_to_disk_space_ratio_threshold", "0"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(ts_to_replace_peer), cleared_flag.first, cleared_flag.second));
 
   // wait for the bootstrap to complete
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
@@ -2917,12 +3003,16 @@ class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
         20s * kTimeMultiplier, "Waiting for new tserver having one tablet."));
 
     if (elect_new_replica_as_leader) {
-      SleepFor(5s);
-      ASSERT_OK(itest::LeaderStepDown(
-          ts_map_[leader_id].get(), tablet_id, ts_map_[new_ts_id].get(), 10s));
+      // The leader refuses to step down while the new peer is still in transition to VOTER.
+      ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(
+          new_ts + 1, leader, tablet_id, 60s * kTimeMultiplier));
+      // The new peer also has to catch up with the leader before it can be nominated.
+      ASSERT_OK(WaitFor([&] {
+        return itest::LeaderStepDown(leader, tablet_id, ts_map_[new_ts_id].get(), 10s).ok();
+      }, 60s * kTimeMultiplier, "Leader steps down in favor of the new tablet peer"));
       ASSERT_OK(WaitFor([&] {
         return new_tserver->LeaderAndReady(tablet_id);
-      }, 10s, "New tablet peer is elected as new leader"));
+      }, 10s * kTimeMultiplier, "New tablet peer is elected as new leader"));
     }
   }
 

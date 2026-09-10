@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.VersionInfo;
 import org.yb.client.GetStatusResponse;
 import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 @Singleton
@@ -27,29 +28,29 @@ public class LocalYBClientService implements YBClientService {
   @Inject private RuntimeConfGetter confGetter;
 
   @Override
-  public synchronized YBClient getClient(String masterHostPorts) {
+  public synchronized YBClientApi getClient(String masterHostPorts) {
     return getClient(masterHostPorts, null);
   }
 
   @Override
-  public synchronized YBClient getClient(String masterHostPorts, String certFile) {
+  public synchronized YBClientApi getClient(String masterHostPorts, String certFile) {
     if (masterHostPorts != null) {
       return getNewClient(masterHostPorts, certFile);
     }
     return null;
   }
 
-  public synchronized YBClient getUniverseClient(Universe universe) {
+  public synchronized YBClientApi getUniverseClient(Universe universe) {
     return getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode());
   }
 
-  private YBClient getNewClient(String masterHPs, String certFile) {
+  private YBClientApi getNewClient(String masterHPs, String certFile) {
     YbClientConfig config = ybClientConfigFactory.create(masterHPs, certFile);
     return getClientWithConfig(config);
   }
 
   @Override
-  public YBClient getClientWithConfig(YbClientConfig config) {
+  public YBClientApi getClientWithConfig(YbClientConfig config) {
     if (config == null || StringUtils.isBlank(config.getMasterHostPorts())) {
       return null;
     }
@@ -65,7 +66,7 @@ public class LocalYBClientService implements YBClientService {
   }
 
   @Override
-  public Optional<String> getServerVersion(YBClient client, String nodeIp, int port) {
+  public Optional<String> getServerVersion(YBClientApi client, String nodeIp, int port) {
     GetStatusResponse response;
     try {
       response = client.getStatus(nodeIp, port);
@@ -78,7 +79,7 @@ public class LocalYBClientService implements YBClientService {
   }
 
   @Override
-  public Optional<String> getYsqlMajorVersion(YBClient client, String nodeIp, int port) {
+  public Optional<String> getYsqlMajorVersion(YBClientApi client, String nodeIp, int port) {
     GetStatusResponse response;
     try {
       response = client.getStatus(nodeIp, port);

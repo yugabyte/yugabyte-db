@@ -174,7 +174,7 @@ insert into queries values
     (DEFAULT,
         'select b, c from r where b in (1, 2, 3, 4, 5) '||
         'and c in (50, 60, 70, 80, 90, 100)',
-        '{"index only", "bitmap/colo:index scan", "index scan"}'::text[]
+        '{"index only", "bitmap", "index scan"}'::text[]
         ),
     -- Q2: range on b combined with an IN-list on c.
     (DEFAULT,

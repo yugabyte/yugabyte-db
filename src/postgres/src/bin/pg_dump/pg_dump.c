@@ -374,11 +374,16 @@ static PGresult *ybQueryDatabaseData(Archive *fout, PQExpBuffer dbQry);
 static void getYbTablePropertiesAndReloptions(Archive *fout,
 											  YbcTableProperties properties,
 											  PQExpBuffer reloptions_buf, Oid reloid, const char *relname,
-											  char relkind);
+											  char relkind, const char *existing_reloptions);
 static void freeYbcTablePropertiesIfRequired(YbcTableProperties yb_properties);
 static void isDatabaseColocated(Archive *fout);
 static char *extractYbPresplitFromReloptions(const char *reloptions);
 static char *removeYbPresplitFromReloptions(const char *reloptions);
+static bool ybDumpPresplitInCreate(Archive *fout);
+static const char *ybFindIndexdefClause(const char *indexdef,
+										const char *clause);
+static char *ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
+										  const char *value);
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
 
@@ -493,6 +498,7 @@ main(int argc, char **argv)
 		{"on-conflict-do-nothing", no_argument, &dopt.do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 10},
 		{"include-foreign-data", required_argument, NULL, 11},
+		{"restrict-key", required_argument, NULL, 25},
 
 		/* YB: does not have short option letter */
 		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
@@ -501,8 +507,8 @@ main(int argc, char **argv)
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
 		{"dump-role-checks", no_argument, &dopt.yb_dump_role_checks, 1},
 		{"read-time", required_argument, NULL, 12},
-		{"rename-database", required_argument, NULL, 25},
-		{"rename-owner", required_argument, NULL, 26},
+		{"rename-database", required_argument, NULL, 26},
+		{"rename-owner", required_argument, NULL, 27},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -755,11 +761,15 @@ main(int argc, char **argv)
 				with_statistics = true;
 				break;
 
-			case 25:			/* YB: --rename-database=new_db_name */
+			case 25:
+				dopt.restrict_key = pg_strdup(optarg);
+				break;
+
+			case 26:			/* YB: --rename-database=new_db_name */
 				dopt.yb_rename_database = pg_strdup(optarg);
 				break;
 
-			case 26:			/* YB: --rename-owner=new_owner_name */
+			case 27:			/* YB: --rename-owner=new_owner_name */
 				dopt.yb_rename_owner = pg_strdup(optarg);
 				break;
 
@@ -894,7 +904,35 @@ main(int argc, char **argv)
 
 	/* archiveFormat specific setup */
 	if (archiveFormat == archNull)
+	{
 		plainText = 1;
+
+		/*
+		 * If you don't provide a restrict key, one will be appointed for you.
+		 */
+		if (!dopt.restrict_key)
+			dopt.restrict_key = generate_restrict_key();
+		if (!dopt.restrict_key)
+			pg_fatal("could not generate restrict key");
+		if (!valid_restrict_key(dopt.restrict_key))
+			pg_fatal("invalid restrict key");
+	}
+	else if (dopt.restrict_key)
+		pg_fatal("option --restrict-key can only be used with --format=plain");
+
+	/*
+	 * YB: --include-yb-metadata guards its statements with psql meta-commands
+	 * (\if, \else, \endif, \set, \gset, \echo).  Several are stored in a TOC
+	 * entry rather than written to the script, so a non-plain archive carries
+	 * them as text that pg_restore replays inside the restricted-mode region it
+	 * brackets the script with, where psql rejects them.  The brackets below
+	 * cannot help there, because pg_restore mints its own restrict key.
+	 *
+	 * This also covers --dump-role-checks, which the check above already
+	 * requires --include-yb-metadata for.
+	 */
+	if (dopt.include_yb_metadata && !plainText)
+		pg_fatal("option --include-yb-metadata can only be used with --format=plain");
 
 	/* Custom and directory formats are compressed by default, others not */
 	if (compressLevel == -1)
@@ -1174,6 +1212,7 @@ main(int argc, char **argv)
 	ropt->enable_row_security = dopt.enable_row_security;
 	ropt->sequence_data = dopt.sequence_data;
 	ropt->binary_upgrade = dopt.binary_upgrade;
+	ropt->restrict_key = dopt.restrict_key ? pg_strdup(dopt.restrict_key) : NULL;
 
 	if (compressLevel == -1)
 		ropt->compression = 0;
@@ -1263,7 +1302,8 @@ help(const char *progname)
 	printf(_("  --include-yb-metadata        include Yugabyte-specific metadata, uses extended\n"
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
-			 "                               like SPLIT details).\n"));
+			 "                               like SPLIT details).\n"
+			 "                               Requires --format=plain.\n"));
 	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
 			 "                               exists. The ROLE usage statements are skipped if\n"
 			 "                               the ROLE does not exist.\n"
@@ -1293,6 +1333,7 @@ help(const char *progname)
 	printf(_("  --rename-owner=NAME          rewrite every OWNER TO clause whose owner equals\n"
 			 "                               the source database owner to OWNER TO NAME (other\n"
 			 "                               owners are emitted unchanged). Requires -C/--create.\n"));
+	printf(_("  --restrict-key=RESTRICT_KEY  use provided string as psql \\restrict key\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
@@ -2194,9 +2235,41 @@ selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt)
 	 * user installed extension if the user drops and then re-creates it.
 	 * Avoid dumping plpgsql to prevent potential issues with upgrade:
 	 * see GH issue #25346.
+	 *
+	 * All the objects under builtin extensions are created in pg_catalog
+	 * schema with an OID not greater than g_last_builtin_oid. If an user
+	 * drops and recreates it, it will be created in some other schema than
+	 * pg_catalog (creating objects in pg_catalog is only allowed during
+	 * initdb and ysql upgrade) with an OID more than g_last_builtin_oid.
+	 *
+	 * Without the following check on postgres_fdw and pg_stat_statements,
+	 * if the user then creates a backup with --include-yb-metadata after
+	 * dropping and recreating a system created extension,
+	 * DROP EXTENSION IF EXISTS ... is emitted in the restore script, followed
+	 * by creating the extension via binary_upgrade_create_empty_extension,
+	 * and then the related objects in the same schema are created and linked
+	 * to the extension.
+	 *
+	 * Global views add dependency on postgres_fdw and pg_stat_statements,
+	 * so a DROP EXTENSION postgres_fdw / pg_stat_statements fails with an
+	 * error message saying there are dependent objects and you need to run it
+	 * with CASCADE.
+	 *
+	 * During restore, the DROP EXTENSION IF EXISTS ... and the subsequent
+	 * creation of extension via binary_upgrade_create_empty_extension fails,
+	 * but the rest of the script creates the functions linked to the
+	 * extensions. The end result is that there is a copy of each function of
+	 * the extension, one in pg_catalog schema that was created by the system,
+	 * one in the schema where the user created.
+	 *
+	 * With the following check on postgres_fdw and pg_stat_statements, we
+	 * avoid the duplicate objects by excluding DROP + CREATE of these
+	 * extensions from the restore script.
 	 */
 	if (extinfo->dobj.catId.oid <= (Oid) g_last_builtin_oid ||
-		strcmp("plpgsql", extinfo->dobj.name) == 0)
+		strcmp("plpgsql", extinfo->dobj.name) == 0 ||
+		strcmp("postgres_fdw", extinfo->dobj.name) == 0 ||
+		strcmp("pg_stat_statements", extinfo->dobj.name) == 0)
 		extinfo->dobj.dump = extinfo->dobj.dump_contains = DUMP_COMPONENT_ACL;
 	else
 	{
@@ -2795,11 +2868,14 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 		 forcePartitionRootLoad(tbinfo)))
 	{
 		TableInfo  *parentTbinfo;
+		char	   *sanitized;
 
 		parentTbinfo = getRootTableInfo(tbinfo);
 		copyFrom = fmtQualifiedDumpable(parentTbinfo);
+		sanitized = sanitize_line(copyFrom, true);
 		printfPQExpBuffer(copyBuf, "-- load via partition root %s",
-						  copyFrom);
+						  sanitized);
+		free(sanitized);
 		tdDefn = pg_strdup(copyBuf->data);
 	}
 	else
@@ -3648,7 +3724,8 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "DATABASE", dbname, NULL, NULL,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	PQclear(res);
 
@@ -3661,16 +3738,25 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	res = ExecuteSqlQuery(AH, buf->data, PGRES_TUPLES_OK);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\if :use_roles\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
+	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1),
 							   "ROLE", PQgetvalue(res, i, 0),
 							   "DATABASE", dbname,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\endif\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
+	}
 
 	PQclear(res);
 
@@ -4264,7 +4350,9 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 		PQExpBuffer yb_source_sql = query;
 
 		query = createPQExpBuffer();
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\if :use_roles\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 
 		if (dopt->yb_dump_role_checks)
 		{
@@ -4272,12 +4360,14 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 								polinfo->polroles,	/* role1 */
 								NULL,	/* role2 */
 								NULL,	/* role3 */
-								query);
+								query, dopt->restrict_key);
 		}
 		else
 			appendPQExpBufferStr(query, yb_source_sql->data);
 
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\endif\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 		destroyPQExpBuffer(yb_source_sql);
 	}
 
@@ -5423,7 +5513,8 @@ yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
 									  yb_reloptions,
 									  indxinfo->dobj.catId.oid,
 									  indxinfo->dobj.name,
-									  tbinfo->relkind);
+									  tbinfo->relkind,
+									  NULL /* existing_reloptions */ );
 
 	if (yb_properties && yb_properties->is_colocated)
 	{
@@ -9534,7 +9625,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 bool
 shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
 {
-	if (dopt->binary_upgrade || dopt->include_yb_metadata)
+	if (dopt->binary_upgrade)
 		return true;
 	if (tbinfo->attisdropped[colno])
 		return false;
@@ -9994,6 +10085,15 @@ getForeignServers(Archive *fout, int *numForeignServers)
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(srvinfo[i].dobj), fout);
+
+		/*
+		 * YB: yb_global_views_server is created during initdb (see
+		 * yb_global_views.sql) and exists in every database. Dumping it would
+		 * break clone/restore with "server already exists", so never dump it.
+		 */
+		if (IsYugabyteEnabled &&
+			strcmp(srvinfo[i].dobj.name, "yb_global_views_server") == 0)
+			srvinfo[i].dobj.dump = DUMP_COMPONENT_NONE;
 
 		/* Servers have user mappings */
 		srvinfo[i].dobj.components |= DUMP_COMPONENT_USERMAP;
@@ -15731,6 +15831,7 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 								 daclinfo->defaclrole,
 								 fout->remoteVersion,
 								 dopt->yb_dump_role_checks,
+								 dopt->restrict_key,
 								 q))
 		pg_fatal("could not parse default ACL list (%s)",
 				 daclinfo->dacl.acl);
@@ -15831,7 +15932,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
 		if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 							  initprivs, acldefault, owner,
-							  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+							  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+							  dopt->restrict_key, sql))
 			pg_fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 					 initprivs, acldefault, name, type);
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
@@ -15856,7 +15958,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 
 	if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 						  acls, baseacls, owner,
-						  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+						  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+						  dopt->restrict_key, sql))
 		pg_fatal("could not parse ACL list (%s) or default (%s) for object \"%s\" (%s)",
 				 acls, baseacls, name, type);
 
@@ -15875,7 +15978,14 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		if (dopt->include_yb_metadata)
 		{
 			yb_use_roles_sql = createPQExpBuffer();
-			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\if :use_roles\n");
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
+			ybAppendBracketedBlock(yb_use_roles_sql, sql->data,
+								   dopt->restrict_key);
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\endif\n");
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
 		}
 
 		aclDeps[nDeps++] = objDumpId;
@@ -16740,7 +16850,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
 										  tbinfo->dobj.catId.oid,
-										  tbinfo->dobj.name, tbinfo->relkind);
+										  tbinfo->dobj.name, tbinfo->relkind,
+										  tbinfo->reloptions);
 
 		/*
 		 * YB: Colocation backup: preserve implicit tablegroup oid.
@@ -16828,7 +16939,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					 */
 					if (OidIsValid(tbinfo->reloftype) &&
 						!print_default && !print_notnull &&
-						!dopt->binary_upgrade && !dopt->include_yb_metadata)
+						!dopt->binary_upgrade)
 						continue;
 
 					/* Format properly if not first attr */
@@ -17023,32 +17134,32 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		}
 
 		/*
-		 * When dumping YB metadata, strip yb_presplit from the table's
-		 * reloptions before emitting the WITH clause.  yb_presplit must
-		 * not appear in the WITH clause because:
-		 * 1. The split configuration is emitted as a SPLIT INTO / SPLIT AT
-		 *    VALUES clause on the CREATE TABLE; leaving yb_presplit in the
-		 *    WITH clause would conflict with that SPLIT clause on restore.
-		 * 2. yb_presplit is re-emitted as a separate ALTER TABLE SET
-		 *    (yb_presplit=...) statement so that TRUNCATE can later
-		 *    re-apply the original user-specified split options.
+		 * YB: Extract yb_presplit from tbinfo->reloptions for the SPLIT
+		 * AT VALUES emission below.  In the folded form it also stays in
+		 * the reloptions array so the WITH clause carries the user-recorded
+		 * value as-is; in the legacy form (yb_dump_presplit_in_create
+		 * AutoFlag not promoted) it is stripped here and re-emitted as a
+		 * separate ALTER TABLE ... SET below.
 		 */
 		char	   *yb_presplit_value = NULL;
-		const char *filtered_reloptions = tbinfo->reloptions;
+		const char *table_reloptions = tbinfo->reloptions;
 		char	   *filtered_reloptions_alloc = NULL;
+		bool		presplit_in_create = ybDumpPresplitInCreate(fout);
 
 		if (dopt->include_yb_metadata || dopt->binary_upgrade)
 		{
 			yb_presplit_value = extractYbPresplitFromReloptions(tbinfo->reloptions);
-			if (yb_presplit_value)
+
+			if (!presplit_in_create && yb_presplit_value)
 			{
-				filtered_reloptions_alloc = removeYbPresplitFromReloptions(tbinfo->reloptions);
-				filtered_reloptions = filtered_reloptions_alloc;
+				filtered_reloptions_alloc =
+					removeYbPresplitFromReloptions(tbinfo->reloptions);
+				table_reloptions = filtered_reloptions_alloc;
 			}
 		}
 
 		YbAppendReloptions3(q, true /* newline_before */ ,
-							filtered_reloptions, "",
+							table_reloptions, "",
 							tbinfo->toast_reloptions, "toast.",
 							yb_reloptions->data, "",
 							fout);
@@ -17059,7 +17170,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		destroyPQExpBuffer(yb_reloptions);
 
 		/*
-		 * Emit split clause based on the table's current configuration.
+		 * YB: Emit split clause based on the table's current configuration.
 		 * - Hash tables: always SPLIT INTO N TABLETS.
 		 * - Range tables with yb_presplit: use the stored split points
 		 *   directly to preserve the original user-specified values.
@@ -17135,17 +17246,21 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		else
 			appendPQExpBufferStr(q, ";\n");
 
-		/*
-		 * If the table had yb_presplit in its reloptions (indicating
-		 * user-specified create-time split options), dump it as a
-		 * separate ALTER TABLE SET statement.
-		 */
 		if (yb_presplit_value)
 		{
-			appendPQExpBuffer(q, "ALTER TABLE %s SET (yb_presplit=",
-							  qualrelname);
-			appendStringLiteralAH(q, yb_presplit_value, fout);
-			appendPQExpBufferStr(q, ");\n");
+			/*
+			 * Legacy form (yb_dump_presplit_in_create AutoFlag not promoted):
+			 * re-emit the table's yb_presplit as a separate ALTER TABLE SET so
+			 * the dump restores on an older version that rejects yb_presplit
+			 * alongside a SPLIT clause.
+			 */
+			if (!presplit_in_create)
+			{
+				appendPQExpBuffer(q, "ALTER TABLE %s SET (yb_presplit=",
+								  qualrelname);
+				appendStringLiteralAH(q, yb_presplit_value, fout);
+				appendPQExpBufferStr(q, ");\n");
+			}
 			free(yb_presplit_value);
 		}
 
@@ -17215,10 +17330,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				if (tbinfo->attisdropped[j])
 				{
 					/*
-					 * For YB backups, we also need to recreate and drop the dropped columns
-					 * (even if the docdb snapshot import can handle such gaps in the col order)
-					 * because the table can be used as a type - referenced by another table column.
+					 * For YB backups, we don't need to recreate dropped cols because
+					 * docdb snapshot import can handle such gaps in the col order.
 					 */
+					if (!dopt->include_yb_metadata)
+					{
 						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
 						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
 										  "SET attlen = %d, "
@@ -17240,6 +17356,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											  qualrelname);
 						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 										  fmtId(tbinfo->attnames[j]));
+					}
 				}
 				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))
 				{
@@ -17809,25 +17926,68 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 		yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
 														false /* emit_colocation_id */ );
 
-		/* Plain secondary index */
-		appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
+		/*
+		 * YB: Fold a yb_presplit entry into the CREATE INDEX's WITH
+		 * clause so the restored index matches the source's reloption
+		 * state in a single statement.  See dumpTableSchema for the full
+		 * rationale.
+		 *
+		 *  - Source had yb_presplit: inject yb_presplit='<value>'; the
+		 *    relaxed YbSyncSplitOptionsAndPresplit keeps both the SPLIT
+		 *    clause (if any) and the reloption.
+		 *  - Source had no yb_presplit and indexdef carries a SPLIT
+		 *    clause: inject yb_presplit='' as a suppress-auto-derive
+		 *    sentinel that the engine strips before persistence.
+		 *
+		 * Skip the injection for partitioned (parent) indexes: their
+		 * WITH clause is not honored the same way and they have no
+		 * storage of their own.
+		 */
+		const char *yb_effective_indexdef = indxinfo->indexdef;
+		char	   *yb_modified_indexdef = NULL;
+		char	   *yb_idx_presplit = NULL;
+		bool		presplit_in_create = ybDumpPresplitInCreate(fout);
+
+		if (dopt->include_yb_metadata || dopt->binary_upgrade)
+			yb_idx_presplit = extractYbPresplitFromReloptions(indxinfo->indreloptions);
 
 		/*
-		 * If dumping YB metadata and the index had yb_presplit in its
-		 * reloptions, dump it as a separate ALTER INDEX SET statement.
+		 * Folded form (yb_dump_presplit_in_create AutoFlag promoted): splice
+		 * yb_presplit into the indexdef's WITH clause.  Skipped for
+		 * partitioned (parent) indexes, whose WITH clause is not honored.
 		 */
-		if (dopt->include_yb_metadata || dopt->binary_upgrade)
+		if (presplit_in_create
+			&& (dopt->include_yb_metadata || dopt->binary_upgrade)
+			&& tbinfo->relkind != RELKIND_PARTITIONED_TABLE
+			&& (yb_idx_presplit != NULL ||
+				strstr(indxinfo->indexdef, " SPLIT ") != NULL))
 		{
-			char	   *idx_presplit = extractYbPresplitFromReloptions(indxinfo->indreloptions);
-			if (idx_presplit)
-			{
-				appendPQExpBuffer(q, "ALTER INDEX %s SET (yb_presplit=",
-								  qqindxname);
-				appendStringLiteralAH(q, idx_presplit, fout);
-				appendPQExpBufferStr(q, ");\n");
-				free(idx_presplit);
-			}
+			yb_modified_indexdef =
+				ybInjectPresplitIntoIndexdef(fout, indxinfo->indexdef,
+											 yb_idx_presplit ? yb_idx_presplit : "");
+			yb_effective_indexdef = yb_modified_indexdef;
 		}
+
+		/* Plain secondary index */
+		appendPQExpBuffer(q, "%s;\n", yb_effective_indexdef);
+
+		/*
+		 * Legacy form (AutoFlag not promoted): re-emit yb_presplit as a
+		 * separate ALTER INDEX ... SET so the dump restores on an older
+		 * version that rejects yb_presplit alongside a SPLIT clause.
+		 */
+		if (!presplit_in_create && yb_idx_presplit != NULL)
+		{
+			appendPQExpBuffer(q, "ALTER INDEX %s SET (yb_presplit=",
+							  qqindxname);
+			appendStringLiteralAH(q, yb_idx_presplit, fout);
+			appendPQExpBufferStr(q, ");\n");
+		}
+
+		if (yb_idx_presplit)
+			free(yb_idx_presplit);
+		if (yb_modified_indexdef)
+			free(yb_modified_indexdef);
 
 		/*
 		 * Append ALTER TABLE commands as needed to set properties that we
@@ -18117,41 +18277,65 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
 															false /* emit_colocation_id */ );
 
+			/*
+			 * YB: yb_presplit handling for the constraint index.  See
+			 * dumpIndex for the full rationale and the AutoFlag gating.
+			 */
+			char	   *yb_idx_presplit = NULL;
+			const char *yb_effective_indexdef = indxinfo->indexdef;
+			char	   *yb_modified_indexdef = NULL;
+			bool		presplit_in_create = ybDumpPresplitInCreate(fout);
+
+			if (dopt->include_yb_metadata || dopt->binary_upgrade)
+				yb_idx_presplit =
+					extractYbPresplitFromReloptions(indxinfo->indreloptions);
+
+			/* Folded form (AutoFlag promoted): splice into the WITH clause. */
+			if (presplit_in_create
+				&& (dopt->include_yb_metadata || dopt->binary_upgrade)
+				&& (yb_idx_presplit != NULL ||
+					strstr(indxinfo->indexdef, " SPLIT ") != NULL))
+			{
+				yb_modified_indexdef =
+					ybInjectPresplitIntoIndexdef(fout, indxinfo->indexdef,
+												 yb_idx_presplit ? yb_idx_presplit : "");
+				yb_effective_indexdef = yb_modified_indexdef;
+			}
+
 			if (dopt->include_yb_metadata || (IsYugabyteEnabled && dopt->binary_upgrade))
 			{
 				/*
 				 * In 'include_yb_metadata' mode all Indexes already have NONCONCURRENTLY flag.
 				 */
-				appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
+				appendPQExpBuffer(q, "%s;\n", yb_effective_indexdef);
 			}
 			else
 			{
 				static const char index_def_prefix[] = "CREATE UNIQUE INDEX ";
 
-				Assert(strncmp(indxinfo->indexdef, index_def_prefix,
+				Assert(strncmp(yb_effective_indexdef, index_def_prefix,
 							   strlen(index_def_prefix)) == 0);
 				appendPQExpBuffer(q, "%sNONCONCURRENTLY %s;\n",
-								  index_def_prefix, &indxinfo->indexdef[20]);
+								  index_def_prefix, &yb_effective_indexdef[20]);
 			}
 
 			/*
-			 * If dumping YB metadata and the index had yb_presplit in
-			 * its reloptions, dump it as a separate ALTER INDEX SET
-			 * statement.
+			 * Legacy form (AutoFlag not promoted): re-emit yb_presplit as a
+			 * separate ALTER INDEX ... SET so the dump restores on an older
+			 * version that rejects yb_presplit alongside a SPLIT clause.
 			 */
-			if (dopt->include_yb_metadata || dopt->binary_upgrade)
+			if (!presplit_in_create && yb_idx_presplit != NULL)
 			{
-				char	   *idx_presplit =
-					extractYbPresplitFromReloptions(indxinfo->indreloptions);
-				if (idx_presplit)
-				{
-					appendPQExpBuffer(q, "ALTER INDEX %s SET (yb_presplit=",
-									  fmtQualifiedDumpable(indxinfo));
-					appendStringLiteralAH(q, idx_presplit, fout);
-					appendPQExpBufferStr(q, ");\n");
-					free(idx_presplit);
-				}
+				appendPQExpBuffer(q, "ALTER INDEX %s SET (yb_presplit=",
+								  fmtQualifiedDumpable(indxinfo));
+				appendStringLiteralAH(q, yb_idx_presplit, fout);
+				appendPQExpBufferStr(q, ");\n");
 			}
+
+			if (yb_modified_indexdef)
+				free(yb_modified_indexdef);
+			if (yb_idx_presplit)
+				free(yb_idx_presplit);
 			appendPQExpBufferChar(q, '\n');
 		}
 		else if (is_unique_index && is_partitioned)
@@ -20127,7 +20311,8 @@ getDatabaseOid(Archive *fout)
 static void
 getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 								  PQExpBuffer reloptions_buf,
-								  Oid reloid, const char *relname, char relkind)
+								  Oid reloid, const char *relname, char relkind,
+								  const char *existing_reloptions)
 {
 	if (properties)
 	{
@@ -20203,17 +20388,128 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 		/*
 		 * For colocated tables, we need to set the new table to have the same
 		 * colocation_id since we use it as a prefix in our DocKeys.
+		 *
+		 * Note: We don't need to handle non-colocated tables in colocated
+		 * databases since they will already have 'colocated=false' in their
+		 * table reloptions.
 		 */
 		if (properties->is_colocated)
 			appendPQExpBuffer(reloptions_buf, "colocation_id=%u", properties->colocation_id);
 
 		/*
-		 * Note: We don't need to handle non-colocated tables in colocated
-		 * databases since they will already have 'colocated=false' in their
-		 * table reloptions.
+		 * YB: Inject a yb_presplit='' suppress-auto-derive sentinel when the
+		 * relation has no yb_presplit reloption of its own.  For relations
+		 * whose CREATE will emit a SPLIT clause this stops the restore-time
+		 * auto-derive from persisting a yb_presplit=N the source never had.
+		 * For relations without a SPLIT clause the sentinel is a harmless
+		 * no-op: YbSyncSplitOptionsAndPresplit strips empty yb_presplit
+		 * unconditionally.
+		 *
+		 * Gated by the yb_dump_presplit_in_create AutoFlag: the sentinel is
+		 * only emitted once the folded-WITH form is safe for the restore
+		 * target (see ybDumpPresplitInCreate).
+		 *
+		 * Skip partitioned PARENT tables (RELKIND_PARTITIONED_TABLE): they
+		 * have no storage and never emit a SPLIT clause, so folding the
+		 * sentinel into their WITH clause produces a spurious
+		 * "PARTITION BY ... WITH (yb_presplit='')".  This mirrors the
+		 * SPLIT-clause emission which already excludes partitioned tables.
 		 */
+		if (ybDumpPresplitInCreate(fout) &&
+			relkind != RELKIND_PARTITIONED_TABLE &&
+			!extractYbPresplitFromReloptions(existing_reloptions))
+			appendPGArray(reloptions_buf, "yb_presplit=");
 	}
 	appendPQExpBuffer(reloptions_buf, "}");
+}
+
+/*
+ * YB: Whether ysql_dump should fold a relation's yb_presplit reloption into the
+ * CREATE statement's WITH clause (alongside the emitted SPLIT clause), instead
+ * of the legacy form that omits yb_presplit from the WITH clause and re-emits it
+ * as a separate ALTER TABLE/INDEX ... SET (yb_presplit=...).
+ *
+ * Gated by the yb_dump_presplit_in_create AutoFlag: the folded form is rejected
+ * by older restore targets (which disallow yb_presplit alongside a SPLIT clause),
+ * so it must only be emitted once rollback to such a version is impossible -- i.e.
+ * after the AutoFlag has been promoted on upgrade finalize.  Reads the value via
+ * current_setting() over the existing connection and caches it; an absent GUC
+ * (older server) is treated as false so the dump stays restore-compatible.
+ */
+static bool
+ybDumpPresplitInCreate(Archive *fout)
+{
+	static int	cached = -1;	/* -1 unknown, 0 false, 1 true */
+
+	if (cached < 0)
+	{
+		PGresult   *res = ExecuteSqlQueryForSingleRow(fout,
+			"SELECT current_setting('yb_dump_presplit_in_create', true)");
+
+		cached = (!PQgetisnull(res, 0, 0) &&
+				  strcmp(PQgetvalue(res, 0, 0), "on") == 0) ? 1 : 0;
+		PQclear(res);
+	}
+
+	return cached == 1;
+}
+
+/*
+ * YB: Return a copy of the reloptions array string with yb_presplit removed.
+ *
+ * If yb_presplit is not present, returns a copy of the original string.
+ * If removing yb_presplit leaves no options, returns NULL.
+ *
+ * Used by the legacy (yb_dump_presplit_in_create not promoted) dump path, which
+ * keeps yb_presplit out of the WITH clause and re-emits it as a separate ALTER.
+ */
+static char *
+removeYbPresplitFromReloptions(const char *reloptions)
+{
+	char	  **options;
+	int			noptions;
+	PQExpBuffer buf;
+	bool		first = true;
+	char	   *result;
+
+	if (!reloptions || reloptions[0] == '\0')
+		return NULL;
+
+	if (!parsePGArray(reloptions, &options, &noptions))
+	{
+		if (options)
+			free(options);
+		return pg_strdup(reloptions);
+	}
+
+	buf = createPQExpBuffer();
+	appendPQExpBufferChar(buf, '{');
+
+	for (int i = 0; i < noptions; i++)
+	{
+		if (strncmp(options[i], "yb_presplit=", 12) == 0)
+			continue;
+
+		if (!first)
+			appendPQExpBufferChar(buf, ',');
+		appendPQExpBufferStr(buf, options[i]);
+		first = false;
+	}
+
+	appendPQExpBufferChar(buf, '}');
+
+	free(options);
+
+	/* If only "{}" remains (no options left), return NULL */
+	if (strcmp(buf->data, "{}") == 0)
+	{
+		destroyPQExpBuffer(buf);
+		return NULL;
+	}
+
+	result = pg_strdup(buf->data);
+	destroyPQExpBuffer(buf);
+	return result;
 }
 
 /*
@@ -20300,56 +20596,136 @@ extractYbPresplitFromReloptions(const char *reloptions)
 	return result;
 }
 
+/* Find a top-level clause, ignoring quoted text and parenthesized expressions. */
+static const char *
+ybFindIndexdefClause(const char *indexdef, const char *clause)
+{
+	const size_t clause_len = strlen(clause);
+	int			paren_depth = 0;
+	char		quote = '\0';
+
+	for (const char *p = indexdef; *p != '\0'; p++)
+	{
+		if (quote != '\0')
+		{
+			if (*p == quote)
+			{
+				if (p[1] == quote)
+					p++;
+				else
+					quote = '\0';
+			}
+			continue;
+		}
+
+		/*
+		 * Check for the clause before consuming *p as a quote or
+		 * parenthesis so a clause that begins with one of those
+		 * characters can still match at top level.
+		 */
+		if (paren_depth == 0 && strncmp(p, clause, clause_len) == 0)
+			return p;
+
+		if (*p == '\'' || *p == '"')
+		{
+			quote = *p;
+			continue;
+		}
+		if (*p == '(')
+		{
+			paren_depth++;
+			continue;
+		}
+		if (*p == ')')
+		{
+			if (paren_depth > 0)
+				paren_depth--;
+			continue;
+		}
+	}
+
+	return NULL;
+}
+
 /*
- * Return a copy of the reloptions array string with yb_presplit removed.
+ * YB: Return a newly-allocated copy of `indexdef` with a yb_presplit=<value>
+ * entry folded into the WITH clause.
  *
- * If yb_presplit is not present, returns a copy of the original string.
- * If removing yb_presplit leaves no options, returns NULL.
+ * `value` is the source's yb_presplit value to record on restore, or "" to
+ * inject the empty suppress-auto-derive sentinel.  Both forms are valid:
+ * non-empty values are persisted as-is; the empty sentinel is stripped by
+ * YbSyncSplitOptionsAndPresplit before persistence.
+ *
+ * `indexdef` is the string produced by pg_get_indexdef(), shaped roughly
+ * as "CREATE [UNIQUE] INDEX ... ON tbl USING am (cols) [WITH (opts)]
+ * [SPLIT ...] [WHERE ...]".  We splice the new option into the existing
+ * WITH clause if present; otherwise we insert a fresh
+ * `WITH (yb_presplit='<value>')` before SPLIT or WHERE, whichever comes
+ * first.  If neither is present, we append it at the end of the indexdef
+ * (e.g. for a single-tablet index that still has an explicit reloption to
+ * preserve).
+ *
+ * The SQL pg_get_indexdef() used by getIndexes() intentionally omits
+ * TABLESPACE; pg_dump carries it separately in the archive entry metadata.
  */
 static char *
-removeYbPresplitFromReloptions(const char *reloptions)
+ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
+							 const char *value)
 {
-	char	  **options;
-	int			noptions;
+	const char *with_start;
+	const char *with_close;
+	const char *split_start;
+	const char *where_start;
+	const char *insert_start;
 	PQExpBuffer buf;
-	bool		first = true;
 	char	   *result;
 
-	if (!reloptions || reloptions[0] == '\0')
+	if (!indexdef)
 		return NULL;
+	if (!value)
+		value = "";
 
-	if (!parsePGArray(reloptions, &options, &noptions))
+	with_start = ybFindIndexdefClause(indexdef, " WITH (");
+	if (with_start != NULL)
 	{
-		if (options)
-			free(options);
-		return pg_strdup(reloptions);
+		/* Find the matching ')' after WITH ( -- the first ')'. */
+		with_close = strchr(with_start, ')');
+		if (with_close == NULL)
+			return pg_strdup(indexdef);
+
+		buf = createPQExpBuffer();
+		appendBinaryPQExpBuffer(buf, indexdef, with_close - indexdef);
+		/* If the WITH list is non-empty, comma-separate. */
+		if (with_close[-1] != '(')
+			appendPQExpBufferStr(buf, ", ");
+		appendPQExpBufferStr(buf, "yb_presplit=");
+		appendStringLiteralAH(buf, value, fout);
+		appendPQExpBufferStr(buf, with_close);
+		result = pg_strdup(buf->data);
+		destroyPQExpBuffer(buf);
+		return result;
 	}
+
+	/*
+	 * No existing WITH clause.  Insert a fresh `WITH (yb_presplit='...')`
+	 * before the first SPLIT or WHERE clause, otherwise at the end of the
+	 * indexdef.
+	 */
+	split_start = ybFindIndexdefClause(indexdef, " SPLIT ");
+	where_start = ybFindIndexdefClause(indexdef, " WHERE ");
+	insert_start = split_start;
+	if (where_start != NULL &&
+		(insert_start == NULL || where_start < insert_start))
+		insert_start = where_start;
+	if (insert_start == NULL)
+		insert_start = indexdef + strlen(indexdef);
 
 	buf = createPQExpBuffer();
-	appendPQExpBufferChar(buf, '{');
-
-	for (int i = 0; i < noptions; i++)
-	{
-		if (strncmp(options[i], "yb_presplit=", 12) == 0)
-			continue;
-
-		if (!first)
-			appendPQExpBufferChar(buf, ',');
-		appendPQExpBufferStr(buf, options[i]);
-		first = false;
-	}
-
-	appendPQExpBufferChar(buf, '}');
-
-	free(options);
-
-	/* If only "{}" remains (no options left), return NULL */
-	if (strcmp(buf->data, "{}") == 0)
-	{
-		destroyPQExpBuffer(buf);
-		return NULL;
-	}
-
+	appendBinaryPQExpBuffer(buf, indexdef, insert_start - indexdef);
+	appendPQExpBufferStr(buf, " WITH (yb_presplit=");
+	appendStringLiteralAH(buf, value, fout);
+	appendPQExpBufferChar(buf, ')');
+	appendPQExpBufferStr(buf, insert_start);
 	result = pg_strdup(buf->data);
 	destroyPQExpBuffer(buf);
 	return result;

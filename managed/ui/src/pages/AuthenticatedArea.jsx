@@ -26,6 +26,7 @@ import {
   getRoleBindingsForUser
 } from '../redesign/features/rbac/api';
 import { Resource } from '../redesign/features/rbac';
+import { OnBoardingBanner } from '../redesign/features-v2/onboarding/universe-revamp/banners/OnBoardingBanner';
 
 const RBACAuthenticatedArea = (props) => {
   const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
@@ -132,6 +133,7 @@ const RBACAuthenticatedArea = (props) => {
 
   return (
     <AuthenticatedComponentContainer>
+      <OnBoardingBanner />
       <BindShortCutKeys {...props} />
       <StandbyInstanceOverlay />
       <NavBarContainer />

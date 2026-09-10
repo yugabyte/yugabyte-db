@@ -22,6 +22,8 @@ readonly DEFAULT_SSD_DRIVES="{{ device_paths }}"
 readonly MOUNT_PATHS="{{ mount_paths }}"
 readonly LUN_INDEXES="{{ disk_lun_indexes }}"
 readonly IMDSv2Required="{{ imdsv2required }}"
+# Optional mount-path=UUID pairs from prior /etc/fstab (e.g. OS upgrade). Space-separated.
+readonly PATH_TO_UUID_MAPPING="{{ path_to_uuid_mapping | default('') }}"
 
 {% raw %}
 should_check_aws_meta() {
@@ -58,7 +60,7 @@ get_azu_scsi_drives() {
   num_lun_indexes=${#lun_indexes[@]}
   if [[ $num_lun_indexes -lt ${#mounts[@]} ]]; then
     echo >&2 "Too less LUN indexes provided, cannot mount all the devices."
-    exit
+    exit 1
   fi
 
   get_azu_scsi_drives_rv=""
@@ -110,6 +112,139 @@ get_ephemeral_drives() {
   fi
 }
 
+# Resolve device paths for each entry in MOUNT_PATHS using PATH_TO_UUID_MAPPING
+# (space-separated mount_path=uuid pairs). Sets get_device_paths_from_uuid_mapping_rv
+# as a bash array parallel to mounts (same order as MOUNT_PATHS).
+get_device_paths_from_uuid_mapping() {
+  local mount_paths=( $MOUNT_PATHS )
+  local mapping_entries=( $PATH_TO_UUID_MAPPING )
+  local -a device_paths=()
+  local mount_path device_uuid by_uuid_path actual_path entry found
+
+  if [[ ${#mount_paths[@]} -eq 0 ]]; then
+    echo >&2 "No mount points provided, cannot resolve devices from UUID mapping."
+    return 1
+  fi
+  if [[ ${#mapping_entries[@]} -eq 0 ]]; then
+    echo >&2 "PATH_TO_UUID_MAPPING is empty, cannot resolve devices."
+    return 1
+  fi
+
+  for mount_path in "${mount_paths[@]}"; do
+    found=""
+    device_uuid=""
+    for entry in "${mapping_entries[@]}"; do
+      if [[ "${entry%%=*}" == "$mount_path" ]]; then
+        device_uuid="${entry#*=}"
+        found=1
+        break
+      fi
+    done
+    if [[ -z "$found" || -z "$device_uuid" || "$device_uuid" == "$mount_path" ]]; then
+      echo >&2 "No UUID mapping found for mount path $mount_path"
+      return 1
+    fi
+    by_uuid_path="/dev/disk/by-uuid/$device_uuid"
+    if ! [[ -e "$by_uuid_path" ]]; then
+      echo >&2 "Device for UUID $device_uuid (mount $mount_path) not found at $by_uuid_path"
+      return 1
+    fi
+    actual_path=$(readlink -eq "$by_uuid_path")
+    echo "Resolved $mount_path -> UUID=$device_uuid -> $actual_path"
+    device_paths+=( "$actual_path" )
+  done
+  get_device_paths_from_uuid_mapping_rv=( "${device_paths[@]}" )
+}
+
+# Mount each device path onto the corresponding mount path from MOUNT_PATHS (same order).
+# Pass device paths as: mount_drives "${device_paths[@]}"
+# Optional first flag --no-format skips mkfs (for remounting preserved disks after OS upgrade).
+mount_drives() {
+  local allow_format=true
+  if [[ "${1:-}" == "--no-format" ]]; then
+    allow_format=false
+    shift
+  fi
+  local -a device_paths=("$@")
+  local mount_paths=( $MOUNT_PATHS )
+  local mount_path device_path device_uuid file_system blkid_error actual_path already_mounted
+  local fs_opts
+  local idx=0
+
+  echo "Mount drives ${device_paths[*]} for mount points ${mount_paths[*]} (allow_format=$allow_format)"
+  for device_path in "${device_paths[@]}"; do
+    fs_opts="defaults,noatime,nofail,allocsize=4m"
+    set +e
+    # NOTE: This does not seem to return the actual file system
+    file_system=$(/sbin/blkid -o value -s TYPE -c /dev/null $device_path)
+    blkid_error=$?
+    set -e
+    # On some EC2 instance types (e.g., i2.4xlarge), the above command or fdisk doesn't discover
+    # the drive correctly. It in turn returns an exit code of 2 indicating that the drive was not
+    # found.  In that case, we go ahead and create XFS on that drive.
+    if [[ $blkid_error -ne 0 && $blkid_error -ne 2 ]]; then
+      echo "blkid returned exit code $blkid_error for $device_path"
+      exit 1
+    fi
+    if [[ $blkid_error -eq 2 || $file_system != xfs ]]; then
+      if [[ "$allow_format" != true ]]; then
+        echo >&2 "Refusing to format $device_path (blkid_error=$blkid_error fs=$file_system); expected existing filesystem"
+        exit 1
+      fi
+      if [[ -f /sbin/mkfs.xfs ]]; then
+        echo "Creating xfs on: " $device_path
+        /sbin/mkfs.xfs $device_path -f
+        file_system=xfs
+        fs_opts="${fs_opts},ikeep"
+      else
+        echo "mkfs.xfs not found. Using the default - $file_system"
+      fi
+    fi
+
+    mount_path=${mount_paths[$idx]}
+
+    mkdir -p "$mount_path"
+    chmod 777 "$mount_path"
+
+    device_uuid=$(/sbin/blkid -o value -s UUID -c /dev/null $device_path)
+    echo "device uuid = $device_uuid"
+
+    if grep -q "#$mount_path" /etc/fstab; then
+      echo "Entry for $mount_path in fstab already exists."
+      if egrep -q "^$device_path .*" /etc/fstab; then
+        echo "Device $device_path is mounted not using UUID, need to rewrite"
+        sed -i "s|^$device_path |UUID=$device_uuid |g" /etc/fstab
+      fi
+    else
+      echo "Adding entry for $mount_path to fstab..."
+      echo "#$mount_path" >> /etc/fstab
+      # Mounting using UUID
+      echo "UUID=${device_uuid} ${mount_path} ${file_system} ${fs_opts} 0 2" \
+                      >> /etc/fstab
+    fi
+    echo "checking actual path"
+    already_mounted=false
+    # Sometimes link does not exist at the time of checking
+    if test -e "/dev/disk/by-uuid/$device_uuid"; then
+      actual_path=$(readlink -eq "/dev/disk/by-uuid/$device_uuid")
+      echo "actual_path is $actual_path"
+      mount | egrep -q "^$actual_path on $mount_path " && already_mounted=true
+    fi
+    if $already_mounted; then
+      echo "$device_path is already mounted on $mount_path"
+    else
+      echo "Mounting $device_path on $mount_path"
+      ( set -x; mount $device_path $mount_path )
+    fi
+    # The first time we mount the drives, the permissions seem to flip back to 755. Perhaps,
+    # there's a better way to set the permissions in fstab itself. But couldn't find one that
+    # works. For now, updating the permissions again. On subsequent mount/umounts, this problem
+    # does not happen. So we are covered on that front (e.g. as might happen during a reboot).
+    chmod 777 $mount_path
+    idx=$((idx+1))
+  done
+}
+
 # Starting a block whose output will be redirected to syslog.
 (
   declare -i exit_code=0
@@ -143,14 +278,32 @@ get_ephemeral_drives() {
 
   declare -g mounts=( $MOUNT_PATHS )
 
+  # For old generation aws instances, we assume YugaWare requests a number of ephemerals appropriate
+  # to the instance type. E.g. m3.medium only supports 1 ephemeral, but m3.xlarge supports 2.
+  if [[ ${#mounts[@]} -eq 0 ]]; then
+    echo >&2 "No mount points provided, cannot mount any devices."
+    exit 1
+  fi
+
+  # When path->UUID mapping is provided (e.g. after root-volume / OS upgrade), remount using the
+  # known UUIDs instead of rediscovering and potentially reformatting devices.
+  if [[ -n "${PATH_TO_UUID_MAPPING}" ]]; then
+    echo "Using provided path_to_uuid_mapping for remount: ${PATH_TO_UUID_MAPPING}"
+    get_device_paths_from_uuid_mapping
+    mount_drives --no-format "${get_device_paths_from_uuid_mapping_rv[@]}"
+    exit $exit_code
+  fi
+
+  device_paths=()
+
   get_ephemeral_drives
   ephemerals=( $get_ephemeral_drives_rv )
 
   declare -i num_devices=${#ephemerals[@]}
 
   if [[ $num_devices -eq 0 ]]; then
-    echo "Found no volumes to mount"
-    exit
+    echo >&2 "Found no volumes to mount for mount points: $MOUNT_PATHS"
+    exit 1
   fi
 
   echo "============================"
@@ -158,11 +311,10 @@ get_ephemeral_drives() {
   echo "${ephemerals[@]}"
   echo "============================"
 
-  # For old generation aws instances, we assume YugaWare requests a number of ephemerals appropriate
-  # to the instance type. E.g. m3.medium only supports 1 ephemeral, but m3.xlarge supports 2.
-  if [[ ${#mounts[@]} -eq 0 ]]; then
-    echo >&2 "No mount points provided, cannot mount any devices."
-    exit 1
+  if [[ $num_devices -lt ${#mounts[@]} ]]; then
+    echo >&2 "Only $num_devices volumes discovered, but ${#mounts[@]} mount points provided: $MOUNT_PATHS."
+    echo >&2 "Will mount available volumes and return an error after that."
+    exit_code=1
   fi
 
   if [[ ${#mounts[@]} -lt $num_devices ]]; then
@@ -176,7 +328,6 @@ get_ephemeral_drives() {
   declare -g max_iterations=$((num_devices+1))
   # iterate through 1 more than num_devices to skip over root volume
   for (( i=0; i<max_iterations; ++i )); do
-    fs_opts="defaults,noatime,nofail,allocsize=4m"
     e=${ephemerals[eph_idx]}
     echo "Probing $e ..."
     if [[ $CLOUD_TYPE == "gcp" ]]; then
@@ -225,69 +376,9 @@ get_ephemeral_drives() {
     # Also check to make sure we don't try to mount on root volume
     if ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
       echo "Detected ephemeral disk: $device_path"
-      set +e
-      # NOTE: This does not seem to return the actual file system
-      file_system=$(/sbin/blkid -o value -s TYPE -c /dev/null $device_path)
-      blkid_error=$?
-      set -e
-      # On some EC2 instance types (e.g., i2.4xlarge), the above command or fdisk doesn't discover
-      # the drive correctly. It in turn returns an exit code of 2 indicating that the drive was not
-      # found.  In that case, we go ahead and create XFS on that drive.
-      if [[ $blkid_error -ne 0 && $blkid_error -ne 2 ]]; then
-        echo "blkid returned exit code $blkid_error for $device_path"
-        exit 1
-      fi
-      if [[ $blkid_error -eq 2 || $file_system != xfs ]]; then
-        if [[ -f /sbin/mkfs.xfs ]]; then
-          echo "Creating xfs on: " $device_path
-          /sbin/mkfs.xfs $device_path -f
-          file_system=xfs
-          fs_opts="${fs_opts},ikeep"
-        else
-          echo "mkfs.xfs not found. Using the default - $file_system"
-        fi
-      fi
 
-      mount_path=${mounts[$eph_idx]}
+      device_paths+=( "$device_path" )
 
-      mkdir -p "$mount_path"
-      chmod 777 "$mount_path"
-
-      device_uuid=$(/sbin/blkid -o value -s UUID -c /dev/null $device_path)
-      echo "device uuid = $device_uuid"
-
-      if grep -q "#$mount_path" /etc/fstab; then
-        echo "Entry for $mount_path in fstab already exists."
-        if egrep -q "^$device_path .*" /etc/fstab; then
-          echo "Device $device_path is mounted not using UUID, need to rewrite"
-          sed -i "s|^$device_path |UUID=$device_uuid |g" /etc/fstab
-        fi
-      else
-        echo "Adding entry for $mount_path to fstab..."
-        echo "#$mount_path" >> /etc/fstab
-        # Mounting using UUID
-        echo "UUID=${device_uuid} ${mount_path} ${file_system} ${fs_opts} 0 2" \
-                        >> /etc/fstab
-      fi
-      echo "checking actual path"
-      already_mounted=false
-      # Sometimes link does not exist at the time of checking
-      if test -e "/dev/disk/by-uuid/$device_uuid"; then
-        actual_path=$(readlink -eq "/dev/disk/by-uuid/$device_uuid")
-        echo "actual_path is $actual_path"
-        mount | egrep -q "^$actual_path on $mount_path " && already_mounted=true
-      fi
-      if $already_mounted; then
-        echo "$device_path is already mounted on $mount_path"
-      else
-        echo "Mounting $device_path on $mount_path"
-        ( set -x; mount $device_path $mount_path )
-      fi
-      # The first time we mount the drives, the permissions seem to flip back to 755. Perhaps,
-      # there's a better way to set the permissions in fstab itself. But couldn't find one that
-      # works. For now, updating the permissions again. On subsequent mount/umounts, this problem
-      # does not happen. So we are covered on that front (e.g. as might happen during a reboot).
-      chmod 777 $mount_path
       # only increment ephemeral index when mount path is used for a device
       eph_idx=$((eph_idx+1))
       # break when we are done with all mounts
@@ -298,6 +389,13 @@ get_ephemeral_drives() {
       echo "Ephemeral disk $e, $device_path is a part of root $root_drive. Skipping."
     fi
   done
+
+  if [[ ${#device_paths[@]} -lt ${#mounts[@]} ]]; then
+    echo >&2 "Only ${#device_paths[@]} devices resolved for ${#mounts[@]} mount points: $MOUNT_PATHS."
+    exit_code=1
+  fi
+
+  mount_drives "${device_paths[@]}"
 
   exit $exit_code
 

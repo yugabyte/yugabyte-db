@@ -332,6 +332,20 @@ ALTER TABLE test ADD constraint vague_name unique (a);
 ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
 ```
 
+#### ALTER CONSTRAINT *constraint_name* [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+Change the deferrability of an existing foreign key constraint. See [Deferrable constraints](#deferrable-constraints).
+
+##### Example
+
+Create a foreign key constraint, then make it deferrable and deferred by default:
+
+```sql
+CREATE TABLE t(id int PRIMARY KEY);
+CREATE TABLE u(id int, CONSTRAINT f FOREIGN KEY (id) REFERENCES t);
+ALTER TABLE u ALTER CONSTRAINT f DEFERRABLE INITIALLY DEFERRED;
+```
+
 #### ENABLE / DISABLE ROW LEVEL SECURITY
 
 This enables or disables row level security for the table.

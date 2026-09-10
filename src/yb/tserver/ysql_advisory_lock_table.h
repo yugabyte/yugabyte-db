@@ -25,6 +25,7 @@
 
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 
 namespace yb::tserver {

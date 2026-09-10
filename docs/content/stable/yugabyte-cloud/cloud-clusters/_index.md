@@ -19,6 +19,7 @@ YugabyteDB Aeon provides the following tools to manage clusters:
 | :--- | :--- |
 | [Scaling](configure-clusters/) | To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change. |
 | [Read replicas](managed-read-replica/) | Add read replicas to lower read latencies in regions that are distant from your primary cluster. |
+| [Resource Governance](resource-governance/) | Manage CPU use between databases during contention, while allowing databases to use available capacity when the cluster is underused. |
 | [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, restore from backups, and set up remote backup replication. |
 | [Point-in-time recovery](aeon-pitr/) | Branch a database (clone) at a point in time for recovery or testing. |
 | [Maintenance windows](cloud-maintenance/) | Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure. |
@@ -26,9 +27,6 @@ YugabyteDB Aeon provides the following tools to manage clusters:
 | [PostgreSQL&nbsp;extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
 | [Change Data Capture](aeon-cdc/) | Capture and stream changes made to data in the database to external processes, applications, or other databases. |
 | [Disaster recovery](disaster-recovery/) | Fail over to a replica cluster in case of unplanned outages. |
-
-<!--| [Resource governance](resource-governance/) | Manage CPU use between databases during contention, while allowing databases to use available capacity when the cluster is underused. |
--->
 
 ### Pause, resume, and delete clusters
 

@@ -161,4 +161,41 @@ TEST_F(CreateAbortTest, TestAbortIndexCreation) {
   ASSERT_OK(cconn.Execute("DROP TABLE test_create_abort_t3"));
 }
 
+// A colocated index reuses the live colocation-parent tablet, so an aborted creation must leave
+// that tablet intact and usable (#33096, #33258).
+TEST_F(CreateAbortTest, TestAbortColocatedIndexCreation) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE DATABASE colo_db WITH colocation = true"));
+
+  auto cconn = ASSERT_RESULT(ConnectToDB("colo_db"));
+  auto qconn = ASSERT_RESULT(ConnectToDB("colo_db"));
+  auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  ASSERT_OK(cconn.Execute("CREATE TABLE test_create_abort_t1 (k1 int primary key, k2 int)"));
+  ASSERT_OK(cconn.Execute("INSERT INTO test_create_abort_t1 VALUES (1, 10)"));
+
+  for (uint32_t abort_case = 1; abort_case <= 3; ++abort_case) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = abort_case;
+    auto s = cconn.Execute("CREATE INDEX test_create_abort_t1_idx ON test_create_abort_t1 (k2)");
+    ASSERT_NOK(s);
+    ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
+    ASSERT_FALSE(TableExistsInCatalog(cm, "test_create_abort_t1_idx", "colo_db"));
+    ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t1_idx"));
+    ASSERT_FALSE(TableExistsInClientList("test_create_abort_t1_idx"));
+
+    // The colocation-parent tablet must still serve reads and writes.
+    ASSERT_EQ(ASSERT_RESULT(cconn.FetchRow<int32_t>(
+        "SELECT k2 FROM test_create_abort_t1 WHERE k1 = 1")), 10);
+    ASSERT_OK(cconn.Execute("INSERT INTO test_create_abort_t1 VALUES (1000, 1000)"));
+    ASSERT_OK(cconn.Execute("DELETE FROM test_create_abort_t1 WHERE k1 = 1000"));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 0;
+  // Both creating another table in the colocation group and creating the index must still work.
+  ASSERT_OK(cconn.Execute("CREATE TABLE test_after_abort (k int primary key)"));
+  ASSERT_OK(cconn.Execute("CREATE INDEX test_create_abort_t1_idx ON test_create_abort_t1 (k2)"));
+  ASSERT_EQ(ASSERT_RESULT(cconn.FetchRow<int32_t>(
+      "SELECT k2 FROM test_create_abort_t1 WHERE k2 = 10")), 10);
+}
+
 }  // namespace yb

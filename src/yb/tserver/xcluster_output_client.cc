@@ -50,6 +50,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);

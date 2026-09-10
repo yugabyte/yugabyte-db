@@ -639,7 +639,7 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         bool skip_intents_read,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          int targrows,
                          double rstate_w,
                          uint64_t rand_state_s0,
@@ -661,14 +661,14 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
-    bool skip_intents_write,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     YbcPgStatement *handle);
 
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
@@ -684,7 +684,7 @@ YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
@@ -694,7 +694,7 @@ YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
@@ -715,7 +715,7 @@ YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          const YbcPgPrepareParameters *prepare_params,
                          YbcPgTableLocalityInfo locality_info,
-                         bool skip_intents_read,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 // Set forward/backward scan direction.
@@ -785,6 +785,13 @@ bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
+
+// Effective per-RPC response byte cap that pggate applies when the executor
+// doesn't request a smaller limit.  Equals
+// FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio.
+// Used by the cost model to size parallel base-table fetch pages, where
+// yb_fetch_size_limit is forced to 0 at runtime.
+uint64_t YBCGetMaxRpcResponseSize();
 
 // System validation -------------------------------------------------------------------------------
 // Validate whether placement information is theoretically valid. If check_satisfiable is true,
@@ -892,7 +899,7 @@ void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
 
-void YBCCheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt();
 
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.
@@ -1052,6 +1059,10 @@ YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
 YbcStatus YBCPgRegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
+// Publishes the oldest live snapshot read-point serial into session shared memory for tserver
+// history-retention-pin aggregation. Requires pg_client_use_shared_memory.
+void YBCPgPublishOldestReadPointHandle(YbcReadPointHandle handle);
+
 // Records the current statement as a temporary relation DDL statement.
 void YBCRecordTempRelationDDL();
 
@@ -1121,9 +1132,12 @@ YbcStatus YBCResetAutoAnalyzeMutationCounters(
 YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values);
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(
+YbcPgGvScanResult YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid);
+bool YBCPgGlobalViewReadNextRow(YbcPgGlobalViewRead handle, const char **values);
+const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle);
+void YBCPgGlobalViewReadClearScanState(YbcPgGlobalViewRead handle);
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
 
 #ifdef __cplusplus

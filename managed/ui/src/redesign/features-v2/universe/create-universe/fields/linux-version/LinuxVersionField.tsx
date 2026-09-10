@@ -1,7 +1,8 @@
+import { useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
-import { YBSelectField, mui, YBTooltip } from '@yugabyte-ui-library/core';
+import { YBSelectField, mui, YBTag, YBTooltip } from '@yugabyte-ui-library/core';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { ImageBundleType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
@@ -16,7 +17,7 @@ import YBLogo from '@app/redesign/assets/yb-logo-transparent.svg';
 import StarLogo from '@app/redesign/assets/in-use-star.svg';
 import FlagIcon from '@app/redesign/assets/flag-secondary.svg';
 
-const { Box, MenuItem, Typography } = mui;
+const { Box, MenuItem, Typography, useTheme } = mui;
 
 const menuProps = {
   anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
@@ -31,6 +32,7 @@ export const ImageBundleYBActiveTag = ({
   sx?: mui.SxProps<mui.Theme>;
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
+  const theme = useTheme();
 
   return (
     <YBTooltip
@@ -38,22 +40,17 @@ export const ImageBundleYBActiveTag = ({
       arrow
       placement="top"
     >
-      <Box
-        sx={{
-          width: 26,
-          height: 24,
-          px: '6px',
-          py: '2px',
-          backgroundColor: (theme) => theme.palette.grey[200],
-          borderRadius: '4px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          ...sx
-        }}
-      >
-        {icon || <YBLogo width={14} height={14} />}
-      </Box>
+      <span style={{ display: 'flex', marginLeft: 6, alignItems: 'center' }}>
+        <YBTag
+          size="small"
+          customSx={{
+            color: theme.palette.grey[700],
+            backgroundColor: theme.palette.grey[200],
+            border: 'unset'
+          }}
+          startIcon={icon || <YBLogo />}
+        ></YBTag>
+      </span>
     </YBTooltip>
   );
 };
@@ -70,6 +67,7 @@ export const ImageBundleDefaultTag = ({
   sx?: mui.SxProps<mui.Theme>;
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'common' });
+  const theme = useTheme();
 
   return (
     <YBTooltip
@@ -81,26 +79,19 @@ export const ImageBundleDefaultTag = ({
       arrow
       placement="top"
     >
-      <Typography
-        variant="subtitle1"
-        component={'span'}
-        sx={{
-          height: 24,
-          px: '6px',
-          py: '2px',
-          display: 'flex',
-          gap: '4px',
-          backgroundColor: (theme) => theme.palette.grey[200],
-          borderRadius: '4px',
-          alignItems: 'center',
-          justifyContent: 'center',
-          ml: 1,
-          ...sx
-        }}
-      >
-        {icon ? icon : <FlagIcon width="18" />}
-        {text ? text : t('default')}
-      </Typography>
+      <span style={{ display: 'inline-flex', marginLeft: 6, alignItems: 'center' }}>
+        <YBTag
+          size="small"
+          startIcon={icon !== undefined ? icon : <FlagIcon width="18" />}
+          customSx={{
+            color: theme.palette.grey[700],
+            backgroundColor: theme.palette.grey[200],
+            border: 'unset'
+          }}
+        >
+          {text ? text : t('default')}
+        </YBTag>
+      </span>
     </YBTooltip>
   );
 };
@@ -122,16 +113,20 @@ export const LinuxVersionField = ({
     [QUERY_KEY.getLinuxVersions, provider?.uuid, cpuArch],
     () => api.getLinuxVersions(provider?.uuid ?? '', cpuArch),
     {
-      enabled: !!provider?.uuid && !!cpuArch,
-      onSuccess(data) {
-        const selected = data.find((item) => item.uuid === fieldValue);
-        if (!selected && data.length) {
-          const defaultImg = data.find((item) => item.useAsDefault);
-          setValue(LINUX_VERSION_FIELD, defaultImg?.uuid ?? data[0].uuid, { shouldValidate: true });
-        }
-      }
+      enabled: !!provider?.uuid && !!cpuArch
     }
   );
+
+  useEffect(() => {
+    if (!linuxVersions?.length) return;
+    const selected = linuxVersions.find((item) => item.uuid === fieldValue);
+    if (!selected) {
+      const defaultImg = linuxVersions.find((item) => item.useAsDefault);
+      setValue(LINUX_VERSION_FIELD, defaultImg?.uuid ?? linuxVersions[0].uuid, {
+        shouldValidate: true
+      });
+    }
+  }, [linuxVersions, fieldValue, setValue]);
 
   return (
     <Box display="flex" width="100%" data-testid="linuxVersion-Container">
@@ -162,17 +157,9 @@ export const LinuxVersionField = ({
             >
               {version.name}
               {version.metadata?.type === ImageBundleType.YBA_ACTIVE && (
-                <ImageBundleYBActiveTag
-                  icon={<YBLogo />}
-                  sx={{ height: 20, width: 20, ml: 1, display: 'flex', alignItems: 'center' }}
-                />
+                <ImageBundleYBActiveTag icon={<YBLogo width={12} height={12} />} />
               )}
-              {version.useAsDefault && (
-                <ImageBundleDefaultTag
-                  icon={<StarLogo />}
-                  sx={{ height: 20, ml: 1, display: 'flex', alignItems: 'center' }}
-                />
-              )}
+              {version.useAsDefault && <ImageBundleDefaultTag icon={<StarLogo />} />}
             </MenuItem>
           ))}
         </YBSelectField>

@@ -20,6 +20,7 @@ import static org.yb.ysqlconnmgr.PgWireProtocol.*;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -167,6 +168,127 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
       assertEquals("Expected ReadyForQuery after ErrorResponse",
                     BE_READY_FOR_QUERY, msg.type);
 
+      // Conn mgr must got synchronized after RFQ and by ignoring the SYNC
+      // sent in CopyMode.
+
+      out.write(buildQuery("SELECT 1"));
+      out.flush();
+      while (true) {
+        msg = readMessageSkipNotice(in);
+        LOG.info("Received response: {}", msg.typeToString());
+        if (msg.type == BE_READY_FOR_QUERY) {
+          break;
+        }
+      }
+
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
+  /*
+   * Test verifies when in Copy From mode, connection manager ignores mulitple
+   * SYNC packets sent by client and after copy done, it starts processing
+   * SYNC packets sent by client.
+   */
+  @Test
+  public void testCopyFromMultipleSyncsViaExtendedQuery() throws Exception {
+    createCopyTable();
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(TEST_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in  = new DataInputStream(socket.getInputStream());
+
+      // Startup handshake.
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete");
+
+      // Send P + B + E + S for COPY in one flush.
+      // The Sync triggers OD_WAIT_SYNC, pausing the client relay.
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("COPY copytest FROM STDIN"));
+      pipeline.write(buildBind());
+      // Backend has entered COPY mode after EXECUTE.
+      pipeline.write(buildExecute());
+      // It's important to send SYNC to receive any packet from backend.
+      // Postgres wouldn't send RFQ for this sync packet as it goes into
+      // COPY mode.
+      pipeline.write(buildSync());
+      pipeline.write(buildSync());
+      pipeline.write(buildSync());
+      // Only after SYNC, COPYINRESPONSE will be sent by backend.
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent P+B+E+S+S+S for COPY copytest FROM STDIN");
+
+      // Read ParseComplete.
+      PgMessage msg = readMessageSkipNotice(in);
+      LOG.info("Received ParseComplete from backend: {}", msg.typeToString());
+      assertEquals("Expected ParseComplete from backend",
+                    BE_PARSE_COMPLETE, msg.type);
+
+      // Read BindComplete.
+      msg = readMessageSkipNotice(in);
+      LOG.info("Received BindComplete from backend: {}", msg.typeToString());
+      assertEquals("Expected BindComplete from backend",
+                    BE_BIND_COMPLETE, msg.type);
+      // Read CopyInResponse.
+      // Server to client forwarding still works even when relay is paused, so
+      // this message DOES arrive. The deadlock manifests only when we try to
+      // send CopyFail back and wait for the resulting ErrorResponse.
+      msg = readMessageSkipNotice(in);
+      LOG.info("Received CopyInResponse from backend: {}", msg.typeToString());
+      assertEquals(
+          "Expected CopyInResponse",
+          BE_COPY_IN_RESPONSE, msg.type);
+
+      out.write(buildCopyDone());
+      out.write(buildParse("S1", "INSERT INTO copytest VALUES (3, 2, 3)", new int[0]));
+      out.write(buildBind("S1", new String[0]));
+      out.write(buildExecute());
+      out.write(buildSync());
+      out.write(buildBind("S1", new String[0]));
+      out.write(buildExecute());
+      out.write(buildSync());
+      out.flush();
+
+      char expectedTypes[] = {
+        BE_COMMAND_COMPLETE,
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_COMMAND_COMPLETE,
+        BE_READY_FOR_QUERY,
+        BE_BIND_COMPLETE,
+        BE_COMMAND_COMPLETE,
+        BE_READY_FOR_QUERY,
+      };
+
+      for (char expectedType : expectedTypes) {
+        msg = readMessageSkipNotice(in);
+        LOG.info("Received: {}", msg.typeToString());
+        assertEquals("Expected " + expectedType, expectedType, msg.type);
+      }
+
+      // Conn mgr must got synchronized after RFQ and by ignoring the SYNC
+      // sent in CopyMode.
+      out.write(buildQuery("SELECT 1"));
+      out.flush();
+      while (true) {
+        msg = readMessageSkipNotice(in);
+        LOG.info("Received response: {}", msg.typeToString());
+        if (msg.type == BE_READY_FOR_QUERY) {
+          break;
+        }
+      }
+
       out.write(buildTerminate());
       out.flush();
     }
@@ -199,7 +321,11 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
       readUntilReady(in);
       LOG.info("Startup complete");
 
-      // Send P + B + E + S for COPY in one flush.
+      // Send pipeline: P(S1) + B + E + P(COPY) + B + E + SYNC + P(S2) + B + E + SYNC
+      // In this case, first SYNC shouldn't be ignored by conn mgr, as CopyDone
+      // message has already been forwarded to the backend. If ignored, parse queue
+      // would be corrupted and will throw error while dequeueing parse complete packet
+      // for S2 prep stmt name.
       ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
       pipeline.write(buildParse("S1", "INSERT INTO copytest VALUES (3, 2, 3)", new int[0]));
       pipeline.write(buildBind("S1", new String[0]));
@@ -210,10 +336,16 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
       pipeline.write(buildExecute());
       pipeline.write(buildCopyData("3\t2\t3\n"));
       pipeline.write(buildCopyDone());
+      // Conn mgr must pause the relay over here and don't resume until synchronised, as CopyDone
+      // message has already been forwarded to the backend.
+      pipeline.write(buildSync());
+      pipeline.write(buildParse("S2", "SELECT 2", new int[0]));
+      pipeline.write(buildBind("S2", new String[0]));
+      pipeline.write(buildExecute());
       pipeline.write(buildSync());
       out.write(pipeline.toByteArray());
       out.flush();
-      LOG.info("Sent P+B+E+S for COPY copytest FROM STDIN");
+      LOG.info("Sent pipeline: P(S1) + B + E + P(COPY) + B + E + SYNC + P(S2) + B + E + SYNC");
 
       char expectedTypes[] = {
         BE_PARSE_COMPLETE,
@@ -222,6 +354,11 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
         BE_PARSE_COMPLETE,
         BE_BIND_COMPLETE,
         BE_COPY_IN_RESPONSE,
+        BE_COMMAND_COMPLETE,
+        BE_READY_FOR_QUERY,
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_DATA_ROW,
         BE_COMMAND_COMPLETE,
         BE_READY_FOR_QUERY,
       };
@@ -441,7 +578,7 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
    */
 
   @Test
-  public void testCopyToCopyFromViaExtendedQuery() throws Exception {
+  public void testCopyToCopyFromSyncViaExtendedQuery() throws Exception {
     createCopyTable();
 
     InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
@@ -484,6 +621,7 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
       pipeline.write(buildParse("COPY copytest FROM STDIN"));
       pipeline.write(buildBind());
       pipeline.write(buildExecute());
+      pipeline.write(buildSync());
       pipeline.write(buildCopyData("3\t2\t3\n"));
       pipeline.write(buildCopyDone());
       pipeline.write(buildParse("S2", "SELECT 2", new int[0]));

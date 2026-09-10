@@ -55,7 +55,7 @@ void RemoveIntentsTask::Run() {
 
 void RemoveIntentsTask::Done(const Status& status) {
   if (!status.ok()) {
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << "Remove intents task failed: " << status;
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1) << "Remove intents task failed: " << status;
   }
   transaction_.reset();
 }

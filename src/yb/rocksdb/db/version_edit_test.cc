@@ -69,8 +69,6 @@ void SetupVersionEdit(VersionEdit* edit) {
 }
 
 TEST_F(VersionEditTest, EncodeDecode) {
-  static const uint32_t kBig32Bit = 1ull << 30;
-
   VersionEdit edit;
   for (int i = 0; i < 4; i++) {
     TestEncodeDecode(edit);
@@ -78,8 +76,9 @@ TEST_F(VersionEditTest, EncodeDecode) {
     auto largest = MakeFileBoundaryValues("zoo", kBig + 600 + i, kTypeDeletion);
     smallest.user_values.push_back(test::MakeLeftBoundaryValue("left"));
     largest.user_values.push_back(test::MakeRightBoundaryValue("right"));
+    // path_id must be in [0, kMaxPathId]; vary it to exercise non-zero path_id in MANIFEST.
     edit.AddTestFile(3,
-                     FileDescriptor(kBig + 300 + i, kBig32Bit + 400 + i, 0, 0),
+                     FileDescriptor(kBig + 300 + i, static_cast<uint32_t>(i + 1), 0, 0),
                      smallest,
                      largest,
                      false);
@@ -189,6 +188,47 @@ TEST_F(VersionEditTest, EncodeEmptyFile) {
                    false);
   std::string buffer;
   ASSERT_TRUE(!edit.AppendEncodedTo(&buffer));
+}
+
+// Tiered storage: 5-bit path_id (32 paths) / 59-bit file number split.
+// Verify constants and that GetPathId()/GetNumber() round-trip for every legal path_id value.
+TEST_F(VersionEditTest, PathIdPacking) {
+  static_assert(kFilePathIdBits == 5);
+  static_assert(kFileNumberBits == 59);
+  ASSERT_EQ(kMaxPathId, 31u);
+  ASSERT_EQ(kFileNumberMask, 0x07FFFFFFFFFFFFFFull);
+
+  const uint64_t kSampleNumbers[] = {0, 1, 100, 1ull << 40, kFileNumberMask};
+  for (uint32_t path_id = 0; path_id <= kMaxPathId; ++path_id) {
+    for (uint64_t number : kSampleNumbers) {
+      FileDescriptor fd(number, path_id, /*total_file_size=*/128, /*base_file_size=*/64);
+      ASSERT_EQ(fd.GetNumber(), number)  << "path_id=" << path_id;
+      ASSERT_EQ(fd.GetPathId(), path_id) << "number="  << number;
+    }
+  }
+}
+
+// path_id 31 (kMaxPathId) must survive a MANIFEST encode to decode round-trip, since number and
+// path_id are stored as separate proto fields in NewFilePB.
+TEST_F(VersionEditTest, EncodeDecodeHighPathId) {
+  VersionEdit edit;
+  edit.AddTestFile(3,
+                   FileDescriptor(300, kMaxPathId, 100, 30),
+                   MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
+                   MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
+                   false);
+  SetupVersionEdit(&edit);
+  TestEncodeDecode(edit);
+
+  auto extractor = test::MakeBoundaryValuesExtractor();
+  std::string encoded;
+  edit.AppendEncodedTo(&encoded);
+  VersionEdit parsed;
+  ASSERT_OK(parsed.DecodeFrom(extractor.get(), encoded));
+  const auto& files = parsed.GetNewFiles();
+  ASSERT_EQ(1u, files.size());
+  ASSERT_EQ(kMaxPathId, files[0].second.fd.GetPathId());
+  ASSERT_EQ(300u,       files[0].second.fd.GetNumber());
 }
 
 TEST_F(VersionEditTest, ColumnFamilyTest) {

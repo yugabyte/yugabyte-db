@@ -27,6 +27,15 @@ import org.mockito.Mock;
 import play.inject.guice.GuiceApplicationBuilder;
 
 public class UniverseUtilitiesTest extends UniverseControllerTestBase {
+
+  // Binds a per-method @Mock (recreated by the MockitoRule each method) into the application, so
+  // the
+  // application must be rebuilt per method - it cannot be reused across the class' methods.
+  @Override
+  protected boolean reusableApplication() {
+    return false;
+  }
+
   private Customer customer;
   private Users user;
   private String authToken;

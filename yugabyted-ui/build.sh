@@ -266,9 +266,6 @@ log "Building Go Backend"
 cd "$API_SERVER_DIR"
 rm -f "${OUT_FILE}"
 
-# Make double sure that the Linuxbrew bin directory is not in the path and Go cannot use the ld
-# linker executable from that directory.
-remove_linuxbrew_bin_from_path
 export PATH=/usr/bin:$PATH
 
 log "Building Go binary..."

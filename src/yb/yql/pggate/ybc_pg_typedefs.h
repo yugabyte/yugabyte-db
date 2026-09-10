@@ -69,6 +69,9 @@ YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
 
+// Handle to a live distributed-trace span for a single executor plan node.
+YB_DEFINE_HANDLE_TYPE(OtelNodeSpan);
+
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
 #define YBC_STATUS_ERROR  (-1)
@@ -210,7 +213,9 @@ typedef enum {
 typedef enum {
   kLowerPriorityRange,
   kHigherPriorityRange,
-  kHighestPriority
+  kHighestPriority,
+  // Pre-empted by any conflicting transaction, whichever priority range it belongs to.
+  kLowestPriority
 } YbcTxnPriorityRequirement;
 
 // Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
@@ -303,6 +308,10 @@ typedef struct YbcPgExecOutParamValue {
 #endif
 } YbcPgExecOutParamValue;
 
+// Value of a rowmark field when no row mark is set.  A sentinel outside
+// RowMarkType is needed because 0 is a valid value (ROW_MARK_EXCLUSIVE).
+#define YBC_NO_ROW_MARK (-1)
+
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
   // TODO(neil) Move forward_scan flag here.
@@ -328,7 +337,7 @@ typedef struct YbcPgExecParameters {
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
-  int rowmark = -1;
+  int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
   // Please see the WaitPolicy enum in common.proto for details.
@@ -380,14 +389,25 @@ typedef struct {
   int collation_id;
 } YbcPgAttrValueDescriptor;
 
+// What the auxiliary value of a wait event holds, see YBCGetWaitEventAuxKind.
+typedef enum {
+  YB_ASH_AUX_NONE = 0,
+  // ash::PggateRPC value.
+  YB_ASH_AUX_PGGATE_RPC,
+  // OID of the relation which is read or written.
+  YB_ASH_AUX_RELATION_OID,
+} YbcAshAuxKind;
+
 typedef struct {
   uint32_t wait_event;
-  uint16_t rpc_code;
+  // Zero when the wait event has no auxiliary value. ash::PggateRPC::kNoRPC and kInvalidOid
+  // are both zero, so zero is also the unset value of either kind.
+  uint32_t aux;
 } YbcWaitEventInfo;
 
 typedef struct {
   uint32_t* wait_event;
-  uint16_t* rpc_code;
+  uint32_t* aux;
 } YbcWaitEventInfoPtr;
 
 typedef struct {
@@ -404,8 +424,7 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
-  /* CHECK_FOR_INTERRUPTS */
-  void (*CheckForInterrupts)();
+  bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
 } YbcPgCallbacks;
@@ -488,7 +507,9 @@ typedef struct {
   uint64_t read_ops;
   uint64_t writes;
   uint64_t read_wait;
+  // Rows the storage layer read (see PgsqlRequestMetricsPB).
   uint64_t rows_scanned;
+  // Rows the storage layer returned.
   uint64_t rows_received;
 } YbcPgExecReadWriteStats;
 
@@ -733,6 +754,7 @@ typedef struct {
   YbcPgRowMessage* rows;
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
+  bool explicit_alter_publication_detected;
 } YbcPgChangeRecordBatch;
 
 typedef struct {
@@ -809,7 +831,9 @@ typedef struct {
   // those RPCs. This will always be 0 for PG samples
   int64_t rpc_request_id;
 
-  // Auxiliary information about the sample.
+  // Auxiliary information about the sample, truncated to 15 characters. A TServer sample
+  // stores a tablet or table id. A PG sample stores the associated info based on the
+  // wait event in string format.
   char aux_info[16];
 
   // 32-bit wait event code of the sample.
@@ -892,6 +916,8 @@ typedef struct {
   const char** replicas;
   size_t replicas_count;
   bool is_hash_partitioned;
+  const char* tablet_state;
+  YbcPgOid pg_table_oid;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {
@@ -1078,6 +1104,35 @@ typedef struct {
   YbcPgOid tablespace_oid;
 } YbcPgTableLocalityInfo;
 
+// Decisions about the skip intents optimization for one operation on a relation. The optimization
+// applies only to a relation created, or with its storage swapped, in the current transaction, and
+// only while yb_enable_new_relation_fastpath_write is on. The two fields answer different
+// questions and must not be collapsed into one:
+//
+// - skip_intents: this operation bypasses the intents db. For a write that means the row goes
+//   straight to the regular db; for a read it means the intents db is not consulted, which is
+//   sound only because every write to the relation so far went to the regular db too. It depends
+//   on transaction state (nesting level, savepoints, whether the optimization was already
+//   disabled), so it can turn off partway through a transaction.
+//
+// - read_at_in_txn_limit: this operation must read at the statement's in_txn_limit rather than at
+//   the transaction read time. It depends only on the relation, so it holds for the whole
+//   transaction and stays set after skip_intents turns off. That is the point of keeping it
+//   separate: rows an earlier skip intents write put in the regular db sit above the transaction
+//   read time, and only a read at the in_txn_limit still sees them.
+//
+// Both are false for a relation the optimization can never apply to -- a colocated, temp or system
+// relation stays false even when it was created in the current transaction.
+//
+// skip_intents implies read_at_in_txn_limit.
+typedef struct {
+  bool skip_intents;
+  bool read_at_in_txn_limit;
+} YbcPgSkipIntentsOptimizationInfo;
+
+// For relations the optimization can never apply to, such as system catalogs.
+#define YB_SKIP_INTENTS_OPTIMIZATION_INFO_NONE ((YbcPgSkipIntentsOptimizationInfo){false, false})
+
 // Merge sort key information
 typedef struct {
   // Position of the merge sort column in the index
@@ -1087,17 +1142,6 @@ typedef struct {
   int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
   void *sortstate;
 } YbcSortKey;
-
-typedef struct {
-  // We cannot use the PGresult symbol inside pggate because of circular dependency.
-  // So the response PB is stored in this uint8_t* and later converted to PGresult.
-  uint8_t* pgresult;
-  size_t pgresult_size;
-  // Human-readable error description when the remote query failed.
-  // NULL when the query succeeded. Owned by PgGlobalViewRead and valid
-  // until the next ExecScan call on the same handle.
-  const char* error_message;
-} YbcRemotePgExecResult;
 
 typedef struct YbcCloudInfo {
   const char *cloud;
@@ -1118,6 +1162,12 @@ typedef struct YbcIsExplicitlyLockedRowSkippedCheckHandleOptional {
   bool has_value;
   YbcIsExplicitlyLockedRowSkippedCheckHandle value;
 } YbcIsExplicitlyLockedRowSkippedCheckHandleOptional;
+
+typedef struct {
+  int num_rows;
+  int num_cols;
+  bool reached_size_limit;
+} YbcPgGvScanResult;
 
 #ifdef __cplusplus
 }  // extern "C"

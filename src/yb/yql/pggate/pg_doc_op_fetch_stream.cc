@@ -411,9 +411,19 @@ Result<DocResult*> MergingPgDocOpFetchStream<R>::NextDocResult() {
     DCHECK(current_stream_ == nullptr);
     while (true) {
       size_t num_not_ready = 0;
-      for (const auto& stream : read_streams_) {
-        if (stream.FetchStatus() == StreamFetchStatus::kNeedsFetch) {
-          ++num_not_ready;
+      for (auto it = read_streams_.begin(); it != read_streams_.end();) {
+        switch (it->FetchStatus()) {
+          case StreamFetchStatus::kNeedsFetch:
+            ++num_not_ready;
+            FALLTHROUGH_INTENDED;
+          case StreamFetchStatus::kHasLocalData:
+            ++it;
+            break;
+          case StreamFetchStatus::kDone:
+            it = read_streams_.erase(it);  // erase returns the next valid iterator
+            break;
+          default:
+            LOG(FATAL) << "Invalid stream fetch status: " << it->FetchStatus();
         }
       }
       if (num_not_ready == 0) {

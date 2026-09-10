@@ -41,6 +41,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/multi_drive_test_env.h"
+#include "yb/util/status_format.h"
 
 METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
 METRIC_DECLARE_event_stats(load_balancer_duration);

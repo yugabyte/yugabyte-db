@@ -1,14 +1,15 @@
-import { omit } from 'lodash';
+import { omit, isEmpty } from 'lodash';
 import { TFunction } from 'i18next';
 import { createUniverseFormProps } from '../CreateUniverseContext';
-import { ResilienceType } from '../steps/resilence-regions/dtos';
+import { ResilienceFormMode, ResilienceType } from '../steps/resilence-regions/dtos';
 import { OtherAdvancedProps } from '../steps/advanced-settings/dtos';
 import {
   CommunicationPortsSpec,
   PlacementRegion,
   UniverseCreateReqBody,
   ClusterNetworkingSpecAllOfEnableExposingService,
-  EncryptionInTransitSpec
+  EncryptionInTransitSpec,
+  ClusterPlacementSpec
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ClusterType } from '../../../../helpers/dtos';
@@ -16,6 +17,11 @@ import { SecuritySettingsProps, CertType } from '../steps/security-settings/dtos
 import { getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { getNodeCount, getPlacementRegions } from './placementAndAvailability';
 import { effectiveUseDedicatedNodes, getNodeSpec } from './createUniverseNodeSpec';
+import {
+  DEFAULT_CONNECTION_POOLING_PORTS,
+  shouldKeepCustomInternalYsqlPort
+} from '../helpers/syncConnectionPoolingPorts';
+import { DEFAULT_COMMUNICATION_PORTS } from '../helpers/constants';
 
 export const getCreateEITPayload = (
   securitySettings: SecuritySettingsProps,
@@ -25,6 +31,7 @@ export const getCreateEITPayload = (
     securitySettings;
   if (cloudType === CloudType.kubernetes) {
     return {
+      root_and_client_root_ca_same: true,
       enable_node_to_node_encrypt: securitySettings?.enableNodeToNodeEncryption ? true : false,
       enable_client_to_node_encrypt: securitySettings?.enableClientToNodeEncryption ? true : false,
       root_ca: securitySettings?.enableNodeToNodeEncryption
@@ -49,6 +56,7 @@ export const getCreateEITPayload = (
       certTypeNtoN
     } = securitySettings;
     return {
+      root_and_client_root_ca_same: useSameCertificate,
       enable_node_to_node_encrypt: useSameCertificate
         ? enableBothEncryption
           ? true
@@ -77,7 +85,9 @@ export const getCreateEITPayload = (
   }
 };
 
-const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): CommunicationPortsSpec => {
+export const mapCommunicationPorts = (
+  otherSettings: Partial<OtherAdvancedProps>
+): CommunicationPortsSpec => {
   return {
     master_http_port: otherSettings.masterHttpPort,
     master_rpc_port: otherSettings.masterRpcPort,
@@ -90,7 +100,8 @@ const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): Communication
     redis_server_http_port: otherSettings.redisServerHttpPort,
     redis_server_rpc_port: otherSettings.redisServerRpcPort,
     node_exporter_port: otherSettings.nodeExporterPort,
-    yb_controller_rpc_port: otherSettings.ybControllerrRpcPort
+    yb_controller_rpc_port: otherSettings.ybControllerRpcPort,
+    internal_ysql_server_rpc_port: otherSettings.internalYsqlServerRpcPort
   };
 };
 
@@ -106,17 +117,18 @@ export const mapGFlags = (
     tserver: {}
   };
   gflags.forEach((gflag) => {
-    if (gflag.MASTER) {
-      gflagsMap.master[gflag.Name] = gflag.MASTER.toString();
+    // Keep falsy values (0, false, ""); truthy checks would drop them.
+    if (Object.hasOwn(gflag, 'MASTER')) {
+      gflagsMap.master[gflag.Name] = String(gflag.MASTER);
     }
-    if (gflag.TSERVER) {
-      gflagsMap.tserver[gflag.Name] = gflag.TSERVER.toString();
+    if (Object.hasOwn(gflag, 'TSERVER')) {
+      gflagsMap.tserver[gflag.Name] = String(gflag.TSERVER);
     }
   });
   return gflagsMap;
 };
 
-function buildPrimaryCloudList(
+export function buildPrimaryCloudList(
   generalSettings: NonNullable<createUniverseFormProps['generalSettings']>,
   regionList: PlacementRegion[]
 ) {
@@ -129,6 +141,25 @@ function buildPrimaryCloudList(
     }
   ];
 }
+
+export const constructPlacements = (formValues: createUniverseFormProps): ClusterPlacementSpec => {
+  const { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings } = formValues;
+  if (!generalSettings || !resilienceAndRegionsSettings || !nodesAvailabilitySettings) {
+    throw new Error('Missing required form values to consturct placement spec');
+  }
+
+  const regionList: PlacementRegion[] = getPlacementRegions(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings.availabilityZones,
+    nodesAvailabilitySettings
+  );
+
+  const primaryCloudList = buildPrimaryCloudList(generalSettings, regionList);
+
+  return {
+    cloud_list: primaryCloudList
+  };
+};
 
 export const mapCreateUniversePayload = (
   formValues: createUniverseFormProps
@@ -182,7 +213,6 @@ export const mapCreateUniversePayload = (
         kms_config_uuid: securitySettings.kmsConfig
       },
       encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType!),
-      use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
         ...omit(databaseSettings.ycql, 'confirm_pwd')
       },
@@ -193,8 +223,24 @@ export const mapCreateUniversePayload = (
       networking_spec: {
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
-        communication_ports: mapCommunicationPorts(otherAdvancedSettings),
+        communication_ports: mapCommunicationPorts(
+          // K8s does not support custom deployment ports — always send defaults.
+          providerType === CloudType.kubernetes
+            ? DEFAULT_COMMUNICATION_PORTS
+            : {
+                ...otherAdvancedSettings,
+                // Custom Internal YSQL applies while CP is on. Turning CP off resets it to default.
+                ...(!shouldKeepCustomInternalYsqlPort(databaseSettings, providerType) && {
+                  internalYsqlServerRpcPort:
+                    DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+                })
+              }
+        ),
         enable_ipv6: securitySettings.enableIPV6 ?? false
+      },
+      universe_settings: {
+        expert_mode:
+          resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.EXPERT_MODE
       },
       clusters: [
         {
@@ -270,7 +316,14 @@ export const mapCreateUniversePayload = (
             region_list: regionList.map((r) => r.uuid!),
             image_bundle_uuid: instanceSettings.imageBundleUUID!,
             access_key_code: otherAdvancedSettings.accessKeyCode,
-            aws_instance_profile: otherAdvancedSettings.awsArnString
+            aws_instance_profile: otherAdvancedSettings.awsArnString,
+            ...(providerType === CloudType.kubernetes &&
+              !isEmpty(otherAdvancedSettings.universeOverrides) && {
+                helm_overrides: otherAdvancedSettings.universeOverrides,
+                ...(!isEmpty(otherAdvancedSettings.azOverrides) && {
+                  az_helm_overrides: otherAdvancedSettings.azOverrides
+                })
+              })
           }
         }
       ]
@@ -280,12 +333,60 @@ export const mapCreateUniversePayload = (
   return payload;
 };
 
+export const mapPortsKeys: any = () => {
+  return {
+    master_http_port: 'masterHttpPort',
+    master_rpc_port: 'masterRpcPort',
+    tserver_http_port: 'tserverHttpPort',
+    tserver_rpc_port: 'tserverRpcPort',
+    yql_server_http_port: 'yqlServerHttpPort',
+    yql_server_rpc_port: 'yqlServerRpcPort',
+    ysql_server_http_port: 'ysqlServerHttpPort',
+    ysql_server_rpc_port: 'ysqlServerRpcPort',
+    internal_ysql_server_rpc_port: 'internalYsqlServerRpcPort',
+    redis_server_http_port: 'redisServerHttpPort',
+    redis_server_rpc_port: 'redisServerRpcPort',
+    node_exporter_port: 'nodeExporterPort',
+    yb_controller_rpc_port: 'ybControllerRpcPort'
+  };
+};
+
+export const mapAPIPortsKeys: any = () => {
+  return {
+    masterHttpPort: 'master_http_port',
+    masterRpcPort: 'master_rpc_port',
+    tserverHttpPort: 'tserver_http_port',
+    tserverRpcPort: 'tserver_rpc_port',
+    yqlServerHttpPort: 'yql_server_http_port',
+    yqlServerRpcPort: 'yql_server_rpc_port',
+    ysqlServerHttpPort: 'ysql_server_http_port',
+    ysqlServerRpcPort: 'ysql_server_rpc_port',
+    redisServerHttpPort: 'redis_server_http_port',
+    redisServerRpcPort: 'redis_server_rpc_port',
+    internalYsqlServerRpcPort: 'internal_ysql_server_rpc_port',
+    nodeExporterPort: 'node_exporter_port',
+    ybControllerrRpcPort: 'yb_controller_rpc_port',
+    ybControllerRpcPort: 'yb_controller_rpc_port'
+  };
+};
+
+export const mapAPIPortValues = (communicationPorts: Partial<CommunicationPortsSpec>) => {
+  const portsObj: any = {};
+  Object.entries(communicationPorts).forEach(([key, val]) => {
+    if (mapPortsKeys()[key]) {
+      portsObj[`${mapPortsKeys()[key]}`] = val;
+    }
+  });
+  return portsObj;
+};
+
 export const getAccessiblePorts = (
   enableYSQL: boolean | undefined,
   enableYCQL: boolean | undefined,
   providerCode: string,
   enableCP: boolean | undefined,
-  t: TFunction
+  t: TFunction,
+  isEditMode = false
 ) => {
   const MASTER_PORTS = [
     { id: 'masterHttpPort', visible: true, disabled: false },
@@ -301,40 +402,42 @@ export const getAccessiblePorts = (
     {
       id: 'yqlServerHttpPort',
       visible: enableYCQL,
-      disabled: false
+      disabled: isEditMode
     },
     {
       id: 'yqlServerRpcPort',
       visible: enableYCQL, //ycqlEnabled,
-      disabled: false
+      disabled: isEditMode
     }
   ].filter((ports) => ports.visible);
 
   const YSQL_PORTS = [
-    { id: 'ysqlServerHttpPort', visible: enableYSQL, disabled: false }, //visible: ysqlEnabled,
+    { id: 'ysqlServerHttpPort', visible: enableYSQL, disabled: isEditMode }, //visible: ysqlEnabled,
     {
       id: 'ysqlServerRpcPort',
       visible: enableYSQL,
-      disabled: providerCode === CloudType.kubernetes
+      disabled: isEditMode || providerCode === CloudType.kubernetes,
+      helperText: true
     },
     {
       id: 'internalYsqlServerRpcPort',
       visible: enableYSQL && enableCP,
-      disabled: providerCode === CloudType.kubernetes
+      disabled: isEditMode || providerCode === CloudType.kubernetes,
+      helperText: true
     }
   ].filter((ports) => ports.visible);
 
   const REDIS_PORTS = [
-    { id: 'redisServerHttpPort', visible: false, disabled: false },
-    { id: 'redisServerRpcPort', visible: false, disabled: false }
+    { id: 'redisServerHttpPort', visible: false, disabled: isEditMode },
+    { id: 'redisServerRpcPort', visible: false, disabled: isEditMode }
   ];
 
   const OTHER_PORTS = [
-    { id: 'nodeExporterPort', visible: providerCode !== CloudType.onprem, disabled: false }, //visible: provider?.code !== CloudType.onprem,
+    { id: 'nodeExporterPort', visible: providerCode !== CloudType.onprem, disabled: false },
     {
       id: 'ybControllerRpcPort',
       visible: true,
-      disabled: false
+      disabled: isEditMode
     }
   ];
 
@@ -372,4 +475,23 @@ export const getAccessiblePorts = (
   ].filter((pg) => pg.visible);
 
   return PORT_GROUPS;
+};
+
+/** Port field names currently shown in Deployment Ports (same set the UI renders). */
+export const getCommunicationPortFieldIds = (
+  enableYSQL: boolean | undefined,
+  enableYCQL: boolean | undefined,
+  providerCode: string,
+  enableCP: boolean | undefined,
+  isEditMode = false
+): string[] => {
+  const identityT = ((key: string) => key) as TFunction;
+  return getAccessiblePorts(
+    enableYSQL,
+    enableYCQL,
+    providerCode,
+    enableCP,
+    identityT,
+    isEditMode
+  ).flatMap((pg) => pg.PORTS_LIST.map((port: { id: string }) => port.id));
 };

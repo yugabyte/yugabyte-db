@@ -3,11 +3,13 @@ exporters:
   awss3/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSS3Exporter
     marshaler: otlp_json
     s3uploader: {disable_ssl: false, file_prefix: yb-otel-, region: us-west2, s3_bucket: bucket,
-      s3_force_path_style: false, s3_partition: minute, s3_prefix: yb-logs/}
+      s3_force_path_style: false, s3_partition_format: year=%Y/month=%m/day=%d/hour=%H/minute=%M,
+      s3_prefix: yb-logs/}
   awss3/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSS3Exporter
     marshaler: otlp_json
     s3uploader: {disable_ssl: false, file_prefix: yb-otel-, region: us-west2, s3_bucket: bucket,
-      s3_force_path_style: false, s3_partition: minute, s3_prefix: yb-logs/}
+      s3_force_path_style: false, s3_partition_format: year=%Y/month=%m/day=%d/hour=%H/minute=%M,
+      s3_prefix: yb-logs/}
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
     compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
@@ -17,12 +19,21 @@ processors:
   attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
-    - {action: upsert, key: yugabyte.node_name, value: test-node}
-    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: node_name, value: test-node}
+    - {action: upsert, key: node_address, value: 127.0.0.1}
+    - {action: upsert, key: node_prefix, value: yb-tc-test-universe}
+    - {action: upsert, key: node_region, value: ''}
+    - {action: upsert, key: node_az, value: ''}
+    - {action: upsert, key: node_cluster_type, value: PRIMARY}
+    - {action: upsert, key: node_cloud, value: ''}
+    - {action: upsert, key: export_purpose, value: S3_LOG_EXPORT}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
-    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.region, value: ''}
     - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.purpose, value: S3_LOG_EXPORT}
     - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
     - {action: delete, key: log.file.name}
@@ -55,12 +66,21 @@ processors:
   attributes/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
-    - {action: upsert, key: yugabyte.node_name, value: test-node}
-    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: node_name, value: test-node}
+    - {action: upsert, key: node_address, value: 127.0.0.1}
+    - {action: upsert, key: node_prefix, value: yb-tc-test-universe}
+    - {action: upsert, key: node_region, value: ''}
+    - {action: upsert, key: node_az, value: ''}
+    - {action: upsert, key: node_cluster_type, value: PRIMARY}
+    - {action: upsert, key: node_cloud, value: ''}
+    - {action: upsert, key: export_purpose, value: S3_QUERY_LOG_EXPORT}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
-    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.region, value: ''}
     - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.purpose, value: S3_QUERY_LOG_EXPORT}
     - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
     - {action: delete, key: log.file.name}
@@ -97,11 +117,12 @@ receivers:
         \d{2}:\d{2}:\d{2} \w{3})[ ][|][ ]([^ ]+)[ ][:][ ])'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body not matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"', type: filter}
+      expr: 'body not matches "^.*\\w+:  (?:[0-9A-Z]{5}: )?AUDIT:(.|\\n|\\r|\\s)*$"',
+      type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop
       regex: '(?P<timestamp_without_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w{3})[
-        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
+        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):  (?:[0-9A-Z]{5}: )?AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
       timestamp: {layout: '%Y-%m-%d %H:%M:%S %Z', parse_from: attributes.timestamp_without_ms}
       type: regex_parser
     start_at: beginning
@@ -114,7 +135,8 @@ receivers:
         \d{2}:\d{2}:\d{2} \w{3})[ ][|][ ]([^ ]+)[ ][:][ ])'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"', type: filter}
+      expr: 'body matches "^.*\\w+:  (?:[0-9A-Z]{5}: )?AUDIT:(.|\\n|\\r|\\s)*$"',
+      type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
       expr: body matches "unable to find pgstat entry for abnormally terminated PID",
       type: filter}
@@ -144,4 +166,9 @@ service:
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
-    metrics: {address: '0.0.0.0:8889'}
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
+              without_units: true}

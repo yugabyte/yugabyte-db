@@ -21,7 +21,7 @@ You can connect to the database on a universe in the following ways:
 
 ## Download the universe certificate
 
-If the universe uses Client-to-Node encryption in transit, to connect you need to first download the universe TLS certificate. Do the following:
+If the universe uses Client-to-Node encryption in transit and [automatically generated certificates](../../security/enable-encryption-in-transit/auto-certificate/), to connect you need to first download the universe TLS certificate. Do the following:
 
 1. Navigate to **Integrations > Security > Encryption in Transit**.
 
@@ -31,11 +31,13 @@ If the universe uses Client-to-Node encryption in transit, to connect you need t
 
     This downloads the `root.crt` file.
 
+If you are using [custom self- or CA-signed certificates](../../security/enable-encryption-in-transit/add-certificate-self/), use the certificate you added to YugabyteDB Anywhere to connect. You cannot download these certificates from YugabyteDB Anywhere.
+
 For information on connecting using a client shell using this certificate, see [Connect from your desktop](#connect-from-your-desktop).
 
 To use TLS to connect an application, refer to the [driver documentation](/stable/develop/drivers-orms/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
-If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](/stable/develop/drivers-orms/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](/stable/develop/drivers-orms/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) after obtaining your root certificate.
 
 ## Connect to a universe node
 
@@ -128,7 +130,9 @@ curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runt
 
 - If you are using [ysqlsh](../../../api/ysqlsh/) or [ycqlsh](../../../api/ycqlsh/), ensure you are running the latest versions of the shells.
 
-- If your universe has Client-to-Node encryption in transit enabled, you need to [download the certificate](#download-the-universe-certificate) to your computer.
+- If your universe has Client-to-Node encryption in transit enabled and [automatically generated certificates](../../security/enable-encryption-in-transit/auto-certificate/), [download the certificate](#download-the-universe-certificate) to your computer.
+
+- If you are using [custom self- or CA-signed certificates](../../security/enable-encryption-in-transit/add-certificate-self/), use the root certificate you added to YugabyteDB Anywhere.
 
 - The host address of an endpoint on your universe.
 
@@ -177,7 +181,7 @@ Replace the following:
 - `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
 - `<DB USER>` with your database username.
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
-- `<ROOT_CERT_PATH>` with the path to the universe root certificate you downloaded to your computer.
+- `<ROOT_CERT_PATH>` with the path to the root certificate.
 
 To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](/stable/develop/sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
 
@@ -199,7 +203,7 @@ Replace the following:
 
 - `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
 - `<DB USER>` with your database username.
-- `<ROOT_CERT_PATH>` with the path to the universe root certificate you downloaded to your computer.
+- `<ROOT_CERT_PATH>` with the path to the root certificate.
 
   </div>
 
@@ -220,7 +224,7 @@ Replace the following:
 - `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
 - `<DB USER>` with your database username.
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
-- `<ROOT_CERT_PATH>` with the path to the universe root certificate you downloaded to your computer.
+- `<ROOT_CERT_PATH>` with the path to the root certificate.
 
   </div>
 
@@ -237,7 +241,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 - **database** name; the default YSQL database is yugabyte.
 - **username** and **password** of a user with permissions for the database; the default admin user is `yugabyte` (YSQL) or `cassandra` (YCQL).
 
-Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
+Your client may also require the root certificate. If your universe uses [automatically generated certificates](../../security/enable-encryption-in-transit/auto-certificate/), [download the certificate](#download-the-universe-certificate). If you are using [custom self- or CA-signed certificates](../../security/enable-encryption-in-transit/add-certificate-self/), use the root certificate you added to YugabyteDB Anywhere.
 
 For information on using popular third-party tools with YugabyteDB, see [Third party tools](/stable/integrations/tools/).
 

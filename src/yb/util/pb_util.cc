@@ -73,6 +73,7 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 
@@ -136,10 +137,10 @@ DEFINE_NON_RUNTIME_uint64(rpc_max_message_size, 255_MB,
 namespace {
 bool RpcMaxMessageSizeValidator(const char* flag_name, uint64 value) {
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
-  if (std::cmp_less_equal(value, FLAGS_consensus_max_batch_size_bytes + 1_KB)) {
+  if (std::cmp_less_equal(value, FINAL_FLAG_VALUE(consensus_max_batch_size_bytes) + 1_KB)) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "Must be greater than consensus_max_batch_size_bytes + 1KB "
-        << "(value: " << FLAGS_consensus_max_batch_size_bytes + 1_KB << ")";
+        << "(value: " << FINAL_FLAG_VALUE(consensus_max_batch_size_bytes) + 1_KB << ")";
     return false;
   }
 
@@ -161,10 +162,10 @@ TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 namespace {
 bool ConsensusBatchSizeValidator(const char* flag_name, uint64 value) {
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
-  if (std::cmp_greater_equal(value + 1_KB, FLAGS_rpc_max_message_size)) {
+  if (std::cmp_greater_equal(value + 1_KB, FINAL_FLAG_VALUE(rpc_max_message_size))) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "consensus_max_batch_size_bytes + 1KB must be less than rpc_max_message_size "
-        << "(value: " << FLAGS_rpc_max_message_size << ")";
+        << "(value: " << FINAL_FLAG_VALUE(rpc_max_message_size) << ")";
     return false;
   }
   return true;

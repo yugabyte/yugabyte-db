@@ -42,7 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -188,6 +188,39 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     checkAndWaitForTask(result);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
 
+    for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
+      assertEquals(NodeDetails.NodeState.Live, details.state);
+    }
+    verifyUniverseState(universe);
+  }
+
+  @Test
+  public void testReplaceStoppedNodeInUniverse() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = getGFlags();
+    Universe universe = createUniverse(userIntent);
+    NodeDetails nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    verifyUniverseState(universe);
+
+    String nodeName = nodeDetails.nodeName;
+    NodeActionFormData formData = new NodeActionFormData();
+    formData.nodeAction = NodeActionType.STOP;
+    Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
+    checkAndWaitForTask(result);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
+      if (details.nodeName.equals(nodeName)) {
+        assertEquals(NodeDetails.NodeState.Stopped, details.state);
+      } else {
+        assertEquals(NodeDetails.NodeState.Live, details.state);
+      }
+    }
+
+    formData.nodeAction = NodeActionType.REPLACE;
+    result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
+    checkAndWaitForTask(result);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
       assertEquals(NodeDetails.NodeState.Live, details.state);
     }
@@ -508,7 +541,7 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
     checkAndWaitForTask(result);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    try (YBClient client =
+    try (YBClientApi client =
         ybClientService.getClient(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
       assertFalse(universe.getNode(nodeName).isTserver);

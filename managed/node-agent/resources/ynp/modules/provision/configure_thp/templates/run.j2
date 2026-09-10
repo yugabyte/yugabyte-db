@@ -37,8 +37,8 @@ systemctl --no-pager status ${unit_filename}
 status=$(systemctl show yb-enable-transparent-huge-pages.service \
     --property=ExecMainStatus,ActiveState)
 
-exec_main_status=$(echo "$status" | grep ExecMainStatus | cut -d= -f2)
-active_state=$(echo "$status" | grep ActiveState | cut -d= -f2)
+exec_main_status=$(echo "$status" | grep "ExecMainStatus" | cut -d= -f2 | tr -d '[:space:]')
+active_state=$(echo "$status" | grep "ActiveState" | cut -d= -f2 | tr -d '[:space:]')
 
 if [[ "$exec_main_status" -ne 0 || "$active_state" != "active" ]]; then
   echo "Service failed: ExecMainStatus=$exec_main_status, ActiveState=$active_state"

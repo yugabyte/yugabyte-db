@@ -1,7 +1,9 @@
 .td-main main:only-child {
   .dropdown-list#contribute-list {
     position: absolute;
-    top: 90px;
+    // Sit just below where the header bar ends so the widget aligns with the
+    // page title and stays clear of the bar even if its height changes.
+    top: calc(var(--docs-sticky-header-top) + var(--docs-page-header-bar-space));
     right: 0px;
 
     .dropdown-menu {

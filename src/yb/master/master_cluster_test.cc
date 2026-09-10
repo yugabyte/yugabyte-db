@@ -11,8 +11,16 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
@@ -23,11 +31,14 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(master_list_raft_peers_check_is_leader);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(replication_factor);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
@@ -233,6 +244,67 @@ TEST_F(RemoveTabletServerTest, RemoveMissingTabletServer) {
   auto result = cluster_client.RemoveTabletServer("foobarbaz");
   ASSERT_NOK(result);
   ASSERT_EQ(master::MasterError(result), master::MasterErrorPB::TABLET_SERVER_NOT_FOUND);
+}
+
+// Deleted split parents remain in TableInfo::tablets_, so remove must ignore them.
+TEST_F(RemoveTabletServerTest, DeletedSplitParentWithStaleReplicaDoesNotBlockRemove) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "split_remove_ts_test");
+  ASSERT_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name()));
+
+  client::YBSchema schema;
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  schema_builder.AddColumn("value")->Type(DataType::INT32)->NotNull();
+  ASSERT_OK(schema_builder.Build(&schema));
+  auto table_creator = client->NewTableCreator();
+  ASSERT_OK(table_creator->table_name(table_name)
+                .schema(&schema)
+                .num_tablets(1)
+                .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
+                .Create());
+
+  auto* mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto& catalog_manager = mini_master->catalog_manager();
+  auto yb_table = ASSERT_RESULT(client->OpenTable(table_name));
+  auto table_info = catalog_manager.GetTableInfo(yb_table->id());
+  ASSERT_NE(table_info, nullptr);
+  auto parent = ASSERT_RESULT(table_info->GetTablets())[0];
+  ASSERT_OK(WaitFor(
+      [&parent]() -> Result<bool> {
+        return !parent->GetReplicaLocations()->empty();
+      },
+      30s, "Wait for parent tablet replicas to be reported"));
+
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(parent, 1 /* split_hash_code */));
+  ASSERT_OK(WaitFor(
+      [&parent]() -> Result<bool> { return parent->LockForRead()->is_deleted(); }, 60s,
+      "Wait for split parent tablet to be deleted"));
+
+  // Pick a TS still listed on the deleted parent's replica map.
+  const auto stale_parent_replicas = parent->GetReplicaLocations();
+  ASSERT_FALSE(stale_parent_replicas->empty())
+      << "Deleted split parent " << parent->id()
+      << " has an empty replica map; cannot reproduce stale-replica remove failure";
+  const auto uuid_to_remove = stale_parent_replicas->begin()->first;
+
+  auto cluster_client = ASSERT_RESULT(CreateClusterClient());
+  ASSERT_OK(DrainTabletServer(uuid_to_remove, cluster_client, 60s));
+  ASSERT_OK(ShutdownTabletServer(uuid_to_remove));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 1000;
+  ASSERT_OK(WaitForMasterLeaderToMarkTabletServerDead(uuid_to_remove, cluster_client, 30s));
+
+  auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  ASSERT_EQ(
+      mini_master->catalog_manager_impl().GetNumRelevantReplicas(
+          config.server_blacklist(), false /* leaders_only */),
+      0);
+
+  ASSERT_TRUE(parent->GetReplicaLocations()->contains(uuid_to_remove));
+  ASSERT_OK(cluster_client.RemoveTabletServer(std::string(uuid_to_remove)));
 }
 
 void MasterClusterTest::SetUp() {

@@ -1,0 +1,582 @@
+---
+title: Get query statistics using pg_stat_statements
+linkTitle: Get query statistics
+description: Track planning and execution statistics for all SQL statements executed by a server.
+headerTitle: Get query statistics using pg_stat_statements
+menu:
+  v2025.2:
+    identifier: pg-stat-statements
+    parent: query-tuning
+    weight: 200
+type: docs
+---
+
+{{<tabs>}}
+{{<tabitem href="../pg-stat-statements/" text="YSQL" icon="postgres" active="true">}}
+{{<tabitem href="../ycql-stat-statements/" text="YCQL" icon="cassandra" >}}
+{{</tabs>}}
+
+Databases can be resource-intensive, consuming a lot of memory CPU, IO, and network resources. Optimizing your SQL can be very helpful in minimizing resource utilization. The pg_stat_statements module helps you track planning and execution statistics for all the SQL statements executed by a server. It is installed by default.
+
+## Columns
+
+The columns of the pg_stat_statements view are described in the following table.
+
+|        Column        |       Type       |                                                  Description                                                   |
+| :------------------- | :--------------- | :------------------------------------------------------------------------------------------------------------- |
+| userid               | oid              | OID of user who executed the statement.                                                                         |
+| dbid                 | oid              | OID of database in which the statement was executed.                                                            |
+| toplevel             | boolean          | True if the query was executed as a top-level statement.<br>Always true if `pg_stat_statements.track` is set to `top`.<br>False for nested statements when set to `all`. |
+| queryid              | bigint           | Internal hash code, computed from the statement's parse tree.                                                   |
+| query                | text             | Text of a representative statement.                                                                             |
+| plans                | bigint           | Number of times the statement was planned.                                                                      |
+| total_plan_time      | double precision | Total time spent planning the statement, in milliseconds.                                                       |
+| min_plan_time        | double precision | Minimum time spent planning the statement, in milliseconds.                                                     |
+| max_plan_time        | double precision | Maximum time spent planning the statement, in milliseconds.                                                     |
+| mean_plan_time       | double precision | Mean time spent planning the statement, in milliseconds.                                                        |
+| stddev_plan_time     | double precision | Population standard deviation of time spent planning the statement, in milliseconds.                            |
+| calls                | bigint           | Number of times executed.                                                                       |
+| total_exec_time      | double precision | Total time spent executing the statement, in milliseconds.                                                      |
+| min_exec_time        | double precision | Minimum time spent executing the statement, in milliseconds.                                                    |
+| max_exec_time        | double precision | Maximum time spent executing the statement, in milliseconds.                                                    |
+| mean_exec_time       | double precision | Mean time spent executing the statement, in milliseconds.                                                       |
+| stddev_exec_time     | double precision | Population standard deviation of time spent executing the statement, in milliseconds.                           |
+| rows                 | bigint           | Total number of rows retrieved or affected by the statement.                                                    |
+| shared_blks_hit      | bigint           | Not populated in YugabyteDB.                                                                                    |
+| shared_blks_read     | bigint           | Not populated in YugabyteDB.                                                                                    |
+| shared_blks_dirtied  | bigint           | Not populated in YugabyteDB.                                                                                    |
+| shared_blks_written  | bigint           | Not populated in YugabyteDB.                                                                                    |
+| local_blks_hit       | bigint           | Total number of local block cache hits by the statement.                                                        |
+| local_blks_read      | bigint           | Total number of local blocks read by the statement.                                                             |
+| local_blks_dirtied   | bigint           | Total number of local blocks dirtied by the statement.                                                          |
+| local_blks_written   | bigint           | Total number of local blocks written by the statement.                                                          |
+| temp_blks_read       | bigint           | Total number of temp blocks read by the statement.                                                              |
+| temp_blks_written    | bigint           | Total number of temp blocks written by the statement.                                                           |
+| blk_read_time        | double precision | Not populated in YugabyteDB.                                                                                    |
+| blk_write_time       | double precision | Not populated in YugabyteDB.                                                                                    |
+| temp_blk_read_time   | double precision | If `track_io_timing` is enabled, the total time the statement spent reading temporary file blocks, in milliseconds. Otherwise zero. |
+| temp_blk_write_time  | double precision | If `track_io_timing` is enabled, the total time the statement spent writing temporary file blocks, in milliseconds. Otherwise zero. |
+| wal_records          | bigint           | Total number of WAL records generated by the statement.                                                         |
+| wal_fpi              | bigint           | Total number of WAL full page images generated by the statement.                                                |
+| wal_bytes            | numeric          | Total amount of WAL generated by the statement, in bytes.                                                       |
+| jit_functions        | bigint           | Total number of functions JIT-compiled by the statement.                                                        |
+| jit_generation_time  | double precision | Total time spent by the statement on generating JIT code, in milliseconds.                                      |
+| jit_inlining_count   | bigint           | Number of times functions have been inlined.                                                                    |
+| jit_inlining_time    | double precision | Total time spent by the statement on inlining functions, in milliseconds.                                       |
+| jit_optimization_count | bigint         | Number of times the statement has been optimized.                                                               |
+| jit_optimization_time | double precision | Total time spent by the statement on optimizing, in milliseconds.                                              |
+| jit_emission_count   | bigint           | Number of times code has been emitted.                                                                          |
+| jit_emission_time    | double precision | Total time spent by the statement on emitting code, in milliseconds.                                            |
+| yb_latency_histogram | jsonb            | List of key value pairs where key is the latency range and value is the count of times a query was executed.    |
+| docdb_read_rpcs      | bigint           | Number of roundtrip requests made to the local YB-TServer that include only read operations.                 |
+| docdb_write_rpcs     | bigint           | Number of roundtrip requests issued to the local YB-TServer that include at least 1 write operation.         |
+| catalog_wait_time   | double precision | Wall clock wait time (in ms) for catalog requests, including the network latency.                                |
+| docdb_read_operations | bigint         | Total number of read operations sent as part of RPC requests.                                                   |
+| docdb_write_operations | bigint        | Total number of write operations sent as part of RPC requests.                                                  |
+| docdb_rows_scanned  | bigint           | Rows scanned by DocDB.                                                                                          |
+| docdb_rows_returned | bigint           | Rows returned by DocDB layer to the YSQL layer.                                                                     |
+| docdb_wait_time     | double precision | Wall clock wait time (in ms) for storage requests in the YSQL layer, including the network latency.               |
+| conflict_retries    | bigint           | Number of internal query retries caused by transaction conflicts between overlapping transactions.              |
+| read_restart_retries | bigint          | Number of internal query retries for reads (possibly because of a concurrent update).                            |
+| total_retries       | bigint           | Total number of query retries of any type.                                                                       |
+| docdb_obsolete_rows_scanned | bigint | Number of obsolete (tombstoned) rows scanned by DocDB while executing the statement. |
+| docdb_seeks | bigint | Number of DocDB seek operations. |
+| docdb_nexts | bigint | Number of DocDB next operations. |
+| docdb_prevs | bigint | Number of DocDB prev operations. |
+| docdb_read_time | double precision | Aggregate read time (in ms) in storage layer. |
+| docdb_write_time | double precision | Aggregate write time (in ms) in storage layer. |
+
+## Configuration parameters
+
+You can configure the following parameters in `postgresql.conf`:
+
+| Column | Type | Default | Description |
+| :----- | :--- | :------ | :---------- |
+| `pg_stat_statements.max` | integer | 5000 | Maximum number of statements tracked. |
+| `pg_stat_statements.track_planning` | boolean | off | Controls whether planning operations and duration are tracked. |
+| `pg_stat_statements.track` | enum | top | Controls which statements are counted. Valid values are `top` (track statements issued directly by clients), `all` (track top-level and nested statements), and `none` (disable statement statistics collection). |
+| `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
+| `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
+| `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
+| `yb_enable_pg_stat_statements_rpc_stats` | boolean | true (from v2025.2.5.0) | Enables RPC execution time statistics for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_read_rpcs`, `docdb_write_rpcs`, `docdb_read_operations`, `docdb_write_operations`, `docdb_wait_time`, `catalog_wait_time`. This is a runtime flag that can be changed without restarting the server. |
+| `yb_enable_pg_stat_statements_docdb_metrics` | boolean | true (from v2025.2.5.0) | Enable DocDB metrics collection for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_seeks`, `docdb_nexts`, `docdb_prevs`, `docdb_read_time`, `docdb_write_time`, `docdb_obsolete_rows_scanned`. This is a runtime flag that can be changed without restarting the server. |
+
+The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
+
+```sh
+pg_stat_statements.max = 10000
+pg_stat_statements.track = all
+pg_stat_statements.track_utility = off
+pg_stat_statements.save = on
+```
+
+To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql.conf`:
+
+```sh
+track_io_timing = on
+```
+
+The `track_activity_query_size` parameter sets the number of characters to display when reporting a SQL query. Raise this value if you're not seeing longer queries in their entirety. For example:
+
+```sh
+track_activity_query_size = 2048
+```
+
+The extension is created by default. To add or remove it manually, use the following statements:
+
+```sql
+yugabyte=# CREATE EXTENSION pg_stat_statements;
+```
+
+```sql
+yugabyte=# DROP EXTENSION pg_stat_statements;
+```
+
+## yb_latency_histogram column
+
+Each row in the pg_stat_statements view in YugabyteDB includes the `yb_latency_histogram` column, of type JSONB.
+
+`yb_latency_histogram` consists of a list of key value pairs where key is the latency range and value is the count of times a query was executed. After each query execution, based on the execution time of the query, the execution counter for a specific key (latency range) for that query is incremented. Each key field represents time span in milliseconds (ms). For the resolution of each latency range, refer to [Latency range buckets](#latency-range-buckets).
+
+The value associated with each key is the count of that query's execution latencies falling in that time span. The time spans are beginning-inclusive and end-exclusive. For example, `{"[12.8, 25.6)": 4}` means the query has been recorded as taking between 12.8 ms and 25.6 ms, 4 times.
+
+Queries taking longer than the max query duration (default 1677721.5 ms or ~28 min) are recorded in the overflow bucket. The overflow bucket has the format `{"[max_latency,)": n}`, indicating that it covers all values beyond the scope of the histogram. Currently the `max_latency` tracked is 1677721.6 ms.
+
+To view latency histograms, use the following command:
+
+```sql
+yugabyte=# SELECT query, calls, yb_latency_histogram FROM pg_stat_statements;
+```
+
+```output
+-[ RECORD 1 ]-----------------------------------------------------------------
+query                | insert into table1 values($1, $2)
+calls                | 6
+yb_latency_histogram | [{"[0.1,0.2)": 4}, {"[0.2,0.3)": 2}]
+-[ RECORD 2 ]-----------------------------------------------------------------
+query                | select pg_sleep($1)
+calls                | 9
+yb_latency_histogram | [{"[0.8,0.9)": 6}, {"[1677721.6,)": 3}]
+```
+
+In this example, Record 1 shows that the `insert` query took between 0.1 to 0.2 ms 4 times and 0.2 to 0.3 ms 2 times. Record 2 shows that the `pg_sleep`  query took between 0.8 to 0.9 ms 6 times and 3 times it took more than 1677721.6 ms.
+
+### Latency range buckets
+
+The following table shows the time resolution for each latency range. For example, for queries finishing between 25.6-51.2 the resolution of the bucket is 3.2ms. If the query finishes in 28 ms then it is recorded in the sub-bucket `{25.6, 28.8)`.
+
+| Time Span (ms) | Resolution (ms) |
+| :--- | :--- |
+| 0-1.6 | 0.1 |
+| 1.6-3.2 | 0.2 |
+| 3.2-6.4 | 0.4 |
+| 6.4-12.8 | 0.8 |
+| 12.8-25.6 | 1.6 |
+| 25.6-51.2 | 3.2 |
+| 51.2-102.4 | 6.4 |
+| 102.4-204.8 | 12.8 |
+| 204.8-409.6 | 25.6 |
+| 409.6-819.2 | 51.2 |
+| 819.2-1638.4 | 102.4 |
+| 1638.4-3276.8 | 204.8 |
+| 3276.8-6553.6 | 409.6 |
+| 6553.6-13107.2 | 819.2 |
+| 13107.2-26214.4 | 1638.4 |
+| 26214.4-52428.8 | 3276.8 |
+| 52428.8-104857.6 | 6553.6 |
+| 104857.6-209715.2 (104.8-209.7 s) | 13107.2 (~13s) |
+| 209715.2-419430.4 (3.49-6.99 min) | 26214.4 (~26s) |
+| 419430.4-838860.8 (6.99-13.98 min) | 52428.8 (~52s) |
+| 838860.8-1677721.6 (13.98-27.96 min) | 104857.6 (~104s) |
+
+You can change the number of buckets using the `yb_hdr_bucket_factor` parameter in the `postgresql.conf` file. Valid values are 8, 16 (default), or 32. For example:
+
+```sh
+pg_stat_statements.yb_hdr_bucket_factor = 32
+```
+
+This changes the buckets as shown in the following table.
+
+| Time Span (ms) | Resolution (ms) |
+| :--- | :--- |
+| 0-3.2 | 0.1 |
+| 3.2-6.4 | 0.2 |
+| 6.4-12.8 | 0.4 |
+| 12.8-25.6 | 0.8 |
+| 25.6-51.2 | 1.6 |
+| 51.2-102.4 | 3.2 |
+| 102.4-204.8 | 6.4 |
+| 204.8-409.6 | 12.8 |
+| 409.6-819.2 | 25.6 |
+| 819.2-1638.4 | 51.2 |
+| ... |  |
+| 209715.2-419430.4 (3.49-6.99 min) | 13107.2 |
+| 419430.4-838860.8 (6.99-13.98 min) | 26214.4 |
+| 838860.8-1677721.6 (13.98-27.96 min) | 52428.8 |
+
+### Show latency percentiles
+
+Use the `yb_get_percentile` function to show percentiles for a given histogram. This function takes a JSONB histogram (including `yb_latency_histogram`) and a target percentile (double precision) as input.
+
+```sql
+\df yb_get_percentile
+```
+
+```output
+   Schema   |       Name        | Result data type |           Argument data types           | Type
+----------- +-------------------+------------------+-----------------------------------------+------
+ pg_catalog | yb_get_percentile | double precision | hist jsonb, percentile double precision | func
+(1 row)
+```
+
+The following examples show how to display various percentile latencies for a given JSONB histogram.
+
+```sql
+SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1}, {"[1.1,1.2)": 3}, {"[1.5,1.6)": 1}, {"[2.0,2.2)": 4}, {"[3.2,3.6)": 1}]', 99);
+```
+
+```output
+ yb_get_percentile
+-------------------
+               3.6
+(1 row)
+```
+
+```sql
+SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1}, {"[1.1,1.2)": 3}, {"[1.5,1.6)": 1}, {"[2.0,2.2)": 4}, {"[3.2,3.6)": 1}]', 90);
+```
+
+```output
+ yb_get_percentile
+-------------------
+               2.2
+(1 row)
+```
+
+```sql
+SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1}, {"[1.1,1.2)": 3}, {"[1.5,1.6)": 1}, {"[2.0,2.2)": 4}, {"[3.2,3.6)": 1}]', 50);
+```
+
+```output
+ yb_get_percentile
+-------------------
+               1.2
+(1 row)
+```
+
+The following example displays the P99, P95, and P90 latency by augmenting the pg_stat_statements output for a specific query:
+
+```sql
+SELECT query, calls, total_exec_time, min_exec_time, max_exec_time, mean_exec_time, rows,
+  yb_latency_histogram,
+  yb_get_percentile(yb_latency_histogram, 99),
+  yb_get_percentile(yb_latency_histogram, 95),
+  yb_get_percentile(yb_latency_histogram, 90)
+  FROM pg_stat_statements WHERE query like '%select v from foo where customer_id%';
+```
+
+```output
+query                | select v from foo where customer_id=$1 and day=$2::date for update
+calls                | 33904964
+total_exec_time      | 1122539431.94119
+min_exec_time        | 1.005537
+max_exec_time        | 524.190576
+mean_exec_time       | 33.1084094925296
+rows                 | 33904964
+yb_latency_histogram | [{"[1.0,1.1)": 7658}, {"[1.1,1.2)": 326051}, {"[1.2,1.3)": 984139}, {"[1.3,1.4)": 862572}, {"[1.4,1.5)": 604798}, {"[1.5,1.6)": 662095}, {"[1.6,1.8)": 1258824}, {"[1.8,2.0)": 951168}, {"[2.0,2.2)": 373974}, {"[2.2,2.4)": 107085}, {"[2.4,2.6)": 64638}, {"[2.6,2.8)": 73508}, {"[2.8,3.0)": 81727}, {"[3.0,3.2)": 92673}, {"[3.2,3.6)": 199462}, {"[3.6,4.0)": 216870}, {"[4.0,4.4)": 188390}, {"[4.4,4.8)": 212072}, {"[4.8,5.2)": 249788}, {"[5.2,5.6)": 274928}, {"[5.6,6.0)": 329839}, {"[6.0,6.4)": 484011}, {"[6.4,7.2)": 1198917}, {"[7.2,8.0)": 830484}, {"[8.0,8.8)": 572708}, {"[8.8,9.6)": 451159}, {"[9.6,10.4)": 395841}, {"[10.4,11.2)": 373503}, {"[11.2,12.0)": 451987}, {"[12.0,12.8)": 531331}, {"[12.8,14.4)": 770149}, {"[14.4,16.0)": 632207}, {"[16.0,17.6)": 533134}, {"[17.6,19.2)": 486974}, {"[19.2,20.8)": 426922}, {"[20.8,22.4)": 517026}, {"[22.4,24.0)": 474835}, {"[24.0,25.6)": 419358}, {"[25.6,28.8)": 893763}, {"[28.8,32.0)": 852830}, {"[32.0,35.2)": 819699}, {"[35.2,38.4)": 809411}, {"[38.4,41.6)": 744626}, {"[41.6,44.8)": 769875}, {"[44.8,48.0)": 713671}, {"[48.0,51.2)": 704817}, {"[51.2,57.6)": 1373824}, {"[57.6,64.0)": 1376515}, {"[64.0,70.4)": 1402915}, {"[70.4,76.8)": 1434799}, {"[76.8,83.2)": 1426155}, {"[83.2,89.6)": 1263072}, {"[89.6,96.0)": 919922}, {"[96.0,102.4)": 492696}, {"[102.4,115.2)": 222437}, {"[115.2,128.0)": 10392}, {"[128.0,140.8)": 451}, {"[140.8,153.6)": 146}, {"[153.6,166.4)": 78}, {"[166.4,179.2)": 22}, {"[179.2,192.0)": 1}, {"[307.2,332.8)": 3}, {"[332.8,358.4)": 6}, {"[358.4,384.0)": 3}, {"[384.0,409.6)": 7}, {"[409.6,460.8)": 6}, {"[460.8,512.0)": 15}, {"[512.0,563.2)": 2}]
+p99                  | 102.4
+p95                  | 89.6
+p90                  | 83.2
+```
+
+## Reset statistics
+
+The `pg_stat_statements_reset(userid, dbid, queryid)` function resets the statistics collected for all tracked SQL queries in the pg_stat_statements view. Use this to clear old or irrelevant statistics, start fresh for new performance monitoring, or manage resource usage.
+
+The `pg_stat_statements_reset` function clears query statistics collected by pg_stat_statements based on the provided userid, dbid, and queryid parameters. Here's how it works:
+
+- If you specify any combination of userid, dbid, or queryid, only the matching statistics are reset.
+- If a parameter is not provided or is set to 0 (invalid), it acts as a wildcard, and statistics matching the other specified parameters are cleared. For example to clear all statistics for userid `2`:
+
+  ```sql
+  select pg_stat_statements_reset(2);
+  ```
+
+- If all parameters are omitted or set to `0` (invalid), the function resets all collected statistics. For example, to clear all stats you would need to just execute the following:
+
+  ```sql
+  select pg_stat_statements_reset();
+  ```
+
+By default, only superusers can execute this function. However, you can grant access to other users using the GRANT command.
+
+Use `pg_stat_statements_reset` for the following scenarios:
+
+- **After system maintenance** - Clear old query statistics to track performance changes after upgrades, configuration changes, or schema modifications.
+
+- **Isolating specific workloads** - If you want to analyze the performance of a specific workload or test scenario, you can reset the statistics before running the workload and then examine the collected data.
+
+- **Managing resource usage** - If the shared memory allocated for pg_stat_statements is nearing capacity, resetting can help free space for new statistics.
+
+- **Troubleshooting** - When investigating performance issues, resetting the statistics can help to isolate the problem and focus on recent activity.
+
+## Examples
+
+{{% explore-setup-single-new %}}
+
+Describe the columns in the view:
+
+```sql
+yugabyte=# \d pg_stat_statements;
+```
+
+```caddyfile{.nocopy}
+           Column            |       Type       | Collation | Nullable | Default 
+-----------------------------+------------------+-----------+----------+---------
+ userid                      | oid              |           |          | 
+ dbid                        | oid              |           |          | 
+ toplevel                    | boolean          |           |          | 
+ queryid                     | bigint           |           |          | 
+ query                       | text             |           |          | 
+ plans                       | bigint           |           |          | 
+ total_plan_time             | double precision |           |          | 
+ min_plan_time               | double precision |           |          | 
+ max_plan_time               | double precision |           |          | 
+ mean_plan_time              | double precision |           |          | 
+ stddev_plan_time            | double precision |           |          | 
+ calls                       | bigint           |           |          | 
+ total_exec_time             | double precision |           |          | 
+ min_exec_time               | double precision |           |          | 
+ max_exec_time               | double precision |           |          | 
+ mean_exec_time              | double precision |           |          | 
+ stddev_exec_time            | double precision |           |          | 
+ rows                        | bigint           |           |          | 
+ shared_blks_hit             | bigint           |           |          | 
+ shared_blks_read            | bigint           |           |          | 
+ shared_blks_dirtied         | bigint           |           |          | 
+ shared_blks_written         | bigint           |           |          | 
+ local_blks_hit              | bigint           |           |          | 
+ local_blks_read             | bigint           |           |          | 
+ local_blks_dirtied          | bigint           |           |          | 
+ local_blks_written          | bigint           |           |          | 
+ temp_blks_read              | bigint           |           |          | 
+ temp_blks_written           | bigint           |           |          | 
+ blk_read_time               | double precision |           |          | 
+ blk_write_time              | double precision |           |          | 
+ temp_blk_read_time          | double precision |           |          | 
+ temp_blk_write_time         | double precision |           |          | 
+ wal_records                 | bigint           |           |          | 
+ wal_fpi                     | bigint           |           |          | 
+ wal_bytes                   | numeric          |           |          | 
+ jit_functions               | bigint           |           |          | 
+ jit_generation_time         | double precision |           |          | 
+ jit_inlining_count          | bigint           |           |          | 
+ jit_inlining_time           | double precision |           |          | 
+ jit_optimization_count      | bigint           |           |          | 
+ jit_optimization_time       | double precision |           |          | 
+ jit_emission_count          | bigint           |           |          | 
+ jit_emission_time           | double precision |           |          | 
+ yb_latency_histogram        | jsonb            |           |          | 
+ docdb_read_rpcs             | bigint           |           |          | 
+ docdb_write_rpcs            | bigint           |           |          | 
+ catalog_wait_time           | double precision |           |          | 
+ docdb_read_operations       | bigint           |           |          | 
+ docdb_write_operations      | bigint           |           |          | 
+ docdb_rows_scanned          | bigint           |           |          | 
+ docdb_rows_returned         | bigint           |           |          | 
+ docdb_wait_time             | double precision |           |          | 
+ conflict_retries            | bigint           |           |          | 
+ read_restart_retries        | bigint           |           |          | 
+ total_retries               | bigint           |           |          | 
+ docdb_obsolete_rows_scanned | bigint           |           |          | 
+ docdb_seeks                 | bigint           |           |          | 
+ docdb_nexts                 | bigint           |           |          | 
+ docdb_prevs                 | bigint           |           |          | 
+ docdb_read_time             | double precision |           |          | 
+ docdb_write_time            | double precision |           |          |
+```
+
+### Time-consuming queries
+
+```sql
+yugabyte=# SELECT userid::regrole AS username, dbid, query
+    FROM pg_stat_statements
+    ORDER BY mean_exec_time desc
+    LIMIT 10;
+```
+
+```caddyfile{.nocopy}
+ username | dbid  |                                                          query
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select pg_stat_statements_reset()
+(1 row)
+```
+
+```sql
+yugabyte=# SELECT userid::regrole AS username, dbid, query
+    FROM pg_stat_statements
+    ORDER BY total_exec_time desc
+    LIMIT 10;
+```
+
+```caddyfile{.nocopy}
+ username | dbid  |                                                          query
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole as username, dbid, query from pg_stat_statements order by mean_exec_time desc
+limit $1
+(2 rows)
+```
+
+### Response-time outliers
+
+```sql
+yugabyte=# SELECT userid::regrole AS username, dbid, query
+    FROM pg_stat_statements
+    ORDER BY stddev_exec_time desc
+    LIMIT 10;
+```
+
+```caddyfile{.nocopy}
+ username | dbid  |                                                          query
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole as username, dbid, query from pg_stat_statements order by mean_exec_time desc
+limit $1
+ yugabyte | 12463 | select userid::regrole as username, dbid, query from pg_stat_statements order by total_exec_time des
+c limit $1
+(3 rows)
+```
+
+### DocDB metrics for an UPDATE query
+
+The following example shows how the DocDB-related columns in `pg_stat_statements` help you understand the work done by an UPDATE statement.
+
+```sql
+UPDATE customers SET name = name || ' Updated' WHERE name LIKE 'Customer 1%';
+```
+
+Extract the relevant DocDB metrics for this query from `pg_stat_statements`:
+
+```sql
+SELECT
+    rows,
+    docdb_read_rpcs,
+    docdb_write_rpcs,
+    catalog_wait_time,
+    docdb_rows_scanned,
+    docdb_rows_returned,
+    docdb_obsolete_rows_scanned,
+    docdb_seeks,
+    docdb_nexts,
+    docdb_prevs,
+    docdb_wait_time,
+    docdb_read_time,
+    docdb_write_time,
+    conflict_retries,
+    read_restart_retries,
+    total_retries,
+    docdb_read_operations,
+    docdb_write_operations
+FROM
+    pg_stat_statements;
+```
+
+```caddyfile{.nocopy}
+-[ RECORD 1 ]---------------+-------
+rows                        | 12
+docdb_read_rpcs             | 1
+docdb_write_rpcs            | 1
+catalog_wait_time           | 0.0
+docdb_rows_scanned          | 100
+docdb_rows_returned         | 12
+docdb_obsolete_rows_scanned | 0
+docdb_seeks                 | 14
+docdb_nexts                 | 312
+docdb_prevs                 | 0
+docdb_wait_time             | 8.402
+docdb_read_time             | 3.660
+docdb_write_time            | 2.880
+conflict_retries            | 0
+read_restart_retries        | 0
+total_retries               | 0
+docdb_read_operations       | 2
+docdb_write_operations      | 12
+```
+
+You can correlate these values with the EXPLAIN plan for the same query:
+
+```sql
+EXPLAIN (ANALYZE, DIST, DEBUG) UPDATE customers SET name = name || ' Updated' WHERE name LIKE 'Customer 1%';
+```
+
+```yaml{linenos=inline, .nocopy}
+                                    QUERY PLAN
+------------------------------------------------------------------------------------
+ Update on customers  (cost=0.00..105.00 rows=0 width=0) (actual time=59.807..59.807 rows=0 loops=1)
+   ->  Seq Scan on customers  (cost=0.00..105.00 rows=1000 width=156) (actual time=12.519..12.610 rows=12 loops=1)
+         Storage Filter: (name ~~ 'Customer 1%'::text)
+         Storage Table Read Requests: 1
+         Storage Table Read Execution Time: 4.753 ms
+         Storage Table Rows Scanned: 100
+         Storage Table Write Requests: 12
+         Metric rocksdb_number_db_seek: 14.000
+         Metric rocksdb_number_db_next: 312.000
+         Metric docdb_keys_found: 100.000
+         Metric ql_read_latency: sum: 3660.000, count: 2.000
+ Planning Time: 0.288 ms
+ Execution Time: 68.010 ms
+ Storage Read Requests: 1
+ Storage Read Execution Time: 4.753 ms
+ Storage Rows Scanned: 100
+ Storage Write Requests: 12
+ Catalog Read Requests: 0
+ Catalog Write Requests: 0
+ Storage Flush Requests: 1
+ Storage Flush Execution Time: 3.648 ms
+ Metric rocksdb_number_db_seek: 14
+ Metric rocksdb_number_db_next: 312
+ Metric docdb_keys_found: 100
+ Metric ql_read_latency: sum: 3660, count: 2
+ Storage Execution Time: 8.402 ms
+ Peak Memory Usage: 24 kB
+```
+
+The `Storage Table Rows Scanned: 100` in the plan matches `docdb_rows_scanned` (100) in `pg_stat_statements`, and the seek and next counts (14 and 312) match `docdb_seeks` and `docdb_nexts` respectively.
+
+### Retries due to concurrent conflicts
+
+If two queries from different transactions try to update the same row at the same time, one of the transactions retries until the other commits. `pg_stat_statements` tracks these retries in the `conflict_retries` column.
+
+```sql
+UPDATE customers SET name = name || '_updated' WHERE customer_id = 1;
+```
+
+```caddyfile{.nocopy}
+-[ RECORD 1 ]-------------------+-------
+rows                            | 1
+docdb_read_rpcs                 | 1
+docdb_write_rpcs                | 1
+catalog_wait_time               | 0.0
+docdb_rows_scanned              | 1
+docdb_rows_returned             | 1
+docdb_obsolete_rows_scanned     | 0
+docdb_seeks                     | 2
+docdb_nexts                     | 4
+docdb_prevs                     | 0
+docdb_wait_time                 | 7.955
+docdb_read_time                 | 0.794
+docdb_write_time                | 2.650
+conflict_retries                | 9
+read_restart_retries            | 0
+total_retries                   | 9
+docdb_read_operations           | 1
+docdb_write_operations          | 1
+```
+
+`conflict_retries` (9) shows that this update had to retry 9 times before it could complete, because a concurrent transaction was updating the same row at the same time.
+
+## Learn more
+
+- [Latency histogram and P99 latencies](../../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
+- [Active Session History](../../../../explore/observability/active-session-history)

@@ -50,6 +50,8 @@
 #include "yb/server/clock.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_NON_RUNTIME_bool(master_register_ts_check_desired_host_port, true,
     "When set to true, master will only do duplicate address checks on the used host/port instead "
@@ -68,6 +70,8 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
     "the sys catalog.");
 
 DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver version checks");
+
+DECLARE_uint32(initial_tserver_registration_duration_secs);
 
 namespace yb::master {
 namespace {
@@ -409,6 +413,49 @@ size_t TSManager::NumLiveDescriptors() const {
       [](const auto& entry) -> bool { return entry.second->IsLive(); });
 }
 
+DbOidToHybridTimeMap AggregateYsqlDbOldestPinnedReadTimes(const TSDescriptorVector& descs) {
+  DbOidToHybridTimeMap pins;
+  for (const auto& desc : descs) {
+    for (const auto& [db_oid, pin] : desc->GetYsqlDbOldestPinnedReadTimes()) {
+      auto [it, inserted] = pins.emplace(db_oid, pin);
+      if (!inserted && pin < it->second) {
+        it->second = pin;
+      }
+    }
+  }
+  return pins;
+}
+
+DbOidToHybridTimeMap TSManager::GetClusterYsqlDbOldestPinnedReadTimes() const {
+  TSDescriptorVector descs;
+  GetAllLiveDescriptors(&descs);
+  return AggregateYsqlDbOldestPinnedReadTimes(descs);
+}
+
+ClusterYsqlDbPins TSManager::GetClusterYsqlDbPinsForPublishing(
+    MonoDelta time_since_elected_leader) const {
+  TSDescriptorVector descs;
+  GetAllLiveDescriptors(&descs);
+
+  bool all_pins_ready = true;
+  for (const auto& desc : descs) {
+    all_pins_ready = all_pins_ready && desc->has_ysql_db_pins();
+  }
+  auto pins = AggregateYsqlDbOldestPinnedReadTimes(descs);
+
+  // If persist_tserver_registry is disabled the new leader cannot load the previous leader's live
+  // TSDescriptors, so a tserver that has not heartbeated this leader yet is completely unknown
+  // and missing its pins. all_pins_ready is therefore not accurate, so wait out the post-failover
+  // registration window to best-effort register all live tservers.
+  return ClusterYsqlDbPins{
+      .pins = std::move(pins),
+      .ready = all_pins_ready &&
+               (FLAGS_persist_tserver_registry ||
+                time_since_elected_leader >=
+                    MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs)),
+  };
+}
+
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
   auto current_time = MonoTime::Now();
   {
@@ -480,6 +527,9 @@ Status TSManager::RemoveTabletServer(
     for (const auto& table : tables) {
       for (const auto& tablet : VERIFY_RESULT(
                table->GetTabletsIncludeInactive())) {
+        if (tablet->LockForRead()->is_deleted()) {
+          continue;
+        }
         auto replicas_map = tablet->GetReplicaLocations();
         if (replicas_map->contains(desc->id())) {
           return STATUS_FORMAT(
@@ -504,6 +554,15 @@ Status TSManager::RemoveTabletServer(
     servers_by_id_.erase(desc->id());
   }
   return Status::OK();
+}
+
+void TSManager::MarkTServersForLeaderBlacklistNotification() {
+  SharedLock<decltype(map_lock_)> l(map_lock_);
+  for (const auto& [id, desc] : servers_by_id_) {
+    if (desc->IsLive()) {
+      desc->inc_pending_leader_drain_notification();
+    }
+  }
 }
 
 Status TSManager::ValidateAllTserverVersions(ValidateVersionInfoOp op) const {

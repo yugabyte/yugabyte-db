@@ -3,6 +3,7 @@ import { FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import NodesIcon from '@app/redesign/assets/nodes.svg';
 import { ArrowDropDown } from '@material-ui/icons';
+import { CloudType } from '@app/redesign/helpers/dtos';
 import { ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 const { Box, styled, Fade } = mui;
@@ -58,6 +59,7 @@ export const NodeInstanceDetails: FC<NodeInstanceDetailsProps> = ({ cluster }) =
     const { t: tGeoPartition } = useTranslation('translation', {
         keyPrefix: 'geoPartition.geoPartitionNodesAndAvailability'
     });
+    const isK8s = cluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
 
     const nodeSpec = cluster?.node_spec;
     const instanceType = nodeSpec?.instance_type ?? '-';
@@ -74,7 +76,7 @@ export const NodeInstanceDetails: FC<NodeInstanceDetailsProps> = ({ cluster }) =
             <div className="header">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <NodesIcon />
-                    {tGeoPartition('nodes')}
+                    {tGeoPartition(isK8s ? 'pods' : 'nodes')}
                 </Box>
                 <ArrowDropDown
                     style={{

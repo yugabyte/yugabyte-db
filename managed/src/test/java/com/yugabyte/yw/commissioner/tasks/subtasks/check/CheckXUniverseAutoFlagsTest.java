@@ -27,20 +27,20 @@ import java.util.HashSet;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
 
   private Universe sourceUniverse;
   private Universe targetUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     sourceUniverse = ModelFactory.createUniverse("source-universe");
     targetUniverse = ModelFactory.createUniverse("target-universe");
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     try {
       when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       doCallRealMethod()

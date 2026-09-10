@@ -73,5 +73,5 @@ yugabyte=# SELECT * FROM m1;
 
 ## See also
 
-- [`CREATE MATERIALIZED VIEW`](../ddl_create_matview)
-- [`DROP MATERIALIZED VIEW`](../ddl_drop_matview)
+- [CREATE MATERIALIZED VIEW](../ddl_create_matview)
+- [DROP MATERIALIZED VIEW](../ddl_drop_matview)

@@ -27,13 +27,20 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <iosfwd>
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <boost/intrusive_ptr.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
+#include "yb/gutil/port.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/slice.h"
@@ -313,5 +320,3 @@ class StatusHolder {
       } \
     } while (0)
 
-#include "yb/util/status_format.h"
-#include "yb/util/status_log.h"

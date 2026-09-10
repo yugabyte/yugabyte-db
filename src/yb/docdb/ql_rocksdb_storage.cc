@@ -32,6 +32,7 @@
 #include "yb/qlexpr/ql_expr_util.h"
 
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb::docdb {
 

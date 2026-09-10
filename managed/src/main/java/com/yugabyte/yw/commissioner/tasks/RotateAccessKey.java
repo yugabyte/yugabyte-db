@@ -47,12 +47,13 @@ public class RotateAccessKey extends UniverseTaskBase {
     AccessKey newAccessKey = taskParams().newAccessKey;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     checkPausedOrNonLiveNodes(universe, newAccessKey);
+    boolean hasChanges = false;
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      AccessKey clusterAccessKey =
-          StringUtils.isBlank(cluster.userIntent.accessKeyCode)
-              ? null
-              : AccessKey.getOrBadRequest(
-                  taskParams().providerUUID, cluster.userIntent.accessKeyCode);
+      if (!cluster.userIntent.getAllProviderUUIDs().contains(taskParams().providerUUID)) {
+        continue;
+      }
+      hasChanges = true;
+      AccessKey clusterAccessKey = getCurrentAccessKey(cluster);
       if (clusterAccessKey == null) {
         continue;
       }
@@ -64,6 +65,22 @@ public class RotateAccessKey extends UniverseTaskBase {
                 newAccessKey.getKeyCode(), cluster.uuid, universe.getName()));
       }
     }
+    if (!hasChanges) {
+      throw new RuntimeException(
+          "Universe "
+              + taskParams().getUniverseUUID()
+              + " doesn't have provider "
+              + taskParams().providerUUID);
+    }
+  }
+
+  private AccessKey getCurrentAccessKey(Cluster cluster) {
+    String accessKeyCode =
+        cluster.userIntent.getAccessKeyCodeForProvider(taskParams().providerUUID);
+    if (StringUtils.isBlank(accessKeyCode)) {
+      return null;
+    }
+    return AccessKey.getOrBadRequest(taskParams().providerUUID, accessKeyCode);
   }
 
   @Override
@@ -80,11 +97,10 @@ public class RotateAccessKey extends UniverseTaskBase {
       UserTaskDetails.SubTaskGroupType subtaskGroupType =
           UserTaskDetails.SubTaskGroupType.RotateAccessKey;
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        AccessKey clusterAccessKey =
-            StringUtils.isBlank(cluster.userIntent.accessKeyCode)
-                ? null
-                : AccessKey.getOrBadRequest(
-                    providerUUID, cluster.userIntent.getAccessKeyCodeForProvider(providerUUID));
+        if (!cluster.userIntent.getAllProviderUUIDs().contains(taskParams().providerUUID)) {
+          continue;
+        }
+        AccessKey clusterAccessKey = getCurrentAccessKey(cluster);
         String sudoSSHUser = provider.getDetails().sshUser;
         if (sudoSSHUser == null) {
           sudoSSHUser =
@@ -92,7 +108,8 @@ public class RotateAccessKey extends UniverseTaskBase {
                   ? provider.getDetails().sshUser
                   : Util.DEFAULT_SUDO_SSH_USER;
         }
-        Collection<NodeDetails> clusterNodes = universe.getNodesInCluster(cluster.uuid);
+        Collection<NodeDetails> clusterNodes =
+            universe.getProviderNodesInCluster(cluster.uuid, taskParams().providerUUID);
         // add key to yugabyte user.
         createNodeAccessTasks(
                 clusterNodes,
@@ -138,7 +155,7 @@ public class RotateAccessKey extends UniverseTaskBase {
               .setSubTaskGroupType(subtaskGroupType);
         }
         if (clusterAccessKey != null) {
-          // remove key from yugabte user
+          // remove key from yugabyte user
           createNodeAccessTasks(
                   clusterNodes,
                   clusterAccessKey,

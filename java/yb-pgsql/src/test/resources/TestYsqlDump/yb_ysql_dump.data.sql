@@ -2,8 +2,10 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.29.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.29.0.0-b0
+\restrict test
+
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -26,16 +28,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -52,9 +58,13 @@ END $$;
 CREATE SCHEMA hint_plan;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER SCHEMA hint_plan OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner: -
@@ -183,9 +193,13 @@ ALTER TYPE public.overflow ADD VALUE 'Z';
 
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TYPE public.overflow OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: underflow; Type: TYPE; Schema: public; Owner: yugabyte_test
@@ -305,9 +319,13 @@ ALTER TYPE public.underflow ADD VALUE 'Z';
 
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TYPE public.underflow OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: yb_cache_invalidate(); Type: FUNCTION; Schema: hint_plan; Owner: yugabyte_test
@@ -321,9 +339,13 @@ CREATE FUNCTION hint_plan.yb_cache_invalidate() RETURNS trigger
 ALTER EXTENSION pg_hint_plan ADD FUNCTION hint_plan.yb_cache_invalidate();
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER FUNCTION hint_plan.yb_cache_invalidate() OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: FUNCTION yb_cache_invalidate(); Type: COMMENT; Schema: hint_plan; Owner: yugabyte_test
@@ -332,9 +354,13 @@ ALTER EXTENSION pg_hint_plan ADD FUNCTION hint_plan.yb_cache_invalidate();
 COMMENT ON FUNCTION hint_plan.yb_cache_invalidate() IS 'invalidate hint plan cache';
 
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp1; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
@@ -346,9 +372,13 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16478'::pg_catalog.oid
 CREATE TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLEGROUP grp1 OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp2; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
@@ -360,13 +390,21 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16479'::pg_catalog.oid
 CREATE TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLEGROUP grp2 OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = tsp1;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user; Tablespace: tsp1
@@ -378,13 +416,21 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16480'::pg_catalog.oid
 CREATE TABLEGROUP grp_with_spc;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLEGROUP grp_with_spc OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -417,15 +463,20 @@ CREATE TABLE hint_plan.hints (
     hints text NOT NULL,
     CONSTRAINT hints_pkey PRIMARY KEY((id) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, handle extension membership the hard way
 ALTER EXTENSION pg_hint_plan ADD TABLE hint_plan.hints;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE hint_plan.hints OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hints_id_seq; Type: SEQUENCE; Schema: hint_plan; Owner: yugabyte_test
@@ -448,9 +499,13 @@ CREATE SEQUENCE hint_plan.hints_id_seq
 ALTER EXTENSION pg_hint_plan ADD SEQUENCE hint_plan.hints_id_seq;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE hint_plan.hints_id_seq OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hints_id_seq; Type: SEQUENCE OWNED BY; Schema: hint_plan; Owner: yugabyte_test
@@ -485,12 +540,17 @@ CREATE TABLE public.chat_user (
     "chatID" text NOT NULL,
     CONSTRAINT chat_user_pkey PRIMARY KEY(("chatID") HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.chat_user OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hash_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -520,13 +580,17 @@ CREATE TABLE public.hash_tbl_pk_with_include_clause (
     k1 integer NOT NULL,
     CONSTRAINT hash_tbl_pk_with_include_clause_pkey PRIMARY KEY((k1, k2) HASH) INCLUDE (v)
 )
+WITH (yb_presplit='8')
 SPLIT INTO 8 TABLETS;
-ALTER TABLE public.hash_tbl_pk_with_include_clause SET (yb_presplit='8');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.hash_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hash_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -557,12 +621,17 @@ CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
     col4 integer,
     CONSTRAINT hash_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY((col1) HASH, col2 ASC) INCLUDE (col3, col4)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.hash_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level0; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -589,12 +658,17 @@ CREATE TABLE public.level0 (
     CONSTRAINT level0_c1_cons CHECK ((c1 > 0)),
     CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.level0 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level1_0; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -624,7 +698,8 @@ CREATE TABLE public.level1_0 (
     c3 text,
     c4 text,
     CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
-);
+)
+WITH (yb_presplit='');
 
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
@@ -655,9 +730,13 @@ WHERE contype = 'c' AND conname = 'level0_c1_cons'
 ALTER TABLE ONLY public.level1_0 INHERIT public.level0;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.level1_0 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level1_1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -689,6 +768,7 @@ CREATE TABLE public.level1_1 (
     CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
     CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, recreate inherited column.
@@ -720,9 +800,13 @@ WHERE contype = 'c' AND conname = 'level0_c1_cons'
 ALTER TABLE ONLY public.level1_1 INHERIT public.level0;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.level1_1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level2_0; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -747,6 +831,7 @@ CREATE TABLE public.level2_0 (
     c3 text NOT NULL,
     c4 text
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, recreate inherited column.
@@ -766,9 +851,13 @@ WHERE contype = 'c' AND conname = 'level0_c1_cons'
 ALTER TABLE ONLY public.level2_0 INHERIT public.level1_0;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.level2_0 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level2_1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -799,6 +888,7 @@ CREATE TABLE public.level2_1 (
     c4 text NOT NULL,
     CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, set up inherited constraint.
@@ -820,9 +910,13 @@ ALTER TABLE ONLY public.level2_1 INHERIT public.level1_0;
 ALTER TABLE ONLY public.level2_1 INHERIT public.level1_1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.level2_1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -851,12 +945,17 @@ CREATE TABLE public.p1 (
     v text,
     CONSTRAINT p1_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.p1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: p2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -885,12 +984,17 @@ CREATE TABLE public.p2 (
     v text,
     CONSTRAINT p2_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.p2 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -923,9 +1027,13 @@ CREATE TABLE public.part_uniq_const (
 PARTITION BY RANGE (v1);
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.part_uniq_const OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_30_50; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -955,12 +1063,17 @@ CREATE TABLE public.part_uniq_const_30_50 (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_30_50_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.part_uniq_const_30_50 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_50_100; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -990,12 +1103,17 @@ CREATE TABLE public.part_uniq_const_50_100 (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_50_100_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.part_uniq_const_50_100 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_default; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1025,12 +1143,17 @@ CREATE TABLE public.part_uniq_const_default (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_default_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.part_uniq_const_default OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: pre_split_range; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1072,13 +1195,17 @@ CREATE TABLE public.pre_split_range (
     more_col3 text,
     CONSTRAINT pre_split_range_pkey PRIMARY KEY(customer_id ASC)
 )
+WITH (yb_presplit='((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000))')
 SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
-ALTER TABLE public.pre_split_range SET (yb_presplit='((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000))');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.pre_split_range OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1108,13 +1235,17 @@ CREATE TABLE public.range_tbl_pk_with_include_clause (
     k1 integer NOT NULL,
     CONSTRAINT range_tbl_pk_with_include_clause_pkey PRIMARY KEY(k1 ASC, k2 ASC) INCLUDE (v)
 )
+WITH (yb_presplit='((1, ''1''), (100, ''100''))')
 SPLIT AT VALUES ((1, '1'), (100, '100'));
-ALTER TABLE public.range_tbl_pk_with_include_clause SET (yb_presplit='((1, ''1''), (100, ''100''))');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.range_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1144,12 +1275,17 @@ CREATE TABLE public.range_tbl_pk_with_multiple_included_columns (
     col3 integer,
     col4 integer,
     CONSTRAINT range_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY(col1 ASC, col2 ASC) INCLUDE (col3, col4)
-);
+)
+WITH (yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.range_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_test; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1178,12 +1314,17 @@ CREATE TABLE public.range_test (
     num_range int4range,
     CONSTRAINT range_test_pkey PRIMARY KEY((id) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.range_test OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_test_id_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -1203,9 +1344,13 @@ CREATE SEQUENCE public.range_test_id_seq
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.range_test_id_seq OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_test_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -1241,14 +1386,19 @@ CREATE TABLE public.rls_private (
     v text,
     CONSTRAINT rls_private_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.rls_private OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: rls_public; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1277,12 +1427,17 @@ CREATE TABLE public.rls_public (
     v text,
     CONSTRAINT rls_public_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.rls_public OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1305,12 +1460,17 @@ CREATE TABLE public.tbl1 (
     a integer NOT NULL,
     b integer
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl10; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1341,12 +1501,17 @@ CREATE TABLE public.tbl10 (
     d integer,
     CONSTRAINT tbl10_pkey PRIMARY KEY((a, c) HASH, b ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl10 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl11; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1375,12 +1540,17 @@ CREATE TABLE public.tbl11 (
     b integer NOT NULL,
     c integer,
     CONSTRAINT tbl11_pkey PRIMARY KEY(a DESC, b ASC)
-);
+)
+WITH (yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl11 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl12; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1410,12 +1580,17 @@ CREATE TABLE public.tbl12 (
     c integer NOT NULL,
     d integer NOT NULL,
     CONSTRAINT tbl12_pkey PRIMARY KEY(a ASC, d DESC, c DESC)
-);
+)
+WITH (yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl12 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl13; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1446,12 +1621,17 @@ CREATE TABLE public.tbl13 (
     d integer,
     CONSTRAINT tbl13_pkey PRIMARY KEY((b, c) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl13 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl1_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -1471,9 +1651,13 @@ CREATE SEQUENCE public.tbl1_a_seq
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl1_a_seq OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl1_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -1502,12 +1686,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16390'::pg_catalog.o
 CREATE TABLE public.tbl2 (
     a integer NOT NULL
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -1527,9 +1716,13 @@ CREATE SEQUENCE public.tbl2_a_seq
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl2_a_seq OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -1564,12 +1757,17 @@ CREATE TABLE public.tbl3 (
     a integer NOT NULL,
     b integer,
     CONSTRAINT tbl3_pkey PRIMARY KEY(a ASC)
-);
+)
+WITH (yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl4; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1598,12 +1796,17 @@ CREATE TABLE public.tbl4 (
     b integer NOT NULL,
     CONSTRAINT tbl4_pkey PRIMARY KEY((a) HASH, b ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl5; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1633,12 +1836,17 @@ CREATE TABLE public.tbl5 (
     c integer,
     CONSTRAINT tbl5_pkey PRIMARY KEY((a) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl6; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1666,12 +1874,17 @@ CREATE TABLE public.tbl6 (
     a integer NOT NULL,
     CONSTRAINT tbl6_pkey PRIMARY KEY((a) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl6 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl7; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1702,12 +1915,17 @@ CREATE TABLE public.tbl7 (
     d integer,
     CONSTRAINT tbl7_pkey PRIMARY KEY((b) HASH, c ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl7 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl8; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1738,12 +1956,17 @@ CREATE TABLE public.tbl8 (
     d integer NOT NULL,
     CONSTRAINT tbl8_pkey PRIMARY KEY((a) HASH, d ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl8 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl9; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1773,12 +1996,17 @@ CREATE TABLE public.tbl9 (
     c integer,
     CONSTRAINT tbl9_pkey PRIMARY KEY((a, b) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_after_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1800,13 +2028,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16499'::pg_catalog.o
 CREATE TABLE public.tgroup_after_options (
     a integer
 )
-WITH (parallel_workers='2', colocation_id='20002')
+WITH (parallel_workers='2', colocation_id='20002', yb_presplit='')
 TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_after_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_empty_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1828,12 +2060,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16505'::pg_catalog.o
 CREATE TABLE public.tgroup_empty_options (
     a integer
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_empty_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_in_between_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1855,13 +2092,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16502'::pg_catalog.o
 CREATE TABLE public.tgroup_in_between_options (
     a integer
 )
-WITH (parallel_workers='2', autovacuum_enabled='true', colocation_id='20003')
+WITH (parallel_workers='2', autovacuum_enabled='true', colocation_id='20003', yb_presplit='')
 TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_in_between_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_no_options_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1883,13 +2124,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16481'::pg_catalog.o
 CREATE TABLE public.tgroup_no_options_and_tgroup (
     a integer
 )
-WITH (colocation_id='20001')
+WITH (colocation_id='20001', yb_presplit='')
 TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_no_options_and_tgroup OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_one_option; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1911,13 +2156,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16484'::pg_catalog.o
 CREATE TABLE public.tgroup_one_option (
     a integer
 )
-WITH (autovacuum_enabled='true')
+WITH (autovacuum_enabled='true', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_one_option OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_one_option_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1939,13 +2188,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16487'::pg_catalog.o
 CREATE TABLE public.tgroup_one_option_and_tgroup (
     a integer
 )
-WITH (autovacuum_enabled='true', colocation_id='20001')
+WITH (autovacuum_enabled='true', colocation_id='20001', yb_presplit='')
 TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_one_option_and_tgroup OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1967,13 +2220,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16490'::pg_catalog.o
 CREATE TABLE public.tgroup_options (
     a integer
 )
-WITH (autovacuum_enabled='true', parallel_workers='2')
+WITH (autovacuum_enabled='true', parallel_workers='2', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_options_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -1995,13 +2252,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16493'::pg_catalog.o
 CREATE TABLE public.tgroup_options_and_tgroup (
     a integer
 )
-WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='20002')
+WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='20002', yb_presplit='')
 TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_options_and_tgroup OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_options_tgroup_and_custom_colocation_id; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2023,13 +2284,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16496'::pg_catalog.o
 CREATE TABLE public.tgroup_options_tgroup_and_custom_colocation_id (
     a integer
 )
-WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='100500')
+WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='100500', yb_presplit='')
 TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_options_tgroup_and_custom_colocation_id OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_with_spc; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2051,13 +2316,17 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16508'::pg_catalog.o
 CREATE TABLE public.tgroup_with_spc (
     a integer
 )
-WITH (colocation_id='20001')
+WITH (colocation_id='20001', yb_presplit='')
 TABLEGROUP grp_with_spc;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tgroup_with_spc OWNER TO tablegroup_test_user;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: th1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2081,13 +2350,17 @@ CREATE TABLE public.th1 (
     b text,
     c double precision
 )
+WITH (yb_presplit='2')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.th1 SET (yb_presplit='2');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.th1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: th2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2117,13 +2390,17 @@ CREATE TABLE public.th2 (
     c double precision,
     CONSTRAINT th2_pkey PRIMARY KEY((a) HASH, b ASC)
 )
+WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
-ALTER TABLE public.th2 SET (yb_presplit='3');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.th2 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: th3; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2153,13 +2430,17 @@ CREATE TABLE public.th3 (
     c double precision,
     CONSTRAINT th3_pkey PRIMARY KEY((a, b) HASH)
 )
+WITH (yb_presplit='4')
 SPLIT INTO 4 TABLETS;
-ALTER TABLE public.th3 SET (yb_presplit='4');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.th3 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tr1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2189,13 +2470,17 @@ CREATE TABLE public.tr1 (
     c double precision,
     CONSTRAINT tr1_pkey PRIMARY KEY(a ASC)
 )
+WITH (yb_presplit='((1), (100))')
 SPLIT AT VALUES ((1), (100));
-ALTER TABLE public.tr1 SET (yb_presplit='((1), (100))');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tr1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tr2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2225,13 +2510,17 @@ CREATE TABLE public.tr2 (
     c double precision NOT NULL,
     CONSTRAINT tr2_pkey PRIMARY KEY(a DESC, b ASC, c DESC)
 )
+WITH (yb_presplit='((100, ''a'', 2.5), (50, ''n''), (1, ''z'', -5.12))')
 SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
-ALTER TABLE public.tr2 SET (yb_presplit='((100, ''a'', 2.5), (50, ''n''), (1, ''z'', -5.12))');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tr2 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: uaccount; Type: TABLE; Schema: public; Owner: regress_rls_alice
@@ -2259,12 +2548,17 @@ CREATE TABLE public.uaccount (
     pguser name NOT NULL,
     seclv integer,
     CONSTRAINT uaccount_pkey PRIMARY KEY(pguser ASC)
-);
+)
+WITH (yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.uaccount OWNER TO regress_rls_alice;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_30_50; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
@@ -3489,7 +3783,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16552'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16552'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3501,8 +3795,7 @@ CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING 
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16560'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16560'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
-ALTER INDEX public.c1 SET (yb_presplit='((''foo''), (''qux''))');
+CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) WITH (yb_presplit='((''foo''), (''qux''))') SPLIT AT VALUES (('foo'), ('qux'));
 
 ALTER TABLE ONLY public.p1
     ADD CONSTRAINT c1 UNIQUE USING INDEX c1;
@@ -3517,8 +3810,7 @@ ALTER TABLE ONLY public.p1
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16567'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16567'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) SPLIT INTO 10 TABLETS;
-ALTER INDEX public.c2 SET (yb_presplit='10');
+CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) WITH (yb_presplit='10') SPLIT INTO 10 TABLETS;
 
 ALTER TABLE ONLY public.p2
     ADD CONSTRAINT c2 UNIQUE USING INDEX c2;
@@ -3557,7 +3849,7 @@ CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 AS
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16580'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16580'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3636,7 +3928,7 @@ ALTER TABLE ONLY public.part_uniq_const_default
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16424'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16424'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3648,7 +3940,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPL
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16425'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16425'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3684,7 +3976,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16428'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16428'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3696,8 +3988,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT I
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16539'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16539'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
-ALTER INDEX public.th2_c_b_idx SET (yb_presplit='4');
+CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) WITH (yb_presplit='4') SPLIT INTO 4 TABLETS;
 
 
 --
@@ -3709,8 +4000,7 @@ ALTER INDEX public.th2_c_b_idx SET (yb_presplit='4');
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16540'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16540'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
-ALTER INDEX public.th3_c_b_idx SET (yb_presplit='3');
+CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) WITH (yb_presplit='3') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3722,8 +4012,7 @@ ALTER INDEX public.th3_c_b_idx SET (yb_presplit='3');
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16542'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16542'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
-ALTER INDEX public.tr2_c_b_a_idx SET (yb_presplit='((-5.12, ''z'', 1), (-0.75, ''l''), (2.5, ''a'', 100))');
+CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) WITH (yb_presplit='((-5.12, ''z'', 1), (-0.75, ''l''), (2.5, ''a'', 100))') SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
 
 
 --
@@ -3735,8 +4024,7 @@ ALTER INDEX public.tr2_c_b_a_idx SET (yb_presplit='((-5.12, ''z'', 1), (-0.75, '
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16541'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16541'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
-ALTER INDEX public.tr2_c_idx SET (yb_presplit='((100.5), (1.5))');
+CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) WITH (yb_presplit='((100.5), (1.5))') SPLIT AT VALUES ((100.5), (1.5));
 
 
 --
@@ -3748,7 +4036,7 @@ ALTER INDEX public.tr2_c_idx SET (yb_presplit='((100.5), (1.5))');
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16574'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16574'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3832,9 +4120,13 @@ CREATE POLICY p3 ON public.rls_private FOR UPDATE USING (((k % 2) = 1));
 -- Name: rls_public p4; Type: POLICY; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 CREATE POLICY p4 ON public.rls_public FOR UPDATE TO rls_user USING ((v = CURRENT_USER));
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -3867,106 +4159,146 @@ UPDATE pg_extension SET extconfig = ARRAY['hint_plan.hints'::regclass::oid,'hint
 -- Name: SCHEMA hint_plan; Type: ACL; Schema: -; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT USAGE ON SCHEMA hint_plan TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO PUBLIC;
 GRANT CREATE ON SCHEMA public TO regress_rls_alice;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE hints; Type: ACL; Schema: hint_plan; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE hint_plan.hints TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE range_test; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 GRANT SELECT ON TABLE public.range_test TO PUBLIC;
 GRANT UPDATE ON TABLE public.range_test TO rls_user;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE rls_private; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 GRANT SELECT ON TABLE public.rls_private TO rls_user;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE rls_public; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 GRANT ALL ON TABLE public.rls_public TO PUBLIC;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE tbl13; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 GRANT ALL ON TABLE public.tbl13 TO regress_rls_alice WITH GRANT OPTION;
 SET SESSION AUTHORIZATION regress_rls_alice;
 GRANT ALL ON TABLE public.tbl13 TO tablegroup_test_user;
 RESET SESSION AUTHORIZATION;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -4822,4 +5154,6 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

@@ -117,6 +117,10 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_
     "Enable consumption of consistent changes via replication slots from "
     "a hash range of a table.");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_exclusive_lock, false,
+    "Acquire a cluster-wide exclusive advisory lock while a replication slot is "
+    "in use so that only one consumer can use it at a time across the universe.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
@@ -125,6 +129,9 @@ DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replicati
 DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
+
+DEFINE_test_flag(bool, ysql_yb_enable_replication_slot_transactional_ddl, false,
+    "When set, logical replication with transactional DDL support is enabled.");
 
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
@@ -155,6 +162,8 @@ DEFINE_test_flag(bool, check_catalog_version_overflow, false,
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
+DEFINE_validator(ysql_yb_enable_invalidation_messages,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
 // Keep in sync with the same definition in ybc_guc.h
 #ifdef NDEBUG
@@ -177,7 +186,7 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
     "must be true to enable the feature.");
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_ddl_savepoint_support, false,
+DEFINE_NON_RUNTIME_bool(ysql_yb_enable_ddl_savepoint_support, kEnableDdlTransactionBlocks,
     "If true, support for savepoints for DDL statements within a transaction block will be "
     "enabled. This flag only takes effect if ysql_yb_ddl_transaction_block_enabled is set to "
     "true.");
@@ -232,7 +241,7 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, false,
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
     "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
     "support.] Use this flag to toggle support for concurrent DDLs.");
 DEFINE_validator(ysql_enable_concurrent_ddl,
@@ -240,44 +249,51 @@ DEFINE_validator(ysql_enable_concurrent_ddl,
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(
-            FLAGS_master_ts_rpc_timeout_ms, FLAGS_refresh_waiter_timeout_ms),
+            FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms),
+            FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Requires master_ts_rpc_timeout_ms to be >= refresh_waiter_timeout_ms"),
     FLAG_DELAYED_COND_VALIDATOR(
-        !_value || !FLAGS_enable_object_lock_fastpath || FLAGS_pg_client_use_shared_memory,
+        !_value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+            FINAL_FLAG_VALUE(pg_client_use_shared_memory),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true"));
 
 DEFINE_validator(pg_client_use_shared_memory,
     FLAG_DELAYED_COND_VALIDATOR(
-      _value || !FLAGS_enable_object_lock_fastpath || !FLAGS_enable_object_locking_for_table_locks,
+      _value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "pg_client_use_shared_memory must be true with enable_object_locking_for_table_locks and "
       "enable_object_lock_fastpath on"));
 
 DEFINE_validator(enable_object_lock_fastpath,
     FLAG_DELAYED_COND_VALIDATOR(
-      !_value || FLAGS_pg_client_use_shared_memory || !FLAGS_enable_object_locking_for_table_locks,
+      !_value || FINAL_FLAG_VALUE(pg_client_use_shared_memory) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true when "
       "enable_object_locking_for_table_locks is on"));
 
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_DELAYED_COND_VALIDATOR(
-        (!_value || FLAGS_ysql_yb_ddl_rollback_enabled),
+        (!_value || FINAL_FLAG_VALUE(ysql_yb_ddl_rollback_enabled)),
         "ysql_yb_ddl_rollback_enabled must be enabled"),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-        ::yb::flags_internal::compare_less_equal(_value, FLAGS_master_ts_rpc_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+        ::yb::flags_internal::compare_less_equal(
+            _value, FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms)),
         "Must be <= master_ts_rpc_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_validator(master_ts_rpc_timeout_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-            ::yb::flags_internal::compare_greater_equal(_value, FLAGS_refresh_waiter_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+            ::yb::flags_internal::compare_greater_equal(
+                _value, FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Must be >= refresh_waiter_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key,
@@ -352,10 +368,27 @@ DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values, true,
     "of composite types");
 
 DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
-    "The time interval in seconds to retain DocDB history for. Point-in-time "
-    "reads at a hybrid time further than this in the past might not be allowed "
-    "after a compaction. Set this to be higher than the expected maximum duration "
-    "of any single transaction in your application.");
+    "The time interval in seconds that DocDB history will always retain for. Any "
+    "snapshot that has lived shorter than this will not be compacted even if no read "
+    "time pin is protecting it (marked as removable).");
+
+DEFINE_RUNTIME_int32(db_history_retention_pin_max_txn_age_sec, 86400,
+    "The time interval in seconds that DocDB history will retain for at most. Any "
+    "snapshot that is older than this will be removed on compaction even if the snapshot "
+    "is protected by a read time pin.");
+
+DEFINE_RUNTIME_bool(enable_db_history_retention_pins, true,
+    "Enables the dynamic per-database history retention pin feature. When disabled, tservers "
+    "stop reporting per-database read-time snapshot pins in the heartbeat and stop applying "
+    "the cluster-global pin to the history retention cutoff, and history retention falls back "
+    "to only using the fixed history retention window.");
+
+DEFINE_RUNTIME_int32(db_history_retention_pin_min_txn_age_sec, 300,
+    "The minimal time a transaction is alive for before its read time is reported "
+    "as a per-database history retention pin in the tserver heartbeat to master, used to reduce "
+    "sending irrelevant pins that are protected by the history retention window. This "
+    "value must be less than timestamp_history_retention_interval_sec to prevent "
+    "snapshot too old errors.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notify_queue_max_pages, 0,
@@ -368,6 +401,9 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
     "which have changed more than a configurable threshold.");
 
 DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
+
+DEFINE_NON_RUNTIME_bool(is_yb_managed, false,
+  "If true instance is running in a YugabyteDB managed environment (YBM)");
 
 namespace yb {
 

@@ -21,6 +21,9 @@ A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges
   - AWS and GCP only.
   - Required for smart load balancing features of [YugabyteDB smart drivers](/stable/develop/drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
   - You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/).
+
+  Note that currently VPC peering in YugabyteDB Aeon only supports VPCs with a single CIDR block. If you have VPCs with multiple CIDR blocks, use a private service endpoint.
+
 - Privately linked services.
   - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
   - AWS and Azure only.
@@ -53,6 +56,7 @@ Note that using a private service endpoint with [AWS PrivateLink](https://aws.am
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 Azure VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
+- VPC peering in YugabyteDB Aeon only supports VPCs with a single CIDR block. If you have VPCs with multiple CIDR blocks, use a private service endpoint.
 - VPCs are not supported on Sandbox clusters.
 
 If you need additional VPCs, contact {{% support-cloud %}}.
@@ -96,6 +100,8 @@ Ideally, you want the network to be as small as possible while accommodating pot
 When entering the range for your VPC in YugabyteDB Aeon, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Aeon supports network sizes from `/26` to `/16`. For typical applications, `/25` is sufficient.
 
 The number of available addresses and sizing recommendation depends on the cloud provider where you are deploying.
+
+Note that VPC peering in YugabyteDB Aeon only supports VPCs with a single CIDR block. If you have VPCs with multiple CIDR blocks, use a private service endpoint.
 
 {{< tabpane text=true >}}
 
@@ -163,6 +169,8 @@ If you are using VPC peering, addresses have the following additional restrictio
 - Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
 
   ![VPC CIDR can't overlap application CIDR](/images/yb-cloud/managed-vpc-overlap-app.png)
+
+- VPC peering in YugabyteDB Aeon only supports VPCs with a single CIDR block. If you have VPCs with multiple CIDR blocks, use a private service endpoint
 
 YugabyteDB Aeon reserves the following ranges for internal operations.
 

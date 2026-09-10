@@ -54,6 +54,7 @@ DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -448,6 +449,20 @@ class GeoTransactionsFailOnConflictTest : public GeoTransactionsPromotionTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     EnableFailOnConflict();
+    GeoTransactionsPromotionTest::SetUp();
+  }
+};
+
+class GeoTransactionsPromotionShortRpcTimeoutTest : public GeoTransactionsPromotionTest {
+ public:
+  static constexpr auto kClientTimeoutMs = 30000;
+
+  void SetUp() override {
+    // Bounds the FinishTransaction rpc, which is otherwise sent without a deadline: postgres
+    // disables the statement timeout before running CommitTransactionCommand, so pggate falls back
+    // to this flag. Forwarded to the postgres process by PgWrapper as a non-default gflag.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) =
+        kClientTimeoutMs * kTimeMultiplier;
     GeoTransactionsPromotionTest::SetUp();
   }
 };
@@ -885,6 +900,51 @@ TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestParticipantLead
   int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kLocalTable)));
   ASSERT_EQ(1, count);
+}
+
+TEST_F_EX(GeoTransactionsPromotionTest,
+          YB_DISABLE_TEST_IN_TSAN(TestCommitWithZeroBatchParticipant),
+          GeoTransactionsPromotionShortRpcTimeoutTest) {
+  constexpr auto kLocalPkTable = "local_pk_table";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+  {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0(k int PRIMARY KEY, v int) TABLESPACE tablespace$1",
+        kLocalPkTable, kLocalRegion));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kLocalPkTable));
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(WarmupTablespaceCache(conn, kLocalPkTable));
+  ASSERT_OK(WarmupTablespaceCache(conn, Format("$0$1_1", kTablePrefix, kOtherRegion)));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+
+  // Register a local participant tablet whose batch never completes: the duplicate key fails the
+  // write, so num_completed_batches stays at zero, and failing inside a savepoint leaves the
+  // transaction running.
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+  ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2)", kLocalPkTable));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp"));
+
+  // Write outside the local region to promote the transaction to global.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0$1_1(value) VALUES (1)", kTablePrefix, kOtherRegion));
+
+  // The zero-batch participant is skipped when the PROMOTING rpcs go out, so the commit must drop
+  // it rather than wait on an rpc that is never sent.
+  ASSERT_OK(conn.CommitTransaction());
+
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT COUNT(*) FROM $0$1_1", kTablePrefix, kOtherRegion)));
+  ASSERT_EQ(1, count);
+  auto value = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      Format("SELECT v FROM $0 WHERE k = 1", kLocalPkTable)));
+  ASSERT_EQ(1, value);
 }
 
 TEST_F_EX(GeoTransactionsPromotionTest,

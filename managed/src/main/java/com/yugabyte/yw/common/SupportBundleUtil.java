@@ -29,7 +29,10 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -40,6 +43,7 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.PagedList;
 import java.io.File;
@@ -296,6 +300,14 @@ public class SupportBundleUtil {
     SupportBundle.delete(supportBundle.getBundleUUID());
   }
 
+  public void deleteSupportBundleV2(SupportBundleV2 supportBundle) {
+    Path supportBundlePath = supportBundle.getPathObject();
+    if (supportBundlePath != null) {
+      deleteFile(supportBundlePath);
+    }
+    SupportBundleV2.delete(supportBundle.getBundleUUID());
+  }
+
   /**
    * Uses capturing groups in regex pattern for easy retrieval of the file type. File type is
    * considered to be the first capturing group in the file name regex. Used to segregate files
@@ -474,6 +486,23 @@ public class SupportBundleUtil {
     SECRETS,
     EVENTS,
     STORAGECLASS
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class OverriddenRuntimeConfig {
+    public String key;
+    public String value;
+    public String scopeType;
+    public UUID scopeUuid;
+    public String scopeName;
+  }
+
+  @Data
+  @AllArgsConstructor
+  private static class ScopeInfo {
+    private String scopeType;
+    private String scopeName;
   }
 
   @Data
@@ -1005,6 +1034,63 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "alert.json");
   }
 
+  public void getRuntimeConfigMetadata(Customer customer, String destDir) {
+    Map<UUID, ScopeInfo> scopeInfoByUuid = new HashMap<>();
+    Set<UUID> scopeUuids = new HashSet<>();
+
+    scopeUuids.add(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
+    scopeInfoByUuid.put(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID, new ScopeInfo("GLOBAL", "global"));
+
+    scopeUuids.add(customer.getUuid());
+    scopeInfoByUuid.put(customer.getUuid(), new ScopeInfo("CUSTOMER", customer.getName()));
+
+    for (Provider provider : Provider.getAll(customer.getUuid())) {
+      scopeUuids.add(provider.getUuid());
+      scopeInfoByUuid.put(provider.getUuid(), new ScopeInfo("PROVIDER", provider.getName()));
+    }
+
+    for (Universe universe : customer.getUniverses()) {
+      scopeUuids.add(universe.getUniverseUUID());
+      scopeInfoByUuid.put(
+          universe.getUniverseUUID(), new ScopeInfo("UNIVERSE", universe.getName()));
+    }
+
+    List<OverriddenRuntimeConfig> entries = new ArrayList<>();
+    for (RuntimeConfigEntry entry : RuntimeConfigEntry.getAll(scopeUuids)) {
+      ScopeInfo scopeInfo = scopeInfoByUuid.get(entry.getScopeUUID());
+      if (scopeInfo == null) {
+        log.warn(
+            "Skipping runtime config '{}' for unknown scope {}",
+            entry.getPath(),
+            entry.getScopeUUID());
+        continue;
+      }
+      String value = entry.getValue();
+      if (CommonUtils.isSensitiveField(lastRuntimeConfigPathSegment(entry.getPath()))) {
+        value = CommonUtils.getEmptiableMaskedValue(entry.getPath(), value);
+      }
+      entries.add(
+          new OverriddenRuntimeConfig(
+              entry.getPath(),
+              value,
+              scopeInfo.getScopeType(),
+              entry.getScopeUUID(),
+              scopeInfo.getScopeName()));
+    }
+
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(entries), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "overridden_runtime_config.json");
+  }
+
+  static String lastRuntimeConfigPathSegment(String path) {
+    if (path == null) {
+      return "";
+    }
+    int lastDot = path.lastIndexOf('.');
+    return lastDot < 0 ? path : path.substring(lastDot + 1);
+  }
+
   public void gatherAndSaveAllMetadata(
       Customer customer, Universe universe, String destDir, Date startDate, Date endDate) {
     ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
@@ -1019,6 +1105,7 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getAuditLogs(customer, universe, destDir, startDate, endDate));
     ignoreExceptions(() -> getYugawarePropertyMetadata(customer, destDir));
     ignoreExceptions(() -> getAlertMetadata(customer, destDir));
+    ignoreExceptions(() -> getRuntimeConfigMetadata(customer, destDir));
   }
 
   /**

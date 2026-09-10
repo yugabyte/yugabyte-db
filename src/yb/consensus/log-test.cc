@@ -34,6 +34,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <thread>
 #include <vector>
 
 #include <boost/function.hpp>
@@ -51,8 +52,10 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_NON_RUNTIME_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");
@@ -170,23 +173,23 @@ class LogTest : public LogTestBase {
 
   void DoReuseLastSegmentTest(bool durable_wal_write);
 
+  void DoCopyToFromInitializedStateWithReuseThresholdTest(
+      int64_t reuse_unclosed_segment_threshold_bytes);
+
   Result<std::vector<OpId>> AppendAndCopy(size_t num_batches, size_t num_entries_per_batch);
 
   std::string GetLogCopyPath(size_t copy_idx) {
     return Format("$0.copy-$1", tablet_wal_path_, copy_idx);
   }
 
-  Result<std::unique_ptr<LogReader>> GetLogCopyReader(const size_t copy_idx) {
+  Result<LogReaderPtr> GetLogCopyReader(const size_t copy_idx) {
     const auto log_copy_dir = GetLogCopyPath(copy_idx);
-    std::unique_ptr<LogReader> copied_log_reader;
     auto log_index = VERIFY_RESULT(LogIndex::NewLogIndex(log_copy_dir));
-    RETURN_NOT_OK(LogReader::Open(
+    return LogReader::Open(
         fs_manager_->env(), log_index, "Log reader: ", log_copy_dir,
         /*table_metric_entity=*/nullptr,
         /*tablet_metric_entity=*/nullptr,
-        /*read_wal_mem_tracker=*/nullptr, &copied_log_reader));
-
-    return copied_log_reader;
+        /*read_wal_mem_tracker=*/nullptr);
   }
 
   Result<SegmentSequence> GetSegmentsAndCheckMaxOpIndex(
@@ -240,7 +243,7 @@ void LogTest::DoReuseLastSegmentTest(bool durable_wal_write) {
   }
   // Check number of entries.
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   uint32_t num_entries = ASSERT_RESULT(GetEntries(segments));
   ASSERT_EQ(num_entries, num_batches);
@@ -318,7 +321,7 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
   ASSERT_OK(log_->AllocateSegmentAndRollOver());
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
@@ -403,7 +406,7 @@ TEST_F(LogTest, TestFsyncIntervalPhysical) {
   opid.set_index(1);
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
   const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
@@ -454,6 +457,107 @@ TEST_F(LogTest, TestFsyncDataSize) {
   LOG(INFO)<< "Wrote " << size << " batches to log";
 }
 
+// A log that takes one append and then goes quiet must still get that append fsynced within
+// interval_durable_wal_write_ms.
+//
+// This is deliberately the inverse of the three tests above. Each of them appends a *second* op
+// after its sleep, which is what actually provokes the fsync, so they pass whether or not the
+// interval bounds anything - they encode the lazy behaviour rather than checking the guarantee.
+// Here nothing is appended after the sleep, only Log::MaybeSyncInBackground() is called, which is
+// what a heartbeat arriving at an idle follower does.
+TEST_F(LogTest, TestOverdueEntrySyncsWithoutFurtherAppends) {
+  constexpr int kIntervalMs = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(kIntervalMs);
+  // Put the size arm far out of reach so that only the time arm can explain an fsync here.
+  options_.bytes_durable_wal_write_mb = 1024;
+
+  // Registered before BuildLog() on purpose: PosixWritableFile resolves its drive once, in its
+  // constructor, and Log::Open() creates the first WAL segment. tablet_wal_path_ lives under this
+  // test's own temp directory, so no other test in the process shares these counters.
+  auto& drive_stats = DriveIoStatsRegistry::Instance().Register(tablet_wal_path_, nullptr);
+
+  BuildLog();
+  const auto syncs_before = drive_stats.sync_count();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+
+  // Nothing is overdue yet, so the check declines to do anything.
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+  ASSERT_EQ(drive_stats.sync_count(), syncs_before);
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 10));
+
+  // The appender is still parked in its drain wait and will not call Sync() again on its own, so
+  // this call is the only thing that can get the entry to disk.
+  ASSERT_TRUE(log_->MaybeSyncInBackground());
+  ASSERT_OK(WaitFor(
+      [&drive_stats, syncs_before] { return drive_stats.sync_count() > syncs_before; },
+      MonoDelta::FromSeconds(10), "the overdue entry to be fsynced"));
+
+  // With nothing left unsynced the check is a no-op again, which is what keeps its cost on the
+  // per-tablet-per-heartbeat path down to a single atomic load.
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+
+  ASSERT_OK(log_->Close());
+}
+
+// Under durable_wal_write every Sync() from the appender already fsyncs in-line, so the background
+// check has nothing to add. It tests this before consulting periodic_sync_needed_, because
+// FindSyncType() returns kForceFsync unconditionally in that mode and would otherwise have every
+// heartbeat submit a redundant fsync racing the in-line one.
+TEST_F(LogTest, TestBackgroundSyncIsNoOpUnderDurableWalWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  options_.durable_wal_write = true;
+  // Well past the interval by the time the check below runs, so nothing but the durable_wal_write
+  // short-circuit itself can explain it declining.
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(1);
+  options_.preallocate_segments = false;
+  BuildLog();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(20));
+
+  // Asserted on the return value and not on the drive's fsync counter, which would be the obvious
+  // instrument and is the wrong one: durable_wal_write also selects O_DIRECT for the segment, and
+  // PosixDirectIOWritableFile overrides Sync() to be its own write rather than reaching
+  // PosixWritableFile::Sync(), so drive_sync_count legitimately stays at zero in this mode and the
+  // device cost shows up in drive_write_time instead. The return value being false is the property
+  // anyway: nothing was submitted.
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+
+  ASSERT_OK(log_->Close());
+}
+
+// The same guarantee must not be claimed when the operator has asked for it not to apply:
+// with interval_durable_wal_write_ms disabled and the size arm far away, nothing is overdue no
+// matter how long the log sits, and the check must stay silent rather than fsync on every
+// heartbeat.
+TEST_F(LogTest, TestNoBackgroundSyncWhenIntervalDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  // How LogOptions spells "--interval_durable_wal_write_ms=0": an uninitialized MonoDelta, not a
+  // zero one (log_util.cc). MonoDelta's operator bool tests Initialized(), so a zero delta would
+  // read as enabled.
+  options_.interval_durable_wal_write = MonoDelta();
+  options_.bytes_durable_wal_write_mb = 1024;
+
+  auto& drive_stats = DriveIoStatsRegistry::Instance().Register(tablet_wal_path_, nullptr);
+
+  BuildLog();
+  const auto syncs_before = drive_stats.sync_count();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+
+  SleepFor(MonoDelta::FromMilliseconds(200));
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+  ASSERT_EQ(drive_stats.sync_count(), syncs_before);
+
+  ASSERT_OK(log_->Close());
+}
+
 // Regression test for part of KUDU-735:
 // if a log is not preallocated, we should properly track its on-disk size as we append to
 // it.
@@ -465,7 +569,7 @@ TEST_F(LogTest, TestSizeIsMaintained) {
   ASSERT_OK(AppendNoOp(&opid));
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ReadableLogSegmentPtr first_segment = ASSERT_RESULT(segments.front());
   int64_t orig_size = first_segment->file_size();
@@ -494,7 +598,7 @@ TEST_F(LogTest, TestLogNotTrimmed) {
 
   LogEntries entries;
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
@@ -512,7 +616,7 @@ TEST_F(LogTest, TestBlankLogFile) {
   BuildLog();
 
   // The log's reader will have a segment...
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_EQ(log_reader->num_segments(), 1);
 
   // ...and we're able to read from it.
@@ -554,12 +658,11 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
 
   // Open a new reader -- we don't reuse the existing LogReader from log_
   // because it has a cached header.
-  std::unique_ptr<LogReader> reader;
   auto log_index = ASSERT_RESULT(LogIndex::NewLogIndex(log_->wal_dir_));
-  ASSERT_OK(LogReader::Open(
+  auto reader = ASSERT_RESULT(LogReader::Open(
       fs_manager_->env(), log_index, "Log reader: ", tablet_wal_path_,
       /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*read_wal_mem_tracker=*/nullptr));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -604,7 +707,7 @@ TEST_F(LogTest, TestLogMetrics) {
   log_->SetMaxSegmentSizeForTests(990);
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
@@ -647,7 +750,7 @@ TEST_F(LogTest, TestLogMetricsWithSegmentReuse) {
 
   BuildLog();
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
@@ -680,6 +783,82 @@ TEST_F(LogTest, TestLogMetricsWithSegmentReuse) {
   ASSERT_EQ(stat(path.c_str(), &st), 0);
   ASSERT_EQ(log_->active_segment_ondisk_size_, st.st_size);
   ASSERT_EQ(log_->metrics_->wal_size->value(), st.st_size);
+}
+
+// log_wal_sync_overdue_ms reads 0 while the oldest unsynced entry is within
+// interval_durable_wal_write_ms, grows once it is past it, and returns to 0 after the fsync.
+TEST_F(LogTest, TestWalSyncOverdueMetric) {
+  constexpr int kIntervalMs = 1000;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(kIntervalMs);
+  // Keep the size arm out of reach so only the time arm decides when the fsync happens.
+  options_.bytes_durable_wal_write_mb = 1024;
+  BuildLog();
+  const auto& gauge = *log_->metrics_->wal_sync_overdue_ms;
+
+  ASSERT_EQ(gauge.value(), 0);
+
+  const auto appended_at = MonoTime::Now();
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  // The gauge is only ever the age beyond the interval, so a freshly appended entry reads 0 even
+  // though it is unsynced.
+  ASSERT_EQ(gauge.value(), 0);
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 200));
+  const auto overdue_ms = gauge.value();
+  ASSERT_GT(overdue_ms, 0);
+  ASSERT_LE(overdue_ms, (MonoTime::Now() - appended_at).ToMilliseconds() - kIntervalMs);
+
+  // The next append finds the entry past the interval and fsyncs in line before acknowledging, so
+  // nothing is unsynced once it returns. Not via WaitUntilAllFlushed(): its flush marker re-arms
+  // periodic_sync_needed_ with zero bytes, which would make the 0 below come from the byte guard.
+  ASSERT_OK(AppendNoOp(&opid));
+  ASSERT_FALSE(log_->periodic_sync_needed_);
+  ASSERT_EQ(gauge.value(), 0);
+
+  // Reopening the log reuses the tablet metric entity. The gauge must follow the new Log rather
+  // than stay bound to the closed one, which reads a constant 0 once detached.
+  ASSERT_OK(log_->Close());
+  constexpr int kShortIntervalMs = 100;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(kShortIntervalMs);
+  BuildLog();
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(kShortIntervalMs + 100));
+  ASSERT_GT(log_->metrics_->wal_sync_overdue_ms->value(), 0);
+
+  ASSERT_OK(log_->Close());
+}
+
+// With durable_wal_write every append is fsynced before it is acknowledged, so there is never an
+// overdue entry to report.
+TEST_F(LogTest, TestWalSyncOverdueMetricUnderDurableWalWrite) {
+  options_.durable_wal_write = true;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(1);
+  options_.preallocate_segments = false;
+  BuildLog();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(20));
+  ASSERT_EQ(log_->metrics_->wal_sync_overdue_ms->value(), 0);
+
+  ASSERT_OK(log_->Close());
+}
+
+// With the interval disabled there is no bound to be overdue against, so the gauge stays 0 however
+// long an entry sits unsynced.
+TEST_F(LogTest, TestWalSyncOverdueMetricWhenIntervalDisabled) {
+  // How LogOptions spells --interval_durable_wal_write_ms=0: an uninitialized MonoDelta.
+  options_.interval_durable_wal_write = MonoDelta();
+  options_.bytes_durable_wal_write_mb = 1024;
+  BuildLog();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(200));
+  ASSERT_EQ(log_->metrics_->wal_sync_overdue_ms->value(), 0);
+
+  ASSERT_OK(log_->Close());
 }
 
 // Verify presence of min_start_time_running_txns in footer of closed segments.
@@ -729,7 +908,7 @@ TEST_F(LogTest, TestSegmentRollover) {
   int num_entries = 0;
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   while (segments.size() < 3) {
@@ -744,11 +923,10 @@ TEST_F(LogTest, TestSegmentRollover) {
   VerifyClosedSegmentsHaveMinStartTimeRunningTxns(segments);
   ASSERT_OK(log_->Close());
 
-  std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(
+  auto reader = ASSERT_RESULT(LogReader::Open(
       fs_manager_->env(), /*index=*/nullptr, "Log reader: ", tablet_wal_path_,
       /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*read_wal_mem_tracker=*/nullptr));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   last_segment = ASSERT_RESULT(segments.back());
@@ -774,7 +952,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   BuildLog();
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
   scoped_refptr<ReadableLogSegment> readable_segment = ASSERT_RESULT(segments.front());
@@ -872,7 +1050,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   ASSERT_EQ(anchors.size(), 4);
 
   // Anchors should prevent GC.
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size()) << DumpSegmentsToString(segments);
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
@@ -930,6 +1108,41 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   }
 }
 
+TEST_F(LogTest, ReadReplicatesInRangeDuringConcurrentLogClose) {
+  constexpr int kNumBatches = 10;
+  BuildLog();
+  AppendReplicateBatchToLog(kNumBatches);
+  ASSERT_OK(log_->AllocateSegmentAndRollOver());
+
+  // Park the reader thread right after the first batch is read from disk, close the log from the
+  // main thread, then let the reader resume.
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"LogReader::ReadBatchUsingIndexEntry::BatchRead", "LogCloseDuringRead::CloseStart"},
+       {"LogCloseDuringRead::CloseDone",
+        "LogReader::ReadBatchUsingIndexEntry::BeforeMetricsUpdate"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
+  Status read_status;
+  ReplicateMsgs replicates;
+  std::thread reader_thread([&] {
+    int64_t starting_op_segment_seq_num;
+    read_status = log_reader->ReadReplicatesInRange(
+        1, kNumBatches, LogReader::kNoSizeLimit, ObeyMemoryLimit::kFalse, &replicates,
+        &starting_op_segment_seq_num);
+  });
+
+  TEST_SYNC_POINT("LogCloseDuringRead::CloseStart");
+  ASSERT_OK(log_->Close());
+  TEST_SYNC_POINT("LogCloseDuringRead::CloseDone");
+
+  reader_thread.join();
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  ASSERT_OK(read_status);
+  ASSERT_EQ(replicates.size(), kNumBatches);
+}
+
 // Test that, when we are set to retain a given number of log segments,
 // we also retain any relevant log index chunks, even if those operations
 // are not necessary for recovery.
@@ -948,7 +1161,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   const int kNumOpsPerSegment = 5;
   OpIdPB op_id = MakeOpId(1, entries_per_chunk - 10);
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
-                                              &op_id, /* anchors = */ nullptr));
+                                              &op_id, /*anchors=*/ nullptr));
 
   // Run a GC on an op in the second index chunk. We should remove only the
   // earliest segment, because we are set to retain 4.
@@ -958,7 +1171,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 
   // And we should still be able to read ops in the retained segment, even though
   // the GC index was higher.
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   auto loaded_op = ASSERT_RESULT(
       log_reader->LookupOpId(entries_per_chunk - 5));
   ASSERT_EQ(yb::OpId(1, entries_per_chunk - 5), loaded_op);
@@ -973,6 +1186,53 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected result: " << result;
 }
 
+TEST_F(LogTest, TestRetentionDiagnostics) {
+  BuildLog();
+  const int kNumTotalSegments = 4;
+  const int kNumOpsPerSegment = 5;
+  OpIdPB op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendMultiSegmentSequence(
+      kNumTotalSegments, kNumOpsPerSegment, &op_id, /*anchors=*/ nullptr));
+
+  auto GetWalDiagnostics =
+      [this](const MinRetainLogIndexInfo& info) -> Result<WalRetentionDiagnostics> {
+    int64_t gcable_bytes = 0;
+    WalRetentionDiagnostics diagnostics;
+    RETURN_NOT_OK(log_->GetGCableDataSize(info, &gcable_bytes, &diagnostics));
+    return diagnostics;
+  };
+
+  // Verify the index-retention reason is printed.
+  auto diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ 3}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "Idx retention: start retain at");
+  ASSERT_STR_CONTAINS(diagnostics.details, ">= earliest needed op ID idx (3)");
+  ASSERT_STR_NOT_CONTAINS(diagnostics.details, ">= cdc_min_replicated_index (");
+  ASSERT_GE(diagnostics.first_retained_segment_age_secs, 0);
+
+  // Verify the xrepl reason is printed.
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index(),
+                            /*log_index_needed_by_cdc=*/ 3}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "cdc_min_replicated_index = min of");
+  ASSERT_STR_CONTAINS(diagnostics.details, ">= cdc_min_replicated_index (3)");
+  ASSERT_STR_CONTAINS(diagnostics.details, "<max_int>");
+  ASSERT_STR_NOT_CONTAINS(diagnostics.details, "9223372036854775807");
+
+  // Verify the min-segments cap reason is printed
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 10;
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index()}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "capped GC at");
+
+  // Verify the time-retention reason is printed
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 500;
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index()}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "Time retention: retain start at");
+}
+
 // Tests that we can append FLUSH_MARKER messages to the log queue to make sure
 // all messages up to a certain point were fsync()ed without actually
 // writing them to the log.
@@ -985,7 +1245,7 @@ TEST_F(LogTest, TestWaitUntilAllFlushed) {
 
   // Make sure we only get 4 entries back and that no FLUSH_MARKER commit is found.
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
@@ -1015,7 +1275,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
                                               &op_id, &anchors));
   // Anchors should prevent GC.
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
@@ -1089,11 +1349,10 @@ TEST_F(LogTest, TestWriteManyBatches) {
     LOG(INFO) << "Starting to read log";
     uint32_t num_entries = 0;
 
-    std::unique_ptr<LogReader> reader;
-    ASSERT_OK(LogReader::Open(
+    auto reader = ASSERT_RESULT(LogReader::Open(
         fs_manager_->env(), /*index=*/nullptr, "Log reader: ", tablet_wal_path_,
         /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
-        /*read_wal_mem_tracker=*/nullptr, &reader));
+        /*read_wal_mem_tracker=*/nullptr));
 
     SegmentSequence segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
@@ -1117,7 +1376,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
 TEST_F(LogTest, TestLogReader) {
   LogReader reader(
       fs_manager_->env(), scoped_refptr<LogIndex>(), "Log reader: ", nullptr, nullptr,
-      /*read_wal_mem_tracker=*/nullptr);
+      /*read_wal_mem_tracker=*/nullptr, LogReader::PrivateTag());
   ASSERT_OK(reader.InitEmptyReaderForTests());
   ASSERT_OK(AppendNewEmptySegmentToReader(2, 10, &reader));
   ASSERT_OK(AppendNewEmptySegmentToReader(3, 20, &reader));
@@ -1185,7 +1444,7 @@ TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
   });
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
@@ -1306,7 +1565,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
   // We'll advance 'gc_index' randomly through the log until we've gotten to
   // the end. This ensures that, when we GC, we don't ever remove the latest
   // version of a replicate message unintentionally.
-  LogReader* reader = ASSERT_RESULT(log_->GetLogReader());
+  auto reader = ASSERT_RESULT(log_->GetLogReader());
   for (int gc_index = 1; gc_index < max_repl_index;) {
     SCOPED_TRACE(Substitute("after GCing $0", gc_index));
 
@@ -1386,7 +1645,7 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
   op_id.set_index(first_log_index);
   ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
 
-  auto* reader = ASSERT_RESULT(log_->GetLogReader());
+  auto reader = ASSERT_RESULT(log_->GetLogReader());
   ReplicateMsgs repls;
   int64_t starting_op_segment_seq_num;
   ASSERT_OK(reader->ReadReplicatesInRange(
@@ -1407,7 +1666,7 @@ TEST_F(LogTest, TestReadReplicatesWithInsufficientMemory) {
 
   // Here the limit is so severe that we can't even read in a single batch; accordingly we expect to
   // get Status Busy return.
-  auto* reader = ASSERT_RESULT(log_->GetLogReader());
+  auto reader = ASSERT_RESULT(log_->GetLogReader());
   ReplicateMsgs repls;
   int64_t starting_op_segment_seq_num;
   auto s = reader->ReadReplicatesInRange(
@@ -1428,7 +1687,7 @@ TEST_F(LogTest, TestReadReplicatesWithOnlyPartialMemory) {
 
   // Here the limit is sufficient to get several batches but not all of them.  Accordingly we expect
   // to get only some of the replicas returned.
-  auto* reader = ASSERT_RESULT(log_->GetLogReader());
+  auto reader = ASSERT_RESULT(log_->GetLogReader());
   ReplicateMsgs repls;
   int64_t starting_op_segment_seq_num;
   auto s = reader->ReadReplicatesInRange(
@@ -1452,7 +1711,7 @@ TEST_F(LogTest, TestReadReplicatesInRangeWithZeroMaxBytes) {
   op_id.set_index(1);
   ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
 
-  auto* reader = ASSERT_RESULT(log_->GetLogReader());
+  auto reader = ASSERT_RESULT(log_->GetLogReader());
   ReplicateMsgs replica_messages;
   int64_t starting_op_segment_seq_num;
   ASSERT_OK(reader->ReadReplicatesInRange(
@@ -1883,6 +2142,141 @@ TEST_F(LogTest, CopyUpTo) {
   ASSERT_OK(log_->Close());
 }
 
+struct RaftLogData {
+  LogEntries entries;
+  std::vector<LogEntryMetadata> entries_metadata;
+};
+
+Result<RaftLogData> ReadRaftLogData(LogReader* log_reader) {
+  SegmentSequence segments;
+  RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+  RaftLogData result;
+  for (const auto& segment : segments) {
+    auto read_entries = segment->ReadEntries();
+    RETURN_NOT_OK(read_entries.status);
+    for (size_t i = 0; i < read_entries.entries.size(); ++i) {
+      result.entries.push_back(read_entries.entries[i]);
+      result.entries_metadata.push_back(read_entries.entry_metadata[i]);
+    }
+  }
+  return result;
+}
+
+// Verifies a Raft log holds exactly the expected entries in the same order and that the on-disk log
+// index is correct.
+void VerifyRaftLogOps(LogReader* log_reader, const LogEntries& expected_entries) {
+  auto log_data = ASSERT_RESULT(ReadRaftLogData(log_reader));
+
+  const auto num_entries = log_data.entries.size();
+  ASSERT_EQ(num_entries, expected_entries.size());
+  for (size_t i = 0; i < num_entries; ++i) {
+    ASSERT_EQ(log_data.entries[i]->ShortDebugString(), expected_entries[i]->ShortDebugString());
+  }
+
+  std::map<int64_t, std::pair<OpId, LogEntryMetadata>> meta_by_index;
+  for (size_t i = 0; i < num_entries; ++i) {
+    if (!log_data.entries[i]->has_replicate()) {
+      continue;
+    }
+    const auto op_id = OpId::FromPB(log_data.entries[i]->replicate().id());
+    meta_by_index[op_id.index] = std::make_pair(op_id, log_data.entries_metadata[i]);
+  }
+  const int64_t last_op_index = meta_by_index.empty() ? 0 : meta_by_index.rbegin()->first;
+  ASSERT_OK(CheckLogIndex(log_reader, meta_by_index, last_op_index));
+}
+
+// Parametrized on reuse_unclosed_segment_threshold_bytes to test both Log::CopyTo ->
+// EnsureSegmentInitialized branches when it closes the footerless last segment before rolling over:
+// large threshold -> the segment is reused as the writable active segment.
+// small threshold -> the segment's footer is rebuilt and a fresh active segment is allocated.
+void LogTest::DoCopyToFromInitializedStateWithReuseThresholdTest(
+    int64_t reuse_unclosed_segment_threshold_bytes) {
+  constexpr auto kFirstSegmentEntries = 5;
+  constexpr auto kLastSegmentEntries = 5;
+
+  // Rollovers are triggered manually below.
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  BuildLog();
+
+  // First segment: append then roll over cleanly so it gets a proper footer.
+  AppendReplicateBatchToLog(kFirstSegmentEntries, AppendSync::kTrue);
+  ASSERT_OK(log_->AllocateSegmentAndRollOver());
+
+  // Last segment: append, then crash without closing it, so it is left without a footer.
+  AppendReplicateBatchToLog(kLastSegmentEntries, AppendSync::kTrue);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ASSERT_OK(log_->Close());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) =
+      reuse_unclosed_segment_threshold_bytes;
+
+  // Reopen lazily so CopyTo runs in kLogInitialized state.
+  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+
+  const auto total_entries = kFirstSegmentEntries + kLastSegmentEntries;
+
+  auto source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto expected = ASSERT_RESULT(ReadRaftLogData(source_reader.get()));
+  ASSERT_EQ(expected.entries.size(), static_cast<size_t>(total_entries));
+
+  const auto copy_idx = 0;
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(copy_idx)));
+
+  auto log_reader = ASSERT_RESULT(GetLogCopyReader(copy_idx));
+  VerifyRaftLogOps(log_reader.get(), expected.entries);
+
+  ASSERT_OK(log_->Close());
+}
+
+// Large threshold: the footerless last segment is reused as the active segment.
+TEST_F(LogTest, CopyToFromInitializedStateReusingLastSegment) {
+  DoCopyToFromInitializedStateWithReuseThresholdTest(
+      /* reuse_unclosed_segment_threshold_bytes = */ std::numeric_limits<int64_t>::max());
+}
+
+// Zero threshold: the footerless last segment's footer is rebuilt and a new segment is allocated.
+TEST_F(LogTest, CopyToFromInitializedStateRebuildingLastSegment) {
+  DoCopyToFromInitializedStateWithReuseThresholdTest(
+      /* reuse_unclosed_segment_threshold_bytes = */ 0);
+}
+
+// All operations live in a single footerless segment.  Reopens the log lazily (kLogInitialized,
+// as tablet bootstrap does), and verifies Log::CopyTo copies every operation - including those
+// in the reopened footerless last segment.
+TEST_F(LogTest, CopyToFromInitializedStateFooterlessSingleSegment) {
+  constexpr auto kNumEntries = 10;
+
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  BuildLog();
+
+  AppendReplicateBatchToLog(kNumEntries, AppendSync::kTrue);
+
+  // Crash without closing the only segment, leaving it footerless.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ASSERT_OK(log_->Close());
+
+  // Reopen lazily: the log stays in kLogInitialized (no active segment) until first append, so the
+  // subsequent CopyTo exercises the kLogInitialized code path.
+  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+
+  auto source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto source_log_entries = ASSERT_RESULT(ReadRaftLogData(source_reader.get())).entries;
+  ASSERT_EQ(source_log_entries.size(), static_cast<size_t>(kNumEntries));
+
+  // Copy while still in kLogInitialized state.
+  const auto copy_idx = 0;
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(copy_idx)));
+
+  auto log_reader = ASSERT_RESULT(GetLogCopyReader(copy_idx));
+  VerifyRaftLogOps(log_reader.get(), source_log_entries);
+
+  ASSERT_OK(log_->Close());
+}
+
 // This test generate segments with random commits, term changes and some empty segments. We should
 // be able to read older ops that are not in the log cache after a log restart.
 TEST_F(LogTest, TestLogIndex) {
@@ -1916,7 +2310,7 @@ TEST_F(LogTest, TestLogIndex) {
   ASSERT_GT(ops.size(), 0);
 
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), kNumSegments + 1);
   ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
@@ -1977,7 +2371,7 @@ TEST_F(LogTest, AsyncRolloverMarker) {
   }, 10s, "allocation finished"));
   ASSERT_EQ(log_->active_segment_sequence_number(), seq_no);
   SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log_->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log_->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   VerifyClosedSegmentsHaveMinStartTimeRunningTxns(segments);
 

@@ -40,13 +40,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -75,18 +75,19 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
   @Mock private LocalhostAccessChecker mockLocalhostChecker;
   @Mock private NodeScriptRunner mockNodeScriptRunner;
   @Mock private AuditService mockAuditService;
+  private AutoCloseable mocks;
 
   @Before
   public void setUp() throws Exception {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse =
         ModelFactory.createUniverse("test-universe", defaultCustomer.getId(), Common.CloudType.gcp);
-    MockitoAnnotations.openMocks(this);
+    mocks = MockitoAnnotations.openMocks(this);
+  }
 
-    // Inject AuditService into parent class ApiControllerUtils
-    Field auditServiceField = handler.getClass().getSuperclass().getDeclaredField("auditService");
-    auditServiceField.setAccessible(true);
-    auditServiceField.set(handler, mockAuditService);
+  @After
+  public void tearDown() throws Exception {
+    mocks.close();
   }
 
   private Request createLocalhostRequest(String method, String path) {

@@ -39,6 +39,7 @@
 #include "catalog/pg_description.h"
 #include "catalog/pg_enum.h"
 #include "catalog/pg_event_trigger.h"
+#include "catalog/pg_extension.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
@@ -1080,186 +1081,122 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 		},
 		16
+	},
+	/* intentionally out of alphabetical order, to avoid an ABI break: */
+	{ExtensionRelationId,		/* EXTENSIONOID */
+		ExtensionOidIndexId,
+		1,
+		{
+			Anum_pg_extension_oid,
+			0,
+			0,
+			0
+		},
+		2
 	}
 };
 
+#define YB_CATCACHE_LIST \
+	YB_CATCACHE_ENTRY(AGGFNOID, 0, "pg_aggregate_fnoid_index", YbCatalogCacheTable_pg_aggregate) \
+	YB_CATCACHE_ENTRY(AMNAME, 1, "pg_am_name_index", YbCatalogCacheTable_pg_am) \
+	YB_CATCACHE_ENTRY(AMOID, 2, "pg_am_oid_index", YbCatalogCacheTable_pg_am) \
+	YB_CATCACHE_ENTRY(AMOPOPID, 3, "pg_amop_opr_fam_index", YbCatalogCacheTable_pg_amop) \
+	YB_CATCACHE_ENTRY(AMOPSTRATEGY, 4, "pg_amop_fam_strat_index", YbCatalogCacheTable_pg_amop) \
+	YB_CATCACHE_ENTRY(AMPROCNUM, 5, "pg_amproc_fam_proc_index", YbCatalogCacheTable_pg_amproc) \
+	YB_CATCACHE_ENTRY(ATTNAME, 6, "pg_attribute_relid_attnam_index", YbCatalogCacheTable_pg_attribute) \
+	YB_CATCACHE_ENTRY(ATTNUM, 7, "pg_attribute_relid_attnum_index", YbCatalogCacheTable_pg_attribute) \
+	YB_CATCACHE_ENTRY(AUTHMEMMEMROLE, 8, "pg_auth_members_member_role_index", YbCatalogCacheTable_pg_auth_members) \
+	YB_CATCACHE_ENTRY(AUTHMEMROLEMEM, 9, "pg_auth_members_role_member_index", YbCatalogCacheTable_pg_auth_members) \
+	YB_CATCACHE_ENTRY(AUTHNAME, 10, "pg_authid_rolname_index", YbCatalogCacheTable_pg_authid) \
+	YB_CATCACHE_ENTRY(AUTHOID, 11, "pg_authid_oid_index", YbCatalogCacheTable_pg_authid) \
+	YB_CATCACHE_ENTRY(CASTSOURCETARGET, 12, "pg_cast_source_target_index", YbCatalogCacheTable_pg_cast) \
+	YB_CATCACHE_ENTRY(CLAAMNAMENSP, 13, "pg_opclass_am_name_nsp_index", YbCatalogCacheTable_pg_opclass) \
+	YB_CATCACHE_ENTRY(CLAOID, 14, "pg_opclass_oid_index", YbCatalogCacheTable_pg_opclass) \
+	YB_CATCACHE_ENTRY(COLLNAMEENCNSP, 15, "pg_collation_name_enc_nsp_index", YbCatalogCacheTable_pg_collation) \
+	YB_CATCACHE_ENTRY(COLLOID, 16, "pg_collation_oid_index", YbCatalogCacheTable_pg_collation) \
+	YB_CATCACHE_ENTRY(CONDEFAULT, 17, "pg_conversion_default_index", YbCatalogCacheTable_pg_conversion) \
+	YB_CATCACHE_ENTRY(CONNAMENSP, 18, "pg_conversion_name_nsp_index", YbCatalogCacheTable_pg_conversion) \
+	YB_CATCACHE_ENTRY(CONSTROID, 19, "pg_constraint_oid_index", YbCatalogCacheTable_pg_constraint) \
+	YB_CATCACHE_ENTRY(CONVOID, 20, "pg_conversion_oid_index", YbCatalogCacheTable_pg_conversion) \
+	YB_CATCACHE_ENTRY(DATABASEOID, 21, "pg_database_oid_index", YbCatalogCacheTable_pg_database) \
+	YB_CATCACHE_ENTRY(DEFACLROLENSPOBJ, 22, "pg_default_acl_role_nsp_obj_index", YbCatalogCacheTable_pg_default_acl) \
+	YB_CATCACHE_ENTRY(ENUMOID, 23, "pg_enum_oid_index", YbCatalogCacheTable_pg_enum) \
+	YB_CATCACHE_ENTRY(ENUMTYPOIDNAME, 24, "pg_enum_typid_label_index", YbCatalogCacheTable_pg_enum) \
+	YB_CATCACHE_ENTRY(EVENTTRIGGERNAME, 25, "pg_event_trigger_evtname_index", YbCatalogCacheTable_pg_event_trigger) \
+	YB_CATCACHE_ENTRY(EVENTTRIGGEROID, 26, "pg_event_trigger_oid_index", YbCatalogCacheTable_pg_event_trigger) \
+	YB_CATCACHE_ENTRY(FOREIGNDATAWRAPPERNAME, 27, "pg_foreign_data_wrapper_name_index", YbCatalogCacheTable_pg_foreign_data_wrapper) \
+	YB_CATCACHE_ENTRY(FOREIGNDATAWRAPPEROID, 28, "pg_foreign_data_wrapper_oid_index", YbCatalogCacheTable_pg_foreign_data_wrapper) \
+	YB_CATCACHE_ENTRY(FOREIGNSERVERNAME, 29, "pg_foreign_server_name_index", YbCatalogCacheTable_pg_foreign_server) \
+	YB_CATCACHE_ENTRY(FOREIGNSERVEROID, 30, "pg_foreign_server_oid_index", YbCatalogCacheTable_pg_foreign_server) \
+	YB_CATCACHE_ENTRY(FOREIGNTABLEREL, 31, "pg_foreign_table_relid_index", YbCatalogCacheTable_pg_foreign_table) \
+	YB_CATCACHE_ENTRY(INDEXRELID, 32, "pg_index_indexrelid_index", YbCatalogCacheTable_pg_index) \
+	YB_CATCACHE_ENTRY(LANGNAME, 33, "pg_language_name_index", YbCatalogCacheTable_pg_language) \
+	YB_CATCACHE_ENTRY(LANGOID, 34, "pg_language_oid_index", YbCatalogCacheTable_pg_language) \
+	YB_CATCACHE_ENTRY(NAMESPACENAME, 35, "pg_namespace_nspname_index", YbCatalogCacheTable_pg_namespace) \
+	YB_CATCACHE_ENTRY(NAMESPACEOID, 36, "pg_namespace_oid_index", YbCatalogCacheTable_pg_namespace) \
+	YB_CATCACHE_ENTRY(OPERNAMENSP, 37, "pg_operator_oprname_l_r_n_index", YbCatalogCacheTable_pg_operator) \
+	YB_CATCACHE_ENTRY(OPEROID, 38, "pg_operator_oid_index", YbCatalogCacheTable_pg_operator) \
+	YB_CATCACHE_ENTRY(OPFAMILYAMNAMENSP, 39, "pg_opfamily_am_name_nsp_index", YbCatalogCacheTable_pg_opfamily) \
+	YB_CATCACHE_ENTRY(OPFAMILYOID, 40, "pg_opfamily_oid_index", YbCatalogCacheTable_pg_opfamily) \
+	YB_CATCACHE_ENTRY(PARAMETERACLNAME, 41, "pg_parameter_acl_parname_index", YbCatalogCacheTable_pg_parameter_acl) \
+	YB_CATCACHE_ENTRY(PARAMETERACLOID, 42, "pg_parameter_acl_oid_index", YbCatalogCacheTable_pg_parameter_acl) \
+	YB_CATCACHE_ENTRY(PARTRELID, 43, "pg_partitioned_table_partrelid_index", YbCatalogCacheTable_pg_partitioned_table) \
+	YB_CATCACHE_ENTRY(PROCNAMEARGSNSP, 44, "pg_proc_proname_args_nsp_index", YbCatalogCacheTable_pg_proc) \
+	YB_CATCACHE_ENTRY(PROCOID, 45, "pg_proc_oid_index", YbCatalogCacheTable_pg_proc) \
+	YB_CATCACHE_ENTRY(PUBLICATIONNAME, 46, "pg_publication_pubname_index", YbCatalogCacheTable_pg_publication) \
+	YB_CATCACHE_ENTRY(PUBLICATIONNAMESPACE, 47, "pg_publication_namespace_oid_index", YbCatalogCacheTable_pg_publication_namespace) \
+	YB_CATCACHE_ENTRY(PUBLICATIONNAMESPACEMAP, 48, "pg_publication_namespace_pnnspid_pnpubid_index", YbCatalogCacheTable_pg_publication_namespace) \
+	YB_CATCACHE_ENTRY(PUBLICATIONOID, 49, "pg_publication_oid_index", YbCatalogCacheTable_pg_publication) \
+	YB_CATCACHE_ENTRY(PUBLICATIONREL, 50, "pg_publication_rel_oid_index", YbCatalogCacheTable_pg_publication_rel) \
+	YB_CATCACHE_ENTRY(PUBLICATIONRELMAP, 51, "pg_publication_rel_prrelid_prpubid_index", YbCatalogCacheTable_pg_publication_rel) \
+	YB_CATCACHE_ENTRY(RANGEMULTIRANGE, 52, "pg_range_rngmultitypid_index", YbCatalogCacheTable_pg_range) \
+	YB_CATCACHE_ENTRY(RANGETYPE, 53, "pg_range_rngtypid_index", YbCatalogCacheTable_pg_range) \
+	YB_CATCACHE_ENTRY(RELNAMENSP, 54, "pg_class_relname_nsp_index", YbCatalogCacheTable_pg_class) \
+	YB_CATCACHE_ENTRY(RELOID, 55, "pg_class_oid_index", YbCatalogCacheTable_pg_class) \
+	YB_CATCACHE_ENTRY(REPLORIGIDENT, 56, "pg_replication_origin_roiident_index", YbCatalogCacheTable_pg_replication_origin) \
+	YB_CATCACHE_ENTRY(REPLORIGNAME, 57, "pg_replication_origin_roname_index", YbCatalogCacheTable_pg_replication_origin) \
+	YB_CATCACHE_ENTRY(RULERELNAME, 58, "pg_rewrite_rel_rulename_index", YbCatalogCacheTable_pg_rewrite) \
+	YB_CATCACHE_ENTRY(SEQRELID, 59, "pg_sequence_seqrelid_index", YbCatalogCacheTable_pg_sequence) \
+	YB_CATCACHE_ENTRY(STATEXTDATASTXOID, 60, "pg_statistic_ext_data_stxoid_inh_index", YbCatalogCacheTable_pg_statistic_ext_data) \
+	YB_CATCACHE_ENTRY(STATEXTNAMENSP, 61, "pg_statistic_ext_name_index", YbCatalogCacheTable_pg_statistic_ext) \
+	YB_CATCACHE_ENTRY(STATEXTOID, 62, "pg_statistic_ext_oid_index", YbCatalogCacheTable_pg_statistic_ext) \
+	YB_CATCACHE_ENTRY(STATRELATTINH, 63, "pg_statistic_relid_att_inh_index", YbCatalogCacheTable_pg_statistic) \
+	YB_CATCACHE_ENTRY(SUBSCRIPTIONNAME, 64, "pg_subscription_subname_index", YbCatalogCacheTable_pg_subscription) \
+	YB_CATCACHE_ENTRY(SUBSCRIPTIONOID, 65, "pg_subscription_oid_index", YbCatalogCacheTable_pg_subscription) \
+	YB_CATCACHE_ENTRY(SUBSCRIPTIONRELMAP, 66, "pg_subscription_rel_srrelid_srsubid_index", YbCatalogCacheTable_pg_subscription_rel) \
+	YB_CATCACHE_ENTRY(TABLESPACEOID, 67, "pg_tablespace_oid_index", YbCatalogCacheTable_pg_tablespace) \
+	YB_CATCACHE_ENTRY(TRFOID, 68, "pg_transform_oid_index", YbCatalogCacheTable_pg_transform) \
+	YB_CATCACHE_ENTRY(TRFTYPELANG, 69, "pg_transform_type_lang_index", YbCatalogCacheTable_pg_transform) \
+	YB_CATCACHE_ENTRY(TSCONFIGMAP, 70, "pg_ts_config_map_index", YbCatalogCacheTable_pg_ts_config_map) \
+	YB_CATCACHE_ENTRY(TSCONFIGNAMENSP, 71, "pg_ts_config_cfgname_index", YbCatalogCacheTable_pg_ts_config) \
+	YB_CATCACHE_ENTRY(TSCONFIGOID, 72, "pg_ts_config_oid_index", YbCatalogCacheTable_pg_ts_config) \
+	YB_CATCACHE_ENTRY(TSDICTNAMENSP, 73, "pg_ts_dict_dictname_index", YbCatalogCacheTable_pg_ts_dict) \
+	YB_CATCACHE_ENTRY(TSDICTOID, 74, "pg_ts_dict_oid_index", YbCatalogCacheTable_pg_ts_dict) \
+	YB_CATCACHE_ENTRY(TSPARSERNAMENSP, 75, "pg_ts_parser_prsname_index", YbCatalogCacheTable_pg_ts_parser) \
+	YB_CATCACHE_ENTRY(TSPARSEROID, 76, "pg_ts_parser_oid_index", YbCatalogCacheTable_pg_ts_parser) \
+	YB_CATCACHE_ENTRY(TSTEMPLATENAMENSP, 77, "pg_ts_template_tmplname_index", YbCatalogCacheTable_pg_ts_template) \
+	YB_CATCACHE_ENTRY(TSTEMPLATEOID, 78, "pg_ts_template_oid_index", YbCatalogCacheTable_pg_ts_template) \
+	YB_CATCACHE_ENTRY(TYPENAMENSP, 79, "pg_type_typname_nsp_index", YbCatalogCacheTable_pg_type) \
+	YB_CATCACHE_ENTRY(TYPEOID, 80, "pg_type_oid_index", YbCatalogCacheTable_pg_type) \
+	YB_CATCACHE_ENTRY(USERMAPPINGOID, 81, "pg_user_mapping_oid_index", YbCatalogCacheTable_pg_user_mapping) \
+	YB_CATCACHE_ENTRY(USERMAPPINGUSERSERVER, 82, "pg_user_mapping_user_server_index", YbCatalogCacheTable_pg_user_mapping) \
+	YB_CATCACHE_ENTRY(YBTABLEGROUPOID, 83, "pg_yb_tablegroup_oid_index", YbCatalogCacheTable_pg_yb_tablegroup) \
+	YB_CATCACHE_ENTRY(YBCONSTRAINTRELIDTYPIDNAME, 84, "pg_constraint_conrelid_contypid_conname_index", YbCatalogCacheTable_pg_constraint) \
+	YB_CATCACHE_ENTRY(EXTENSIONOID, 85, "pg_extension_oid_index", YbCatalogCacheTable_pg_extension)
+
 static const char *yb_cache_index_name_table[] = {
-	"pg_aggregate_fnoid_index",
-	"pg_am_name_index",
-	"pg_am_oid_index",
-	"pg_amop_opr_fam_index",
-	"pg_amop_fam_strat_index",
-	"pg_amproc_fam_proc_index",
-	"pg_attribute_relid_attnam_index",
-	"pg_attribute_relid_attnum_index",
-	"pg_auth_members_member_role_index",
-	"pg_auth_members_role_member_index",
-	"pg_authid_rolname_index",
-	"pg_authid_oid_index",
-	"pg_cast_source_target_index",
-	"pg_opclass_am_name_nsp_index",
-	"pg_opclass_oid_index",
-	"pg_collation_name_enc_nsp_index",
-	"pg_collation_oid_index",
-	"pg_conversion_default_index",
-	"pg_conversion_name_nsp_index",
-	"pg_constraint_oid_index",
-	"pg_conversion_oid_index",
-	"pg_database_oid_index",
-	"pg_default_acl_role_nsp_obj_index",
-	"pg_enum_oid_index",
-	"pg_enum_typid_label_index",
-	"pg_event_trigger_evtname_index",
-	"pg_event_trigger_oid_index",
-	"pg_foreign_data_wrapper_name_index",
-	"pg_foreign_data_wrapper_oid_index",
-	"pg_foreign_server_name_index",
-	"pg_foreign_server_oid_index",
-	"pg_foreign_table_relid_index",
-	"pg_index_indexrelid_index",
-	"pg_language_name_index",
-	"pg_language_oid_index",
-	"pg_namespace_nspname_index",
-	"pg_namespace_oid_index",
-	"pg_operator_oprname_l_r_n_index",
-	"pg_operator_oid_index",
-	"pg_opfamily_am_name_nsp_index",
-	"pg_opfamily_oid_index",
-	"pg_parameter_acl_parname_index",
-	"pg_parameter_acl_oid_index",
-	"pg_partitioned_table_partrelid_index",
-	"pg_proc_proname_args_nsp_index",
-	"pg_proc_oid_index",
-	"pg_publication_pubname_index",
-	"pg_publication_namespace_oid_index",
-	"pg_publication_namespace_pnnspid_pnpubid_index",
-	"pg_publication_oid_index",
-	"pg_publication_rel_oid_index",
-	"pg_publication_rel_prrelid_prpubid_index",
-	"pg_range_rngmultitypid_index",
-	"pg_range_rngtypid_index",
-	"pg_class_relname_nsp_index",
-	"pg_class_oid_index",
-	"pg_replication_origin_roiident_index",
-	"pg_replication_origin_roname_index",
-	"pg_rewrite_rel_rulename_index",
-	"pg_sequence_seqrelid_index",
-	"pg_statistic_ext_data_stxoid_inh_index",
-	"pg_statistic_ext_name_index",
-	"pg_statistic_ext_oid_index",
-	"pg_statistic_relid_att_inh_index",
-	"pg_subscription_subname_index",
-	"pg_subscription_oid_index",
-	"pg_subscription_rel_srrelid_srsubid_index",
-	"pg_tablespace_oid_index",
-	"pg_transform_oid_index",
-	"pg_transform_type_lang_index",
-	"pg_ts_config_map_index",
-	"pg_ts_config_cfgname_index",
-	"pg_ts_config_oid_index",
-	"pg_ts_dict_dictname_index",
-	"pg_ts_dict_oid_index",
-	"pg_ts_parser_prsname_index",
-	"pg_ts_parser_oid_index",
-	"pg_ts_template_tmplname_index",
-	"pg_ts_template_oid_index",
-	"pg_type_typname_nsp_index",
-	"pg_type_oid_index",
-	"pg_user_mapping_oid_index",
-	"pg_user_mapping_user_server_index",
-	"pg_yb_tablegroup_oid_index",
-	"pg_constraint_conrelid_contypid_conname_index",
+#define YB_CATCACHE_ENTRY(name, id, idx, tbl) idx,
+	YB_CATCACHE_LIST
+#undef YB_CATCACHE_ENTRY
 };
 
 static_assert(SysCacheSize == sizeof(yb_cache_index_name_table) /
 			  sizeof(const char *), "Wrong catalog cache number");
 
 char	   *SysCacheName[] = {
-	"AGGFNOID",
-	"AMNAME",
-	"AMOID",
-	"AMOPOPID",
-	"AMOPSTRATEGY",
-	"AMPROCNUM",
-	"ATTNAME",
-	"ATTNUM",
-	"AUTHMEMMEMROLE",
-	"AUTHMEMROLEMEM",
-	"AUTHNAME",
-	"AUTHOID",
-	"CASTSOURCETARGET",
-	"CLAAMNAMENSP",
-	"CLAOID",
-	"COLLNAMEENCNSP",
-	"COLLOID",
-	"CONDEFAULT",
-	"CONNAMENSP",
-	"CONSTROID",
-	"CONVOID",
-	"DATABASEOID",
-	"DEFACLROLENSPOBJ",
-	"ENUMOID",
-	"ENUMTYPOIDNAME",
-	"EVENTTRIGGERNAME",
-	"EVENTTRIGGEROID",
-	"FOREIGNDATAWRAPPERNAME",
-	"FOREIGNDATAWRAPPEROID",
-	"FOREIGNSERVERNAME",
-	"FOREIGNSERVEROID",
-	"FOREIGNTABLEREL",
-	"INDEXRELID",
-	"LANGNAME",
-	"LANGOID",
-	"NAMESPACENAME",
-	"NAMESPACEOID",
-	"OPERNAMENSP",
-	"OPEROID",
-	"OPFAMILYAMNAMENSP",
-	"OPFAMILYOID",
-	"PARAMETERACLNAME",
-	"PARAMETERACLOID",
-	"PARTRELID",
-	"PROCNAMEARGSNSP",
-	"PROCOID",
-	"PUBLICATIONNAME",
-	"PUBLICATIONNAMESPACE",
-	"PUBLICATIONNAMESPACEMAP",
-	"PUBLICATIONOID",
-	"PUBLICATIONREL",
-	"PUBLICATIONRELMAP",
-	"RANGEMULTIRANGE",
-	"RANGETYPE",
-	"RELNAMENSP",
-	"RELOID",
-	"REPLORIGIDENT",
-	"REPLORIGNAME",
-	"RULERELNAME",
-	"SEQRELID",
-	"STATEXTDATASTXOID",
-	"STATEXTNAMENSP",
-	"STATEXTOID",
-	"STATRELATTINH",
-	"SUBSCRIPTIONNAME",
-	"SUBSCRIPTIONOID",
-	"SUBSCRIPTIONRELMAP",
-	"TABLESPACEOID",
-	"TRFOID",
-	"TRFTYPELANG",
-	"TSCONFIGMAP",
-	"TSCONFIGNAMENSP",
-	"TSCONFIGOID",
-	"TSDICTNAMENSP",
-	"TSDICTOID",
-	"TSPARSERNAMENSP",
-	"TSPARSEROID",
-	"TSTEMPLATENAMENSP",
-	"TSTEMPLATEOID",
-	"TYPENAMENSP",
-	"TYPEOID",
-	"USERMAPPINGOID",
-	"USERMAPPINGUSERSERVER",
-	"YBTABLEGROUPOID",
-	"YBCONSTRAINTRELIDTYPIDNAME"
+#define YB_CATCACHE_ENTRY(name, id, idx, tbl) #name,
+	YB_CATCACHE_LIST
+#undef YB_CATCACHE_ENTRY
 };
 
 static_assert(SysCacheSize == sizeof(SysCacheName) /
@@ -1284,6 +1221,7 @@ static const char *yb_cache_table_name_table[] = {
 	"pg_default_acl",
 	"pg_enum",
 	"pg_event_trigger",
+	"pg_extension",
 	"pg_foreign_data_wrapper",
 	"pg_foreign_server",
 	"pg_foreign_table",
@@ -1328,91 +1266,9 @@ static_assert(YbNumCatalogCacheTables ==
 
 /* Maps cache id to the table id in yb_cache_table_name_table */
 static YbCatalogCacheTable yb_catalog_cache_tables[] = {
-	YbCatalogCacheTable_pg_aggregate,
-	YbCatalogCacheTable_pg_am,
-	YbCatalogCacheTable_pg_am,
-	YbCatalogCacheTable_pg_amop,
-	YbCatalogCacheTable_pg_amop,
-	YbCatalogCacheTable_pg_amproc,
-	YbCatalogCacheTable_pg_attribute,
-	YbCatalogCacheTable_pg_attribute,
-	YbCatalogCacheTable_pg_auth_members,
-	YbCatalogCacheTable_pg_auth_members,
-	YbCatalogCacheTable_pg_authid,
-	YbCatalogCacheTable_pg_authid,
-	YbCatalogCacheTable_pg_cast,
-	YbCatalogCacheTable_pg_opclass,
-	YbCatalogCacheTable_pg_opclass,
-	YbCatalogCacheTable_pg_collation,
-	YbCatalogCacheTable_pg_collation,
-	YbCatalogCacheTable_pg_conversion,
-	YbCatalogCacheTable_pg_conversion,
-	YbCatalogCacheTable_pg_constraint,
-	YbCatalogCacheTable_pg_conversion,
-	YbCatalogCacheTable_pg_database,
-	YbCatalogCacheTable_pg_default_acl,
-	YbCatalogCacheTable_pg_enum,
-	YbCatalogCacheTable_pg_enum,
-	YbCatalogCacheTable_pg_event_trigger,
-	YbCatalogCacheTable_pg_event_trigger,
-	YbCatalogCacheTable_pg_foreign_data_wrapper,
-	YbCatalogCacheTable_pg_foreign_data_wrapper,
-	YbCatalogCacheTable_pg_foreign_server,
-	YbCatalogCacheTable_pg_foreign_server,
-	YbCatalogCacheTable_pg_foreign_table,
-	YbCatalogCacheTable_pg_index,
-	YbCatalogCacheTable_pg_language,
-	YbCatalogCacheTable_pg_language,
-	YbCatalogCacheTable_pg_namespace,
-	YbCatalogCacheTable_pg_namespace,
-	YbCatalogCacheTable_pg_operator,
-	YbCatalogCacheTable_pg_operator,
-	YbCatalogCacheTable_pg_opfamily,
-	YbCatalogCacheTable_pg_opfamily,
-	YbCatalogCacheTable_pg_parameter_acl,
-	YbCatalogCacheTable_pg_parameter_acl,
-	YbCatalogCacheTable_pg_partitioned_table,
-	YbCatalogCacheTable_pg_proc,
-	YbCatalogCacheTable_pg_proc,
-	YbCatalogCacheTable_pg_publication,
-	YbCatalogCacheTable_pg_publication_namespace,
-	YbCatalogCacheTable_pg_publication_namespace,
-	YbCatalogCacheTable_pg_publication,
-	YbCatalogCacheTable_pg_publication_rel,
-	YbCatalogCacheTable_pg_publication_rel,
-	YbCatalogCacheTable_pg_range,
-	YbCatalogCacheTable_pg_range,
-	YbCatalogCacheTable_pg_class,
-	YbCatalogCacheTable_pg_class,
-	YbCatalogCacheTable_pg_replication_origin,
-	YbCatalogCacheTable_pg_replication_origin,
-	YbCatalogCacheTable_pg_rewrite,
-	YbCatalogCacheTable_pg_sequence,
-	YbCatalogCacheTable_pg_statistic_ext_data,
-	YbCatalogCacheTable_pg_statistic_ext,
-	YbCatalogCacheTable_pg_statistic_ext,
-	YbCatalogCacheTable_pg_statistic,
-	YbCatalogCacheTable_pg_subscription,
-	YbCatalogCacheTable_pg_subscription,
-	YbCatalogCacheTable_pg_subscription_rel,
-	YbCatalogCacheTable_pg_tablespace,
-	YbCatalogCacheTable_pg_transform,
-	YbCatalogCacheTable_pg_transform,
-	YbCatalogCacheTable_pg_ts_config_map,
-	YbCatalogCacheTable_pg_ts_config,
-	YbCatalogCacheTable_pg_ts_config,
-	YbCatalogCacheTable_pg_ts_dict,
-	YbCatalogCacheTable_pg_ts_dict,
-	YbCatalogCacheTable_pg_ts_parser,
-	YbCatalogCacheTable_pg_ts_parser,
-	YbCatalogCacheTable_pg_ts_template,
-	YbCatalogCacheTable_pg_ts_template,
-	YbCatalogCacheTable_pg_type,
-	YbCatalogCacheTable_pg_type,
-	YbCatalogCacheTable_pg_user_mapping,
-	YbCatalogCacheTable_pg_user_mapping,
-	YbCatalogCacheTable_pg_yb_tablegroup,
-	YbCatalogCacheTable_pg_constraint,
+#define YB_CATCACHE_ENTRY(name, id, idx, tbl) tbl,
+	YB_CATCACHE_LIST
+#undef YB_CATCACHE_ENTRY
 };
 
 static_assert(SysCacheSize ==
@@ -1471,16 +1327,21 @@ YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 }
 
 /*
- * Should YbPreloadCatalogCache populate catcache LIST entries?
+ * Should YbPreloadCatalogCache populate the full set of catcache LIST entries?
+ *
+ * In minimal-preload mode the caller preloads only the pg_rewrite (RULERELNAME)
+ * list -- the one whose on-demand rebuild during relcache init is expensive
+ * (see YbPreloadCatalogCache). This function decides whether to additionally
+ * preload the rest.
  *
  * - Outside minimal-preload mode: yes, always.
  * - In minimal-preload mode: only if the current backend's YbInternalConnKind
  *   descriptor opts in via preload_lists_in_minimal_mode. The relcache-init
- *   builder is the one kind that opts in -- the lists it populates are needed
- *   while building the relcache init file. Other minimal-preload kinds leave
- *   lists to be built on demand from a full SearchCatCacheList scan, because
- *   the prefetch filter restricts the underlying scan to system rows and the
- *   lists would otherwise be missing user-defined entries.
+ *   builder is the one kind that opts in -- it is transient and needs its
+ *   lists while building the relcache init file. Other minimal-preload kinds
+ *   leave the remaining lists (notably pg_proc's by-name list, which must be
+ *   complete for correctness) to be built on demand from a full
+ *   SearchCatCacheList scan.
  */
 static bool
 YbShouldPreloadCatcacheLists(void)
@@ -1533,16 +1394,13 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
 		/*
-		 * In minimal preload mode the scan above only includes system rows,
-		 * so any cached list built here would be missing user-defined
-		 * entries. Most kinds skip list preloading in that mode and let
-		 * SearchCatCacheList rebuild on demand from a full scan. The
-		 * relcache-init builder is the exception (see yb_internal_conn.c):
-		 * it opts in via preload_lists_in_minimal_mode so list-keyed catcache
-		 * lookups go through the populated list caches as it builds the
-		 * relcache init file.
+		 * In minimal-preload mode preload only the pg_rewrite (RULERELNAME)
+		 * list, which is safe to preload because we throw it away when we
+		 * are done preloading the corresponding relcache entry. The other
+		 * catcache lists are unsafe to preload in minimal mode because they
+		 * may be incomplete.
 		 */
-		if (!YbShouldPreloadCatcacheLists())
+		if (cache_id != RULERELNAME && !YbShouldPreloadCatcacheLists())
 			continue;
 
 		bool		is_add_to_list_required = true;
@@ -2502,95 +2360,10 @@ YbCheckCatalogCacheIndexNameTable()
 bool
 YbCheckSysCacheNames()
 {
-#define CHECK_SYSCACHE_NAME(name) \
+#define YB_CATCACHE_ENTRY(name, id, idx, tbl) \
 	if (strcmp(SysCacheName[name], #name)) return false;
-
-	CHECK_SYSCACHE_NAME(AGGFNOID);
-	CHECK_SYSCACHE_NAME(AMNAME);
-	CHECK_SYSCACHE_NAME(AMOID);
-	CHECK_SYSCACHE_NAME(AMOPOPID);
-	CHECK_SYSCACHE_NAME(AMOPSTRATEGY);
-	CHECK_SYSCACHE_NAME(AMPROCNUM);
-	CHECK_SYSCACHE_NAME(ATTNAME);
-	CHECK_SYSCACHE_NAME(ATTNUM);
-	CHECK_SYSCACHE_NAME(AUTHMEMMEMROLE);
-	CHECK_SYSCACHE_NAME(AUTHMEMROLEMEM);
-	CHECK_SYSCACHE_NAME(AUTHNAME);
-	CHECK_SYSCACHE_NAME(AUTHOID);
-	CHECK_SYSCACHE_NAME(CASTSOURCETARGET);
-	CHECK_SYSCACHE_NAME(CLAAMNAMENSP);
-	CHECK_SYSCACHE_NAME(CLAOID);
-	CHECK_SYSCACHE_NAME(COLLNAMEENCNSP);
-	CHECK_SYSCACHE_NAME(COLLOID);
-	CHECK_SYSCACHE_NAME(CONDEFAULT);
-	CHECK_SYSCACHE_NAME(CONNAMENSP);
-	CHECK_SYSCACHE_NAME(CONSTROID);
-	CHECK_SYSCACHE_NAME(CONVOID);
-	CHECK_SYSCACHE_NAME(DATABASEOID);
-	CHECK_SYSCACHE_NAME(DEFACLROLENSPOBJ);
-	CHECK_SYSCACHE_NAME(ENUMOID);
-	CHECK_SYSCACHE_NAME(ENUMTYPOIDNAME);
-	CHECK_SYSCACHE_NAME(EVENTTRIGGERNAME);
-	CHECK_SYSCACHE_NAME(EVENTTRIGGEROID);
-	CHECK_SYSCACHE_NAME(FOREIGNDATAWRAPPERNAME);
-	CHECK_SYSCACHE_NAME(FOREIGNDATAWRAPPEROID);
-	CHECK_SYSCACHE_NAME(FOREIGNSERVERNAME);
-	CHECK_SYSCACHE_NAME(FOREIGNSERVEROID);
-	CHECK_SYSCACHE_NAME(FOREIGNTABLEREL);
-	CHECK_SYSCACHE_NAME(INDEXRELID);
-	CHECK_SYSCACHE_NAME(LANGNAME);
-	CHECK_SYSCACHE_NAME(LANGOID);
-	CHECK_SYSCACHE_NAME(NAMESPACENAME);
-	CHECK_SYSCACHE_NAME(NAMESPACEOID);
-	CHECK_SYSCACHE_NAME(OPERNAMENSP);
-	CHECK_SYSCACHE_NAME(OPEROID);
-	CHECK_SYSCACHE_NAME(OPFAMILYAMNAMENSP);
-	CHECK_SYSCACHE_NAME(OPFAMILYOID);
-	CHECK_SYSCACHE_NAME(PARAMETERACLNAME);
-	CHECK_SYSCACHE_NAME(PARAMETERACLOID);
-	CHECK_SYSCACHE_NAME(PARTRELID);
-	CHECK_SYSCACHE_NAME(PROCNAMEARGSNSP);
-	CHECK_SYSCACHE_NAME(PROCOID);
-	CHECK_SYSCACHE_NAME(PUBLICATIONNAME);
-	CHECK_SYSCACHE_NAME(PUBLICATIONNAMESPACE);
-	CHECK_SYSCACHE_NAME(PUBLICATIONNAMESPACEMAP);
-	CHECK_SYSCACHE_NAME(PUBLICATIONOID);
-	CHECK_SYSCACHE_NAME(PUBLICATIONREL);
-	CHECK_SYSCACHE_NAME(PUBLICATIONRELMAP);
-	CHECK_SYSCACHE_NAME(RANGEMULTIRANGE);
-	CHECK_SYSCACHE_NAME(RANGETYPE);
-	CHECK_SYSCACHE_NAME(RELNAMENSP);
-	CHECK_SYSCACHE_NAME(RELOID);
-	CHECK_SYSCACHE_NAME(REPLORIGIDENT);
-	CHECK_SYSCACHE_NAME(REPLORIGNAME);
-	CHECK_SYSCACHE_NAME(RULERELNAME);
-	CHECK_SYSCACHE_NAME(SEQRELID);
-	CHECK_SYSCACHE_NAME(STATEXTDATASTXOID);
-	CHECK_SYSCACHE_NAME(STATEXTNAMENSP);
-	CHECK_SYSCACHE_NAME(STATEXTOID);
-	CHECK_SYSCACHE_NAME(STATRELATTINH);
-	CHECK_SYSCACHE_NAME(SUBSCRIPTIONNAME);
-	CHECK_SYSCACHE_NAME(SUBSCRIPTIONOID);
-	CHECK_SYSCACHE_NAME(SUBSCRIPTIONRELMAP);
-	CHECK_SYSCACHE_NAME(TABLESPACEOID);
-	CHECK_SYSCACHE_NAME(TRFOID);
-	CHECK_SYSCACHE_NAME(TRFTYPELANG);
-	CHECK_SYSCACHE_NAME(TSCONFIGMAP);
-	CHECK_SYSCACHE_NAME(TSCONFIGNAMENSP);
-	CHECK_SYSCACHE_NAME(TSCONFIGOID);
-	CHECK_SYSCACHE_NAME(TSDICTNAMENSP);
-	CHECK_SYSCACHE_NAME(TSDICTOID);
-	CHECK_SYSCACHE_NAME(TSPARSERNAMENSP);
-	CHECK_SYSCACHE_NAME(TSPARSEROID);
-	CHECK_SYSCACHE_NAME(TSTEMPLATENAMENSP);
-	CHECK_SYSCACHE_NAME(TSTEMPLATEOID);
-	CHECK_SYSCACHE_NAME(TYPENAMENSP);
-	CHECK_SYSCACHE_NAME(TYPEOID);
-	CHECK_SYSCACHE_NAME(USERMAPPINGOID);
-	CHECK_SYSCACHE_NAME(USERMAPPINGUSERSERVER);
-	CHECK_SYSCACHE_NAME(YBTABLEGROUPOID);
-	CHECK_SYSCACHE_NAME(YBCONSTRAINTRELIDTYPIDNAME);
-#undef CHECK_SYSCACHE_NAME
+	YB_CATCACHE_LIST
+#undef YB_CATCACHE_ENTRY
 	return true;
 }
 #endif							/* NDEBUG */
@@ -2652,9 +2425,6 @@ YbCopyCacheInfoToValues(int cache_id, Datum *values)
 	values[9] = Int32GetDatum(cacheinfo[cache_id].nbuckets);
 }
 
-#define YB_CHECK_CATALOG_CACHE_ID(id, value) \
-	static_assert(id == value, \
-		#id " has changed, need to increment YbSharedInvalCatcacheMsgVersion");
 void
 YbCheckCatalogCacheIds()
 {
@@ -2662,95 +2432,7 @@ YbCheckCatalogCacheIds()
 	 * If any existing id has its integer value changed, we need to increment
 	 * YbSharedInvalCatcacheMsgVersion so that old release PG backend will not
 	 * apply the catalog cache invalidation message.
-	 */
-
-	YB_CHECK_CATALOG_CACHE_ID(AGGFNOID, 0);
-	YB_CHECK_CATALOG_CACHE_ID(AMNAME, 1);
-	YB_CHECK_CATALOG_CACHE_ID(AMOID, 2);
-	YB_CHECK_CATALOG_CACHE_ID(AMOPOPID, 3);
-	YB_CHECK_CATALOG_CACHE_ID(AMOPSTRATEGY, 4);
-	YB_CHECK_CATALOG_CACHE_ID(AMPROCNUM, 5);
-	YB_CHECK_CATALOG_CACHE_ID(ATTNAME, 6);
-	YB_CHECK_CATALOG_CACHE_ID(ATTNUM, 7);
-	YB_CHECK_CATALOG_CACHE_ID(AUTHMEMMEMROLE, 8);
-	YB_CHECK_CATALOG_CACHE_ID(AUTHMEMROLEMEM, 9);
-	YB_CHECK_CATALOG_CACHE_ID(AUTHNAME, 10);
-	YB_CHECK_CATALOG_CACHE_ID(AUTHOID, 11);
-	YB_CHECK_CATALOG_CACHE_ID(CASTSOURCETARGET, 12);
-	YB_CHECK_CATALOG_CACHE_ID(CLAAMNAMENSP, 13);
-	YB_CHECK_CATALOG_CACHE_ID(CLAOID, 14);
-	YB_CHECK_CATALOG_CACHE_ID(COLLNAMEENCNSP, 15);
-	YB_CHECK_CATALOG_CACHE_ID(COLLOID, 16);
-	YB_CHECK_CATALOG_CACHE_ID(CONDEFAULT, 17);
-	YB_CHECK_CATALOG_CACHE_ID(CONNAMENSP, 18);
-	YB_CHECK_CATALOG_CACHE_ID(CONSTROID, 19);
-	YB_CHECK_CATALOG_CACHE_ID(CONVOID, 20);
-	YB_CHECK_CATALOG_CACHE_ID(DATABASEOID, 21);
-	YB_CHECK_CATALOG_CACHE_ID(DEFACLROLENSPOBJ, 22);
-	YB_CHECK_CATALOG_CACHE_ID(ENUMOID, 23);
-	YB_CHECK_CATALOG_CACHE_ID(ENUMTYPOIDNAME, 24);
-	YB_CHECK_CATALOG_CACHE_ID(EVENTTRIGGERNAME, 25);
-	YB_CHECK_CATALOG_CACHE_ID(EVENTTRIGGEROID, 26);
-	YB_CHECK_CATALOG_CACHE_ID(FOREIGNDATAWRAPPERNAME, 27);
-	YB_CHECK_CATALOG_CACHE_ID(FOREIGNDATAWRAPPEROID, 28);
-	YB_CHECK_CATALOG_CACHE_ID(FOREIGNSERVERNAME, 29);
-	YB_CHECK_CATALOG_CACHE_ID(FOREIGNSERVEROID, 30);
-	YB_CHECK_CATALOG_CACHE_ID(FOREIGNTABLEREL, 31);
-	YB_CHECK_CATALOG_CACHE_ID(INDEXRELID, 32);
-	YB_CHECK_CATALOG_CACHE_ID(LANGNAME, 33);
-	YB_CHECK_CATALOG_CACHE_ID(LANGOID, 34);
-	YB_CHECK_CATALOG_CACHE_ID(NAMESPACENAME, 35);
-	YB_CHECK_CATALOG_CACHE_ID(NAMESPACEOID, 36);
-	YB_CHECK_CATALOG_CACHE_ID(OPERNAMENSP, 37);
-	YB_CHECK_CATALOG_CACHE_ID(OPEROID, 38);
-	YB_CHECK_CATALOG_CACHE_ID(OPFAMILYAMNAMENSP, 39);
-	YB_CHECK_CATALOG_CACHE_ID(OPFAMILYOID, 40);
-	YB_CHECK_CATALOG_CACHE_ID(PARAMETERACLNAME, 41);
-	YB_CHECK_CATALOG_CACHE_ID(PARAMETERACLOID, 42);
-	YB_CHECK_CATALOG_CACHE_ID(PARTRELID, 43);
-	YB_CHECK_CATALOG_CACHE_ID(PROCNAMEARGSNSP, 44);
-	YB_CHECK_CATALOG_CACHE_ID(PROCOID, 45);
-	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONNAME, 46);
-	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONNAMESPACE, 47);
-	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONNAMESPACEMAP, 48);
-	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONOID, 49);
-	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONREL, 50);
-	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONRELMAP, 51);
-	YB_CHECK_CATALOG_CACHE_ID(RANGEMULTIRANGE, 52);
-	YB_CHECK_CATALOG_CACHE_ID(RANGETYPE, 53);
-	YB_CHECK_CATALOG_CACHE_ID(RELNAMENSP, 54);
-	YB_CHECK_CATALOG_CACHE_ID(RELOID, 55);
-	YB_CHECK_CATALOG_CACHE_ID(REPLORIGIDENT, 56);
-	YB_CHECK_CATALOG_CACHE_ID(REPLORIGNAME, 57);
-	YB_CHECK_CATALOG_CACHE_ID(RULERELNAME, 58);
-	YB_CHECK_CATALOG_CACHE_ID(SEQRELID, 59);
-	YB_CHECK_CATALOG_CACHE_ID(STATEXTDATASTXOID, 60);
-	YB_CHECK_CATALOG_CACHE_ID(STATEXTNAMENSP, 61);
-	YB_CHECK_CATALOG_CACHE_ID(STATEXTOID, 62);
-	YB_CHECK_CATALOG_CACHE_ID(STATRELATTINH, 63);
-	YB_CHECK_CATALOG_CACHE_ID(SUBSCRIPTIONNAME, 64);
-	YB_CHECK_CATALOG_CACHE_ID(SUBSCRIPTIONOID, 65);
-	YB_CHECK_CATALOG_CACHE_ID(SUBSCRIPTIONRELMAP, 66);
-	YB_CHECK_CATALOG_CACHE_ID(TABLESPACEOID, 67);
-	YB_CHECK_CATALOG_CACHE_ID(TRFOID, 68);
-	YB_CHECK_CATALOG_CACHE_ID(TRFTYPELANG, 69);
-	YB_CHECK_CATALOG_CACHE_ID(TSCONFIGMAP, 70);
-	YB_CHECK_CATALOG_CACHE_ID(TSCONFIGNAMENSP, 71);
-	YB_CHECK_CATALOG_CACHE_ID(TSCONFIGOID, 72);
-	YB_CHECK_CATALOG_CACHE_ID(TSDICTNAMENSP, 73);
-	YB_CHECK_CATALOG_CACHE_ID(TSDICTOID, 74);
-	YB_CHECK_CATALOG_CACHE_ID(TSPARSERNAMENSP, 75);
-	YB_CHECK_CATALOG_CACHE_ID(TSPARSEROID, 76);
-	YB_CHECK_CATALOG_CACHE_ID(TSTEMPLATENAMENSP, 77);
-	YB_CHECK_CATALOG_CACHE_ID(TSTEMPLATEOID, 78);
-	YB_CHECK_CATALOG_CACHE_ID(TYPENAMENSP, 79);
-	YB_CHECK_CATALOG_CACHE_ID(TYPEOID, 80);
-	YB_CHECK_CATALOG_CACHE_ID(USERMAPPINGOID, 81);
-	YB_CHECK_CATALOG_CACHE_ID(USERMAPPINGUSERSERVER, 82);
-	YB_CHECK_CATALOG_CACHE_ID(YBTABLEGROUPOID, 83);
-	YB_CHECK_CATALOG_CACHE_ID(YBCONSTRAINTRELIDTYPIDNAME, 84);
-
-	/*
+	 *
 	 * If an existing ID is removed, interop isn't possible so we need to
 	 * bump YbSharedInvalCatcacheMsgVersion.
 	 * If new ids are added, we need to add them at the end of the above
@@ -2769,5 +2451,9 @@ YbCheckCatalogCacheIds()
 	 * but old PG backend cannot provide that message needed. In this case
 	 * interop isn't possible so we need to bump YbSharedInvalCatcacheMsgVersion.
 	 */
-	static_assert(SysCacheSize == 85, "new catalog cache id added");
+#define YB_CATCACHE_ENTRY(name, id, idx, tbl) \
+	static_assert(name == id, \
+				  "The cache ID " #name " has changed from " #id ". You need to increment YbSharedInvalCatcacheMsgVersion");
+	YB_CATCACHE_LIST
+#undef YB_CATCACHE_ENTRY
 }

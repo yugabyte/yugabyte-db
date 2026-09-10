@@ -18,6 +18,8 @@
 
 #include "yb/common/common.messages.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb {
 
 ConsistentReadPoint::ConsistentReadPoint(const scoped_refptr<ClockBase>& clock)
@@ -38,9 +40,19 @@ void ConsistentReadPoint::SetReadTimeUnlocked(
 }
 
 void ConsistentReadPoint::SetCurrentReadTimeUnlocked(ClampUncertaintyWindow clamp) {
+  // Picking a fresh read time must not discard the statement's in_txn_limit if one was set via
+  // SetInTxnLimit: callers such as PgClientSession's clamping and Batcher's fan-out read time
+  // picking run after the limit was chosen for the statement. The ReadHybridTime constructors
+  // default in_txn_limit to kMax ("no cutoff, see all own intents"), which is only correct when
+  // no statement limit exists. This is equivalent on the wire when the preserved value is
+  // invalid, because ReadHybridTime::ToPB collapses an invalid in_txn_limit to kMax.
+  const auto in_txn_limit = read_time_.in_txn_limit;
   SetReadTimeUnlocked(
       clamp ? ReadHybridTime::SingleTime(clock_->Now())
             : ReadHybridTime::FromHybridTimeRange(clock_->NowRange()));
+  if (in_txn_limit) {
+    read_time_.in_txn_limit = in_txn_limit;
+  }
 }
 
 void ConsistentReadPoint::SetReadTime(

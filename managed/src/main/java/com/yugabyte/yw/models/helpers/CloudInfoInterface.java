@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.DefaultRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
 import java.util.Map;
 import java.util.Objects;
@@ -55,6 +56,28 @@ public interface CloudInfoInterface {
 
   public static <T extends CloudInfoInterface> T get(Provider provider) {
     return get(provider, false);
+  }
+
+  /**
+   * Returns the GCP Workload Identity Federation audience configured on the provider for
+   * cross-cloud federated IAM, or null when federation is not enabled or no audience is set. Only
+   * AWS and on-prem (AWS-backed) providers carry this config.
+   */
+  public static String getCrossCloudFederationAudience(Provider provider) {
+    CloudType cloud = provider.getCloudCode();
+    String audience = null;
+    if (cloud == CloudType.aws) {
+      AWSCloudInfo info = get(provider);
+      if (info != null && info.enableFederatedIam) {
+        audience = info.federatedIamAudience;
+      }
+    } else if (cloud == CloudType.onprem) {
+      OnPremCloudInfo info = get(provider);
+      if (info != null && info.enableFederatedIam) {
+        audience = info.federatedIamAudience;
+      }
+    }
+    return (audience == null || audience.trim().isEmpty()) ? null : audience;
   }
 
   public static <T extends CloudInfoInterface> T get(Region region) {
@@ -232,6 +255,16 @@ public interface CloudInfoInterface {
           azuRegionCloudInfo.withSensitiveDataMasked();
         }
         return (T) azuRegionCloudInfo;
+      case oci:
+        OCIRegionCloudInfo ociRegionCloudInfo = cloudInfo.getOci();
+        if (ociRegionCloudInfo == null) {
+          ociRegionCloudInfo = new OCIRegionCloudInfo();
+          cloudInfo.setOci(ociRegionCloudInfo);
+        }
+        if (ociRegionCloudInfo != null && maskSensitiveData) {
+          ociRegionCloudInfo.withSensitiveDataMasked();
+        }
+        return (T) ociRegionCloudInfo;
       case kubernetes:
         KubernetesRegionInfo kubernetesInfo = cloudInfo.getKubernetes();
         if (kubernetesInfo == null) {
@@ -405,6 +438,11 @@ public interface CloudInfoInterface {
         AzureRegionCloudInfo azuRegionCloudInfo =
             mapper.convertValue(config, AzureRegionCloudInfo.class);
         cloudInfo.setAzu(azuRegionCloudInfo);
+        break;
+      case oci:
+        OCIRegionCloudInfo ociRegionCloudInfo =
+            mapper.convertValue(config, OCIRegionCloudInfo.class);
+        cloudInfo.setOci(ociRegionCloudInfo);
         break;
       case kubernetes:
         KubernetesRegionInfo kubernetesRegionInfo =

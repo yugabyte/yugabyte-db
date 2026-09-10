@@ -220,6 +220,13 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       } catch (IOException ex) {
         LOG.error(logPrefix + ": exception while trying to close " + clusterOrSessionStr, ex);
         throw ex;
+      } catch (AssertionError ex) {
+        // The DataStax driver can raise a spurious AssertionError from its internal
+        // ConvictionPolicy connection accounting when closing a session/cluster whose hosts were
+        // removed while the test was running (e.g. during a full cluster move). This happens only
+        // during best-effort teardown and does not reflect a product failure, so log and continue.
+        LOG.error(logPrefix + ": ignoring driver assertion while closing " + clusterOrSessionStr,
+            ex);
       }
     } else {
       LOG.info(logPrefix + clusterOrSessionStr + " is already null, nothing to close");
@@ -825,6 +832,26 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   public void restartYcqlMiniCluster() throws Exception {
     miniCluster.restart();
     waitForYcqlConnectivity();
+    // A full cluster restart severs the class-level CQL client's connections; the driver marks its
+    // hosts down and can back off long enough that they are still down during teardown, producing a
+    // spurious NoHostAvailableException. Rebuild the client so a live session is guaranteed for the
+    // remainder of the test and for teardown.
+    final String logPrefix = "BaseCQLTest.restartYcqlMiniCluster: ";
+    closeIfNotNull(logPrefix, "session", session);
+    closeIfNotNull(logPrefix, "cluster", cluster);
+    session = null;
+    cluster = null;
+    // Best-effort: rebuilding the client relies on the default credentials, which a test may
+    // have invalidated before the restart (e.g. by dropping the 'cassandra' role). If reconnecting
+    // fails, leave the client null and let the test proceed; teardown tolerates a null
+    // session/cluster, and tests that need the client again rebuild it explicitly via a subsequent
+    // restart helper.
+    try {
+      setUpCqlClient();
+    } catch (Exception ex) {
+      LOG.warn(logPrefix + "could not rebuild the CQL client after restart; continuing without it",
+          ex);
+    }
   }
 
   protected boolean doesQueryPlanContainSubstring(String query, String substring)
@@ -859,5 +886,33 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         }
         return true;
       }, 20000 /* timeoutMs */, 100 /* sleepTime */);
+  }
+
+  /**
+   * Waits until every CQL node plans the given query as a scan of the given index.
+   *
+   * waitForReadPermsOnAllIndexes() only checks the master. A node picks an index based on its own
+   * cached copy of the indexed table, which is purged (and the statement retried internally) only
+   * when a statement it executes hits a tablet reporting a schema version mismatch. Tablets get the
+   * new schema asynchronously, so even a statement run after the master granted the permission can
+   * hit a tablet that is still on the old schema, see no mismatch and leave the node planning a
+   * table scan. A plan that changes between pages of a paged SELECT fails the query with "Object no
+   * longer exists.", because the paging state records the table or index scanned by the previous
+   * page. Hence the query is executed (to refresh the metadata of the node serving it) before it is
+   * explained: an explain alone never refreshes it.
+   */
+  protected void waitForIndexScanPlanOnAllNodes(String query, String indexName) throws Exception {
+    final Set<String> nodesUsingIndex = new HashSet<>();
+    final int numNodes = miniCluster.getTabletServers().size();
+    TestUtils.waitFor(
+      () -> {
+        session.execute(query);
+        ResultSet rs = session.execute("explain " + query);
+        String node = rs.getExecutionInfo().getQueriedHost().toString();
+        if (rs.all().toString().contains(indexName)) {
+          nodesUsingIndex.add(node);
+        }
+        return nodesUsingIndex.size() >= numNodes;
+      }, 60000 /* timeoutMs */, 100 /* sleepTime */);
   }
 }

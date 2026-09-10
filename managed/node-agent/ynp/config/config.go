@@ -380,6 +380,9 @@ func FixParsedConfigMap(input map[string]map[string]any) map[string]map[string]a
 
 func fixParsedConfig(input any) any {
 	tp := reflect.TypeOf(input)
+	if input == nil {
+		return nil
+	}
 	val := reflect.ValueOf(input)
 	if tp.Kind() == reflect.Map {
 		var fixedMap = make(map[string]any)

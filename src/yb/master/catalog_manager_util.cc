@@ -31,6 +31,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/math_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 
@@ -574,7 +575,8 @@ const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklis
 
 Status ExecutePgsqlStatements(
     const std::string& database_name, const std::vector<std::string>& statements,
-    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback) {
+    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback,
+    std::string_view yb_internal_conn_kind) {
   SCHECK(!database_name.empty(), InvalidArgument, "Database name is empty");
   if (statements.empty()) {
     return Status::OK();
@@ -588,6 +590,9 @@ Status ExecutePgsqlStatements(
   req.set_database_name(database_name);
   for (const auto& statement : statements) {
     req.add_pgsql_statements(statement);
+  }
+  if (!yb_internal_conn_kind.empty()) {
+    req.set_yb_internal_conn_kind(std::string(yb_internal_conn_kind));
   }
 
   auto resp = std::make_shared<tserver::AdminExecutePgsqlResponsePB>();

@@ -347,6 +347,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
+      // Configure cross-cloud federated IAM on the newly added node only if the universe is already
+      // federated, so we never leave it in a mixed (some-federated) state.
+      if (isUniverseFederationConfigured()) {
+        createConfigureCloudFederationTasks(userIntent, nodeSet, true);
+      }
+
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
 

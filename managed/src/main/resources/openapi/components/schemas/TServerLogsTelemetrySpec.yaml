@@ -1,0 +1,20 @@
+x-yba-api-visibility: internal
+title: TServerLogsTelemetrySpec
+type: object
+description: yb-tserver logs. Omit or set to null to disable.
+properties:
+  exporters:
+    description: List of exporters. Empty = no export.
+    type: array
+    items:
+      $ref: "./UniverseServerLogsExporterConfig.yaml"
+  min_level:
+    description: |
+      Minimum yb-tserver glog severity to export. Lines below this level are dropped. Defaults to WARNING (yb-tserver INFO is very high volume).
+    type: string
+    default: WARNING
+    enum:
+      - INFO
+      - WARNING
+      - ERROR
+      - FATAL

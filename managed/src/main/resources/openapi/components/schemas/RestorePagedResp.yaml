@@ -1,0 +1,6 @@
+title: RestorePagedResp
+description: Paged list response for universe restores.
+type: object
+x-data-container: PaginationResp
+x-data-item: Restore
+x-data-entities-description: Universe restores for this page.

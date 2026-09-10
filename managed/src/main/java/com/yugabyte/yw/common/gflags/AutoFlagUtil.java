@@ -30,7 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol;
 import org.yb.WireProtocol.PromotedFlagsPerProcessPB;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Singleton
 @Slf4j
@@ -65,7 +65,7 @@ public class AutoFlagUtil {
    * @return autoFlagConfig
    */
   private WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       return client.autoFlagsConfig().getAutoFlagsConfig();
     } catch (Exception e) {
       LOG.error(

@@ -66,7 +66,9 @@ export const nodeInClusterStates = [
   NodeState.Stopped,
   NodeState.Starting,
   NodeState.Unreachable,
-  NodeState.MetricsUnavailable
+  NodeState.MetricsUnavailable,
+  NodeState.InstanceStopping,
+  NodeState.InstanceStopped
 ];
 
 export const MultilineGFlags = {
@@ -314,6 +316,7 @@ export const isPausableUniverse = (universe) => {
   return (
     isUniverseType(universe, 'gcp') ||
     isUniverseType(universe, 'azu') ||
+    isUniverseType(universe, 'oci') ||
     isUniverseType(universe, 'kubernetes')
   );
 };

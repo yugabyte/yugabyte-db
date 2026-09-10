@@ -94,6 +94,13 @@ public class SetupYNP extends NodeTaskBase {
       shellContext = defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Provider provider = Util.getProviderForNode(node, universe);
+    // Bound the remote setup commands so a hung upload or extraction fails the subtask instead of
+    // blocking the universe task forever (PLAT-22154).
+    shellContext =
+        shellContext.toBuilder()
+            .timeoutSecs(
+                confGetter.getConfForScope(provider, ProviderConfKeys.ynpSetupTimeout).toSeconds())
+            .build();
 
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);

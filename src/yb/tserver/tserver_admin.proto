@@ -172,6 +172,11 @@ message CreateTabletRequestPB {
 
   // If set to true, retention barriers will be set on the tablet.
   optional bool cdc_sdk_set_retention_barriers = 20;
+
+  // Tiered storage: storage tier label (e.g. "ssd", "hdd") that this tablet's home directory
+  // should be placed on, derived from the storage_tier of the tablespace the tablet's table
+  // belongs to. Empty/unset means no tier preference (default disk-selection policy).
+  optional string target_storage_tier = 21;
 }
 
 message CreateTabletResponsePB {

@@ -20,6 +20,7 @@
 #include <boost/asio/io_service.hpp>
 
 #include "yb/util/cgroups.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"

@@ -1062,4 +1062,168 @@ TEST_F(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster) {
   ASSERT_EQ(received_op_id.index, read_result.majority_replicated_index);
 }
 
+// Leader-side half of the catch-up livelock.
+//
+// PeerMessageQueue::ResponseFromPeer decides where to send from using status().last_received(),
+// preferred but only if IsOpInLog() accepts it, else status().last_received_current_leader(). A
+// follower holding a conflicting entry reports a last_received that exists in no other log, so
+// everything rests on the fallback, which RaftConsensusCatchupProbeTest shows stays frozen.
+//
+// The two tests below pin both directions: the leader's send position never moves while the
+// reported fallback is frozen, and reaches the conflicting index as soon as the fallback
+// advances. That is why no leader-side change is needed.
+
+class ConsensusQueueCatchupTest : public ConsensusQueueTest {
+ public:
+  // Log tail, and the index the follower's conflicting entry sits at.
+  static constexpr int kConflictIndex = kNumMessages;
+
+  // Leader with kNumMessages ops, tracking a peer whose reported watermarks are those of a
+  // wedged follower: a last_received not in the leader's log, and a fallback stuck below it.
+  void SetUpWedgedPeer(LWConsensusRequestPB* request, LWConsensusResponsePB* response,
+                       OpId* conflicting_op, OpId* frozen_fallback) {
+    queue_->Init(OpId::Min());
+    queue_->SetLeaderMode(
+        OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(2));
+    AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, kNumMessages);
+
+    const auto leader_tail = MakeOpIdForIndex(kConflictIndex);
+    *conflicting_op = OpId(leader_tail.term + 1, leader_tail.index);
+    *frozen_fallback = MakeOpIdForIndex(kConflictIndex / 2);
+
+    ASSERT_TRUE(UpdatePeerWatermarkToOp(
+        request, response, *conflicting_op, *frozen_fallback, frozen_fallback->index));
+  }
+};
+
+// With the fallback frozen the leader re-derives the same send position every time, and each
+// exchange succeeds, so nothing else in the system reacts.
+TEST_F(ConsensusQueueCatchupTest, LeaderStaysBelowConflictWhileFollowerFallbackIsFrozen) {
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+  OpId conflicting_op, frozen_fallback;
+  ASSERT_NO_FATALS(SetUpWedgedPeer(&request, &response, &conflicting_op, &frozen_fallback));
+
+  const auto stuck_next_index = frozen_fallback.index + 1;
+  ASSERT_LT(stuck_next_index, kConflictIndex)
+      << "The frozen fallback must sit below the conflicting index, or there is nothing to be "
+      << "stuck behind.";
+
+  // A fixed point, not a slow drift.
+  for (int i = 0; i < 10; ++i) {
+    SCOPED_TRACE(Format("exchange $0", i));
+
+    LWReplicateMsgsHolder refs;
+    bool needs_remote_bootstrap = false;
+    request.mutable_ops()->clear();
+    ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+
+    ASSERT_FALSE(needs_remote_bootstrap)
+        << "Remote bootstrap would have rescued the peer; the livelock depends on it not firing.";
+
+    // The wedged follower answers with the same two watermarks every time.
+    SetLastReceivedAndLastCommitted(
+        &response, conflicting_op, frozen_fallback, frozen_fallback.index);
+    queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+    const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+    ASSERT_EQ(peer.next_index, stuck_next_index)
+        << "Leader moved its send position for the peer; the livelock premise does not hold.";
+    ASSERT_EQ(peer.last_received, frozen_fallback)
+        << "Leader positioned from something other than the frozen fallback.";
+  }
+
+  // The conflicting index, the one thing that would break the deadlock, is still ahead.
+  const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+  ASSERT_LT(peer.next_index, kConflictIndex)
+      << "Leader reached the conflicting index " << kConflictIndex << ", which would have healed "
+      << "the follower.";
+}
+
+// Given a fallback that advances to what the follower verifiably holds, the same leader walks
+// straight to the conflicting index.
+TEST_F(ConsensusQueueCatchupTest, LeaderReachesConflictOnceFollowerFallbackAdvances) {
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+  OpId conflicting_op, frozen_fallback;
+  ASSERT_NO_FATALS(SetUpWedgedPeer(&request, &response, &conflicting_op, &frozen_fallback));
+
+  ASSERT_EQ(queue_->GetTrackedPeerForTests(kPeerUuid).next_index, frozen_fallback.index + 1);
+
+  // A follower reporting the highest op it holds below its conflicting entry.
+  const auto advanced_fallback = MakeOpIdForIndex(kConflictIndex - 1);
+  ASSERT_GT(advanced_fallback, frozen_fallback);
+
+  LWReplicateMsgsHolder refs;
+  bool needs_remote_bootstrap = false;
+  request.mutable_ops()->clear();
+  ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+
+  SetLastReceivedAndLastCommitted(
+      &response, conflicting_op, advanced_fallback, advanced_fallback.index);
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+  ASSERT_EQ(peer.next_index, kConflictIndex)
+      << "Leader did not advance to the conflicting index even though the follower's fallback "
+      << "moved; the follower-side fix alone would not be sufficient.";
+}
+
+// Watermarks carried inside a failed response must not advance the majority-replicated op id.
+//
+// A follower's error responses skip the durability wait and are filled from its in-memory
+// watermarks, so they can name ops that are not yet durable in its WAL. The leader stores those
+// watermarks for positioning (that is how preceding-entry catch-up finds where to resume;
+// UpdatePeerWatermarkToOp() above depends on it), but GetWatermark() counts only peers whose
+// last exchange succeeded, so a value acknowledged only inside a failed response never reaches
+// the commit rule. That check exists to skip unresponsive peers; this test pins the durability
+// role it also plays.
+TEST_F(ConsensusQueueTest, MajorityWatermarkIgnoresWatermarksCarriedByFailedResponses) {
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(3));
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 10);
+  WaitForLocalPeerToAckIndex(10);
+
+  const auto majority_before = queue_->TEST_GetMajorityReplicatedOpId();
+
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+
+  // peer-1's only communication is an error response claiming the newest op id.
+  ASSERT_TRUE(UpdatePeerWatermarkToOp(
+      &request, &response, MakeOpIdForIndex(10), OpId::Min(), 0));
+
+  // The claim was stored for positioning, but the majority watermark did not move.
+  ASSERT_EQ(queue_->GetTrackedPeerForTests(kPeerUuid).last_received, MakeOpIdForIndex(10));
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), majority_before);
+
+  // peer-2 successfully acks an older op id. The majority watermark follows the successful
+  // acknowledgements (local peer at 10, peer-2 at 2): were peer-1's error-carried claim
+  // counted, this would be 10.
+  const char* kPeer2Uuid = "peer-2";
+  TrackPeer(*queue_, kPeer2Uuid);
+  response.ref_responder_uuid(kPeer2Uuid);
+  LWReplicateMsgsHolder refs;
+  bool needs_remote_bootstrap;
+  ASSERT_OK(queue_->RequestForPeer(kPeer2Uuid, &request, &refs, &needs_remote_bootstrap));
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(2), 0);
+  ASSERT_TRUE(queue_->ResponseFromPeer(kPeer2Uuid, response));
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(2));
+
+  // Once peer-1 acks inside a successful response, it participates again, with the value that
+  // response carried rather than the error-carried one.
+  refs.Reset();
+  request.mutable_ops()->clear();
+  response.mutable_status()->Clear();
+  response.ref_responder_uuid(kPeerUuid);
+  ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(5), 0);
+  queue_->ResponseFromPeer(kPeerUuid, response);
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(5));
+}
+
 } // namespace yb::consensus

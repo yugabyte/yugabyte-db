@@ -19,8 +19,28 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb::master {
+
+#define DECLARE_SINGLETON_LOADER_CLASS(name, key_type, entry_pb_name) \
+  template <typename CatalogEntityWrapper> \
+  class BOOST_PP_CAT(name, Loader) \
+      : public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
+   public: \
+    explicit BOOST_PP_CAT(name, Loader)(CatalogEntityWrapper & catalog_entity_wrapper) \
+        : catalog_entity_wrapper_(catalog_entity_wrapper) {} \
+\
+   private: \
+    Status Visit(const key_type& key, const entry_pb_name& metadata) override { \
+      catalog_entity_wrapper_.Load(metadata); \
+      return Status::OK(); \
+    } \
+    CatalogEntityWrapper& catalog_entity_wrapper_; \
+    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
+  };
 
 #define DECLARE_MULTI_INSTANCE_LOADER_CLASS(name, key_type, entry_pb_name) \
   class BOOST_PP_CAT(name, Loader) \
@@ -85,6 +105,22 @@ class MetadataCowWrapper {
   ReadLock LockForRead() const { return ReadLock(&metadata()); }
 
   WriteLock LockForWrite() { return WriteLock(mutable_metadata()); }
+
+  Result<ReadLock> TryLockForRead(CoarseTimePoint deadline) const {
+    ReadLock lock(&metadata(), deadline);
+    if (!lock.locked()) {
+      return STATUS_FORMAT(TimedOut, "Timed out acquiring read lock on $0", ToString());
+    }
+    return lock;
+  }
+
+  Result<WriteLock> TryLockForWrite(CoarseTimePoint deadline) {
+    WriteLock lock(mutable_metadata(), deadline);
+    if (!lock.locked()) {
+      return STATUS_FORMAT(TimedOut, "Timed out acquiring write lock on $0", ToString());
+    }
+    return lock;
+  }
 
   const auto& old_pb() const { return metadata_.state().pb; }
 

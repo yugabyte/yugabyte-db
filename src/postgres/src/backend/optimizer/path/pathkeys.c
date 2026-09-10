@@ -2107,3 +2107,48 @@ yb_get_ecs_for_query_uniqkeys(PlannerInfo *root)
 
 	return ecs;
 }
+
+/*
+ * Convert a subquery's uniqkeys into the terms of the outer query.
+ */
+List *
+yb_convert_subquery_uniqkeys(RelOptInfo *rel, List *subquery_uniqkeys,
+							 List *subquery_tlist)
+{
+	List	   *retval = NIL;
+	ListCell   *i;
+
+	foreach(i, subquery_uniqkeys)
+	{
+		Expr	   *uniqkey = (Expr *) lfirst(i);
+		Var		   *outer_var = NULL;
+		ListCell   *j;
+
+		foreach(j, subquery_tlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(j);
+			Expr	   *tle_expr;
+
+			tle_expr = canonicalize_ec_expression(tle->expr,
+												  exprType((Node *) uniqkey),
+												  exprCollation((Node *) uniqkey));
+			if (!equal(tle_expr, uniqkey))
+				continue;
+
+			outer_var = find_var_for_subquery_tle(rel, tle);
+			if (outer_var)
+				break;
+		}
+
+		/*
+		 * DISTINCT on {a, b} does not imply DISTINCT on {a}.  Therefore,
+		 * if one uniqkey cannot be translated, the whole set must be dropped.
+		 */
+		if (!outer_var)
+			return NIL;
+
+		retval = lappend(retval, outer_var);
+	}
+
+	return retval;
+}

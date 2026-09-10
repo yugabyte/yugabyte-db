@@ -235,26 +235,51 @@ TEST_F(TestQLStaticColumn, TestPagingSelect) {
   CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (2, 2, 5, 22);");
   CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (2, 3, 6, 23);");
 
-  // Test selecting all rows and columns. Ensure the static column is not missed across pages.
-  VerifyPaginationSelect(processor, "SELECT * FROM t;", 1,
-      "{ { int32:1, int32:1, int32:3, int32:11 } }"
-      "{ { int32:1, int32:2, int32:3, int32:12 } }"
-      "{ { int32:1, int32:3, int32:3, int32:13 } }"
-      "{ { int32:2, int32:1, int32:6, int32:21 } }"
-      "{ { int32:2, int32:2, int32:6, int32:22 } }"
-      "{ { int32:2, int32:3, int32:6, int32:23 } }");
+  // Run the same selects twice: first while the rows are still in the memtables, then after they
+  // have been moved into SST files and are checked against a fixed bloom filter key.
+  for (auto do_flush : {false, true}) {
+    if (do_flush) {
+      ASSERT_OK(cluster_->FlushTablets());
+    }
+    SCOPED_TRACE(do_flush ? "Reading from SST files" : "Reading from memtables");
 
-  // Test selecting all rows for the non-primary key columns using page-size 2. Ensure the static
-  // column is not missed across pages also.
-  VerifyPaginationSelect(processor, "SELECT s, c FROM t;", 2,
-      "{ { int32:3, int32:11 }, { int32:3, int32:12 } }"
-      "{ { int32:3, int32:13 }, { int32:6, int32:21 } }"
-      "{ { int32:6, int32:22 }, { int32:6, int32:23 } }");
+    // Test selecting all rows and columns. Ensure the static column is not missed across pages.
+    VerifyPaginationSelect(processor, "SELECT * FROM t;", 1,
+        "{ { int32:1, int32:1, int32:3, int32:11 } }"
+        "{ { int32:1, int32:2, int32:3, int32:12 } }"
+        "{ { int32:1, int32:3, int32:3, int32:13 } }"
+        "{ { int32:2, int32:1, int32:6, int32:21 } }"
+        "{ { int32:2, int32:2, int32:6, int32:22 } }"
+        "{ { int32:2, int32:3, int32:6, int32:23 } }");
 
-  // Test selecting all distinct static columns with page-size 1.
-  VerifyPaginationSelect(processor, "SELECT DISTINCT s FROM t;", 1,
-      "{ { int32:3 } }"
-      "{ { int32:6 } }");
+    // Test selecting all rows for the non-primary key columns using page-size 2. Ensure the static
+    // column is not missed across pages also.
+    VerifyPaginationSelect(processor, "SELECT s, c FROM t;", 2,
+        "{ { int32:3, int32:11 }, { int32:3, int32:12 } }"
+        "{ { int32:3, int32:13 }, { int32:6, int32:21 } }"
+        "{ { int32:6, int32:22 }, { int32:6, int32:23 } }");
+
+    // Test selecting all distinct static columns with page-size 1.
+    VerifyPaginationSelect(processor, "SELECT DISTINCT s FROM t;", 1,
+        "{ { int32:3 } }"
+        "{ { int32:6 } }");
+
+    // Test selecting only a non-static column.
+    VerifyPaginationSelect(processor, "SELECT c FROM t;", 2,
+        "{ { int32:11 }, { int32:12 } }"
+        "{ { int32:13 }, { int32:21 } }"
+        "{ { int32:22 }, { int32:23 } }");
+
+    // Test COUNT aggregates.
+    for (const auto* count_query :
+         {"SELECT COUNT(*) FROM t;", "SELECT COUNT(c) FROM t;", "SELECT COUNT(s) FROM t;"}) {
+      SCOPED_TRACE(count_query);
+      CHECK_VALID_STMT(count_query);
+      auto row_block = processor->row_block();
+      EXPECT_EQ(row_block->row_count(), 1);
+      EXPECT_EQ(row_block->row(0).column(0).int64_value(), 6);
+    }
+  }
 }
 
 } // namespace ql

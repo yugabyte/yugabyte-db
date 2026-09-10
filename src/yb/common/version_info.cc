@@ -42,11 +42,14 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/once.h"
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
 

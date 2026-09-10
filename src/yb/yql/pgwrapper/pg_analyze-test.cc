@@ -36,6 +36,7 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 

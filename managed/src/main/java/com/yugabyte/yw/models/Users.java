@@ -9,7 +9,10 @@ import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -29,27 +32,33 @@ import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
+import play.libs.Json;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -57,7 +66,12 @@ import play.mvc.Http.Status;
 @ApiModel(description = "A user associated with a customer")
 @Getter
 @Setter
+// Fields must be opted in explicitly so that credentials and PII added to this entity in future
+// are never emitted by toString(), which reaches the logs via RoleBinding and Principal.
+@ToString(onlyExplicitlyIncluded = true)
 public class Users extends Model {
+  // Max serialized size of user settings JSON.
+  public static final int SETTINGS_MAX_BYTES = 64 * 1024;
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
 
@@ -132,9 +146,11 @@ public class Users extends Model {
   // A globally unique UUID for the Users.
   @Id
   @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
+  @ToString.Include
   private UUID uuid = UUID.randomUUID();
 
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
+  @ToString.Include
   private UUID customerUUID;
 
   @Constraints.Required
@@ -145,11 +161,21 @@ public class Users extends Model {
       required = true)
   private String email;
 
+  @ToString.Include(name = "email")
+  private String toStringEmail() {
+    return email == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
+
   @JsonIgnore
   @ApiModelProperty(
       value = "User password hash",
       example = "$2y$10$ABccHWa1DO2VhcF1Ea2L7eOBZRhktsJWbFaB/aEjLfpaplDBIJ8K6")
   private String passwordHash;
+
+  @ToString.Include(name = "passwordHash")
+  private String toStringPasswordHash() {
+    return passwordHash == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
 
   public void setPassword(String password) {
     this.setPasswordHash(Users.pbkdf2Hasher.hash(password));
@@ -160,6 +186,7 @@ public class Users extends Model {
       value = "User creation date",
       example = "2022-12-12T13:07:18Z",
       accessMode = READ_ONLY)
+  @ToString.Include
   private Date creationDate;
 
   @Encrypted @JsonIgnore private String authToken;
@@ -169,15 +196,22 @@ public class Users extends Model {
       value = "UI session token creation date",
       example = "2021-06-17T15:00:05Z",
       accessMode = READ_ONLY)
+  @ToString.Include
   private Date authTokenIssueDate;
 
   @ApiModelProperty(value = "Hash of API Token")
   @JsonIgnore
   private String apiToken;
 
-  @JsonIgnore private Long apiTokenVersion = 0L;
+  @ToString.Include(name = "apiToken")
+  private String toStringApiToken() {
+    return apiToken == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
+
+  @JsonIgnore @ToString.Include private Long apiTokenVersion = 0L;
 
   @ApiModelProperty(value = "User timezone")
+  @ToString.Include
   private String timezone;
 
   // The role of the user.
@@ -187,15 +221,19 @@ public class Users extends Model {
               + " getRoleBindings instead.",
       example = "Admin")
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.3.0")
+  @ToString.Include
   private Role role;
 
   @ApiModelProperty(value = "True if the user is the primary user")
+  @ToString.Include
   private boolean isPrimary;
 
   @ApiModelProperty(value = "User Type")
+  @ToString.Include
   private UserType userType;
 
   @ApiModelProperty(value = "LDAP Specified Role")
+  @ToString.Include
   private boolean ldapSpecifiedRole;
 
   @Encrypted
@@ -203,7 +241,14 @@ public class Users extends Model {
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   private String oidcJwtAuthToken;
 
+  // Reads the field rather than the getter, which always returns null.
+  @ToString.Include(name = "oidcJwtAuthToken")
+  private String toStringOidcJwtAuthToken() {
+    return oidcJwtAuthToken == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
+
   @DbArray(name = "group_memberships")
+  @ToString.Include
   private Set<UUID> groupMemberships = new HashSet<>();
 
   public String getOidcJwtAuthToken() {
@@ -217,9 +262,70 @@ public class Users extends Model {
 
   @ApiModelProperty(value = "YbaApi Internal. Used to turn off new UI feature for particular user")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
-  private Boolean newUniverseUiEnabled = true;
+  @ToString.Include
+  private Boolean newUniverseUiEnabled = false;
+
+  @ApiModelProperty(value = "YbaApi Internal. Whether the new UI tour was shown to particular user")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  @ToString.Include
+  private Boolean newUniverseUiTourCompleted;
+
+  /**
+   * Persistent per-user key-value settings (server-side analog of browser localStorage). Top-level
+   * keys are setting names; values may be any JSON. Null values on upsert remove keys.
+   */
+  @Column(columnDefinition = "TEXT")
+  @ApiModelProperty(value = "YbaApi Internal. Per-user key-value settings")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  private JsonNode settings;
 
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
+
+  /** Get settings for this user. Returns an empty object when unset. */
+  public JsonNode getSettings() {
+    return settings == null || settings.isNull() ? Json.newObject() : settings;
+  }
+
+  /**
+   * Upserts settings for this user. Only specified top-level keys are updated (flat merge). Pass a
+   * null value for a key to remove it. Existing keys not present in {@code input} are kept.
+   */
+  public void upsertSettings(JsonNode settings) {
+    if (settings == null) {
+      this.settings = null;
+      return;
+    }
+    if (!settings.isObject()) {
+      throw new PlatformServiceException(BAD_REQUEST, "User settings must be a JSON object.");
+    }
+    ObjectNode prefs =
+        (this.settings == null || this.settings.isNull())
+            ? Json.newObject()
+            : (ObjectNode) this.settings.deepCopy();
+
+    for (Iterator<Map.Entry<String, JsonNode>> it = settings.fields(); it.hasNext(); ) {
+      Map.Entry<String, JsonNode> entry = it.next();
+      if (entry.getValue() == null || entry.getValue().isNull()) {
+        prefs.remove(entry.getKey());
+      } else {
+        prefs.set(entry.getKey(), entry.getValue());
+      }
+    }
+
+    validateSettingsSize(prefs);
+    this.settings = prefs;
+    save();
+  }
+
+  private static void validateSettingsSize(JsonNode settings) {
+    int size = settings.toString().getBytes(StandardCharsets.UTF_8).length;
+    if (size > SETTINGS_MAX_BYTES) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "User settings exceed maximum size of %d bytes (got %d).", SETTINGS_MAX_BYTES, size));
+    }
+  }
 
   @Deprecated
   public static Users get(UUID userUUID) {
@@ -334,10 +440,7 @@ public class Users extends Model {
   public static void deleteUser(String email) {
     Users userToDelete = Users.find.query().where().eq("email", email).findOne();
     if (userToDelete != null && userToDelete.getUserType().equals(UserType.ldap)) {
-      log.info(
-          "Deleting user id {} with email address {}",
-          userToDelete.getUuid(),
-          userToDelete.getEmail());
+      log.info("Deleting user id {}", userToDelete.getUuid());
       userToDelete.delete();
     }
     return;
@@ -350,7 +453,7 @@ public class Users extends Model {
     super.save();
     Principal principal = Principal.get(this.uuid);
     if (principal == null) {
-      log.info("Adding Principal entry for user with email: " + this.email);
+      log.info("Adding Principal entry for user with uuid: " + this.uuid);
       new Principal(this).save();
     }
   }
@@ -359,7 +462,7 @@ public class Users extends Model {
   @Transactional
   @Override
   public boolean delete() {
-    log.info("Deleting Principal entry for user with email: " + this.email);
+    log.info("Deleting Principal entry for user with uuid: " + this.uuid);
     Principal principal = Principal.getOrBadRequest(this.uuid);
     principal.delete();
     return super.delete();

@@ -49,6 +49,10 @@
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value_type.h"
+
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/map-util.h"
@@ -1542,6 +1546,272 @@ void PartitionSchema::ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::
 
 void PartitionSchema::ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out) {
   AppendToKey(expr.value(), out);
+}
+
+template <class Col>
+Result<KeyEntryValues> GetRangeComponents(
+    const Schema& schema, const Col& range_cols, const bool lower_bound) {
+  size_t column_idx = 0;
+  auto range_cols_it = range_cols.begin();
+  const auto num_range_key_columns = schema.num_range_key_columns();
+  KeyEntryValues result;
+  for (const auto& col_id : schema.column_ids()) {
+    if (!schema.is_range_column(col_id)) {
+      continue;
+    }
+
+    const ColumnSchema& column_schema = VERIFY_RESULT(schema.column_by_id(col_id));
+
+    if (schema.table_properties().partitioning_version() > 0) {
+      if (column_idx < static_cast<size_t>(range_cols.size())) {
+        result.push_back(KeyEntryValue::FromQLValuePBForKey(
+            range_cols_it->value(), column_schema.sorting_type()));
+      } else {
+        result.emplace_back(lower_bound ? KeyEntryType::kLowest : KeyEntryType::kHighest);
+      }
+    } else {
+      if (column_idx >= static_cast<size_t>(range_cols.size()) ||
+          range_cols_it->value().value_case() == QLValuePB::VALUE_NOT_SET) {
+        result.emplace_back(lower_bound ? KeyEntryType::kLowest : KeyEntryType::kHighest);
+      } else {
+        result.push_back(KeyEntryValue::FromQLValuePB(
+            range_cols_it->value(), column_schema.sorting_type()));
+      }
+    }
+
+    ++range_cols_it;
+    if (++column_idx == num_range_key_columns) {
+      break;
+    }
+  }
+
+  if (!lower_bound) {
+    result.emplace_back(KeyEntryType::kHighest);
+  }
+  return result;
+}
+
+template <class Col>
+Result<std::string> GetRangePartitionKey(const Schema& schema, const Col& range_cols) {
+  RSTATUS_DCHECK(!schema.num_hash_key_columns(), IllegalState,
+      "Cannot get range partition key for hash partitioned table");
+
+  auto range_components = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
+  return DocKey(std::move(range_components)).Encode().ToStringBuffer();
+}
+
+#define YB_INSTANTIATE_RANGE_KEY_FUNCS(Col) \
+    template Result<KeyEntryValues> GetRangeComponents<Col>(const Schema&, const Col&, bool); \
+    template Result<std::string> GetRangePartitionKey<Col>(const Schema&, const Col&);
+
+YB_INSTANTIATE_RANGE_KEY_FUNCS(google::protobuf::RepeatedPtrField<PgsqlExpressionPB>)
+YB_INSTANTIATE_RANGE_KEY_FUNCS(ArenaList<LWPgsqlExpressionPB>)
+
+#undef YB_INSTANTIATE_RANGE_KEY_FUNCS
+
+namespace {
+
+void SetPartitionKey(const Slice& value, LWPgsqlReadRequestPB* request) {
+  request->dup_partition_key(value);
+}
+
+void SetPartitionKey(const Slice& value, LWPgsqlWriteRequestPB* request) {
+  request->dup_partition_key(value);
+}
+
+void SetPartitionKey(const Slice& value, PgsqlReadRequestPB* request) {
+  request->set_partition_key(value.cdata(), value.size());
+}
+
+void SetPartitionKey(const Slice& value, PgsqlWriteRequestPB* request) {
+  request->set_partition_key(value.cdata(), value.size());
+}
+
+template <class Req>
+void SetHashCodePartitionKey(uint16_t hash_code, Req* request) {
+  if (request->is_forward_scan()) {
+    if (hash_code == 0) {
+      request->clear_partition_key();
+    } else {
+      SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
+    }
+  } else {
+    if (hash_code == PartitionSchema::kMaxPartitionKey) {
+      request->clear_partition_key();
+    } else {
+      SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code + 1), request);
+    }
+  }
+}
+
+template<class Req>
+auto* GetPagingState(const Req& request) {
+  if (request.has_index_request()) {
+    return request.index_request().has_paging_state()
+        ? &request.index_request().paging_state() : nullptr;
+  }
+  return request.has_paging_state() ? &request.paging_state() : nullptr;
+}
+
+Result<uint16_t> GetHashCodeFromBound(const Slice& key) {
+  uint16_t hash_code;
+  if (PartitionSchema::IsValidHashPartitionKeyBound(key)) {
+    DCHECK(!yb_allow_dockey_bounds) << "Invalid request bound: " << key.ToDebugHexString();
+    hash_code = PartitionSchema::DecodeMultiColumnHashValue(key);
+  } else {
+    DCHECK(yb_allow_dockey_bounds) << "Invalid request bound: " << key.ToDebugHexString();
+    hash_code = VERIFY_RESULT(DocKey::DecodeHash(key));
+  }
+  return hash_code;
+}
+
+template<class Req>
+Status InitHashPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
+  // Seek a specific partition_key from read_request, also set the hash_code/max_hash_code bounds.
+  // 1. paging_state -- Use the partition key provided by the server. It is a follow-up request, so
+  //    the hash code bounds are already set.
+  // 2. hash column values -- Full set of hash values allow to calculate the hash code, which sets
+  //    the partition key, and the both hash code bounds.
+  // 3. lower and upper bound -- If set, provide the value for the hash_code and the max_hash_code
+  //    respectively. Depending on the scan direction, one of them provides the partition key value.
+  if (auto* paging_state = GetPagingState(*request); paging_state) {
+    // TODO: DocDB used to set the next partition key as the hash code of the next row (see
+    // PgsqlReadOperation::SetPagingState) regardless of the scan direction. That is inconsistent
+    // with the current semantics of the partition key, which is exclusive in the backward scan.
+    // While we have fixed it in DocDB, there is a backward compatibility problem, at the time of
+    // upgrade there may be nodes still sending the inclusive hash code.
+    // So for now we extract the hash code from the next row key, later on, when we don't have to
+    // maintain backward compatibility with older versions, we can use the partition key from the
+    // paging state unconditionally.
+    if (paging_state->has_next_row_key()) {
+      auto hash_code = VERIFY_RESULT(DocKey::DecodeHash(paging_state->next_row_key()));
+      SetHashCodePartitionKey(hash_code, request);
+    } else {
+      SetPartitionKey(paging_state->next_partition_key(), request);
+    }
+    return Status::OK();
+  }
+  if (!request->partition_column_values().empty()) {
+    // If hashed columns are set, use them to compute the exact key and set the bounds
+    auto hash_code = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
+        request->partition_column_values()));
+    request->set_hash_code(hash_code);
+    request->set_max_hash_code(hash_code);
+    SetHashCodePartitionKey(hash_code, request);
+    return Status::OK();
+  }
+  request->clear_partition_key();
+  if (request->has_lower_bound()) {
+    auto hash_code = VERIFY_RESULT(GetHashCodeFromBound(request->lower_bound().key()));
+    request->set_hash_code(hash_code);
+    if (request->is_forward_scan()) {
+      SetHashCodePartitionKey(hash_code, request);
+    }
+  }
+  if (request->has_upper_bound()) {
+    auto max_hash_code = VERIFY_RESULT(GetHashCodeFromBound(request->upper_bound().key()));
+    request->set_max_hash_code(max_hash_code);
+    if (!request->is_forward_scan()) {
+      SetHashCodePartitionKey(max_hash_code, request);
+    }
+  }
+  return Status::OK();
+}
+
+template<class Req>
+Status InitRangePartitionKey(const Schema& schema, Req* request) {
+  // Seek a specific partition_key from read_request
+  // 1. paging_state -- Use the partition key provided by the server.
+  // 2. upper or lower bound -- If the scan direction is forward, the lower bound is the
+  //    partition key. For the backward scan the partition key is implicitly exclusive, so if the
+  //    upper bound is set and is inclusive, the partition key should be set strictly greater than
+  //    the upper bound.
+  if (auto *paging_state = GetPagingState(*request); paging_state) {
+    SetPartitionKey(paging_state->next_partition_key(), request);
+    return Status::OK();
+  }
+  request->clear_partition_key();
+  if (request->has_lower_bound() && request->is_forward_scan()) {
+    SetPartitionKey(request->lower_bound().key(), request);
+  }
+  if (request->has_upper_bound() && !request->is_forward_scan()) {
+    if (request->upper_bound().is_inclusive()) {
+      // Partition key is exclusive, so we add +inf to include the upper bound value itself.
+      DocKey doc_key;
+      VERIFY_RESULT(doc_key.DecodeFrom(
+          request->upper_bound().key(), DocKeyPart::kWholeDocKey, AllowSpecial::kTrue));
+      doc_key.AddRangeComponent(KeyEntryValue(KeyEntryType::kHighest));
+      SetPartitionKey(doc_key.Encode(), request);
+    } else {
+      SetPartitionKey(request->upper_bound().key(), request);
+    }
+  }
+  return Status::OK();
+}
+
+template<class Req>
+Status InitReadPartitionKeyImpl(
+    const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
+  if (schema.num_hash_key_columns() > 0) {
+    return InitHashPartitionKey(schema, partition_schema, request);
+  }
+
+  return InitRangePartitionKey(schema, request);
+}
+
+template<class Req>
+Status InitWritePartitionKeyImpl(
+    const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
+  const auto& ybctid = request->ybctid_column_value().value();
+  if (schema.num_hash_key_columns() > 0) {
+    if (!IsNull(ybctid)) {
+      const uint16 hash_code = VERIFY_RESULT(DocKey::DecodeHash(ybctid.binary_value()));
+      request->set_hash_code(hash_code);
+      SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
+      return Status::OK();
+    }
+
+    // Computing the partition_key.
+    auto partition_key = VERIFY_RESULT(partition_schema.EncodePgsqlHash(
+        request->partition_column_values()));
+    request->set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
+    SetPartitionKey(partition_key, request);
+    return Status::OK();
+  } else {
+    // Range partitioned table
+    if (!IsNull(ybctid)) {
+      SetPartitionKey(ybctid.binary_value(), request);
+      return Status::OK();
+    }
+
+    // Computing the range key.
+    SetPartitionKey(
+        VERIFY_RESULT(GetRangePartitionKey(schema, request->range_column_values())), request);
+    return Status::OK();
+  }
+}
+
+}  // namespace
+
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, PgsqlReadRequestPB* request) {
+  return InitReadPartitionKeyImpl(schema, partition_schema, request);
+}
+
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, PgsqlWriteRequestPB* request) {
+  return InitWritePartitionKeyImpl(schema, partition_schema, request);
+}
+
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlReadRequestPB* request) {
+  return InitReadPartitionKeyImpl(schema, partition_schema, request);
+}
+
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request) {
+  return InitWritePartitionKeyImpl(schema, partition_schema, request);
 }
 
 }  // namespace yb::dockv

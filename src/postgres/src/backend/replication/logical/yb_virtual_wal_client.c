@@ -26,12 +26,15 @@
 #include <inttypes.h>
 
 #include "access/xact.h"
+#include "catalog/pg_publication.h"
 #include "catalog/yb_type.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/catcache.h"
+#include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
@@ -47,12 +50,20 @@ static size_t cached_records_last_sent_row_idx = 0;
 static bool last_getconsistentchanges_response_empty = false;
 static TimestampTz last_getconsistentchanges_response_receipt_time;
 static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
+/* Commit LSN of the latest transaction filtered by the decoder. */
+static XLogRecPtr last_filtered_commit_lsn = InvalidXLogRecPtr;
 
 /*
  * Marker to refresh publication's tables list. If set to true call
  * UpdatePublicationTableList before calling next GetConsistentChanges.
  */
 static bool needs_publication_table_list_refresh = false;
+
+/*
+ * Set when the last refresh was caused by an explicit ALTER PUBLICATION. If true, the walsender
+ * fires syscache callbacks so pgoutput re-reads the publication and re-sends RELATION messages.
+ */
+static bool explicit_alter_publication_detected = false;
 
 /* The time at which the list of tables in the publication needs to be provided to the VWAL. */
 static uint64_t publication_refresh_time = 0;
@@ -107,6 +118,7 @@ static void InitVirtualWal(List *publication_names,
 static void PreProcessBeforeFetchingNextBatch();
 
 static void TrackUnackedTransaction(YbVirtualWalRecord *record);
+static void AckFilteredTransactions(void);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
@@ -134,6 +146,13 @@ YBCInitVirtualWal(List *yb_publication_names)
 												   "context",
 												   ALLOCSET_DEFAULT_SIZES);
 	/*
+	 * Reset cached state for a fresh start. Ensures we don't use stale data
+	 * from a previous session if Init is ever called without Destroy.
+	 */
+	cached_records = NULL;
+	cached_records_last_sent_row_idx = 0;
+
+	/*
 	 * A separate memory context for the unacked txn list as a child of the
 	 * virtual wal context.
 	 */
@@ -143,8 +162,17 @@ YBCInitVirtualWal(List *yb_publication_names)
 													 ALLOCSET_DEFAULT_SIZES);
 	caller_context = CurrentMemoryContext;
 
-	/* Start a transaction to be able to read the catalog tables. */
-	StartTransactionCommand();
+	/*
+	 * Start a transaction to be able to read the catalog tables.
+	 * Only needed when no transaction is already active, i.e. for the push
+	 * model (walsender) and the notifications poller background worker. In
+	 * the pull model (SQL function API), the caller's transaction is already
+	 * active and provides catalog access.
+	 */
+	bool		is_in_txn = IsTransactionOrTransactionBlock();
+
+	if (!is_in_txn)
+		StartTransactionCommand();
 
 	/*
 	 * Allocate any data within the virtual wal context i.e. outside of the
@@ -154,15 +182,28 @@ YBCInitVirtualWal(List *yb_publication_names)
 
 	InitVirtualWal(yb_publication_names, slot_hash_range);
 
-	AbortCurrentTransaction();
+	if (!is_in_txn)
+		AbortCurrentTransaction();
+	else
+	{
+		/*
+		 * In the pull model, InitVirtualWal sets yb_read_time for catalog
+		 * reads. Since we're sharing the caller's transaction, we must reset
+		 * it to avoid polluting subsequent operations in the same transaction.
+		 * In the push model, AbortCurrentTransaction handles this cleanup.
+		 */
+		YBCResetYbReadTimeAndInvalidateRelcache();
+	}
 	MemoryContextSwitchTo(caller_context);
 
 	unacked_transactions = NIL;
 	last_getconsistentchanges_response_empty = false;
 	last_getconsistentchanges_response_receipt_time = 0;
 	last_txn_begin_lsn = InvalidXLogRecPtr;
+	last_filtered_commit_lsn = InvalidXLogRecPtr;
 
 	needs_publication_table_list_refresh = false;
+	explicit_alter_publication_detected = false;
 	if (yb_enable_consistent_replication_from_hash_range &&
 		slot_hash_range != NULL)
 		pfree(slot_hash_range);
@@ -182,7 +223,19 @@ YBCDestroyVirtualWal()
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
 
+	/*
+	 * Reset cached_records to avoid dangling pointer. The memory it pointed
+	 * to was freed when cached_records_context was deleted above.
+	 */
+	cached_records = NULL;
+	cached_records_last_sent_row_idx = 0;
+
+	last_filtered_commit_lsn = InvalidXLogRecPtr;
 	needs_publication_table_list_refresh = false;
+	explicit_alter_publication_detected = false;
+
+	/* YB: Reset yb_read_time set by InitVirtualWal. */
+	YBCResetYbReadTimeAndInvalidateRelcache();
 }
 
 static List *
@@ -309,6 +362,15 @@ InitVirtualWal(List *publication_names,
 	}
 
 	/*
+	 * Flush the pg_publication syscaches (PUBLICATIONNAME / PUBLICATIONOID) so
+	 * that the by-name publication lookup in YBCGetTablesWithRetryIfNeeded
+	 * below is served from storage at the yb_read_time just set above, rather
+	 * than from a catcache entry that may have been warmed earlier at a
+	 * different (latest) read time.
+	 */
+	CatalogCacheFlushCatalog(PublicationRelationId);
+
+	/*
 	 * We may encounter a failure prompting a retry in 2 cases:
 	 *   1. When publication was created after the slot creation.
 	 *   2. After PG 15 upgrade if last_pub_refresh_time lies in the period
@@ -366,6 +428,7 @@ static const YbcPgTypeEntity *
 GetDynamicTypeEntity(int attr_num, Oid relid)
 {
 	bool		is_in_txn = IsTransactionOrTransactionBlock();
+	MemoryContext caller_context = CurrentMemoryContext;
 
 	if (!is_in_txn)
 		StartTransactionCommand();
@@ -380,7 +443,10 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
 
 	if (!is_in_txn)
+	{
 		AbortCurrentTransaction();
+		MemoryContextSwitchTo(caller_context);
+	}
 
 	return type_entity;
 }
@@ -400,6 +466,7 @@ YBXLogReadRecord(XLogReaderState *state, List *publication_names,
 	if (record)
 	{
 		state->ReadRecPtr = record->lsn;
+		state->EndRecPtr = record->lsn;
 		state->yb_virtual_wal_record = record;
 	}
 
@@ -436,6 +503,12 @@ YBCReadRecord(List *publication_names)
 				 publication_refresh_time);
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
+			if (explicit_alter_publication_detected)
+			{
+				ResetCatalogCaches();
+				CallSystemCacheCallbacks();
+			}
+
 			/*
 			 * We will need a retry post PG 15 upgrade, when the publication_refresh_time
 			 * lies in the period where YB was running PG 11.
@@ -455,9 +528,13 @@ YBCReadRecord(List *publication_names)
 			pfree(table_oids);
 			list_free(tables);
 			AbortCurrentTransaction();
+			MemoryContextSwitchTo(cached_records_context);
 
 			needs_publication_table_list_refresh = false;
+			explicit_alter_publication_detected = false;
 		}
+
+		AckFilteredTransactions();
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
 								   &cached_records, &GetDynamicTypeEntity);
@@ -481,6 +558,8 @@ YBCReadRecord(List *publication_names)
 		needs_publication_table_list_refresh =
 			cached_records->needs_publication_table_list_refresh;
 		publication_refresh_time = cached_records->publication_refresh_time;
+		explicit_alter_publication_detected =
+			cached_records->explicit_alter_publication_detected;
 	}
 
 	/*
@@ -548,25 +627,36 @@ PreProcessBeforeFetchingNextBatch()
 	if (cached_records)
 		MemoryContextReset(cached_records_context);
 
-	/* Don't track idle sleep time */
-	pgstat_report_wait_start(WAIT_EVENT_YB_IDLE_SLEEP);
-
-	if (last_getconsistentchanges_response_empty)
+	/*
+	 * Sleep between poll iterations to avoid busy-waiting. Needed for the
+	 * push model (walsender) and the notifications poller background worker
+	 * which continuously poll for new records. In the pull model (SQL
+	 * function API), the caller is inside its own SQL transaction, so we
+	 * skip the sleep and fetch without delay until no more records are
+	 * available.
+	 */
+	if (!IsTransactionOrTransactionBlock())
 	{
-		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
-			 yb_walsender_poll_sleep_duration_empty_ms);
-		pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
-	}
-	else
-	{
-		elog(DEBUG4,
-			 "YBCReadRecord: Sleeping for %d ms as the last "
-			 "response was non-empty.",
-			 yb_walsender_poll_sleep_duration_nonempty_ms);
-		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
-	}
+		/* Don't track idle sleep time */
+		pgstat_report_wait_start(WAIT_EVENT_YB_IDLE_SLEEP);
 
-	pgstat_report_wait_end();
+		if (last_getconsistentchanges_response_empty)
+		{
+			elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
+				 yb_walsender_poll_sleep_duration_empty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
+		}
+		else
+		{
+			elog(DEBUG4,
+				 "YBCReadRecord: Sleeping for %d ms as the last "
+				 "response was non-empty.",
+				 yb_walsender_poll_sleep_duration_nonempty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
+		}
+
+		pgstat_report_wait_end();
+	}
 
 	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 }
@@ -615,6 +705,56 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 	}
 
 	MemoryContextSwitchTo(caller_context);
+}
+
+/*
+ * Remember the commit_lsn of the last transaction that the decoder filtered
+ * out. This will be acked to the Virtual WAL before the next
+ * GetConsistentChanges call.
+ */
+void
+YBCTrackFilteredTransaction(XLogRecPtr commit_lsn)
+{
+	last_filtered_commit_lsn = commit_lsn;
+}
+
+/*
+ * Acknowledge the transactions dropped by the decoder since the last
+ * GetConsistentChanges call.
+ */
+static void
+AckFilteredTransactions(void)
+{
+	XLogRecPtr	confirmed_flush;
+	XLogRecPtr	restart_lsn;
+
+	if (last_filtered_commit_lsn == InvalidXLogRecPtr)
+		return;
+
+	SpinLockAcquire(&MyReplicationSlot->mutex);
+	confirmed_flush = MyReplicationSlot->data.confirmed_flush;
+	SpinLockRelease(&MyReplicationSlot->mutex);
+
+	confirmed_flush = Max(confirmed_flush, last_filtered_commit_lsn);
+
+	elog(DEBUG1,
+		 "Acking transactions filtered by the decoder upto commit_lsn %lu "
+		 "using confirmed_flush %lu",
+		 last_filtered_commit_lsn, confirmed_flush);
+
+	restart_lsn = YBCCalculatePersistAndGetRestartLSN(confirmed_flush);
+
+	SpinLockAcquire(&MyReplicationSlot->mutex);
+	MyReplicationSlot->data.confirmed_flush = confirmed_flush;
+	if (restart_lsn != InvalidXLogRecPtr)
+		MyReplicationSlot->data.restart_lsn = restart_lsn;
+	SpinLockRelease(&MyReplicationSlot->mutex);
+
+	/*
+	 * Reset the last filtered commit_lsn to prevent unncessary rpcs to VWAL
+	 * when nothing was filtered.
+	 */
+	last_filtered_commit_lsn = InvalidXLogRecPtr;
 }
 
 XLogRecPtr

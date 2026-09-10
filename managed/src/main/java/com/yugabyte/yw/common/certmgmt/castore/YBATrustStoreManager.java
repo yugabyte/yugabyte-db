@@ -25,7 +25,8 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -253,19 +254,27 @@ public class YBATrustStoreManager implements TrustStoreManager {
               getTruststorePassword());
 
       String legacyStorePath = getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME);
-      if (Files.exists(Path.of(legacyStorePath))) {
+      boolean legacyExists = Files.exists(Path.of(legacyStorePath));
+      boolean bcfksExists = Files.exists(Path.of(trustStoreInfo.getPath()));
+
+      if (legacyExists && bcfksExists) {
+        // BCFKS truststore is already in place (e.g. this YBA has been through the migration
+        // before, or the BCFKS store was populated independently). Overwriting it with the legacy
+        // PKCS12 contents could destroy certs that only live in BCFKS, so skip the conversion and
+        // just move the legacy PKCS12 aside so we don't attempt to reconvert on every startup.
+        log.info(
+            "Both legacy PKCS12 truststore ({}) and BCFKS truststore ({}) exist; "
+                + "backing up legacy PKCS12 without conversion",
+            legacyStorePath,
+            trustStoreInfo.getPath());
+        backupLegacyPkcs12(trustStoreHome, new File(legacyStorePath));
+      } else if (legacyExists) {
         log.info("Legacy truststore file {} exists - converting to BCFKS", legacyStorePath);
         // Convert it to BCFKS for backward compatibility.
         List<TrustStoreInfo> candidates =
             ImmutableList.of(
-                new TrustStoreInfo(
-                    getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME),
-                    KEYSTORE_TYPE_PKCS12,
-                    getTruststorePassword()),
-                new TrustStoreInfo(
-                    getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME),
-                    KEYSTORE_TYPE_JKS,
-                    getTruststorePassword()));
+                new TrustStoreInfo(legacyStorePath, KEYSTORE_TYPE_PKCS12, getTruststorePassword()),
+                new TrustStoreInfo(legacyStorePath, KEYSTORE_TYPE_JKS, getTruststorePassword()));
         ImmutablePair<TrustStoreInfo, KeyStore> loadedStore = loadFirstOf(candidates);
         if (loadedStore == null) {
           throw new PlatformServiceException(
@@ -292,29 +301,44 @@ public class YBATrustStoreManager implements TrustStoreManager {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR, "Failed to convert keystore to BCFKS format");
         }
-        saveTrustStore(trustStoreInfo, convertedStore);
         try {
+          saveTrustStore(trustStoreInfo, convertedStore);
           // Backup up converted YBA trust store in DB and remove legacy from backup.
           FileData.upsertFileInDB(trustStoreInfo.getPath(), false);
-          File legacyKeystoreFile = new File(loadedStore.getLeft().getPath());
-          String legacyBackupFileName =
-              String.format(
-                  "ybPkcs12CaCerts_%s.backup",
-                  DateTimeFormatter.ISO_LOCAL_DATE.format(Instant.now()));
-          File legacyKeystoreBackupFile =
-              new File(getTrustStorePath(trustStoreHome, legacyBackupFileName));
-          FileUtils.moveFile(legacyKeystoreFile, legacyKeystoreBackupFile);
-          FileData.deleteFileFromDB(legacyKeystoreFile.getPath());
-          // Just in case also store backup of old truststore in the DB.
-          FileData.upsertFileInDB(legacyKeystoreBackupFile.getPath(), false);
         } catch (IOException e) {
-          log.error("Failed to backup converted keystore file {}", trustStoreInfo.getPath(), e);
+          log.error("Failed to save converted keystore {}", trustStoreInfo.getPath(), e);
           throw new PlatformServiceException(
-              INTERNAL_SERVER_ERROR, "Failed to backup converted keystore file");
+              INTERNAL_SERVER_ERROR, "Failed to save converted keystore file");
         }
+        backupLegacyPkcs12(trustStoreHome, new File(loadedStore.getLeft().getPath()));
       }
       this.ybaTrustStoreInfo = trustStoreInfo;
       return ybaTrustStoreInfo;
+    }
+  }
+
+  // Timestamp used in the legacy keystore backup filename. Includes time (down to seconds) in
+  // addition to the date so that a backup file restored from the FileData DB on YBA startup does
+  // not collide with a fresh backup produced on a subsequent boot. Uses filesystem-safe chars
+  // (no colons) and a trailing 'Z' to make the UTC offset explicit.
+  private static final DateTimeFormatter BACKUP_TIMESTAMP_FORMATTER =
+      DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss'Z'");
+
+  private void backupLegacyPkcs12(String trustStoreHome, File legacyKeystoreFile) {
+    try {
+      OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+      String legacyBackupFileName =
+          String.format("ybPkcs12CaCerts_%s.backup", BACKUP_TIMESTAMP_FORMATTER.format(now));
+      File legacyKeystoreBackupFile =
+          new File(getTrustStorePath(trustStoreHome, legacyBackupFileName));
+      FileUtils.moveFile(legacyKeystoreFile, legacyKeystoreBackupFile);
+      FileData.deleteFileFromDB(legacyKeystoreFile.getPath());
+      // Just in case also store backup of old truststore in the DB.
+      FileData.upsertFileInDB(legacyKeystoreBackupFile.getPath(), false);
+    } catch (IOException e) {
+      log.error("Failed to backup legacy keystore file {}", legacyKeystoreFile.getPath(), e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to backup legacy keystore file");
     }
   }
 

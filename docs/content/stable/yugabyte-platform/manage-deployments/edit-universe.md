@@ -22,6 +22,8 @@ YugabyteDB Anywhere supports both horizontal and vertical scaling of your univer
 
 -> For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
 
+-> For information on changing storage class and volume count on Kubernetes universes, refer to [Full move for Kubernetes universes](../kubernetes-full-move/).
+
 -> For information on managing Kubernetes universes using the YugabyteDB Kubernetes Operator, refer to [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
 
 ## Edit a universe
@@ -40,15 +42,14 @@ To change the configuration of a universe, do the following:
         - **Regions** - Select any region configured in the provider used to deploy the universe.
         - [Master Placement](../../create-deployments/dedicated-master/).
         - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
+        - {{<tags/feature/ea idea="56">}}**Replication Factor** - Currently, you can only _increase_ the replication factor. Note that this change may also require you to increase the number of nodes or availability zones. Contact {{% support-platform %}} before modifying this field, for assistance on capacity planning and sizing appropriately.
     - **Instance Configuration**
         - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
-        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS. For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
     - **Advanced Configuration**
         - **Override Deployment Ports** - You can change the Master and TServer HTTP and RPC ports, and the Prometheus Node Exporter port.
 
     - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
-
-    Note that you can't change the replication factor of a universe.
 
 1. Click **Save**.
 
@@ -58,9 +59,7 @@ To change the number of nodes of universes created with an on-premises provider 
 
 ### Edit connection pooling
 
-{{<tags/feature/ea idea="1368">}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
-
-While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 
 To enable or disable connection pooling on a universe:
 

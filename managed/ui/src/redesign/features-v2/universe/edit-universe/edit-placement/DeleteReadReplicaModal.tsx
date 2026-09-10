@@ -61,21 +61,22 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
     if (!cUUID) return;
 
     try {
-      await deleteClusterMutation.mutateAsync({
-        uniUUID: universeUuid,
-        clsUUID: clusterUuid,
-        params: { isForceDelete: false },
-        cUUID
-      },
-      {
-        onSuccess: (response) => {
-          dispatch(showTaskInDrawer(response.task_uuid));
-          queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid, cUUID));
-          toast.success(t('universeForm.deleteClusterModal.deletionStarted'));
-          handleClose();
+      await deleteClusterMutation.mutateAsync(
+        {
+          uniUUID: universeUuid,
+          clsUUID: clusterUuid,
+          params: { isForceDelete: false },
+          cUUID
+        },
+        {
+          onSuccess: (response) => {
+            dispatch(showTaskInDrawer(response.task_uuid));
+            queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid, cUUID));
+            toast.success(t('universeForm.deleteClusterModal.deletionStarted'));
+            handleClose();
+          }
         }
-      }
-    );
+      );
     } catch (e) {
       toast.error(createErrorMessage(e));
     }
@@ -88,7 +89,7 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
       open={open}
       overrideHeight={300}
       titleSeparator
-      cancelLabel={t('common.cancel')}
+      cancelLabel={t('common.no')}
       submitLabel={t('common.yes')}
       title={t('universeForm.deleteClusterModal.modalTitle', {
         universeName: universeDisplayName
@@ -102,11 +103,16 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
           loading: deleteClusterMutation.isLoading
         }
       }}
-      dialogContentProps={{ sx: { paddingTop: '20px' } }}
+      dialogContentProps={{ sx: { paddingTop: '24px !important' } }}
       submitTestId="submit-delete-cluster"
       cancelTestId="close-delete-cluster"
     >
-      <Box display="flex" width="100%" flexDirection="column" data-testid="delete-read-replica-modal">
+      <Box
+        display="flex"
+        width="100%"
+        flexDirection="column"
+        data-testid="delete-read-replica-modal"
+      >
         <Typography variant="body2">
           {t('universeForm.deleteClusterModal.deleteRRMessage')}
         </Typography>

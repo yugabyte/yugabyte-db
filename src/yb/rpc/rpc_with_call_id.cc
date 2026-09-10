@@ -38,7 +38,7 @@ void ConnectionContextWithCallId::DumpPB(const DumpRunningRpcsRequestPB& req,
 
 std::string ToString(const InboundCallWeakPtr& weak_ptr) {
   InboundCallPtr call_ptr{weak_ptr.lock()};
-  return (call_ptr ? "deleted" : yb::Format("$0", call_ptr.get()));
+  return (call_ptr ? yb::Format("$0", call_ptr) : "deleted");
 }
 
 bool ConnectionContextWithCallId::Idle(std::string* reason_not_idle) {

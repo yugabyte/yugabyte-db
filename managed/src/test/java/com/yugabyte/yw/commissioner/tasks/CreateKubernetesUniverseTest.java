@@ -60,12 +60,19 @@ import org.yb.CommonTypes.TableType;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.client.YBTable;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
+
+  // Verified safe to reuse the application across this class' methods (green strict-stubs + green
+  // assertions) despite the strict MockitoJUnitRunner. See reuseAppDespiteStrictMockito().
+  @Override
+  protected boolean reuseAppDespiteStrictMockito() {
+    return true;
+  }
 
   private Universe defaultUniverse;
   private Integer universeVersion = 2;
@@ -84,7 +91,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private String universeName = "TestUniverse";
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
@@ -332,7 +339,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private void setupCommon() {
     // Table RPCs.
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     // WaitForTServerHeartBeats mock.
     ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
@@ -386,12 +393,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
           TaskType.CreateTable,
           TaskType.UpdateConsistencyCheck,
           TaskType.PodDisruptionBudgetPolicy,
-          TaskType.UniverseUpdateSucceeded);
+          TaskType.UniverseUpdateSucceeded,
+          // CreateAlertDefinitions now runs AFTER UniverseUpdateSucceeded so alert definitions
+          // are only produced for universes whose initial creation actually succeeded (the
+          // preceding subtask flips creationSucceeded=true which the alert service gates on).
+          TaskType.CreateAlertDefinitions);
 
   private static final ImmutableMap<String, String> EXPECTED_RESULT_FOR_CREATE_TABLE_TASK =
       ImmutableMap.of("tableType", "REDIS_TABLE_TYPE", "tableName", "redis");
@@ -415,8 +425,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("removeFile", false)),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

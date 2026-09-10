@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_amop_d.h"
@@ -64,6 +65,7 @@
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 #define DDL_END_CLASSID_COLUMN_ID	  1
 #define DDL_END_OBJID_COLUMN_ID		  2
@@ -256,6 +258,20 @@ IsPassThroughDdlSupported(const char *command_tag_name)
 	CommandTag	command_tag = GetCommandTagEnum(command_tag_name);
 
 	return IsPassThroughDdlCommandSupported(command_tag);
+}
+
+static Oid
+GetConstraintRelation(Oid constraint_oid)
+{
+	Oid			rel_oid = GetSysCacheOid1(CONSTROID,
+										  Anum_pg_constraint_conrelid,
+										  ObjectIdGetDatum(constraint_oid));
+
+	if (!OidIsValid(rel_oid))
+		elog(ERROR, "Could not find table for constraint with OID %u",
+			 constraint_oid);
+
+	return rel_oid;
 }
 
 static bool
@@ -462,8 +478,8 @@ HandleAlterColumnAddIndex(AlterTableCmd *subcmd, Oid rel_oid,
 }
 
 void
-CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
-						bool is_table_rewrite, bool is_temporary_object)
+ProcessAlterTableSubcommands(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
+							 bool is_temporary_object)
 {
 	/* Ignore temp objects. */
 	if (is_temporary_object)
@@ -484,6 +500,21 @@ CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
 				case AT_ReAddIndex:
 					{
 						HandleAlterColumnAddIndex(subcmd, rel_oid, new_rel_list);
+						break;
+					}
+				case AT_AttachPartition:
+					{
+						/*
+						 * ATTACH PARTITION may create matching child indexes on the
+						 * attached partition, so collect it and its indexes.
+						 */
+						PartitionCmd *partition_cmd = castNode(PartitionCmd, subcmd->def);
+						Oid			partition_oid =
+							RangeVarGetRelid(partition_cmd->name, NoLock,
+											 /* missing_ok= */ false);
+
+						ShouldReplicateNewRelation(partition_oid, new_rel_list,
+												   /* is_table_rewrite= */ false);
 						break;
 					}
 				default:
@@ -891,7 +922,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			if (type_is_enum(obj_id))
 				GetEnumLabels(obj_id, &enum_label_list);
-			AddTypeInfo(obj_id, schema, &type_info_list);
+
+			/*
+			 * ALTER TYPE allocates no new pg_type OID, so it needs no
+			 * type_info entry.  This is helpful because the ddl_command_end
+			 * trigger does not always provide the pg_type OID for it, but
+			 * rather sometimes a composite type's relation's pg_class OID.
+			 */
+			if (command_tag == CMDTAG_CREATE_TYPE)
+				AddTypeInfo(obj_id, schema, &type_info_list);
+
 			should_replicate_ddl |= true;
 		}
 		else if (command_tag == CMDTAG_CREATE_SEQUENCE ||
@@ -899,6 +939,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			AddSequenceInfo(obj_id, schema, &sequence_info_list);
 			should_replicate_ddl |= !is_temporary_object;
+		}
+		else if (command_tag == CMDTAG_ALTER_TABLE &&
+				 info->class_id == ConstraintRelationId)
+		{
+			/*
+			 * ALTER TABLE ... RENAME CONSTRAINT reports the pg_constraint OID, so we
+			 * need to fetch the table's OID from the constraint's OID.
+			 */
+			should_replicate_ddl |=
+				ShouldReplicateAlterReplication(GetConstraintRelation(obj_id));
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 IsSequence(obj_id))
@@ -942,9 +992,8 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			/* Perform additional checks on subcommands. */
 			CollectedCommand *cmd = info->command;
 
-			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
-									 /* is_table_rewrite */ false,
-									is_temporary_object);
+			ProcessAlterTableSubcommands(obj_id, cmd, &new_rel_list,
+										 is_temporary_object);
 
 			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}

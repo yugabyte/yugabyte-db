@@ -20,6 +20,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 

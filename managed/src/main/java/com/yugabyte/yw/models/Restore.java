@@ -4,7 +4,6 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendLikeClause;
-import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
@@ -16,15 +15,12 @@ import com.yugabyte.yw.models.RestoreResp.RestoreRespBuilder;
 import com.yugabyte.yw.models.filters.RestoreFilter;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
-import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import com.yugabyte.yw.models.paging.RestorePagedApiResponse;
-import com.yugabyte.yw.models.paging.RestorePagedQuery;
 import com.yugabyte.yw.models.paging.RestorePagedResponse;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.PersistenceContextScope;
-import io.ebean.Query;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.WhenCreated;
 import io.ebean.annotation.WhenModified;
@@ -313,18 +309,6 @@ public class Restore extends Model {
             .restoreKeyspaceList(restoreKeyspaceList)
             .isSourceUniversePresent(isSourceUniversePresent);
     return builder.build();
-  }
-
-  public static RestorePagedApiResponse pagedList(RestorePagedQuery pagedQuery) {
-    if (pagedQuery.getSortBy() == null) {
-      pagedQuery.setSortBy(SortBy.createTime);
-      pagedQuery.setDirection(SortDirection.DESC);
-    }
-    Query<Restore> query = createQueryByFilter(pagedQuery.getFilter()).query();
-    RestorePagedResponse response =
-        performPagedQuery(query, pagedQuery, RestorePagedResponse.class);
-    RestorePagedApiResponse resp = createResponse(response);
-    return resp;
   }
 
   public static ExpressionList<Restore> createQueryByFilter(RestoreFilter filter) {

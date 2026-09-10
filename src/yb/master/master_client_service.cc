@@ -84,25 +84,27 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
     }
 
     IncludeHidden include_hidden(req->has_include_hidden() && req->include_hidden());
+    IncludeDeleted include_deleted(req->has_include_deleted() && req->include_deleted());
 
     for (const TabletId& tablet_id : req->tablet_ids()) {
+      TabletLocationsPB* locs_pb = resp->add_tablet_locations();
+
       int expected_live_replicas = 0, expected_read_replicas = 0;
       auto s = server_->catalog_manager_impl()->GetExpectedNumberOfReplicasForTablet(
-          tablet_id, &expected_live_replicas, &expected_read_replicas);
-      if (!s.ok()) {
-        GetTabletLocationsResponsePB::Error* err = resp->add_errors();
-        err->set_tablet_id(tablet_id);
-        StatusToPB(s, err->mutable_status());
-        continue;
+        tablet_id, &expected_live_replicas, &expected_read_replicas);
+      if (s.ok()) {
+        // TODO: once we have catalog data. ACL checks would also go here, probably.
+        locs_pb->set_expected_live_replicas(expected_live_replicas);
+        locs_pb->set_expected_read_replicas(expected_read_replicas);
+        s = server_->catalog_manager_impl()->GetTabletLocations(
+            tablet_id, locs_pb, include_hidden);
       }
 
-      // TODO: once we have catalog data. ACL checks would also go here, probably.
-      TabletLocationsPB* locs_pb = resp->add_tablet_locations();
-      locs_pb->set_expected_live_replicas(expected_live_replicas);
-      locs_pb->set_expected_read_replicas(expected_read_replicas);
-      s = server_->catalog_manager_impl()->GetTabletLocations(
-          tablet_id, locs_pb, include_hidden);
-      if (!s.ok()) {
+      if (include_deleted && s.IsDeleted()) {
+        locs_pb->set_tablet_id(tablet_id);
+        locs_pb->set_stale(false);
+        locs_pb->set_is_deleted(true);
+      } else if (!s.ok()) {
         resp->mutable_tablet_locations()->RemoveLast();
 
         GetTabletLocationsResponsePB::Error* err = resp->add_errors();

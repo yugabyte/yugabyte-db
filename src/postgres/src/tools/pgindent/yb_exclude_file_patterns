@@ -5,3 +5,7 @@ third-party-extensions/
 #
 # For some reason, this file gets oddly formatted over multiple iterations.
 src/interfaces/ecpg/include/sqlca.h
+#
+# Upstream LLVM JIT C++ sources: postgres.sh lints .cpp/.hpp (per .arclint)
+# and flags upstream style.
+src/backend/jit/llvm/.*\.cpp$

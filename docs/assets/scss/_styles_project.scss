@@ -16,6 +16,7 @@
 @import "./_yb_resources.scss";
 @import "./_yb_tags.scss";
 @import "./_yb_container.scss";
+@import "./_docs_page_header_bar.scss";
 
 @font-face {
   font-family: 'SFMonoSemibold';
@@ -96,14 +97,9 @@ a {
 /******* Variables for Color Theme Switcher **********/
 .td-breadcrumbs {
   margin-bottom: 20px;
-  padding-right: 120px;
 
-	@media(max-width:991px) {
+  @media(max-width:991px) {
     padding-right: 0;
-  }
-
-   + .td-content .dropdown-list {
-    margin-top: 14px!important;
   }
 
   &:has(.breadcrumb-item:only-child) {
@@ -161,9 +157,9 @@ a {
 }
 
 @media (min-width: 992px) {
-  .td-main main {
-    padding-top: 116px;
-    margin-top: 52px;
+  .td-main main.content-area {
+    padding-top: var(--docs-sticky-header-top);
+    margin-top: 0;
   }
 }
 
@@ -454,16 +450,11 @@ body:not(.td-home) .td-main main {
 
     @media (max-width: 991px) {
       margin-top: 0;
-      margin-bottom: 72px;
+      margin-bottom: 40px;
     }
 
     @media (min-width: 991px) {
-      margin: 20px 0 72px;
-    }
-
-    .header-version-dropdown {
-      width: 100%;
-      margin: 0 0 4px 0;
+      margin: 20px 0 40px;
     }
   }
 }

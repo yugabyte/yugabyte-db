@@ -29,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
 
 @Slf4j
@@ -157,7 +157,7 @@ public class ChangeMasterConfig extends UniverseTaskBase {
     ChangeConfigResponse response = null;
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
 
-    try (YBClient client = ybService.getClientWithConfig(config)) {
+    try (YBClientApi client = ybService.getClientWithConfig(config)) {
       log.info(
           "Starting changeMasterConfig({}:{}, op={}, useHost={})",
           node.cloudInfo.private_ip,
@@ -200,7 +200,7 @@ public class ChangeMasterConfig extends UniverseTaskBase {
     Duration maxWaitTime =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.changeMasterConfigCheckTimeout);
 
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       AtomicInteger maxErrorCount = new AtomicInteger(WAIT_FOR_CHANGE_COMPLETED_MAX_ERRORS);
       boolean success =
           doWithExponentialTimeout(

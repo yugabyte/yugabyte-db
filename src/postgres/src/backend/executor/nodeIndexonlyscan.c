@@ -47,7 +47,6 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
 #include "catalog/yb_type.h"
 #include "pg_yb_utils.h"
 
@@ -153,7 +152,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 */
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		/* TODO(hector) Add row marks for INDEX_ONLY_SCAN. */
-		scandesc->yb_exec_params->rowmark = -1;
+		scandesc->yb_exec_params->rowmark = YBC_NO_ROW_MARK;
 
 		/*
 		 * Set reference to slot in scan desc so that YB amgettuple can use it

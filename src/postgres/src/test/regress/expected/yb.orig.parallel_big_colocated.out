@@ -217,4 +217,21 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('
     42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com
 (4 rows)
 
+-- GHI #33501: maximize number of parallel ranges
+set yb_parallel_range_size to 1024;
+/*+ Parallel(pcustomer 2 hard) */
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM pcustomer;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Gather (actual rows=500000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on pcustomer (actual rows=166667 loops=3)
+         Storage Table Read Requests: 806
+         Storage Table Read Ops: 806
+         Storage Table Rows Scanned: 166667
+(7 rows)
+
+reset yb_parallel_range_size;
 DROP TABLE pcustomer;

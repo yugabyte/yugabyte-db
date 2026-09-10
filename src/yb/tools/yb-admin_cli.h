@@ -82,6 +82,10 @@ class ClusterAdminCli {
   Status RunCommand(
       const Command& command, const CLIArguments& command_args, const std::string& program_name);
   std::string GetArgumentExpressions(const std::string& usage_arguments);
+  // Returns the command names to suggest for an operation that did not match any registered
+  // command, or an empty vector when there is no good suggestion. Commands that the operation is a
+  // prefix of are preferred; otherwise the closest commands by edit distance are returned.
+  std::vector<std::string> GetSuggestedCommands(const std::string& op) const;
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;
   std::unique_ptr<ClusterAdminClient> client_;

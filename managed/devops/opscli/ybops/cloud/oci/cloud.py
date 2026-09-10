@@ -17,14 +17,15 @@ import os
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.oci.command import (
-    OciNetworkCommand, OciInstanceCommand, OciAccessCommand, OciQueryCommand
+    OciNetworkCommand, OciInstanceCommand, OciAccessCommand, OciQueryCommand,
+    OciDnsCommand
 )
 from ybops.cloud.oci.utils import (
     OciCloudAdmin, OciMetadata, get_oci_config,
     OCI_INSTANCE_RUNNING, OCI_INSTANCE_STOPPED, OCI_INSTANCE_STOPPING,
     OCI_INSTANCE_STARTING, OCI_INSTANCE_PROVISIONING, OCI_INSTANCE_TERMINATED,
     OCI_INSTANCE_TERMINATING, OCI_VOLUME_TYPE_STANDARD,
-    OCI_PRIVATE_KEY_CONTENT_ENV,
+    OCI_PRIVATE_KEY_CONTENT_ENV, AARCH64_ARCHITECTURES,
 )
 
 
@@ -36,6 +37,8 @@ class OciCloud(AbstractCloud):
     def __init__(self):
         super(OciCloud, self).__init__("oci")
         self.admin = None
+        self._wait_for_startup_script_command = \
+            "until test -e /var/lib/cloud/instance/boot-finished ; do sleep 1 ; done"
 
     def get_admin(self):
         if self.admin is None:
@@ -47,6 +50,7 @@ class OciCloud(AbstractCloud):
         self.add_subcommand(OciNetworkCommand())
         self.add_subcommand(OciAccessCommand())
         self.add_subcommand(OciQueryCommand())
+        self.add_subcommand(OciDnsCommand())
 
     def validate_credentials(self):
         super(OciCloud, self).validate_credentials()
@@ -63,18 +67,44 @@ class OciCloud(AbstractCloud):
         except Exception:
             return False
 
-    def get_image(self, region, shape=None):
-        return self.metadata["regions"][region]["image"]
+    def _get_image_listing(self, architecture=None):
+        listing = self.metadata.get("default_image_listing")
+        is_arm = (
+            architecture is not None
+            and architecture.lower() in AARCH64_ARCHITECTURES
+        )
+        listing_id = listing.get(
+            "arm_listing_id" if is_arm else "listing_id"
+        )
+        return listing_id, listing.get("resource_version")
+
+    def get_image(self, region, architecture=None, shape=None):
+        region_meta = self.metadata.get("regions", {}).get(region, {})
+
+        # Explicit image OCID always takes precedence.
+        configured_image = region_meta.get("image")
+        if configured_image:
+            return configured_image
+
+        # Otherwise resolve the Partner Image Catalog listing to a regional image.
+        listing_id, listing_version = self._get_image_listing(architecture)
+
+        return self.get_admin().get_app_catalog_image(
+            region,
+            listing_id,
+            resource_version=listing_version,
+        )
 
     def query_vpc(self, args):
         result = {}
+        architecture = getattr(args, 'architecture', None)
         regions = [args.region] if args.region else self.get_regions()
         for region in regions:
             result[region] = self.get_admin().network().get_zone_to_subnets(
                 args.dest_vpc_id if hasattr(args, 'dest_vpc_id') else None,
                 region
             )
-            result[region]["default_image"] = self.get_image(region)
+            result[region]["default_image"] = self.get_image(region, architecture=architecture)
         return result
 
     def get_regions(self):
@@ -105,13 +135,16 @@ class OciCloud(AbstractCloud):
                         "isShared": info["isShared"],
                         "prices": {}
                     }
-                result[name]["prices"][region] = [{"os": "Linux", "price": 0.0}]
+                # Prices come from bundled oci_pricing/pricelist.json via OCIInitializer.
+                result[name]["prices"][region] = 0.0
         return result
 
     def create_instance(self, args, server_type, ssh_keys):
+        architecture = getattr(args, 'architecture', None)
         machine_image = getattr(args, 'machine_image', None)
         if not machine_image:
-            machine_image = self.get_image(args.region, shape=args.instance_type)
+            machine_image = self.get_image(
+                args.region, architecture=architecture, shape=args.instance_type)
 
         if not machine_image:
             raise YBOpsRuntimeError(
@@ -146,7 +179,8 @@ class OciCloud(AbstractCloud):
             volume_type=getattr(args, 'volume_type', OCI_VOLUME_TYPE_STANDARD),
             ocpus=ocpus,
             memory_in_gbs=memory_in_gbs,
-            node_uuid=getattr(args, 'node_uuid', None)
+            node_uuid=getattr(args, 'node_uuid', None),
+            instance_template=getattr(args, 'instance_template', None)
         )
         return host_info
 
@@ -189,7 +223,7 @@ class OciCloud(AbstractCloud):
         return ["sd{}".format(chr(ord('b') + i))
                 for i in range(args.num_volumes)]
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         instance_id = host_info['id']
         instance = self.get_admin().get_instance(instance_id)
 
@@ -304,6 +338,18 @@ class OciCloud(AbstractCloud):
             tags_to_remove = args.remove_tags.split(",")
 
         self.get_admin().modify_tags(host_info['id'], tags_to_add, tags_to_remove)
+
+    def list_dns_record_set(self, dns_zone_id):
+        return self.get_admin().get_dns_zone(dns_zone_id)
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().upsert_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().upsert_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
 
     def get_console_output(self, args):
         host_info = self.get_host_info(args)

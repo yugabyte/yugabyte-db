@@ -45,6 +45,9 @@ DEFINE_test_flag(int32, inject_status_resolver_complete_delay_ms, 0,
                  "Inject delay before counting down latch in transaction status resolver "
                  "complete.");
 
+DEFINE_test_flag(bool, fatal_on_transaction_status_request_failure, false,
+                 "Make transaction status request failures FATAL.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -148,7 +151,9 @@ class TransactionStatusResolver::Impl {
 
     if (!result.ok()) {
       const auto& status = result.status();
-      LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
+      LOG_WITH_PREFIX_COND_SEVERITY(
+          FLAGS_TEST_fatal_on_transaction_status_request_failure, FATAL, WARNING)
+          << "Failed to request transaction statuses: " << status;
       if (status.IsAborted()) {
         Complete(status);
       } else {
@@ -233,10 +238,16 @@ class TransactionStatusResolver::Impl {
 
     if (status.ok() && response.has_error()) {
       status = StatusFromPB(response.error().status());
+      if (status.IsDeleted()) {
+        HandleTabletDeleted(request_size);
+        return;
+      }
     }
 
     if (!status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
+      LOG_WITH_PREFIX_COND_SEVERITY(
+          FLAGS_TEST_fatal_on_transaction_status_request_failure, FATAL, WARNING)
+          << "Failed to request transaction status: " << status;
       if (status.IsAborted() || status.IsShutdownInProgress()) {
         Complete(status);
       } else {

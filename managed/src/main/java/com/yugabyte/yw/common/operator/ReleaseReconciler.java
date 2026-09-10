@@ -47,10 +47,6 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   private final ResourceTracker resourceTracker = new ResourceTracker();
 
-  // The current release resource being reconciled, used for associating secret dependencies.
-  private KubernetesResourceDetails currentReconcileResource;
-  private UUID currentLocalInstanceUuid;
-
   public Set<KubernetesResourceDetails> getTrackedResources() {
     return resourceTracker.getTrackedResources();
   }
@@ -84,9 +80,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   @Override
   public void onAdd(Release release) {
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(release);
-    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
-    resourceTracker.trackResource(release, currentLocalInstanceUuid);
-    currentReconcileResource = resourceDetails;
+    UUID localInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(release, localInstanceUuid);
     log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
     ObjectMeta releaseMetadata = release.getMetadata();
@@ -114,7 +109,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         releaseMetadata.setFinalizers(Collections.singletonList(OperatorUtils.YB_FINALIZER));
         resourceClient.inNamespace(namespace).withName(releaseMetadata.getName()).patch(release);
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");
-        List<ReleaseArtifact> artifacts = createReleaseArtifacts(release);
+        List<ReleaseArtifact> artifacts = createReleaseArtifacts(release, localInstanceUuid);
         for (ReleaseArtifact artifact : artifacts) {
           ybRelease.addArtifact(artifact);
         }
@@ -153,8 +148,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       return;
     }
     // Persist the latest resource YAML so the OperatorResource table stays current.
-    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
-    resourceTracker.trackResource(newRelease, currentLocalInstanceUuid);
+    UUID localInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(newRelease, localInstanceUuid);
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = newRelease.getSpec().getConfig().getVersion();
       com.yugabyte.yw.models.Release ybRelease;
@@ -199,7 +194,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
           artifact.delete();
         }
         // create new artifacts
-        List<ReleaseArtifact> artifacts = createReleaseArtifacts(newRelease);
+        List<ReleaseArtifact> artifacts = createReleaseArtifacts(newRelease, localInstanceUuid);
         for (ReleaseArtifact artifact : artifacts) {
           ybRelease.addArtifact(artifact);
         }
@@ -267,7 +262,9 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     resourceClient.inNamespace(namespace).resource(release).replaceStatus();
   }
 
-  private List<ReleaseArtifact> createReleaseArtifacts(Release release) throws Exception {
+  private List<ReleaseArtifact> createReleaseArtifacts(Release release, UUID localInstanceUuid)
+      throws Exception {
+    KubernetesResourceDetails owner = KubernetesResourceDetails.fromResource(release);
     ReleaseArtifact dbArtifact = null;
     ReleaseArtifact helmArtifact = null;
     if (release.getSpec().getConfig() == null
@@ -293,8 +290,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
                 awsSecret.getNamespace(),
                 "AWS_SECRET_ACCESS_KEY",
                 resourceTracker,
-                currentReconcileResource,
-                currentLocalInstanceUuid);
+                owner,
+                localInstanceUuid);
         if (secret != null) {
           s3File.secretAccessKey = secret;
         } else {
@@ -343,8 +340,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
                 gcsSecret.getNamespace(),
                 "CREDENTIALS_JSON",
                 resourceTracker,
-                currentReconcileResource,
-                currentLocalInstanceUuid);
+                owner,
+                localInstanceUuid);
         if (secret != null) {
           gcsFile.credentialsJson = secret;
         } else {

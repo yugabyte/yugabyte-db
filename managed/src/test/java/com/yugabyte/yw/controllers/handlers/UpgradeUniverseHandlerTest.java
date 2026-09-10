@@ -66,6 +66,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -73,8 +74,8 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -2158,6 +2159,17 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
 
   // ==================== submitExportTelemetryConfigs dispatch tests ====================
 
+  /** Datadog is allowed for both logs and metrics, so it satisfies any export section. */
+  private TelemetryProvider logsCapableTelemetryProvider() {
+    DataDogConfig config = new DataDogConfig();
+    config.setApiKey("api-key");
+    config.setSite("us3.datadoghq.com");
+    TelemetryProvider provider = new TelemetryProvider();
+    provider.setName("datadog-sink");
+    provider.setConfig(config);
+    return provider;
+  }
+
   private ExportTelemetryConfigParams buildExportTelemetryParams(
       Universe u,
       AuditLogConfig auditLogConfig,
@@ -2211,28 +2223,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSubmitExportTelemetryConfigsRejectsActiveMetricsOnK8s() {
-    Customer c = ModelFactory.testCustomer();
-    Universe u = createKubernetesUniverse(c);
-
-    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
-    UniverseMetricsExporterConfig exporter = new UniverseMetricsExporterConfig();
-    exporter.setExporterUuid(UUID.randomUUID());
-    metricsExportConfig.setUniverseMetricsExporterConfig(Collections.singletonList(exporter));
-
-    ExportTelemetryConfigParams params =
-        buildExportTelemetryParams(u, null, null, metricsExportConfig);
-
-    PlatformServiceException ex =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> handler.submitExportTelemetryConfigs(params, c, u));
-    assertTrue(
-        "Error message must mention k8s metrics rejection, got: " + ex.getMessage(),
-        ex.getMessage().contains("Metrics export is not yet supported for kubernetes"));
-  }
-
-  @Test
   public void testSubmitExportTelemetryConfigsRejectsLogExportOnOldK8sVersion() {
     Customer c = ModelFactory.testCustomer();
     // createKubernetesUniverseInternal default uses 2.28.0.0-b0 (supported). Use an older version
@@ -2244,8 +2234,12 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     ysql.setEnabled(true);
     auditLogConfig.setYsqlAuditConfig(ysql);
     UniverseLogsExporterConfig exporter = new UniverseLogsExporterConfig();
-    exporter.setExporterUuid(UUID.randomUUID());
+    UUID exporterUuid = UUID.randomUUID();
+    exporter.setExporterUuid(exporterUuid);
     auditLogConfig.setUniverseLogsExporterConfig(Collections.singletonList(exporter));
+    // Logs-capable, so the assertion below is about the K8s version gate, not the sink type.
+    when(mockTelemetryProviderService.getOrBadRequest(exporterUuid))
+        .thenReturn(logsCapableTelemetryProvider());
 
     ExportTelemetryConfigParams params = buildExportTelemetryParams(u, auditLogConfig, null, null);
 
@@ -2256,5 +2250,79 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertTrue(
         "Error message must mention exporter version requirement, got: " + ex.getMessage(),
         ex.getMessage().contains("Log exporter is not supported for universe"));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsRejectsAuditExportActiveWithoutExporter() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+
+    // exportActive=true but no exporter configured - the inconsistent state the UI can produce by
+    // toggling export on without selecting a config. Must be rejected.
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysql = new YSQLAuditConfig();
+    ysql.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysql);
+    auditLogConfig.setExportActive(true);
+    auditLogConfig.setUniverseLogsExporterConfig(Collections.emptyList());
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, auditLogConfig, null, null);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.submitExportTelemetryConfigs(params, c, u));
+    assertTrue(
+        "Error must mention audit export-active without exporter, got: " + ex.getMessage(),
+        ex.getMessage()
+            .contains("Audit log config is set to export active, but no exporter configured"));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsRejectsQueryExportActiveWithoutExporter() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setExportActive(true);
+    queryLogConfig.setUniverseLogsExporterConfig(Collections.emptyList());
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, null, queryLogConfig, null);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.submitExportTelemetryConfigs(params, c, u));
+    assertTrue(
+        "Error must mention query export-active without exporter, got: " + ex.getMessage(),
+        ex.getMessage()
+            .contains("Query log config is set to export active, but no exporter configured"));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsAllowsAuditOnlyWithoutExporter() {
+    // Audit logging enabled with export turned off (exportActive=false) and no exporter is a valid
+    // "logs to file only" config - it must not be rejected by the export-active validation.
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureExportTelemetryConfig);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysql = new YSQLAuditConfig();
+    ysql.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysql);
+    auditLogConfig.setExportActive(false);
+    auditLogConfig.setUniverseLogsExporterConfig(Collections.emptyList());
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, auditLogConfig, null, null);
+
+    handler.submitExportTelemetryConfigs(params, c, u);
+
+    verify(mockCommissioner)
+        .submit(
+            eq(TaskType.ConfigureExportTelemetryConfig), any(ExportTelemetryConfigParams.class));
   }
 }

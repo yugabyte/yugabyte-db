@@ -1,8 +1,8 @@
 ---
-title: Handle node alerts
-headerTitle: Handle node alerts
-linkTitle: Node alerts
-headcontent: What to do when you get a node alert
+title: Handle node issues and alerts
+headerTitle: Troubleshoot node issues
+linkTitle: Node issues
+headcontent: Node issues and alerts
 description: What to do when you get a node alert
 menu:
   v2025.1_yugabyte-platform:
@@ -15,6 +15,28 @@ rightNav:
   hideH4: true
 ---
 
+## Unable to register node agent
+
+When [provisioning on-premises nodes](../../prepare/server-nodes-software/software-on-prem/) using the `node-agent-provision.sh` script, the following error displays:
+
+```text
+Unable to register node agent - Post "https://<YBA>/api/v1/customers/<uuid>/node_agents": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+```
+
+During provisioning, the node reaches YugabyteDB Anywhere over HTTPS (package download succeeds), but registration still fails. The root cause is often that YugabyteDB Anywhere cannot complete its registration-time callback to the node agent gRPC service on TCP 9070. The installer POST hangs until the HTTP client times out.
+
+Ensure the node is accessible to YugabyteDB Anywhere over ports 9070 and 443. See [Networking requirements](../../prepare/networking/) for more information.
+
+You can verify from the YugabyteDB Anywhere host using the following command during a retry:
+
+```sh
+nc -zv -w 10 <node-fqdn> 9070
+```
+
+If the command times out after 10 seconds with no response, the port is likely blocked by a firewall or security group; check that the ports are open. If you instead see "Connection refused," the port is reachable but the node agent service isn't running or listening on 9070.
+
+## Handle alerts
+
 Universes deployed using YugabyteDB Anywhere include following node [alerts](../../alerts-monitoring/alert/) by default:
 
 - DB Instance Down. A node is unreachable or down.
@@ -23,7 +45,7 @@ Universes deployed using YugabyteDB Anywhere include following node [alerts](../
 
 If you are notified of one of these alerts, you can take the following steps.
 
-## DB Instance Down
+### DB Instance Down
 
 This alert fires when Prometheus is unable to scrape a node for metrics for (by default) more than 15 minutes.
 
@@ -54,7 +76,7 @@ This alert fires when Prometheus is unable to scrape a node for metrics for (by 
 
     - Confirm node_exporter access at `http://<node_ip>:9300`.
 
-## DB Node Restart
+### DB Node Restart
 
 This alert tracks OS-level restarts using the `node_boot_time` metric.
 
@@ -76,7 +98,7 @@ This alert tracks OS-level restarts using the `node_boot_time` metric.
 
 1. Check for other causes, such as power loss, kernel panic, or scheduled reboots.
 
-## DB Instance Restart
+### DB Instance Restart
 
 This alert fires when a YugabyteDB process (TServer or Master) restarts without a planned update.
 

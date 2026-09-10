@@ -182,7 +182,7 @@ CreateExecutorState(void)
 	estate->yb_exec_params.limit_count = 0;
 	estate->yb_exec_params.limit_offset = 0;
 	estate->yb_exec_params.limit_use_default = true;
-	estate->yb_exec_params.rowmark = -1;
+	estate->yb_exec_params.rowmark = YBC_NO_ROW_MARK;
 	estate->yb_exec_params.is_index_backfill = false;
 
 	/*

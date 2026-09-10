@@ -13,6 +13,8 @@
 
 #include "yb/vector_index/vector_lsm_metadata.h"
 
+#include "yb/vector_index/vector_payload_map.h"
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -20,8 +22,10 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 
 namespace yb::vector_index {
@@ -32,11 +36,17 @@ using EntrySizeType = uint32_t;
 using CrcType = decltype(crc::Crc32c(nullptr, 0));
 const std::string kMetaFileSuffix = ".meta";
 
-}
+struct MetadataUpdatesLoadResult {
+  size_t next_free_file_no = 0;
+  std::vector<VectorLSMUpdatePB> updates;
 
-Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
-    Env* env, const std::string& dir) {
-  VectorLSMMetadataLoadResult result;
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(next_free_file_no, updates);
+  }
+};
+
+Result<MetadataUpdatesLoadResult> LoadMetadataUpdates(Env* env, const std::string& dir) {
+  MetadataUpdatesLoadResult result;
   auto files = VERIFY_RESULT(env->GetChildren(dir));
   erase_if(files, [](const auto& file) {
     return !boost::ends_with(file, kMetaFileSuffix);
@@ -123,6 +133,35 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
     // So reappearance of deleted files would not harm upcoming bootstraps.
   }
 
+  return result;
+}
+
+}  // namespace
+
+Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::string& dir) {
+  auto raw = VERIFY_RESULT(LoadMetadataUpdates(env, dir));
+
+  VectorLSMMetadataLoadResult result;
+  result.next_free_file_no = raw.next_free_file_no;
+
+  // All chunks loaded, apply add/remove updates to get the current version.
+  std::unordered_map<uint64_t, VectorLSMChunkPB*> chunks_map;
+  for (auto& update : raw.updates) {
+    for (auto& chunk : *update.mutable_add_chunks()) {
+      chunks_map.emplace(chunk.serial_no(), &chunk);
+    }
+    for (const auto chunk_no : update.remove_chunks()) {
+      if (!chunks_map.erase(chunk_no)) {
+        return STATUS_FORMAT(Corruption, "Attempt to remove non existing chunk: $0", chunk_no);
+      }
+    }
+  }
+
+  result.chunks.reserve(chunks_map.size());
+  for (auto& [_, chunk] : chunks_map) {
+    result.chunks.push_back(std::move(*chunk));
+  }
+
   LOG(INFO) << "Loaded: " << result.ToString();
 
   return result;
@@ -162,7 +201,34 @@ Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB
 }
 
 std::string VectorLSMMetadataLoadResult::ToString() const {
-  return YB_STRUCT_TO_STRING(next_free_file_no, updates);
+  return YB_STRUCT_TO_STRING(next_free_file_no, chunks);
+}
+
+Result<VectorLSMFiles> ListVectorLSMFiles(Env* env, const std::string& dir) {
+  auto files = VERIFY_RESULT(env->GetChildren(dir));
+  std::erase_if(files, [](const auto& file) {
+    return !file.ends_with(".meta") && !file.contains("vectorindex");
+  });
+  VectorLSMFiles result;
+  const auto payload_file_suffix = VectorIndexPayloadFilePath(std::string());
+  for (const auto& file : files) {
+    if (!file.ends_with(payload_file_suffix)) {
+      continue;
+    }
+    result.has_payload_files = true;
+    auto chunk_file = file.substr(0, file.size() - payload_file_suffix.size());
+    SCHECK(std::find(files.begin(), files.end(), chunk_file) != files.end(), IllegalState,
+           "Payload file without the chunk file: $0", file);
+  }
+  std::erase_if(files, [&payload_file_suffix](const auto& file) {
+    return file.ends_with(payload_file_suffix);
+  });
+  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs) {
+    // Refer to VectorLSMMetadataLoad().
+    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
+  });
+  result.manifest_and_chunk_files = std::move(files);
+  return result;
 }
 
 }  // namespace yb::vector_index

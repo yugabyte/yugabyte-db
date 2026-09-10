@@ -22,6 +22,8 @@
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/test_macros.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -132,6 +134,100 @@ TEST_F(PgIndexTest, NullKey) {
       "SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST")));
   ASSERT_EQ(rows,
             (decltype(rows){{33, 30}, {22, 20}, {11, 10}, {44, std::nullopt}, {44, std::nullopt}}));
+}
+
+// yb_hash_code-prefixed row comparisons should be planned as index conditions.
+TEST_F(PgIndexTest, YbHashCodeRowComparePlanner) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE yb_hc_rc ("
+      "  h int, r1 int, r2 int, v text,"
+      "  PRIMARY KEY(h HASH, r1 ASC, r2 ASC))"));
+  ASSERT_OK(conn_->Execute(
+      "INSERT INTO yb_hc_rc"
+      " SELECT i % 5, i, i * 10, 'v' || i FROM generate_series(1, 50) i"));
+
+  auto explain = ASSERT_RESULT(conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF)"
+      " SELECT * FROM yb_hc_rc"
+      " WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100)",
+      "\n"));
+  ASSERT_STR_CONTAINS(explain, "Index Cond:");
+  ASSERT_STR_CONTAINS(explain, "ROW(yb_hash_code(h), h, r1, r2)");
+
+  explain = ASSERT_RESULT(conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF)"
+      " SELECT * FROM yb_hc_rc"
+      " WHERE (yb_hash_code(h), h, r1) > (yb_hash_code(1), 1, 10)",
+      "\n"));
+  ASSERT_STR_CONTAINS(explain, "Index Cond:");
+  ASSERT_STR_CONTAINS(explain, "ROW(yb_hash_code(h), h, r1)");
+
+  explain = ASSERT_RESULT(conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF)"
+      " SELECT * FROM yb_hc_rc"
+      " WHERE (yb_hash_code(3), 3, 30, 300) > (yb_hash_code(h), h, r1, r2)",
+      "\n"));
+  ASSERT_STR_CONTAINS(explain, "Index Cond:");
+  ASSERT_STR_CONTAINS(explain, "ROW(yb_hash_code(h), h, r1, r2)");
+}
+
+// Invalid row comparison shapes should remain filters, not index conditions.
+TEST_F(PgIndexTest, YbHashCodeRowComparePlannerRejectsInvalidShapes) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE yb_hc_invalid ("
+      "  h1 int, h2 int, r int, v text,"
+      "  PRIMARY KEY((h1, h2) HASH, r ASC))"));
+
+  auto explain = ASSERT_RESULT(conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF)"
+      " SELECT * FROM yb_hc_invalid"
+      " WHERE (h1, h2, r) > (1, 2, 7)",
+      "\n"));
+  ASSERT_STR_CONTAINS(explain, "Filter:");
+
+  explain = ASSERT_RESULT(conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF)"
+      " SELECT * FROM yb_hc_invalid"
+      " WHERE (yb_hash_code(h1), h1, h2, r) > (yb_hash_code(1), 1, 2, 7)",
+      "\n"));
+  ASSERT_STR_CONTAINS(explain, "Filter:");
+
+  explain = ASSERT_RESULT(conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF)"
+      " SELECT * FROM yb_hc_invalid"
+      " WHERE (yb_hash_code(h1, h2), h1, r) > (yb_hash_code(1, 2), 1, 7)",
+      "\n"));
+  ASSERT_STR_CONTAINS(explain, "Filter:");
+}
+
+// Verify execution and planner paths that depend on yb_hash_code index clause shape.
+TEST_F(PgIndexTest, YbHashCodeRowCompareExecutionAndPlannerInvariants) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE yb_hc_exec ("
+      "  h int, r int, v int,"
+      "  PRIMARY KEY(h HASH, r ASC))"));
+  ASSERT_OK(conn_->Execute(
+      "INSERT INTO yb_hc_exec"
+      " SELECT i % 4, i, i FROM generate_series(1, 40) i"));
+
+  auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, int32_t>(
+      "SELECT h, r FROM yb_hc_exec"
+      " WHERE yb_hash_code(h) = yb_hash_code(1)"
+      " AND (yb_hash_code(h), h, r) > (yb_hash_code(1), 1, 9)"
+      " ORDER BY h, r")));
+  ASSERT_EQ(rows, (decltype(rows){{1, 13}, {1, 17}, {1, 21}, {1, 25},
+                                  {1, 29}, {1, 33}, {1, 37}}));
+
+  ASSERT_OK(conn_->Execute("SET yb_lock_pk_single_rpc = on"));
+
+  ASSERT_OK(conn_->FetchRows<std::string>(
+      "EXPLAIN (COSTS OFF)"
+      " SELECT * FROM yb_hc_exec WHERE yb_hash_code(h) >= 0 FOR UPDATE"));
+
+  ASSERT_OK(conn_->FetchRows<std::string>(
+      "EXPLAIN (COSTS OFF)"
+      " UPDATE yb_hc_exec SET v = 30"
+      " WHERE yb_hash_code(h) = yb_hash_code(1)"));
 }
 
 // Given that the "variable bloom filter" tries to dynamically adjust the SSTable files selected for

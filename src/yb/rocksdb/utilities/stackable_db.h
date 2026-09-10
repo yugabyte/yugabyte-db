@@ -273,8 +273,8 @@ class StackableDB : public DB {
     db_->GetLiveFilesMetaData(metadata);
   }
 
-  yb::storage::UserFrontierPtr GetFlushedFrontier() override {
-    return db_->GetFlushedFrontier();
+  yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) override {
+    return db_->GetFrontiers(kinds);
   }
 
   Status ModifyFlushedFrontier(
@@ -285,7 +285,20 @@ class StackableDB : public DB {
 
   yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
     return db_->GetMiddleKey(lower_bound_key);
-  };
+  }
+
+  yb::Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override {
+    return db_->FindTargetKey(lower_bound_key, upper_bound_key, target_size);
+  }
+
+  yb::Result<uint64_t> Cross(Slice key) override {
+    return db_->Cross(key);
+  }
+
+  yb::Result<uint64_t> TotalDataSize() override {
+    return db_->TotalDataSize();
+  }
 
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle *column_family,

@@ -13,35 +13,35 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 
 -- Test levenshtein(text, text) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 
 -- Test levenshtein(text, text, int, int, int) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'', 1, 1, 2) < 3 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 
 -- Test levenshtein_less_equal(text, text, int) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, ''GUMBO'', 2) <= 2 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 
 -- Test levenshtein_less_equal(text, text, int, int, int, int) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, ''GUMBO'', 1, 1, 2, 2) <= 2 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 
 -- Test exact match (distance = 0)
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') = 0;'
-\i :iter_P2
+\i :run_query
 
 -- Test no matches case
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''XXXXX'') < 2;'
-\i :iter_P2
+\i :run_query
 
 -- Test SELECT with levenshtein function call
 \set query ':P SELECT levenshtein(''GUMBO'', ''GAMBOL'');'
-\i :iter_P2
+\i :run_query
 
 -- Test levenshtein in complex expression
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') + length(name) < 10 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 
 -- Create fuzzystrmatch extension with levenshtein functions in the public schema
 -- This version of levenshtein will not be pushed down to DocDB
@@ -49,19 +49,19 @@ CREATE EXTENSION IF NOT EXISTS fuzzystrmatch SCHEMA public;
 
 -- Test levenshtein with schema qualified
 \set query ':P SELECT name FROM test_levenshtein WHERE public.levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 
 -- Test levenshtein with setting search_path
 -- There is a default prioritized scan of pg_catalog over other schemas,
 -- so levenshtein functions will still be pushed down when search_path is set to public
 SET search_path = public;
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 -- If pg_catalog is explicitly put after other schemas in the search_path,
 -- levenshtein calls will then refer to the non built-in version
 SET search_path = public, pg_catalog;
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
+\i :run_query
 
 -- Cleanup
 RESET search_path;
@@ -148,7 +148,7 @@ WHERE ts < '2025-09-01';
 -- Test expression index with levenshtein uses Index Cond without Sort
 CREATE INDEX t1_levenshtein_idx ON t1 (levenshtein(c4, 'body95855317') asc);
 \set query ':P SELECT c3 FROM t1 WHERE levenshtein(c4, ''body95855317'') < 3 ORDER BY levenshtein(c4, ''body95855317'') LIMIT 5;'
-\i :iter_P2
+\i :run_query
 DROP INDEX t1_levenshtein_idx;
 
 CREATE INDEX ON t1 (c1 asc, c2);
@@ -173,7 +173,7 @@ FROM (
   LIMIT 3
 ) AS x;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Cleanup
 DROP TABLE t1 CASCADE;

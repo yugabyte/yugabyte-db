@@ -94,6 +94,9 @@ public class GCPUtil implements CloudUtil {
   public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
   private static final String GS_PROTOCOL_PREFIX = "gs://";
   private static final String HTTPS_PROTOCOL_PREFIX = "https://storage.googleapis.com/";
+  // Well-known link-local metadata endpoint (AWS IMDS / cloud metadata), not a configurable value.
+  // Used to build the external_account credential_source and to recognize IMDS-reach failures.
+  private static final String AWS_IMDS_ADDRESS = "169.254.169.254";
   private static final String PRICING_JSON_URL =
       "https://downloads.yugabyte.com/gcp_price_list/pricelist_gcp.json";
 
@@ -156,6 +159,17 @@ public class GCPUtil implements CloudUtil {
 
   public static Storage getStorageService(CustomerConfigStorageGCSData gcsData) throws IOException {
     if (gcsData.useGcpIam) {
+      if (StringUtils.isNotBlank(gcsData.federationAudience)) {
+        // Cross-cloud WIF: build external_account creds in-process from the audience. YBA uses its
+        // own AWS instance identity (must be bound to the bucket's WIF principalSet).
+        // GoogleCredentials.fromStream dispatches on the "external_account" type.
+        try (InputStream is =
+            new ByteArrayInputStream(
+                buildExternalAccountJson(gcsData.federationAudience)
+                    .getBytes(StandardCharsets.UTF_8))) {
+          return getStorageService(is, null);
+        }
+      }
       return getStorageService();
     } else {
       try (InputStream is =
@@ -163,6 +177,33 @@ public class GCPUtil implements CloudUtil {
         return getStorageService(is, null);
       }
     }
+  }
+
+  // Classpath location of the external_account template shared with node-agent. node-agent/build.sh
+  // stages a copy of this same file into the node-agent templates, so YBA and the DB node render
+  // identical credential JSON from one source.
+  private static final String GCP_FED_CREDS_TEMPLATE = "federation/gcp-fed-creds.json.j2";
+
+  /**
+   * Builds the GCP external_account (Workload Identity Federation) credential JSON by loading the
+   * shared {@code gcp-fed-creds.json.j2} template and substituting the audience, so YBA and the DB
+   * node (which renders the same file) federate identically.
+   */
+  static String buildExternalAccountJson(String audience) {
+    String template;
+    try (InputStream is =
+        GCPUtil.class.getClassLoader().getResourceAsStream(GCP_FED_CREDS_TEMPLATE)) {
+      if (is == null) {
+        throw new IllegalStateException("Missing classpath resource: " + GCP_FED_CREDS_TEMPLATE);
+      }
+      template = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to load " + GCP_FED_CREDS_TEMPLATE, e);
+    }
+    // Only {{ audience }} varies; {region} stays literal (the GCP auth library fills it in). A
+    // plain
+    // substitution matches node-agent's gonja rendering of the same file byte for byte.
+    return template.replace("{{ audience }}", audience);
   }
 
   public static Storage getStorageService() {
@@ -219,9 +260,37 @@ public class GCPUtil implements CloudUtil {
     }
   }
 
+  /**
+   * True only when a GCS call failed because YBA could not assume the node's federated identity or
+   * reach the AWS token endpoint (e.g. YBA is not on AWS). Deliberately narrow: real GCS errors
+   * (bucket missing, permission denied) do NOT match, so the precheck stays strict on them.
+   */
+  private static boolean isFederationIdentityFailure(Throwable t) {
+    for (Throwable c = t; c != null; c = c.getCause()) {
+      String msg = c.getMessage();
+      if (msg != null
+          && (msg.contains("AWS Session Token")
+              || msg.contains("AWS security credentials")
+              || msg.contains("Unable to load AWS")
+              || msg.contains(AWS_IMDS_ADDRESS))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @Override
   public boolean canCredentialListObjects(
       CustomerConfigData configData, Map<String, String> regionLocationsMap) {
+    boolean isGcsIam =
+        configData instanceof CustomerConfigStorageGCSData
+            && ((CustomerConfigStorageGCSData) configData).useGcpIam;
+    if (isGcsIam
+        && StringUtils.isBlank(((CustomerConfigStorageGCSData) configData).federationAudience)) {
+      // useGcpIam config with no resolvable federation audience (config-level validation, or
+      // same-cloud GKE): YBA cannot list the bucket. Skip; the node/YBC does the real check.
+      return true;
+    }
     if (MapUtils.isEmpty(regionLocationsMap)) {
       return true;
     }
@@ -237,6 +306,16 @@ public class GCPUtil implements CloudUtil {
           String prefix = cLInfo.cloudPath;
           tryListObjects(storage, bucketName, prefix);
         } catch (Exception e) {
+          if (isGcsIam && isFederationIdentityFailure(e)) {
+            // YBA cannot assume the node's federated identity (e.g. YBA is not on AWS, so it cannot
+            // fetch an AWS session token). Defer authoritative validation to the DB node / YBC. A
+            // real GCS error (bucket missing, permission denied) falls through and fails the check.
+            log.warn(
+                "YBA cannot federate to list objects for GCS config at {} (deferring to node): {}",
+                location,
+                e.getMessage());
+            return true;
+          }
           log.error(
               String.format(
                   "GCP Credential cannot list objects in the specified backup location %s",
@@ -247,6 +326,12 @@ public class GCPUtil implements CloudUtil {
       }
       return true;
     } catch (StorageException | IOException e) {
+      if (isGcsIam) {
+        log.warn(
+            "YBA could not build a GCS client for the federated config (deferring to node): {}",
+            e.getMessage());
+        return true;
+      }
       log.error("Failed to create GCS client", e.getMessage());
       return false;
     }
@@ -255,6 +340,15 @@ public class GCPUtil implements CloudUtil {
   @Override
   public void checkListObjectsWithYbcSuccessMarkerCloudStore(
       CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {
+    boolean isGcsIam =
+        configData instanceof CustomerConfigStorageGCSData
+            && ((CustomerConfigStorageGCSData) configData).useGcpIam;
+    if (isGcsIam
+        && StringUtils.isBlank(((CustomerConfigStorageGCSData) configData).federationAudience)) {
+      // useGcpIam with no resolvable audience: YBA can't list the bucket; node-side YBC validation
+      // covers it. Skip.
+      return;
+    }
     Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
         csSpec.getBucketLocationsMap();
     Map<String, String> configRegions = getRegionLocationsMap(configData);
@@ -271,6 +365,14 @@ public class GCPUtil implements CloudUtil {
           try {
             tryListObjects(storage, bucketName, prefix);
           } catch (Exception e) {
+            if (isGcsIam && isFederationIdentityFailure(e)) {
+              // YBA cannot assume the node's federated identity; defer to YBC. A real GCS error
+              // falls through and fails.
+              log.warn(
+                  "YBA cannot federate to list the YBC success marker (deferring to node): {}",
+                  e.getMessage());
+              return;
+            }
             String msg =
                 String.format(
                     "Cannot list objects in cloud location with bucket %s and cloud directory %s",
@@ -282,6 +384,12 @@ public class GCPUtil implements CloudUtil {
         }
       }
     } catch (StorageException | IOException e) {
+      if (isGcsIam) {
+        log.warn(
+            "YBA could not build a GCS client for the federated config (deferring to node): {}",
+            e.getMessage());
+        return;
+      }
       throw new PlatformServiceException(
           PRECONDITION_FAILED, "Failed to create GCS client: " + e.getLocalizedMessage());
     }
@@ -440,6 +548,15 @@ public class GCPUtil implements CloudUtil {
       Set<String> locations,
       String fileName,
       boolean checkExistsOnAll) {
+    boolean isGcsIam =
+        configData instanceof CustomerConfigStorageGCSData
+            && ((CustomerConfigStorageGCSData) configData).useGcpIam;
+    if (isGcsIam
+        && StringUtils.isBlank(((CustomerConfigStorageGCSData) configData).federationAudience)) {
+      // useGcpIam with no resolvable audience: YBA can't reach the bucket. Federation backups are
+      // always YBC, so report present and let the node-side YBC path do the authoritative check.
+      return true;
+    }
     try {
       Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
       AtomicInteger count = new AtomicInteger(0);
@@ -462,8 +579,20 @@ public class GCPUtil implements CloudUtil {
                 return count;
               })
           .anyMatch(i -> checkExistsOnAll ? (i.get() == locations.size()) : (i.get() == 1));
-    } catch (IOException e) {
-      throw new RuntimeException("Error checking files on locations", e);
+    } catch (Exception e) {
+      if (isGcsIam && isFederationIdentityFailure(e)) {
+        // YBA cannot assume the node's federated identity; defer to YBC. A real GCS error still
+        // falls through and is thrown below.
+        log.warn(
+            "YBA cannot federate to check file existence (deferring to node): {}", e.getMessage());
+        return true;
+      }
+      if (e instanceof IOException) {
+        throw new RuntimeException("Error checking files on locations", e);
+      }
+      throw (e instanceof RuntimeException)
+          ? (RuntimeException) e
+          : new RuntimeException("Error checking files on locations", e);
     }
   }
 
@@ -522,7 +651,9 @@ public class GCPUtil implements CloudUtil {
     if (StringUtils.isNotBlank(gcsData.gcsCredentialsJson)) {
       gcsCredsMap.put(YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME, gcsData.gcsCredentialsJson);
     } else if (gcsData.useGcpIam) {
-      gcsCredsMap.put(YBC_GOOGLE_IAM_FIELDNAME, String.valueOf(gcsData.useGcpIam));
+      // useGcpIam: GKE workload identity or cross-cloud federation both resolve via YBC's default
+      // credentials chain (GOOGLE_APPLICATION_CREDENTIALS set on the node) = the IAM path.
+      gcsCredsMap.put(YBC_GOOGLE_IAM_FIELDNAME, "true");
     } else {
       throw new RuntimeException(
           "Neither 'GCS_CREDENTIALS_JSON' nor 'USE_GCP_IAM' are present in the backup config.");

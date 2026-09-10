@@ -670,6 +670,10 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
     ASSERT_OK(consumer_cluster()->StartSync());
   }
 
+  // The source deleted the streams of namespace2, so the target pollers for it fail. The
+  // replication group stays unhealthy until namespace2 is removed from the target as well.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = true;
+
   // It should still have both namespaces.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(&resp));
@@ -686,6 +690,9 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
 
   ASSERT_OK(target_xcluster_client.RemoveNamespaceFromUniverseReplication(
       kReplicationGroupId, source_namespace2_id_, UniverseUuid::Nil()));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = false;
+
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1 + OverheadStreamsCount());

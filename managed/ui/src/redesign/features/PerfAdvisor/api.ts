@@ -13,6 +13,13 @@ export enum QUERY_KEY {
   pageRegisteredUniverses = 'pageRegisteredUniverses'
 }
 
+/** Mirrors com.yugabyte.yw.common.pa.PaRegistrationMode. */
+export enum PaRegistrationMode {
+  BASIC = 'BASIC',
+  ADVANCED = 'ADVANCED',
+  ONLINE = 'ONLINE'
+}
+
 export const AXIOS_INSTANCE = axios.create({ baseURL: ROOT_URL, withCredentials: true });
 
 class ApiService {
@@ -92,15 +99,19 @@ class ApiService {
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Enable Perf Advisor for current universe
+  // Enable Perf Advisor for current universe in the given registration mode. paEndpointUuid is
+  // required for ONLINE and rejected otherwise.
   attachUniverseToPerfAdvisor = (
     paUuid: string,
     universeUuid: string,
-    advancedObservability?: boolean
+    mode: PaRegistrationMode,
+    paEndpointUuid?: string
   ) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector/${paUuid}`;
-    const params =
-      advancedObservability ? { advancedObservability: true } : undefined;
+    const params: Record<string, string> = { mode };
+    if (mode === PaRegistrationMode.ONLINE && paEndpointUuid) {
+      params.paEndpointUUID = paEndpointUuid;
+    }
     return axios.put(requestUrl, undefined, { params }).then((resp) => resp.data);
   };
 
@@ -130,6 +141,7 @@ class ApiService {
       })
       .then((res) => res.data);
   };
+
 }
 
 export const PerfAdvisorAPI = new ApiService();

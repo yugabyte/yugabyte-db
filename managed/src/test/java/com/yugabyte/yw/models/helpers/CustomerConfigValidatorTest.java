@@ -102,7 +102,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
             mockAZUtil,
-            mockGCPUtil);
+            mockGCPUtil,
+            mockOCIUtil);
     when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
     doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
     doCallRealMethod().when(mockGCPUtil).getRegionLocationsMap(any());
@@ -655,6 +656,19 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       allowedBuckets.add(backupLocation);
       customerConfigValidator.validateConfig(config);
     }
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_FederationConfigSkipsCredentialValidation() {
+    // A useGcpIam GCS config (GKE workload identity or cross-cloud federation) must skip the
+    // credential/bucket check even when creds are refused; only the URL format is validated.
+    ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(true);
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
+    data.put("USE_GCP_IAM", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+    // Does not throw despite refuseKeys=true.
+    customerConfigValidator.validateConfig(config);
   }
 
   private void setupGCPReadValidation(

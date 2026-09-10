@@ -41,3 +41,17 @@ INSERT INTO mvtest_t VALUES (6, 'z', 13);
 REFRESH MATERIALIZED VIEW mvtest_tm;
 REFRESH MATERIALIZED VIEW mvtest_tvm_renamed;
 REFRESH MATERIALIZED VIEW mvtest_tvmm;
+
+-- REFRESH ... CONCURRENTLY runs nested utility statements.
+INSERT INTO mvtest_t VALUES (7, 'x', 17);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_tm;
+
+-- Same nested utility statements, but run from inside a function so the REFRESH
+-- is not a top level command.
+CREATE FUNCTION mvtest_refresh_concurrently() RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_tm;
+END;
+$$;
+INSERT INTO mvtest_t VALUES (8, 'y', 19);
+SELECT mvtest_refresh_concurrently();

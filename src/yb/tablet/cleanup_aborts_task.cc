@@ -18,7 +18,6 @@
 #include "yb/tablet/transaction_participant_context.h"
 
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -27,8 +26,7 @@ using namespace std::literals;
 
 DECLARE_uint64(aborted_intent_cleanup_ms);
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 CleanupAbortsTask::CleanupAbortsTask(TransactionIntentApplier* applier,
                                      TransactionIdSet&& transactions_to_cleanup,
@@ -89,12 +87,19 @@ void CleanupAbortsTask::Run() {
     LOG_WITH_PREFIX(INFO) << "Failed to get last replicated data: " << status;
     return;
   }
-  WARN_NOT_OK(applier_->RemoveIntents(
-                  data, RemoveReason::kCleanupAborts, transactions_to_cleanup_),
-              "RemoveIntents for transaction cleanup in compaction failed.");
-  LOG_WITH_PREFIX(INFO)
-      << "Number of aborted transactions cleaned up: " << transactions_to_cleanup_.size()
-      << " of " << initial_number_of_transactions;
+  status = applier_->RemoveIntents(data, RemoveReason::kCleanupAborts, transactions_to_cleanup_);
+  WARN_NOT_OK(status, "RemoveIntents for transaction cleanup in compaction failed.");
+  // Despite the task name CleanupAbortsTask, these are not necessarily aborts.  FilterTransactions
+  // kept transactions the coordinator reported as ABORTED, or that this participant no longer
+  // tracks in memory (a local NOT_FOUND).  Neither confirms an abort: the coordinator reports
+  // ABORTED for any transaction it has forgotten, and a transaction missing from memory has an
+  // unknown outcome -- either may in fact have committed.  So this is a count of *cleanable*
+  // transactions.
+  if (status.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Number of transactions cleaned up: "
+                          << transactions_to_cleanup_.size() << " of "
+                          << initial_number_of_transactions << " candidates passed to this task";
+  }
 }
 
 void CleanupAbortsTask::Done(const Status& status) {
@@ -137,14 +142,15 @@ void CleanupAbortsTask::FilterTransactions() {
     static const std::string kRequestReason = "cleanup"s;
     // Get transaction status
     StatusRequest request = {
-        &transaction_id,
-        now,
-        now,
-        0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
+        .id = &transaction_id,
+        .read_ht = now,
+        .global_limit_ht = now,
+        .serial_no = 0,  // serial no. Could use 0 here, because read_ht == global_limit_ht.
         // So we cannot accept status with time >= read_ht and < global_limit_ht.
-        &kRequestReason,
-        TransactionLoadFlags{},
-        [transaction_id, this, &left_wait, tid](Result<TransactionStatusResult> result) {
+        .reason = &kRequestReason,
+        .flags = TransactionLoadFlags{},
+        .callback = [transaction_id, this, &left_wait,
+                     tid](Result<TransactionStatusResult> result) {
           std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
           if (tid != std::this_thread::get_id()) {
             lock.lock();
@@ -156,14 +162,13 @@ void CleanupAbortsTask::FilterTransactions() {
             VLOG_WITH_PREFIX(3) << "Transaction being cleaned " << transaction_id << ".";
           } else {
             this->erased_transactions_.push_back(transaction_id);
-            VLOG_WITH_PREFIX(2) << "Transaction not aborted, should not cleanup: "
-                                << transaction_id << ", " << result;
+            VLOG_WITH_PREFIX(2) << "Not cleaning up transaction (status not ABORTED, or status "
+                                << "unavailable): " << transaction_id << ", " << result;
           }
           if (--left_wait == 0) {
             YB_PROFILE(cond_.notify_one());
           }
-        }
-    };
+        }};
     status_manager_.RequestStatusAt(request);
   }
 
@@ -174,5 +179,4 @@ void CleanupAbortsTask::FilterTransactions() {
   }
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

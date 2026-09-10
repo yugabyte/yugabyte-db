@@ -269,4 +269,9 @@ class MultiLevelIndexReader : public IndexReader {
   const std::unique_ptr<Block> top_level_index_block_;
 };
 
+// Test-only: number of DoSeek calls performed by `iter`, which must be a MultiLevelIterator (as
+// returned by MultiLevelIndexReader::NewDataBlockAwareIterator for a multi-level index).
+uint64_t TEST_MultiLevelIndexIteratorNumDoSeekCalls(
+    const DataBlockAwareIndexInternalIterator* iter);
+
 } // namespace rocksdb

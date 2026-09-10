@@ -31,6 +31,10 @@ services:
       pa.callhome.environment={{ yamlPath "perfAdvisor.callhome.environment" }}
       pa.deployment.type=yba_installer
 
+      # Table DDL collection. ysql_dump is packaged by yba-installer because nothing else on
+      # the host provides it, and it needs the library path set in the systemd unit below.
+      pa.task.table_metadata_query.ysql_dump_path={{ .YsqlDumpPath }}
+
       # PA Topology Configuration - for writing the PA collected data to Prometheus
       pa.metrics.export.topology={{ .MetricExportConfLocation }}
 
@@ -103,6 +107,8 @@ services:
       Type=simple
 
       Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      # ysql_dump links against YugabyteDB's own C++ runtime, shipped in the same bundle.
+      Environment="LD_LIBRARY_PATH={{ .YsqlDumpLibPath }}"
 
       ExecStart=/bin/sh -c "{{ .PABin }}/perf-advisor \
         --spring.config.additional-location=file:{{ .ConfFileLocation }}"

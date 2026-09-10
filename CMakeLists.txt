@@ -304,6 +304,14 @@ if(NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
   ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
 endif()
 
+# pg_duckdb links a prebuilt DuckDB bundle from yugabyte-db-thirdparty that is currently built
+# uninstrumented-only. Linking an uninstrumented DuckDB core into a sanitizer-instrumented backend 
+# gives broken TSAN / blind ASAN, so for now pg_duckdb is not available on sanitizer (ASAN/TSAN) builds.
+if(NOT IS_SANITIZER)
+  set(YB_ENABLE_YSQL_PG_DUCKDB_EXT TRUE)
+  ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_PG_DUCKDB_EXT")
+endif()
+
 # -------------------------------------------------------------------------------------------------
 # Build type (debug, release, fastdebug, etc.)
 # -------------------------------------------------------------------------------------------------
@@ -322,7 +330,6 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "RELWITHDEBINFO" OR "${CMAKE_BUILD_TYPE}" STR
 endif()
 
 VALIDATE_COMPILER_TYPE()
-DETECT_BREW()
 enable_lto_if_needed()
 
 message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
@@ -386,16 +393,9 @@ if(IS_CLANG)
 
   # Allow variable length arrays in C++.
 
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0" OR
-     (IS_APPLE_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "17.0.0"))
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0")
      ADD_CXX_FLAGS("-Wno-vla-cxx-extension")
   endif()
-endif()
-
-if(USING_LINUXBREW AND IS_CLANG)
-  # We are only using Clang with Linuxbrew. We never use Linuxbrew GCC 5 anymore, it is too old.
-  ADD_LINKER_FLAGS("-Wl,--dynamic-linker=${LINUXBREW_LIB_DIR}/ld.so")
-  ADD_LINKER_FLAGS("--gcc-toolchain=${LINUXBREW_DIR}")
 endif()
 
 if(IS_GCC)
@@ -447,11 +447,6 @@ if(IS_GCC)
   ADD_CXX_FLAGS("-Wno-misleading-indentation")
 endif()
 
-if(USING_LINUXBREW)
-  # This is needed for finding correct versions of Flex, Bison, and other tools.
-  set(CMAKE_PREFIX_PATH "${LINUXBREW_DIR}" ${CMAKE_PREFIX_PATH})
-endif()
-
 # For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)
@@ -491,9 +486,6 @@ set(CMAKE_CXX_FLAGS_DEBUG "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
 set(CLANG_GCC_TOOLCHAIN "")
-if(IS_CLANG AND NOT APPLE AND USING_LINUXBREW)
-  set(CLANG_GCC_TOOLCHAIN "${LINUXBREW_DIR}")
-endif()
 
 # Set compile flags based on the build type.
 message("Configured for ${CMAKE_BUILD_TYPE} build "
@@ -542,9 +534,7 @@ if (IS_CLANG)
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
 
-  if (IS_APPLE_CLANG)
-    ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
-  elseif (APPLE)
+  if (APPLE)
     ADD_LINKER_FLAGS("-lc++ -lc++abi")
   endif()
 elseif(IS_GCC)
@@ -563,10 +553,6 @@ if(IS_CLANG)
   if (IS_SANITIZER)
     YB_SETUP_SANITIZER()
   endif()
-endif()
-
-if (USING_LINUXBREW)
-  include_directories(SYSTEM "${LINUXBREW_DIR}/include")
 endif()
 
 if (NOT IS_CLANG)
@@ -658,11 +644,6 @@ include_directories("src/inline-thirdparty/simsimd")
 
 
 enable_testing()
-
-if (USING_LINUXBREW)
-  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${YB_BUILD_ROOT}/postgres/lib")
-  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${LINUXBREW_LIB_DIR}")
-endif()
 
 ############################################################
 # Dependencies
@@ -921,6 +902,7 @@ set(YB_SUBDIR_NAMES
     server
     storage
     tablet
+    thin_client
     tools
     tserver
     util
@@ -947,7 +929,6 @@ if(APPLE)
   # runtime. Hard-linking the backend (libyb_pgbackend) or libpq would be a layering/bloat regression.
   yb_allow_flat_namespace_lookup(yb-cql)
   yb_allow_flat_namespace_lookup(yb_pgwrapper)
-  yb_allow_flat_namespace_lookup(yb_pgresult_util)
   # yb_pggate_util and yb_dockv have a mutual (circular) dependency that cannot be expressed as a
   # link edge between shared libraries, so yb_pggate_util resolves yb_dockv/yb_ash symbols at runtime.
   yb_allow_flat_namespace_lookup(yb_pggate_util)

@@ -54,9 +54,9 @@ _If the instance type and instances weren't created when provisioning the VMs_, 
 
 ## Legacy provisioning
 
-{{< warning title="Legacy provisioning no longer available in v2025.2" >}}
+{{< warning title="Legacy provisioning will be deprecated" >}}
 
-v2025.2 (available late 2025) will not support legacy node provisioning. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using [automatic provisioning](#automatic-provisioning).
+Legacy provisioning is being phased out. Going forward, [automatic provisioning](#automatic-provisioning) is strongly recommended.
 
 {{< /warning >}}
 
@@ -70,7 +70,7 @@ To create, provision, and add nodes to your on-premises provider using legacy pr
 - Have your system administrator create VMs that will be used as nodes in universes. This is typically done using your hypervisor or cloud provider. Do the following:
   - Locate the VMs in the regions and availability zones where you will be deploying universes.
   - Install a YugabyteDB-supported Linux OS on the VMs.
-  - Set up a `yugabyte` user with root privileges (SSH access and sudo-capable).
+  - Set up a user with root privileges (SSH access and sudo-capable).
 
   For instructions on creating VMs that are suitable for deploying YugabyteDB, refer to [Legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/).
 
@@ -79,7 +79,7 @@ To create, provision, and add nodes to your on-premises provider using legacy pr
 In YBA, create an on-premises provider. This involves the following:
 
 - Defining the regions and availability zones where the provider will be deploying universes.
-- Providing SSH credentials for the `yugabyte` user.
+- Providing SSH credentials for the SSH user.
 - Providing NTP setup.
 - If the SSH user does not have passwordless sudo access, enabling Manual provisioning for the provider.
 
@@ -95,7 +95,7 @@ In YBA, navigate to the provider you created in Stage 2 and do the following:
     | Provisioning | Description | What happens |
     | :--- | :--- | :--- |
     | Legacy automatic | YBA is provided an SSH user with sudo access for the nodes it needs to provision. For example, the `ec2-user` for AWS EC2 instances. | No action. YBA will automatically provision the VMs that you add. |
-    | Legacy assisted&nbsp;manual | The SSH user requires a password for sudo access. | [Run a script](../on-premises-script/), provided by YBA, to provision each VM, providing credentials for the SSH user with sudo access. |
+    | Legacy assisted&nbsp;manual (deprecated) | The SSH user requires a password for sudo access. | [Run a script](../on-premises-script/), provided by YBA, to provision each VM, providing credentials for the SSH user with sudo access. |
     | Legacy fully manual | Neither YBA nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. | Follow a sequence of steps to [provision each VM manually](../../prepare/server-nodes-software/software-on-prem-manual/) before adding the VM to the pool. |
 
 1. Add the VMs (instances) to the provider.

@@ -43,4 +43,4 @@ See [Tablespaces](../../../../../explore/going-beyond-sql/tablespaces/) and [Row
 
 ## See also
 
-- [`CREATE TABLESPACE`](../ddl_create_tablespace)
+- [CREATE TABLESPACE](../ddl_create_tablespace)

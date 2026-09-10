@@ -28,72 +28,72 @@ CREATE INDEX ON jsonbs USING ybgin (j);
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: + number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number - number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: - number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number * number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number / number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number % number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . type()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . size()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . double()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . ceiling()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . floor()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . abs()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . datetime()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . datetime(template)
 -- (skip this)
 -- jsonpath: object . keyvalue()
@@ -104,7 +104,7 @@ $$ AS query \gset
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value < value
 -- (skip this)
 -- jsonpath: value <= value
@@ -117,37 +117,37 @@ $$ AS query \gset
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: boolean || boolean
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: ! boolean
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: boolean is unknown
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? ((@ == "1") is unknown)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: string like_regex string
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: string starts with string
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: exists ( path_expression )
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- jsonb_path_ops
@@ -160,72 +160,72 @@ CREATE INDEX ON jsonbs USING ybgin (j jsonb_path_ops);
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: + number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number - number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: - number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number * number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number / number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: number % number
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . type()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . size()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . double()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . ceiling()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . floor()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . abs()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . datetime()
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value . datetime(template)
 -- (skip this)
 -- jsonpath: object . keyvalue()
@@ -236,7 +236,7 @@ $$ AS query \gset
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: value < value
 -- (skip this)
 -- jsonpath: value <= value
@@ -249,34 +249,34 @@ $$ AS query \gset
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: boolean || boolean
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: ! boolean
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: boolean is unknown
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: string like_regex string
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: string starts with string
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- jsonpath: exists ( path_expression )
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query

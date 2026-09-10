@@ -34,7 +34,6 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
 #include "pg_yb_utils.h"
 
 static TupleTableSlot *SeqNext(SeqScanState *node);

@@ -1,0 +1,21 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_create_table_test s2_select_test s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_a s3_select_test
+step s1_create_table_test: CREATE TABLE test (k int primary key, v int);
+step s2_select_test: SELECT * from test;
+k|v
+-+-
+(0 rows)
+
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_alter_col_a: ALTER TABLE test ALTER COLUMN v TYPE SMALLINT;
+step s3_select_test: SELECT * from test;
+k|v|a
+-+-+-
+(0 rows)
+
+pg_sleep
+--------
+        
+(1 row)
+

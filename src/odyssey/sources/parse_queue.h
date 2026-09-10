@@ -15,7 +15,8 @@
 
 typedef enum {
 	YB_PARSE_QUEUE_SYNC,
-	YB_PARSE_QUEUE_STMT_NAME,
+	YB_PARSE_QUEUE_PARSE_COMPLETE,
+	YB_PARSE_QUEUE_NO_PARSE_COMPLETE,
 } yb_od_parse_queue_kind_t;
 
 typedef struct yb_od_parse_queue_entry {
@@ -39,7 +40,8 @@ static inline void yb_od_parse_queue_entry_release(yb_od_parse_queue_entry_t *en
 	switch (entry->kind) {
 	case YB_PARSE_QUEUE_SYNC:
 		break;
-	case YB_PARSE_QUEUE_STMT_NAME:
+	case YB_PARSE_QUEUE_PARSE_COMPLETE:
+	case YB_PARSE_QUEUE_NO_PARSE_COMPLETE:
 		free(entry->stmt_name);
 		entry->stmt_name = NULL;
 		break;
@@ -108,6 +110,42 @@ static inline int yb_od_parse_queue_peek(const yb_od_parse_queue_t *q,
 }
 
 /*
+ * Copies the most recently enqueued (tail) entry into *out.  Mirrors
+ * yb_od_parse_queue_peek but reads from the tail instead of the front;
+ * the queue still owns stmt_name.
+ * Returns 0 on success, -1 if the queue is empty or disabled.
+ */
+static inline int yb_od_parse_queue_peek_last(const yb_od_parse_queue_t *q,
+					      yb_od_parse_queue_entry_t *out)
+{
+	if (!q->enabled)
+		return -1;
+	const void *elem = yb_od_circular_queue_peek_last(&q->q);
+	if (elem == NULL)
+		return -1;
+	*out = *(const yb_od_parse_queue_entry_t *)elem;
+	return 0;
+}
+
+/*
+ * Remove the most recently enqueued (tail) entry, freeing any owned heap
+ * state first.
+ * Returns 0 on success, -1 if the queue is empty.
+ * When the queue is disabled, returns 0 (success no-op).
+ */
+static inline int yb_od_parse_queue_remove_last(yb_od_parse_queue_t *q)
+{
+	if (!q->enabled)
+		return 0;
+	if (yb_od_circular_queue_empty(&q->q))
+		return -1;
+	yb_od_parse_queue_entry_t *entry =
+		(yb_od_parse_queue_entry_t *)yb_od_circular_queue_peek_last(&q->q);
+	yb_od_parse_queue_entry_release(entry);
+	return yb_od_circular_queue_remove_last(&q->q);
+}
+
+/*
  * Dequeue the front entry, freeing any owned heap state first.
  * Returns 0 on success, -1 if the queue is empty.
  *
@@ -158,7 +196,7 @@ static inline int yb_od_parse_queue_enqueue_sync(yb_od_parse_queue_t *q)
 }
 
 static inline int yb_od_parse_queue_enqueue_stmt_name(yb_od_parse_queue_t *q,
-						   const char *stmt_name)
+						   const char *stmt_name, yb_od_parse_queue_kind_t kind)
 {
 	if (!q->enabled)
 		return 0;
@@ -166,7 +204,7 @@ static inline int yb_od_parse_queue_enqueue_stmt_name(yb_od_parse_queue_t *q,
 	if (copy == NULL)
 		return -1;
 	yb_od_parse_queue_entry_t entry = {
-		.kind = YB_PARSE_QUEUE_STMT_NAME,
+		.kind = kind,
 		.stmt_name = copy,
 	};
 	if (yb_od_circular_queue_enqueue(&q->q, &entry) == -1) {

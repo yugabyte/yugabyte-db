@@ -17,6 +17,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

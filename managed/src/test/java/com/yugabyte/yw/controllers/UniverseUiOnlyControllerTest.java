@@ -431,7 +431,11 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = createUniverse(customer.getId());
+    PlacementInfo placementInfo = placement(p);
+
+    Universe u =
+        createUniverse(
+            "Test Universe", UUID.randomUUID(), customer.getId(), CloudType.aws, placementInfo);
     InstanceType i =
         InstanceType.upsert(
             p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -451,11 +455,15 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     Cluster cluster = u.getUniverseDetails().clusters.get(0);
     ObjectNode clusterJson = Json.newObject();
     clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("placementInfo", Json.toJson(placementInfo));
     clusterJson.set("uuid", Json.toJson(cluster.uuid));
     ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.set(
+        "nodeDetailsSet",
+        nodeDetailsSetJson(
+            placementInfo, cluster.uuid, NodeState.ToBeAdded, i.getInstanceTypeCode()));
 
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
@@ -475,154 +483,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
-  public void testUniverseExpand() {
-    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
-    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-
-    Provider p = ModelFactory.awsProvider(customer);
-    String accessKeyCode = "someKeyCode";
-    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = createUniverse(customer.getId());
-    InstanceType i =
-        InstanceType.upsert(
-            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    ObjectNode bodyJson = Json.newObject();
-    ObjectNode userIntentJson =
-        Json.newObject()
-            .put("universeName", u.getName())
-            .put("numNodes", 5)
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("replicationFactor", 3)
-            .put("provider", p.getUuid().toString())
-            .put("accessKeyCode", accessKeyCode);
-    ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
-    userIntentJson.set("regionList", regionList);
-    Cluster cluster = u.getUniverseDetails().clusters.get(0);
-    ObjectNode clusterJson = Json.newObject();
-    clusterJson.set("userIntent", userIntentJson);
-    clusterJson.set("uuid", Json.toJson(cluster.uuid));
-    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
-    bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
-
-    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
-
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertValue(json, "universeUUID", u.getUniverseUUID().toString());
-    JsonNode universeDetails = json.get("universeDetails");
-    assertNotNull(universeDetails);
-    JsonNode clustersJson = universeDetails.get("clusters");
-    assertNotNull(clustersJson);
-    JsonNode primaryClusterJson = clustersJson.get(0);
-    assertNotNull(primaryClusterJson);
-    assertNotNull(primaryClusterJson.get("userIntent"));
-    assertAuditEntry(1, customer.getUuid());
-
-    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
-    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-    // Try universe expand only, and re-check.
-    userIntentJson.put("numNodes", 9);
-    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
-    assertOk(result);
-    json = Json.parse(contentAsString(result));
-    assertValue(json, "universeUUID", u.getUniverseUUID().toString());
-    universeDetails = json.get("universeDetails");
-    assertNotNull(universeDetails);
-    clustersJson = universeDetails.get("clusters");
-    assertNotNull(clustersJson);
-    primaryClusterJson = clustersJson.get(0);
-    assertNotNull(primaryClusterJson);
-    assertNotNull(primaryClusterJson.get("userIntent"));
-    assertAuditEntry(2, customer.getUuid());
-  }
-
-  @Test
-  public void testUniverseExpandWithYbc() {
-    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
-    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-
-    Provider p = ModelFactory.awsProvider(customer);
-    String accessKeyCode = "someKeyCode";
-    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u =
-        createUniverse(
-            "Test Universe", UUID.randomUUID(), customer.getId(), CloudType.aws, null, null, true);
-    InstanceType i =
-        InstanceType.upsert(
-            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    ObjectNode bodyJson = Json.newObject();
-    ObjectNode userIntentJson =
-        Json.newObject()
-            .put("universeName", u.getName())
-            .put("numNodes", 5)
-            .put("instanceType", i.getInstanceTypeCode())
-            .put("replicationFactor", 3)
-            .put("provider", p.getUuid().toString())
-            .put("accessKeyCode", accessKeyCode);
-    ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
-    userIntentJson.set("regionList", regionList);
-    Cluster cluster = u.getUniverseDetails().clusters.get(0);
-    ObjectNode clusterJson = Json.newObject();
-    clusterJson.set("userIntent", userIntentJson);
-    clusterJson.set("uuid", Json.toJson(cluster.uuid));
-    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
-    bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
-    bodyJson.put("enableYbc", true);
-    bodyJson.put("ybcSoftwareVersion", "");
-
-    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
-
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertValue(json, "universeUUID", u.getUniverseUUID().toString());
-    JsonNode universeDetails = json.get("universeDetails");
-    assertNotNull(universeDetails);
-    JsonNode clustersJson = universeDetails.get("clusters");
-    assertNotNull(clustersJson);
-    JsonNode primaryClusterJson = clustersJson.get(0);
-    assertNotNull(primaryClusterJson);
-    assertNotNull(primaryClusterJson.get("userIntent"));
-    assertAuditEntry(1, customer.getUuid());
-
-    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
-    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-    // Try universe expand only, and re-check.
-    userIntentJson.put("numNodes", 9);
-    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
-    assertOk(result);
-    json = Json.parse(contentAsString(result));
-    assertValue(json, "universeUUID", u.getUniverseUUID().toString());
-    universeDetails = json.get("universeDetails");
-    assertNotNull(universeDetails);
-    clustersJson = universeDetails.get("clusters");
-    assertNotNull(clustersJson);
-    primaryClusterJson = clustersJson.get(0);
-    assertNotNull(primaryClusterJson);
-    assertNotNull(primaryClusterJson.get("userIntent"));
-    assertAuditEntry(2, customer.getUuid());
-  }
-
-  @Test
   public void testUniverseExpandWithTransitNodes() {
     UUID fakeTaskUUID = UUID.randomUUID();
 
@@ -631,7 +491,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = createUniverse(customer.getId());
+    PlacementInfo placementInfo = placement(p);
+    Universe u =
+        createUniverse(
+            "Test Universe", UUID.randomUUID(), customer.getId(), CloudType.aws, placementInfo);
     Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     InstanceType i =
         InstanceType.upsert(
@@ -648,8 +511,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
             .put("provider", p.getUuid().toString());
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("placementInfo", Json.toJson(placementInfo));
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
@@ -1047,7 +912,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = createUniverse(customer.getId());
+    PlacementInfo placementInfo = placement(p);
+    Universe u =
+        createUniverse(
+            "Test Universe", UUID.randomUUID(), customer.getId(), CloudType.aws, placementInfo);
     InstanceType i =
         InstanceType.upsert(
             p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -1088,6 +956,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ObjectNode clusterJson = Json.newObject();
     clusterJson.set("userIntent", userIntentJson);
     clusterJson.set("uuid", Json.toJson(cluster.uuid));
+    clusterJson.set("placementInfo", Json.toJson(placementInfo));
     ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
 
     ObjectNode bodyJson = Json.newObject();
@@ -2083,7 +1952,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(cluster));
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.set(
+        "nodeDetailsSet",
+        nodeDetailsSetJson(
+            placementInfo, cluster.uuid, NodeState.ToBeAdded, i.getInstanceTypeCode()));
     r.disableRegionAndZones();
     Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
     assertErrorResponse(result, "Region region-1 is deleted");
@@ -2129,7 +2001,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(cluster));
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.set(
+        "nodeDetailsSet",
+        nodeDetailsSetJson(
+            placementInfo, cluster.uuid, NodeState.ToBeAdded, i.getInstanceTypeCode()));
     Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
     assertErrorResponse(result, "Found a gap between priorities");
     assertBadRequest(result, "");
@@ -2297,7 +2172,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = createUniverse("Test universe", customer.getId(), providerType);
+    Universe u =
+        createUniverse(
+            "Test universe", UUID.randomUUID(), customer.getId(), providerType, placement(p));
     InstanceType i =
         InstanceType.upsert(
             p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());

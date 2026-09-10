@@ -2,8 +2,10 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.1505-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
+\restrict test
+
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -26,16 +28,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -45,9 +51,13 @@ BEGIN
   END IF;
 END $$;
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: htest; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -83,9 +93,13 @@ PARTITION BY HASH (k1)
 WITH (colocation_id='123456');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.htest OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -119,12 +133,16 @@ CREATE TABLE public.htest_1 (
     v1 integer,
     v2 text
 )
-WITH (colocation_id='234567');
+WITH (colocation_id='234567', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.htest_1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -159,12 +177,16 @@ CREATE TABLE public.tbl (
     v integer,
     CONSTRAINT tbl_pkey PRIMARY KEY(k ASC)
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -200,12 +222,16 @@ CREATE TABLE public.tbl2 (
     v2 text,
     CONSTRAINT tbl2_pkey PRIMARY KEY(k ASC)
 )
-WITH (colocation_id='20002');
+WITH (colocation_id='20002', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl3; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -234,13 +260,17 @@ CREATE TABLE public.tbl3 (
     v integer,
     CONSTRAINT tbl3_pkey PRIMARY KEY((k) HASH)
 )
-WITH (colocation='false')
+WITH (colocation='false', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl4; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -270,13 +300,17 @@ CREATE TABLE public.tbl4 (
     v2 text,
     CONSTRAINT tbl4_pkey PRIMARY KEY((k) HASH)
 )
-WITH (colocation='false')
+WITH (colocation='false', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl5; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -305,12 +339,16 @@ CREATE TABLE public.tbl5 (
     k integer,
     v integer
 )
-WITH (colocation_id='20005');
+WITH (colocation_id='20005', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: htest_1; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
@@ -528,7 +566,7 @@ CREATE INDEX NONCONCURRENTLY tbl2_v2_idx ON public.tbl2 USING lsm (v2 ASC) WITH 
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16404'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16404'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_idx ON public.tbl3 USING lsm (v HASH) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_idx ON public.tbl3 USING lsm (v HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -574,33 +612,45 @@ CREATE UNIQUE INDEX NONCONCURRENTLY tbl_v_idx ON public.tbl USING lsm (v DESC) W
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -754,4 +804,6 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

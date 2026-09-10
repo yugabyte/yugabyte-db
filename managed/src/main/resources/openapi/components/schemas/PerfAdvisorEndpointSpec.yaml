@@ -1,0 +1,45 @@
+title: PerfAdvisorEndpointSpec
+description: |
+  PerfAdvisorEndpointSpec
+
+  User specification for a Perf Advisor Endpoint - an external Perf Advisor that a universe
+  registered in online mode forwards its collected data to. All these properties can be edited.
+type: object
+required:
+  - name
+  - type
+  - metrics_endpoint
+  - metrics_type
+  - collection_endpoint
+properties:
+  name:
+    description: Name of the endpoint. Unique per customer.
+    type: string
+    example: byoc-prod
+  type:
+    $ref: "./PerfAdvisorEndpointType.yaml"
+  metrics_endpoint:
+    description: URL the collector sends metrics to.
+    type: string
+    example: 'https://byoc.cloud.yugabyte.com/api/v1/otlp/metrics'
+  metrics_type:
+    $ref: "./PerfAdvisorEndpointMetricsType.yaml"
+  metrics_auth:
+    $ref: "./PerfAdvisorEndpointAuth.yaml"
+  collection_endpoint:
+    description: 'URL of the destination''s Collection API, where everything other than metrics goes.'
+    type: string
+    example: 'https://byoc.cloud.yugabyte.com'
+  collection_auth:
+    $ref: "./PerfAdvisorEndpointAuth.yaml"
+  ybm_account_id:
+    description: |
+      YugabyteDB Managed account ID. Sent as the YBM-Account-ID header on both endpoints, which is
+      how a BYOC ingest gateway identifies the sender. Leave unset for a plain Perf Advisor.
+    type: string
+    example: 6f4d2c1e-9b3a-4f77-8c21-0a5e7d3b9c14
+  ybm_project_id:
+    description: |
+      YugabyteDB Managed project ID. Sent as the YBM-Project-ID header on both endpoints.
+    type: string
+    example: 3a1c8e52-77bd-4e19-9f60-2b8d41c7a905

@@ -6,6 +6,7 @@
 ####################################################################################################
 
 test: yb.orig.catalog_version
+test: yb.orig.catalog_version_ctas_temp
 test: yb.orig.alter_operator
 test: yb.orig.boolean
 test: yb.orig.errors
@@ -14,3 +15,4 @@ test: yb.orig.local_tablets
 test: yb.orig.generated
 test: yb.orig.tablet_metadata
 test: yb.orig.yb_get_tablet_for_key
+test: yb.orig.parameterized_query

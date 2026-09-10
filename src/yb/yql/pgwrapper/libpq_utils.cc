@@ -136,9 +136,6 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   if (!settings.replication.empty()) {
     result += Format(" replication=$0", PqEscapeStringConn(settings.replication));
   }
-  if (settings.yb_auto_analyze) {
-    result += Format(" yb_auto_analyze=true");
-  }
   if (!settings.yb_internal_conn_kind.empty()) {
     result += Format(
         " yb_internal_conn_kind=$0", PqEscapeStringConn(settings.yb_internal_conn_kind));
@@ -589,7 +586,8 @@ void PGConnClose::operator()(PGconn* conn) const {
 Result<PGConn> PGConn::Connect(const std::string& conn_str,
                                CoarseTimePoint deadline,
                                bool simple_query_protocol,
-                               const std::string& explicit_conn_str_for_log) {
+                               const std::string& explicit_conn_str_for_log,
+                               const std::function<bool()>& should_stop) {
   PGConnPtr result;
   ConnStatusType status;
   const auto& conn_str_for_log = explicit_conn_str_for_log.empty()
@@ -620,6 +618,11 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
         // If the database does not exist or password authentication failed, we do not retry.
         break;
       }
+    }
+    // Stop retrying if the caller is going away (e.g. server shutdown); otherwise a doomed
+    // connection would keep retrying until the deadline, blocking shutdown.
+    if (should_stop && should_stop()) {
+      break;
     }
   } while (waiter.Wait());
   const MonoDelta duration(CoarseMonoClock::now() - start);
@@ -864,6 +867,10 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
   return Format("Type not supported: $0", type);
 }
 
+int PGConn::BackendPID() const {
+  return PQbackendPID(impl_.get());
+}
+
 // Escape a string for use as a SQL string literal, i.e. a value that appears in a SQL statement
 // like `SELECT * FROM t WHERE name = '<escaped>'`.  Single quotes are doubled and, when the input
 // contains backslashes, E'...' (escape string) syntax is used so that backslash sequences are
@@ -924,7 +931,8 @@ std::string PqEscapeStringConn(const std::string& input) {
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
     : conn_str_(BuildConnectionString(settings)),
       conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)),
-      connect_timeout_(settings.connect_timeout) {
+      connect_timeout_(settings.connect_timeout),
+      should_stop_(settings.should_stop) {
 }
 
 Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
@@ -934,9 +942,10 @@ Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
   // deadline since the caller likely intended a deadline of 1.
   if (connect_timeout_) {
     const auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(connect_timeout_);
-    return PGConn::Connect(conn_str_, deadline, simple_query_protocol, conn_str_for_log_);
+    return PGConn::Connect(
+        conn_str_, deadline, simple_query_protocol, conn_str_for_log_, should_stop_);
   }
-  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_);
+  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_, should_stop_);
 }
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
@@ -990,8 +999,7 @@ Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
 }
 
 PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
-    : process_("perf",
-               PerfArguments(CHECK_RESULT(conn->FetchRow<PGUint32>("SELECT pg_backend_pid()")))) {
+    : process_("perf", PerfArguments(conn->BackendPID())) {
 
   CHECK_OK(process_.Start());
 }
@@ -1004,8 +1012,9 @@ PGConnPerf::~PGConnPerf() {
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
     std::string_view user, uint64_t postgres_auth_key,
-    const std::optional<CoarseTimePoint>& deadline, bool yb_auto_analyze,
-    std::string_view yb_internal_conn_kind) {
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind,
+    std::function<bool()> should_stop) {
   size_t connect_timeout = 0;
   if (deadline && *deadline != CoarseTimePoint::max()) {
     // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
@@ -1023,8 +1032,17 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .user = std::string(user),
        .password = UInt64ToString(postgres_auth_key),
        .connect_timeout = connect_timeout,
-       .yb_auto_analyze = yb_auto_analyze,
-       .yb_internal_conn_kind = std::string(yb_internal_conn_kind)});
+       .yb_internal_conn_kind = std::string(yb_internal_conn_kind),
+       .should_stop = std::move(should_stop)});
+}
+
+Result<bool> TryTerminateBackendWithRunningQuery(
+    PGConn& conn, int backend_pid, uint32_t min_query_running_time_msecs) {
+  return conn.FetchRow<bool>(
+      Format(
+          "SELECT COUNT(pg_terminate_backend(pid)) > 0 FROM pg_stat_activity WHERE " \
+          "pid=$0 AND state='active' AND query_start < NOW() - interval '$1 msec'",
+          backend_pid, min_query_running_time_msecs));
 }
 
 } // namespace yb::pgwrapper

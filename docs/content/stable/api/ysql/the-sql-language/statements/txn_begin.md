@@ -154,9 +154,9 @@ yugabyte=# COMMIT;
 
 ## See also
 
-- [`ABORT`](../txn_abort)
-- [`COMMIT`](../txn_commit)
-- [`END`](../txn_end)
-- [`ROLLBACK`](../txn_rollback)
-- [`SET TRANSACTION`](../txn_set)
-- [`START TRANSACTION`](../txn_start)
+- [ABORT](../txn_abort)
+- [COMMIT](../txn_commit)
+- [END](../txn_end)
+- [ROLLBACK](../txn_rollback)
+- [SET TRANSACTION](../txn_set)
+- [START TRANSACTION](../txn_start)

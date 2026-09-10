@@ -40,6 +40,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"

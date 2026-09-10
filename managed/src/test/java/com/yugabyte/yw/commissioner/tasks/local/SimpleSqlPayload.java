@@ -6,30 +6,33 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class SimpleSqlPayload {
   private static final String TABLE_NAME = "sql_payload_table";
+  private static final long TOPOLOGY_REFRESH_MILLIS = 1000;
   private AtomicInteger lastId = new AtomicInteger(1);
   private int readThreads;
   private int writeThreads;
   private long timeBetweenRetries;
-  private Universe universe;
+  private UUID universeUuid;
 
   private AtomicInteger errorCount = new AtomicInteger();
   private AtomicInteger readCount = new AtomicInteger();
@@ -42,33 +45,84 @@ public class SimpleSqlPayload {
     this.readThreads = readThreads;
     this.writeThreads = writeThreads;
     this.timeBetweenRetries = timeBetweenRetries;
-    this.universe = universe;
+    this.universeUuid = universe.getUniverseUUID();
   }
 
   private ExecutorService executor;
-  private DataSource dataSource;
+  private volatile HikariDataSource dataSource;
+  private volatile String currentHosts;
   private Long startTime;
 
   public void init() {
+    currentHosts = liveHosts();
+    dataSource = createDataSource(currentHosts);
+
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("SimplePayload-%d").build();
+    executor = Executors.newCachedThreadPool(namedThreadFactory);
+  }
+
+  private HikariDataSource createDataSource(String hosts) {
     HikariConfig config = new HikariConfig();
-    UniverseDefinitionTaskParams.Cluster primaryCluster =
-        universe.getUniverseDetails().getPrimaryCluster();
-    String urls =
-        universe.getNodesInCluster(primaryCluster.uuid).stream()
-            .map(n -> n.cloudInfo.private_ip + ":" + n.ysqlServerRpcPort)
-            .collect(Collectors.joining(","));
-    config.setJdbcUrl("jdbc:postgresql://" + urls + "/" + Util.YUGABYTE_DB);
+    config.setJdbcUrl("jdbc:postgresql://" + hosts + "/" + Util.YUGABYTE_DB);
     config.setUsername("yugabyte");
     config.setPassword("");
     config.setConnectionTimeout(5 * 1000);
     config.setValidationTimeout(1000);
     config.setIdleTimeout(10 * 60 * 1000);
     config.setMaxLifetime(30 * 60 * 1000);
-    dataSource = new HikariDataSource(config);
+    return new HikariDataSource(config);
+  }
 
-    ThreadFactory namedThreadFactory =
-        new ThreadFactoryBuilder().setNameFormat("SimplePayload-%d").build();
-    executor = Executors.newCachedThreadPool(namedThreadFactory);
+  private String liveHosts() {
+    Universe current = Universe.getOrBadRequest(universeUuid);
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        current.getUniverseDetails().getPrimaryCluster();
+    List<NodeDetails> reachable =
+        current.getNodesInCluster(primaryCluster.uuid).stream()
+            .filter(n -> n.isTserver && n.cloudInfo != null && n.cloudInfo.private_ip != null)
+            .collect(Collectors.toList());
+    List<NodeDetails> live =
+        reachable.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.Live)
+            .collect(Collectors.toList());
+    return (live.isEmpty() ? reachable : live)
+        .stream()
+            .map(n -> n.cloudInfo.private_ip + ":" + n.ysqlServerRpcPort)
+            .collect(Collectors.joining(","));
+  }
+
+  /**
+   * A real client discovers topology changes; without this the payload keeps dialing the nodes that
+   * existed when it started and counts every request against a node the test itself removed as an
+   * error.
+   */
+  private void refreshTopology() {
+    String hosts;
+    try {
+      hosts = liveHosts();
+    } catch (Exception e) {
+      log.warn("Failed to read universe topology", e);
+      return;
+    }
+    if (hosts.isEmpty() || hosts.equals(currentHosts)) {
+      return;
+    }
+    log.info("Payload topology changed from [{}] to [{}]", currentHosts, hosts);
+    HikariDataSource previous = dataSource;
+    dataSource = createDataSource(hosts);
+    currentHosts = hosts;
+    // Give in-flight statements a chance to finish on the old pool: closing it under them would
+    // produce exactly the errors this refresh exists to avoid.
+    executor.submit(
+        () -> {
+          try {
+            Thread.sleep(5000);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+          previous.close();
+        });
   }
 
   public void start() {
@@ -78,6 +132,18 @@ public class SimpleSqlPayload {
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }
+    executor.submit(
+        () -> {
+          while (!stopped) {
+            refreshTopology();
+            try {
+              Thread.sleep(TOPOLOGY_REFRESH_MILLIS);
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              return;
+            }
+          }
+        });
     for (int i = 0; i < readThreads; i++) {
       startThread(this::readFromTable);
     }
@@ -96,6 +162,13 @@ public class SimpleSqlPayload {
 
   public void stop() {
     stopped = true;
+    if (executor != null) {
+      executor.shutdown();
+    }
+    HikariDataSource current = dataSource;
+    if (current != null) {
+      current.close();
+    }
   }
 
   public double getErrorPercent() {

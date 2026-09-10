@@ -162,7 +162,7 @@ insert into queries values
     (DEFAULT,
         'select b, c from r where b in (1, 2, 3, 4, 5) '||
         'and c in (50, 60, 70, 80, 90, 100)',
-        '{"index only", "bitmap/colo:index scan", "index scan"}'::text[]
+        '{"index only", "bitmap", "index scan"}'::text[]
         ),
     -- Q2: range on b combined with an IN-list on c.
     (DEFAULT,
@@ -437,12 +437,15 @@ select explain(2, query, expected) from queries order by id;
                      Index Cond: (b = s.y)
  (9 rows)
  
- select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
+ select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: bitmap
  ----------------
- Index Scan using rc_c_idx on rc r
-   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
-   Storage Filter: (b = ANY ('{1,2,3,4,5}'::integer[]))
- (3 rows)
+ YB Bitmap Table Scan on rc r
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on rc_c_idx
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on rc_b_idx
+               Index Cond: (b = ANY ('{1,2,3,4,5}'::integer[]))
+ (6 rows)
  
  select b, c from rC r where b <= 15 and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
  ----------------

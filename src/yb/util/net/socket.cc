@@ -32,6 +32,7 @@
 
 #include "yb/util/net/socket.h"
 
+
 #include <netinet/in.h>
 #include <sys/types.h>
 
@@ -53,6 +54,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_UNKNOWN_string(local_ip_for_outbound_sockets, "",
               "IP to bind to when making outgoing socket connections. "

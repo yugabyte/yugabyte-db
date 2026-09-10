@@ -31,30 +31,30 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     title="Performance metrics"
     body="View universe performance metrics."
     href="anywhere-metrics/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-chart-line">}}
 
   {{<index/item
     title="Live queries dashboard"
     body="Monitor and display current running queries on your YugabyteDB universes."
     href="live-queries-dashboard/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+    icon="fa-thin fa-gauge-circle-bolt">}}
 
   {{<index/item
     title="Slow queries dashboard"
     body="Analyze statistics and execution times of past queries on your YugabyteDB universes."
     href="slow-queries-dashboard/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+    icon="fa-thin fa-turtle">}}
 
   {{<index/item
     title="Performance advisor"
     body="Scan your database for potential optimizations."
     href="performance-advisor/"
-    icon="/images/section_icons/manage/diagnostics.png">}}
+    icon="fa-thin fa-user-robot">}}
 
   {{<index/item
     title="Latency histogram and P99 latencies"
     body="Use the Slow Queries dashboard to view latency histogram and P99 latency metrics."
     href="latency-histogram/"
-    icon="/images/section_icons/introduction/benefits.png">}}
+    icon="fa-thin fa-chart-simple">}}
 
 {{</index/block>}}

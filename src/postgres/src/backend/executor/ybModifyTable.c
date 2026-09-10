@@ -28,7 +28,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/indexing.h"
@@ -40,6 +40,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_replication_origin_d.h"
 #include "catalog/pg_shseclabel_d.h"
+#include "catalog/pg_subscription_d.h"
 #include "catalog/pg_tablespace_d.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -299,6 +300,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == ReplicationOriginRelationId ||
 				   relid == ReplicationOriginIdentIndex ||
 				   relid == ReplicationOriginNameIndex ||
+				   relid == SubscriptionRelationId ||
+				   relid == SubscriptionObjectIndexId ||
+				   relid == SubscriptionNameIndexId ||
 
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
@@ -1391,7 +1395,7 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 				 errmsg("missing column ybctid in DELETE request to Yugabyte database")));
 
 	/* For a catalog table, we should never allow skip intents write */
-	Assert(!YbCanSkipIntentsWrite(rel));
+	Assert(!YbGetSkipIntentsOptimizationInfoWrite(rel).skip_intents);
 	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_TRANSACTIONAL);
 
 	/* Bind ybctid to identify the current row. */
@@ -1425,7 +1429,7 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 							  HeapTuple tuple)
 {
 	/* For a catalog table, we should never allow skip intents write */
-	Assert(!YbCanSkipIntentsWrite(rel));
+	Assert(!YbGetSkipIntentsOptimizationInfoWrite(rel).skip_intents);
 
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
 	int			natts = RelationGetNumberOfAttributes(rel);

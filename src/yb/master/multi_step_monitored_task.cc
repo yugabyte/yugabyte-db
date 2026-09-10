@@ -19,6 +19,7 @@
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/source_location.h"
+#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 
 namespace yb::master {

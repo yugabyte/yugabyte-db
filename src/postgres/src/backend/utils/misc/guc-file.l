@@ -152,11 +152,60 @@ ProcessConfigFile(GucContext context)
 	/*
 	 * Read and apply the config file.  We don't need to examine the result.
 	 */
-	(void) ProcessConfigFileInternal(context, true, elevel);
+	(void) ProcessConfigFileInternal(NULL /* yb_config_file */ , context,
+									 true /* applySettings */ , elevel);
 
 	/* Clean up */
 	MemoryContextSwitchTo(caller_cxt);
 	MemoryContextDelete(config_cxt);
+}
+
+/*
+ * Check a config file without applying anything.
+ *
+ * Errors are reported via elog(ERROR) so if this returns without throwing
+ * that is considered a success. Only the 1st GUC which fails validation is
+ * caught by the error.
+ *
+ * This catches:
+ * 1. Parse errors, such as a wrong delimiter, unit or type in a GUC value.
+ * 2. GUC names that do not exist.
+ * 3. GUC check hook failures.
+ *
+ * It does not check:
+ * 1. Whether the GUC can only be applied on a restart. That context is not
+ *    available in the current call stack.
+ * 2. Some checks performed in actual startup code that are not expressed as
+ *    GUC validations.
+ */
+void
+YbValidateConfigFile(const char *config_file)
+{
+	ConfigVariable *head;
+	ConfigVariable *item;
+	StringInfoData errbuf;
+
+	head = ProcessConfigFileInternal(config_file, PGC_POSTMASTER,
+									 false /* applySettings */ , ERROR);
+
+	/*
+	 * If we got here, we either have a successful apply or a parse failure,
+	 * which are reported separately.
+	 */
+	initStringInfo(&errbuf);
+	for (item = head; item; item = item->next)
+	{
+		if (item->errmsg)
+			appendStringInfo(&errbuf, "%s\n", item->errmsg);
+	}
+
+	FreeConfigVariables(head);
+
+	if (errbuf.len > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("configuration file \"%s\" contains errors", config_file),
+				 errdetail("%s", errbuf.data)));
 }
 
 /*
@@ -166,8 +215,16 @@ ProcessConfigFile(GucContext context)
  * checks, and we return the ConfigVariable list so that it can be printed out
  * by show_all_file_settings().
  */
+
+/*
+ * YB: When yb_config_file is set, we are in validation mode only. This is
+ * similar to show_all_file_settings above, except that errors are reported via
+ * elog(ERROR) so that we have the detailed GUC failure message to show the
+ * user.
+ */
 static ConfigVariable *
-ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
+ProcessConfigFileInternal(const char *yb_config_file, GucContext context,
+						  bool applySettings, int elevel)
 {
 	bool		error = false;
 	bool		applying = false;
@@ -177,12 +234,30 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 			   *tail;
 	int			i;
 
+	/* YB declarations */
+	bool		yb_validating = (yb_config_file != NULL);
+	int			yb_parse_elevel;
+
+	/* Checking a file must never change the settings the server is running. */
+	Assert(!yb_validating || !applySettings);
+
+	if (!yb_validating)
+		yb_config_file = ConfigFileName;
+
+	/*
+	 * Never let the parser throw. It frees its buffer only when it returns
+	 * normally, so an error thrown from inside it leaks that memory. Ask it to
+	 * log problems instead: it writes each one into the entry list, and the
+	 * caller reports them from there.
+	 */
+	yb_parse_elevel = yb_validating ? LOG : elevel;
+
 	/* Parse the main config file into a list of option names and values */
-	ConfFileWithError = ConfigFileName;
+	ConfFileWithError = yb_config_file;
 	head = tail = NULL;
 
-	if (!ParseConfigFile(ConfigFileName, true,
-						 NULL, 0, 0, elevel,
+	if (!ParseConfigFile(yb_config_file, true,
+						 NULL, 0, 0, yb_parse_elevel,
 						 &head, &tail))
 	{
 		/* Syntax error(s) detected in the file, so bail out */
@@ -199,7 +274,7 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 	if (DataDir)
 	{
 		if (!ParseConfigFile(PG_AUTOCONF_FILENAME, false,
-							 NULL, 0, 0, elevel,
+							 NULL, 0, 0, yb_parse_elevel,
 							 &head, &tail))
 		{
 			/* Syntax error(s) detected in the file, so bail out */
@@ -361,6 +436,8 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 		}
 
 		/* No more to do if we're just doing show_all_file_settings() */
+
+		/* YB: This also keeps us safe when using this code for validation. */
 		if (!applySettings)
 			continue;
 
@@ -439,7 +516,8 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 
 		scres = set_config_option(item->name, item->value,
 								  context, PGC_S_FILE,
-								  GUC_ACTION_SET, applySettings, 0, false);
+								  GUC_ACTION_SET, applySettings,
+								  yb_validating ? elevel : 0, false);
 		if (scres > 0)
 		{
 			/* variable was updated, so log the change if appropriate */

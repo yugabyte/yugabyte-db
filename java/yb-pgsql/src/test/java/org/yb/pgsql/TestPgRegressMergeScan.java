@@ -16,6 +16,7 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -24,7 +25,11 @@ import org.yb.YBTestRunner;
 public class TestPgRegressMergeScan extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return 300;
+    // The merge_scan schedule runs several heavy setup/query tests (range and colocated
+    // alone take ~100s and ~87s in release), so the whole schedule needs well over 300s,
+    // especially under parallel (-p) CPU oversubscription.  Scale a release baseline by
+    // build type (sanitizers/debug run slower) instead of a flat, release-oblivious value.
+    return (int) BuildTypeUtil.adjustTimeout(600);
   }
 
   @Override

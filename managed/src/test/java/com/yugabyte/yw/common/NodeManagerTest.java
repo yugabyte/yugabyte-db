@@ -49,6 +49,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
@@ -321,14 +322,6 @@ public class NodeManagerTest extends FakeDBApplication {
             serverCertPath = "cert.crt";
             serverKeyPath = "key.crt";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
-
-            if (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt) {
-              expectedCommand.add("--client_cert_path");
-              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
-              expectedCommand.add("--client_key_path");
-              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
-            }
             break;
           }
         case CustomCertHostPath:
@@ -338,17 +331,6 @@ public class NodeManagerTest extends FakeDBApplication {
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
             certsLocation = NodeManager.CERT_LOCATION_NODE;
-            if (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt
-                && customCertInfo.clientCertPath != null
-                && !customCertInfo.clientCertPath.isEmpty()
-                && customCertInfo.clientKeyPath != null
-                && !customCertInfo.clientKeyPath.isEmpty()) {
-              expectedCommand.add("--client_cert_path");
-              expectedCommand.add(customCertInfo.clientCertPath);
-              expectedCommand.add("--client_key_path");
-              expectedCommand.add(customCertInfo.clientKeyPath);
-            }
             break;
           }
         case CustomServerCert:
@@ -361,14 +343,6 @@ public class NodeManagerTest extends FakeDBApplication {
             serverCertPath = "cert.crt";
             serverKeyPath = "key.crt";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
-
-            if (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt) {
-              expectedCommand.add("--client_cert_path");
-              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
-              expectedCommand.add("--client_key_path");
-              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
-            }
             break;
           }
       }
@@ -845,6 +819,18 @@ public class NodeManagerTest extends FakeDBApplication {
         if (!cloud.equals(Common.CloudType.onprem)) {
           expectedCommand.add("--instance_type");
           expectedCommand.add(createParams.instanceType);
+          if (cloud.equals(Common.CloudType.oci)
+              && createParams.instanceType != null
+              && createParams.instanceType.contains("Flex")) {
+            InstanceType flexType =
+                InstanceType.get(testData.provider.getUuid(), createParams.instanceType);
+            if (flexType != null) {
+              expectedCommand.add("--ocpus");
+              expectedCommand.add(String.valueOf(flexType.getNumCores()));
+              expectedCommand.add("--memory_in_gbs");
+              expectedCommand.add(String.valueOf(flexType.getMemSizeGB()));
+            }
+          }
           expectedCommand.add("--cloud_subnet");
           expectedCommand.add(createParams.subnetId);
           if (createParams.secondarySubnetId != null) {
@@ -1174,6 +1160,18 @@ public class NodeManagerTest extends FakeDBApplication {
         ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
+        if (cloud.equals(Common.CloudType.oci)
+            && citTaskParams.instanceType != null
+            && citTaskParams.instanceType.contains("Flex")) {
+          InstanceType flexType =
+              InstanceType.get(testData.provider.getUuid(), citTaskParams.instanceType);
+          if (flexType != null) {
+            expectedCommand.add("--ocpus");
+            expectedCommand.add(String.valueOf(flexType.getNumCores()));
+            expectedCommand.add("--memory_in_gbs");
+            expectedCommand.add(String.valueOf(flexType.getMemSizeGB()));
+          }
+        }
         expectedCommand.add("--pg_max_mem_mb");
         expectedCommand.add("0");
         break;
@@ -1302,6 +1300,29 @@ public class NodeManagerTest extends FakeDBApplication {
           .run(eq(expectedCommand), any(ShellProcessContext.class));
       idx++;
     }
+  }
+
+  @Test
+  public void testChangeInstanceTypeCommandOciFlexPassesOcpus() {
+    TestData t = getTestData(testData.get(0).customer, Common.CloudType.oci).get(0);
+    String flexType = "VM.Standard.E6.Flex";
+    InstanceType.upsert(t.provider.getUuid(), flexType, 4.0, 32.0, new InstanceTypeDetails());
+    ChangeInstanceType.Params params = new ChangeInstanceType.Params();
+    buildValidParams(
+        t,
+        params,
+        Universe.saveDetails(
+            createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
+    params.instanceType = flexType;
+    List<String> expectedCommand = t.baseCommand;
+    expectedCommand.addAll(
+        nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t, NODE_IPS[0]));
+    reset(shellProcessHandler);
+    nodeManager.nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params);
+    verify(shellProcessHandler, times(1)).run(eq(expectedCommand), any(ShellProcessContext.class));
+    assertTrue(expectedCommand.contains("--ocpus"));
+    assertEquals("4.0", expectedCommand.get(expectedCommand.indexOf("--ocpus") + 1));
+    assertEquals("32.0", expectedCommand.get(expectedCommand.indexOf("--memory_in_gbs") + 1));
   }
 
   @Test
@@ -2839,6 +2860,64 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), any(ShellProcessContext.class));
       idx++;
+    }
+  }
+
+  /**
+   * Soft and hard reboot must pass provider --ssh_user. Without it, ybops defaults to centos /
+   * yugabyte which may not exist (e.g. create-time InstanceExistCheck hard-reboot recovery).
+   */
+  @Test
+  @Parameters({"Reboot", "Hard_Reboot"})
+  @TestCaseName("{method}({0})")
+  public void testRebootNodeCommandIncludesSshUser(String commandTypeName) {
+    NodeManager.NodeCommandType type = NodeManager.NodeCommandType.valueOf(commandTypeName);
+    String sshUser = "ec2-user";
+    for (TestData t : testData) {
+      t.provider.getDetails().sshUser = sshUser;
+      t.provider.getDetails().sshPort = 22;
+      t.provider.save();
+
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.privateKey = "/path/to/private.key";
+      keyInfo.publicKey = "/path/to/public.key";
+      getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
+
+      UserIntent userIntent = new UserIntent();
+      userIntent.numNodes = 3;
+      userIntent.accessKeyCode = "demo-access";
+      userIntent.regionList = new ArrayList<>();
+      userIntent.regionList.add(t.region.getUuid());
+      userIntent.providerType = t.cloudType;
+      userIntent.provider = t.provider.getUuid().toString();
+
+      NodeTaskParams params =
+          type == NodeManager.NodeCommandType.Reboot
+              ? new RebootServer.Params()
+              : new NodeTaskParams();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent)));
+
+      reset(shellProcessHandler);
+      ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
+      nodeManager.nodeCommand(type, params);
+      verify(shellProcessHandler, times(1)).run(arg.capture(), any(ShellProcessContext.class));
+
+      List<String> cmdArgs = arg.getValue();
+      assertNotNull(cmdArgs);
+      assertTrue(cmdArgs.contains(type.toString().toLowerCase()));
+      assertTrue(
+          "Expected --ssh_user for " + type + " but got: " + cmdArgs,
+          cmdArgs.contains("--ssh_user"));
+      assertEquals(sshUser, cmdArgs.get(cmdArgs.indexOf("--ssh_user") + 1));
+      if (type == NodeManager.NodeCommandType.Reboot) {
+        assertTrue(cmdArgs.contains("--use_ssh"));
+      } else {
+        assertFalse(cmdArgs.contains("--use_ssh"));
+      }
     }
   }
 

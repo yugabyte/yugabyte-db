@@ -1625,28 +1625,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
 			!idxrec->indisprimary)
 		{
-			YbcTableProperties props = YbGetTableProperties(indexrel);
-
-			/*
-			 * Copartitioned AMs (e.g. ybhnsw) always have is_colocated=true
-			 * on the index even when the base table isn't colocated via DB
-			 * or tablegroup. In that case, restore would reject
-			 * WITH (colocation_id=...) because DefineIndex gates it on the
-			 * base table's colocation. Suppress colocation_id here to match.
-			 */
-			if (amroutine->yb_amiscopartitioned)
-			{
-				Relation	baserel = table_open(indrelid, AccessShareLock);
-				bool		base_colocated =
-					IsYBRelation(baserel) &&
-					YbGetTableProperties(baserel)->is_colocated;
-
-				table_close(baserel, AccessShareLock);
-				if (!base_colocated)
-					props = NULL;
-			}
-
-			YbAppendIndexReloptions(&buf, indexrelid, props);
+			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
 		}
 
 		if (!IsYBRelation(indexrel))

@@ -28,6 +28,8 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 
 using namespace std::literals;
@@ -576,6 +578,16 @@ TableType AsyncAlterTable::table_type() const {
   return tablet_->table()->GetTableType();
 }
 
+void AsyncAlterTable::Finished(const Status& status) {
+  // Notify the CDC-SDK batch tracker (if any) so the CreateCDCStream dispatcher can move
+  // on to the next batch once all of this batch's per-tablet RPCs have reached a terminal
+  // state. RetryingRpcTask::Finished() fires exactly once per task at terminal state, so
+  // it's safe to call OnComplete here without worrying about per-attempt double-counting.
+  if (cdc_alter_batch_tracker_) {
+    cdc_alter_batch_tracker_->OnComplete(status);
+  }
+}
+
 bool AsyncAlterTable::SendRequest(int attempt) {
   ADOPT_WAIT_STATE(wait_state_);
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
@@ -660,6 +672,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
     req.set_tablet_id(tablet_->tablet_id());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
     req.set_mark_backfill_done(true);
+    req.set_birth_time(birth_time_);
     schema_version_ = l->pb.version();
   }
 
@@ -1179,6 +1192,7 @@ void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
 }
 
 bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
+  TEST_SYNC_POINT("AsyncRemoveTableFromTablet::SendRequest");
   ts_admin_proxy_->RemoveTableFromTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
                       << req_.DebugString();

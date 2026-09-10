@@ -491,22 +491,11 @@ ClientAuthentication(Port *port)
 	CHECK_FOR_INTERRUPTS();
 
 	/*
-	 * Only tserver-owned backends using yb-tserver-key authentication are
-	 * allowed to run as yb_auto_analyze.
-	 */
-	if (IsYugaByteEnabled() && MyBackendType == YB_AUTO_ANALYZE_BACKEND &&
-		port->hba->auth_method != uaYbTserverKey)
-		ereport(FATAL,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("yb_auto_analyze can only be set if the authentication method "
-						"is yb-tserver-key")));
-
-	/*
-	 * Every registered YB internal-connection kind (see yb_internal_conn.h)
-	 * must use yb-tserver-key authentication, since the tserver opens these
-	 * over the local unix socket. Tests that need to pose as a kind go
-	 * through CreateInternalPGConnBuilder with the tserver's shared-memory
-	 * postgres auth key as password, matching the hardcoded
+	 * Every registered YB internal-connection kind (see yb_internal_conn.h),
+	 * including auto-analyze, must use yb-tserver-key authentication, since the
+	 * tserver opens these over the local unix socket. Tests that need to pose
+	 * as a kind go through CreateInternalPGConnBuilder with the tserver's
+	 * shared-memory postgres auth key as password, matching the hardcoded
 	 *
 	 *     local all postgres yb-tserver-key
 	 *
@@ -591,7 +580,10 @@ ClientAuthentication(Port *port)
 					(port->gss && port->gss->enc) ? _("GSS encryption") :
 #endif
 #ifdef USE_SSL
-					port->ssl_in_use ? _("SSL encryption") :
+					((YbIsClientYsqlConnMgr() &&
+					(port->yb_is_auth_passthrough_req || yb_is_auth_backend)) ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use) ? _("SSL encryption") :
 #endif
 					_("no encryption");
 
@@ -646,7 +638,10 @@ ClientAuthentication(Port *port)
 					(port->gss && port->gss->enc) ? _("GSS encryption") :
 #endif
 #ifdef USE_SSL
-					port->ssl_in_use ? _("SSL encryption") :
+					((YbIsClientYsqlConnMgr() &&
+					(port->yb_is_auth_passthrough_req || yb_is_auth_backend)) ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use) ? _("SSL encryption") :
 #endif
 					_("no encryption");
 

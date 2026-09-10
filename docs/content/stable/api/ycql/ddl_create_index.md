@@ -433,5 +433,5 @@ ycqlsh:example> CREATE INDEX my_indx ON tracking(a) WITH tablets = 10;
 
 ## See also
 
-- [`CREATE TABLE`](../ddl_create_table)
-- [`DROP INDEX`](../ddl_drop_index)
+- [CREATE TABLE](../ddl_create_table)
+- [DROP INDEX](../ddl_drop_index)

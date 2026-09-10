@@ -21,6 +21,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/locks.h"

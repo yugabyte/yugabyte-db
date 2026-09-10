@@ -57,7 +57,6 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
 
   uint num_resolver_threads_ = 1;
   bool log_debug_ = false;
-  bool log_config_ = false;
   bool log_session_ = false;
   bool log_query_ = false;
   bool log_stats_ = false;
@@ -70,7 +69,10 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
 
 class YsqlConnMgrWrapper : public yb::ProcessWrapper {
  public:
-  explicit YsqlConnMgrWrapper(const YsqlConnMgrConf& conf, key_t stat_shm_key);
+  using PgProcessStartWaiter = std::function<Status(MonoDelta)>;
+
+  YsqlConnMgrWrapper(
+      const YsqlConnMgrConf& conf, key_t stat_shm_key, PgProcessStartWaiter pg_start_waiter);
   Status PreflightCheck() override;
   Status Start() override;
 
@@ -78,6 +80,7 @@ class YsqlConnMgrWrapper : public yb::ProcessWrapper {
   std::string GetYsqlConnMgrExecutablePath();
   YsqlConnMgrConf conf_;
   key_t stat_shm_key_;
+  PgProcessStartWaiter pg_start_waiter_;
 
   Status ReloadConfig() override;
   Status UpdateAndReloadConfig() override;
@@ -87,7 +90,9 @@ class YsqlConnMgrWrapper : public yb::ProcessWrapper {
 // and restarting if needed.
 class YsqlConnMgrSupervisor : public yb::ProcessSupervisor {
  public:
-  YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key);
+  YsqlConnMgrSupervisor(
+      const YsqlConnMgrConf& conf, key_t stat_shm_key,
+      YsqlConnMgrWrapper::PgProcessStartWaiter pg_start_waiter = {});
   ~YsqlConnMgrSupervisor() {}
 
 
@@ -105,6 +110,7 @@ class YsqlConnMgrSupervisor : public yb::ProcessSupervisor {
 
   YsqlConnMgrConf conf_;
   key_t stat_shm_key_;
+  YsqlConnMgrWrapper::PgProcessStartWaiter pg_start_waiter_;
   std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   std::string GetProcessName() override {
     return "Ysql Connection Manager";

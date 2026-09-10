@@ -65,8 +65,16 @@ public class WaitForDuration extends UniverseTaskBase {
     }
 
     try {
-      log.debug("Sleeping for {}ms", taskParams().waitTime.toMillis());
-      waitFor(taskParams().waitTime);
+      // Respect yb.tasks.disabled_timeouts (used by local/unit tests) the same way other sleep
+      // subtasks do via getSleepMultiplier(), so artificial edit/upgrade pauses do not inflate
+      // test wall time.
+      long sleepMs = (long) getSleepMultiplier() * taskParams().waitTime.toMillis();
+      if (sleepMs <= 0) {
+        log.info("Sleep multiplier is 0; Skipping {}", getName());
+        return;
+      }
+      log.debug("Sleeping for {}ms", sleepMs);
+      waitFor(Duration.ofMillis(sleepMs));
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

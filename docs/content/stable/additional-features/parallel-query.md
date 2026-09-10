@@ -22,7 +22,7 @@ To configure parallel queries, set the following configuration parameters.
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| yb_enable_parallel_append | Enables the planner's use of parallel append plans in YugabyteDB. | `false` |
+| yb_enable_parallel_append | Enables the planner's use of parallel append plans. This is an alias of the PostgreSQL parameter enable_parallel_append. | `true` |
 | enable_parallel_append | PostgreSQL parameter for enabling the planner's use of parallel append plans. For more information, refer to [Parallel Append](https://www.postgresql.org/docs/15/parallel-plans.html#PARALLEL-APPEND) in the PostgreSQL documentation. | `true` |
 | yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables.<br>This flag was added in v2025.2.2. | `true` |
 | {{<tags/feature/ea idea="1516">}}yb_enable_parallel_scan_hash_sharded | Enables the planner's use of parallel queries for hash-sharded tables.<br>v2025.2.3 and later. | `false` |

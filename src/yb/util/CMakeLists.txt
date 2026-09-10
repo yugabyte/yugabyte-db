@@ -99,6 +99,7 @@ endif()
 
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
+  abort_source.cc
   aggregate_stats.cc
   allocation_tracker.cc
   async_util.cc
@@ -136,7 +137,9 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  disk_space_checker.cc
   dist_trace.cc
+  drive_io_stats.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -206,6 +209,7 @@ set(UTIL_SRCS
   rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
+  shutdown_controller.cc
   signal_util.cc
   slice.cc
   slice_parts.cc
@@ -257,6 +261,7 @@ set(OPENTELEMETRY_LIBRARIES
   opentelemetry_trace
   opentelemetry_exporter_otlp_http
   opentelemetry_resources
+  opentelemetry_common
   opentelemetry_proto)
 
 set(UTIL_LIBS
@@ -385,6 +390,8 @@ ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(disk_space_checker-test)
+ADD_YB_TEST(drive_io_stats-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
@@ -450,6 +457,7 @@ ADD_YB_TEST(shmem/annotations-test)
 ADD_YB_TEST(shmem/reserved_address_segment-test)
 ADD_YB_TEST(shmem/robust_hash_map-test)
 ADD_YB_TEST(shmem/robust_intrusive_list-test)
+ADD_YB_TEST(shmem/robust_lent_object-test)
 ADD_YB_TEST(shmem/robust_mutex-test)
 ADD_YB_TEST(shmem/shared_mem_allocator-test)
 ADD_YB_TEST(slice-test)

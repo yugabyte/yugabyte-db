@@ -577,7 +577,7 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
           .other_min = delete_marker_retention_time_,
         };
       } ,
-      this);
+      this, /* vector_metadata_iterator_provider= */ nullptr, CompactionMetrics{});
   regular_db_options_.compaction_file_filter_factory = compaction_file_filter_factory_;
   regular_db_options_.exclude_from_compaction = exclude_from_compaction_;
   if (!regular_db_) {

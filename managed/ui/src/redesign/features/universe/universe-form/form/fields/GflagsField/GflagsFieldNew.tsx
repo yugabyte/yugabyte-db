@@ -52,7 +52,8 @@ interface GflagsFieldProps {
   editMode: boolean;
   isReadOnly: boolean;
   isReadReplica: boolean;
-  tableMaxHeight?: string;
+  /** Pass `null` to disable internal table scrolling and let the parent container scroll. */
+  tableMaxHeight?: string | null;
   isGFlagMultilineConfEnabled: boolean;
   isPGSupported: boolean;
 }
@@ -633,7 +634,7 @@ export const GFlagsFieldNew = ({
   };
 
   return (
-    <Box display="flex" width="100%" height="100%" flexDirection="column">
+    <Box display="flex" width="100%" flexDirection="column">
       {versionError && (
         <Alert bsStyle="danger">
           {versionError} ({t('universeForm.gFlags.selectedDBVersion')}

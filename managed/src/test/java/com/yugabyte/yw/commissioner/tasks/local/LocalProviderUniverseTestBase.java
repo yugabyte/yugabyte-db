@@ -89,7 +89,11 @@ import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.net.URL;
+import java.net.URLConnection;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -110,6 +114,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -123,18 +128,21 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.AssumptionViolatedException;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
+import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.rules.Timeout;
 import org.junit.runner.Description;
+import org.junit.runners.model.Statement;
 import org.yb.CommonNet;
 import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -152,6 +160,20 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private static final String YB_PATH_ENV_KEY = "YB_PATH";
   private static final String BASE_DIR_ENV_KEY = "TEST_BASE_DIR";
+  // Downloaded YB/YBC release binaries are cached in a shared, non-per-process directory so that
+  // parallel test forks download and extract the (~400MB) release only once for the whole run
+  // instead of once per fork. Node data still lives under the per-fork baseDir.
+  private static final String BINARIES_DIR_ENV_KEY = "TEST_BINARIES_DIR";
+  private static final String DEFAULT_BINARIES_DIR = "/tmp/yb_local_test_binaries";
+  // Written into a cached release directory only after it is fully extracted and post-installed;
+  // gates cache reuse so a partial/interrupted download is never treated as usable.
+  private static final String DOWNLOAD_COMPLETE_MARKER = ".download_complete";
+  // Per-artifact download locks and the scratch space releases are unpacked into before being
+  // published into the cache under their final name.
+  private static final String LOCK_SUBDIR = ".locks";
+  private static final String STAGING_SUBDIR = ".staging";
+  private static final Map<String, Object> ARTIFACT_MONITORS = new ConcurrentHashMap<>();
+  private static final int DOWNLOAD_ATTEMPTS = 3;
   private static final String IP_RANGE_START_SYS_PROP = "yb.local.test.ipRangeStart";
   private static final String IP_RANGE_END_SYS_PROP = "yb.local.test.ipRangeEnd";
   private static final String IP_RANGE_START_ENV_KEY = "TEST_IP_RANGE_START";
@@ -181,8 +203,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     GFLAGS.put("load_balancer_max_over_replicated_tablets", "15");
     GFLAGS.put("load_balancer_max_concurrent_adds", "15");
     GFLAGS.put("load_balancer_max_concurrent_removals", "15");
+    GFLAGS.put("load_balancer_max_concurrent_moves", "15");
     GFLAGS.put("transaction_table_num_tablets", "3");
-    GFLAGS.put(GFlagsUtil.LOAD_BALANCER_INITIAL_DELAY_SECS, "120");
+    // 0 so WaitForDataMove / leader-blacklist waits do not sit idle for the production-oriented
+    // load-balancer warm-up. Local tests have no real tablet load and start masters fresh each
+    // method, so the warm-up only adds wall time. Note this delay is from becoming master LEADER,
+    // not from process start - so it also hits mid-task after leadership changes.
+    GFLAGS.put(GFlagsUtil.LOAD_BALANCER_INITIAL_DELAY_SECS, "0");
+    // Companion to the above: GetLoadMoveCompletion reports fake remaining-load for this many
+    // seconds after the master becomes leader (to avoid premature 100% right after failover).
+    // Default is also 120s and was the dominant WaitForDataMove cost once LB itself was unblocked.
+    GFLAGS.put("blacklist_progress_initial_delay_secs", "0");
+    // Run the catalog-manager BG task (which drives the LB) more frequently than the 1s default.
+    GFLAGS.put("catalog_manager_bg_task_wait_ms", "100");
     GFLAGS.put(GFlagsUtil.TMP_DIRECTORY, "");
   }
 
@@ -219,10 +252,16 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   protected static String ybBinPath;
   protected static String ybcBinPath;
   protected static String baseDir;
+  // Shared cache directory for downloaded/extracted YB and YBC binaries (see BINARIES_DIR_ENV_KEY).
+  protected static String binariesBaseDir;
   protected static String arch;
   protected static String os;
   protected static String subDir;
   protected static String testName;
+  // yb.storage.path for this fork. The test config default is a bare "/tmp", which every fork of a
+  // parallel run would share: certs, keys and licenses all land in the same /tmp/certs tree even
+  // though each fork has its own database, so one fork can read - or clean up - another's files.
+  protected static String storagePath;
   // Whether to wait until all old tservers are removed from quorum and new ones are added.
   protected static boolean waitForClusterToStabilize;
 
@@ -265,6 +304,11 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     if (!subDirPath.exists()) {
       subDirPath.mkdirs();
     }
+    // A sibling of the per-test directories, so it survives the per-test cleanup: certs created for
+    // one test's universe are still needed while a later test in the same class runs.
+    File storageDirPath = Paths.get(baseDir, subDir, "storage").toFile();
+    storageDirPath.mkdirs();
+    storagePath = storageDirPath.getAbsolutePath();
     if (!KEEP_FAILED_UNIVERSE && !KEEP_ALWAYS) {
       subDirPath.deleteOnExit();
     }
@@ -281,6 +325,33 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       baseDir = System.getenv(BASE_DIR_ENV_KEY);
     } else {
       baseDir = DEFAULT_BASE_DIR + "_" + ProcessHandle.current().pid();
+    }
+    if (System.getenv(BINARIES_DIR_ENV_KEY) != null) {
+      binariesBaseDir = System.getenv(BINARIES_DIR_ENV_KEY);
+    } else {
+      binariesBaseDir = DEFAULT_BINARIES_DIR;
+    }
+  }
+
+  // Runs the given action while holding an exclusive lock scoped to a single cached artifact, so
+  // that concurrent test forks do not download/extract the same release simultaneously (or
+  // repeatedly), while forks needing different releases still fetch in parallel. Because the
+  // check-if-present and the download run under the same lock, the first fork downloads while the
+  // rest wait and then find the binaries already present. The OS releases the file lock if a fork
+  // dies, so a crash cannot deadlock the others; the in-JVM monitor is needed on top of it because
+  // FileLock is held per JVM, not per thread.
+  private static void runWithArtifactLock(String artifact, Runnable action) {
+    File lockDir = new File(binariesBaseDir, LOCK_SUBDIR);
+    lockDir.mkdirs();
+    File lockFile = new File(lockDir, artifact + ".lock");
+    synchronized (ARTIFACT_MONITORS.computeIfAbsent(artifact, k -> new Object())) {
+      try (RandomAccessFile raf = new RandomAccessFile(lockFile, "rw");
+          FileChannel channel = raf.getChannel();
+          FileLock lock = channel.lock()) {
+        action.run();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to acquire cache lock for " + artifact, e);
+      }
     }
   }
 
@@ -329,36 +400,74 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   public static String deriveYBBinPath(String version) {
-    return baseDir + "/yugabyte/yugabyte-" + version + "/bin";
+    return binariesBaseDir + "/yugabyte/yugabyte-" + version + "/bin";
   }
 
   public static void downloadAndSetUpYBSoftware(
       String os, String arch, String downloadURL, String dbVersion) {
-    String baseDownloadPath = baseDir + "/yugabyte";
-    File downloadPathFile = new File(baseDownloadPath);
-
-    for (File child : Optional.ofNullable(downloadPathFile.listFiles()).orElse(new File[0])) {
-      if (child.getName().startsWith("yugabyte-" + dbVersion) && hasRequiredExecutables(child)) {
-        log.debug(dbVersion + " already downloaded! ");
-        return;
-      }
+    File releaseDir = new File(binariesBaseDir + "/yugabyte", "yugabyte-" + dbVersion);
+    File releaseTar =
+        new File(
+            binariesBaseDir + "/yugabyte",
+            String.format("yugabyte-%s-%s-%s.tar.gz", dbVersion, os, arch));
+    // Lock-free fast path: the completion marker is written last, so seeing it means another fork
+    // (or an earlier run) already published this release in full.
+    if (isReleaseCached(releaseDir, releaseTar)) {
+      return;
     }
+    runWithArtifactLock(
+        releaseDir.getName(),
+        () -> {
+          if (isReleaseCached(releaseDir, releaseTar)) {
+            log.debug("{} already downloaded", dbVersion);
+            return;
+          }
+          log.info("Downloading {} from {}", dbVersion, downloadURL);
+          // Unpack into a private staging directory: the tarball's top-level directory is named
+          // after the version without the build suffix, so two builds of the same version line
+          // would otherwise collide with each other in the shared cache directory.
+          File staging = new File(binariesBaseDir + "/yugabyte/" + STAGING_SUBDIR, dbVersion);
+          try {
+            FileUtils.deleteDirectory(releaseDir);
+            FileUtils.deleteDirectory(staging);
+            Files.createDirectories(staging.toPath());
+            try {
+              downloadFile(downloadURL, releaseTar);
+              extractTarGz(releaseTar, staging);
+              Files.move(
+                  singleDirectoryIn(staging).toPath(),
+                  releaseDir.toPath(),
+                  StandardCopyOption.ATOMIC_MOVE);
+            } finally {
+              FileUtils.deleteDirectory(staging);
+            }
+            // post_install bakes absolute paths into the binaries in older releases, so it has to
+            // run once the release sits at its final location.
+            runPostInstallScript(new File(releaseDir, "bin").getPath());
+            // Mark the extracted release complete only after post-install succeeds, so an
+            // interrupted download cannot be mistaken for a usable cache entry by a later fork/run.
+            Files.createFile(new File(releaseDir, DOWNLOAD_COMPLETE_MARKER).toPath());
+          } catch (IOException | InterruptedException e) {
+            throw new RuntimeException("Failed to download " + downloadURL, e);
+          }
+        });
+  }
 
-    try {
-      String version = extractVersionFromBuild(dbVersion);
-      String filePath = baseDownloadPath + "/yugabyte-" + dbVersion + ".tar.gz";
-      downloadFromUrl(filePath, downloadURL);
-      String ybReleasePath = baseDownloadPath + "/yugabyte-%s-%s-%s.tar.gz";
-      ybReleasePath = String.format(ybReleasePath, dbVersion, os, arch);
-      Files.move(Paths.get(filePath), Paths.get(ybReleasePath));
-      File oldDbVersionPath = new File(baseDownloadPath + "/yugabyte-" + version);
-      File newDBVersionPath = new File(baseDownloadPath + "/yugabyte-" + dbVersion);
-      oldDbVersionPath.renameTo(newDBVersionPath);
-      String ybBinPath = baseDownloadPath + "/yugabyte-" + dbVersion + "/bin";
-      runPostInstallScript(ybBinPath);
-    } catch (IOException | InterruptedException e) {
-      throw new RuntimeException("Failed to download package", e);
+  private static boolean isReleaseCached(File releaseDir, File releaseTar) {
+    // The tarball is part of the cache entry, not just an intermediate: release metadata handed to
+    // YBA points at it.
+    return new File(releaseDir, DOWNLOAD_COMPLETE_MARKER).exists()
+        && hasRequiredExecutables(releaseDir)
+        && releaseTar.exists();
+  }
+
+  private static File singleDirectoryIn(File parent) {
+    File[] dirs = parent.listFiles(File::isDirectory);
+    if (dirs == null || dirs.length != 1) {
+      throw new IllegalStateException(
+          "Expected exactly one directory in " + parent + ", got " + Arrays.toString(dirs));
     }
+    return dirs[0];
   }
 
   private static boolean hasRequiredExecutables(File folder) {
@@ -388,49 +497,99 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   private static void downloadAndSetUpYBCSoftware(String os, String arch, String ybcVersion) {
-    String ybcS3URL = YBC_BASE_S3_URL + ybcVersion + "/ybc-" + ybcVersion + "-%s-%s.tar.gz";
-    String ybcDownloadURL = String.format(ybcS3URL, os, arch);
-    String ybcBaseDir = baseDir + "/ybc/ybc-" + ybcVersion + "-%s-%s.tar.gz";
-    String ybaBaseDownloadDir = String.format(ybcBaseDir, os, arch);
-    try {
-      downloadFromUrl(ybaBaseDownloadDir, ybcDownloadURL);
-      String ybcLibPath = String.format("/ybc-%s-%s-%s", ybcVersion, os, arch);
-      ybcBinPath = baseDir + "/ybc" + ybcLibPath + "/bin";
-      Files.delete(Paths.get(ybaBaseDownloadDir));
-      log.info("YBC extracted successfully.");
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to download package", e);
+    String ybcArtifact = String.format("ybc-%s-%s-%s", ybcVersion, os, arch);
+    File ybcDir = new File(binariesBaseDir + "/ybc", ybcArtifact);
+    ybcBinPath = new File(ybcDir, "bin").getPath();
+    File ybcCompleteMarker = new File(ybcDir, DOWNLOAD_COMPLETE_MARKER);
+    if (ybcCompleteMarker.exists()) {
+      return;
     }
+    runWithArtifactLock(
+        ybcArtifact,
+        () -> {
+          if (ybcCompleteMarker.exists()) {
+            log.debug("YBC {} already extracted at {}", ybcVersion, ybcBinPath);
+            return;
+          }
+          String ybcDownloadURL = YBC_BASE_S3_URL + ybcVersion + "/" + ybcArtifact + ".tar.gz";
+          File staging = new File(binariesBaseDir + "/ybc/" + STAGING_SUBDIR, ybcArtifact);
+          File ybcTar = new File(staging, ybcArtifact + ".tar.gz");
+          try {
+            FileUtils.deleteDirectory(ybcDir);
+            FileUtils.deleteDirectory(staging);
+            Files.createDirectories(staging.toPath());
+            try {
+              downloadFile(ybcDownloadURL, ybcTar);
+              extractTarGz(ybcTar, staging);
+              Files.delete(ybcTar.toPath());
+              Files.move(
+                  singleDirectoryIn(staging).toPath(),
+                  ybcDir.toPath(),
+                  StandardCopyOption.ATOMIC_MOVE);
+            } finally {
+              FileUtils.deleteDirectory(staging);
+            }
+            // Mark complete only after a successful extract (see YB marker rationale above).
+            Files.createFile(ybcCompleteMarker.toPath());
+            log.info("YBC extracted successfully.");
+          } catch (IOException e) {
+            throw new RuntimeException("Failed to download " + ybcDownloadURL, e);
+          }
+        });
   }
 
-  private static void downloadFromUrl(String baseDownloadPath, String downloadURL) {
-    File downloadPathDir = new File(baseDownloadPath).getParentFile();
-    try (InputStream in = new URL(downloadURL).openStream()) {
-      downloadPathDir.mkdirs();
-      Files.copy(in, Paths.get(baseDownloadPath), StandardCopyOption.REPLACE_EXISTING);
-      log.debug("downloaded from {} to {}", downloadURL, baseDownloadPath);
-      Path destination = downloadPathDir.toPath();
-      try (TarArchiveInputStream tarInput =
-          new TarArchiveInputStream(
-              new GzipCompressorInputStream(new FileInputStream(baseDownloadPath)))) {
-        TarArchiveEntry currentEntry;
-        while ((currentEntry = tarInput.getNextEntry()) != null) {
-          Path extractTo = destination.resolve(currentEntry.getName());
-          if (currentEntry.isDirectory()) {
-            Files.createDirectories(extractTo);
-          } else if (currentEntry.isSymbolicLink()) {
-            Files.createSymbolicLink(extractTo, Path.of(currentEntry.getLinkName()));
-          } else {
-            Files.copy(tarInput, extractTo, StandardCopyOption.REPLACE_EXISTING);
-            int mode = currentEntry.getMode();
-            if ((mode & 0100) != 0) {
-              extractTo.toFile().setExecutable(true);
-            }
+  private static void downloadFile(String downloadURL, File destination) throws IOException {
+    destination.getParentFile().mkdirs();
+    // Downloaded under the per-artifact lock, so a stalled connection blocks every fork waiting on
+    // the same release. Bound both phases so a dead peer fails fast, and retry a few times so a
+    // transient network error does not fail the test that happened to trigger the download.
+    Path partial = Paths.get(destination.getPath() + ".part");
+    IOException lastError = null;
+    for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+      try {
+        URLConnection connection = new URL(downloadURL).openConnection();
+        connection.setConnectTimeout((int) Duration.ofSeconds(30).toMillis());
+        connection.setReadTimeout((int) Duration.ofMinutes(5).toMillis());
+        try (InputStream in = connection.getInputStream()) {
+          Files.copy(in, partial, StandardCopyOption.REPLACE_EXISTING);
+        }
+        Files.move(partial, destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        log.debug("Downloaded {} to {}", downloadURL, destination);
+        return;
+      } catch (IOException e) {
+        lastError = e;
+        log.warn("Download of {} failed (attempt {}): {}", downloadURL, attempt, e.getMessage());
+        Files.deleteIfExists(partial);
+        try {
+          Thread.sleep(Duration.ofSeconds(5).toMillis());
+        } catch (InterruptedException ie) {
+          Thread.currentThread().interrupt();
+          throw new IOException("Interrupted while downloading " + downloadURL, ie);
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  private static void extractTarGz(File tarFile, File destinationDir) throws IOException {
+    Path destination = destinationDir.toPath();
+    try (TarArchiveInputStream tarInput =
+        new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarFile)))) {
+      TarArchiveEntry currentEntry;
+      while ((currentEntry = tarInput.getNextEntry()) != null) {
+        Path extractTo = destination.resolve(currentEntry.getName());
+        if (currentEntry.isDirectory()) {
+          Files.createDirectories(extractTo);
+        } else if (currentEntry.isSymbolicLink()) {
+          Files.createSymbolicLink(extractTo, Path.of(currentEntry.getLinkName()));
+        } else {
+          Files.copy(tarInput, extractTo, StandardCopyOption.REPLACE_EXISTING);
+          int mode = currentEntry.getMode();
+          if ((mode & 0100) != 0) {
+            extractTo.toFile().setExecutable(true);
           }
         }
       }
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to download package", e);
     }
   }
 
@@ -438,10 +597,6 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     if (StringUtils.isEmpty(ybcVersion)) {
       throw new RuntimeException("YBC version is not configured. Can't continue");
     }
-  }
-
-  private static String extractVersionFromBuild(String build) {
-    return build.substring(0, build.indexOf("-"));
   }
 
   private void injectDependencies() {
@@ -572,7 +727,15 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       parentDirectory = "/yugabyte/";
     }
     releaseMetadata.filePath =
-        baseDir + parentDirectory + "yugabyte-" + release + "-" + os + "-" + arch + ".tar.gz";
+        binariesBaseDir
+            + parentDirectory
+            + "yugabyte-"
+            + release
+            + "-"
+            + os
+            + "-"
+            + arch
+            + ".tar.gz";
     ReleaseManager.ReleaseMetadata.Package pkg = new ReleaseManager.ReleaseMetadata.Package();
     pkg.arch = PublicCloudConstants.Architecture.valueOf(arch);
     pkg.path = releaseMetadata.filePath;
@@ -585,7 +748,27 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     return object;
   }
 
+  /**
+   * Focus filter: YB_ONLY_TEST=<substring> runs only the methods whose name contains the substring.
+   * It has to be a bare TestRule rather than a TestWatcher hook, because TestWatcher swallows
+   * whatever starting() throws and evaluates the test anyway - the skip would be reported but the
+   * test would still run to completion.
+   */
   @Rule(order = Integer.MIN_VALUE)
+  public TestRule onlyTestFilter =
+      (base, description) ->
+          new Statement() {
+            @Override
+            public void evaluate() throws Throwable {
+              String only = System.getenv("YB_ONLY_TEST");
+              if (only != null && !only.isEmpty() && !description.getMethodName().contains(only)) {
+                throw new AssumptionViolatedException("skipped by YB_ONLY_TEST=" + only);
+              }
+              base.evaluate();
+            }
+          };
+
+  @Rule(order = Integer.MIN_VALUE + 1)
   public TestWatcher testWatcher =
       new TestWatcher() {
 
@@ -630,12 +813,33 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
+  // Local provider tests spin up real local processes and manage heavy per-method state, so they
+  // must get a fresh application per method (overriding CommissionerBaseTest's reuse opt-in).
+  @Override
+  protected boolean reusableApplication() {
+    return false;
+  }
+
   @Override
   protected Application provideApplication() {
     return configureApplication(
-            new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase()))
+            new GuiceApplicationBuilder()
+                .disable(GuiceModule.class)
+                .configure(testDatabase())
+                .configure(localTestConfig()))
         .overrides(bind(DnsManager.class).toInstance(localDnsManager))
         .build();
+  }
+
+  private static Map<String, Object> localTestConfig() {
+    Map<String, Object> config = new HashMap<>();
+    config.put("yb.storage.path", storagePath);
+    // Leader blacklist completion either reports 100% within a second or - on these small, briefly
+    // lived universes - stays pinned at 0% and never finishes, so the production default of 60s is
+    // spent idling on every rolling restart. Nothing fails when it expires
+    // (yb.node_ops.leader_blacklist.fail_on_timeout is false), it just waits.
+    config.put("yb.upgrade.blacklist_leader_wait_time_ms", 10000);
+    return config;
   }
 
   protected Universe createUniverse(int numNodes, int replicationFactor)
@@ -671,8 +875,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       userIntent.enableNodeToNodeEncrypt = true;
       userIntent.enableClientToNodeEncrypt = true;
     }
-    userIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("transaction_table_num_tablets", "3"), Map.of());
+    userIntent.specificGFlags = getGFlags();
     userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.Local;
     return userIntent;
   }
@@ -966,7 +1169,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     log.info("universe definition json {}", universe.getUniverseDetailsJson());
     String certificate = universe.getCertificateNodetoNode();
     verifyDNS(universe);
-    try (YBClient client = ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
+    try (YBClientApi client =
+        ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
       GetMasterClusterConfigResponse masterClusterConfig = client.getMasterClusterConfig();
       CatalogEntityInfo.SysClusterConfigEntryPB config = masterClusterConfig.getConfig();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -1196,7 +1400,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected String getMasterLeader(Universe universe) {
-    try (YBClient client =
+    try (YBClientApi client =
         ybClientService.getClient(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
@@ -1230,6 +1434,9 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     tserverGFlags.remove("load_balancer_max_over_replicated_tablets");
     tserverGFlags.remove("load_balancer_max_concurrent_adds");
     tserverGFlags.remove("load_balancer_max_concurrent_removals");
+    tserverGFlags.remove("load_balancer_max_concurrent_moves");
+    tserverGFlags.remove("catalog_manager_bg_task_wait_ms");
+    tserverGFlags.remove("blacklist_progress_initial_delay_secs");
     return SpecificGFlags.construct(masterGFlags, tserverGFlags);
   }
 
@@ -1326,7 +1533,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     return localNodeManager.isProcessRunning(nodeName, ServerType.MASTER);
   }
 
-  protected void waitTillNumOfTservers(YBClient ybClient, int expected) {
+  protected void waitTillNumOfTservers(YBClientApi ybClient, int expected) {
     RetryTaskUntilCondition<Integer> condition =
         new RetryTaskUntilCondition<>(
             () -> getNumberOfTservers(ybClient), (num) -> num == expected);
@@ -1336,7 +1543,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
-  protected Integer getNumberOfTservers(YBClient ybClient) {
+  protected Integer getNumberOfTservers(YBClientApi ybClient) {
     try {
       return ybClient.listTabletServers().getTabletServersCount();
     } catch (Exception e) {

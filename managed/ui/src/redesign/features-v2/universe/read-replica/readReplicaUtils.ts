@@ -2,6 +2,8 @@ import _ from 'lodash';
 import { ClusterSpec, UniverseRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import type { DeviceInfo, K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { StorageType } from '@app/redesign/helpers/dtos';
+import { EditUniverseTabs } from '../edit-universe/EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '../edit-universe/editUniverseTabUtils';
 import type { RRInstanceSettingsProps } from './add/steps/RRInstanceSettings/RRInstanceSettings';
 
 const STORAGE_KEYS_FOR_COMPARE = [
@@ -17,8 +19,14 @@ export function getAddReadReplicaRoute(universeUuid?: string | null) {
   return `/universes/${universeUuid ?? ''}/add-read-replica`;
 }
 
-export function getReadReplicaExitRoute(universeUuid?: string | null) {
-  return `/universes/${universeUuid ?? ''}/settings`;
+export function getReadReplicaExitRoute(
+  universeUuid?: string | null,
+  tab?: EditUniverseTabs
+) {
+  if (!universeUuid) {
+    return getEditUniverseSettingsRoute('', tab);
+  }
+  return getEditUniverseSettingsRoute(universeUuid, tab);
 }
 
 export function getAddGeoPartitionRoute(universeUuid?: string | null) {
@@ -54,6 +62,7 @@ export function buildRRInstanceSettingsFromCluster(
   return {
     inheritPrimaryInstance,
     arch,
+    imageBundleUUID: cluster.provider_spec?.image_bundle_uuid ?? null,
     instanceType: cluster.node_spec?.instance_type ?? null,
     useSpotInstance: cluster.use_spot_instance ?? false,
     deviceInfo: storageSpec
@@ -62,7 +71,7 @@ export function buildRRInstanceSettingsFromCluster(
           numVolumes: storageSpec.num_volumes,
           diskIops: storageSpec.disk_iops ?? null,
           throughput: storageSpec.throughput ?? null,
-          storageClass: 'standard',
+          storageClass: storageSpec.storage_class ?? 'standard',
           storageType: (storageSpec.storage_type as StorageType) ?? null
         } satisfies DeviceInfo)
       : null,

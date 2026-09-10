@@ -20,12 +20,21 @@ processors:
   attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
-    - {action: upsert, key: yugabyte.node_name, value: test-node}
-    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: node_name, value: test-node}
+    - {action: upsert, key: node_address, value: 127.0.0.1}
+    - {action: upsert, key: node_prefix, value: yb-tc-test-universe}
+    - {action: upsert, key: node_region, value: ''}
+    - {action: upsert, key: node_az, value: ''}
+    - {action: upsert, key: node_cluster_type, value: PRIMARY}
+    - {action: upsert, key: node_cloud, value: ''}
+    - {action: upsert, key: export_purpose, value: AWS_CLOUDWATCH_LOG_EXPORT}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
-    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.region, value: ''}
     - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.purpose, value: AWS_CLOUDWATCH_LOG_EXPORT}
     - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
     - {action: delete, key: log.file.name}
@@ -58,12 +67,21 @@ processors:
   attributes/11111111-1111-1111-1111-111111111111: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
-    - {action: upsert, key: yugabyte.node_name, value: test-node}
-    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: node_name, value: test-node}
+    - {action: upsert, key: node_address, value: 127.0.0.1}
+    - {action: upsert, key: node_prefix, value: yb-tc-test-universe}
+    - {action: upsert, key: node_region, value: ''}
+    - {action: upsert, key: node_az, value: ''}
+    - {action: upsert, key: node_cluster_type, value: PRIMARY}
+    - {action: upsert, key: node_cloud, value: ''}
+    - {action: upsert, key: export_purpose, value: GCP_CLOUD_MONITORING_LOG_EXPORT}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
-    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.region, value: ''}
     - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.purpose, value: GCP_CLOUD_MONITORING_LOG_EXPORT}
     - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
     - {action: delete, key: log.file.name}
@@ -98,11 +116,12 @@ receivers:
         \d{2}:\d{2}:\d{2} \w{3})[ ][|][ ]([^ ]+)[ ][:][ ])'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body not matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"', type: filter}
+      expr: 'body not matches "^.*\\w+:  (?:[0-9A-Z]{5}: )?AUDIT:(.|\\n|\\r|\\s)*$"',
+      type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop
       regex: '(?P<timestamp_without_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w{3})[
-        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
+        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):  (?:[0-9A-Z]{5}: )?AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
       timestamp: {layout: '%Y-%m-%d %H:%M:%S %Z', parse_from: attributes.timestamp_without_ms}
       type: regex_parser
     start_at: beginning
@@ -137,4 +156,9 @@ service:
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
-    metrics: {address: '0.0.0.0:8889'}
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
+              without_units: true}

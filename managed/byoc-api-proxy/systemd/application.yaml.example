@@ -1,0 +1,13 @@
+# Optional overlay copied to /etc/yugabyte/byoc-api-proxy/application.yaml
+# Used for SSL bundle configuration and other Spring Boot settings.
+#
+# spring:
+#   ssl:
+#     bundle:
+#       pem:
+#         yba:
+#           truststore:
+#             certificate: file:/opt/yugabyte/data/yba-installer/certs/ca_cert.pem
+#           keystore:
+#             certificate: file:/opt/yugabyte/data/yba-installer/certs/ca_cert.pem
+#             private-key: file:/opt/yugabyte/data/yba-installer/certs/ca_key.pem

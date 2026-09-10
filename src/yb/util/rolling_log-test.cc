@@ -35,6 +35,7 @@
 #include "yb/util/logging.h"
 #include <glog/stl_logging.h>
 
+#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"

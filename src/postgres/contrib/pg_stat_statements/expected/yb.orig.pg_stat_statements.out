@@ -70,6 +70,103 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
  SELECT returnArg($1, $2, $3)                                                         |     1 |    1
 (14 rows)
 
+--
+-- Unprivileged user access: execution metrics visible, query/queryid hidden
+-- for other users' entries. Matches vanilla PostgreSQL behavior.
+--
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
+CREATE ROLE pgss_unpriv LOGIN;
+-- Superuser runs queries to populate PGSS
+SELECT 1 AS superuser_query;
+ superuser_query 
+-----------------
+               1
+(1 row)
+
+SELECT 2 + 2 AS superuser_math;
+ superuser_math 
+----------------
+              4
+(1 row)
+
+-- Unprivileged user runs a query
+SET ROLE pgss_unpriv;
+SELECT 'hello from unpriv' AS unpriv_query;
+   unpriv_query    
+-------------------
+ hello from unpriv
+(1 row)
+
+RESET ROLE;
+-- Query PGSS as unprivileged user
+SET ROLE pgss_unpriv;
+-- Own query text and queryid are visible, whereas other users' entries collapse
+-- to '<insufficient privilege>' with queryid hidden. Execution metrics (calls,
+-- rows, timing) and the latency histogram remain visible for every entry.
+SELECT query,
+       queryid IS NOT NULL AS has_queryid,
+       calls > 0 AS has_calls,
+       rows >= 0 AS has_rows,
+       total_exec_time >= 0 AS has_exec_time,
+       min_exec_time >= 0 AS has_min_time,
+       max_exec_time >= 0 AS has_max_time,
+       mean_exec_time >= 0 AS has_mean_time,
+       yb_latency_histogram IS NOT NULL AS has_histogram
+  FROM pg_stat_statements
+  WHERE query IN ('SELECT $1 AS unpriv_query', '<insufficient privilege>')
+  ORDER BY query COLLATE "C", calls;
+           query           | has_queryid | has_calls | has_rows | has_exec_time | has_min_time | has_max_time | has_mean_time | has_histogram 
+---------------------------+-------------+-----------+----------+---------------+--------------+--------------+---------------+---------------
+ <insufficient privilege>  | f           | t         | t        | t             | t            | t            | t             | t
+ <insufficient privilege>  | f           | t         | t        | t             | t            | t            | t             | t
+ <insufficient privilege>  | f           | t         | t        | t             | t            | t            | t             | t
+ <insufficient privilege>  | f           | t         | t        | t             | t            | t            | t             | t
+ <insufficient privilege>  | f           | t         | t        | t             | t            | t            | t             | t
+ SELECT $1 AS unpriv_query | t           | t         | t        | t             | t            | t            | t             | t
+(6 rows)
+
+RESET ROLE;
+-- Granting pg_read_all_stats reveals query text for all entries
+GRANT pg_read_all_stats TO pgss_unpriv;
+SET ROLE pgss_unpriv;
+SELECT query, queryid IS NOT NULL AS has_queryid, calls, rows
+  FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+                             query                             | has_queryid | calls | rows 
+---------------------------------------------------------------+-------------+-------+------
+ CREATE ROLE pgss_unpriv LOGIN                                 | t           |     1 |    0
+ GRANT pg_read_all_stats TO pgss_unpriv                        | t           |     1 |    0
+ RESET ROLE                                                    | t           |     2 |    0
+ SELECT $1 + $2 AS superuser_math                              | t           |     1 |    1
+ SELECT $1 AS superuser_query                                  | t           |     1 |    1
+ SELECT $1 AS unpriv_query                                     | t           |     1 |    1
+ SELECT pg_stat_statements_reset()                             | t           |     1 |    1
+ SELECT query,                                                +| t           |     1 |    6
+        queryid IS NOT NULL AS has_queryid,                   +|             |       | 
+        calls > $1 AS has_calls,                              +|             |       | 
+        rows >= $2 AS has_rows,                               +|             |       | 
+        total_exec_time >= $3 AS has_exec_time,               +|             |       | 
+        min_exec_time >= $4 AS has_min_time,                  +|             |       | 
+        max_exec_time >= $5 AS has_max_time,                  +|             |       | 
+        mean_exec_time >= $6 AS has_mean_time,                +|             |       | 
+        yb_latency_histogram IS NOT NULL AS has_histogram     +|             |       | 
+   FROM pg_stat_statements                                    +|             |       | 
+   WHERE query IN ($7, $8)                                    +|             |       | 
+   ORDER BY query COLLATE "C", calls                           |             |       | 
+ SELECT query, queryid IS NOT NULL AS has_queryid, calls, rows+| t           |     0 |    0
+   FROM pg_stat_statements                                    +|             |       | 
+   ORDER BY query COLLATE "C"                                  |             |       | 
+ SET ROLE pgss_unpriv                                          | t           |     3 |    0
+(10 rows)
+
+RESET ROLE;
+REVOKE pg_read_all_stats FROM pgss_unpriv;
+DROP ROLE pgss_unpriv;
 DROP USER foo;
 DROP ROLE fizzbuzz;
 DROP ROLE minimalpass;

@@ -28,7 +28,7 @@ ADD_YB_LIBRARY(fs_proto
   DEPS protobuf
   NONLINK_DEPS ${FS_PROTO_TGTS})
 
-add_library(yb_fs fs_manager.cc)
+add_library(yb_fs fs_manager.cc fs_root_pin.cc)
 
 target_link_libraries(yb_fs
   fs_proto
@@ -39,3 +39,4 @@ target_link_libraries(yb_fs
 # Tests
 set(YB_TEST_LINK_LIBS yb_fs ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(fs_manager-test)
+ADD_YB_TEST(fs_root_pin-test)

@@ -1,0 +1,5 @@
+description: Perf Advisor Endpoint validation result
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/PerfAdvisorEndpointValidationResult.yaml"

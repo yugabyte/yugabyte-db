@@ -8,6 +8,13 @@
 import { YBAHost } from '../../../redesign/helpers/constants';
 import { HostInfo, Universe } from '../../../redesign/helpers/dtos';
 import {
+  CloudType,
+  CloudVendorCloudType,
+  CloudVendorCloudTypes,
+  SpotInstanceCloudTypes,
+  StorageTypeSelectableCloudTypes
+} from '../../../redesign/features/universe/universe-form/utils/dto';
+import {
   NTPSetupType,
   ProviderCode,
   CloudVendorProviders,
@@ -18,6 +25,17 @@ import {
 import { SupportedAZField, SupportedRegionField } from './forms/configureRegion/types';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
 import { AccessKey, YBAvailabilityZone, YBProvider, YBRegion } from './types';
+
+export const isCloudVendorCloudType = (
+  code?: CloudType | string | null
+): code is CloudVendorCloudType =>
+  (CloudVendorCloudTypes as readonly string[]).includes(code ?? '');
+
+export const isStorageTypeSelectableCloudType = (code?: CloudType | string | null): boolean =>
+  (StorageTypeSelectableCloudTypes as readonly string[]).includes(code ?? '');
+
+export const isSpotInstanceCloudType = (code?: CloudType | string | null): boolean =>
+  (SpotInstanceCloudTypes as readonly string[]).includes(code ?? '');
 
 export const getNtpSetupType = (providerConfig: YBProvider): NTPSetupType => {
   if (

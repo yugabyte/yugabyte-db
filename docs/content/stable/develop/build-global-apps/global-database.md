@@ -89,7 +89,7 @@ To review the tablet information, in the [YugabyteDB UI](http://127.0.0.1:15433/
 
 As the application will run in `us-east` and you want it to failover to `us-central`, configure the database in the same manner by setting preferred regions.
 
-Set `us-east` to be preferred region 1 and `us-central` to be preferred region 2 as follows:
+Set `us-east` to be preferred region 1 and `us-central` to be preferred region 2 (note that currently in YugabyteDB Aeon you can only set a single preferred region) as follows:
 
 ```shell
 ./bin/yb-admin \

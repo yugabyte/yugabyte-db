@@ -154,9 +154,11 @@ KIWI_API static inline machine_msg_t *kiwi_fe_write_query(machine_msg_t *msg,
 KIWI_API static inline machine_msg_t *
 kiwi_fe_write_parse_description(machine_msg_t *msg, char *operator_name,
 				int operator_len, char *description,
-				int description_len, kiwi_fe_type_t parse_type)
+				int description_len, uint8_t yb_parse_type,
+				char *yb_orig_name, uint32_t yb_orig_name_len)
 {
-	size_t payload_size = operator_len + description_len;
+	size_t payload_size = sizeof(uint8_t) + operator_len + description_len +
+			      yb_orig_name_len;
 
 	uint32_t size = sizeof(kiwi_header_t) + payload_size;
 	int offset = 0;
@@ -167,10 +169,12 @@ kiwi_fe_write_parse_description(machine_msg_t *msg, char *operator_name,
 		return NULL;
 	char *pos;
 	pos = (char *)machine_msg_data(msg) + offset;
-	kiwi_write8(&pos, parse_type);
+	kiwi_write8(&pos, YB_KIWI_FE_YB_PARSE);
 	kiwi_write32(&pos, sizeof(uint32_t) + payload_size);
+	kiwi_write8(&pos, yb_parse_type);
 	kiwi_write(&pos, operator_name, operator_len);
 	kiwi_write(&pos, description, description_len);
+	kiwi_write(&pos, yb_orig_name, yb_orig_name_len);
 
 	return msg;
 }

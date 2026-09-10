@@ -30,6 +30,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/source_location.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 
@@ -664,6 +666,16 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table,
           std::move(epoch), /* async_task_throttler */ nullptr),
+      tablet_(tablet) {
+}
+
+AsyncTabletLeaderTask::AsyncTabletLeaderTask(
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+    const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+    AsyncTaskThrottlerBase* async_task_throttler)
+    : RetryingTSRpcTaskWithTable(
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table,
+          std::move(epoch), async_task_throttler),
       tablet_(tablet) {
 }
 

@@ -32,6 +32,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
 
 #include "yb/rpc/secure_stream.h"
@@ -61,24 +62,24 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/to_stream.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
-#include "ybgate/ybgate_api.h"
-#include "ybgate/ybgate_cpp_util.h"
-
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_bool(openssl_require_fips);
+DECLARE_bool(enable_qos);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
 DEFINE_NON_RUNTIME_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_validator(postmaster_cgroup,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value.empty() || !yb::tserver::TServerCgroupManagementEnabled(),
+        _value.empty() ||
+            !yb::tserver::TServerCgroupManagementEnabled(FINAL_FLAG_VALUE(enable_qos)),
         "postmaster_cgroup cannot be set when tserver cgroup management is enabled "
         "(enable_qos)"));
 
@@ -327,6 +328,15 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_dockey_bounds, kLocalVolatile, false,
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_dump_presplit_in_create, kExternal, false, true,
+    "If true, ysql_dump --include-yb-metadata folds a relation's yb_presplit reloption into the "
+    "CREATE statement's WITH clause alongside the emitted SPLIT clause (injecting an empty-string "
+    "suppress-auto-derive sentinel for relations whose source had no yb_presplit). If false, "
+    "yb_presplit is omitted from the WITH clause and re-emitted as a separate "
+    "ALTER TABLE/INDEX ... SET (yb_presplit=...). The folded form requires the restore target to "
+    "accept yb_presplit alongside a SPLIT clause, which older versions reject, so this AutoFlag is "
+    "promoted only after upgrade finalize once rollback to such a version is no longer possible.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_test_make_all_ddl_statements_incrementing,
     kLocalVolatile, false, true,
     "When set, all DDL statements will cause the catalog version to increment. This mainly "
@@ -350,9 +360,11 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 10,  /
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
 
-DEFINE_RUNTIME_PG_FLAG(uint32, yb_reorderbuffer_max_changes_in_memory, 4096,
-    "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
-    "streaming changes via logical replication . After that, changes are spooled to disk.");
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_reorderbuffer_max_memory_kb, 4096,
+    "Maximum reorder buffer memory in kilobytes before logical replication changes are streamed "
+    "or spilled to disk.");
+DEFINE_validator(ysql_yb_reorderbuffer_max_memory_kb, FLAG_GE_VALUE_VALIDATOR(64));
+DEPRECATE_FLAG(uint32, ysql_yb_reorderbuffer_max_changes_in_memory, "08_2026");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");
@@ -401,14 +413,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
     "upgrade. For example, IN, ANY, ALL.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_conn_mgr_selective_deallocate, true,
-    "When enabled, DEALLOCATE commands sent via YSQL Connection Manager only drop prepared "
-    "statements whose cached plans are invalid (e.g. stale due to schema changes or "
-    "search_path drift), while preserving valid statements that may be shared across "
-    "logical connections on the same backend. SQL-level statements (from PREPARE) are "
-    "always dropped since they make the connection sticky. When disabled, standard "
-    "PostgreSQL DEALLOCATE behavior is used: DEALLOCATE ALL unconditionally drops all "
-    "statements, and DEALLOCATE <name> will fail for protocol-level prepared statements");
+DEPRECATE_FLAG(bool, ysql_yb_conn_mgr_selective_deallocate, "07_2026");
 
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
@@ -481,6 +486,9 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_mage, false,
                            "NOTE: This is for internal use only.");
 TAG_FLAG(ysql_yb_enable_mage, hidden);
 
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_pg_duckdb, false,
+    "Enable the use of pg_duckdb YSQL extension.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -537,13 +545,21 @@ Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
 }
 
 Status WriteConfigFile(const string& path, const vector<string>& lines) {
+  // Runtime flag callbacks reach this from a reactor thread, which disallows IO.
+  ThreadRestrictions::ScopedAllowIO allow_io;
+
+  // Build in a temporary file and publish with an atomic rename. A runtime PG flag change rewrites
+  // these files while the postmaster may be concurrently parsing them (at startup or on SIGHUP);
+  // an in-place truncate+rewrite lets it observe a partial file and silently drop settings such as
+  // shared_preload_libraries.
+  const string tmp_path = path + ".tmp";
   std::ofstream conf_file;
-  conf_file.open(path, std::ios_base::out | std::ios_base::trunc);
+  conf_file.open(tmp_path, std::ios_base::out | std::ios_base::trunc);
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to write ysql config file '%s': errno=$0: $1",
-        path,
+        "Failed to write ysql config file '$0': errno=$1: $2",
+        tmp_path,
         errno,
         ErrnoToString(errno));
   }
@@ -555,7 +571,7 @@ Status WriteConfigFile(const string& path, const vector<string>& lines) {
 
   conf_file.close();
 
-  return Status::OK();
+  return Env::Default()->RenameFile(tmp_path, path);
 }
 
 void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {
@@ -632,6 +648,21 @@ static bool ValidateDocumentDB(const char* flag_name, bool value) {
 }
 
 DEFINE_validator(ysql_enable_documentdb, &ValidateDocumentDB);
+
+static bool ValidatePgDuckDB(const char* flag_name, bool value) {
+#ifndef YB_ENABLE_YSQL_PG_DUCKDB_EXT
+  if (value) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "pg_duckdb YSQL extension is not available in this build type "
+           "(not supported on sanitizer builds).";
+    return false;
+  }
+#endif
+
+  return true;
+}
+
+DEFINE_validator(ysql_yb_enable_pg_duckdb, &ValidatePgDuckDB);
 
 // Keep the value list in sync with `yb_cost_model_options` in `guc.c`.
 DEFINE_validator(ysql_yb_enable_cbo,
@@ -733,6 +764,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
     metricsLibs.push_back("mage");
   }
 
+  if (FLAGS_ysql_yb_enable_pg_duckdb) {
+    metricsLibs.push_back("pg_duckdb");
+  }
+
   vector<string> lines;
   string line;
   while (std::getline(conf_file, line)) {
@@ -753,6 +788,18 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
       MergeSharedPreloadLibraries(value, &metricsLibs);
     } else {
       lines.push_back(value);
+    }
+  }
+
+  // YB: pg_duckdb is a preview feature; enforce its opt-in here. If ysql_yb_enable_pg_duckdb is
+  // off, strip pg_duckdb from shared_preload_libraries (even if injected via ysql_pg_conf_csv).
+  if (!FLAGS_ysql_yb_enable_pg_duckdb) {
+    auto new_end = std::remove(metricsLibs.begin(), metricsLibs.end(), "pg_duckdb");
+    if (new_end != metricsLibs.end()) {
+      LOG(WARNING) << "Ignoring pg_duckdb in shared_preload_libraries: pg_duckdb is a preview "
+                   << "feature and requires the ysql_yb_enable_pg_duckdb preview flag (listed in "
+                   << "--allowed_preview_flags_csv) to be enabled.";
+      metricsLibs.erase(new_end, metricsLibs.end());
     }
   }
 
@@ -1228,7 +1275,7 @@ string PgWrapper::MakeVersionedDataDir(int32_t version) {
 // directory.
 // This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  int32_t current_pg_version = YbgGetPgVersion();
+  int32_t current_pg_version = static_cast<int32_t>(VersionInfo::YsqlMajorVersion());
 
   // One-time migration in case this installation is not yet using a symlink
   if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
@@ -1284,7 +1331,7 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 }
 
 Status PgWrapper::CleanupPgData(const std::string& data_dir) {
-  const auto current_pg_version = YbgGetPgVersion();
+  const auto current_pg_version = static_cast<int32_t>(VersionInfo::YsqlMajorVersion());
   const std::string versioned_data_dir =
       pgwrapper::MakeVersionedDataDir(data_dir, current_pg_version);
   auto env = Env::Default();

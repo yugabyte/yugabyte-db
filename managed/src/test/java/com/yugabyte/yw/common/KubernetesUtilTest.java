@@ -6,9 +6,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -596,5 +598,137 @@ public class KubernetesUtilTest extends FakeDBApplication {
     PerProcessDetails az2Master = az2Ov.getPerProcess().get(ServerType.MASTER);
     assertNotNull(az2Master);
     assertEquals("provider-az2-sc", az2Master.getDeviceInfo().storageClass);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Non-root-by-default detection, which gates the pg_data ownership reconcile on a rollback.
+  // ---------------------------------------------------------------------------------------------
+
+  @Test
+  public void testIsNonRootDbByDefaultStableLine() {
+    // The chart started defaulting the DB to a non-root user in 2026.1.2.
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2026.1.2.0-b0"));
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2026.1.2.1-b5"));
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2026.2.0.0-b1"));
+    // Everything below it runs the DB as root and has no reconcile of its own.
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2026.1.1.0-b10"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2026.1.0.0-b0"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2025.2.5.1-b1"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2024.2.3.0-b1"));
+  }
+
+  @Test
+  public void testIsNonRootDbByDefaultPreviewLine() {
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2.31.0.0-b0"));
+    assertTrue(KubernetesUtil.isNonRootDbByDefault("2.31.1.0-b7"));
+    assertFalse(KubernetesUtil.isNonRootDbByDefault("2.29.0.0-b603"));
+  }
+
+  private Map<String, Object> securityContextValues(
+      Boolean podEnabled,
+      Object podRunAsUser,
+      Boolean containerEnabled,
+      Object containerRunAsUser,
+      Boolean ocpEnabled) {
+    Map<String, Object> values = new HashMap<>();
+    if (podEnabled != null) {
+      Map<String, Object> pod = new HashMap<>();
+      pod.put("enabled", podEnabled);
+      pod.put("runAsUser", podRunAsUser);
+      values.put("podSecurityContext", pod);
+    }
+    if (containerEnabled != null) {
+      Map<String, Object> container = new HashMap<>();
+      container.put("enabled", containerEnabled);
+      container.put("runAsUser", containerRunAsUser);
+      values.put("containerSecurityContext", container);
+    }
+    if (ocpEnabled != null) {
+      values.put("ocpCompatibility", ImmutableMap.of("enabled", ocpEnabled));
+    }
+    return values;
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserNonRootChartDefaults() {
+    // 2026.1 defaults: pod level enabled, containers inherit 10001.
+    assertEquals(
+        Integer.valueOf(10001),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, false, 10001, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserRootChartDefaults() {
+    // Pre-2026.1 defaults: nothing enabled, so the containers run as the image USER, which is root.
+    assertEquals(
+        Integer.valueOf(0),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(false, 10001, null, null, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserContainerContextWins() {
+    // containerSecurityContext is applied per container and overrides the pod level one.
+    assertEquals(
+        Integer.valueOf(12345),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, true, 12345, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserOcpIsUnknown() {
+    // OpenShift assigns a UID from the namespace range, so the pod level block is not rendered.
+    assertNull(
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, null, null, true)));
+    // containerSecurityContext is not gated on ocpCompatibility, so it still decides.
+    assertEquals(
+        Integer.valueOf(10001),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, 10001, true, 10001, true)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserAcceptsQuotedNumbers() {
+    // A quoted number renders into the pod spec as a plain int, so the chart behaves the same way.
+    assertEquals(
+        Integer.valueOf(10001),
+        KubernetesUtil.getEffectiveDbRunAsUser(
+            securityContextValues(true, "10001", null, null, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserIsNullOnlyWhenTrulyUnknowable() {
+    assertNull(KubernetesUtil.getEffectiveDbRunAsUser(new HashMap<>()));
+    assertNull(KubernetesUtil.getEffectiveDbRunAsUser(null));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserRejectsMalformedValues() {
+    // Enabled but no usable runAsUser - the chart declares it required, so this is malformed input
+    // rather than something to silently skip.
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            KubernetesUtil.getEffectiveDbRunAsUser(
+                securityContextValues(true, null, null, null, false)));
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            KubernetesUtil.getEffectiveDbRunAsUser(
+                securityContextValues(true, "not-a-uid", null, null, false)));
+  }
+
+  @Test
+  public void testGetEffectiveDbRunAsUserRejectsNonBooleanEnabled() {
+    // A quoted "false" is truthy to Go templates but false to Boolean.parseBoolean - coercing it
+    // would make us disagree with what the chart actually deployed.
+    Map<String, Object> values = new HashMap<>();
+    Map<String, Object> pod = new HashMap<>();
+    pod.put("enabled", "false");
+    pod.put("runAsUser", 10001);
+    values.put("podSecurityContext", pod);
+    assertThrows(IllegalStateException.class, () -> KubernetesUtil.getEffectiveDbRunAsUser(values));
   }
 }

@@ -785,7 +785,7 @@ class TabletBootstrap {
     VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir " << wal_path;
     // Open the reader.
     scoped_refptr<LogIndex> index(nullptr);
-    RETURN_NOT_OK_PREPEND(
+    log_reader_ = VERIFY_RESULT_PREPEND(
         LogReader::Open(
             GetEnv(),
             index,
@@ -793,8 +793,7 @@ class TabletBootstrap {
             wal_path,
             tablet_->GetTableMetricsEntity().get(),
             tablet_->GetTabletMetricsEntity().get(),
-            data_.tablet_init_data.read_wal_mem_tracker,
-            &log_reader_),
+            data_.tablet_init_data.read_wal_mem_tracker),
         "Could not open LogReader. Reason");
     return Status::OK();
   }
@@ -1155,6 +1154,12 @@ class TabletBootstrap {
             << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
             << ", apply_to_storages: " << apply_to_storages.ToString();
         return {true, apply_to_storages};
+      }
+      // We need promotions to persist to intents RocksDB before we can skip it.
+      if (txn_status == TransactionStatus::PROMOTING) {
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+        return {index > flushed_op_ids.intents.index};
       }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
@@ -1992,12 +1997,15 @@ class TabletBootstrap {
           const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
 
           if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
-            LOG_WITH_PREFIX(INFO) << "Deleting old temporary snapshot directory " << snapshot_dir;
+            const auto snapshot_dir_type =
+                TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir) ? "tombstoned" : "temporary";
+            LOG_WITH_PREFIX(INFO) << "Deleting old " << snapshot_dir_type
+                                  << " snapshot directory " << snapshot_dir;
 
             s = meta_->fs_manager()->env()->DeleteRecursively(snapshot_dir);
             if (!s.ok()) {
-              LOG_WITH_PREFIX(WARNING) << "Cannot delete old temporary snapshot directory "
-                                       << snapshot_dir << ": " << s;
+              LOG_WITH_PREFIX(WARNING) << "Cannot delete old " << snapshot_dir_type
+                                       << " snapshot directory " << snapshot_dir << ": " << s;
             }
 
             s = meta_->fs_manager()->env()->SyncDir(top_snapshots_dir);
@@ -2036,7 +2044,7 @@ class TabletBootstrap {
   TabletStatusListener* listener_;
   TabletPtr tablet_;
   scoped_refptr<log::Log> log_;
-  std::unique_ptr<log::LogReader> log_reader_;
+  log::LogReaderPtr log_reader_;
   std::unique_ptr<ReplayState> replay_state_;
 
   consensus::ConsensusMetadata* cmeta_;

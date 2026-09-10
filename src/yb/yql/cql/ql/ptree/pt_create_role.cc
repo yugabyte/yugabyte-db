@@ -16,6 +16,8 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/crypt.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"

@@ -33,6 +33,8 @@ To know more about the internals of CDC, see [Overview](./cdc-overview).
 
 Get started with Yugabyte gRPC replication.
 
+{{<tags/feature/ea idea="2762">}}Create and manage gRPC CDC streams using the PostgreSQL replication slot interface (`yb_grpc` plugin) (v2026.1.1.0 and later). See [Create a gRPC CDC stream](./cdc-get-started/#create-a-grpc-cdc-stream).
+
 For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/stable/develop/tutorials/cdc-tutorials/).
 
 {{<lead link="./cdc-get-started/">}}
@@ -73,7 +75,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
-* Transaction savepoints are supported starting from v2025.2.2.0. Issue {{<issue 10936>}}.
+* Transaction savepoints are not supported in versions earlier than v2025.2.2.0. Issue {{<issue 10936>}}.
 * Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 * Support for schema evolution with before image is tracked in issue {{<issue 15197>}}.
 

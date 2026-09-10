@@ -31,7 +31,9 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <map>
+#include <string>
 #include <unordered_map>
 
 #include <gflags/gflags.h>
@@ -40,6 +42,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/flags/auto_flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/status.h"
 
 // Macro for the registration of a flag validator.
@@ -109,6 +112,40 @@ void RegisterGlobalFlagsCallbacksOnce();
 bool RefreshFlagsFile(const std::string& filename);
 
 namespace flags_internal {
+
+// Thread-local proposed flag values for a ValidateFlagValue batch. Does not mutate FLAGS_*.
+// Nested instances restore the previous map on destruction.
+class ProposedFlagValues {
+ public:
+  explicit ProposedFlagValues(std::map<std::string, std::string> values);
+  ~ProposedFlagValues();
+
+  ProposedFlagValues(const ProposedFlagValues&) = delete;
+  ProposedFlagValues& operator=(const ProposedFlagValues&) = delete;
+
+ private:
+  std::map<std::string, std::string> values_;
+  const std::map<std::string, std::string>* previous_;
+};
+
+const std::map<std::string, std::string>* GetProposedFlagValues();
+
+// Value `flag_name` will have once the update being validated is applied: its proposed value if the
+// current ProposedFlagValues map has one that parses, otherwise live_value (FLAGS_flag_name).
+template <typename T>
+T GetFinalFlagValue(const T& live_value, const char* flag_name) {
+  if (const auto* proposed = GetProposedFlagValues()) {
+    auto it = proposed->find(flag_name);
+    if (it != proposed->end()) {
+      T parsed{};
+      if (gflags::ParseFlagValue(it->second.c_str(), &parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return live_value;
+}
+
 // Set a particular flag and invoke update callbacks. Returns a string
 // describing the new value that the option has been set to. The return value API is not
 // well-specified, so just depend on it to be empty if the setting failed for some reason

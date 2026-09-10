@@ -8,6 +8,8 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistMetricsExportConfig;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -91,14 +93,15 @@ public class ModifyMetricsExportConfig extends UpgradeTaskBase {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       List<NodeDetails> nodes,
       Set<ServerType> processTypes) {
-    // Configure metrics collection and export settings
+    // Configure metrics collection and export settings. Start from the current telemetry config
+    // (table is source of truth) and override only the metrics section.
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    telemetryConfig.setMetricsExportConfig(taskParams().metricsExportConfig);
     createManageOtelCollectorTasks(
         userIntent,
         nodes,
         taskParams().installOtelCollector,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig,
-        taskParams().metricsExportConfig,
+        telemetryConfig,
         nodeDetails ->
             GFlagsUtil.getGFlagsForNode(
                 nodeDetails,

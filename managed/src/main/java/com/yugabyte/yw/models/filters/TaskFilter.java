@@ -14,6 +14,8 @@ import lombok.Value;
 public class TaskFilter {
   Date dateRangeStart;
   Date dateRangeEnd;
+  Date completionDateRangeStart;
+  Date completionDateRangeEnd;
   Set<CustomerTask.TargetType> targetList;
   Set<UUID> targetUUIDList;
   Set<CustomerTask.TaskType> typeList;

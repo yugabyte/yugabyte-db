@@ -17,14 +17,16 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -38,6 +40,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class Poller implements DisposableBean {
   private static final String X_REQUEST_ID_HEADER = "X-REQUEST-ID";
+
   private final YbaProperties yba;
   private final ProxiedAppProperties proxiedApp;
   private final BaseAuthenticator authenticator;
@@ -45,6 +48,7 @@ public class Poller implements DisposableBean {
   private final HttpClient httpClient;
   private final Supplier<InternalQueuedHttpRequestApi> queuedHttpRequestApiSupplier;
   private final ExecutorService httpDispatchExecutor;
+  private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
 
   /**
    * Like {@link java.util.function.Supplier} but allows checked exceptions (e.g. {@link
@@ -120,72 +124,36 @@ public class Poller implements DisposableBean {
         return;
       }
 
-      List<CompletableFuture<Optional<DispatchResult>>> futures = new ArrayList<>(pending.size());
       for (QueuedHttpRequestData reqData : pending) {
+        UUID requestId = reqData.getId();
+
+        if (requestId != null && !inFlight.add(requestId)) {
+          continue;
+        }
+
         String mdcRequestId =
             Optional.ofNullable(reqData.getHeaders())
                 .map(h -> h.get(X_REQUEST_ID_HEADER))
                 .map(reqId -> reqId.get(0))
                 .orElse(null);
 
-        withRequestId(
-            mdcRequestId,
+        httpDispatchExecutor.execute(
             () -> {
-              futures.add(
-                  CompletableFuture.supplyAsync(
-                      () -> {
-                        try {
-                          return executeHttpExchange(reqData, yba.baseUrl(), mdcRequestId);
-                        } catch (Exception e) {
-                          if (e instanceof CompletionException ce) {
-                            throw ce;
-                          }
-                          // Single unchecked boundary for CompletableFuture#supplyAsync.
-                          throw new CompletionException(e);
-                        }
-                      },
-                      httpDispatchExecutor));
-              return null;
-            });
-      }
-
-      for (CompletableFuture<Optional<DispatchResult>> future : futures) {
-        Optional<DispatchResult> result;
-
-        try {
-          result = future.get();
-        } catch (ExecutionException | CompletionException e) {
-          Throwable cause = e.getCause() != null ? e.getCause() : e;
-          if (cause instanceof CompletionException completionException) {
-            cause =
-                completionException.getCause() != null
-                    ? completionException.getCause()
-                    : completionException;
-          }
-          if (cause instanceof ApiException apiException) {
-            throw apiException;
-          }
-          log.error("Parallel dispatch failed", cause);
-          continue;
-        }
-
-        if (result.isEmpty()) {
-          continue;
-        }
-
-        DispatchResult dispatch = result.get();
-        withRequestId(
-            dispatch.mdcRequestId,
-            () -> {
-              if (dispatch.interrupted()) {
-                futures.forEach(f -> f.cancel(true));
-                Thread.currentThread().interrupt();
-                return null;
+              try {
+                DispatchResult dispatch = executeHttpExchange(reqData, yba.baseUrl(), mdcRequestId);
+                withRequestId(
+                    dispatch.mdcRequestId(),
+                    () -> {
+                      postResponse(requestApi, dispatch);
+                      return null;
+                    });
+              } catch (Exception e) {
+                log.error("Parallel dispatch failed", unwrap(e));
+              } finally {
+                if (requestId != null) {
+                  inFlight.remove(requestId);
+                }
               }
-
-              requestApi.postQueuedHttpRequestResponse(
-                  dispatch.requestId(), dispatch.responseSpec());
-              return null;
             });
       }
     } catch (ApiException e) {
@@ -198,11 +166,30 @@ public class Poller implements DisposableBean {
     }
   }
 
+  private static Throwable unwrap(Throwable error) {
+    Throwable cause = error;
+
+    while (cause.getCause() != null && cause.getCause() != cause) {
+      cause = cause.getCause();
+    }
+
+    return cause;
+  }
+
+  private synchronized void postResponse(
+      InternalQueuedHttpRequestApi requestApi, DispatchResult dispatch) {
+    try {
+      requestApi.postQueuedHttpRequestResponse(dispatch.requestId(), dispatch.responseSpec());
+    } catch (ApiException e) {
+      log.error("Failed to post response for {} (status {})", dispatch.requestId(), e.getCode(), e);
+    }
+  }
+
   /**
-   * Performs the outbound HTTP exchange under request-scoped MDC. IO and interrupt are handled
-   * inside the supplier; other failures propagate as {@link Exception}.
+   * Performs the outbound HTTP exchange under request-scoped MDC. IO and interrupt are converted
+   * into posted error statuses so the waiter is unblocked.
    */
-  private Optional<DispatchResult> executeHttpExchange(
+  private DispatchResult executeHttpExchange(
       QueuedHttpRequestData reqData, String baseUrl, String mdcRequestId) throws Exception {
     return withRequestId(
         mdcRequestId,
@@ -210,10 +197,16 @@ public class Poller implements DisposableBean {
           URI modifiedUri = replaceBaseAndNormalize(reqData.getUri(), baseUrl);
           log.info("Incoming request: {} {}", reqData.getMethod(), modifiedUri);
 
+          Duration timeout = calculateTimeout(reqData);
+          if (timeout.isZero() || timeout.isNegative()) {
+            log.warn("Skipping YBA call; client deadline has passed for {}", modifiedUri);
+            return errorResult(reqData.getId(), mdcRequestId, 408, "Request deadline has passed");
+          }
+
           HttpRequest.Builder reqBuilder =
               HttpRequest.newBuilder()
                   .uri(modifiedUri)
-                  .timeout(proxiedApp.readTimeout())
+                  .timeout(timeout)
                   .method(reqData.getMethod(), bodyPublisher(reqData));
 
           if (reqData.getContentType() != null) {
@@ -228,17 +221,18 @@ public class Poller implements DisposableBean {
             }
           }
 
-          PostQueuedHttpRequestResponseRequestSpec responseRequestSpec =
-              new PostQueuedHttpRequestResponseRequestSpec();
           try {
             HttpResponse<String> resp =
                 httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
 
-            responseRequestSpec
-                .responseHeaders(resp.headers().map())
-                .responseStatusCode(resp.statusCode());
+            PostQueuedHttpRequestResponseRequestSpec responseRequestSpec =
+                new PostQueuedHttpRequestResponseRequestSpec()
+                    .responseHeaders(resp.headers().map())
+                    .responseStatusCode(resp.statusCode());
 
-            log.info("{} - {}", resp.statusCode(), resp.uri());
+            int responseBodyBytes =
+                resp.body() == null ? 0 : resp.body().getBytes(StandardCharsets.UTF_8).length;
+            log.info("{} - {} ({} bytes)", resp.statusCode(), resp.uri(), responseBodyBytes);
 
             if (resp.statusCode() < 400) {
               responseRequestSpec.responseBody(resp.body());
@@ -246,19 +240,51 @@ public class Poller implements DisposableBean {
               responseRequestSpec.errorMessage(resp.body());
             }
 
-            return Optional.of(
-                new DispatchResult(
-                    reqData.getId(), mdcRequestId, responseRequestSpec, /* interrupted */ false));
+            return new DispatchResult(reqData.getId(), mdcRequestId, responseRequestSpec);
+          } catch (HttpTimeoutException e) {
+            log.error("Timed out requesting {}", modifiedUri, e);
+            return errorResult(
+                reqData.getId(), mdcRequestId, 504, "Gateway Timeout: " + e.getMessage());
           } catch (IOException e) {
-            log.error("Failed request to {}", reqData.getUri(), e);
-            return Optional.empty();
+            log.error("Failed request to {}", modifiedUri, e);
+            return errorResult(
+                reqData.getId(), mdcRequestId, 502, "Bad Gateway: " + e.getMessage());
           } catch (InterruptedException e) {
-            log.error("Interrupted request to {}", reqData.getUri(), e);
+            log.error("Interrupted request to {}", modifiedUri, e);
             Thread.currentThread().interrupt();
-            return Optional.of(
-                new DispatchResult(reqData.getId(), mdcRequestId, responseRequestSpec, true));
+            return errorResult(reqData.getId(), mdcRequestId, 503, "Interrupted");
+          } catch (Exception e) {
+            log.error("Failed request to {}", modifiedUri, e);
+            return errorResult(
+                reqData.getId(),
+                mdcRequestId,
+                500,
+                e.getMessage() != null ? e.getMessage() : e.toString());
           }
         });
+  }
+
+  private Duration calculateTimeout(QueuedHttpRequestData reqData) {
+    OffsetDateTime timeoutOn = reqData.getTimeoutOn();
+    if (timeoutOn == null) {
+      return proxiedApp.readTimeout();
+    }
+
+    Duration remaining = Duration.between(OffsetDateTime.now(), timeoutOn);
+    if (remaining.isNegative() || remaining.isZero()) {
+      return Duration.ZERO;
+    }
+
+    return remaining;
+  }
+
+  private static DispatchResult errorResult(
+      UUID requestId, String mdcRequestId, int statusCode, String errorMessage) {
+    PostQueuedHttpRequestResponseRequestSpec spec =
+        new PostQueuedHttpRequestResponseRequestSpec()
+            .responseStatusCode(statusCode)
+            .errorMessage(errorMessage);
+    return new DispatchResult(requestId, mdcRequestId, spec);
   }
 
   private static HttpRequest.BodyPublisher bodyPublisher(QueuedHttpRequestData reqData) {
@@ -270,8 +296,5 @@ public class Poller implements DisposableBean {
   }
 
   private record DispatchResult(
-      UUID requestId,
-      String mdcRequestId,
-      PostQueuedHttpRequestResponseRequestSpec responseSpec,
-      boolean interrupted) {}
+      UUID requestId, String mdcRequestId, PostQueuedHttpRequestResponseRequestSpec responseSpec) {}
 }

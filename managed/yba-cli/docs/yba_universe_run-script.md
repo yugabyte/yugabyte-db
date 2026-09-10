@@ -35,8 +35,8 @@ yba universe run-script --name <universe-name> \
   -n, --name string             [Required] The name of the universe to run the script on.
   -f, --force                   [Optional] Bypass the prompt for non-interactive usage.
       --skip-validations        [Optional] Skip validations before running the script. [default: false]
-      --script-content string   [Optional*] Inline script content to execute on nodes. [33mMutually exclusive with --script-file.
-      --script-file string      [Optional*] Path to a script file on the YBA node. [33mMutually exclusive with --script-content.
+      --script-content string   [Optional] Inline script content to execute on nodes. Mutually exclusive with script-file.
+      --script-file string      [Optional] Path to a script file on the YBA node. Mutually exclusive with script-content.
       --params string           [Optional] Comma-separated command-line arguments to pass to the script.
       --timeout-secs int        [Optional] Timeout in seconds for script execution per node (default 60, max 3600). (default 60)
       --linux-user string       [Optional] Linux user to run the script as. (default "yugabyte")

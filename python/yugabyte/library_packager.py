@@ -40,12 +40,13 @@ from yugabyte.command_util import run_program, mkdir_p, copy_deep
 from yugabyte.common_util import (
     get_llvm_toolchain_dir,
     get_thirdparty_dir,
+    build_machine_dirs_to_strip,
     sorted_grouped_by,
     YB_SRC_ROOT,
 )
 from yugabyte.rpath import set_rpath, remove_rpath
+from yugabyte.sanitize_pg_compiler_config import assert_sanitized, sanitize_cc, sanitize_flags
 from yugabyte.file_util import clean_path_join
-from yugabyte.linuxbrew import get_linuxbrew_home, using_linuxbrew, LinuxbrewHome
 
 from typing import List, Optional, Any, Set, Tuple, Dict, cast
 
@@ -114,8 +115,6 @@ class DependencyCategory(enum.Enum):
 
     # Binaries built as part of llvm-installer (only used for sanitizers)
     LLVM_INSTALLER = 'llvm-installer'
-
-    LINUXBREW = 'linuxbrew'
 
     # Libraries residing in system-wide library directories. We do not copy these.
     SYSTEM = 'system'
@@ -191,11 +190,8 @@ class Dependency:
         if self.category is not None:
             return self.category
 
-        linuxbrew_home = get_linuxbrew_home()
         llvm_toolchain_dir = get_llvm_toolchain_dir()
-        if linuxbrew_home is not None and linuxbrew_home.path_is_in_linuxbrew_dir(self.target):
-            self.category = DependencyCategory.LINUXBREW
-        elif self.target.startswith(get_thirdparty_dir() + '/'):
+        if self.target.startswith(get_thirdparty_dir() + '/'):
             self.category = DependencyCategory.YB_THIRDPARTY
         elif llvm_toolchain_dir and self.target.startswith(llvm_toolchain_dir + '/'):
             self.category = DependencyCategory.LLVM_INSTALLER
@@ -216,15 +212,9 @@ class Dependency:
         if self.category:
             return self.category
 
-        if linuxbrew_home:
-            linuxbrew_dir_str = linuxbrew_home.get_human_readable_dirs()
-        else:
-            linuxbrew_dir_str = 'N/A'
-
         raise RuntimeError(
             ("Could not determine the category of this binary "
-             "(yugabyte / yb-thirdparty / linuxbrew / system): '{}'. "
-             "Does not reside in the Linuxbrew directory ({}), "
+             "(yugabyte / yb-thirdparty / system): '{}'. "
              "YB third-party directory ('{}'), "
              "YB llvm-installer directory ('{}'), "
              "YB build directory ('{}'), "
@@ -233,7 +223,6 @@ class Dependency:
              "and does not appear to be a system library (does not start with any of {})."
              ).format(
                 self.target,
-                linuxbrew_dir_str,
                 get_thirdparty_dir(),
                 llvm_toolchain_dir,
                 self.context.build_dir,
@@ -326,7 +315,6 @@ class LibraryPackager:
         Get the list of absolute paths of subdirectories of the destination directory that should be
         accessible
         """
-        assert not using_linuxbrew()
         return [
             os.path.abspath(os.path.join(dest_root_dir, 'lib', library_category.subdir_name))
             for library_category in CATEGORIES_FOR_RPATH
@@ -347,7 +335,7 @@ class LibraryPackager:
 
         if not os.access(file_path, os.W_OK):
             # Make sure we can write to the file. This may be necessary for e.g. files copied from
-            # Linuxbrew or third-party dependencies.
+            # third-party dependencies.
             subprocess.check_call(['chmod', 'u+w', file_path])
         if not os.access(file_path, os.X_OK):
             subprocess.check_call(['chmod', 'u+x', file_path])
@@ -377,14 +365,8 @@ class LibraryPackager:
         @param elf_file_path: ELF file (executable/library) path
         """
 
-        linuxbrew_home: Optional[LinuxbrewHome] = get_linuxbrew_home()
         elf_file_path = os.path.realpath(elf_file_path)
-        if SYSTEM_LIBRARY_PATH_RE.match(elf_file_path) or not using_linuxbrew():
-            ldd_path = '/usr/bin/ldd'
-        else:
-            assert linuxbrew_home is not None
-            assert linuxbrew_home.ldd_path is not None
-            ldd_path = linuxbrew_home.ldd_path
+        ldd_path = '/usr/bin/ldd'
 
         ldd_result = run_program([ldd_path, elf_file_path], error_ok=True)
         dependencies: Set[Dependency] = set()
@@ -461,8 +443,6 @@ class LibraryPackager:
         starting with the given set of "seed executables", in the destination directory so that
         the executables can find all of their dependencies.
         """
-
-        linuxbrew_home = get_linuxbrew_home()
 
         all_deps: List[Dependency] = []
 
@@ -542,15 +522,6 @@ class LibraryPackager:
 
         all_deps += self.get_all_postgres_lib_deps()
 
-        if using_linuxbrew():
-            # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we
-            # won't need to do any post-processing on these two later.
-            assert linuxbrew_home is not None
-            assert linuxbrew_home.patchelf_path is not None
-            assert linuxbrew_home.ld_so_path is not None
-            shutil.copy(linuxbrew_home.patchelf_path, self.main_dest_bin_dir)
-            shutil.copy(linuxbrew_home.ld_so_path, dest_lib_dir)
-
         all_deps = sorted(set(all_deps))
 
         deps_sorted_by_name: List[Tuple[str, List[Dependency]]] = sorted_grouped_by(
@@ -564,24 +535,6 @@ class LibraryPackager:
                     "Multiple dependencies with the same name {} but different targets: {}".format(
                         dep_name, deps_with_same_name
                     ))
-
-        linuxbrew_dest_dir = os.path.join(self.dest_dir, 'linuxbrew')
-        linuxbrew_lib_dest_dir = os.path.join(linuxbrew_dest_dir, 'lib')
-
-        # Add libresolv and libnss_* libs explicitly because they are loaded by glibc at runtime.
-        additional_libs: Set[str] = set()
-        if using_linuxbrew():
-            for additional_lib_name_glob in ADDITIONAL_LIB_NAME_GLOBS:
-                assert linuxbrew_home is not None
-                assert linuxbrew_home.cellar_glibc_dir is not None
-                additional_libs.update(
-                    lib_path for lib_path in
-                    glob.glob(os.path.join(
-                        linuxbrew_home.cellar_glibc_dir,
-                        '*',
-                        'lib',
-                        additional_lib_name_glob))
-                    if not lib_path.endswith('.a'))
 
         for category, deps_in_category in sorted_grouped_by(all_deps,
                                                             lambda dep: dep.get_category()):
@@ -602,33 +555,15 @@ class LibraryPackager:
                     "installed as part of copying the entire postgres directory.")
                 continue
 
-            if category == DependencyCategory.LINUXBREW:
-                category_dest_dir = linuxbrew_lib_dest_dir
-            else:
-                category_dest_dir = os.path.join(dest_lib_dir, category.subdir_name)
+            category_dest_dir = os.path.join(dest_lib_dir, category.subdir_name)
             mkdir_p(category_dest_dir)
 
             for dep in deps_in_category:
-                additional_libs.discard(dep.target)
                 self.install_dyn_linked_binary(dep.target, category_dest_dir)
                 target_name = os.path.basename(dep.target)
                 if target_name != dep.name:
                     target_src = os.path.join(os.path.dirname(dep.target), dep.name)
-                    additional_libs.discard(target_src)
                     symlink(target_name, os.path.join(category_dest_dir, dep.name))
-
-        for lib_path in additional_libs:
-            if os.path.isfile(lib_path):
-                self.install_dyn_linked_binary(lib_path, linuxbrew_lib_dest_dir)
-                logging.info("Installed additional lib: " + lib_path)
-            elif os.path.islink(lib_path):
-                link_target_basename = os.path.basename(os.readlink(lib_path))
-                logging.info("Installed additional symlink: " + lib_path)
-                symlink(link_target_basename,
-                        os.path.join(linuxbrew_lib_dest_dir, os.path.basename(lib_path)))
-            else:
-                raise RuntimeError(
-                    "Expected '{}' to be a file or a symlink".format(lib_path))
 
         for installed_binary in self.installed_dyn_linked_binaries:
             # Sometimes files that we copy from other locations are not even writable by user!
@@ -642,6 +577,54 @@ class LibraryPackager:
         for (dir_path, rpath), count in self.rpath_stats_by_dir.items():
             logging.info("Set RPATH to %s for %d files in %s", rpath, count, dir_path)
 
+    def sanitize_exported_pg_makefile_global(self, makefile_global_path: str) -> None:
+        """Strip build-machine-private switches from the compiler-config lines of a shipped
+        Makefile.global so that an external PGXS build does not inherit dangling build-tree -I
+        paths, the build's compiler wrapper, or build-tree path-remap and libc++ flags.  The
+        rewritten lines are CC/CXX, CFLAGS/CXXFLAGS/CPPFLAGS, and ICU_CFLAGS.  ICU_CFLAGS is
+        included because Makefile.global unconditionally prepends $(ICU_CFLAGS) to CPPFLAGS, so a
+        thirdparty -I left there would defeat the CPPFLAGS sanitization for every PGXS build.  The
+        equivalent values baked into the pg_config binary are sanitized separately at build time
+        (see src/postgres/src/common/Makefile).  The link side (the LDFLAGS and ICU_LIBS lines, not
+        rewritten here, and the pkg-config .pc files) is tracked separately in #32266.
+        """
+        build_machine_dirs = build_machine_dirs_to_strip(
+            get_thirdparty_dir(), self.context.build_dir)
+        cc_vars = ('CC', 'CXX')
+        flag_vars = ('CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'ICU_CFLAGS')
+        changed = False
+        sanitized_cc: Dict[str, str] = {}
+        sanitized_flags: Dict[str, str] = {}
+        out_lines = []
+        with open(makefile_global_path) as makefile_global_file:
+            for line in makefile_global_file.read().splitlines():
+                # The variable and value may be separated by spaces (YB-overridden vars such as
+                # CFLAGS) or tabs (upstream autoconf-aligned vars such as ICU_CFLAGS).
+                match = re.fullmatch(r'(\w+)\s*=\s*(.*)', line)
+                if match and match.group(1) in cc_vars + flag_vars:
+                    var, value = match.group(1), match.group(2)
+                    tokens = value.split()
+                    if var in cc_vars:
+                        new_value = ' '.join(sanitize_cc(tokens))
+                        sanitized_cc[var] = new_value
+                    else:
+                        new_value = ' '.join(sanitize_flags(tokens, build_machine_dirs))
+                        sanitized_flags[var] = new_value
+                    if new_value != value:
+                        line = f'{var} = {new_value}'
+                        changed = True
+                out_lines.append(line)
+        # Fail the release if anything about to ship is still unsanitized: assert_sanitized
+        # re-checks the rewritten CC/CXX and flag values and raises on any build-machine path that
+        # survived (a sanitizer regression, or a not-yet-handled variable that leaks one).
+        # build_postgres.py runs the same check against pg_config at build time.  Negligible cost:
+        # this runs only during release packaging.
+        assert_sanitized(makefile_global_path, sanitized_cc, sanitized_flags, build_machine_dirs)
+        if changed:
+            with open(makefile_global_path, 'w') as makefile_global_file:
+                makefile_global_file.write('\n'.join(out_lines) + '\n')
+            logging.info("Sanitized exported PG compiler flags in %s", makefile_global_path)
+
     def postprocess_distribution(self, build_target: str) -> None:
         """
         build_target is different from self.dest_dir because this function is invoked after
@@ -652,4 +635,6 @@ class LibraryPackager:
         for root, dirs, files in os.walk(os.path.join(build_target, 'postgres')):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
+                if file_name == 'Makefile.global':
+                    self.sanitize_exported_pg_makefile_global(file_path)
                 self.set_or_remove_rpath(build_target, file_path)

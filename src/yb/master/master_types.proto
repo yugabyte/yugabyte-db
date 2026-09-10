@@ -51,6 +51,7 @@ enum SysRowEntryType {
   CLONE_STATE = 19;
   TSERVER_REGISTRATION = 20;
   OBJECT_LOCK_ENTRY = 21;
+  HISTORY_RETENTION_PIN = 22;
 
   // Each value must have a corresponding entry in CATALOG_ENTITY_TYPE_MAP of
   // catalog_entity_types.h
@@ -233,6 +234,9 @@ message TServerMetricsPB {
     required bytes path_id = 1;
     optional uint64 used_space = 2;
     optional uint64 total_space = 3;
+    // Storage-tier label for this path (e.g. "ssd", "hdd").
+    // Absent means the path carries no explicit tier label (legacy deployments).
+    optional string storage_tier = 4;
   }
   repeated PathMetrics path_metrics = 8;
   optional bool disable_tablet_split_if_default_ttl = 9;

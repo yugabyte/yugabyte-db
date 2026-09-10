@@ -30,12 +30,14 @@ import com.yugabyte.yw.forms.paging.PaUniversePagedApiResponse;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.PACollector;
+import com.yugabyte.yw.models.PerfAdvisorEndpoint;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.ExpressionList;
 import io.ebean.annotation.Transactional;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -68,6 +70,15 @@ public class PerfAdvisorService {
 
   @Transactional
   public PACollector save(PACollector paCollector, boolean force) {
+    return save(paCollector, force, null);
+  }
+
+  /**
+   * @param customerMetadata the body to PUT, for a caller that has already built it and needs to
+   *     know exactly what was sent - see PACollectorSync. Null builds it here.
+   */
+  public PACollector save(
+      PACollector paCollector, boolean force, PerfAdvisorClient.CustomerMetadata customerMetadata) {
     boolean isUpdate = false;
     if (paCollector.getUuid() == null) {
       paCollector.generateUUID();
@@ -91,7 +102,11 @@ public class PerfAdvisorService {
     paCollector.setPaUrl(normalizeUrl(paCollector.getPaUrl()));
     paCollector.setMetricsUrl(normalizeUrl(paCollector.getMetricsUrl()));
     paCollector.setYbaUrl(normalizeUrl(paCollector.getYbaUrl()));
-    client.putCustomerMetadata(paCollector);
+    if (customerMetadata == null) {
+      client.putCustomerMetadata(paCollector);
+    } else {
+      client.putCustomerMetadata(paCollector, customerMetadata);
+    }
     if (isUpdate) {
       paCollector.update();
     } else {
@@ -101,11 +116,21 @@ public class PerfAdvisorService {
   }
 
   public PACollector create(PACollector paCollector) {
+    return create(paCollector, null);
+  }
+
+  /** See {@link #save(PACollector, boolean, PerfAdvisorClient.CustomerMetadata)}. */
+  public PACollector create(
+      PACollector paCollector, PerfAdvisorClient.CustomerMetadata customerMetadata) {
     validate(paCollector);
     paCollector.setPaUrl(normalizeUrl(paCollector.getPaUrl()));
     paCollector.setMetricsUrl(normalizeUrl(paCollector.getMetricsUrl()));
     paCollector.setYbaUrl(normalizeUrl(paCollector.getYbaUrl()));
-    client.putCustomerMetadata(paCollector);
+    if (customerMetadata == null) {
+      client.putCustomerMetadata(paCollector);
+    } else {
+      client.putCustomerMetadata(paCollector, customerMetadata);
+    }
     paCollector.save();
     return paCollector;
   }
@@ -137,6 +162,9 @@ public class PerfAdvisorService {
     }
     if (filter.getPaUrl() != null) {
       query = query.eq("paUrl", filter.getPaUrl());
+    }
+    if (filter.getEmbedded() != null) {
+      query = query.eq("embedded", filter.getEmbedded());
     }
     return query.findList();
   }
@@ -174,6 +202,12 @@ public class PerfAdvisorService {
   public PaUniversePagedApiResponse pagedListRegisteredUniverses(
       PACollector collector, PaUniversePagedApiQuery apiQuery) {
     List<PerfAdvisorClient.UniverseMetadata> allMetadata = listRegisteredUniverses(collector);
+    Map<UUID, String> endpointNames =
+        PerfAdvisorEndpoint.createQuery()
+            .eq("customerUUID", collector.getCustomerUUID())
+            .findList()
+            .stream()
+            .collect(Collectors.toMap(PerfAdvisorEndpoint::getUuid, PerfAdvisorEndpoint::getName));
 
     Stream<PaUniverseInfo> infoStream =
         allMetadata.stream()
@@ -183,9 +217,17 @@ public class PerfAdvisorService {
                   info.setUniverseUuid(meta.getId());
                   Optional<Universe> universe = Universe.maybeGet(meta.getId());
                   info.setUniverseName(universe.map(Universe::getName).orElse(null));
-                  info.setDataMountPoints(meta.getDataMountPoints());
-                  info.setOtherMountPoints(meta.getOtherMountPoints());
                   info.setAdvancedObservability(meta.isMetricsExportToPrometheusEnabled());
+                  info.setMode(PaRegistrationMode.of(meta));
+                  // The collector's export config ids are Perf Advisor Endpoint uuids by
+                  // construction, so the name comes from the local record.
+                  UUID endpointUuid =
+                      CollectionUtils.isEmpty(meta.getExportConfigIds())
+                          ? null
+                          : meta.getExportConfigIds().get(0);
+                  info.setPaEndpointUuid(endpointUuid);
+                  info.setPaEndpointName(
+                      endpointUuid == null ? null : endpointNames.get(endpointUuid));
                   return info;
                 });
 
@@ -239,6 +281,23 @@ public class PerfAdvisorService {
     COLLECTOR_ONLY,
     /** PA collector enabled with advanced observability. */
     ADVANCED,
+    /**
+     * PA collector enabled with the data forwarded to an external Perf Advisor. The collector still
+     * scrapes in the yugaware container, so it costs the same there as COLLECTOR_ONLY; nothing is
+     * stored locally or remote-written, so it costs nothing in prometheus. Charging the full
+     * collector budget over-estimates - the local PA database stays empty - but erring high on a
+     * memory precheck is the safe direction.
+     */
+    ONLINE,
+  }
+
+  /** The memory mode a registration mode consumes. */
+  public static PaMemoryMode toMemoryMode(PaRegistrationMode mode) {
+    return switch (mode) {
+      case BASIC -> PaMemoryMode.COLLECTOR_ONLY;
+      case ADVANCED -> PaMemoryMode.ADVANCED;
+      case ONLINE -> PaMemoryMode.ONLINE;
+    };
   }
 
   /**
@@ -350,6 +409,7 @@ public class PerfAdvisorService {
         return 0;
       case COLLECTOR_ONLY:
       case ADVANCED:
+      case ONLINE:
         return confGetter.getGlobalConf(GlobalConfKeys.paMemoryPerNodePaCollectorMb);
     }
     throw new IllegalArgumentException("Unknown PaMemoryMode: " + mode);
@@ -364,6 +424,7 @@ public class PerfAdvisorService {
     switch (mode) {
       case NONE:
       case COLLECTOR_ONLY:
+      case ONLINE:
         return 0;
       case ADVANCED:
         int totalMb =
@@ -453,7 +514,10 @@ public class PerfAdvisorService {
   }
 
   public void putUniverse(
-      PACollector paCollector, Universe universe, boolean advancedObservability) {
+      PACollector paCollector,
+      Universe universe,
+      PaRegistrationMode mode,
+      List<UUID> exportConfigIds) {
     RuntimeConfig<Universe> runtimeConfig = configFactory.forUniverse(universe);
 
     boolean dbQueryApiEnabled =
@@ -470,19 +534,36 @@ public class PerfAdvisorService {
         new PerfAdvisorClient.UniverseMetadata()
             .setId(universe.getUniverseUUID())
             .setCustomerId(paCollector.getCustomerUUID())
-            .setDataMountPoints(splitMountPoints(MetricQueryHelper.getDataMountPoints(universe)))
-            .setOtherMountPoints(
-                splitMountPoints(MetricQueryHelper.getOtherMountPoints(confGetter, universe)))
-            .setMetricsExportToPrometheusEnabled(advancedObservability);
+            .setMetricsExportToPrometheusEnabled(mode.isMetricsExportToPrometheusEnabled())
+            .setCollectionMode(mode.getCollectionMode())
+            .setExportConfigIds(mode.requiresExportConfig() ? exportConfigIds : null);
     client.putUniverseMetadata(paCollector, universeMetadata);
+  }
+
+  public List<PerfAdvisorClient.ExportConfig> listExportConfigs(PACollector collector) {
+    return client.listExportConfigs(collector);
+  }
+
+  public PerfAdvisorClient.ExportConfig getExportConfig(PACollector collector, UUID configUuid) {
+    return client.getExportConfig(collector, configUuid);
+  }
+
+  public PerfAdvisorClient.ExportConfig createExportConfig(
+      PACollector collector, PerfAdvisorClient.ExportConfig config) {
+    return client.createExportConfig(collector, config);
+  }
+
+  public PerfAdvisorClient.ExportConfig updateExportConfig(
+      PACollector collector, PerfAdvisorClient.ExportConfig config) {
+    return client.updateExportConfig(collector, config);
+  }
+
+  public void deleteExportConfig(PACollector collector, UUID configUuid) {
+    client.deleteExportConfig(collector, configUuid);
   }
 
   public void deleteUniverse(PACollector paCollector, Universe universe) {
     client.deleteUniverseMetadata(paCollector, universe.getUniverseUUID());
-  }
-
-  private List<String> splitMountPoints(String mountPoints) {
-    return Arrays.stream(mountPoints.split("\\|")).toList();
   }
 
   public void validate(PACollector platform) {
@@ -503,7 +584,7 @@ public class PerfAdvisorService {
     }
   }
 
-  private String normalizeUrl(String url) {
+  static String normalizeUrl(String url) {
     if (url.endsWith("/")) {
       return url.substring(0, url.length() - 1);
     }

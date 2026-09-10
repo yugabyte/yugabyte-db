@@ -467,6 +467,7 @@ public class AccessManager extends DevopsBase {
           case aws:
           case azu:
           case gcp:
+          case oci:
             String defaultSshUser = region.getProviderCloudCode().getSshUser();
             Common.CloudType.valueOf(region.getProvider().getCode()).getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
@@ -515,6 +516,7 @@ public class AccessManager extends DevopsBase {
       case aws:
       case azu:
       case gcp:
+      case oci:
       case onprem:
         return deleteKey(region.getProvider().getUuid(), region.getUuid(), keyCode);
       default:

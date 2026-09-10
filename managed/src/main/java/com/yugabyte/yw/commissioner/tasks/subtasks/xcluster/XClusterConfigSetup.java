@@ -26,7 +26,7 @@ import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.SetupUniverseReplicationResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.util.NetUtil;
 
@@ -82,7 +82,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
 
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
       try {
         CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
             getClusterConfig(client, targetUniverse.getUniverseUUID());

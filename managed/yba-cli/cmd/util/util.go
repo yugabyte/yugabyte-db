@@ -641,6 +641,21 @@ func MaybeGetFlagString(cmd *cobra.Command, name string) string {
 	return value
 }
 
+// MaybeSetFlagString assigns the string flag with the given name to target, for
+// building a request from flags on both create and update. The flag wins when it
+// was passed; otherwise a value already in target is kept, so an update leaves
+// unmentioned fields as they are. An explicitly empty flag value is ignored
+// rather than clearing the field.
+func MaybeSetFlagString(cmd *cobra.Command, name string, target *string) {
+	if !cmd.Flags().Changed(name) && *target != "" {
+		return
+	}
+	value := MaybeGetFlagString(cmd, name)
+	if value != "" {
+		*target = value
+	}
+}
+
 // MaybeGetFlagStringSlice returns the value of the string slice flag with the given name
 // If the flag is not set, it returns an empty slice
 func MaybeGetFlagStringSlice(cmd *cobra.Command, name string) []string {

@@ -73,6 +73,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -1228,7 +1229,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   virtual ~Impl() {
-    Shutdown();
+    StartShutdown();
+    CompleteShutdown();
   }
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
@@ -1285,10 +1287,17 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return TransactionInfo{it->first_touch(), it->pg_session_req_version()};
   }
 
-  void Shutdown() {
+  // Stops the pollers so that no leader actions (which submit transaction status update operations)
+  // run after this returns. This must happen before the tablet pauses its read/write operations
+  // during shutdown, otherwise a poll could try to submit an operation against a paused tablet and
+  // fail with a non-shutdown status. See issue #32211.
+  void StartShutdown() {
     deadlock_detection_poller_.Shutdown();
-    deadlock_detector_.Shutdown();
     poller_.Shutdown();
+  }
+
+  void CompleteShutdown() {
+    deadlock_detector_.Shutdown();
     rpcs_.Shutdown();
   }
 
@@ -1577,7 +1586,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     if (!managed_transactions_.empty()) {
       auto& txn = *managed_transactions_.get<FirstEntryIndexTag>().begin();
       if (details) {
-        *details += Format("Transaction coordinator: $0\n", txn);
+        *details += Format("Transaction coordinator: $0", txn);
       }
       return txn.first_entry_raft_index();
     }
@@ -1705,16 +1714,22 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       const rpc::Rpcs::Handle& handle, const NotifyApplyingData& action,
       const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
     client::UpdateClock(resp, &context_);
-    rpcs_.Unregister(handle);
+    // Prevent Rpcs::CompleteShutdown from destroying the coordinator while it could be
+    // used through `this`.
+    auto unregister_rpc = rpcs_.UnregisterOnScopeExit(handle);
     if (status.ok()) {
       return;
     }
+
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "TransactionCoordinator::Impl::ApplyingReplicated:BeforeUse",
+        const_cast<std::string*>(&context_.tablet_id()));
     LOG_WITH_PREFIX(WARNING)
         << "Failed to send apply for transaction: " << action.transaction << ": "
         << status;
     const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
     const bool tablet_has_been_split = !split_child_tablet_ids.empty();
-    if (status.IsNotFound() || tablet_has_been_split) {
+    if (status.IsNotFound() || status.IsDeleted() || tablet_has_been_split) {
       Lock lock(this, context_.LeaderTerm());
       auto it = managed_transactions_.find(action.transaction);
       if (it == managed_transactions_.end()) {
@@ -2043,7 +2058,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                   const Status& status,
                   const tserver::GetTransactionStatusAtParticipantResponsePB& resp) {
                 client::UpdateClock(resp, &context_);
-                rpcs_.Unregister(handle);
+                // Prevent Rpcs::CompleteShutdown from destroying the coordinator while it could be
+                // used through `this`.
+                auto unregister_rpc = rpcs_.UnregisterOnScopeExit(handle);
 
                 VLOG_WITH_PREFIX(4)
                     << "TXN: " << transaction_id << " batch status at " << p.tablet << ": "
@@ -2180,8 +2197,12 @@ void TransactionCoordinator::Start() {
   impl_->Start();
 }
 
-void TransactionCoordinator::Shutdown() {
-  impl_->Shutdown();
+void TransactionCoordinator::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void TransactionCoordinator::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 Status TransactionCoordinator::PrepareForDeletion(const CoarseTimePoint& deadline) {

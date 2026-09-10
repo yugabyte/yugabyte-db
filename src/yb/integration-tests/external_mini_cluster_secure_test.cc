@@ -24,6 +24,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/tostring.h"

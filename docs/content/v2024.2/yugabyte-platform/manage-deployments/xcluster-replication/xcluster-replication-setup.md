@@ -25,6 +25,8 @@ Ensure the universes have the following characteristics:
 - Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
 - Both universes have [node-to-node encryption](../../../security/enable-encryption-in-transit/) enabled (recommended) or both have this setting disabled.
 
+    If you change encryption in transit settings after starting replication, you must change the setting on both universes and restart replication.
+
 - They can be backed up and restored using the same [storage configuration](../../../back-up-restore-universes/configure-backup-storage/).
 
     The storage configuration for copying data from source to target must be accessible from both universes. For example, if AWS S3 is used as the target of backups, the same S3 bucket must be accessible from the source and target universe.

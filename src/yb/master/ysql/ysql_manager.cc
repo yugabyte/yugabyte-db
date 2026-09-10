@@ -35,6 +35,7 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/status_log.h"
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.
@@ -49,7 +50,7 @@ DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
-DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, -1,
+DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, 300,
     "Frequency in seconds at which the master leader will re-trigger DDL verification for "
     "YSQL DDL transactions in kDdlPostProcessingFailed state. A value of -1 disables this "
     "background task.");
@@ -355,8 +356,11 @@ Result<std::string> YsqlManager::GetCachedPgSchemaName(
   const PgOid* const nsp_oid_ptr =
       FindOrNull(DCHECK_NOTNULL(nsp_data_ptr)->rel_nsp_oid_map, oids.pg_table_oid);
   const PgOid relnamespace_oid = (nsp_oid_ptr ? *nsp_oid_ptr : kPgInvalidOid);
-  SCHECK_NE(relnamespace_oid, kPgInvalidOid, NotFound,
-      Format("$0: $1", kRelnamespaceNotFoundErrorStr, oids.pg_table_oid));
+  if (relnamespace_oid == kPgInvalidOid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kRelnamespaceNotFoundErrorStr, oids.pg_table_oid),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
 
   const std::string* const pg_schema_name_ptr =
       FindOrNull(nsp_data_ptr->rel_nsp_name_map, relnamespace_oid);

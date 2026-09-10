@@ -18,6 +18,7 @@
 
 #include "yb/common/constants.h"
 
+#include "yb/master/alter_table_batch_tracker.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_test.pb.h"
@@ -264,26 +265,32 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const scoped_refptr<TableInfo>& table, TransactionId transaction_id, LeaderEpoch epoch)
+      const scoped_refptr<TableInfo>& table, TransactionId transaction_id, LeaderEpoch epoch,
+      std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr)
       : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
         transaction_id_(transaction_id),
         wait_state_(
             ash::WaitStateInfo::CurrentWaitState()
                 ? ash::WaitStateInfo::CurrentWaitState()
-                : std::make_shared<ash::WaitStateInfo>()) {}
+                : std::make_shared<ash::WaitStateInfo>()),
+        cdc_alter_batch_tracker_(std::move(cdc_alter_batch_tracker)) {}
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       const scoped_refptr<TableInfo>& table, TransactionId transaction_id, LeaderEpoch epoch,
-      const xrepl::StreamId& cdc_sdk_stream_id, bool cdc_sdk_require_history_cutoff)
-      : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
+      const xrepl::StreamId& cdc_sdk_stream_id, bool cdc_sdk_require_history_cutoff,
+      AsyncTaskThrottlerBase* async_task_throttler = nullptr,
+      std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr)
+      : AsyncTabletLeaderTask(
+            master, callback_pool, tablet, table, std::move(epoch), async_task_throttler),
         transaction_id_(transaction_id),
         cdc_sdk_stream_id_(cdc_sdk_stream_id),
         cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff),
         wait_state_(
             ash::WaitStateInfo::CurrentWaitState()
                 ? ash::WaitStateInfo::CurrentWaitState()
-                : std::make_shared<ash::WaitStateInfo>())  {}
+                : std::make_shared<ash::WaitStateInfo>()),
+        cdc_alter_batch_tracker_(std::move(cdc_alter_batch_tracker)) {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAlterTable;
@@ -299,6 +306,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   bool SendRequest(int attempt) override;
 
+  void Finished(const Status& status) override;
+
  private:
   void HandleResponse(int attempt) override;
   virtual void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) { return; }
@@ -307,6 +316,9 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   const xrepl::StreamId cdc_sdk_stream_id_ = xrepl::StreamId::Nil();
   const bool cdc_sdk_require_history_cutoff_ = false;
   const ash::WaitStateInfoPtr wait_state_;
+  // Tracks completion for a batch of CDC-SDK retention-barrier AlterTable fan-outs. May be
+  // null for non-CDC alters (the regular SQL ALTER TABLE path, etc.).
+  const std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker_;
 };
 
 class AsyncBackfillDone : public AsyncAlterTable {
@@ -315,8 +327,11 @@ class AsyncBackfillDone : public AsyncAlterTable {
                     ThreadPool* callback_pool,
                     const TabletInfoPtr& tablet,
                     const std::string& table_id,
-                    LeaderEpoch epoch)
-    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)), table_id_(table_id) {}
+                    LeaderEpoch epoch,
+                    uint64_t birth_time = 0)
+    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)),
+      table_id_(table_id),
+      birth_time_(birth_time) {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kBackfillDone;
@@ -328,6 +343,7 @@ class AsyncBackfillDone : public AsyncAlterTable {
   bool SendRequest(int attempt) override;
 
   const std::string table_id_;
+  const uint64_t birth_time_;
 };
 
 class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {

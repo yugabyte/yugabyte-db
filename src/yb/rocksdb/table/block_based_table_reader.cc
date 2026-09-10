@@ -70,6 +70,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 
@@ -99,6 +100,12 @@ DEFINE_RUNTIME_bool(rocksdb_iterator_disable_restart_block_keys_caching, false,
     "a better performance for backward iteration over a block with restart interval greater "
     "than 0 (for example for data block), refer to block_restart_interval gflag.");
 TAG_FLAG(rocksdb_iterator_disable_restart_block_keys_caching, advanced);
+
+DEFINE_RUNTIME_bool(enable_bloom_filter_block_cache, true,
+    "If true, BlockBasedTableReader iterators reuse the last-resolved fixed-size bloom filter "
+    "block across probes when the next key falls within the cached filter block's key bounds, "
+    "skipping the per-probe Cache::Lookup. Disable to fall back to per-probe Cache::Lookup.");
+TAG_FLAG(enable_bloom_filter_block_cache, advanced);
 
 DEFINE_test_flag(bool, rocksdb_record_readahead_stats_only_for_data_blocks, false,
     "For testing only. Record readahead statistics only for data blocks.");
@@ -316,6 +323,29 @@ struct BlockBasedTable::BlockRetrievalInfo {
   char compressed_cache_key_buf[block_based_table::kCacheKeyBufferSize];
 };
 
+struct FilterBlockCache {
+  Cache* block_cache = nullptr;
+  // Bloom filter index iterator.
+  BlockIter filter_index_iter;
+  // Filter block handle for cached bloom filter block.
+  BlockHandle filter_block_handle;
+  // Block cache handle for cached bloom filter block.
+  Cache::Handle* cache_handle = nullptr;
+  // Pointer to cached bloom filter block (resides in block_cache).
+  FilterBlockReader* filter_block = nullptr;
+  // Lowest known filter key covered by cached filter block.
+  yb::ByteBuffer<64> lowest_known_filter_key;
+  // Inclusive upper bound on filter keys covered by cached filter block.
+  yb::ByteBuffer<64> upper_bound_filter_key;
+
+  ~FilterBlockCache() {
+    if (block_cache && cache_handle) {
+      filter_block = nullptr;
+      block_cache->Release(cache_handle);
+    }
+  }
+};
+
 // BlockEntryIteratorState is used by TwoLevelIterator and MultiLevelIterator in order to check if
 // key prefix may match the filter of the SST file or to create a secondary iterator.
 class BlockBasedTable::BlockEntryIteratorState : public TwoLevelBlockIteratorState {
@@ -434,8 +464,10 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelBlockIteratorSta
 
   bool MatchFilter(
       const IteratorFilter* filter, const QueryOptions& options, Slice user_key,
-      FilterKeyCache* cache) override {
-    return filter->Filter(options, user_key, cache, table_);
+      FilterKeyCache* filter_key_cache) override {
+    FilterBlockCache* const filter_block_cache =
+        PREDICT_TRUE(FLAGS_enable_bloom_filter_block_cache) ? &filter_block_cache_ : nullptr;
+    return filter->Filter(options, user_key, filter_key_cache, filter_block_cache, table_);
   }
 
  private:
@@ -478,8 +510,9 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelBlockIteratorSta
   size_t prev_length_ = 0;
   uint64_t num_sequential_disk_reads_ = 0;
   size_t readahead_limit_ = 0;
-};
 
+  FilterBlockCache filter_block_cache_;
+};
 
 class BlockBasedTable::IndexIteratorHolder {
  public:
@@ -539,8 +572,8 @@ BlockBasedTable::FileReaderWithCachePrefix* BlockBasedTable::GetBlockReader(
 
 bool BloomFilterAwareFileFilter::Filter(
     const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
-    TableReader* reader) const {
-  auto table = down_cast<BlockBasedTable*>(reader);
+    FilterBlockCache* filter_cache, TableReader* reader) const {
+  auto* table = down_cast<BlockBasedTable*>(reader);
   auto* statistics = options.statistics ? options.statistics : table->rep_->ioptions.statistics;
   StopWatchNano sw(table->rep_->ioptions.env, statistics, BLOOM_FILTER_TIME_NANOS);
   if (PREDICT_FALSE(table->rep_->filter_type != FilterType::kFixedSizeFilter)) {
@@ -553,7 +586,8 @@ bool BloomFilterAwareFileFilter::Filter(
   if (filter_key.empty()) {
     return true;
   }
-  auto filter_entry = table->GetFilter(options, &filter_key);
+
+  auto filter_entry = table->GetFilter(options, &filter_key, filter_cache);
   FilterBlockReader* filter = filter_entry.value;
   // If bloom filter was not useful, then take this file into account.
   const bool use_file = table->NonBlockBasedFilterKeyMayMatch(
@@ -1146,24 +1180,30 @@ FilterBlockReader* BlockBasedTable::ReadFilterBlock(const BlockHandle& filter_ha
   return nullptr;
 }
 
+uint64_t BlockBasedTable::ApproximateOffsetOfDataEnd() const {
+  if (rep_->table_properties && rep_->table_properties->data_size > 0) {
+    return rep_->table_properties->data_size;
+  }
+  return rep_->footer.metaindex_handle().offset();
+}
+
 Status BlockBasedTable::GetFixedSizeFilterBlockHandle(
-    const Slice& filter_key, BlockHandle* filter_block_handle, Statistics* statistics) const {
+    BlockIter& filter_index_iter, const Slice filter_key, BlockHandle& filter_block_handle,
+    Slice& filter_block_key_upper_bound, Statistics* statistics) const {
   StopWatchNano sw(rep_->ioptions.env, statistics, GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS);
-  // Determine block of fixed-size bloom filter using filter index. It is expected `NewIterator()`
-  // is reusing `fiter` and not creating a new iterator (multi-level index case).
-  BlockIter fiter;
-  rep_->filter_index_reader->NewIterator(&fiter);
-  const auto& entry = fiter.Seek(filter_key);
+  const auto& entry = filter_index_iter.Seek(filter_key);
   if (entry.Valid()) {
     Slice filter_block_handle_encoded = entry.value;
-    return filter_block_handle->DecodeFrom(&filter_block_handle_encoded);
-  } else {
-    // We are beyond the index, that means key is absent in filter, we use null block handle
-    // stub to indicate that.
-    filter_block_handle->set_offset(0);
-    filter_block_handle->set_size(0);
+    RETURN_NOT_OK(filter_block_handle.DecodeFrom(&filter_block_handle_encoded));
+    filter_block_key_upper_bound = entry.key;
     return Status::OK();
   }
+
+  // We are beyond the index, that means key is absent in filter, we use null block handle
+  // stub to indicate that.
+  filter_block_handle.set_offset(0);
+  filter_block_handle.set_size(0);
+  return Status::OK();
 }
 
 Slice BlockBasedTable::GetFilterKeyFromInternalKey(Slice internal_key) const {
@@ -1177,20 +1217,24 @@ Slice BlockBasedTable::GetFilterKeyFromUserKey(Slice user_key) const {
 
 Slice BlockBasedTable::GetFilterKeyFromUserKey(
     Slice user_key, FilterKeyCache* filter_key_cache) const {
-  auto transformer = rep_->filter_key_transformer;
-  if (transformer != filter_key_cache->transformer) {
-    filter_key_cache->transformer = transformer;
-    filter_key_cache->filter_key = transformer ? transformer->Transform(user_key) : user_key;
-  }
-  return filter_key_cache->filter_key;
+  return rocksdb::GetFilterKeyFromUserKey(user_key, filter_key_cache, rep_->filter_key_transformer);
 }
 
 BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
-    const QueryOptions& options, const Slice* filter_key) const {
+    const QueryOptions& options, const Slice* filter_key,
+    FilterBlockCache* filter_block_cache) const {
   const bool is_fixed_size_filter = rep_->filter_type == FilterType::kFixedSizeFilter;
 
   // Key is required for fixed size filter.
   assert(!is_fixed_size_filter || filter_key != nullptr);
+
+  if (filter_key && filter_block_cache && filter_block_cache->filter_block) {
+    const Slice lower = filter_block_cache->lowest_known_filter_key.AsSlice();
+    const Slice upper = filter_block_cache->upper_bound_filter_key.AsSlice();
+    if (*filter_key <= upper && lower <= *filter_key) {
+      return {filter_block_cache->filter_block, /* owns = */ false};
+    }
+  }
 
   // If cache_index_and_filter_blocks is false, filter (except fixed-size filter) should be
   // pre-populated.
@@ -1220,9 +1264,23 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
   const BlockHandle* filter_block_handle;
   // Determine filter block handle
   BlockHandle fixed_size_filter_block_handle;
+  Slice filter_block_key_upper_bound;
   if (is_fixed_size_filter) {
-    Status s =
-        GetFixedSizeFilterBlockHandle(*filter_key, &fixed_size_filter_block_handle, statistics);
+    Status s;
+    if (filter_block_cache) {
+      if (!filter_block_cache->filter_index_iter.IsInitialized()) {
+        rep_->filter_index_reader->NewIterator(&filter_block_cache->filter_index_iter);
+      }
+      s = GetFixedSizeFilterBlockHandle(
+          filter_block_cache->filter_index_iter, *filter_key, fixed_size_filter_block_handle,
+          filter_block_key_upper_bound, statistics);
+    } else {
+      BlockIter filter_index_iter;
+      rep_->filter_index_reader->NewIterator(&filter_index_iter);
+      s = GetFixedSizeFilterBlockHandle(
+          filter_index_iter, *filter_key, fixed_size_filter_block_handle,
+          filter_block_key_upper_bound, statistics);
+    }
     if (s.ok()) {
       if (fixed_size_filter_block_handle.IsNull()) {
         // Key is beyond filter index - return stub filter.
@@ -1240,6 +1298,18 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     }
   } else {
     filter_block_handle = &rep_->filter_handle;
+  }
+
+  if (filter_block_cache && filter_block_cache->filter_block_handle == *filter_block_handle) {
+    DCHECK_EQ(filter_block_cache->block_cache, block_cache);
+    DCHECK_EQ(filter_block_cache->upper_bound_filter_key.AsSlice(), filter_block_key_upper_bound);
+    // Reaching here with a matching handle means the fast-path check failed, and since the
+    // filter index resolved to the same entry (*filter_key <= upper_bound_filter_key), the key
+    // must be below the lowest key seen so far. Extend the known coverage downward so keys in
+    // this range hit the fast path next time.
+    DCHECK_LT(*filter_key, filter_block_cache->lowest_known_filter_key.AsSlice());
+    filter_block_cache->lowest_known_filter_key = *filter_key;
+    return { filter_block_cache->filter_block, /* owns = */ false };
   }
 
   // Fetching from the cache
@@ -1276,6 +1346,19 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     }
   }
 
+  if (filter_block_cache) {
+    // Release the previously pinned filter block, if any, before overwriting the handle.
+    if (filter_block_cache->block_cache && filter_block_cache->cache_handle) {
+      filter_block_cache->block_cache->Release(filter_block_cache->cache_handle);
+    }
+    filter_block_cache->block_cache = block_cache;
+    filter_block_cache->filter_block_handle = *filter_block_handle;
+    filter_block_cache->cache_handle = cache_handle;
+    filter_block_cache->filter_block = filter;
+    filter_block_cache->lowest_known_filter_key = *filter_key;
+    filter_block_cache->upper_bound_filter_key = filter_block_key_upper_bound;
+    return { filter, /* owns = */ false };
+  }
   return { filter, *cache_handle };
 }
 
@@ -1939,36 +2022,83 @@ Result<std::unique_ptr<IndexReader>> BlockBasedTable::CreateDataBlockIndexReader
 }
 
 uint64_t BlockBasedTable::ApproximateOffsetOf(const Slice& key) {
-  unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
-
+  std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
   index_iter->Seek(key);
-  uint64_t result;
-  if (index_iter->Valid()) {
-    BlockHandle handle;
-    Slice input = index_iter->value();
-    Status s = handle.DecodeFrom(&input);
-    if (s.ok()) {
-      result = handle.offset();
-    } else {
-      // Strange: we can't decode the block handle in the index block.
-      // We'll just return the offset of the metaindex block, which is
-      // close to the whole file size for this case.
-      result = rep_->footer.metaindex_handle().offset();
+  const Status seek_status = index_iter->status();
+  if (!seek_status.ok() || !index_iter->Valid()) {
+    // Either the index could not be read, or "key" is past the last key in the file. Both
+    // approximate to the end of the data. This is a size estimate with no error channel -- see
+    // VersionSet::ApproximateSize, reachable from DB::GetApproximateSizes and from compaction
+    // sizing -- so degrade rather than fail.
+    if (!seek_status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Approximating offset as data end after index seek failed: " << seek_status;
     }
-  } else {
-    // key is past the last key in the file. If table_properties is not
-    // available, approximate the offset by returning the offset of the
-    // metaindex block (which is right near the end of the file).
-    result = 0;
-    if (rep_->table_properties) {
-      result = rep_->table_properties->data_size;
-    }
-    // table_properties is not present in the table.
-    if (result == 0) {
-      result = rep_->footer.metaindex_handle().offset();
-    }
+    return ApproximateOffsetOfDataEnd();
   }
-  return result;
+
+  BlockHandle handle;
+  Slice input = index_iter->value();
+  const Status decode_status = handle.DecodeFrom(&input);
+  if (!decode_status.ok()) {
+    // The block handle in the index entry did not decode. Fall back to the metaindex offset, which
+    // sits just past the last data block and so is close to the whole file size.
+    YB_LOG_EVERY_N_SECS(WARNING, 30)
+        << "Approximating offset as metaindex offset after index handle decode failed: "
+        << decode_status;
+    return rep_->footer.metaindex_handle().offset();
+  }
+  return handle.offset();
+}
+
+Result<uint64_t> BlockBasedTable::SeekOffsetOf(const Slice& key) {
+  std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
+  index_iter->Seek(key);
+  RETURN_NOT_OK(index_iter->status());
+  if (!index_iter->Valid()) {
+    // "key" is past the last key in the file.
+    return ApproximateOffsetOfDataEnd();
+  }
+
+  // The index entry points to the data block whose separator >= "key"; the smallest key >= "key"
+  // is in this block (or "key" falls between this block's last key and its separator).
+  BlockHandle handle;
+  Slice handle_input = index_iter->value();
+  RETURN_NOT_OK(handle.DecodeFrom(&handle_input));
+  const uint64_t block_offset = handle.offset();
+
+  auto block =
+      VERIFY_RESULT(RetrieveBlock(ReadOptions::kDefault, index_iter->value(), BlockType::kData));
+
+  BlockIter block_it;
+  NewBlockIterator(ReadOptions::kDefault, &block, BlockType::kData, &block_it);
+  RETURN_NOT_OK(block_it.status());
+
+  block_it.Seek(key);
+  if (block_it.Valid()) {
+    const auto in_block_offset = block_it.GetCurrentEntryOffset();
+    const uint64_t decompressed_size = block.value->size();
+    RSTATUS_DCHECK(
+        decompressed_size > 0 || in_block_offset == 0, Corruption,
+        "Non-zero in-block offset $0 in empty block", in_block_offset);
+    const uint64_t scaled_offset = decompressed_size > 0 ? static_cast<uint64_t>(handle.size()) *
+                                                               in_block_offset / decompressed_size
+                                                         : 0;
+    return block_offset + scaled_offset;
+  }
+  RETURN_NOT_OK(block_it.status());
+
+  // "key" is greater than every key in this block but <= its separator, so the smallest key >=
+  // "key" is the first key of the next data block, i.e. that block's file offset.
+  index_iter->Next();
+  RETURN_NOT_OK(index_iter->status());
+  if (!index_iter->Valid()) {
+    return ApproximateOffsetOfDataEnd();
+  }
+  BlockHandle next_handle;
+  Slice next_input = index_iter->value();
+  RETURN_NOT_OK(next_handle.DecodeFrom(&next_input));
+  return next_handle.offset();
 }
 
 bool BlockBasedTable::TEST_filter_block_preloaded() const {
@@ -2236,6 +2366,11 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey(Slice lower_bound_internal
   // data block (consequently the top-level index block has only one entry).
   // If a lower bound was used, we reach here when the SST has only one data block with user keys
   // in them. There may be several index levels and data blocks.
+  return GetFirstDataBlockMiddleKey(lower_bound_internal_key);
+}
+
+yb::Result<std::string> BlockBasedTable::GetFirstDataBlockMiddleKey(
+    Slice lower_bound_internal_key) {
   std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
   RETURN_NOT_OK_PREPEND(index_iter->status(), "Index iterator creation failed");
   if (!lower_bound_internal_key.empty()) {
@@ -2264,6 +2399,64 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey(Slice lower_bound_internal
     delete data_block.value;
   }
   return middle_key_res;
+}
+
+yb::Result<std::string> BlockBasedTable::GetMiddleKeyWithinBounds(
+    Slice lower_bound_key, Slice upper_bound_key) {
+  if (lower_bound_key.empty() || upper_bound_key.empty()) {
+    return STATUS(
+        InvalidArgument, "GetMiddleKeyWithinBounds() requires both lower and upper bounds");
+  }
+
+  std::unique_ptr<DataBlockAwareIndexInternalIterator> index_iter(
+      NewDataBlockAwareIndexIterator(ReadOptions::kDefault));
+  auto index_middle_key = index_iter->GetMiddleKey(lower_bound_key, upper_bound_key);
+  if (!index_middle_key.ok() && !index_middle_key.status().IsIncomplete() &&
+      !index_middle_key.status().IsNotSupported()) {
+    return index_middle_key.status().CloneAndPrepend(
+        "Failed to locate a middle key in index SST file");
+  }
+
+  std::string seek_target;
+  if (index_middle_key.ok()) {
+    seek_target = std::move(*index_middle_key);
+  } else {
+    // The index cannot offer an interior midpoint: too few entries in the bounds (Incomplete), or
+    // an index type that cannot search bounded at all (NotSupported). Fall back to the middle of
+    // the data block covering the lower bound, chosen without reference to either bound.
+    auto block_middle_key = GetFirstDataBlockMiddleKey(lower_bound_key);
+    if (block_middle_key.ok()) {
+      seek_target = std::move(*block_middle_key);
+    } else if (block_middle_key.status().IsIncomplete()) {
+      // That block holds a single record, so it has no middle. Seeking from the lower bound below
+      // still yields the one candidate this file has to offer.
+      seek_target = lower_bound_key.ToBuffer();
+    } else {
+      return block_middle_key.status();
+    }
+  }
+
+  // Neither source is bound by lower_bound_key: index separators are shortened so the key may not
+  // exist at all, index bounds resolve at restart granularity, and a data block can start below the
+  // bound. Seek from whichever of the two is higher and step past an exact match, so the result is
+  // a real key strictly above the lower bound.
+  const auto& icmp = *rep_->comparator;
+  std::unique_ptr<InternalIterator> iter(
+      NewIterator(ReadOptions::kDefault, nullptr, /* skip_filters = */ true));
+  iter->Seek(icmp.Compare(seek_target, lower_bound_key) > 0 ? Slice(seek_target) : lower_bound_key);
+  if (VERIFY_RESULT(iter->CheckedValid()) && iter->key().compare(lower_bound_key) == 0) {
+    iter->Next();
+  }
+  if (!VERIFY_RESULT(iter->CheckedValid())) {
+    return STATUS(Incomplete, "No data key above the lower bound");
+  }
+
+  // Nothing can pull a key back under the upper bound, so decline rather than return one outside
+  // the range this promised to search.
+  if (!upper_bound_key.empty() && icmp.Compare(iter->key(), upper_bound_key) > 0) {
+    return STATUS(Incomplete, "No data key within the bounds");
+  }
+  return iter->key().ToBuffer();
 }
 
 yb::Result<IndexReaderCleanablePtr> BlockBasedTable::TEST_GetIndexReader() {

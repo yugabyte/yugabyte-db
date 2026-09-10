@@ -44,6 +44,8 @@
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+DEFINE_test_flag(uint64, doc_op_next_result_prefetching_delay_ms, 0,
+                 "Delay before prefetching next portion of data.");
 
 namespace yb::pggate {
 namespace {
@@ -163,7 +165,8 @@ Result<PgDocResponse::Data> GetResponse(
   RETURN_NOT_OK(UpdateMetricOnGettingResponse(make_lw_function(
       [&result, &future = future_info.future, &metric_info, &session] () -> Status {
         auto event_watcher = session.StartWaitEvent(
-            ResolveWaitEventCode(metric_info.table_type, metric_info.is_write));
+            ResolveWaitEventCode(metric_info.table_type, metric_info.is_write),
+            metric_info.relation_oid);
         result = VERIFY_RESULT(future.Get(session));
         return Status::OK();
       }),
@@ -294,6 +297,7 @@ Status PgDocOp::FetchMoreResults() {
   // and set end_of_data_.
   // Prefetch next portion of data if needed.
   if (!(end_of_data_ || suppress_next_result_prefetching_)) {
+    AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
     RETURN_NOT_OK(SendRequest());
   }
 
@@ -564,7 +568,7 @@ Result<PgDocResponse> PgDocOp::DefaultSender(
     const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
   PgDocResponse::MetricInfo metrics{
     ResolveRelationType(*ops.front(), table), is_write,
-    IsOpBuffered(!options.force_non_bufferable)};
+    IsOpBuffered(!options.force_non_bufferable), table.pg_table_id().object_oid};
   auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(ops, table, options)), metrics};
   if (!result.Valid()) {
     // session->RunAsync() calls PgSession::DoRunAsync() -> RunHelper::Flush().
@@ -938,6 +942,31 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
 
   // Done creating request, but not all partition or operator has arguments (inactive).
   MoveInactiveOpsOutside();
+
+  // Sort each active partition's batch_arguments ascending by ybctid binary value when row
+  // order isn't preserved by per-arg orders. This gives the server monotonic key access
+  // (filter-block / data-block cache locality) while keeping wire order == processed order so
+  // count-based pagination stays correct.
+  // Sorting once at population time means paginated re-sends see an already-sorted suffix
+  // (pop_front preserves relative order), so no work is redone on the wire.
+  //
+  // We must NOT sort when keep_order is set. Order tags are assigned in generator-traversal
+  // order, and the client's k-way merge over per-partition response streams (priority_queue
+  // keyed by row_orders_[head]) requires each stream to be monotonically non-decreasing in
+  // its order tags. The server preserves that invariant by iterating wire-order; reordering
+  // the wire by ybctid would scramble the tags within each stream and break the merge.
+  if (!keep_order) {
+    for (auto& read_req : ActiveOps() |
+                          std::views::filter(&IsReadOp) |
+                          std::views::transform(&AsReadReq)) {
+      auto* args = read_req.mutable_batch_arguments();
+      if (args->size() > 1) {
+        args->sort([](const LWPgsqlBatchArgumentPB& a, const LWPgsqlBatchArgumentPB& b) {
+          return a.ybctid().value().binary_value() < b.ybctid().value().binary_value();
+        });
+      }
+    }
+  }
 
   return Status::OK();
 }

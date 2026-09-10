@@ -1,6 +1,7 @@
 import { FC } from 'react';
 import { sortBy } from 'lodash';
 import { useQuery } from 'react-query';
+import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBLabel, YBAutoComplete } from '@yugabyte-ui-library/core';
@@ -11,7 +12,7 @@ import { KmsConfig } from '../../../../../features/universe/universe-form/utils/
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box } = mui;
 
@@ -40,8 +41,14 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
   const { data, isLoading } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
   const kmsConfigs: KmsConfig[] = data ? sortBy(data, 'metadata.provider', 'metadata.name') : [];
 
+  useUpdateEffect(() => {
+    if (!encryptionEnabled) {
+      setValue(KMS_FIELD, undefined, { shouldValidate: true });
+    }
+  }, [encryptionEnabled, setValue]);
+
   const handleChange = (e: any, option: any) => {
-    setValue(KMS_FIELD, option?.metadata?.configUUID ?? null, {
+    setValue(KMS_FIELD, option?.metadata?.configUUID ?? undefined, {
       shouldValidate: true
     });
   };
@@ -64,7 +71,7 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
             dataTestId="enable-encryption-at-rest-field"
           />
         </Box>
-        <InfoIcon />
+        {/* <InfoIcon /> */}
       </Box>
       {encryptionEnabled && (
         <Box

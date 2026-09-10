@@ -35,6 +35,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/unique_lock.h"
@@ -343,6 +344,10 @@ void XClusterPoller::DoPoll() {
       if (!ddl_queue_status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
                                  << ddl_queue_status.ToString();
+        StoreNOKReplicationError();
+        if (FLAGS_enable_xcluster_stat_collection) {
+          poll_stats_history_.SetError(std::move(ddl_queue_status));
+        }
         IncrementPollFailures();
         return SchedulePoll();
       }
@@ -792,7 +797,8 @@ void XClusterPoller::StoreReplicationError(ReplicationErrorPb error) {
 void XClusterPoller::StoreNOKReplicationError() {
   {
     std::lock_guard l(replication_error_mutex_);
-    if (previous_replication_error_ != ReplicationErrorPb::REPLICATION_OK) {
+    if (previous_replication_error_ != ReplicationErrorPb::REPLICATION_OK &&
+        previous_replication_error_ != ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED) {
       return;
     }
   }

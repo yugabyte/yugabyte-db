@@ -208,7 +208,8 @@ func copyBits(vers string) error {
 	// cleaned up automatically with the rest of the version dir by
 	// PrunePastInstalls() on upgrade and by Uninstall() on full uninstall.
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
-		GetJavaPackagePath(), GetPostgresPackagePath(), bundlePACollectorPackagePath()}
+		GetJavaPackagePath(), GetPostgresPackagePath(), bundlePACollectorPackagePath(),
+		bundleYsqlDumpClientPath()}
 
 	for _, file := range neededFiles {
 		fp := AbsoluteBundlePath(file)
@@ -398,6 +399,11 @@ func createYugabyteUser() error {
 	if HasSudoAccess() {
 		if out := shell.Run("useradd", "-m", userName, "-U"); !out.Succeeded() {
 			return fmt.Errorf("failed to create user %s: %s", userName, out.Error.Error())
+		}
+		// The python preflight check can only warn while the service user is missing. This is the
+		// first point where it exists and we can still abort, so enforce it here.
+		if err := ValidatePython(userName); err != nil {
+			return err
 		}
 	} else {
 		return fmt.Errorf("need sudo access to create yugabyte user")

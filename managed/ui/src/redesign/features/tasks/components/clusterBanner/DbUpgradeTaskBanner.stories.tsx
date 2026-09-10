@@ -238,18 +238,48 @@ export const UpgradeFailed: Story = {
   }
 };
 
-/** Task failed while universe is Ready (e.g. upgrade aborted) — ALERT banner vs {@link UpgradeFailed} ERROR. */
+/** User-aborted mid-upgrade — same ERROR banner as {@link UpgradeFailed}. */
 const upgradeAbortedTask = createDbUpgradeTaskMock({
+  status: TaskState.ABORTED,
+  softwareUpgradeProgress: {
+    masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map(
+      (az) => ({
+        ...az,
+        status: AZUpgradeStatus.NOT_STARTED
+      })
+    ),
+    tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map(
+      (az) => ({
+        ...az,
+        status: AZUpgradeStatus.NOT_STARTED
+      })
+    )
+  }
+});
+
+export const UpgradeAborted: Story = {
+  ...storyWithBannerMsw(upgradeAbortedTask, {
+    universeInfoOverrides: {
+      software_upgrade_state: UniverseInfoSoftwareUpgradeState.UpgradeFailed
+    }
+  }),
+  args: {
+    task: upgradeAbortedTask
+  }
+};
+
+/** Task failed while universe is Ready (e.g. precheck) — ALERT banner vs {@link UpgradeFailed} ERROR. */
+const upgradeFailedDuringPrecheckTask = createDbUpgradeTaskMock({
   status: TaskState.FAILURE,
   omitSoftwareUpgradeProgress: true
 });
 
 export const UpgradeFailedDuringPrecheck: Story = {
-  ...storyWithBannerMsw(upgradeAbortedTask, {
+  ...storyWithBannerMsw(upgradeFailedDuringPrecheckTask, {
     universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
   }),
   args: {
-    task: upgradeAbortedTask
+    task: upgradeFailedDuringPrecheckTask
   }
 };
 

@@ -64,6 +64,14 @@ class WriteStallConsensusTest : public integration_tests::YBTableTestBase {
     SCHECK_EQ(tablet_ids.size(), 1U, IllegalState, "Expected exactly one tablet");
     return tablet_ids[0];
   }
+
+  // Table creation returns before the freshly elected leader commits its term NoOp, so the
+  // leader is not yet LEADER_AND_READY as GetLeaderPeerForTablet requires.
+  Result<tablet::TabletPeerPtr> WaitForReadyLeaderPeer(const TabletId& tablet_id) {
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(
+        mini_cluster(), tablet_id, CoarseMonoClock::Now() + 30s, RequireLeaderIsReady::kTrue));
+    return GetLeaderPeerForTablet(mini_cluster(), tablet_id);
+  }
 };
 
 // Verifies that a write stop on a tablet's RocksDB does not prevent leader elections.
@@ -73,13 +81,13 @@ class WriteStallConsensusTest : public integration_tests::YBTableTestBase {
 TEST_F(WriteStallConsensusTest, LeaderElectionSucceedsDuringWriteStop) {
   auto tablet_id = ASSERT_RESULT(GetOnlyTabletId());
 
-  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(mini_cluster(), tablet_id));
+  auto leader_peer = ASSERT_RESULT(WaitForReadyLeaderPeer(tablet_id));
   auto tablet = ASSERT_RESULT(leader_peer->shared_tablet());
   auto* db = tablet->regular_db();
   ASSERT_NE(db, nullptr);
 
   auto* db_impl = down_cast<rocksdb::DBImpl*>(db);
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());
@@ -120,10 +128,10 @@ TEST_F(WriteStallConsensusTest, LeaderElectionSucceedsDuringWriteStop) {
 TEST_F(WriteStallConsensusTest, OtherTabletsRemainWritableDuringWriteStop) {
   auto tablet_id = ASSERT_RESULT(GetOnlyTabletId());
 
-  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(mini_cluster(), tablet_id));
+  auto leader_peer = ASSERT_RESULT(WaitForReadyLeaderPeer(tablet_id));
   auto tablet = ASSERT_RESULT(leader_peer->shared_tablet());
   auto* db_impl = down_cast<rocksdb::DBImpl*>(tablet->regular_db());
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());

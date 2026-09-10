@@ -23,6 +23,7 @@
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/util/status_callback.h"
+#include "yb/util/status_format.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
@@ -242,9 +243,14 @@ int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement
 
 const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader);
 
+// Runs the given statements on the closest live tserver's local postgres via the AdminExecutePgsql
+// RPC. If yb_internal_conn_kind is non-empty, the tserver tags the internal PG connection with that
+// YbInternalConnKind wire name (see YbInternalConnKindWireName in libpq_utils.h); empty leaves it
+// as a generic internal connection.
 Status ExecutePgsqlStatements(
     const std::string& database_name, const std::vector<std::string>& statements,
-    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback);
+    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback,
+    std::string_view yb_internal_conn_kind = {});
 
 bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb);
 

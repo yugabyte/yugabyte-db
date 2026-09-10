@@ -29,6 +29,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 

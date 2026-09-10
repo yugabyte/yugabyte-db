@@ -38,5 +38,5 @@ Show the values of all configuration parameters, with descriptions.
 
 ## See also
 
-- [`SET`](../cmd_set)
-- [`RESET`](../cmd_reset)
+- [SET](../cmd_set)
+- [RESET](../cmd_reset)

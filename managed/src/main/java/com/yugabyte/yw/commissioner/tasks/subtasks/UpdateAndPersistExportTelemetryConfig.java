@@ -48,6 +48,19 @@ public class UpdateAndPersistExportTelemetryConfig extends UniverseTaskBase {
       TelemetryConfig telemetryConfig =
           params.getTelemetryConfig() != null ? params.getTelemetryConfig() : new TelemetryConfig();
 
+      // Keep the stored exportActive flag consistent with the exporter list before writing to the
+      // table and userIntent, so neither the persisted config nor the UI (which reads the raw flag)
+      // shows "export active" with no exporters. Metrics is exempt (its isExportActive() is
+      // computed
+      // from the list). These are the same objects params.getAuditLogConfig()/getQueryLogConfig()
+      // return, so both the table and userIntent writes below see the fix.
+      if (telemetryConfig.getAuditLogConfig() != null) {
+        telemetryConfig.getAuditLogConfig().normalizeExportActive();
+      }
+      if (telemetryConfig.getQueryLogConfig() != null) {
+        telemetryConfig.getQueryLogConfig().normalizeExportActive();
+      }
+
       ExportTelemetryConfig exportTelemetryConfig =
           ExportTelemetryConfig.getForUniverse(params.getUniverseUUID())
               .orElseGet(

@@ -28,6 +28,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 namespace yb::tablet {
 

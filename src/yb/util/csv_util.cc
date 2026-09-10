@@ -20,6 +20,7 @@
 
 #include "yb/util/format.h"
 #include "yb/util/pg_util.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

@@ -1756,7 +1756,15 @@ YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format)
 
 	ExplainBeginOutput(es);
 	ExplainOpenGroup("Query", NULL, true, es);
+
+	/*
+	 * Save/set/reset GUC to hide non-deterministic fields in EXPLAIN text for QPM.
+	 * (GH #32262 better handles cases such as this one that interact with global flags.)
+	 */
+	bool save_yb_explain_hide_non_deterministic_fields = yb_explain_hide_non_deterministic_fields;
+	yb_explain_hide_non_deterministic_fields = true;
 	ExplainPrintPlan(es, queryDesc);
+	yb_explain_hide_non_deterministic_fields = save_yb_explain_hide_non_deterministic_fields;
 	ExplainCloseGroup("Query", NULL, true, es);
 	ExplainEndOutput(es);
 

@@ -43,7 +43,7 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
   {{<index/item
     title="Export and import"
     body="Export and import data using SQL or CQL scripts."
-    href="export-import-data/"
+    href="export-import-data-ysql/"
     icon="fa-thin fa-file-import">}}
 
   {{<index/item

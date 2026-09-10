@@ -18,6 +18,8 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/status_log.h"
+
 namespace yb {
 namespace master {
 

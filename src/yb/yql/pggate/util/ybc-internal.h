@@ -20,7 +20,7 @@
 #endif
 
 #include <cstddef>
-#include <string>
+#include <string_view>
 
 #include "yb/util/status_fwd.h"
 
@@ -49,6 +49,6 @@ void YBCSetDeleteMemoryContextFn(YbcDeleteMemoryContextFn delete_mem_context_fn)
 void YBCDeleteMemoryContext(void* context);
 
 // Duplicate the given string in memory allocated using PostgreSQL's palloc.
-char* YBCPAllocStdString(const std::string& s);
+char* YBCPAllocStdString(std::string_view s);
 
 } // namespace yb::pggate

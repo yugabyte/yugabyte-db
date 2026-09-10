@@ -63,7 +63,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
-  private static boolean ysql_conn_mgr_enable_prep_stmt_close = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -85,8 +84,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
     builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
       Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
-    builder.addCommonTServerFlag("ysql_conn_mgr_enable_prep_stmt_close",
-      Boolean.toString(ysql_conn_mgr_enable_prep_stmt_close));
   }
 
   @Override
@@ -177,9 +174,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void modifyExtendedQueryProtocolAndRestartCluster(
       boolean optimized_extended_query_protocol) throws Exception {
     ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
-    // ysql_conn_mgr_deallocate_prepared_statements can only be enabled if
-    // optimized_extended_query_protocol is enabled.
-    ysql_conn_mgr_enable_prep_stmt_close = optimized_extended_query_protocol;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
@@ -192,7 +186,11 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getConnectionStats() throws IOException {
-    String host_name = getPgHost(TSERVER_IDX);
+    return getConnectionStats(TSERVER_IDX);
+  }
+
+  protected JsonObject getConnectionStats(int tserverIndex) throws IOException {
+    String host_name = getPgHost(tserverIndex);
     MiniYBDaemon[] ts_list = miniCluster.getTabletServers()
                                         .values()
                                         .toArray(new MiniYBDaemon[0]);
@@ -222,8 +220,13 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getPool(String db_name, String user_name) throws Exception {
+    return getPool(db_name, user_name, TSERVER_IDX);
+  }
+
+  protected JsonObject getPool(String db_name, String user_name, int tserverIndex)
+      throws Exception {
     // Specifically fetches a non logical replication pool. Use `getRepPool()` for replication pool.
-    JsonObject obj = getConnectionStats();
+    JsonObject obj = getConnectionStats(tserverIndex);
     assertNotNull("Got a null response from the connections endpoint", obj);
     JsonArray pools = obj.getAsJsonArray("pools");
     assertNotNull("Got empty pool", pools);
@@ -713,15 +716,25 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         + "  then echo \"$pid\"; exit 0; fi; "
         + "done; "
         + "exit 1";
-    Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
-    try (BufferedReader reader =
-             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-      String line = reader.readLine();
-      if (line == null || line.trim().isEmpty()) {
+    // After a cluster restart the odyssey process can be up (visible to pgrep)
+    // before it has finished binding its listening socket, so a single ss pass
+    // may miss it. Poll until the socket becomes visible rather than failing on
+    // the first miss.
+    final long deadlineMs = System.currentTimeMillis() + 30000;
+    for (;;) {
+      Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
+      try (BufferedReader reader =
+               new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+        String line = reader.readLine();
+        if (line != null && !line.trim().isEmpty()) {
+          return Integer.parseInt(line.trim());
+        }
+      }
+      if (System.currentTimeMillis() >= deadlineMs) {
         throw new RuntimeException(
             "Could not find Odyssey process listening on host " + host);
       }
-      return Integer.parseInt(line.trim());
+      Thread.sleep(200);
     }
   }
 }

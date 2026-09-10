@@ -11,7 +11,7 @@ import { ProviderType } from '../../steps/general-settings/dtos';
 
 const { Box, styled, Typography } = mui;
 
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 interface TimeSyncProps {
   disabled: boolean;

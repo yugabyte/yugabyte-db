@@ -67,10 +67,7 @@ class MacLibraryPackager:
         self.absolute_paths_by_libname = {}
 
         build_paths = BuildPaths(self.build_dir)
-        if build_paths.llvm_path:
-            self.install_name_tool = f'{build_paths.llvm_path}/bin/llvm-install-name-tool'
-        else:
-            self.install_name_tool = 'install_name_tool'
+        self.install_name_tool = f'{build_paths.llvm_path}/bin/llvm-install-name-tool'
 
     def package_binaries(self) -> None:
         src = self.build_dir

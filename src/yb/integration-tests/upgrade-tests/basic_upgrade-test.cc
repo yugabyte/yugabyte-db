@@ -14,6 +14,8 @@
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {

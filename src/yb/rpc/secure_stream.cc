@@ -35,6 +35,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/flags.h"
 #include "yb/util/env.h"

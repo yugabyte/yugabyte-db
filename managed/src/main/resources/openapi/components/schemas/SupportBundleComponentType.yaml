@@ -1,0 +1,51 @@
+title: SupportBundleComponentType
+description: Support bundle component type (same values as V1 BundleDetails.ComponentType).
+type: string
+enum:
+  - UniverseLogs
+  - FilesComponent
+  - BashComponent
+  - YSQLComponent
+  - YCQLComponent
+  - YbAdminComponent
+  - OutputFiles
+  - ErrorFiles
+  - CoreFiles
+  - GFlags
+  - Instance
+  - ConsensusMeta
+  - TabletMeta
+  - YbcLogs
+  - NodeAgent
+  - SystemLogs
+  - TabletReport
+  - K8sInfo
+  - YbaMetadata
+  - PrometheusMetrics
+  - PerfAdvisor
+  - ApplicationLogs
+  - YBAComponent
+x-enum-varnames:
+  - UniverseLogs
+  - FilesComponent
+  - BashComponent
+  - YSQLComponent
+  - YCQLComponent
+  - YbAdminComponent
+  - OutputFiles
+  - ErrorFiles
+  - CoreFiles
+  - GFlags
+  - Instance
+  - ConsensusMeta
+  - TabletMeta
+  - YbcLogs
+  - NodeAgent
+  - SystemLogs
+  - TabletReport
+  - K8sInfo
+  - YbaMetadata
+  - PrometheusMetrics
+  - PerfAdvisor
+  - ApplicationLogs
+  - YBAComponent

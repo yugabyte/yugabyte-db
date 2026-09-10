@@ -15,7 +15,7 @@ import java.time.Duration;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.SetUniverseReplicationEnabledResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class SetReplicationPaused extends XClusterConfigTaskBase {
@@ -80,7 +80,7 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
             pauseRpcTimeout.toMillis(),
             pauseRpcTimeout.toMillis(),
             pauseRpcTimeout.toMillis());
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       SetUniverseReplicationEnabledResponse resp =
           client.setUniverseReplicationEnabled(
               xClusterConfig.getReplicationGroupName(), !taskParams().pause /* active */);

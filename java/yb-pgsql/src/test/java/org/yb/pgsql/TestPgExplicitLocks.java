@@ -22,10 +22,17 @@ import org.yb.util.Pair;
 import org.yb.YBTestRunner;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
@@ -57,7 +64,24 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   }
 
   @Test
-  public void testExplicitLocks() throws Exception {
+  public void testTxnPriorities() throws Exception {
+    // This test relies on FOR UPDATE being assigned the high txn priority band. That logic doesn't
+    // hold with concurrent DDL, because the priority is latched by the object lock/ catalog
+    // read RPCs that are sent before the row lock RPC, i.e. while the row mark is still absent.
+    // So, run just this test in the legacy mode.
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // DDL savepoint support requires ysql_yb_ddl_transaction_block_enabled, so disable it too.
+    tserverFlags.put("ysql_yb_enable_ddl_savepoint_support", "false");
+    tserverFlags.put("enable_object_locking_for_table_locks", "false");
+    tserverFlags.put("ysql_enable_concurrent_ddl", "false");
+    // addCommonTServerFlags() overwrites the value set in getTServerFlags(), so repeat
+    // skip_prefix_locks here.
+    tserverFlags.put("allowed_preview_flags_csv", "skip_prefix_locks,ysql_enable_concurrent_ddl");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+    // The following tests in this class should run with the default flags again.
+    markClusterNeedsRecreation();
+
     setupSimpleTable("explicitlocks");
     Connection c1 = getConnectionBuilder().connect();
     Connection c2 = getConnectionBuilder().connect();
@@ -530,6 +554,55 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       assertTrue((read_count_after - read_count_before) == 2);
       stmt1.execute("COMMIT");
       stmt2.execute("ROLLBACK");
+    }
+  }
+
+  private Row countRowLocks(Statement stmt, String tableName) throws Exception {
+    // yb_locks_min_txn_age hides locks from fresh transactions; wait before inspecting.
+    stmt.execute("SELECT pg_sleep(1.5)");
+
+    return getSingleRow(stmt, String.format(
+        "SELECT count(*) FROM yb_lock_status(null, null) l " +
+        "WHERE l.locktype = 'row' AND l.relation = '%s'::regclass", tableName));
+  }
+
+  private void runSkipLockedQueryWithFetchSize(Connection conn, int maxReadAhead) throws Exception {
+    final int fetchSize = 1;
+    final long rowsToFetch = 3;
+
+    Statement stmt = conn.createStatement();
+    conn.setAutoCommit(false);
+    stmt.setFetchSize(fetchSize);
+    stmt.execute(String.format(
+        "SET yb_explicit_row_lock_skip_locked_max_read_ahead = %d", maxReadAhead));
+    stmt.execute("BEGIN");
+    ResultSet rs = stmt.executeQuery("SELECT k FROM t_simple ORDER BY k FOR UPDATE SKIP LOCKED");
+
+    int[] expected_rows = {1, 2, 3};
+    for (int expected_row : expected_rows) {
+      assertTrue(rs.next());
+      assertEquals(expected_row, rs.getInt(1));
+    }
+
+    long actualRows = countRowLocks(stmt, "t_simple").getLong(0);
+    assertEquals(actualRows, rowsToFetch);
+
+    conn.commit();
+  }
+
+  // Validate that setFetchSize does not overlock when read-ahead batching is enabled.
+  @Test
+  public void testSkipLockedReadAheadWithFetchSize() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+        .withPreferQueryMode("extended")
+        .connect()) {
+
+      Statement stmt = conn.createStatement();
+      stmt.execute("CREATE TABLE t_simple (k INT, PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_simple SELECT i FROM generate_series(1, 10) i");
+
+      runSkipLockedQueryWithFetchSize(conn, 4 /* maxReadAhead */);
+      runSkipLockedQueryWithFetchSize(conn, 1 /* maxReadAhead */);
     }
   }
 }

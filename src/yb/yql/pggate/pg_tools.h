@@ -32,14 +32,17 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/pg_types.h"
+
 #include "yb/common/transaction.pb.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/format.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -55,6 +58,24 @@ class PgTypeInfo;
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);
 
+// Returns the OID which every element of the range projects to, or kPgInvalidOid when the range
+// is empty or its elements project to more than one OID.
+template<class Range, class Projection>
+[[nodiscard]] PgOid SingleRelationOid(const Range& range, const Projection& projection) {
+  auto i = std::begin(range);
+  const auto end = std::end(range);
+  if (i == end) {
+    return kPgInvalidOid;
+  }
+  const auto oid = projection(*i);
+  for (++i; i != end; ++i) {
+    if (projection(*i) != oid) {
+      return kPgInvalidOid;
+    }
+  }
+  return oid;
+}
+
 struct Bound {
   uint16_t value;
   bool is_inclusive;
@@ -68,7 +89,7 @@ class PgWaitEventWatcher {
   using Starter = YbcWaitEventInfo (*)(YbcWaitEventInfo info);
 
   PgWaitEventWatcher(
-      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
+      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux);
   ~PgWaitEventWatcher();
 
  private:
@@ -212,5 +233,33 @@ class TableLocalityMap {
 };
 
 bool SkipIntents(const PgsqlOp& op);
+
+// Records both skip intents optimization decisions on a read or write request.
+template <class ReqPB>
+Status ApplySkipIntentsOptimizationInfo(
+    const YbcPgSkipIntentsOptimizationInfo& info, ReqPB& req) {
+  // An operation that bypasses the intents db leaves its rows in the regular db above the
+  // transaction read time, so it can only be correct if the operation also reads at the
+  // statement's in_txn_limit. YbGetSkipIntentsOptimizationInfo establishes this by construction;
+  // check it here because the struct crosses the C boundary between the two.
+  RSTATUS_DCHECK(
+      !info.skip_intents || info.read_at_in_txn_limit, IllegalState,
+      "Skipping the intents db requires reading at the statement's in_txn_limit");
+
+  if (info.skip_intents) {
+    if constexpr (requires { req.set_skip_intents_write(true); }) {
+      req.set_skip_intents_write(true);
+    } else {
+      static_assert(requires { req.set_skip_intents_read(true); });
+      req.set_skip_intents_read(true);
+    }
+  }
+  if (info.read_at_in_txn_limit) {
+    req.set_read_at_in_txn_limit(true);
+  }
+  return Status::OK();
+}
+
+Status CheckForPgInterrupts();
 
 } // namespace yb::pggate

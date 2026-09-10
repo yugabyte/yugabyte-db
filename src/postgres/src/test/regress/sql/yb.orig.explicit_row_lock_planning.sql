@@ -22,67 +22,67 @@ SET yb_lock_pk_single_rpc TO ON;
 
 -- Test plain (unlocked case).
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5;'
-\i :iter_P2
+\i :run_query
 
 -- Test single-RPC select+lock (no LockRows node).
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test other types of locking.
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5 FOR SHARE;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5 FOR NO KEY UPDATE;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5 FOR KEY SHARE;'
-\i :iter_P2
+\i :run_query
 
 -- Test LockRows node (more RPCs), and scan is unlocked.
 \set query ':P SELECT * FROM yb_locks_t FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test with multi-column primary key.
 \set query ':P SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 AND k3=3 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test with partial column set for primary key (should use LockRows).
 \set query ':P SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test LockRows node is used for join.
 \set query ':P SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test LockRows node is used with ASC table when YB Sequential Scan is used.
 \set Q1 '/*+ SeqScan(yb_locks_tasc) */'
 \set query ':P :Q1 SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- In isolation level SERIALIZABLE, all locks are done during scans.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 
 -- Test same locking as for REPEATABLE READ (default isolation).
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test no LockRows node for sequential scan.
 \set query ':P SELECT * FROM yb_locks_t FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test no LockRows node for join.
 \set query ':P SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test locking, and no LockRows node, when using an ASC table and YB Sequential Scan.
 -- (No WHERE clause.)
 \set Q1 '/*+ SeqScan(yb_locks_tasc) */'
 \set query ':P :Q1 SELECT * FROM yb_locks_tasc FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- For an ASC table, should lock inline, with no LockRows node.
 \set query ':P SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 COMMIT;
 
@@ -90,13 +90,13 @@ COMMIT;
 SET yb_lock_pk_single_rpc TO OFF;
 
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test that with the yb_lock_pk_single_rpc off, SERIALIZABLE still locks during the scan
 -- (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 \set query ':P SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 COMMIT;
 
 SET yb_lock_pk_single_rpc TO ON;
@@ -105,17 +105,17 @@ CREATE INDEX ON yb_locks_t2 (v);
 
 -- Test with an index. We use a LockRows node for an index.
 \set query ':P SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Test only the indexed column.
 \set query ':P SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 -- Isolation level SERIALIZABLE still locks with the scan though (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 
 \set query ':P SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;'
-\i :iter_P2
+\i :run_query
 
 COMMIT;
 
@@ -150,7 +150,7 @@ PREPARE yb_locks_plan_rr (int) AS SELECT * FROM yb_locks_t WHERE k=$1 FOR UPDATE
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- The LockRows node has a "no-op" annotation.
 \set query ':P EXECUTE yb_locks_plan_rr(1);'
-\i :iter_P2
+\i :run_query
 -- In JSON mode, the LockRows node has an "Executes" field set to false.
 EXPLAIN (COSTS OFF, FORMAT JSON)
 EXECUTE yb_locks_plan_rr(1);
@@ -162,21 +162,21 @@ SET yb_lock_pk_single_rpc TO ON;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser (int) AS SELECT * FROM yb_locks_t WHERE k=$1 FOR UPDATE;
 \set query ':P EXECUTE yb_locks_plan_ser(1);'
-\i :iter_P2
+\i :run_query
 COMMIT;
 
 \set query ':P EXECUTE yb_locks_plan_ser(1);'
-\i :iter_P2
+\i :run_query
 
 -- Test that prepared statements made in isolation level SERIALIZABLE, for a non-PK, have
 -- a LockRows node that functions in RR and RC.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser_all (int) AS SELECT * FROM yb_locks_t FOR UPDATE;
 \set query ':P EXECUTE yb_locks_plan_ser_all(1);'
-\i :iter_P2
+\i :run_query
 COMMIT;
 \set query ':P EXECUTE yb_locks_plan_ser_all(1);'
-\i :iter_P2
+\i :run_query
 
 -- Reset
 SET yb_lock_pk_single_rpc TO DEFAULT;

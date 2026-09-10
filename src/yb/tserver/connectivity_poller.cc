@@ -24,6 +24,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/physical_time.h"
+#include "yb/util/status_log.h"
 
 DEFINE_RUNTIME_uint64(connectivity_check_interval_ms, 60000,
     "Milliseconds interval to check connectivity between cluster nodes");

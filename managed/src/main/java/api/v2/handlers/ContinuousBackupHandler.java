@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -25,15 +26,27 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import io.ebean.Model;
 import java.util.Optional;
 import java.util.UUID;
-import play.mvc.Http;
 
 public class ContinuousBackupHandler extends ApiControllerUtils {
 
-  @Inject private Commissioner commissioner;
-  @Inject private ConfigHelper configHelper;
-  @Inject private StorageUtilFactory storageUtilFactory;
+  private final Commissioner commissioner;
+  private final ConfigHelper configHelper;
+  private final StorageUtilFactory storageUtilFactory;
+
+  @Inject
+  public ContinuousBackupHandler(
+      AuditService auditService,
+      Commissioner commissioner,
+      ConfigHelper configHelper,
+      StorageUtilFactory storageUtilFactory) {
+    super(auditService);
+    this.commissioner = commissioner;
+    this.configHelper = configHelper;
+    this.storageUtilFactory = storageUtilFactory;
+  }
 
   /**
    * Validates that a backup directory name is safe for cloud storage. Checks for: - Path traversal
@@ -74,8 +87,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
   }
 
   public ContinuousBackup createContinuousBackup(
-      Http.Request request, UUID cUUID, ContinuousBackupSpec continuousBackupCreateSpec)
-      throws Exception {
+      UUID cUUID, ContinuousBackupSpec continuousBackupCreateSpec) throws Exception {
 
     // Check if there is an existing config
     if (ContinuousBackupConfig.get().isPresent()) {
@@ -113,33 +125,27 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
     taskParams.cbConfig = cbConfig;
     // Schedule objects assume frequency is in milliseconds
-    Schedule schedule =
-        Schedule.create(
-            cUUID,
-            cbConfig.getUuid(),
-            taskParams,
-            TaskType.CreateContinuousBackup,
-            cbConfig.getFrequencyInMilliseconds(),
-            null,
-            false /* useLocalTimezone */,
-            cbConfig.getFrequencyTimeUnit(),
-            "ContinuousBackupSchedule");
+    Schedule.create(
+        cUUID,
+        cbConfig.getUuid(),
+        taskParams,
+        TaskType.CreateContinuousBackup,
+        cbConfig.getFrequencyInMilliseconds(),
+        null,
+        false /* useLocalTimezone */,
+        cbConfig.getFrequencyTimeUnit(),
+        "ContinuousBackupSchedule");
     return ContinuousBackupMapper.INSTANCE.toContinuousBackup(cbConfig);
   }
 
-  public ContinuousBackup deleteContinuousBackup(Http.Request request, UUID cUUID, UUID bUUID)
-      throws Exception {
+  public ContinuousBackup deleteContinuousBackup(UUID bUUID) {
     Optional<ContinuousBackupConfig> optional = ContinuousBackupConfig.get(bUUID);
-    if (!optional.isPresent()) {
+    if (optional.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "no continous backup config found with UUID");
     }
     // Delete the active continuous backup schedules
     Schedule.getAllActiveSchedulesByOwnerUUIDAndType(bUUID, TaskType.CreateContinuousBackup)
-        .stream()
-        .forEach(
-            schedule -> {
-              schedule.delete();
-            });
+        .forEach(Model::delete);
     // Delete the metrics Gauge
     CreateContinuousBackup.clearGauge();
     ContinuousBackupConfig.delete(bUUID);
@@ -147,11 +153,10 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
   }
 
   public ContinuousBackup editContinuousBackup(
-      Http.Request request, UUID cUUID, UUID bUUID, ContinuousBackupSpec continuousBackupEditSpec)
-      throws Exception {
+      UUID cUUID, UUID bUUID, ContinuousBackupSpec continuousBackupEditSpec) {
     Optional<ContinuousBackupConfig> optional = ContinuousBackupConfig.get(bUUID);
     // Validate params
-    if (!optional.isPresent()) {
+    if (optional.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "No continous backup config found with UUID " + bUUID);
     }
@@ -178,11 +183,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
 
     // Delete the active continuous backup schedules
     Schedule.getAllActiveSchedulesByOwnerUUIDAndType(bUUID, TaskType.CreateContinuousBackup)
-        .stream()
-        .forEach(
-            schedule -> {
-              schedule.delete();
-            });
+        .forEach(Model::delete);
     // Clear metrics
     CreateContinuousBackup.clearGauge();
 
@@ -199,32 +200,30 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     cbConfig.update();
     CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
     taskParams.cbConfig = cbConfig;
-    Schedule schedule =
-        Schedule.create(
-            cUUID,
-            cbConfig.getUuid(),
-            taskParams,
-            TaskType.CreateContinuousBackup,
-            cbConfig.getFrequencyInMilliseconds(),
-            null,
-            false /* useLocalTimezone */,
-            cbConfig.getFrequencyTimeUnit(),
-            "ContinuousBackupSchedule");
+    Schedule.create(
+        cUUID,
+        cbConfig.getUuid(),
+        taskParams,
+        TaskType.CreateContinuousBackup,
+        cbConfig.getFrequencyInMilliseconds(),
+        null,
+        false /* useLocalTimezone */,
+        cbConfig.getFrequencyTimeUnit(),
+        "ContinuousBackupSchedule");
 
     return ContinuousBackupMapper.INSTANCE.toContinuousBackup(cbConfig);
   }
 
-  public ContinuousBackup getContinuousBackup(Http.Request request, UUID cUUID) throws Exception {
+  public ContinuousBackup getContinuousBackup() {
     Optional<ContinuousBackupConfig> cbConfigOpt = ContinuousBackupConfig.get();
-    if (!cbConfigOpt.isPresent()) {
+    if (cbConfigOpt.isEmpty()) {
       throw new PlatformServiceException(NOT_FOUND, "No continuous backup config found.");
     }
     ContinuousBackupConfig cbConfig = cbConfigOpt.get();
     return ContinuousBackupMapper.INSTANCE.toContinuousBackup(cbConfig);
   }
 
-  public YBATask restoreContinuousBackup(
-      Http.Request request, UUID cUUID, ContinuousRestoreSpec spec) throws Exception {
+  public YBATask restoreContinuousBackup(UUID cUUID, ContinuousRestoreSpec spec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     RestoreContinuousBackup.Params taskParams = new RestoreContinuousBackup.Params();
     taskParams.storageConfigUUID = spec.getStorageConfigUuid();

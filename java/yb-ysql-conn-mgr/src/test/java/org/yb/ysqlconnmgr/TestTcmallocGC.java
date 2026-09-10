@@ -20,6 +20,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
+import com.google.gson.JsonObject;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
   private static final int TEST_GC_INTERVAL_SECS = 2;
   private static final int NUM_CONNECTIONS = 500;
   private static final int TSERVER_INDEX = 1;
+  private static final int DRAIN_TIMEOUT_MS = 30000;
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -48,6 +50,35 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
     builder.addCommonTServerFlag("ysql_conn_mgr_tcmalloc_gc_interval",
       String.valueOf(TEST_GC_INTERVAL_SECS));
     builder.addCommonTServerFlag("ysql_conn_mgr_log_settings", "log_debug, log_query");
+  }
+
+  // Logical connections (active + queued + waiting) on the pool the burst uses, as reported by the
+  // connection manager serving TSERVER_INDEX. Zero if that pool does not exist yet.
+  private int getBurstPoolLogicalConns() throws Exception {
+    JsonObject pool = getPool("yugabyte", "yugabyte", TSERVER_INDEX);
+    if (pool == null) {
+      return 0;
+    }
+    return pool.get("active_logical_connections").getAsInt()
+        + pool.get("queued_logical_connections").getAsInt()
+        + pool.get("waiting_logical_connections").getAsInt();
+  }
+
+  // Waits for the connection manager to finish tearing down the burst's clients, i.e. for the pool
+  // to be back to the logical connection count it reported before the burst. The stats behind
+  // /connections are refreshed on the cron tick, so this lags the client-side close by up to
+  // ysql_conn_mgr_stats_interval.
+  private void waitForBurstToDrain(int logicalConnsBefore) throws Exception {
+    final long deadline = System.currentTimeMillis() + DRAIN_TIMEOUT_MS;
+    int logicalConns = getBurstPoolLogicalConns();
+    while (logicalConns > logicalConnsBefore && System.currentTimeMillis() < deadline) {
+      Thread.sleep(200);
+      logicalConns = getBurstPoolLogicalConns();
+    }
+    assertTrue(String.format(
+        "Pool still reports %d logical connections after %d ms, was %d before the burst",
+        logicalConns, DRAIN_TIMEOUT_MS, logicalConnsBefore),
+        logicalConns <= logicalConnsBefore);
   }
 
   private long createLoadToRecordPeakRss(int odysseyPid) throws Exception {
@@ -97,12 +128,22 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
   // ysql_conn_mgr_tcmalloc_gc_interval seconds.
   @Test
   public void TestTcmallocGC() throws Exception {
-    assumeFalse("RSS-based memory assertions are unreliable under ASAN builds",
-        BuildTypeUtil.isASAN());
+    assumeFalse("tcmalloc is not used for sanitizer (tsan/asan) builds and conn mgr "
+        + "does gc for google tcmalloc only.",
+        BuildTypeUtil.isSanitizerBuild());
 
     final int tserverIndex = 1;
     final String tserverHost = getPgHost(tserverIndex);
+    final HostAndPort tserver = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(tserverHost)).findFirst()
+        .orElseThrow(() -> new IllegalStateException(
+            "No tserver found for host " + tserverHost));
     final int odysseyPid = getOdysseyPidForHost(tserverHost);
+
+    // Keep the GC off for the whole burst so nothing is released while the
+    // connections drain.
+    setServerFlag(tserver, "ysql_conn_mgr_tcmalloc_gc_interval", "0");
+
     long odysseyRSSStart = getRssForPid(odysseyPid);
     long odysseyRSSPeak = createLoadToRecordPeakRss(odysseyPid);
     assertTrue(String.format("Odyssey RSS should have increased from %d" +
@@ -110,24 +151,30 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
         odysseyRSSStart < odysseyRSSPeak);
 
     Thread.sleep(500);
+    // RSS once the burst has drained, with the freed pages still held by
+    // tcmalloc because the GC is disabled.
+    long odysseyRSSBeforeGc = getRssForPid(odysseyPid);
+
+    ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, tserverIndex);
+    tailer.skipToEnd();
+
+    // Re-enabling releases everything accumulated above in one shot.
+    setServerFlag(tserver, "ysql_conn_mgr_tcmalloc_gc_interval",
+        String.valueOf(TEST_GC_INTERVAL_SECS));
+    String released = tailer.waitForLogRegex(
+        "released pageheap free memory to OS", (10), TimeUnit.SECONDS);
+    assertNotNull(
+        "Expected cron to log 'released pageheap free memory to OS' ",
+        released);
+
+    // Sampled after the release, so it reflects what the GC gave back.
     long odysseyRSSEnd = getRssForPid(odysseyPid);
-
-    // Sanitizer builds (ASAN/TSAN) do not use tcmalloc. So therefore skip
-    // the log-based assertion as conn mgr does gc for YB_GOOGLE_TCMALLOC
-    // based allocations only.
-    if (!BuildTypeUtil.isSanitizerBuild()) {
-      ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, tserverIndex);
-      tailer.skipToEnd();
-
-      String released = tailer.waitForLogRegex(
-          "released pageheap free memory to OS", (2), TimeUnit.SECONDS);
-      assertNotNull(
-          "Expected cron to log 'released pageheap free memory to OS' ",
-          released);
+    for (int i = 0; i < 20 && odysseyRSSEnd >= odysseyRSSBeforeGc; ++i) {
+      Thread.sleep(100);
+      odysseyRSSEnd = getRssForPid(odysseyPid);
     }
-
     assertTrue(String.format("Odyssey RSS should have released from %d KB to %d KB",
-        odysseyRSSPeak, odysseyRSSEnd), odysseyRSSPeak > odysseyRSSEnd);
+        odysseyRSSBeforeGc, odysseyRSSEnd), odysseyRSSBeforeGc > odysseyRSSEnd);
   }
 
   // Validates ysql_conn_mgr_tcmalloc_gc_interval can be set correctly at runtime
@@ -150,16 +197,20 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
     final int odysseyPid = getOdysseyPidForHost(tserverHost);
     long odysseyRSSStart = getRssForPid(odysseyPid);
 
+    int logicalConnsBefore = getBurstPoolLogicalConns();
     long odysseyRSSPeak = createLoadToRecordPeakRss(odysseyPid);
 
     ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, tserverIndex);
     tailer.skipToEnd();
 
-    // Small sleep to ensure RSS gets reduced.
-    Thread.sleep(500);
+    // The GC is still off here, so how much of the burst has left the process by now is only
+    // whatever odyssey unmaps itself (a coroutine stack it does not keep in the per-worker cache),
+    // not something this test controls. Gate on the burst having drained and record the RSS as the
+    // baseline for the release asserted below.
+    waitForBurstToDrain(logicalConnsBefore);
     long odysseyRSSEnd1 = getRssForPid(odysseyPid);
-    assertTrue(String.format("Odyssey RSS should have decreased from %d KB to %d KB",
-        odysseyRSSPeak, odysseyRSSEnd1), odysseyRSSPeak > odysseyRSSEnd1);
+    LOG.info("Odyssey RSS: {} KB at start, {} KB at peak, {} KB once the burst drained with the "
+        + "tcmalloc GC disabled", odysseyRSSStart, odysseyRSSPeak, odysseyRSSEnd1);
 
     String released = tailer.waitForLogRegex(
         "released pageheap free memory to OS", (2), TimeUnit.SECONDS);

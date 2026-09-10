@@ -32,12 +32,15 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
+
+#include "yb/gutil/sysinfo.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
@@ -725,6 +728,23 @@ class PgWrapperFlagsTest : public PgWrapperTest {
     return resp;
   }
 
+  Result<server::ValidateFlagValueResponsePB> ValidateFlagsOnTServer(
+      size_t ts_idx, const std::vector<std::pair<string, string>>& flags) {
+    auto proxy = cluster_->GetTServerProxy<server::GenericServiceProxy>(ts_idx);
+
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    server::ValidateFlagValueRequestPB req;
+    server::ValidateFlagValueResponsePB resp;
+    for (const auto& [name, value] : flags) {
+      auto* flag_pb = req.add_flags();
+      flag_pb->set_name(name);
+      flag_pb->set_value(value);
+    }
+    RETURN_NOT_OK_PREPEND(proxy.ValidateFlagValue(req, &resp, &controller), "rpc failed");
+    return resp;
+  }
+
   // Legacy single-flag validation via the flag_name/flag_value fields.
   // Invalid values should return an RPC-level failure (not errors in the response map).
   Status ValidateFlagLegacyOnTServer(
@@ -738,6 +758,16 @@ class PgWrapperFlagsTest : public PgWrapperTest {
     req.set_flag_name(flag_name);
     req.set_flag_value(flag_value);
     return proxy.ValidateFlagValue(req, &resp, &controller);
+  }
+};
+
+class PgWrapperConfValidationTest : public PgWrapperFlagsTest {};
+
+class PgWrapperConfValidationOverrideTest : public PgWrapperConfValidationTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgWrapperConfValidationTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_max_connections=150");
   }
 };
 
@@ -883,6 +913,26 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_default_transaction_isolation", "read committed"));
 }
 
+// Special test for max_connections to test the case where we have
+// (a) initdb set value
+// (b) NO ysql_max_connections overriding it
+// (c) User gflag setting it via ysql_pg_conf_csv
+TEST_F_EX(PgWrapperFlagsTest, ValidateMaxConnectionsFromInitdb, PgWrapperConfValidationTest) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  auto running = ASSERT_RESULT(
+      conn.FetchRow<int32_t>("SELECT current_setting('max_connections')::int"));
+
+  // Changing an unrelated gflag regenerates the file and must validate.
+  auto resp = ASSERT_RESULT(
+      ValidateFlagOnTServer(0, {{"ysql_pg_conf_csv", "log_min_messages=warning"}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // Changing max_connections is accepted: the file is checked as a restart would apply it.
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(
+      0, {{"ysql_pg_conf_csv", Format("max_connections=$0", running + 1)}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+}
+
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
  public:
   void CheckAutoFlagValues(bool expect_target_value) {
@@ -991,16 +1041,24 @@ TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) 
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
 }
 
-TEST_F(PgWrapperTest, ValidateConfViaSql) {
+TEST_F_EX(PgWrapperTest, ValidateConfViaSql, PgWrapperConfValidationOverrideTest) {
   auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
   auto tmp_dir = GetTestDataDirectory();
   using OptStr = std::optional<std::string>;
+
+  // A GUC file is checked the way a reload would check it, so it has to be a complete
+  // configuration rather than a fragment: anything the server currently takes from its config
+  // file would otherwise look like it had been removed. Pull those in with an include.
+  auto running_conf = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW config_file"));
 
   int file_counter = 0;
   auto write_tmp_file = [&](const string& content) {
     auto path = JoinPathSegments(tmp_dir, Format("test_conf_$0.conf", file_counter++));
     CHECK_OK(WriteStringToFile(Env::Default(), content + "\n", path));
     return path;
+  };
+  auto write_tmp_guc_file = [&](const string& content) {
+    return write_tmp_file(Format("include '$0'\n$1", running_conf, content));
   };
 
   auto check_error = [](const OptStr& actual, const string& expected, const string& label,
@@ -1019,7 +1077,7 @@ TEST_F(PgWrapperTest, ValidateConfViaSql) {
                     const string& hba_err_expected, const string& guc_err_expected,
                     const string& ident_err_expected) {
     auto hba_arg = hba.empty() ? "NULL" : Format("'$0'", write_tmp_file(hba));
-    auto guc_arg = guc.empty() ? "NULL" : Format("'$0'", write_tmp_file(guc));
+    auto guc_arg = guc.empty() ? "NULL" : Format("'$0'", write_tmp_guc_file(guc));
     auto ident_arg = ident.empty() ? "NULL" : Format("'$0'", write_tmp_file(ident));
 
     auto start = MonoTime::Now();
@@ -1039,9 +1097,21 @@ TEST_F(PgWrapperTest, ValidateConfViaSql) {
   verify(
       "host all all 1.2.3.4,5.6.7.8 trust", "", "",
       "multiple values specified for host address.*specify one address", "", "");
+
+  verify("", "= bad_syntax\n= also_bad", "", "", "syntax error[\\s\\S]*syntax error", "");
+
+  // conf includes a non existent file
+  verify("", "include '/nonexistent/nowhere.conf'", "", "", "could not open file", "");
+
+  // A parameter listed more than once takes its last value, so only that entry is validated.
+  // ysql_pg.conf is generated this way: gflag-derived settings are appended after everything
+  // initdb wrote, and supersede them.
+  verify("", "work_mem = '4MB'\nwork_mem = 'not_a_number'", "", "", "invalid value.*work_mem", "");
 }
 
-TEST_F(PgWrapperFlagsTest, ValidateConfViaGflagValidation) {
+TEST_F_EX(
+    PgWrapperFlagsTest, ValidateConfViaGflagValidation,
+    PgWrapperConfValidationOverrideTest) {
   auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
 
   auto check_flag_error = [](const server::ValidateFlagValueResponsePB& resp,
@@ -1080,10 +1150,203 @@ TEST_F(PgWrapperFlagsTest, ValidateConfViaGflagValidation) {
 
   RunConfValidationCases(verify);
 
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_max_connections", "150"));
+  auto resp = ASSERT_RESULT(
+      ValidateFlagOnTServer(0, {{"ysql_pg_conf_csv", "log_min_messages=warning"}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // Writing max_connections changes nothing, because the gflag entry is appended after it
+  // but let's test it anyway.
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(0, {{"ysql_pg_conf_csv", "max_connections=151"}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // shared_buffers is written by initdb and only takes effect at startup, like max_connections,
+  // but has no gflag, so a value written through ysql_pg_conf_csv is the one that survives and is
+  // really being changed. It validates because the file is checked as a restart would apply it.
+  auto blocks = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT setting::bigint FROM pg_settings WHERE name = 'shared_buffers'"));
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(
+      0, {{"ysql_pg_conf_csv", Format("shared_buffers=$0", blocks * 2)}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // superuser_reserved_connections also only takes effect at startup, but nothing writes it to
+  // the conf file, so the file introduces it instead of superseding an earlier entry.
+  auto reserved = ASSERT_RESULT(
+      conn.FetchRow<int32_t>("SELECT current_setting('superuser_reserved_connections')::int"));
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(
+      0, {{"ysql_pg_conf_csv", Format("superuser_reserved_connections=$0", reserved + 1)}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
   // Legacy single-flag path: invalid value should produce an RPC-level failure,
   // not an entry in the response errors map (backward compatibility with YBA).
   ASSERT_OK(ValidateFlagLegacyOnTServer(0, "vmodule", "foo=1"));
   ASSERT_NOK(ValidateFlagLegacyOnTServer(0, "vmodule", "foo="));
+}
+
+TEST_F(PgWrapperFlagsTest, ValidateCoDependentFlags) {
+  auto ts = cluster_->tablet_server(0);
+  auto expect_ok = [&](const std::vector<std::pair<string, string>>& flags) {
+    auto resp = ASSERT_RESULT(ValidateFlagsOnTServer(0, flags));
+    ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+  };
+  auto expect_err = [&](const std::vector<std::pair<string, string>>& flags,
+                        const string& flag_name) {
+    auto resp = ASSERT_RESULT(ValidateFlagsOnTServer(0, flags));
+    ASSERT_TRUE(resp.errors().count(flag_name))
+        << "Expected error for " << flag_name << ": " << resp.ShortDebugString();
+  };
+
+  // FLAG_REQUIRES_FLAG_VALIDATOR / FLAG_REQUIRED_BY_FLAG_VALIDATOR.
+  // Release defaults may already have these flags true, so pin them false with force.
+  // ysql_enable_concurrent_ddl requires enable_object_locking_for_table_locks, so it has to go
+  // first, and being a preview flag it has to be allow-listed before it can leave its default.
+  ASSERT_OK(cluster_->SetFlag(ts, "allowed_preview_flags_csv", "ysql_enable_concurrent_ddl"));
+  ASSERT_OK(cluster_->SetFlag(ts, "ysql_enable_concurrent_ddl", "false"));
+  ASSERT_OK(cluster_->SetFlag(ts, "enable_object_locking_for_table_locks", "false"));
+  ASSERT_OK(cluster_->SetFlag(ts, "ysql_yb_ddl_transaction_block_enabled", "false"));
+  ASSERT_NO_FATALS(expect_err(
+      {{"enable_object_locking_for_table_locks", "true"}},
+      "enable_object_locking_for_table_locks"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"enable_object_locking_for_table_locks", "true"},
+      {"ysql_yb_ddl_transaction_block_enabled", "true"},
+  }));
+  ASSERT_NO_FATALS(expect_ok({
+      {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"enable_object_locking_for_table_locks", "true"},
+  }));
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_yb_ddl_transaction_block_enabled")), "false");
+
+  // FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR / FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR
+  ASSERT_OK(cluster_->SetFlag(ts, "refresh_waiter_timeout_ms", "0"));
+  ASSERT_NO_FATALS(expect_err(
+      {{"enable_object_locking_for_table_locks", "true"},
+       {"ysql_yb_ddl_transaction_block_enabled", "true"}},
+      "enable_object_locking_for_table_locks"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"enable_object_locking_for_table_locks", "true"},
+      {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"refresh_waiter_timeout_ms", "30000"},
+  }));
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("refresh_waiter_timeout_ms")), "0");
+  ASSERT_OK(cluster_->SetFlag(ts, "refresh_waiter_timeout_ms", "30000"));
+
+  // FLAG_LT_FLAG_VALIDATOR / FLAG_GT_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err({{"pg_cron_leadership_refresh_sec", "70"}},
+                              "pg_cron_leadership_refresh_sec"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"pg_cron_leadership_refresh_sec", "70"},
+      {"pg_cron_leader_lease_sec", "80"},
+  }));
+  ASSERT_NO_FATALS(expect_ok({
+      {"pg_cron_leader_lease_sec", "80"},
+      {"pg_cron_leadership_refresh_sec", "70"},
+  }));
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("pg_cron_leadership_refresh_sec")), "10");
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("pg_cron_leader_lease_sec")), "60");
+
+  // FLAG_GE_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err({{"otel_batch_max_queue_size", "256"}},
+                              "otel_batch_max_queue_size"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"otel_batch_max_queue_size", "256"},
+      {"otel_batch_max_export_batch_size", "128"},
+  }));
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_batch_max_queue_size")), "2048");
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_batch_max_export_batch_size")), "512");
+
+  // FLAG_DELAYED_COND_VALIDATOR (raft lease vs heartbeat)
+  ASSERT_NO_FATALS(expect_err({{"leader_lease_duration_ms", "400"}},
+                              "leader_lease_duration_ms"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"leader_lease_duration_ms", "400"},
+      {"raft_heartbeat_interval_ms", "100"},
+  }));
+
+  // FLAG_DELAYED_COND_VALIDATOR (cdc retention)
+  const string nine_hour_ms = std::to_string(9ULL * 3600 * 1000);
+  ASSERT_NO_FATALS(expect_err({{"cdc_intent_retention_ms", nine_hour_ms}},
+                              "cdc_intent_retention_ms"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"cdc_intent_retention_ms", nine_hour_ms},
+      {"cdc_wal_retention_time_secs", std::to_string(9 * 3600)},
+  }));
+
+  // FLAG_DELAYED_COND_VALIDATOR (follower unavailability vs heartbeat)
+  ASSERT_NO_FATALS(expect_err({{"follower_unavailable_considered_failed_sec", "1"}},
+                              "follower_unavailable_considered_failed_sec"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"follower_unavailable_considered_failed_sec", "1"},
+      {"raft_heartbeat_interval_ms", "100"},
+  }));
+
+  // Custom validators that read a sibling FLAGS_* (rpc vs consensus batch)
+  const string consensus_300mb = std::to_string(300ULL * 1024 * 1024);
+  const string rpc_400mb = std::to_string(400ULL * 1024 * 1024);
+  ASSERT_NO_FATALS(expect_err({{"consensus_max_batch_size_bytes", consensus_300mb}},
+                              "consensus_max_batch_size_bytes"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"consensus_max_batch_size_bytes", consensus_300mb},
+      {"rpc_max_message_size", rpc_400mb},
+  }));
+
+  // Custom validator that reads sibling flags (cdc staleness vs log retention)
+  ASSERT_NO_FATALS(expect_err({{"xcluster_checkpoint_max_staleness_secs", "1000"}},
+                              "xcluster_checkpoint_max_staleness_secs"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"xcluster_checkpoint_max_staleness_secs", "1000"},
+      {"log_min_seconds_to_retain", "2000"},
+  }));
+
+  // A proposed sibling value can also make an otherwise valid value invalid.
+  const auto pg_port = std::to_string(ts->pgsql_rpc_port());
+  ASSERT_NO_FATALS(expect_ok({{"ysql_conn_mgr_port", pg_port}}));
+  ASSERT_NO_FATALS(expect_err({{"ysql_conn_mgr_port", pg_port},
+                               {"enable_ysql_conn_mgr", "true"}},
+                              "ysql_conn_mgr_port"));
+
+  // FLAG_IN_SET_VALIDATOR
+  ASSERT_NO_FATALS(expect_err({{"otel_internal_log_level", "nope"}}, "otel_internal_log_level"));
+  ASSERT_NO_FATALS(expect_ok({{"otel_internal_log_level", "warning"}}));
+
+  // FLAG_GT_VALUE_VALIDATOR
+  ASSERT_NO_FATALS(expect_err({{"pg_client_heartbeat_interval_ms", "500"}},
+                              "pg_client_heartbeat_interval_ms"));
+  ASSERT_NO_FATALS(expect_ok({{"pg_client_heartbeat_interval_ms", "2000"}}));
+
+  // FLAG_COND_VALIDATOR
+  ASSERT_NO_FATALS(expect_err({{"rpc_throttle_threshold_bytes", "8"}},
+                              "rpc_throttle_threshold_bytes"));
+
+#ifdef __linux__
+  // FLAG_RANGE_VALIDATOR
+  ASSERT_NO_FATALS(expect_err({{"qos_evaluation_window_us", "999"}}, "qos_evaluation_window_us"));
+
+  // FLAG_DELAYED_OK_VALIDATOR (cgroup CPU quota vs period). Linux rejects a quota under 1ms, so a
+  // low period is invalid against a low live cpu percent but valid if both are raised together.
+  const auto ncpu = base::NumCPUs();
+  const auto tight_cpu = std::to_string(50.0 / ncpu);
+  const auto raised_cpu = std::to_string(100.0 / ncpu);
+  ASSERT_OK(cluster_->SetFlag(ts, "qos_evaluation_window_us", "2000"));
+  ASSERT_OK(cluster_->SetFlag(ts, "qos_max_db_cpu_percent", tight_cpu));
+  const auto live_cpu = ASSERT_RESULT(ts->GetFlag("qos_max_db_cpu_percent"));
+  ASSERT_NO_FATALS(expect_err({{"qos_evaluation_window_us", "1000"}}, "qos_evaluation_window_us"));
+  ASSERT_NO_FATALS(expect_ok({
+      {"qos_evaluation_window_us", "1000"},
+      {"qos_max_db_cpu_percent", raised_cpu},
+  }));
+  ASSERT_NO_FATALS(expect_ok({
+      {"qos_max_db_cpu_percent", raised_cpu},
+      {"qos_evaluation_window_us", "1000"},
+  }));
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("qos_evaluation_window_us")), "2000");
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("qos_max_db_cpu_percent")), live_cpu);
+
+  ASSERT_NO_FATALS(expect_ok({{"postmaster_cgroup", "/yb_test"}}));
+  ASSERT_NO_FATALS(expect_err({{"postmaster_cgroup", "/yb_test"}, {"enable_qos", "true"}},
+                              "postmaster_cgroup"));
+#endif
 }
 
 TEST_F(PgWrapperTest, GetPgSocketDir) {

@@ -17,8 +17,9 @@
   h4[id],
   h5[id] {
     &::before {
-      height: calc(7.5rem + 20px);
-      margin-top: calc(-7.5rem - 20px);
+      // Keep in-page heading links from scrolling under the sticky header bar.
+      height: var(--docs-heading-anchor-offset);
+      margin-top: calc(-1 * var(--docs-heading-anchor-offset));
       display: block;
       content: "";
     }
@@ -77,34 +78,6 @@
           opacity: 1;
           width: 59px;
           height: 36px;
-        }
-      }
-    }
-  }
-
-  &.with-topbar {
-    h1[id],
-    h2[id],
-    h3[id],
-    h4[id],
-    h5[id] {
-      &::before {
-        height: calc(7.5rem + 100px);
-        margin-top: calc(-7.5rem - 100px);
-
-        @media (max-width: 1549px) {
-          height: calc(7.5rem + 70px);
-          margin-top: calc(-7.5rem - 70px);
-        }
-
-        @media (max-width: 991px) {
-          height: 7.1rem;
-          margin-top: -7.1rem;
-        }
-
-        @media (max-width: 767px) {
-          height: calc(7.5rem + 50px);
-          margin-top: calc(-7.5rem - 50px);
         }
       }
     }
@@ -251,7 +224,7 @@ body.configuration {
 
       &::after {
         position: absolute;
-        top: calc(7.5rem + 20px - 32px);
+        top: calc(var(--docs-heading-anchor-offset) - 32px);
         content: "";
         display: block;
         width: 100%;

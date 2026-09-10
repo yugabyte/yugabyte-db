@@ -15,5 +15,9 @@ public interface ITaskParams {
 
   UUID getPreviousTaskUUID();
 
+  void setOriginalTaskUUID(UUID originalTaskUUID);
+
+  UUID getOriginalTaskUUID();
+
   UUID getTargetUuid(TaskType taskType);
 }

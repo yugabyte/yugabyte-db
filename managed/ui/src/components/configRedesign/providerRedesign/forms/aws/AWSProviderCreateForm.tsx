@@ -88,6 +88,8 @@ interface AWSProviderCreateFormProps {
 export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
+  enableFederatedIam: boolean;
+  federatedIamAudience: string;
   enableHostedZone: boolean;
   hostedZoneId: string;
   ntpServers: string[];
@@ -162,6 +164,10 @@ const VALIDATION_SCHEMA = object().shape({
     is: true,
     then: string().required('Route 53 zone id is required.')
   }),
+  federatedIamAudience: string().when('enableFederatedIam', {
+    is: true,
+    then: string().required('Federated IAM audience is required.')
+  }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
     then: array().of(
@@ -198,6 +204,7 @@ export const AWSProviderCreateForm = ({
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
+    enableFederatedIam: false,
     enableHostedZone: false,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
@@ -356,6 +363,10 @@ export const AWSProviderCreateForm = ({
     defaultValues.sshKeypairManagement
   );
   const enableHostedZone = formMethods.watch('enableHostedZone', defaultValues.enableHostedZone);
+  const enableFederatedIam = formMethods.watch(
+    'enableFederatedIam',
+    defaultValues.enableFederatedIam
+  );
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType', defaultValues.ybImageType);
   const isFormDisabled = getIsFormDisabled(formMethods.formState) || isForceSubmitting;
@@ -431,6 +442,27 @@ export const AWSProviderCreateForm = ({
                     control={formMethods.control}
                     name="hostedZoneId"
                     disabled={isFormDisabled}
+                    fullWidth
+                  />
+                </FormField>
+              )}
+              <FormField>
+                <FieldLabel
+                  infoTitle="Federated IAM"
+                  infoContent="Enable GCS-on-AWS cross-cloud federated IAM for this provider's DB nodes. When on, provide the GCP Workload Identity Federation audience."
+                >
+                  Enable Federated IAM
+                </FieldLabel>
+                <YBToggleField name="enableFederatedIam" control={formMethods.control} />
+              </FormField>
+              {enableFederatedIam && (
+                <FormField>
+                  <FieldLabel>Federated IAM Audience</FieldLabel>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="federatedIamAudience"
+                    disabled={isFormDisabled}
+                    placeholder="//iam.googleapis.com/projects/.../providers/..."
                     fullWidth
                   />
                 </FormField>
@@ -698,7 +730,11 @@ const constructProviderPayload = async (
             awsAccessKeyID: formValues.accessKeyId,
             awsAccessKeySecret: formValues.secretAccessKey
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          ...(formValues.enableFederatedIam && {
+            enableFederatedIam: true,
+            federatedIamAudience: formValues.federatedIamAudience
+          })
         }
       },
       ntpServers: formValues.ntpServers,

@@ -144,6 +144,7 @@
 #include "arpa/inet.h"
 #include "commands/async.h"
 #include "common/pg_yb_common.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/syncrep.h"
@@ -1083,10 +1084,9 @@ PostmasterMain(int argc, char *argv[])
 	 * Register the apply launcher.  It's probably a good idea to call this
 	 * before any modules had a chance to take the background worker slots.
 	 *
-	 * Logical replication is not supported in YugaByte mode currently and the
-	 * registration is disabled.
+	 * In YugaByte mode, only register if pg_subscription support is enabled.
 	 */
-	if (!YBIsEnabledInPostgresEnvVar())
+	if (!YBIsEnabledInPostgresEnvVar() || yb_enable_pg_subscription)
 		ApplyLauncherRegister();
 
 	if (YBIsEnabledInPostgresEnvVar())
@@ -2149,7 +2149,6 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
-	bool		yb_auto_analyze_backend = false;
 	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
 	bool		yb_is_control_conn = false;
@@ -2423,13 +2422,13 @@ retry1:
 							 errhint("Valid values are: \"false\", 0, \"true\", 1, \"database\".")));
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_authonly") == 0)
+					 && strcmp(nameptr, YB_YCM_AUTHONLY) == 0)
 			{
 				if (!parse_bool(valptr, &yb_is_auth_backend))
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_authonly",
+									YB_YCM_AUTHONLY,
 									valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
 
@@ -2437,19 +2436,19 @@ retry1:
 				if (port->raddr.addr.ss_family != AF_UNIX)
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("yb_authonly can only be set "
-									"if the connection is made over unix domain "
-									"socket")));
+							 errmsg("%s can only be set if the connection is "
+									"made over unix domain socket",
+									YB_YCM_AUTHONLY)));
 				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_is_control_conn") == 0)
+					 && strcmp(nameptr, YB_YCM_IS_CONTROL_CONN) == 0)
 			{
 				if (!parse_bool(valptr, &yb_is_control_conn))
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_is_control_conn",
+									YB_YCM_IS_CONTROL_CONN,
 									valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
 
@@ -2457,38 +2456,27 @@ retry1:
 				if (port->raddr.addr.ss_family != AF_UNIX)
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("yb_is_control_conn can only be set "
-									"if the connection is made over unix domain "
-									"socket")));
+							 errmsg("%s can only be set if the connection is "
+									"made over unix domain socket",
+									YB_YCM_IS_CONTROL_CONN)));
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
+					 && strcmp(nameptr, YB_YCM_AUTH_REMOTE_HOST) == 0)
 				yb_auth_backend_remote_host = pstrdup(valptr);
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_logical_conn_type") == 0)
+					 && strcmp(nameptr, YB_YCM_LOGICAL_CONN_TYPE) == 0)
 			{
 				if (strlen(valptr) != 1 ||
 					(valptr[0] != 'U' && valptr[0] != 'E'))
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_logical_conn_type",
+									YB_YCM_LOGICAL_CONN_TYPE,
 									valptr),
 							 errhint("Valid values are: \"U\" or \"E\".")));
 
 				yb_logical_conn_type = *pstrdup(valptr);
 				yb_logical_conn_type_provided = true;
-			}
-			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auto_analyze") == 0)
-			{
-				if (!parse_bool(valptr, &yb_auto_analyze_backend))
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_auto_analyze",
-									valptr),
-							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
@@ -2586,16 +2574,18 @@ retry1:
 			if (!yb_is_auth_via_conn_mgr)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("yb_auth_remote_host must only be provided "
-								"when yb_authonly is true or in an auth passthrough "
-								"'A' request packet")));
+						 errmsg("%s must only be provided when %s is true or "
+								"in an auth passthrough 'A' request packet",
+								YB_YCM_AUTH_REMOTE_HOST,
+								YB_YCM_AUTHONLY)));
 
 			/*
 			 * HARD Code connection type between client and ysql_conn_mgr to
 			 * AF_INET which is the only supported connection type for
-			 * authentication.
+			 * authentication. Also set salen for ipv4 address.
 			 */
 			port->raddr.addr.ss_family = AF_INET;
+			port->raddr.salen = sizeof(struct sockaddr_in);
 			port->remote_host = yb_auth_backend_remote_host;
 
 			struct sockaddr_in *ip_address_1;
@@ -2610,8 +2600,9 @@ retry1:
 			if (!yb_is_auth_via_conn_mgr)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("yb_logical_conn_type must only be provided "
-								"when the client is the connection manager")));
+						 errmsg("%s must only be provided when the client is "
+								"the connection manager",
+								YB_YCM_LOGICAL_CONN_TYPE)));
 
 			port->yb_is_ssl_enabled_in_logical_conn =
 				yb_logical_conn_type == 'E';
@@ -2657,8 +2648,6 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (yb_auto_analyze_backend)
-		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
 	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
 		MyBackendType =
 			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;

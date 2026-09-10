@@ -10,6 +10,7 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.Data;
@@ -36,6 +37,32 @@ public class OnPremCloudInfo implements CloudInfoInterface {
   @ApiModelProperty(value = "WARNING: This is a preview API that could change.")
   @EditableInUseProvider(name = "Enable multi-tenancy", allowed = true)
   public boolean enableMultiTenancy;
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Enable GCS-on-AWS cross-cloud"
+              + " federated IAM on this provider's DB nodes (nodes must be AWS VMs).")
+  @EditableInUseProvider(name = "Enable federated IAM", allowed = true)
+  public boolean enableFederatedIam;
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. GCP Workload Identity Federation"
+              + " audience used when federated IAM is enabled.")
+  @EditableInUseProvider(name = "Federated IAM audience", allowed = true)
+  public String federatedIamAudience;
+
+  // Set by YNP when it creates the provider. YNP owns the configuration of such providers, so YBA
+  // rejects user driven edits to them. It is internal in the sense that a user cannot flip it -
+  // provider edit always carries over the value already persisted for the provider.
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Provider is created and managed by YNP",
+      accessMode = AccessMode.READ_ONLY)
+  @EditableInUseProvider(name = "YNP managed", allowed = false)
+  public boolean ynpManaged;
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {

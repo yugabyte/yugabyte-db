@@ -41,10 +41,14 @@
 
 #include "yb/common/common_net.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
+
+#include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
@@ -58,7 +62,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_ysql_lease_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
@@ -75,6 +79,9 @@
 #include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tserver_admin.service.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -84,6 +91,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -107,7 +115,12 @@ DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_int32(qos_max_db_count);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
+DECLARE_uint32(initial_tserver_registration_duration_secs);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -138,6 +151,18 @@ class MasterTest : public MasterTestBase {
 
   Result<TSHeartbeatResponsePB> SendNewTSRegistrationHeartbeat(
       const std::string& uuid, int64_t instance_seqno);
+
+  // Sends a heartbeat carrying the given per-db local compaction pins for an already-registered ts.
+  Result<TSHeartbeatResponsePB> SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      const std::string& uuid, int64_t instance_seqno,
+      const std::map<PgOid, HybridTime>& pins);
+
+  // The history cutoff this master allows for its own sys catalog tablet.
+  docdb::HistoryCutoff SysCatalogAllowedHistoryCutoff();
+
+  // Runs the leader's publish step now, skipping the wait for tserver heartbeats it observes after
+  // an election.
+  Status PublishYsqlHistoryRetentionPin();
 
  private:
   // Used by SendNewTSRegistrationHeartbeat to avoid host port collisions.
@@ -2039,6 +2064,62 @@ TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
   ASSERT_EQ(ns_by_name->id(), success_nsid);
 }
 
+TEST_F(MasterTest, TestCreateNamespaceRetryAfterPgVerificationFailure) {
+  NamespaceName test_name = "test_pgsql";
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId failed_nsid = resp.id();
+
+  // Park async cleanup so the retry cannot wait on it. DeleteYsqlDatabaseAsync pauses on this
+  // flag; ProcessPendingNamespace for the retry also defers until we clear it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
+  ASSERT_OK(mini_master_->catalog_manager_impl().TEST_FailNamespacePgVerification(failed_nsid));
+
+  auto failed_ns = ASSERT_RESULT(mini_master_->catalog_manager().FindNamespaceById(failed_nsid));
+  ASSERT_EQ(failed_ns->state(), SysNamespaceEntryPB::DELETING);
+  ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+
+  // Same-id retry is still rejected; the by-id tombstone stays until restart so copied catalog
+  // tables are not recreated under the same OID. PG already retries with the next OID.
+  CreateNamespaceRequestPB same_id_req;
+  same_id_req.set_name(test_name);
+  same_id_req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  same_id_req.set_namespace_id(failed_nsid);
+  auto same_id_result = CreateNamespaceAsync(same_id_req);
+  ASSERT_NOK(same_id_result);
+  ASSERT_TRUE(same_id_result.status().IsAlreadyPresent()) << same_id_result.status();
+
+  // Same-name retry with a new id must succeed immediately, while cleanup is still hung.
+  CreateNamespaceResponsePB retry_resp;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &retry_resp));
+  ASSERT_NE(retry_resp.id(), failed_nsid);
+  auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
+  ASSERT_OK(CreateNamespaceWait(retry_resp.id(), YQLDatabase::YQL_DATABASE_PGSQL));
+
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+        mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
+        bool failure_deleted = false;
+        bool success_running = false;
+        for (const auto& ns : namespace_internal) {
+          if (ns->id() == failed_nsid) {
+            failure_deleted = ns->state() == SysNamespaceEntryPB::DELETED;
+          } else if (ns->id() == retry_resp.id()) {
+            success_running = ns->state() == SysNamespaceEntryPB::RUNNING;
+          }
+        }
+        return failure_deleted && success_running;
+      },
+      MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
+
+  ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
+}
+
 class LoopedMasterTest : public MasterTest, public testing::WithParamInterface<int> {};
 INSTANTIATE_TEST_CASE_P(Loops, LoopedMasterTest, ::testing::Values(10));
 
@@ -2999,8 +3080,8 @@ TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
 
   const char* kTsUUID = "my-ts-uuid";
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto result = ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto result = lease_client.RefreshYsqlLease(
       kTsUUID, 1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {});
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
@@ -3014,10 +3095,10 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
   auto lease_refresh_send_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
   auto info =
-      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
+      ASSERT_RESULT(lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
   ASSERT_GT(
@@ -3028,20 +3109,22 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   // Refresh lease again. Since we omitted current lease epoch, master leader should still say this
   // is a new lease.
   info =
-      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
+      ASSERT_RESULT(lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 2);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. We included current lease epoch but it's incorrect.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
+  info = ASSERT_RESULT(
+      lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 3);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. Current lease epoch is correct so master leader should not set new lease
   // bit.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 3));
+  info = ASSERT_RESULT(
+      lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 3));
   ASSERT_FALSE(info.new_lease());
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 }
@@ -3053,13 +3136,13 @@ TEST_F(MasterTest, RelinquishLease) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto info1 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info1.new_lease());
   ASSERT_EQ(info1.lease_epoch(), 1);
 
-  ASSERT_OK(ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1));
+  ASSERT_OK(lease_client.RelinquishYsqlLease(kTsUUID, kSeqno1));
   auto list_ts = ASSERT_RESULT(cluster_client_->ListTabletServers());
   ASSERT_EQ(list_ts.servers_size(), 1);
   ASSERT_FALSE(list_ts.servers(0).lease_info().is_live());
@@ -3068,7 +3151,7 @@ TEST_F(MasterTest, RelinquishLease) {
   constexpr uint64_t kSeqno2 = 2;
   auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
   ASSERT_FALSE(reg_resp2.needs_reregister());
-  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto info2 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info2.new_lease());
   ASSERT_EQ(info2.lease_epoch(), 2);
@@ -3081,8 +3164,8 @@ TEST_F(MasterTest, RelinquishLeaseOfReplacedTS) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto info1 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info1.new_lease());
   ASSERT_EQ(info1.lease_epoch(), 1);
@@ -3091,13 +3174,13 @@ TEST_F(MasterTest, RelinquishLeaseOfReplacedTS) {
   constexpr uint64_t kSeqno2 = 2;
   auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
   ASSERT_FALSE(reg_resp2.needs_reregister());
-  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto info2 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info2.new_lease());
   ASSERT_EQ(info2.lease_epoch(), 2);
 
   // Send relinquish lease request from the first ts instance.
-  auto status = ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1);
+  auto status = lease_client.RelinquishYsqlLease(kTsUUID, kSeqno1);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(
       status.ToString(), "Relinquish lease request for a replaced tserver instance");
@@ -3144,6 +3227,271 @@ Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(
     registered_ts_count_++;
   }
   return result;
+}
+
+Result<TSHeartbeatResponsePB> MasterTest::SendYsqlDbOldestPinnedReadTimesHeartbeat(
+    const std::string& uuid, int64_t instance_seqno,
+    const std::map<PgOid, HybridTime>& pins) {
+  SysClusterConfigEntryPB config =
+      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+  TSHeartbeatRequestPB req;
+  TSHeartbeatResponsePB resp;
+  req.mutable_common()->mutable_ts_instance()->set_permanent_uuid(uuid);
+  req.mutable_common()->mutable_ts_instance()->set_instance_seqno(instance_seqno);
+  req.set_universe_uuid(config.universe_uuid());
+  for (const auto& [db_oid, pin] : pins) {
+    (*req.mutable_ts_ysql_db_oldest_pinned_read_times())[db_oid]
+        .set_db_level_oldest_read_time(pin.ToPB());
+  }
+  RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
+docdb::HistoryCutoff MasterTest::SysCatalogAllowedHistoryCutoff() {
+  return mini_master_->catalog_manager_impl().AllowedHistoryCutoffProvider(
+      mini_master_->tablet_peer()->tablet_metadata().get());
+}
+
+Status MasterTest::PublishYsqlHistoryRetentionPin() {
+  const auto initial_delay_secs = FLAGS_initial_tserver_registration_duration_secs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 0;
+  auto& catalog_manager = mini_master_->catalog_manager_impl();
+  auto status =
+      catalog_manager.PersistYsqlHistoryRetentionPin(catalog_manager.GetLeaderEpochInternal());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) =
+      initial_delay_secs;
+  return status;
+}
+
+// Pins reported by a single ts are echoed back in the response as the cluster-wide pins.
+TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesHeartbeatRoundTrip) {
+  const std::string kTsUUID = "ts-pins-1";
+  constexpr int64_t kSeqno = 1;
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTsUUID, kSeqno, {{1001, HybridTime(100)}, {1002, HybridTime(200)}}));
+  const auto& pins = resp.cluster_ysql_db_oldest_pinned_read_times();
+  ASSERT_EQ(pins.size(), 2);
+  EXPECT_EQ(pins.at(1001).db_level_oldest_read_time(), HybridTime(100).ToPB());
+  EXPECT_EQ(pins.at(1002).db_level_oldest_read_time(), HybridTime(200).ToPB());
+}
+
+// A heartbeat's pin map fully replaces the pins reported by the previous heartbeat, so a db drops
+// out of the cluster-wide pins once no live ts reports it.
+TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesReplacePreviousPins) {
+  const std::string kTsUUID = "ts-pins-1";
+  constexpr int64_t kSeqno = 1;
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno));
+
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTsUUID, kSeqno, {{1001, HybridTime(100)}, {1002, HybridTime(200)}}));
+
+  // db 1001's pin moves forward, db 1002 no longer has a pin, and db 1003 is newly pinned.
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTsUUID, kSeqno, {{1001, HybridTime(150)}, {1003, HybridTime(300)}}));
+
+  const auto& pins = resp.cluster_ysql_db_oldest_pinned_read_times();
+  ASSERT_EQ(pins.size(), 2);
+  ASSERT_EQ(pins.at(1001).db_level_oldest_read_time(), HybridTime(150).ToPB());
+  ASSERT_EQ(pins.at(1003).db_level_oldest_read_time(), HybridTime(300).ToPB());
+  ASSERT_EQ(pins.count(1002), 0) << "db 1002's pin should have been dropped";
+}
+
+// An invalid HybridTime in a heartbeat's pin map is ignored rather than pinning the db.
+TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesIgnoresInvalidHybridTime) {
+  const std::string kTsUUID = "ts-pins-1";
+  constexpr int64_t kSeqno = 1;
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTsUUID, kSeqno, {{1001, HybridTime(100)}, {1002, HybridTime::kInvalid}}));
+
+  const auto& pins = resp.cluster_ysql_db_oldest_pinned_read_times();
+  ASSERT_EQ(pins.size(), 1);
+  ASSERT_EQ(pins.at(1001).db_level_oldest_read_time(), HybridTime(100).ToPB());
+  ASSERT_EQ(pins.count(1002), 0);
+}
+
+// After a master restart with persist_tserver_registry, cluster pins are not ready until every
+// live tserver has heartbeated at least once.
+TEST_F(MasterTest, YsqlDbPinsWaitForAllLiveTserversAfterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  const std::string kTs1 = "ts-pins-1", kTs2 = "ts-pins-2";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs2, 1));
+
+  // Reload the persisted tserver registry into fresh descriptors. Their per-leader-term pin
+  // heartbeat markers are intentionally not persisted.
+  ASSERT_OK(mini_master_->Restart(true));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_FALSE(resp.cluster_ysql_db_pins_ready());
+
+  resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs2, 1, {{1001, HybridTime(50)}}));
+  EXPECT_TRUE(resp.cluster_ysql_db_pins_ready());
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(50).ToPB());
+}
+
+// Without persist_tserver_registry the leader has no list of live tservers to wait for, so cluster
+// pins are not ready until initial_tserver_registration_duration_secs has elapsed since election.
+TEST_F(MasterTest, YsqlDbPinsWaitForRegistrationWindowWithoutPersistence) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 3600;
+  const std::string kTs1 = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_FALSE(resp.cluster_ysql_db_pins_ready());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 0;
+  resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_TRUE(resp.cluster_ysql_db_pins_ready());
+}
+
+// The response carries the global min per db across all live tservers.
+// When a ts clears its pin via an empty heartbeat, the cluster min rises to the remaining ts.
+TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesGlobalMin) {
+  const std::string kTs1 = "ts-pins-1", kTs2 = "ts-pins-2";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs2, 1));
+
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs1, 1, {{1001, HybridTime(100)}}));
+  // ts2's heartbeat response aggregates over both tservers.
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs2, 1, {{1001, HybridTime(50)}}));
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(50).ToPB());
+
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs1, 1, {{1001, HybridTime(100)}}));
+  resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs2, 1, {}));
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(100).ToPB());
+}
+
+// The pg catalog tables live in the sys catalog tablet's cotables, so they are the part of the
+// tablet held back by a pin. The docdb metadata rows, governed by the primary cutoff, are not.
+TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPin) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  // Older than the static retention window, so the pin is what binds.
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, pin);
+  EXPECT_GT(cutoff.primary_cutoff_ht, pin);
+}
+
+// A pin older than db_history_retention_pin_max_txn_age_sec is clamped up to the hard cap, so one
+// stuck transaction cannot retain catalog history indefinitely.
+TEST_F(MasterTest, SysCatalogHistoryCutoffCapsPinAge) {
+  constexpr int32_t kRetentionSec = 60;
+  constexpr int32_t kHardCapSec = 600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_history_retention_pin_max_txn_age_sec) = kHardCapSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-100 * kHardCapSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(
+      cutoff.cotables_cutoff_ht,
+      cutoff.primary_cutoff_ht.AddSeconds(kRetentionSec - kHardCapSec));
+}
+
+// Only the leader sees the pins tservers report, so every master honors the pin the leader
+// published to the sys catalog. This is what a follower compacts against.
+TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPublishedPin) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+
+  // No live ts reports the pin anymore, so only the published row is holding the catalog back.
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {}));
+  EXPECT_EQ(SysCatalogAllowedHistoryCutoff().cotables_cutoff_ht, pin);
+
+  // Publishing the now empty aggregate releases the catalog again.
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+  auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, cutoff.primary_cutoff_ht);
+}
+
+// A master must honor the published pin from the moment it can compact, so it is loaded during
+// startup rather than waited for from a heartbeat.
+TEST_F(MasterTest, SysCatalogHistoryCutoffLoadsPublishedPinOnStartup) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+
+  ASSERT_OK(mini_master_->Restart(true));
+
+  EXPECT_EQ(SysCatalogAllowedHistoryCutoff().cotables_cutoff_ht, pin);
+}
+
+TEST_F(MasterTest, SysCatalogHistoryCutoffIgnoresPinsWhenFeatureDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = false;
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, cutoff.primary_cutoff_ht);
+}
+
+// A ts that has been marked unresponsive no longer contributes to the cluster min.
+TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesExcludesDeadTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
+  const std::string kTs1 = "ts-pins-1", kTs2 = "ts-pins-2";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs2, 1));
+
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs1, 1, {{1001, HybridTime(50)}}));
+
+  // Stop heartbeating ts1; keep ts2 alive until the master marks ts1 unresponsive.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs2, 1, {{1001, HybridTime(100)}}));
+    return mini_master_->master()->ts_manager()->NumLiveDescriptors() == 1;
+  }, MonoDelta::FromSeconds(30), "ts1 marked unresponsive"));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs2, 1, {{1001, HybridTime(100)}}));
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(100).ToPB())
+      << "dead ts1's older pin must not affect the cluster min";
 }
 
 TEST_F(MasterTest, TestQosMaxDbCount) {

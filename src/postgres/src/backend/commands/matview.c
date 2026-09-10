@@ -977,7 +977,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		/* Can't use TID in YB mode */
 		appendStringInfo(&querybuf,
-						 "DELETE FROM %s mv WHERE mv.*::%s OPERATOR(pg_catalog.=) ANY "
+						 "DELETE FROM %s mv WHERE mv.*::%s OPERATOR(pg_catalog.*=) ANY "
 						 "(SELECT mv FROM %s diff WHERE (",
 						 matviewname, matviewname, diffname);
 		TupleDesc	tuple_desc = RelationGetDescr(matviewRel);

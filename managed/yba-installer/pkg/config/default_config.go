@@ -86,7 +86,7 @@ func addDefaults(v *viper.Viper) {
 
 	// PerfAdvisor (no documented fields)
 	// v.SetDefault("performance_advisor.<field>", <value>) // Not set, no info
-	v.SetDefault("perfAdvisor.enabled", false)
+	v.SetDefault("perfAdvisor.enabled", true)
 	v.SetDefault("perfAdvisor.port", 8443)
 	v.SetDefault("perfAdvisor.restart_seconds", 10)
 	v.SetDefault("perfAdvisor.callhome.enabled", true)
@@ -107,6 +107,7 @@ func addDefaults(v *viper.Viper) {
 
 	// Services (installerConfig.Services)
 	// nodeExporter.enabled defaults to true, so include node-exporter here.
+	// perfAdvisor.enabled defaults to true, so include yb-perf-advisor here.
 	v.SetDefault("installer.services",
-		[]string{"postgres", "prometheus", "platform", "node-exporter"})
+		[]string{"postgres", "prometheus", "platform", "node-exporter", "yb-perf-advisor"})
 }

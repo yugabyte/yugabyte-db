@@ -56,6 +56,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jwt_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
@@ -90,6 +91,9 @@ DECLARE_int32(num_connections_to_server);
 DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_bool(ysql_enable_concurrent_ddl);
+
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
@@ -1489,8 +1493,7 @@ YbcStatus YBCPgDmlApplyParallelRange(YbcPgStatement handle,
                                      const char *lower_bound, size_t lower_bound_len,
                                      const char *upper_bound, size_t upper_bound_len) {
   return ToYBCStatus(pgapi->DmlApplyParallelRange(
-    handle, Slice(lower_bound, lower_bound_len), true,
-            Slice(upper_bound, upper_bound_len), false));
+    handle, Slice(lower_bound, lower_bound_len), Slice(upper_bound, upper_bound_len)));
 }
 
 YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
@@ -1576,11 +1579,11 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 
 YbcStatus YBCPgNewSample(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read,
+    YbcPgTableLocalityInfo locality_info, YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1,
     YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewSample(
-      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_read,
+      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_info,
       targrows, {.w = rstate_w, .s0 = rand_state_s0, .s1 = rand_state_s1},
       handle));
 }
@@ -1610,10 +1613,10 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
-    bool skip_intents_write,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     YbcPgStatement *handle) {
   auto result = pgapi->NewInsertBlock(
-      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_write);
+      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_info);
   if (result.ok()) {
     *handle = *result;
     return nullptr;
@@ -1625,11 +1628,11 @@ YbcStatus YBCPgNewInsert(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
@@ -1659,11 +1662,11 @@ YbcStatus YBCPgNewUpdate(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
@@ -1675,11 +1678,11 @@ YbcStatus YBCPgNewDelete(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle) {
@@ -1708,11 +1711,12 @@ YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle) {
 // SELECT Operations -------------------------------------------------------------------------------
 YbcStatus YBCPgNewSelect(
     YbcPgOid database_oid, YbcPgOid table_relfilenode_oid, const YbcPgPrepareParameters* params,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read, YbcPgStatement* handle) {
+    YbcPgTableLocalityInfo locality_info,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info, YbcPgStatement* handle) {
   return ToYBCStatus(pgapi->NewSelect(
       PgObjectId{database_oid, table_relfilenode_oid},
       PgObjectId{database_oid, params ? params->index_relfilenode_oid : kInvalidOid},
-      params, locality_info, skip_intents_read, handle));
+      params, locality_info, skip_intents_info, handle));
 }
 
 YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan) {
@@ -1929,6 +1933,11 @@ double YBCGetTransactionPriority() {
 
 YbcTxnPriorityRequirement YBCGetTransactionPriorityType() {
   return pgapi->GetTransactionPriorityType();
+}
+
+uint64_t YBCGetMaxRpcResponseSize() {
+  return static_cast<uint64_t>(
+      FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio);
 }
 
 YbcStatus YBCPgEnsureReadPoint() {
@@ -2339,16 +2348,9 @@ void YBCClearTimeout() {
   pgapi->ClearTimeout();
 }
 
-void YBCCheckForInterrupts() {
-  LOG_IF(FATAL, !is_main_thread())
-      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
-
-  // If we're in the midst of shutting down, do not bother checking for interrupts.
-  if (!pgapi) {
-    return;
-  }
-
-  pgapi->pg_callbacks()->CheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt() {
+  return PREDICT_FALSE(!pgapi)
+      ? false : pgapi->pg_callbacks()->HasProcessableAbortInterrupt();
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {
@@ -2943,6 +2945,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   auto resp_rows = static_cast<YbcPgRowMessage *>(YBCPAlloc(sizeof(YbcPgRowMessage) * row_count));
   bool needs_publication_table_list_refresh = resp.needs_publication_table_list_refresh();
   uint64_t publication_refresh_time = resp.publication_refresh_time();
+  bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
@@ -3077,7 +3080,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .row_count = row_count,
       .rows = resp_rows,
       .needs_publication_table_list_refresh = needs_publication_table_list_refresh,
-      .publication_refresh_time = publication_refresh_time
+      .publication_refresh_time = publication_refresh_time,
+      .explicit_alter_publication_detected = explicit_alter_publication_detected,
   };
 
   if (row_count > 0) {
@@ -3161,7 +3165,12 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
         .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
         .replicas = replicas_array,
         .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
-        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned(),
+        .tablet_state = tablet_metadata.has_tablet_state()
+            ? YBCPAllocStdString(tablet_metadata.tablet_state())
+            : nullptr,
+        .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
+                                                           : kPgInvalidOid
       };
       ++dest;
     }
@@ -3327,6 +3336,12 @@ YbcStatus YBCPgRegisterSnapshotReadTime(
       pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
 }
 
+void YBCPgPublishOldestReadPointHandle(YbcReadPointHandle handle) {
+  if (pgapi) {
+    pgapi->PublishOldestReadPointSerialNo(handle);
+  }
+}
+
 void YBCRecordTempRelationDDL() {
   if (YBCRecordTempRelationDDL_hook) {
     YBCRecordTempRelationDDL_hook();
@@ -3469,10 +3484,22 @@ void YBCPgGlobalViewReadSetParams(
   DCHECK_NOTNULL(handle)->SetParams(std::span{param_values, param_values + num_params});
 }
 
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(
+YbcPgGvScanResult YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid) {
   return pgapi->ExecGlobalViewScan(handle, database_name, query, tserver_uuid);
+}
+
+bool YBCPgGlobalViewReadNextRow(YbcPgGlobalViewRead handle, const char **values) {
+  return DCHECK_NOTNULL(handle)->NextRow(values);
+}
+
+const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle) {
+  return DCHECK_NOTNULL(handle)->GetError();
+}
+
+void YBCPgGlobalViewReadClearScanState(YbcPgGlobalViewRead handle) {
+  DCHECK_NOTNULL(handle)->ClearScanState();
 }
 
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle) {

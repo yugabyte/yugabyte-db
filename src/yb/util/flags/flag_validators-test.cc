@@ -18,7 +18,9 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
@@ -32,9 +34,9 @@ DEFINE_validator(flag_validators_test_even,
 DEFINE_RUNTIME_int32(flag_validators_test_plus_one, 1, "flag_validators_test_even + 1");
 DEFINE_validator(flag_validators_test_plus_one,
     FLAG_DELAYED_COND_VALIDATOR(
-       _value == FLAGS_flag_validators_test_even + 1,
+       _value == FINAL_FLAG_VALUE(flag_validators_test_even) + 1,
        yb::Format("Must be 1 greater than flag_validators_test_even: $0",
-                  FLAGS_flag_validators_test_even)));
+                  FINAL_FLAG_VALUE(flag_validators_test_even))));
 
 DEFINE_RUNTIME_uint64(flag_base_defaults_to_zero, 0, "Base flag that defaults to 0.");
 DEFINE_RUNTIME_bool(flag_dependent_on_base_flag, false,
@@ -66,7 +68,7 @@ DEFINE_validator(flag_validators_test_odd, FLAG_OK_VALIDATOR(yb::CheckOdd(_value
 DEFINE_RUNTIME_int32(flag_validators_test_minus_one, 0, "flag_validators_test_odd - 1");
 DEFINE_validator(flag_validators_test_minus_one,
     FLAG_OK_VALIDATOR(yb::CheckMinusOne(
-        _value, "flag_validators_test_odd", FLAGS_flag_validators_test_odd)));
+        _value, "flag_validators_test_odd", FINAL_FLAG_VALUE(flag_validators_test_odd))));
 
 DEFINE_RUNTIME_int32(flag_validators_test_lt_lhs, 0, "Flag for LHS of < check");
 DEFINE_RUNTIME_int32(flag_validators_test_lt_rhs, 9, "Flag for RHS of < check");
@@ -146,6 +148,9 @@ namespace yb {
 
 class FlagValidatorsTest : public YBTest {
  protected:
+  // Tests here change process global flags. Restore them so tests do not depend on run order.
+  gflags::FlagSaver flag_saver_;
+
   void TestSetFlag(
       const std::string& flag_name, const std::string& new_value, const std::string& error = "") {
     std::string old_value;
@@ -292,6 +297,182 @@ TEST_F(FlagValidatorsTest, TestValidators) {
                                "Requires flag_base_defaults_to_zero to be non-zero"));
   ASSERT_NO_FATALS(TestSetFlag("flag_base_defaults_to_zero", "1"));
   ASSERT_NO_FATALS(TestSetFlag("flag_dependent_on_base_flag", "true"));
+}
+
+TEST_F(FlagValidatorsTest, ValidateCoDependentFlags) {
+  // Set up the values the co-dependent checks below are written against.
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_requires_1", "false"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_required_by_1", "false"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_dependent_on_base_flag", "false"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_base_defaults_to_zero", "0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_even", "0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_plus_one", "1"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_odd", "1"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_minus_one", "0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_lt_rhs", "4"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_lt_lhs", "0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_le_rhs", "4"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_le_lhs", "0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_gt_rhs", "6"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_gt_lhs", "9"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_rhs", "6"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_lhs", "9"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_eq_rhs", "foo"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_eq_lhs", "foo"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ne_rhs", "bar"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ne_lhs", "foo"));
+
+  auto expect_ok = [](const std::string& name, const std::string& value) {
+    ASSERT_OK(flags_internal::ValidateFlagValue(name, value));
+  };
+  auto expect_err = [](const std::string& name, const std::string& value) {
+    ASSERT_NOK(flags_internal::ValidateFlagValue(name, value));
+  };
+
+  // FLAG_REQUIRES_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_requires_1", "true"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_requires_1", "true"},
+        {"flag_validators_test_required_by_1", "true"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_requires_1", "true"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_required_by_1", "true"));
+  }
+  ASSERT_FALSE(FLAGS_flag_validators_test_requires_1);
+  ASSERT_FALSE(FLAGS_flag_validators_test_required_by_1);
+
+  // FLAG_REQUIRED_BY_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_requires_2", "true"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_required_by_2", "true"));
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_required_by_2", "false"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_required_by_2", "false"},
+        {"flag_validators_test_requires_2", "false"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_required_by_2", "false"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_requires_2", "false"));
+  }
+  ASSERT_TRUE(FLAGS_flag_validators_test_required_by_2);
+  ASSERT_TRUE(FLAGS_flag_validators_test_requires_2);
+
+  // FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR / FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_dependent_on_base_flag", "true"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_dependent_on_base_flag", "true"},
+        {"flag_base_defaults_to_zero", "1"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_dependent_on_base_flag", "true"));
+    ASSERT_NO_FATALS(expect_ok("flag_base_defaults_to_zero", "1"));
+  }
+  ASSERT_EQ(FLAGS_flag_base_defaults_to_zero, 0);
+  ASSERT_FALSE(FLAGS_flag_dependent_on_base_flag);
+
+  // FLAG_DELAYED_COND_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_plus_one", "3"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_even", "2"},
+        {"flag_validators_test_plus_one", "3"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_plus_one", "3"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_even", "2"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_even, 0);
+  ASSERT_EQ(FLAGS_flag_validators_test_plus_one, 1);
+
+  // FLAG_OK_VALIDATOR that reads a sibling flag
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_minus_one", "4"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_odd", "5"},
+        {"flag_validators_test_minus_one", "4"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_minus_one", "4"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_odd", "5"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_odd, 1);
+  ASSERT_EQ(FLAGS_flag_validators_test_minus_one, 0);
+
+  // FLAG_LT_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_lt_lhs", "4"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_lt_lhs", "4"},
+        {"flag_validators_test_lt_rhs", "9"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_lt_lhs", "4"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_lt_rhs", "9"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_lt_lhs, 0);
+  ASSERT_EQ(FLAGS_flag_validators_test_lt_rhs, 4);
+
+  // FLAG_LE_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_le_lhs", "5"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_le_lhs", "5"},
+        {"flag_validators_test_le_rhs", "5"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_le_lhs", "5"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_le_rhs", "5"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_le_lhs, 0);
+  ASSERT_EQ(FLAGS_flag_validators_test_le_rhs, 4);
+
+  // FLAG_GT_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_gt_lhs", "6"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_gt_lhs", "6"},
+        {"flag_validators_test_gt_rhs", "0"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_gt_lhs", "6"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_gt_rhs", "0"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_gt_lhs, 9);
+  ASSERT_EQ(FLAGS_flag_validators_test_gt_rhs, 6);
+
+  // FLAG_GE_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_ge_lhs", "5"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_ge_lhs", "5"},
+        {"flag_validators_test_ge_rhs", "0"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_ge_lhs", "5"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_ge_rhs", "0"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_ge_lhs, 9);
+  ASSERT_EQ(FLAGS_flag_validators_test_ge_rhs, 6);
+
+  // FLAG_EQ_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_eq_lhs", "bar"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_eq_lhs", "bar"},
+        {"flag_validators_test_eq_rhs", "bar"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_eq_lhs", "bar"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_eq_rhs", "bar"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_eq_lhs, "foo");
+  ASSERT_EQ(FLAGS_flag_validators_test_eq_rhs, "foo");
+
+  // FLAG_NE_FLAG_VALIDATOR
+  ASSERT_NO_FATALS(expect_err("flag_validators_test_ne_lhs", "bar"));
+  {
+    flags_internal::ProposedFlagValues overlay({
+        {"flag_validators_test_ne_lhs", "bar"},
+        {"flag_validators_test_ne_rhs", "foo"},
+    });
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_ne_lhs", "bar"));
+    ASSERT_NO_FATALS(expect_ok("flag_validators_test_ne_rhs", "foo"));
+  }
+  ASSERT_EQ(FLAGS_flag_validators_test_ne_lhs, "foo");
+  ASSERT_EQ(FLAGS_flag_validators_test_ne_rhs, "bar");
 }
 
 } // namespace yb

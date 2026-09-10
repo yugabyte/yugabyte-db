@@ -24,4 +24,5 @@ bool IsMotherDuckTable(Form_pg_class relation);
 bool IsMotherDuckTable(Relation relation);
 bool IsDuckdbExecutionAllowed();
 void RequireDuckdbExecution();
+bool YbIsLakeIoFunction(Oid function_oid);
 } // namespace pgduckdb

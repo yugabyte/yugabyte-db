@@ -317,6 +317,9 @@ Status ReplicaState::LockForShutdown(UniqueLock* lock) {
   if (state_ != kShuttingDown && state_ != kShutDown) {
     state_ = kShuttingDown;
   }
+  // Wake up waiters that block until a condition shutdown makes unreachable, e.g.
+  // MajorityReplicatedHtLeaseExpiration waiting for a leader lease that will never advance.
+  YB_PROFILE(cond_.notify_all());
   lock->swap(l);
   return Status::OK();
 }
@@ -1114,6 +1117,18 @@ void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const 
   }
 }
 
+void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(const OpId& op_id) {
+  // Reporting the deduplicated preceding op id is sound: dedup only strips ops already present,
+  // and runs after the log-matching check, so this replica holds it and the current leader sent
+  // it. Updates at least as often as the IfEmpty variant, so it does not reintroduce GH #15629.
+  if (last_received_op_id_current_leader_.empty() ||
+      op_id > last_received_op_id_current_leader_) {
+    VLOG_WITH_PREFIX(1) << __func__ << " Advancing last_received_current_leader from "
+      << last_received_op_id_current_leader_.ToString() << " to " << op_id.ToString();
+    last_received_op_id_current_leader_ = op_id;
+  }
+}
+
 const yb::OpId& ReplicaState::GetLastReceivedOpIdUnlocked() const {
   DCHECK(IsLocked());
   return last_received_op_id_;
@@ -1460,6 +1475,11 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
     // Slow path
     UniqueLock l(update_lock_);
     auto predicate = [this, &result, min_allowed] {
+      // Stop waiting once shutdown starts: the lease may never advance again, and LockForShutdown
+      // notifies cond_ so we are woken here.
+      if (state_ == kShuttingDown || state_ == kShutDown) {
+        return true;
+      }
       result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
       return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
     };
@@ -1467,6 +1487,9 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
       cond_.wait(l, predicate);
     } else if (!cond_.wait_until(l, deadline, predicate)) {
       return STATUS_FORMAT(TimedOut, "Timed out waiting leader lease: $0", min_allowed);
+    }
+    if (state_ == kShuttingDown || state_ == kShutDown) {
+      return STATUS(ShutdownInProgress, "Replica is shutting down");
     }
   }
 

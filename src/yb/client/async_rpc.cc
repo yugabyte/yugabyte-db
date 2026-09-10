@@ -34,6 +34,8 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
+#include "yb/master/master_error.h"
+
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 
@@ -44,6 +46,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
@@ -379,6 +382,50 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   }
 }
 
+// Points the request's read time at the statement's in_txn_limit. Used for reading relations that
+// were created in the current transaction. This is done since there might be 2 kinds of rows for
+// such relations:
+//
+// (1) written with the skip_intents optimization and hence they sit in regular db at the hybrid
+// time picked when the write is applied, which is always above the in_txn_limit of the statement
+// (except in a corner case where the write occurs before the first read of the statement, refer
+// src/yb/yql/pggate/README), and
+//
+// (2) written to intents db i.e., with the optimization disabled (e.g., due to a savepoint in the
+// transaction).
+//
+// Sending the statement's in_txn_limit as the read time gives rows of type (1) the same visibility
+// as rows of type (2). This is because:
+//
+// (a) All rows written before the in_txn_limit would be visible and those written afterwards
+// won't be visible.
+//
+// (b) No concurrent backend can write to the same table because the skip_intents optimization
+// only applies to tables created in the current active transaction which is not committed yet.
+//
+// (c) The corner case implementation quirk that is seen in the normal unoptimized case remains
+// in the optimized path of skip_intents.
+//
+// The statement's in_txn_limit is taken from the read point, where PgClientSession stores it
+// via YBSession::SetInTxnLimit. kMax is not a statement limit: it is the backward-compatible
+// "no cutoff, see all own intents" default that ReadHybridTime's constructors and FromPB
+// assign when no limit was chosen (e.g. on autonomous DDL sessions, which never set one).
+// Returns false and leaves the request untouched in that case; waiting for safe time to reach
+// kMax would block forever.
+template <class Req>
+bool SetReadTimeToInTxnLimit(const ConsistentReadPoint* read_point, Req* req) {
+  const auto in_txn_limit =
+      read_point ? read_point->GetReadTime().in_txn_limit : HybridTime::kInvalid;
+  if (!in_txn_limit || in_txn_limit == HybridTime::kMax) {
+    return false;
+  }
+  auto* read_time = req->mutable_read_time();
+  read_time->set_read_ht(in_txn_limit.ToUint64());
+  read_time->set_local_limit_ht(in_txn_limit.ToUint64());
+  read_time->set_global_limit_ht(in_txn_limit.ToUint64());
+  return true;
+}
+
 void SetFastPathObjectLockingTxnMetadata(
     const InFlightOpsTransactionMetadata& metadata, tserver::LWWriteRequestPB* req) {
   if (metadata.object_locking_txn_meta) {
@@ -449,11 +496,29 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     LOG_IF(DFATAL, has_read_time && serializable)
         << "Read time should NOT be specified for serializable isolation: "
         << read_point->GetReadTime().ToString();
+
+    // Use in_txn_limit to be able to read writes that happened with skip_intents i.e., they bypass
+    // the intents db and land in the regular db. Only this op's read time moves; the transaction
+    // and its metadata are untouched.
+    //
+    // Serializable is excluded because it must not carry a read time at all (see the check above),
+    // and does not need one: it reads at the latest time, which is already above those rows.
+    if (data.read_at_in_txn_limit && has_read_time && !serializable) {
+      if (!SetReadTimeToInTxnLimit(read_point, &req_)) {
+        VLOG(2) << "No usable in_txn_limit, leaving read time as "
+                << read_point->GetReadTime().ToString();
+      }
+    }
   } else if (data.skip_intents) {
     if constexpr (std::is_same_v<Req, tserver::LWWriteRequestPB>) {
       IncrementCounter(async_rpc_metrics_->skip_intents_writes);
     }
-    if (req_.read_time().read_ht() > 0) {
+
+    // Use in_txn_limit to be able to read writes that happened with skip_intents i.e., they bypass
+    // the intents db and land in the regular db.
+    if (!SetReadTimeToInTxnLimit(read_point, &req_) && req_.read_time().read_ht() > 0) {
+      // Without a usable in_txn_limit, clearing the read time lets the remote tserver pick the
+      // latest time for reading.
       req_.clear_read_time();
     }
   }
@@ -963,7 +1028,8 @@ void ReadRpc::NotifyBatcher(const Status& status) {
 
 WaitForAsyncWriteRpc::WaitForAsyncWriteRpc(
     const BatcherPtr& batcher, TabletId tracking_tablet_id, PartitionKey partition_key,
-    const std::shared_ptr<const YBTable>& table, const OpId& op_id)
+    const std::shared_ptr<const YBTable>& table, const OpId& op_id,
+    const ash::WaitStateInfoPtr& issuing_wait_state)
     : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
       tracking_tablet_id_(std::move(tracking_tablet_id)),
       partition_key_(std::move(partition_key)),
@@ -973,11 +1039,18 @@ WaitForAsyncWriteRpc::WaitForAsyncWriteRpc(
       tablet_invoker_(
           /*local_tserver_only=*/false,
           /*consistent_prefix=*/false, batcher->client_, this, this,
-          /*tablet=*/nullptr, table, mutable_retrier(), trace_.get()) {
+          /*tablet=*/nullptr, table, mutable_retrier(), trace_.get()),
+      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   TRACE_TO(trace_, "WaitForAsyncWrite initiated");
   VTRACE_TO(
       1, trace_, "Tracking tablet $0, op_id $1, partition_key $2", tracking_tablet_id_,
       op_id_.ToString(), Slice(partition_key_).ToDebugHexString());
+
+  // Only copy the metadata since this RPC outlives the issuing statement (don't want to mutate
+  // that statement's wait state).
+  if (wait_state_ && issuing_wait_state) {
+    wait_state_->UpdateMetadata(issuing_wait_state->metadata());
+  }
 
   op_id_.ToPB(req_.mutable_op_id());
 }
@@ -994,7 +1067,13 @@ void WaitForAsyncWriteRpc::SendRpc() {
 
 void WaitForAsyncWriteRpc::OnKeyLookup(const Result<internal::RemoteTabletPtr>& result) {
   if (!result.ok()) {
-    FinishOrRetry(Status(result.status()));
+    const auto& status = result.status();
+    // OBJECT_NOT_FOUND from the master means the table itself is gone (dropped, or rewritten by
+    // TRUNCATE). Refreshing partitions can never resolve that, so fail instead of retrying until
+    // the deadline. Other NotFound flavors, e.g. a tablet split in flight, stay retryable.
+    const auto table_gone = status.IsNotFound() &&
+                            master::MasterError(status) == master::MasterErrorPB::OBJECT_NOT_FOUND;
+    FinishOrRetry(Status(status), /*allow_retry=*/!table_gone);
     return;
   }
   const TabletId& tablet_id = (*result)->tablet_id();
@@ -1005,6 +1084,7 @@ void WaitForAsyncWriteRpc::OnKeyLookup(const Result<internal::RemoteTabletPtr>& 
 }
 
 void WaitForAsyncWriteRpc::SendRpcToTserver(int attempt_num) {
+  ADOPT_WAIT_STATE(wait_state_);
   auto proxy = tablet_invoker_.proxy();
   proxy->WaitForAsyncWriteAsync(
       req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
@@ -1023,12 +1103,12 @@ void WaitForAsyncWriteRpc::Finished(const Status& status) {
   }
 }
 
-void WaitForAsyncWriteRpc::FinishOrRetry(Status&& status) {
+void WaitForAsyncWriteRpc::FinishOrRetry(Status&& status, bool allow_retry) {
   DCHECK(table_);
   // NotFound (parent GC'd) and TryAgain (TABLET_SPLIT or stale partitions) both mean the key has
   // moved. Refresh partitions and DelayedRetry (this is bounded by the retrier's deadline).
   // Other errors (network, etc.) are already handled by TabletInvoker's internal retries.
-  if (!status.ok() && (status.IsNotFound() || status.IsTryAgain())) {
+  if (allow_retry && !status.ok() && (status.IsNotFound() || status.IsTryAgain())) {
     const_cast<YBTable&>(*table_).MarkPartitionsAsStale();
     status = mutable_retrier()->DelayedRetry(this, status);
     if (status.ok()) {

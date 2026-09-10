@@ -29,6 +29,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -346,7 +347,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
           },
       .is_automatic_mode_switchover_func = [](const NamespaceId&) { return false; },
       .create_xcluster_streams_func =
-          [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
+          [this](const std::vector<TableId>& table_ids, const LeaderEpoch&,
+                 bool /*automatic_ddl_mode*/) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();
             for (const auto& table_id : table_ids) {
               create_context->streams_.emplace_back(CreateXClusterStream(table_id));

@@ -32,7 +32,7 @@ import {
   BYPASS_PROXY_LIST_VALUES_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 import WarningIcon from '../../../../../assets/warning-triangle.svg';
 
 const { Box, Typography, styled } = mui;
@@ -185,7 +185,13 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
           />
           <StyledSubText sx={{ marginLeft: '48px' }}>
             {t('toggleHelper')}&nbsp;
-            <StyledLink>{t('learnMore')}</StyledLink>
+            <StyledLink
+              href="https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universes-wizard/#proxy-configuration"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t('learnMore')}
+            </StyledLink>
           </StyledSubText>
         </Box>
       </Box>

@@ -597,7 +597,9 @@ void ColumnFamilyData::RecalculateWriteStallConditions(
   uint64_t compaction_needed_bytes =
       vstorage->estimated_compaction_needed_bytes();
 
-  if (imm()->TotalDataSize() >= mutable_cf_options.max_flushing_bytes) {
+  if (TEST_stop_writes_) {
+    write_controller_token_ = write_controller->GetStopToken();
+  } else if (imm()->TotalDataSize() >= mutable_cf_options.max_flushing_bytes) {
     write_controller_token_ = write_controller->GetStopToken();
     RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
         "[%s] Stopping writes because we have %" PRIu64 " bytes to flush, while % " PRIu64
@@ -705,6 +707,11 @@ void ColumnFamilyData::RecalculateWriteStallConditions(
     write_controller_token_.reset();
   }
   prev_compaction_needed_bytes_ = compaction_needed_bytes;
+}
+
+void ColumnFamilyData::TEST_StopWrites() {
+  TEST_stop_writes_ = true;
+  RecalculateWriteStallConditions(*GetLatestMutableCFOptions());
 }
 
 const EnvOptions* ColumnFamilyData::soptions() const {

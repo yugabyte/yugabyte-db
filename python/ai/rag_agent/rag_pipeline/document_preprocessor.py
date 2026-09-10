@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from work_queue.task_router import TaskProcessor
 from work_queue.poller import Poller
 from db.connection_pool import ConnectionPool
+from db.system_connection_pool import SystemConnectionPool
 from models.work_queue_task import WorkQueueTask
 from rag_pipeline.rag_handler import RagPipelineHandler
 from db.source_document_tracking import SourceDocumentTracking
@@ -25,6 +26,7 @@ class DocumentPreprocessor(TaskProcessor):
         """
         self.logger = logging.getLogger(__name__)
         self.connection_pool = ConnectionPool()
+        self.system_connection_pool = SystemConnectionPool()
         self.rag_handler = RagPipelineHandler()
         self.source_document_tracking = SourceDocumentTracking()
         # Used to finalize the work_queue row after process(). Without this
@@ -254,30 +256,45 @@ class DocumentPreprocessor(TaskProcessor):
         Parse the datapack_id from document_uri and return a Langfuse client
         initialised with the matching project keys, or None if unavailable.
         """
+        # The Langfuse project mapping lives in the meko_system DB, which may be
+        # a different database than the one served by the shared pool. When
+        # YUGABYTEDB_SYSTEM_CONN_STRING is set, use the dedicated system pool
+        # that points directly at that database; otherwise fall back to the
+        # shared connection pool.
+        pool = (
+            self.system_connection_pool
+            if os.getenv("YUGABYTEDB_SYSTEM_CONN_STRING")
+            else self.connection_pool
+        )
+        connection = None
         try:
-            connection = self.connection_pool.get_connection()
+            connection = pool.get_connection()
             cursor = connection.cursor()
             try:
-                cursor.execute(
-                    "SELECT langfuse_public_key, langfuse_secret_key "
-                    "FROM meko_system.langfuse_project_mapping WHERE datapack_id = %s::uuid",
-                    (datapack_id,),
-                )
-                row = cursor.fetchone()
-                if row:
-                    public_key = row[0]
-                    secret_key = row[1]
-                    return public_key, secret_key
-                else:
-                    self.logger.warning(f"No Langfuse keys found for datapack_id={datapack_id}")
+                return self._fetch_langfuse_keys(cursor, datapack_id)
             finally:
                 cursor.close()
-                self.connection_pool.return_connection(connection)
         except Exception as e:
             self.logger.warning(
                 f"Failed to resolve Langfuse keys for datapack_id={datapack_id}: {str(e)}"
             )
+        finally:
+            if connection is not None:
+                pool.return_connection(connection)
 
+        return None
+
+    def _fetch_langfuse_keys(self, cursor, datapack_id: str) -> Tuple[str, str] | None:
+        """Run the Langfuse key lookup on an already-open cursor."""
+        cursor.execute(
+            "SELECT langfuse_public_key, langfuse_secret_key "
+            "FROM meko_system.langfuse_project_mapping WHERE datapack_id = %s::uuid",
+            (datapack_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row[0], row[1]
+        self.logger.warning(f"No Langfuse keys found for datapack_id={datapack_id}")
         return None
 
     def process(self, task: WorkQueueTask) -> Dict[str, Any]:

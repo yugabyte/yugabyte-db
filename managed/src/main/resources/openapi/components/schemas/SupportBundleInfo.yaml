@@ -1,0 +1,44 @@
+title: SupportBundleInfo
+description: |
+  System-generated support bundle metadata.
+type: object
+properties:
+  uuid:
+    description: Support bundle unique identifier.
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  status:
+    description: Current status of the support bundle collection task.
+    $ref: "./SupportBundleStatus.yaml"
+    readOnly: true
+  scope_uuid:
+    description: UUID of the universe this support bundle was collected from. Null for YBA-only bundles.
+    type: string
+    format: uuid
+    nullable: true
+    readOnly: true
+  customer_uuid:
+    description: UUID of the customer that owns this bundle. Set only for YBA-only bundles.
+    type: string
+    format: uuid
+    nullable: true
+    readOnly: true
+  creation_date:
+    description: When the bundle archive was created. Null until collection succeeds.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  expiration_date:
+    description: When the bundle archive is eligible for automatic cleanup. Null until collection succeeds.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  size_in_bytes:
+    description: Size in bytes of the bundle archive. Zero until collection succeeds.
+    type: integer
+    format: int64
+    readOnly: true

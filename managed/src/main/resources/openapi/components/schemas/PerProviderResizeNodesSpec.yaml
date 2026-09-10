@@ -1,0 +1,14 @@
+title: PerProviderResizeNodesSpec
+description: Proposed resize node settings for a single provider when checking resize options for a multicloud cluster.
+type: object
+required:
+  - provider
+  - nodes_spec
+properties:
+  provider:
+    description: Cloud provider UUID.
+    type: string
+    format: uuid
+  nodes_spec:
+    description: Proposed resize node settings for this provider.
+    $ref: "./ResizeProviderRootNodesSpec.yaml"

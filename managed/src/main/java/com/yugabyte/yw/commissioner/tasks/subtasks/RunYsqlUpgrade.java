@@ -31,7 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.UpgradeYsqlResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class RunYsqlUpgrade extends UniverseTaskBase {
@@ -102,7 +102,7 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
                 ysqlUpgradeAdminOperationTimeoutMs,
                 confGetter.getGlobalConf(GlobalConfKeys.ybcAdminOperationTimeoutMs)));
 
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       validateAndUpgrade(client, universe);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
@@ -110,7 +110,7 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
     }
   }
 
-  private void validateAndUpgrade(YBClient client, Universe universe) {
+  private void validateAndUpgrade(YBClientApi client, Universe universe) {
     boolean useSingleConnection =
         confGetter.getConfForScope(universe, UniverseConfKeys.singleConnectionYsqlUpgrade);
     int numAttempts = 0;
@@ -194,7 +194,7 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
    * Tries to find alive tserver in same region as the master leader region. If not,
    *   will try to find an alive tserver in any region.
    */
-  private NodeDetails findAliveTServer(YBClient client, Universe universe) {
+  private NodeDetails findAliveTServer(YBClientApi client, Universe universe) {
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     String masterLeaderRegion = masterLeaderNode.getRegion();
     NodeDetails aliveTServer = null;

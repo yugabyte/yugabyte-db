@@ -13,10 +13,11 @@ import (
 
 // Mock data provider to avoid calling YBA APIs.
 type MockDataProvider struct {
-	sessionInfo  *model.SessionInfo
-	provider     *model.Provider
-	instanceType *model.NodeInstanceType
-	nodeInstance *model.NodeInstance
+	sessionInfo     *model.SessionInfo
+	provider        *model.Provider
+	instanceType    *model.NodeInstanceType
+	nodeInstance    *model.NodeInstance
+	certificateName string
 }
 
 func (dp *MockDataProvider) Load(ctx context.Context) error {
@@ -102,6 +103,10 @@ func (dp *MockDataProvider) GetNodeAgentPort(ctx context.Context) (string, error
 	return "9070", nil
 }
 
+func (dp *MockDataProvider) GetCertificateName(ctx context.Context) (string, error) {
+	return dp.certificateName, nil
+}
+
 func TestGenerateConfig(t *testing.T) {
 	ynpBasePath := filepath.Join(os.Getenv("PROJECT_DIR"), "resources/ynp")
 	args := &Args{
@@ -127,4 +132,52 @@ func TestGenerateConfig(t *testing.T) {
 	}
 	t.Logf("Output: %s\n", out)
 	t.Log("All resolvers validated successfully")
+}
+
+func TestYbaCertificateNameResolver(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("missing falls back to empty string", func(t *testing.T) {
+		dataProvider := &MockDataProvider{}
+		args := &Args{
+			YnpConfig: map[string]map[string]any{
+				"yba": {
+					"url": "https://localhost",
+				},
+			},
+		}
+		gen := NewYNPConfigGenerator(ctx, args, dataProvider)
+		if err := gen.registerResolvers(); err != nil {
+			t.Fatalf("Failed to register resolvers: %v", err)
+		}
+		value, err := gen.resolvers["yba_certificate_name"](ctx, dataProvider)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if value != "" {
+			t.Fatalf("Expected empty certificate name, got %#v", value)
+		}
+	})
+
+	t.Run("present returns configured name", func(t *testing.T) {
+		dataProvider := &MockDataProvider{certificateName: "na-custom-ca"}
+		args := &Args{
+			YnpConfig: map[string]map[string]any{
+				"yba": {
+					"url": "https://localhost",
+				},
+			},
+		}
+		gen := NewYNPConfigGenerator(ctx, args, dataProvider)
+		if err := gen.registerResolvers(); err != nil {
+			t.Fatalf("Failed to register resolvers: %v", err)
+		}
+		value, err := gen.resolvers["yba_certificate_name"](ctx, dataProvider)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if value != "na-custom-ca" {
+			t.Fatalf("Expected %q, got %#v", "na-custom-ca", value)
+		}
+	})
 }

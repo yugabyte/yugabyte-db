@@ -293,7 +293,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
         getInitialNumTServers(), replicationFactor,
         MiniYBClusterParameters.DEFAULT_NUM_TSERVERS);
 
-    LOG.info("BaseMiniClusterTest.createMiniCluster is running");
+    LOG.info("BaseMiniClusterTest.createMiniCluster is running with " + numMasters +
+        " masters and " + numTservers + " tservers, replication factor: "
+        + replicationFactor);
     MiniYBClusterBuilder clusterBuilder = new MiniYBClusterBuilder()
                       .numMasters(numMasters)
                       .numTservers(numTservers)

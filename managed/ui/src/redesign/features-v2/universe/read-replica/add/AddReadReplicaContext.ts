@@ -16,6 +16,8 @@ export interface AddRRContextProps {
   regionsAndAZBaseline?: RRRegionsAndAZSettings;
   /** True when initial placement was loaded from the existing read-replica cluster (enables per-AZ Undo). */
   readReplicaPlacementFromUniverse?: boolean;
+  /** True when editing an existing read replica: show only the placement page and submit from it. */
+  isEditPlacementOnly?: boolean;
 }
 
 export enum AddReadReplicaSteps {

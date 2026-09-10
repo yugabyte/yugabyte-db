@@ -19,9 +19,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import io.prometheus.metrics.model.snapshots.CounterSnapshot.CounterDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.DataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.GaugeSnapshot.GaugeDataPointSnapshot;
@@ -119,5 +121,26 @@ public class TestUtils {
       }
     }
     return null;
+  }
+
+  public static UniverseDefinitionTaskParams.ProviderSpecification toProviderSpecification(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    UniverseDefinitionTaskParams.ProviderSpecification result =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    result.setProviderType(userIntent.providerType);
+    result.setProviderUUID(UUID.fromString(userIntent.provider));
+    result.setAccessKeyCode(userIntent.accessKeyCode);
+    result.setInstanceTags(userIntent.instanceTags);
+    result.setNodesSpecs(tserverSpec(userIntent.instanceType, userIntent.deviceInfo));
+    return result;
+  }
+
+  public static HierarchicalNodesSpec.RootNodesSpec tserverSpec(
+      String instanceType, DeviceInfo deviceInfo) {
+    HierarchicalNodesSpec.RootNodesSpec rootNodesSpec = new HierarchicalNodesSpec.RootNodesSpec();
+    HierarchicalNodesSpec.NodeSpec tserverSpec = rootNodesSpec.getOrCreateTserverSpec();
+    tserverSpec.setDeviceInfo(deviceInfo);
+    tserverSpec.setInstanceType(instanceType);
+    return rootNodesSpec;
   }
 }

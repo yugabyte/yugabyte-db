@@ -8,6 +8,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.Map;
@@ -240,7 +242,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(6))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -283,6 +286,45 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   }
 
   @Test
+  public void testValidateGFlagsSkippedOnRetry() {
+    setupUniverseSingleAZ(false, false);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe ->
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                "2024.2.0.0-b1");
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+
+    KubernetesGFlagsUpgradeParams firstTry = newK8sGFlagsPrecheckParams();
+    TaskInfo firstInfo = submitTask(firstTry);
+    assertEquals(Success, firstInfo.getTaskState());
+    assertTrue(
+        firstInfo.getSubTasks().stream().anyMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        firstInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+
+    KubernetesGFlagsUpgradeParams retry = newK8sGFlagsPrecheckParams();
+    retry.setPreviousTaskUUID(firstInfo.getUuid());
+    TaskInfo retryInfo = submitTask(retry);
+    assertEquals(Success, retryInfo.getTaskState());
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+  }
+
+  private KubernetesGFlagsUpgradeParams newK8sGFlagsPrecheckParams() {
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.runOnlyPrechecks = true;
+    return taskParams;
+  }
+
+  @Test
   public void testGFlagUpgradeMultiAZ() {
     setupUniverseMultiAZ(false, false);
     gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
@@ -309,7 +351,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(6))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());

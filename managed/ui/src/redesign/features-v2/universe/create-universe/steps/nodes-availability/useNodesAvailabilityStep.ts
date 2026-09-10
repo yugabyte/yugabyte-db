@@ -17,7 +17,7 @@ import { useQuery } from 'react-query';
 import { MarkerType, useGetMapIcons } from '@yugabyte-ui-library/core';
 import {
   assignRegionsAZNodeByReplicationFactor,
-  getExpertNodesStepDefaultPlacement,
+  getExpertAvailabilityZonesOrEmpty,
   getFaultToleranceNeeded,
   getNodeCount,
   inferResilience,
@@ -30,6 +30,7 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { NodeAvailabilityProps } from './dtos';
 import { Region } from '../../../../../helpers/dtos';
 import { ResilienceFormMode, type ResilienceAndRegionsProps } from '../resilence-regions/dtos';
@@ -92,8 +93,8 @@ export function applyNodesStepPlacementFromResilience(
 
   const zonesSnapshot = methods.getValues('availabilityZones');
   if (isEmpty(zonesSnapshot)) {
-    const expertPlacement = getExpertNodesStepDefaultPlacement(resilienceAndRegionsSettings);
-    if (expertPlacement) {
+    if (isExpert) {
+      const expertPlacement = getExpertAvailabilityZonesOrEmpty(resilienceAndRegionsSettings);
       methods.setValue(REPLICATION_FACTOR, expertPlacement.replicationFactor);
       methods.setValue('availabilityZones', expertPlacement.availabilityZones);
       if (
@@ -105,15 +106,6 @@ export function applyNodesStepPlacementFromResilience(
         });
       }
     } else {
-      if (isExpert) {
-        const currentRf = methods.getValues(REPLICATION_FACTOR);
-        if (currentRf === undefined || currentRf === null) {
-          methods.setValue(
-            REPLICATION_FACTOR,
-            resilienceAndRegionsSettings.resilienceFactor ?? 1
-          );
-        }
-      }
       const nextZones = assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
       methods.setValue('availabilityZones', nextZones);
     }
@@ -252,6 +244,7 @@ export function useNodesAvailabilityStep(
     defaultValues: nodesAvailabilitySettings,
     resolver
   });
+  usePersistStepFormValues(methods.watch, methods.getValues, saveNodesAvailabilitySettings);
   const { trigger } = methods;
   const availabilityZones = methods.watch('availabilityZones');
   const watchedReplicationFactor = methods.watch(REPLICATION_FACTOR);
@@ -509,15 +502,20 @@ export function useNodesAvailabilityStep(
 
   // Re-sync when resilience/region context changes — not on every availabilityZones edit (that
   // caused setValue ↔ watch feedback loops in expert mode).
+  // Covers expert mode and guided (non-geo) create-universe. Guided geo-partition is handled by
+  // the dedicated guidedPlacementSyncSignature effect above.
   useEffect(() => {
     if (!resilienceAndRegionsSettings) return;
-    if (resilienceAndRegionsSettings.resilienceFormMode !== ResilienceFormMode.EXPERT_MODE) {
+    const formMode = resilienceAndRegionsSettings.resilienceFormMode;
+    const isExpert = formMode === ResilienceFormMode.EXPERT_MODE;
+    const isGuidedNonGeo = formMode === ResilienceFormMode.GUIDED && !isGeoPartition;
+    if (!isExpert && !isGuidedNonGeo) {
       return;
     }
     const regionList = resilienceAndRegionsSettings.regions ?? [];
-    if (
-      regionCodesMatchAvailabilityZones(regionList, methods.getValues('availabilityZones'))
-    ) {
+    const currentZones = methods.getValues('availabilityZones');
+    const matches = regionCodesMatchAvailabilityZones(regionList, currentZones);
+    if (matches) {
       return;
     }
     methods.setValue('availabilityZones', {});
@@ -526,7 +524,7 @@ export function useNodesAvailabilityStep(
       resilienceAndRegionsSettings,
       saveResilienceAndRegionsSettings
     );
-  }, [resilienceAndRegionsSettings, methods, saveResilienceAndRegionsSettings]);
+  }, [resilienceAndRegionsSettings, methods, saveResilienceAndRegionsSettings, isGeoPartition]);
 
   useImperativeHandle(
     forwardedRef,
@@ -536,8 +534,7 @@ export function useNodesAvailabilityStep(
         return new Promise<boolean>((resolve) => {
           void methods
             .handleSubmit(
-              (data) => {
-                saveNodesAvailabilitySettings(data);
+              () => {
                 moveToNextPage();
                 resolve(true);
               },
@@ -551,7 +548,7 @@ export function useNodesAvailabilityStep(
       },
       setValue: methods.setValue as (name: string, value: unknown) => void
     }),
-    [methods, saveNodesAvailabilitySettings, moveToNextPage, moveToPreviousPage]
+    [methods, moveToNextPage, moveToPreviousPage]
   );
 
   return {

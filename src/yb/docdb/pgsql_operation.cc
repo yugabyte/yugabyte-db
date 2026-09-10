@@ -85,6 +85,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "ybgate/ybgate_api.h"
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -92,45 +94,46 @@ DECLARE_bool(ysql_disable_index_backfill);
 DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
 DEFINE_UNKNOWN_uint64(ysql_scan_deadline_margin_ms, 1000,
-              "Scan deadline is calculated by adding client timeout to the time when the request "
-              "was received. It defines the moment in time when client has definitely timed out "
-              "and if the request is yet in processing after the deadline, it can be canceled. "
-              "Therefore to prevent client timeout, the request handler should return partial "
-              "result and paging information some time before the deadline. That's what the "
-              "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
-              "delays.");
+    "Scan deadline is calculated by adding client timeout to the time when the request "
+    "was received. It defines the moment in time when client has definitely timed out "
+    "and if the request is yet in processing after the deadline, it can be canceled. "
+    "Therefore to prevent client timeout, the request handler should return partial "
+    "result and paging information some time before the deadline. That's what the "
+    "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
+    "delays.");
 
 DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
-            "Whether to enforce consistency of data returned for second page and beyond for YSQL "
-            "queries on transactional tables. If true, read restart errors could be returned to "
-            "prevent inconsistency. If false, no read restart errors are returned but the data may "
-            "be stale. The latter is preferable for long scans. The data returned for the first "
-            "page of results is never stale regardless of this flag.");
+    "Whether to enforce consistency of data returned for second page and beyond for YSQL "
+    "queries on transactional tables. If true, read restart errors could be returned to "
+    "prevent inconsistency. If false, no read restart errors are returned but the data may "
+    "be stale. The latter is preferable for long scans. The data returned for the first "
+    "page of results is never stale regardless of this flag.");
 
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
-                 "If set > 0, slows down the response to pgsql aggregate read by this amount.");
+    "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 // Disable packed row by default in debug builds.
 constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
 DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
-                         !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
-                         "Whether packed row is enabled for YSQL.");
+    !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
+    "Whether packed row is enabled for YSQL.");
 
 DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
-                    "Whether to enable packed row for colocated tables.");
+    "Whether to enable packed row for colocated tables.");
 
 DEFINE_UNKNOWN_uint64(ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
-                    "Whether to enable packed row for full row update.");
+    "Whether to enable packed row for full row update.");
 
 DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
-                    "Whether to mark packed rows created from UPDATE operations with a flag. "
-                    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
-                    "Default is false.");
+    "Whether to mark packed rows created from UPDATE operations with a flag. "
+    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
+    "Default is false.");
+
 DEFINE_RUNTIME_AUTO_bool(ysql_use_packed_row_v2, kExternal, false, true,
-                         "Whether to use packed row V2 when row packing is enabled.");
+    "Whether to use packed row V2 when row packing is enabled.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
@@ -138,7 +141,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "data integrity for operations with implicit dependencies between columns.");
 
 DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
-                    "Whether to skip filter check during vector index search.");
+    "Whether to skip filter check during vector index search.");
 
 DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
     "Whether to skip filter check during vector index search if table does not have "
@@ -703,7 +706,14 @@ struct IndexState {
   Status delayed_failure;
 };
 
-Result<FetchResult> FetchTableRow(
+struct TableRowFetch {
+  FetchResult result;
+  // Whether an index row was read.  Only a scan driven by a colocated index reads one, and it
+  // reads none once the index is exhausted.
+  bool read_index_row;
+};
+
+Result<TableRowFetch> FetchTableRow(
     TableIdView table_id, FilteringIterator* table_iter,
     IndexState* index, dockv::PgTableRow* row) {
   Slice tuple_id;
@@ -711,13 +721,11 @@ Result<FetchResult> FetchTableRow(
     auto& index_row = index->row;
     switch(VERIFY_RESULT(index->iter.FetchNext(&index_row))) {
       case FetchResult::NotFound:
-        return FetchResult::NotFound;
+        return TableRowFetch{FetchResult::NotFound, false};
       case FetchResult::FilteredOut:
         VLOG(1) << "Row filtered out by colocated index condition";
-        ++index->scanned_rows;
-        return FetchResult::FilteredOut;
+        return TableRowFetch{FetchResult::FilteredOut, true};
       case FetchResult::Found:
-        ++index->scanned_rows;
         break;
     }
 
@@ -747,7 +755,7 @@ Result<FetchResult> FetchTableRow(
     case FetchResult::Found:
       break;
   }
-  return fetch_result;
+  return TableRowFetch{fetch_result, index != nullptr};
 }
 
 struct RowPackerData {
@@ -937,7 +945,7 @@ class VectorIndexKeyProvider {
     // deduplication (a couple of lines above), reverse-mapping misses, etc.
     if (TEST_vector_index_clear_result_entries_once && num_top_vectors_to_remove_ > 0) {
       result_entries_.clear();
-      TEST_vector_index_clear_result_entries_once = false;
+      ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_clear_result_entries_once) = false;
     }
 
     VLOG_WITH_FUNC(1) << vector_index_.ToString()
@@ -1054,7 +1062,9 @@ class PgsqlVectorFilter {
     return true;
   }
 
-  bool operator()(const vector_index::VectorId& vector_id) {
+  // TODO(vector_index): payload stores the ybctid attached to the vector, use it to filter
+  // without reading the reverse mapping in a follow up to #33353.
+  bool operator()(const vector_index::VectorId& vector_id, Slice payload) {
     if (!row_) {
       return true;
     }
@@ -1110,6 +1120,12 @@ class PgsqlVectorFilter {
 
   const Status& status() const {
     return status_;
+  }
+
+  // The reader used to resolve candidates, or nullptr when the filter is inactive; Search reuses it
+  // to resolve ybctids on the same snapshot.
+  docdb::DocVectorIndexReverseMappingReader* reverse_mapping_reader() const {
+    return reverse_mapping_reader_.get();
   }
 
  private:
@@ -1486,7 +1502,8 @@ Status PgsqlWriteOperation::InsertColumn(
     return DoInsertColumn(data, column_id, column, value, pack_context);
   }
 
-  dockv::DocVectorValue vector_value(value, vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+    doc_read_context_->vector_value_format(), value, vector_index::VectorId::GenerateRandom());
   return DoInsertColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -1549,6 +1566,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       key_bytes.AppendRawBytes(*it++);
       auto key = key_bytes.AsSlice();
       Slice packed_value(*it++);
+      // TODO(vector_index): This pass-through writes the pggate-packed row (from BindPackedRow)
+      // directly without intercepting vector columns. Vector columns won't get a VectorId
+      // assigned. When owns_vector_reverse_mapping tables are enabled, vector columns must be
+      // intercepted here (e.g. by falling through to the unpack-repack path below for tables
+      // with vectors).
       if (pack_row &&
           packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -1662,7 +1684,9 @@ Status PgsqlWriteOperation::UpdateColumn(
     return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
-  dockv::DocVectorValue vector_value(result->Value(), vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+      doc_read_context_->vector_value_format(), result->Value(),
+      vector_index::VectorId::GenerateRandom());
   return DoUpdateColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -2152,6 +2176,8 @@ class PgsqlReadRequestYbctidProvider {
       PgsqlResponseMsg& response)
       : request_(request), response_(response) {
     const auto& batch_args = request_.batch_arguments();
+
+    VLOG_WITH_FUNC(3) << "batch_args.size(): " << batch_args.size();
 
     Slice min_arg;
     Slice max_arg;
@@ -2725,6 +2751,18 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   RSTATUS_DCHECK(
       data_.vector_index->BackfillDone(), IllegalState,
       "Vector index query on non ready index: $0", *data_.vector_index);
+
+  // Resolve ybctids with the filter's reader so Search sees the same snapshot the filter used
+  // (avoids a spurious "Vector not found" when a DELETE applies between the two reads). When the
+  // filter is inactive it has no reader, so create one here.
+  auto* reverse_mapping_reader = filter.reverse_mapping_reader();
+  DocVectorIndexReverseMappingReaderPtr owned_reader;
+  if (reverse_mapping_reader == nullptr) {
+    owned_reader = VERIFY_RESULT(data_.vector_index->context().CreateReverseMappingReader(
+        data_.read_operation_data.read_time, data_.read_operation_data.statistics));
+    reverse_mapping_reader = owned_reader.get();
+  }
+
   auto result = VERIFY_RESULT(data_.vector_index->Search(
       vector_slice,
       vector_index::SearchOptions {
@@ -2733,7 +2771,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .filter = std::ref(filter),
       },
       could_have_missing_entries,
-      data_.read_operation_data.statistics
+      *reverse_mapping_reader
   ));
   RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
@@ -2825,14 +2863,18 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
   dockv::PgTableRow row(doc_projection);
   const auto& table_id = request_.index_request().table_id();
   do {
-    const auto fetch_result = VERIFY_RESULT(FetchTableRow(
+    const auto fetch = VERIFY_RESULT(FetchTableRow(
         table_id, &table_iter, index_state ? &*index_state : nullptr, &row));
     // If changing this code, see also PgsqlReadOperation::ExecuteBatchKeys.
-    if (fetch_result == FetchResult::NotFound) {
+    if (fetch.result == FetchResult::NotFound) {
+      // The scan ends here.  An index row that points at a row missing from the table was read
+      // all the same, so account for it before leaving.
+      if (fetch.read_index_row) {
+        ++index_state->scanned_rows;
+      }
       break;
     }
-    ++scanned_table_rows_;
-    if (fetch_result == FetchResult::Found) {
+    if (fetch.result == FetchResult::Found) {
       ++match_count;
       if (request_.is_aggregate()) {
         RETURN_NOT_OK(EvalAggregate(row));
@@ -2842,12 +2884,16 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         if (fetched_rows > 0 && result_buffer_->size() > response_size_limit) {
           RETURN_NOT_OK(result_buffer_->Truncate(row_start));
           fetch_limit = FetchLimit::kExceeded;
-          // skips the fetched_rows increment and the other limit's check, which may change
-          // the fetch_limit value
+          // Break before the limit check at the end of the loop.  It would replace kExceeded
+          // with kReached, and the next request would then resume after this row, skipping it.
           break;
         }
         ++fetched_rows;
       }
+    }
+    ++scanned_table_rows_;
+    if (fetch.read_index_row) {
+      ++index_state->scanned_rows;
     }
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
     if (scan_time_exceeded ||
@@ -2948,7 +2994,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
     }
 
     // If changing this code, see also PgsqlReadOperation::ExecuteScalar.
-    switch (VERIFY_RESULT(iter->FetchTuple(key, &row))) {
+    const auto fetch_result = VERIFY_RESULT(iter->FetchTuple(key, &row));
+    switch (fetch_result) {
       case FetchResult::NotFound:
         ++not_found_rows;
         // rebuild iterator on next iteration
@@ -2956,11 +3003,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
         break;
       case FetchResult::FilteredOut:
         ++filtered_rows;
-        ++scanned_table_rows_;
         break;
       case FetchResult::Found:
         ++found_rows;
-        ++scanned_table_rows_;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
@@ -2973,6 +3018,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
                     << "Response buffer size: " << result_buffer_->size()
                     << ", response size limit: " << response_size_limit;
             RETURN_NOT_OK(result_buffer_->Truncate(row_start));
+            // This key is not counted in batch_arg_count, so the client resends it and the
+            // request it is resent with accounts for its row.  Returns before the accounting
+            // below.
             // TODO GHI #25788, for now fail instead of returning incomplete results
             RSTATUS_DCHECK(!request_.batch_arguments().empty(),
                            IllegalState, "Pagination is required, but not supported");
@@ -2984,6 +3032,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
           ++fetched_rows;
         }
         break;
+    }
+    if (fetch_result != FetchResult::NotFound) {
+      ++scanned_table_rows_;
     }
     ++processed_keys;
   }

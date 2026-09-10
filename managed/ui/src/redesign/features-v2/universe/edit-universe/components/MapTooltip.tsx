@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, RefObject, useLayoutEffect, useRef } from 'react';
 import { groupBy } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { TFunction } from 'i18next';
@@ -8,8 +8,8 @@ import { RegionsAndNodesFormType } from '../../geo-partition/add/AddGeoPartition
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { ClusterSpecClusterType, PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import './MapTooltip.css';
-import pluralize from 'pluralize';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
+import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 
 const { styled, Typography, Divider } = mui;
 
@@ -17,6 +17,76 @@ interface MapRegionTooltipProps {
   regions: RegionsAndNodesFormType['regions'];
   partitionName?: string;
 }
+
+/** Gap kept between the tooltip and the map edges. */
+const MAP_EDGE_PADDING = 8;
+
+/**
+ * `.leaflet-container` is `overflow: hidden`, so tooltips taller than the space above
+ * their marker get cut off. Leaflet has no auto-pan for tooltips, so shift its tooltip
+ * element back inside the map viewport. The shift uses the `translate` property, which
+ * composes with the `transform` Leaflet writes when it positions the tooltip.
+ */
+const useKeepTooltipWithinMap = (contentRef: RefObject<HTMLDivElement>) => {
+  useLayoutEffect(() => {
+    const tooltip = contentRef.current?.closest<HTMLElement>('.leaflet-tooltip');
+    const map = tooltip?.closest<HTMLElement>('.leaflet-container');
+    if (!tooltip || !map) return;
+
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const clampIntoView = () => {
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const mapRect = map.getBoundingClientRect();
+
+      // Undo the applied shift to get the position Leaflet asked for.
+      const top = tooltipRect.top - offsetY;
+      const bottom = tooltipRect.bottom - offsetY;
+      const left = tooltipRect.left - offsetX;
+      const right = tooltipRect.right - offsetX;
+
+      const minTop = mapRect.top + MAP_EDGE_PADDING;
+      const maxBottom = mapRect.bottom - MAP_EDGE_PADDING;
+      const minLeft = mapRect.left + MAP_EDGE_PADDING;
+      const maxRight = mapRect.right - MAP_EDGE_PADDING;
+
+      let nextOffsetY = 0;
+      if (top < minTop) {
+        nextOffsetY = minTop - top;
+      } else if (bottom > maxBottom) {
+        // Never push the top out of view for tooltips taller than the map.
+        nextOffsetY = Math.max(maxBottom - bottom, minTop - top);
+      }
+
+      let nextOffsetX = 0;
+      if (left < minLeft) {
+        nextOffsetX = minLeft - left;
+      } else if (right > maxRight) {
+        nextOffsetX = Math.max(maxRight - right, minLeft - left);
+      }
+
+      if (nextOffsetX === offsetX && nextOffsetY === offsetY) return;
+
+      offsetX = nextOffsetX;
+      offsetY = nextOffsetY;
+      tooltip.style.setProperty('translate', `${offsetX}px ${offsetY}px`);
+    };
+
+    clampIntoView();
+
+    // Leaflet re-positions the tooltip on pan/zoom by rewriting its inline style.
+    const observer = new MutationObserver(clampIntoView);
+    observer.observe(tooltip, { attributes: true, attributeFilter: ['style', 'class'] });
+    window.addEventListener('resize', clampIntoView);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', clampIntoView);
+      tooltip.style.removeProperty('translate');
+    };
+  }, [contentRef]);
+};
 
 const StyledTooltipContainer = styled('div')(({ theme }) => ({
   display: 'flex',
@@ -68,10 +138,11 @@ const StyledDivider = styled(Divider)(({ theme }) => ({
   height: '1px'
 }));
 
-const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction }> = ({
-  regions,
-  t
-}) => {
+const RegionList: FC<{
+  regions: RegionsAndNodesFormType['regions'];
+  t: TFunction;
+  isK8s: boolean;
+}> = ({ regions, t, isK8s }) => {
   return (
     <>
       {regions?.map((region) => {
@@ -96,7 +167,9 @@ const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction
                   {zone.name}
                 </Typography>
                 <StyledNodeCount>
-                  {pluralize(t('totalNodes', { total: (zone as PlacementAZ).num_nodes_in_az ?? AZ_NOT_PREFERRED }), (zone as PlacementAZ).num_nodes_in_az ?? 0)}
+                  {t(isK8s ? 'totalPods' : 'totalNodes', {
+                    total: (zone as PlacementAZ).num_nodes_in_az ?? 0
+                  })}
                 </StyledNodeCount>
                 {isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED && (
                   <YBSmartStatus
@@ -123,10 +196,16 @@ const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction
 
 export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partitionName }) => {
   const regionsByType = groupBy(regions, 'clusterType');
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse' });
+  const { universeData } = useEditUniverseContext();
+  const isK8s = isKubernetesUniverse(universeData!);
+
+  useKeepTooltipWithinMap(contentRef);
+
   return (
-    <StyledTooltipContainer>
+    <StyledTooltipContainer ref={contentRef}>
       {partitionName && (
         <>
           <StyledHeader>{partitionName}</StyledHeader>
@@ -136,9 +215,17 @@ export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partition
       <StyledHeader>
         {regions[0]?.name} ({regions[0]?.code})
       </StyledHeader>
-      <RegionList regions={regionsByType[ClusterSpecClusterType.PRIMARY] ?? []} t={t} />
+      <RegionList
+        regions={regionsByType[ClusterSpecClusterType.PRIMARY] ?? []}
+        t={t}
+        isK8s={isK8s}
+      />
       {regionsByType[ClusterSpecClusterType.ASYNC] && <StyledDivider />}
-      <RegionList regions={regionsByType[ClusterSpecClusterType.ASYNC] ?? []} t={t} />
+      <RegionList
+        regions={regionsByType[ClusterSpecClusterType.ASYNC] ?? []}
+        t={t}
+        isK8s={isK8s}
+      />
     </StyledTooltipContainer>
   );
 };

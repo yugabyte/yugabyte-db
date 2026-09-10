@@ -45,11 +45,11 @@ TEST_F(YbAdminAreNodesSafeTest, TestAreNodesSafeToTakeDown) {
 
   // Should not be able to take down 2 tservers.
   auto status = CallAdmin("are_nodes_safe_to_take_down", ts0 + "," + ts1);
-  ASSERT_NOK_STR_CONTAINS(status, "tablet(s) would be under-replicated");
+  ASSERT_NOK_STR_CONTAINS(status, "would not have enough replicas for quorum");
 
   // Should not be able to take down 2 masters.
   status = CallAdmin("are_nodes_safe_to_take_down", master0 + "," + master1);
-  ASSERT_NOK_STR_CONTAINS(status, "tablet(s) would be under-replicated");
+  ASSERT_NOK_STR_CONTAINS(status, "would not have enough replicas for quorum");
 
   // Should fail with invalid follower lag bound.
   ASSERT_NOK(CallAdmin("are_nodes_safe_to_take_down", ts0, "invalid"));

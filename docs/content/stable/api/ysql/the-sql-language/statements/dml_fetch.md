@@ -109,6 +109,6 @@ This is the result. (Blanks lines were added manually to improve the readability
 
 ## See also
 
-- [`DECLARE`](../dml_declare)
-- [`MOVE`](../dml_move)
-- [`CLOSE`](../dml_close)
+- [DECLARE](../dml_declare)
+- [MOVE](../dml_move)
+- [CLOSE](../dml_close)

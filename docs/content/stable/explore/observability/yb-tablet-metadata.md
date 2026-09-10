@@ -2,9 +2,8 @@
 title: View cluster-wide tablet metadata and leadership
 linkTitle: Cluster tablet metadata
 description: View cluster-wide tablet distribution and leadership information for YSQL tables.
-headerTitle: View YSQL cluster-wide tablet metadata and leadership information
-tags:
-  feature: early-access
+headerTitle: Cluster tablet metadata
+headcontent: View YSQL cluster-wide tablet metadata and leadership information
 menu:
   stable:
     identifier: yb-tablet-metadata
@@ -17,11 +16,12 @@ The `yb_tablet_metadata` view provides a YSQL-accessible interface for fetching 
 
 While the [yb_local_tablets](../yb-local-tablets/) view provides information about tablets on the local node, `yb_tablet_metadata` exposes tablet placement and replica roles cluster-wide, serving as the YSQL equivalent of the YCQL `system.partitions` table.
 
-The `yb_tablet_metadata` view is useful for:
+Use the `yb_tablet_metadata` view for the following:
 
 - Identifying the location of all tablets for a specific table.
 - Determining the leader node for a specific tablet.
-- Identifying the tablet for a given tuple, in case of [hash-sharded](../../../architecture/docdb-sharding/sharding/#hash-sharding) tables.
+- Identifying the tablet for a given tuple in [hash-sharded](../../../architecture/docdb-sharding/sharding/#hash-sharding) tables, or the range boundaries for [range-sharded](../../../architecture/docdb-sharding/sharding/#range-sharding) tables.
+- Checking tablet lifecycle state across the cluster.
 
 Note that the view returns tablet information for YSQL objects and the system transaction table only.
 
@@ -33,10 +33,16 @@ The following table describes the columns of the `yb_tablet_metadata` view.
 | oid | oid | The object identifier (OID) for the table/index that the tablet belongs to. |
 | db_name | text | Name of the database this relation belongs to. |
 | relname | text | Name of table/index whose data is stored on the tablet. |
-| start_hash_code | int | Starting hash code (inclusive) for the tablet. (NULL for range-sharded tables.) |
-| end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
+| start_hash_code | integer | Starting hash code (inclusive) for the tablet. (NULL for range-sharded tables.) |
+| end_hash_code | integer | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
 | leader | text | IP address, port of the leader node for the tablet. |
 | replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
+| start_range | text | Starting range key (inclusive) for the tablet. (NULL for hash-sharded tables.) |
+| end_range | text | Ending range key (exclusive) for the tablet. (NULL for hash-sharded tables.) |
+| tablet_attrs | json | Reserved for future use. Currently empty. |
+| tablet_state | text | Current state of the tablet. <br>Possible tablet states are `PREPARING`, `CREATING`, `RUNNING`, `REPLACED`, or `DELETED`. |
+
+The `relname`, `start_range`, and `end_range` columns are masked for unprivileged users (shown as `<insufficient privilege>`). Only superusers or users with the `yb_db_admin` role can see the entire unmasked view.
 
 ## Examples
 
@@ -104,9 +110,9 @@ ORDER BY ytm.start_hash_code;
 +----------------------------------+-------+----------+------------+-----------------+---------------+-----------+------+--------+-------------+-------+----------------------------------+--------------------------------------+
 ```
 
-### Find a tablet for a given key
+### Find a tablet for a given key in hash-sharded tables
 
-Use the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function to find the `tablet_id` and leader node for a given key in hash-partioned tables.
+Use the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function to find the `tablet_id` and leader node for a given key in hash-sharded tables.
 
 1. Check the table structure:
 
@@ -199,6 +205,64 @@ Use the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function to
 {{<tip title="Get hash codes in YCQL">}}
 To obtain hash codes in YCQL, you can use the `partition_hash()` function, which, similar to `yb_hash_code()`, also dumps hash codes. You can use the `partition_hash()` function in YCQL to link rows with their tablets.
 {{</tip>}}
+
+### View range boundaries for range-sharded tables
+
+For range-sharded tables, the `start_range` and `end_range` columns show the range boundaries for each tablet. These columns are NULL for hash-sharded tables.
+
+```sql
+SELECT
+    tablet_id,
+    relname,
+    start_range,
+    end_range,
+    leader
+FROM yb_tablet_metadata
+WHERE relname = 'range_sharded_table'
+ORDER BY start_range;
+```
+
+### Check tablet state
+
+Use `tablet_state` to monitor tablet lifecycle. For example, to confirm that tablets for a table have finished creating and are serving traffic, or to find tablets that are stuck in a non-running state.
+
+To list the state of every tablet for a table:
+
+```sql
+SELECT
+    tablet_id,
+    relname,
+    tablet_state,
+    leader
+FROM yb_tablet_metadata
+WHERE relname = 'test_table'
+ORDER BY tablet_state, tablet_id;
+```
+
+```output
++----------------------------------+------------+--------------+----------------+
+| tablet_id                        | relname    | tablet_state | leader         |
+|----------------------------------+------------+--------------+----------------|
+| 3987b6a16bf94fbd92262744197350d7 | test_table | RUNNING      | 127.0.0.2:5433 |
+| 52176c704c614846bbd80f481678519e | test_table | RUNNING      | 127.0.0.1:5433 |
+| bed5b3c3eee747e99622a4e21acf437a | test_table | RUNNING      | 127.0.0.3:5433 |
+| da4bad5faa9f448f890cce57c775cd94 | test_table | RUNNING      | 127.0.0.2:5433 |
+| dd50b59c7dcb493680093ffa5b195634 | test_table | RUNNING      | 127.0.0.1:5433 |
+| ea252119fe774ba9bdc585504fae9398 | test_table | RUNNING      | 127.0.0.3:5433 |
++----------------------------------+------------+--------------+----------------+
+```
+
+To find tablets that are not yet (or no longer) running:
+
+```sql
+SELECT
+    db_name,
+    relname,
+    tablet_id,
+    tablet_state
+FROM yb_tablet_metadata
+WHERE tablet_state <> 'RUNNING';
+```
 
 ### Join with Active Session History
 

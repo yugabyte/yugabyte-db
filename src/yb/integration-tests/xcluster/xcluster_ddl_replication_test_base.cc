@@ -25,11 +25,15 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/util/backoff_waiter.h"
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_xcluster_api_v2);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_log_queries);
 
@@ -237,6 +241,37 @@ Status XClusterDDLReplicationTestBase::StepDownDdlQueueTablet(Cluster& cluster) 
   const auto leader_peer =
       VERIFY_RESULT(GetLeaderPeerForTablet(cluster.mini_cluster_.get(), tablets[0].tablet_id()));
   return StepDown(leader_peer, /*new_leader_uuid=*/"", ForceStepDown::kTrue);
+}
+
+Status XClusterDDLReplicationTestBase::MoveDdlQueueTabletLeaderToPgProxy(
+    Cluster& cluster, bool disable_leader_balancing) {
+  if (disable_leader_balancing) {
+    // Keep the leader where this function puts it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    // Prevent other leader elections from happening.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 20;
+  }
+
+  auto ddl_queue_table = VERIFY_RESULT(GetYsqlTable(
+      &cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  RETURN_NOT_OK(cluster.client_->GetTabletsFromTableId(ddl_queue_table.table_id(), 1, &tablets));
+  SCHECK_EQ(tablets.size(), 1, IllegalState, "Expected a single ddl_queue tablet");
+  const auto ddl_queue_tablet_id = tablets[0].tablet_id();
+
+  const auto pg_proxy_uuid = cluster.mini_cluster_->mini_tablet_server(cluster.pg_ts_idx_)
+                                 ->server()
+                                 ->permanent_uuid();
+  RETURN_NOT_OK(TransferLeadership(
+      cluster.mini_cluster_.get(), ddl_queue_tablet_id, pg_proxy_uuid));
+
+  return WaitFor(
+      [&]() -> Result<bool> {
+        auto leader_peer =
+            GetLeaderPeerForTablet(cluster.mini_cluster_.get(), ddl_queue_tablet_id);
+        return leader_peer.ok() && (*leader_peer)->permanent_uuid() == pg_proxy_uuid;
+      },
+      30s * kTimeMultiplier, "ddl_queue tablet leader moves to the postgres proxy tserver");
 }
 
 Status XClusterDDLReplicationTestBase::CreateInitialColocatedTable() {

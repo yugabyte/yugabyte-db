@@ -13,6 +13,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -166,12 +167,27 @@ public class HealthCheck extends Model {
   }
 
   /**
-   * Returns the HealthCheck object for a certain universe.
+   * Returns the HealthCheck objects for a certain universe, ordered by check time ascending.
    *
-   * @param universeUUID
-   * @return the HealthCheck object
+   * @param universeUUID the universe to query health checks for
+   * @return the HealthCheck objects
    */
   public static List<HealthCheck> getAll(UUID universeUUID) {
+    return getAll(universeUUID, null);
+  }
+
+  public static List<HealthCheck> getAll(UUID universeUUID, Integer limit) {
+    if (limit != null) {
+      List<HealthCheck> checks =
+          find.query()
+              .where()
+              .eq("universe_uuid", universeUUID)
+              .orderBy("check_time desc")
+              .setMaxRows(limit)
+              .findList();
+      Collections.reverse(checks);
+      return checks;
+    }
     return find.query().where().eq("universe_uuid", universeUUID).orderBy("check_time").findList();
   }
 

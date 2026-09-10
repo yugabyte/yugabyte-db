@@ -22,6 +22,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 
@@ -72,6 +73,8 @@ void ApplyIntentsTask::Run() {
       continue;
     }
 
+    TEST_SYNC_POINT("ApplyIntentsTask::Run:Loop");
+
     auto apply_data = applier_.ApplyIntents(apply_data_);
 
     transaction_->SetApplyData(apply_data);
@@ -84,7 +87,7 @@ void ApplyIntentsTask::Run() {
 }
 
 void ApplyIntentsTask::Done(const Status& status) {
-  WARN_NOT_OK(status, "Apply intents task failed");
+  WARN_NOT_OK(status, LogPrefix() + "Apply intents task failed");
   operation_.Reset();
   transaction_.reset();
 }

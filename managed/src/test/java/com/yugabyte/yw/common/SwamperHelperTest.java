@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
@@ -32,12 +33,18 @@ import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.exec.OS;
@@ -110,6 +117,135 @@ public class SwamperHelperTest extends FakeDBApplication {
   @Test
   public void testWriteOtelColJson() {
     testWriteUniverseTargetJson(MetricCollectionLevel.NORMAL, "metric/targets_otel.json", "otel.");
+  }
+
+  /**
+   * On K8s the collector sidecar is always injected into yb-tserver pods, but into yb-master pods
+   * only when metrics or master log export is active. With neither active, only the tserver pods
+   * are scrape targets.
+   */
+  @Test
+  public void testWriteOtelColJsonK8sTserverPodsOnly() {
+    Universe u = createK8sUniverseWithOtel(null);
+
+    List<String> targets = writeAndReadOtelTargets(u);
+
+    assertThat(targets, containsInAnyOrder("1.2.3.1:8889", "1.2.3.2:8889"));
+  }
+
+  /** With metrics export active the chart also injects the sidecar into yb-master pods. */
+  @Test
+  public void testWriteOtelColJsonK8sIncludesMasterPodsOnMetricsExport() {
+    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+    metricsExportConfig.setUniverseMetricsExporterConfig(
+        ImmutableList.of(new UniverseMetricsExporterConfig()));
+    Universe u = createK8sUniverseWithOtel(metricsExportConfig);
+
+    List<String> targets = writeAndReadOtelTargets(u);
+
+    assertThat(
+        targets,
+        containsInAnyOrder("1.2.3.1:8889", "1.2.3.2:8889", "1.2.3.101:8889", "1.2.3.102:8889"));
+  }
+
+  /**
+   * On VMs there is no per-node gating: ManageOtelCollector runs on every master and tserver node,
+   * so a dedicated master node runs a collector too (that is where master log export reads
+   * yb-master glog from) and must be a scrape target.
+   */
+  @Test
+  public void testWriteOtelColJsonVmIncludesDedicatedMasterNodes() {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
+        .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());
+    Universe u = createUniverse(defaultCustomer.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+              taskParams.otelCollectorEnabled = true;
+              UUID placementUuid = taskParams.getPrimaryCluster().uuid;
+              NodeDetails tserver = vmNode("host-n1", "10.1.0.1", placementUuid);
+              tserver.isTserver = true;
+              NodeDetails dedicatedMaster = vmNode("host-n2", "10.1.0.2", placementUuid);
+              dedicatedMaster.isMaster = true;
+              taskParams.nodeDetailsSet = new HashSet<>(List.of(tserver, dedicatedMaster));
+              universe.setUniverseDetails(taskParams);
+            });
+
+    List<String> targets = writeAndReadOtelTargets(u);
+
+    assertThat(targets, containsInAnyOrder("10.1.0.1:8889", "10.1.0.2:8889"));
+  }
+
+  private NodeDetails vmNode(String name, String ip, UUID placementUuid) {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = name;
+    node.placementUuid = placementUuid;
+    node.state = NodeState.Live;
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.private_ip = ip;
+    return node;
+  }
+
+  /**
+   * Creates a K8s universe with two yb-tserver pods and two yb-master pods, modelled the way {@code
+   * KubernetesCommandExecutor.processNodeInfo} does it -- as separate nodes with mutually exclusive
+   * isMaster/isTserver.
+   */
+  private Universe createK8sUniverseWithOtel(MetricsExportConfig metricsExportConfig) {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
+        .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());
+    Universe u =
+        ModelFactory.createK8sUniverseCustomCores(
+            "k8s-otel-univ", UUID.randomUUID(), defaultCustomer.getId(), null, null, false, 1.0);
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+          taskParams.otelCollectorEnabled = true;
+          UUID placementUuid = taskParams.getPrimaryCluster().uuid;
+          taskParams.getPrimaryCluster().userIntent.metricsExportConfig = metricsExportConfig;
+          taskParams.nodeDetailsSet =
+              new HashSet<>(
+                  List.of(
+                      k8sPodNode("yb-tserver-0", "1.2.3.1", false, placementUuid),
+                      k8sPodNode("yb-tserver-1", "1.2.3.2", false, placementUuid),
+                      k8sPodNode("yb-master-0", "1.2.3.101", true, placementUuid),
+                      k8sPodNode("yb-master-1", "1.2.3.102", true, placementUuid)));
+          universe.setUniverseDetails(taskParams);
+        });
+  }
+
+  private NodeDetails k8sPodNode(String name, String ip, boolean isMaster, UUID placementUuid) {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = name;
+    node.placementUuid = placementUuid;
+    node.state = NodeState.Live;
+    node.isMaster = isMaster;
+    node.isTserver = !isMaster;
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.private_ip = ip;
+    return node;
+  }
+
+  /** Returns the flattened "targets" entries of the universe's otel swamper target file. */
+  private List<String> writeAndReadOtelTargets(Universe u) {
+    swamperHelper.writeUniverseTargetJson(u.getUniverseUUID());
+    String targetFilePath = SWAMPER_TMP_PATH + "otel." + u.getUniverseUUID() + ".json";
+    List<String> targets = new ArrayList<>();
+    try {
+      ArrayNode targetsJson =
+          (ArrayNode) Json.parse(FileUtils.readFileToString(new File(targetFilePath), "UTF-8"));
+      targetsJson.forEach(entry -> entry.get("targets").forEach(t -> targets.add(t.asText())));
+    } catch (Exception e) {
+      fail("Error reading target json file: " + targetFilePath + ". Reason: " + e.getMessage());
+    }
+    return targets;
   }
 
   private void testWriteUniverseTargetJson(

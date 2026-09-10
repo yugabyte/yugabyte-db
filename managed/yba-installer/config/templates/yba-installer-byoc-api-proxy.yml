@@ -1,0 +1,56 @@
+services:
+  - name: byocApiProxyService
+    fileName: "{{ .SystemdFileLocation }}"
+    contents: |
+      [Unit]
+      Description=YugabyteDB BYOC API Proxy
+      Documentation=https://github.com/yugabyte/yugabyte-db/tree/master/managed/byoc-api-proxy
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
+      {{ end }}
+      Type=simple
+      WorkingDirectory={{ .ActiveDir }}
+
+      # Defaults; values in byoc-api-proxy.env override these when set.
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      Environment="SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:{{ .AppConfigFile }}"
+      EnvironmentFile=-{{ .EnvFile }}
+
+      ExecStart=/bin/sh -c 'exec "${JAVA_HOME}/bin/java" \
+        -Djdk.internal.httpclient.disableHostnameVerification=true \
+        -XX:+ExitOnOutOfMemoryError \
+        -jar {{ .JarPath }} \
+        >> {{ .LogDir }}/byoc-api-proxy.log 2>&1'
+
+      # Spring Boot handles SIGTERM; 143 is normal for Java on systemd stop.
+      SuccessExitStatus=143
+      KillMode=mixed
+      KillSignal=SIGTERM
+      TimeoutStopSec=10
+
+      Restart=always
+      RestartSec={{ yamlPath "byocApiProxy.restartSeconds" }}
+
+      LimitNOFILE=65536
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - name: byocApiProxyLogrotate
+    fileName: "{{ logrotateD }}/byoc-api-proxy"
+    contents: |
+      {{ .LogDir }}/byoc-api-proxy.log {
+          daily
+          rotate 7
+          compress
+          missingok
+          notifempty
+          copytruncate
+          delaycompress
+          create 0640 {{ yamlPath "service_username" }} {{ yamlPath "service_username" }}
+      }

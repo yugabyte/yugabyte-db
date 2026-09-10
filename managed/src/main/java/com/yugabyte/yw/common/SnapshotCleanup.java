@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import play.libs.Json;
 
@@ -50,7 +50,7 @@ public class SnapshotCleanup {
   public List<SnapshotInfo> getNonScheduledSnapshotList(Universe universe) {
     List<SnapshotInfo> listWithoutRestoreSnapshots = new ArrayList<>();
     if (!universe.getUniverseDetails().universePaused) {
-      try (YBClient ybClient = ybService.getUniverseClient(universe)) {
+      try (YBClientApi ybClient = ybService.getUniverseClient(universe)) {
         ListSnapshotSchedulesResponse snapshotScheduleResponse =
             ybClient.listSnapshotSchedules(null);
         List<SnapshotScheduleInfo> snapshotScheduleInfosList = new ArrayList<>();
@@ -156,7 +156,7 @@ public class SnapshotCleanup {
                             getFilterInProgressBackupSnapshots(
                                 snapshotInfoList, universeSnapshotFilterTime);
                         if (CollectionUtils.isNotEmpty(snapshotInfoList)) {
-                          try (YBClient ybClient = ybService.getUniverseClient(universe)) {
+                          try (YBClientApi ybClient = ybService.getUniverseClient(universe)) {
                             snapshotInfoList.stream()
                                 .forEach(
                                     sI -> {

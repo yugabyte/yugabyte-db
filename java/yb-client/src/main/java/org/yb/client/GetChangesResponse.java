@@ -60,4 +60,8 @@ public class GetChangesResponse extends YRpcResponse {
   public int getWalSegmentIndex() {
     return getResp().getWalSegmentIndex();
   }
+
+  public long getMaxIndexInSortWindow() {
+    return getResp().getMaxIndexInSortWindow();
+  }
 }

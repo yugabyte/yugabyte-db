@@ -15,6 +15,8 @@
 #include <stdarg.h>
 
 #include <fstream>
+#include <string>
+#include <string_view>
 
 #include "catalog/pg_type_d.h"
 
@@ -26,6 +28,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/stringprintf.h"
@@ -233,7 +236,17 @@ const char* NoPrefixName(Enum value) {
   return name + 1;
 }
 
-} // anonymous namespace
+YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
+
+Slice YBCStatusMsg(YbcStatus s) {
+  return StatusWrapper(s)->message();
+}
+
+const char* YBCPAllocNonEmptyStdString(std::string_view s) {
+  return s.empty() ? nullptr : YBCPAllocStdString(s);
+}
+
+} // namespace
 
 extern "C" {
 
@@ -272,10 +285,6 @@ bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
 }
 
-bool YBCStatusIsFatalError(YbcStatus s) {
-  return YBCStatusIsUnknownSession(s);
-}
-
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
   return std::to_underlying(FetchErrorCode(s));
 }
@@ -284,33 +293,20 @@ void YBCFreeStatus(YbcStatus s) {
   FreeYBCStatus(s);
 }
 
-const char* YBCStatusFilename(YbcStatus s) {
-  return YBCPAllocStdString(StatusWrapper(s)->file_name());
-}
-
-int YBCStatusLineNumber(YbcStatus s) {
-  return StatusWrapper(s)->line_number();
-}
-
-const char* YBCStatusFuncname(YbcStatus s) {
-  const auto funcname = FuncName::ValueFromStatus(*StatusWrapper(s));
-  return funcname ? YBCPAllocStdString(*funcname) : nullptr;
-}
-
-size_t YBCStatusMessageLen(YbcStatus s) {
-  return StatusWrapper(s)->message().size();
+YbcStatusErrorLocationInfo YBCStatusErrorLocation(YbcStatus s) {
+  StatusWrapper status{s};
+  return {
+      YBCPAllocNonEmptyStdString(status->file_name()),
+      status->line_number(),
+      YBCPAllocNonEmptyStdString(FuncName::ValueFromStatus(*status).value_or(std::string{}))};
 }
 
 const char* YBCStatusMessageBegin(YbcStatus s) {
-  return StatusWrapper(s)->message().cdata();
+  return YBCStatusMsg(s).cdata();
 }
 
 const char* YBCMessageAsCString(YbcStatus s) {
-  size_t msg_size = YBCStatusMessageLen(s);
-  char* msg_buf = static_cast<char*>(YBCPAlloc(msg_size + 1));
-  memcpy(msg_buf, YBCStatusMessageBegin(s), msg_size);
-  msg_buf[msg_size] = 0;
-  return msg_buf;
+  return YBCPAllocStdString(YBCStatusMsg(s));
 }
 
 unsigned int YBCStatusRelationOid(YbcStatus s) {
@@ -517,6 +513,24 @@ uint32_t YBCWaitEventForWaitingOnTServer() {
   return std::to_underlying(ash::WaitStateCode::kWaitingOnTServer);
 }
 
+YbcAshAuxKind YBCGetWaitEventAuxKind(uint32_t wait_event_info) {
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  switch (static_cast<ash::WaitStateCode>(wait_event_info & kWaitEventMask)) {
+    case ash::WaitStateCode::kWaitingOnTServer:
+      return YB_ASH_AUX_PGGATE_RPC;
+    case ash::WaitStateCode::kCatalogRead: [[fallthrough]];
+    case ash::WaitStateCode::kCatalogWrite: [[fallthrough]];
+    case ash::WaitStateCode::kStorageFlush: [[fallthrough]];
+    case ash::WaitStateCode::kTableRead: [[fallthrough]];
+    case ash::WaitStateCode::kTableWrite: [[fallthrough]];
+    case ash::WaitStateCode::kIndexRead: [[fallthrough]];
+    case ash::WaitStateCode::kIndexWrite:
+      return YB_ASH_AUX_RELATION_OID;
+    default:
+      return YB_ASH_AUX_NONE;
+  }
+}
+
 // Get a random integer between a and b
 int YBCGetRandomUniformInt(int a, int b) {
   return RandomUniformInt<int>(a, b);
@@ -541,7 +555,10 @@ int YBCGetCircularBufferSizeInKiBs() {
 }
 
 const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
-  return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
+  // A sample may catch a backend between the aux and the wait event write, so
+  // check for safety
+  const auto rpc = static_cast<ash::PggateRPC>(pggate_rpc_enum_value);
+  return ash::ToCString(rpc) ? NoPrefixName(rpc) : "";
 }
 
 uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_bits_set) {
@@ -875,10 +892,6 @@ const char *YBCGetOutFuncName(YbcPgOid typid) {
   }
 }
 
-namespace {
-YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
-}  // namespace
-
 void
 YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics) {
   CHECK_NOTNULL(update_init_postgres_metrics);
@@ -903,6 +916,31 @@ uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t ke
   yb::Slice slice(partition_key, key_len);
   return CHECK_RESULT(
       dockv::PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(slice));
+}
+
+// Decodes a range-sharded tablet's partition key into a string of the form
+// "[v1, v2, ...]". Values are rendered in DocDB representation via
+// KeyEntryValue::ToString() -- i.e., types like timestamp, date, numeric, and
+// uuid appear in their internal/encoded form rather than the PostgreSQL output
+// representation (e.g., timestamps as int64 microseconds since epoch, not 'YYYY-MM-DD
+// HH:MM:SS'). This matches what the master UI's tablet listing showcases.
+// Memory is allocated via palloc; the caller owns the returned buffer.
+// Returns nullptr for empty keys or on decode failure.
+char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
+  if (partition_key == nullptr || key_len == 0) {
+    return nullptr;
+  }
+
+  yb::Slice slice(partition_key, key_len);
+  dockv::DocKey doc_key;
+  auto decode_result = doc_key.DecodeFrom(
+      slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue);
+  if (!decode_result.ok()) {
+    LOG(WARNING) << "Failed to decode range partition key: " << decode_result.status();
+    return nullptr;
+  }
+
+  return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
 bool YBCIsObjectLockingEnabled() {

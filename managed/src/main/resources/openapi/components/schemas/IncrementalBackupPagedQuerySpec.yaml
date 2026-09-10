@@ -1,0 +1,7 @@
+title: IncrementalBackupPagedQuerySpec
+description: |
+  Paged list of backups in an incremental backup chain.
+  Rows are ordered by create time. The order is descending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"

@@ -19,8 +19,11 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/pg_util.h"
@@ -46,6 +49,7 @@ DECLARE_uint32(ysql_conn_mgr_server_lifetime);
 DECLARE_uint64(ysql_conn_mgr_log_max_size);
 DECLARE_uint64(ysql_conn_mgr_log_rotate_interval);
 DECLARE_uint32(ysql_conn_mgr_readahead_buffer_size);
+DECLARE_uint32(ysql_conn_mgr_cache_coroutine);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
@@ -53,13 +57,11 @@ DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
 DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
 DECLARE_uint32(ysql_conn_mgr_pool_timeout);
 DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
-DECLARE_bool(ysql_conn_mgr_enable_prep_stmt_close);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
 DECLARE_bool(ysql_conn_mgr_enable_parse_queue_tracking);
 DECLARE_bool(ysql_conn_mgr_wait_for_rfq_on_sync);
-DECLARE_bool(ysql_conn_mgr_enable_dealloc_reconciliation);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
 DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
 DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
@@ -170,7 +172,6 @@ void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn
 void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
   /* Set all to false initially to handle removal of flag at runtime */
   log_debug_ = false;
-  log_config_ = false;
   log_session_ = false;
   log_query_ = false;
   log_stats_ = false;
@@ -183,8 +184,6 @@ void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
     if (!setting.empty()) {
       if (setting == "log_debug") {
         log_debug_ = true;
-      } else if (setting == "log_config") {
-        log_config_ = true;
       } else if (setting == "log_session") {
         log_session_ = true;
       } else if (setting == "log_query") {
@@ -221,7 +220,6 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
      std::to_string(FLAGS_ysql_conn_mgr_max_client_connections)},
     {"{%ysql_port%}", std::to_string(postgres_address_.port())},
     {"{%log_debug%}", BoolToString(log_debug_)},
-    {"{%log_config%}", BoolToString(log_config_)},
     {"{%log_session%}", BoolToString(log_session_)},
     {"{%log_query%}", BoolToString(log_query_)},
     {"{%log_stats%}", BoolToString(log_stats_)},
@@ -234,6 +232,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
     {"{%yb_client_login_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_auth_msg_timeout)},
     {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
+    {"{%cache_coroutine%}", std::to_string(FLAGS_ysql_conn_mgr_cache_coroutine)},
     {"{%tcp_keepalive%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive)},
     {"{%tcp_keepalive_keep_interval%}",
      std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_keep_interval)},
@@ -243,8 +242,6 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
     {"{%yb_optimized_extended_query_protocol%}",
       BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
-    {"{%yb_enable_prep_stmt_close%}",
-      BoolToString(FLAGS_ysql_conn_mgr_enable_prep_stmt_close)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(conf_->ysql_max_connections)},
     {"{%yb_optimized_session_parameters%}",
@@ -255,8 +252,6 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
       BoolToString(FLAGS_ysql_conn_mgr_enable_parse_queue_tracking)},
     {"{%yb_wait_for_rfq_on_sync%}",
       BoolToString(FLAGS_ysql_conn_mgr_wait_for_rfq_on_sync)},
-    {"{%yb_enable_dealloc_reconciliation%}",
-      BoolToString(FLAGS_ysql_conn_mgr_enable_dealloc_reconciliation)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
     {"{%TEST_yb_auth_delay_ms%}", std::to_string(FLAGS_TEST_ysql_conn_mgr_auth_delay_ms)},
     {"{%yb_alter_guc_adoption_strategy%}", FLAGS_ysql_conn_mgr_alter_guc_adoption_strategy},
@@ -297,7 +292,7 @@ Result<int> getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) 
   }
 
   std::string line;
-  std::string value("10");
+  std::optional<std::string> value;
   std::string max_connections_key = "max_connections";
   while (std::getline(ysql_pg_conf_file, line)) {
     if (line.length() == 0) {
@@ -321,9 +316,15 @@ Result<int> getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) 
 
   // Close the input and output files.
   ysql_pg_conf_file.close();
-  int max = std::atoi(value.c_str());
+  if (!value.has_value()) {
+    return STATUS_FORMAT(
+        IllegalState, "Unable to find max_connections setting in ysql pg conf file. File path: $0",
+        ysqlpgconf_path);
+  }
+  int max = std::atoi(value.value().c_str());
   if (max <= 0) {
-    LOG(FATAL) << "Cannot determine the max_connection settings of the database";
+    return STATUS_FORMAT(
+        IllegalState, "Invalid max_connections setting '$0' in $1", value, ysqlpgconf_path);
   }
   LOG(INFO) << "Maximum physical connections settings found = " << max;
   return max;
@@ -341,8 +342,14 @@ Status YsqlConnMgrConf::UpdateConfigFromGFlags() {
   // some connections are reserved for internal operations which will bypass the
   // YSQL Connection Manager.
 
-  CHECK_LE(FLAGS_ysql_conn_mgr_reserve_internal_conns, max_connections)
-      << "ysql_conn_mgr_reserve_internal_conns must be less than or equal to maxConnections";
+  // Do not CHECK here: max_connections is read back from ysql_pg.conf on disk, so a stale or
+  // otherwise unexpected file must not crash the tserver. Returning an error makes the
+  // connection manager start fail, and its supervisor will retry.
+  SCHECK_LE(
+      FLAGS_ysql_conn_mgr_reserve_internal_conns, static_cast<uint32_t>(max_connections),
+      IllegalState,
+      "ysql_conn_mgr_reserve_internal_conns must be less than or equal to the max_connections "
+      "setting read from ysql_pg.conf");
 
   max_connections = static_cast<int>(max_connections - FLAGS_ysql_conn_mgr_reserve_internal_conns);
   CachedConf conf;

@@ -26,7 +26,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -43,20 +43,27 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.WSClientRefresher;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.controllers.handlers.CustomerHandler;
 import com.yugabyte.yw.forms.AlertingData;
+import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
-import com.yugabyte.yw.metrics.MetricSettings;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -75,7 +82,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
@@ -86,7 +93,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -105,10 +111,6 @@ public class CustomerControllerTest extends FakeDBApplication {
   @Mock MetricService mockMetricService;
   @Mock CloudProviderDelete mockCloudProviderDelete;
   @InjectMocks private CustomerHandler customerHandler;
-
-  @Captor private ArgumentCaptor<ArrayList<MetricSettings>> metricKeys;
-
-  @Captor private ArgumentCaptor<Map<String, String>> queryParams;
 
   @Before
   public void setUp() {
@@ -715,9 +717,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
 
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    stubMetricQueryHelperResponse(response);
     Result result =
         route(
             fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
@@ -746,18 +746,12 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.getUuid() + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     assertValue(filters, "namespace", "yb-tc-demo-az-1|yb-tc-demo-az-2|test-ns-1");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
@@ -791,18 +785,12 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.getUuid() + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     assertValue(filters, "namespace", "yb-tc-demo");
     if (helmNewNamingStyle) {
       assertValue(filters, "pod_name", "ybdemo-xlrv-yb-tserver-(.*)");
@@ -843,18 +831,12 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.getUuid() + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     assertValue(filters, "namespace", "diff-ns");
     assertValue(filters, "pod_name", "yb-pod-name-az");
     assertEquals(OK, result.status());
@@ -873,9 +855,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode response =
         Json.newObject().put("success", false).put("error", "something went wrong");
 
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    stubMetricQueryHelperResponse(response);
     Result result =
         routeWithYWErrHandler(
             fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
@@ -902,16 +882,15 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.put("nodePrefix", "host-1");
     params.put("tableName", "redis");
 
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
     routeWithYWErrHandler(
         fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     String tableName = filters.get("table_name").asText();
     assertThat(tableName, allOf(notNullValue(), equalTo("redis")));
     assertAuditEntry(0, customer.getUuid());
@@ -928,25 +907,19 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737");
     params.put("nodePrefix", "host-1");
 
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
     route(
         fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     assertThat(filters.get("table_name"), nullValue());
   }
 
@@ -962,9 +935,8 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -977,10 +949,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters"));
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     String tableId = filters.get("table_id").asText();
     assertThat(tableId, allOf(notNullValue(), equalTo("fd601f9c19074262906638c8bd203971")));
   }
@@ -1008,9 +977,8 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -1023,10 +991,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters"));
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     String tableId = filters.get("table_id").asText();
     assertThat(
         tableId,
@@ -1057,7 +1022,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     doThrow(new PlatformServiceException(BAD_REQUEST, userVisibleMessage))
         .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+        .query(any(Customer.class), any(MetricQueryParams.class));
     Result result =
         routeWithYWErrHandler(fakeRequest(method, uri).cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
@@ -1083,24 +1048,19 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
 
     routeWithYWErrHandler(
         fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-
-    assertThat(metricKeys.getValue(), is(notNullValue()));
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     String nodePrefix = filters.get("node_prefix").asText();
     assertThat(nodePrefix, allOf(notNullValue(), containsString("host-a")));
     assertThat(nodePrefix, allOf(notNullValue(), containsString("host-b")));
     String[] nodePrefixes = nodePrefix.split("\\|");
-    assertEquals(nodePrefixes.length, 2);
+    assertEquals(2, nodePrefixes.length);
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -1115,25 +1075,19 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737");
     params.put("nodePrefix", "host-1");
 
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
     route(
         fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
             .cookie(validCookie)
             .bodyJson(params));
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     String nodePrefix = filters.get("node_prefix").asText();
     assertThat(nodePrefix, allOf(notNullValue(), equalTo("host-1")));
   }
@@ -1147,9 +1101,8 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    doReturn(response)
-        .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
+        setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -1158,16 +1111,60 @@ public class CustomerControllerTest extends FakeDBApplication {
     ArrayNode nodeNames = Json.newArray();
     nodeNames.add("host-n1");
     params.put("nodeNames", nodeNames);
-    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
-    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
     doRequestWithAuthTokenAndBody(
         "POST", baseRoute + customer.getUuid() + "/metrics", authToken, params);
-    verify(mockMetricQueryHelper)
-        .query(any(), metricKeys.capture(), queryParams.capture(), any(), anyBoolean());
-    assertThat(queryParams.getValue(), is(notNullValue()));
-    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    JsonNode filters = capturedFiltersAsJson(additionalFilters);
     String nodeName = filters.get("exported_instance").asText();
     assertThat(nodeName, allOf(notNullValue(), equalTo("host-n1")));
+  }
+
+  private MetricQueryHelper createMetricQueryHelper() {
+    RuntimeConfGetter runtimeConfGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    return new MetricQueryHelper(
+        runtimeConfGetter.getStaticConf(),
+        runtimeConfGetter,
+        app.injector().instanceOf(WSClientRefresher.class),
+        app.injector().instanceOf(MetricUrlProvider.class),
+        app.injector().instanceOf(PlatformExecutorFactory.class),
+        app.injector().instanceOf(YBClientService.class)) {
+      @Override
+      protected ApiHelper getApiHelper() {
+        return mockApiHelper;
+      }
+    };
+  }
+
+  private void stubMetricQueryHelperResponse(JsonNode response) {
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(any(Customer.class), any(MetricQueryParams.class));
+  }
+
+  @SuppressWarnings("unchecked")
+  private ArgumentCaptor<Map<String, Map<String, String>>> setupMetricQueryHelperAndCaptureFilters(
+      JsonNode response) {
+    // MetricQueryHelper no longer takes a separate `additionalFilters` map; filters shared across
+    // every metric are now put under the {@link MetricQueryHelper#ALL} bucket of the
+    // {@code filterOverrides} argument. Capture that map and extract the ALL bucket in
+    // {@link #capturedFiltersAsJson}.
+    ArgumentCaptor<Map<String, Map<String, String>>> filterOverridesCaptor =
+        ArgumentCaptor.forClass(Map.class);
+    MetricQueryHelper delegate = spy(createMetricQueryHelper());
+    doReturn(response)
+        .when(delegate)
+        .query(any(), anyList(), anyMap(), filterOverridesCaptor.capture(), anyBoolean(), any());
+    doAnswer(invocation -> delegate.query(invocation.getArgument(0), invocation.getArgument(1)))
+        .when(mockMetricQueryHelper)
+        .query(any(Customer.class), any(MetricQueryParams.class));
+    return filterOverridesCaptor;
+  }
+
+  private JsonNode capturedFiltersAsJson(
+      ArgumentCaptor<Map<String, Map<String, String>>> filterOverrides) {
+    assertThat(filterOverrides.getValue(), is(notNullValue()));
+    Map<String, String> allFilters =
+        filterOverrides.getValue().getOrDefault(MetricQueryHelper.ALL, Collections.emptyMap());
+    return Json.toJson(allFilters);
   }
 
   private Result getHostInfo(UUID customerUUID) {

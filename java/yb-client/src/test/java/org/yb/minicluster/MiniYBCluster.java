@@ -1092,6 +1092,9 @@ public class MiniYBCluster implements AutoCloseable {
   private void destroyDaemonAndWait(MiniYBDaemon daemon) throws Exception {
     destroyDaemon(daemon);
     daemon.getProcess().waitFor();
+    // A daemon we asked to shut down (SIGTERM) is expected to exit cleanly; if it crashed instead
+    // (e.g. a failed CHECK during shutdown), fail the test right away.
+    daemon.checkForCrash();
   }
 
   /**
@@ -1291,12 +1294,32 @@ public class MiniYBCluster implements AutoCloseable {
       syncClient.shutdown();
       syncClient = null;
     }
+    // Fail the test if a daemon crashed (e.g. a failed CHECK) instead of shutting down cleanly.
+    List<String> crashes = new ArrayList<>();
+    for (MiniYBDaemon daemon : workerDaemons) {
+      collectCrash(daemon, crashes);
+    }
+    for (MiniYBDaemon daemon : masterProcesses.values()) {
+      collectCrash(daemon, crashes);
+    }
+    if (!crashes.isEmpty()) {
+      fail(String.join("\n", crashes));
+    }
     if (!(workersGraceful && mastersGraceful)) {
       final String errorMessage =
           "Cluster failed to gracefully terminate within " + PROCESS_TERMINATE_TIMEOUT_MS +
           " ms, had to forcibly kill some processes (see logs above).";
       LOG.error(errorMessage);
       fail(errorMessage);
+    }
+  }
+
+  private static void collectCrash(MiniYBDaemon daemon, List<String> crashes) {
+    try {
+      daemon.checkForCrash();
+    } catch (AssertionError e) {
+      LOG.error(e.getMessage());
+      crashes.add(e.getMessage());
     }
   }
 

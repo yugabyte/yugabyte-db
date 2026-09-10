@@ -193,7 +193,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks);
 
-  Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
+  Status RollbackToSubTransaction(
+      SubTransactionId id, CoarseTimePoint deadline,
+      bool* is_heartbeat_aborted_or_expired = nullptr);
 
   bool HasSubTransaction(SubTransactionId id);
 
@@ -233,6 +235,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const;
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
   void SetOriginId(uint32_t origin_id);
+
+  // Set callback for when the transaction is aborted remotely (as opposed to being aborted during
+  // a method call on this YBTransaction).
+  void RemoteAbortCallback(std::function<void(void)> callback);
 
  private:
   class Impl;

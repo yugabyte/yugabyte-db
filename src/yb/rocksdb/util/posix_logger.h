@@ -46,6 +46,7 @@
 
 #include "yb/util/sync_point.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/stats/iostats_context_imp.h"
 
 namespace rocksdb {

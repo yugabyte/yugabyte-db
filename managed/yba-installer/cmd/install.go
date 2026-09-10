@@ -3,11 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
@@ -49,6 +51,7 @@ var installCmd = &cobra.Command{
 		// Save the services installed
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
 		state.Services.NodeExporter = viper.GetBool("nodeExporter.enabled")
+		state.Services.ByocApiProxy = viper.GetBool("byocApiProxy.enabled")
 		state.Services.Platform = true
 		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
 			log.Fatal("failed to start install: " + err.Error())
@@ -157,22 +160,27 @@ var installCmd = &cobra.Command{
 			log.Fatal(err.Error())
 		}
 
-		getAndPrintStatus(state)
+		getAndPrintStatus(state, slices.Collect(serviceManager.Services()))
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
 }
 
-func getAndPrintStatus(state *ybactlstate.State) {
+// getAndPrintStatus checks that the given services are running and prints their status.
+func getAndPrintStatus(state *ybactlstate.State, services []components.Service) {
 	var statuses []common.Status
-	for service := range serviceManager.Services() {
+	for _, service := range services {
 		status, err := service.Status()
 		if err != nil {
 			log.Fatal("failed to get status: " + err.Error())
 		}
 		statuses = append(statuses, status)
+		// byoc-api-proxy manages itself best effort and may validly not be running
+		// (e.g. configuration not provided yet), so it never gates command success.
+		if service.Name() == ByocApiProxyServiceName {
+			continue
+		}
 		if !common.IsHappyStatus(status) {
-			log.Fatal(status.Service + " is not running! Install might have failed, please check " +
-				common.YbactlLogFile())
+			log.Fatal(status.Service + " is not running! Please check " + common.YbactlLogFile())
 		}
 	}
 

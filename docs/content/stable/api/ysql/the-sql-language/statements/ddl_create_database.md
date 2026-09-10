@@ -86,5 +86,5 @@ In this example, tables in the database `company` will be colocated on a single 
 
 ## See also
 
-- [`ALTER DATABASE`](../ddl_alter_db)
-- [`DROP DATABASE`](../ddl_drop_database)
+- [ALTER DATABASE](../ddl_alter_db)
+- [DROP DATABASE](../ddl_drop_database)

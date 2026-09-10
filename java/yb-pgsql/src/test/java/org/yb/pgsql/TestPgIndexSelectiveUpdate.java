@@ -18,6 +18,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 
 import java.sql.Statement;
 import java.util.Map;
@@ -46,7 +47,11 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
   private static final String METRIC_NAME = "intentsdb_rocksdb_write_self";
   private static final String[] index_list = {"idx_col3", "idx_col5", "idx_col6",
       "idx_col4_idx_col5_idx_col6", "idx_col8"};
-  private static Map<String, Counter> tableWrites = new HashMap<>();
+  private static final long WAIT_TIMEOUT_MS = 60000;
+  private static final int POLL_INTERVAL_MS = 250;
+
+  // Expected value of METRIC_NAME for each index, maintained by initWrites and checkWrites.
+  private Map<String, Long> expectedWrites;
 
   private void prepareTest(Statement statement) throws Exception {
     statement.execute(String.format(
@@ -74,39 +79,49 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
     statement.execute(String.format("INSERT INTO %s VALUES (4,4,4,4,4,4,4,4,4)", TABLE_NAME));
     statement.execute(String.format("INSERT INTO %s VALUES (5,5,5,5,5,5,5,5,5)", TABLE_NAME));
     statement.execute(String.format("INSERT INTO %s VALUES (6,6,6,6,6,6,6,6,6)", TABLE_NAME));
+  }
 
-    // Initializing a map datastructure to store metrics for each table name
+  private Map<String, Long> readWrites() throws Exception {
+    Map<String, Long> result = new HashMap<>();
     for (String table : index_list) {
-      tableWrites.put(table, new Counter());
+      result.put(table, getTserverMetricCountForTable(METRIC_NAME, table));
     }
+    return result;
   }
 
-  private static class Counter {
-    private long previousValue_ = 0;
-    private long currentValue_ = 0;
-
-    public void update(long newValue) {
-      previousValue_ = currentValue_;
-      currentValue_ = newValue;
-    }
-
-    public long getDelta() {
-      return currentValue_ - previousValue_;
-    }
+  // Records the current metric values as the baseline for checkWrites. The inserts done by
+  // prepareTest are still being applied, so wait until the values stop changing.
+  private void initWrites() throws Exception {
+    final Map<String, Long> baseline = new HashMap<>();
+    TestUtils.waitFor(() -> {
+      Map<String, Long> current = readWrites();
+      boolean stable = current.equals(baseline);
+      baseline.putAll(current);
+      return stable;
+    }, WAIT_TIMEOUT_MS, POLL_INTERVAL_MS);
+    expectedWrites = baseline;
   }
 
-  private void checkWrites(int col3, int col5, int col6, int col4col5col6, int col8) {
-    assertEquals(col3, tableWrites.get("idx_col3").getDelta());
-    assertEquals(col5, tableWrites.get("idx_col5").getDelta());
-    assertEquals(col6, tableWrites.get("idx_col6").getDelta());
-    assertEquals(col4col5col6, tableWrites.get("idx_col4_idx_col5_idx_col6").getDelta());
-    assertEquals(col8, tableWrites.get("idx_col8").getDelta());
-  }
-
-  private void updateCounter() throws Exception {
-    for (String table : index_list) {
-      Counter writes = tableWrites.get(table);
-      writes.update(getTserverMetricCountForTable(METRIC_NAME, table));
+  // Adds the expected per index deltas to the recorded values and waits until the metrics reach
+  // them. Each index update produces two intentsdb writes: the intents themselves and their removal
+  // when the transaction is applied. The latter happens asynchronously, after the commit is
+  // acknowledged to the client, so the metrics may lag behind the statement.
+  private void checkWrites(int col3, int col5, int col6, int col4col5col6, int col8)
+      throws Exception {
+    int[] deltas = {col3, col5, col6, col4col5col6, col8};
+    for (int i = 0; i < index_list.length; ++i) {
+      expectedWrites.merge(index_list[i], (long) deltas[i], Long::sum);
+    }
+    final Map<String, Long> actual = new HashMap<>();
+    try {
+      TestUtils.waitFor(() -> {
+        actual.putAll(readWrites());
+        return actual.equals(expectedWrites);
+      }, WAIT_TIMEOUT_MS, POLL_INTERVAL_MS);
+    } catch (Exception e) {
+      // Report the mismatching values rather than a bare timeout.
+      assertEquals(expectedWrites, actual);
+      throw e;
     }
   }
 
@@ -115,41 +130,34 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       prepareTest(stmt);
       // Add the value of metrics before updating the table test
-      updateCounter();
+      initWrites();
 
       // column 4 is changed. this changes idx_col3, idx_col4_idx_col5_idx_col6.
       stmt.execute(String.format("update %s set col4=11 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(2, 0, 0, 2, 0);
 
       // column 6 is changed. this changes idx_col3, idx_col5, idx_col6, idx_col4_idx_col5_idx_col6.
       stmt.execute(String.format("update %s set col6=12 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(2, 2, 2, 2, 0);
 
       // column 5 is changed. this changes idx_col3, idx_col5, idx_col4_idx_col5_idx_col6.
       stmt.execute(String.format("update %s set col5=13 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(2, 2, 0, 2, 0);
 
       // column 9 is changed. this changes idx_col6.
       stmt.execute(String.format("update %s set col9=14 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 2, 0, 0);
 
       // column 2 is changed. this does not affect any index.
       stmt.execute(String.format("update %s set col2=15 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 0, 0, 0);
 
       // column 9 is changed for multiple rows.
       stmt.execute(String.format("update %s set col9=21 where pk>1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 2, 0, 0);
 
       // column 8 is changed. No include columns hence just the table and index are updated.
       stmt.execute(String.format("update %s set col8=35 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 0, 0, 2);
     }
   }
@@ -169,41 +177,34 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
       stmt.execute("SET yb_enable_expression_pushdown to false");
 
       // Add the value of metrics before updating the table test
-      updateCounter();
+      initWrites();
 
       // column 4 is changed. this changes idx_col3, idx_col4_idx_col5_idx_col6.
       stmt.execute(String.format("update %s set col4=col4+1 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(2, 0, 0, 2, 0);
 
       // column 6 is changed. this changes idx_col3, idx_col5, idx_col6, idx_col4_idx_col5_idx_col6.
       stmt.execute(String.format("update %s set col6=col6+1 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(2, 2, 2, 2, 0);
 
       // column 5 is changed. this changes idx_col3, idx_col5, idx_col4_idx_col5_idx_col6.
       stmt.execute(String.format("update %s set col5=col5+1 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(2, 2, 0, 2, 0);
 
       // column 9 is changed. this changes idx_col6.
       stmt.execute(String.format("update %s set col9=col9+1 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 2, 0, 0);
 
       // column 2 is changed. this does not affect any index.
       stmt.execute(String.format("update %s set col2=col2+1 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 0, 0, 0);
 
       // column 9 is changed for multiple rows.
       stmt.execute(String.format("update %s set col9=col9+1 where pk>1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 2, 0, 0);
 
       // column 8 is changed. No include columns hence just the table and index are updated.
       stmt.execute(String.format("update %s set col8=col8+1 where pk=1", TABLE_NAME));
-      updateCounter();
       checkWrites(0, 0, 0, 0, 2);
     }
   }

@@ -28,6 +28,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 

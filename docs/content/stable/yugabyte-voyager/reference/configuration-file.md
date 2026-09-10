@@ -150,15 +150,6 @@ source:
 
   # Oracle specific: TNS alias
   oracle-tns-alias: ORCL_ALIAS
-
-  # Oracle specific: Container DB name
-  oracle-cdb-name: CDB
-
-  # Oracle specific: Container DB SID
-  oracle-cdb-sid: CDBSID
-
-  # Oracle specific: Container DB TNS alias
-  oracle-cdb-tns-alias: CDB_ALIAS
 ```
 
 ### Target database configuration

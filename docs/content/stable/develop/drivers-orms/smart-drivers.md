@@ -264,7 +264,7 @@ String url2Cluster1 = "jdbc:yugabytedb://<another-host-in-cluster1>:5433/databas
 
 The application can initiate connections using any of the URLs, and the driver will ensure the connection goes to the least loaded server in the respective cluster.
 
-Multi-cluster is supported in YugabyteDB v2024.1.6.0, v2024.2.3.0, and v2.25.2.0. You can also include URLs from a _maximum of one_ cluster running an older (unsupported) version of YugabyteDB. Using the preceding example, _Cluster1_ could be running an unsupported version, but not both _Cluster1_ and _Cluster2_.
+Multi-cluster is supported in YugabyteDB v2024.1.6.0, v2024.2.3.0, and v2.25.2.0 or later. You can also include URLs from a _maximum of one_ cluster running an older (unsupported) version of YugabyteDB. Using the preceding example, _Cluster1_ could be running an unsupported version, but not both _Cluster1_ and _Cluster2_.
 
 Currently, multi-cluster connections are available only in the Java (JDBC) smart driver (v42.7.3-yb-4 or later).
 

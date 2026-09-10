@@ -67,7 +67,6 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_opfamily.h"
 #include "pg_yb_utils.h"

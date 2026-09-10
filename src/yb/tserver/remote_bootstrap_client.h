@@ -32,8 +32,12 @@
 #pragma once
 
 #include <functional>
+#include <optional>
+#include <string>
 
 #include "yb/tserver/remote_client_base.h"
+
+#include "yb/util/disk_space_checker.h"
 
 namespace yb {
 
@@ -52,7 +56,8 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   // Construct the remote bootstrap client.
   // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
-  RemoteBootstrapClient(const TabletId& tablet_id, FsManager* fs_manager);
+  RemoteBootstrapClient(
+      const TabletId& tablet_id, FsManager* fs_manager, std::function<bool()> is_cancelled = {});
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC
@@ -86,7 +91,11 @@ class RemoteBootstrapClient : public RemoteClientBase {
                TSTabletManager* ts_manager = nullptr);
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
-  // from the leader of the specified consensus configuration.
+  // from the leader of the specified consensus configuration. The client's is_cancelled predicate
+  // (see the constructor) is polled on every FetchData retry; when it returns true the download
+  // stops retrying and returns ShutdownInProgress, so a bootstrap from a source that is shutting
+  // down (or while this server itself is shutting down) exits promptly instead of retrying until
+  // session_idle_timeout.
   Status FetchAll(tablet::TabletStatusListener* status_listener);
 
   // After downloading all files successfully, write out the completed
@@ -94,14 +103,13 @@ class RemoteBootstrapClient : public RemoteClientBase {
   Status Finish() override;
 
   // Verify that the remote bootstrap was completed successfully by verifying that the ChangeConfig
-  // request was propagated. `is_cancelled`, if set, is polled each iteration; when it returns true
-  // the verification is abandoned and a `ShutdownInProgress` status is returned so the RBS flow
-  // can exit promptly (e.g. during tserver shutdown, where the leader may never promote this
-  // peer to VOTER because the peer is on its way down). Callers should treat
-  // `IsShutdownInProgress()` as an expected outcome distinct from a real timeout.
+  // request was propagated. The client's is_cancelled predicate (see the constructor) is polled
+  // each iteration; when it returns true the verification is abandoned and a `ShutdownInProgress`
+  // status is returned so the RBS flow can exit promptly (e.g. during tserver shutdown, where the
+  // leader may never promote this peer to VOTER because the peer is on its way down). Callers
+  // should treat `IsShutdownInProgress()` as an expected outcome distinct from a real timeout.
   Status VerifyChangeRoleSucceeded(
-      const std::shared_ptr<consensus::Consensus>& shared_consensus,
-      const std::function<bool()>& is_cancelled = {});
+      const std::shared_ptr<consensus::Consensus>& shared_consensus);
 
  private:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
@@ -138,9 +146,16 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   uint64_t GetTotalDataSizeBytes(const tablet::RaftGroupReplicaSuperBlockPB& superblock) const;
 
-  // Check whether local disk has enough disk space for rocksdb files in superblock.
+  // Called at the beginning of RBS. It checks the data disk ("rocksdb_dir") have enough free space
+  // for the rocksdb files in superblock. It also call CheckFreeDiskSpace to check that both disks
+  // represented by 'rocksdb_dir' and 'wal_root_dir' have enough free space.
   Status CheckDiskSpace(
-      const tablet::RaftGroupReplicaSuperBlockPB& superblock, const std::string& rocksdb_dir);
+      const tablet::RaftGroupReplicaSuperBlockPB& superblock, const std::string& rocksdb_dir,
+      const std::string& wal_root_dir);
+
+  // Checks that the data disk and the WAL disks have sufficient free space, regardless of the
+  // amount of data to be written. Called at the start of RBS and repeatedly during the download.
+  Status CheckFreeDiskSpace();
 
   void SetInitialRbsProgressInfo();
 
@@ -177,6 +192,11 @@ class RemoteBootstrapClient : public RemoteClientBase {
   bool download_retryable_requests_;
 
   std::string bootstrap_source_uuid_;
+
+  // Track the free space on the data and the WAL disks. Initialized by CheckDiskSpace() once the
+  // tablet's directories are known.
+  std::optional<DiskSpaceChecker> data_disk_checker_;
+  std::optional<DiskSpaceChecker> wal_disk_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };

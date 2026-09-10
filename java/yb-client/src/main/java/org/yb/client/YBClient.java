@@ -80,7 +80,7 @@ import org.yb.util.TabletServerInfo;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class YBClient implements AutoCloseable {
+public class YBClient implements YBClientApi {
 
   public static final Logger LOG = LoggerFactory.getLogger(YBClient.class);
 
@@ -135,6 +135,7 @@ public class YBClient implements AutoCloseable {
    *
    * @throws Exception if the namespace already exists or creation fails.
    */
+  @Override
   public void createRedisNamespace() throws Exception {
     createRedisNamespace(false);
   }
@@ -146,6 +147,7 @@ public class YBClient implements AutoCloseable {
    * @return true if created, false if already exists.
    * @throws Exception throws exception on creation failure.
    */
+  @Override
   public boolean createRedisNamespace(boolean ifNotExist) throws Exception {
     Exception exception = null;
     try {
@@ -185,6 +187,7 @@ public class YBClient implements AutoCloseable {
    * @param numTablets number of pre-split tablets
    * @return an object to communicate with the created table.
    */
+  @Override
   public YBTable createRedisTable(String name, int numTablets) throws Exception {
     createRedisNamespace();
     return createTable(
@@ -198,6 +201,7 @@ public class YBClient implements AutoCloseable {
    * @param name the table name
    * @return an object to communicate with the created table.
    */
+  @Override
   public YBTable createRedisTable(String name) throws Exception {
     return createRedisTable(name, false);
   }
@@ -211,6 +215,7 @@ public class YBClient implements AutoCloseable {
    * @return an object to communicate with the created table if it is created.
    * @throws Exception throws exception on creation failure.
    */
+  @Override
   public YBTable createRedisTable(String name, boolean ifNotExist) throws Exception {
     if (createRedisNamespace(ifNotExist)) {
       // Namespace is just created, so there is no redis table.
@@ -227,6 +232,7 @@ public class YBClient implements AutoCloseable {
    * @return an object to communicate with the created table if it is created.
    * @throws Exception throws exception on creation failure.
    */
+  @Override
   public YBTable createRedisTableOnly(String name) throws Exception {
     return createRedisTableOnly(name, false);
   }
@@ -240,6 +246,7 @@ public class YBClient implements AutoCloseable {
    * @return an object to communicate with the created table if it is created.
    * @throws Exception throws exception on creation failure.
    */
+  @Override
   public YBTable createRedisTableOnly(String name, boolean ifNotExist) throws Exception {
     if (ifNotExist) {
       ListTablesResponse response = getTablesList(name);
@@ -263,6 +270,7 @@ public class YBClient implements AutoCloseable {
    * @param schema Table's schema
    * @return an object to communicate with the created table
    */
+  @Override
   public YBTable createTable(String keyspace, String name, Schema schema) throws Exception {
     return createTable(keyspace, name, schema, new CreateTableOptions());
   }
@@ -276,6 +284,7 @@ public class YBClient implements AutoCloseable {
    * @param builder a builder containing the table's configurations
    * @return an object to communicate with the created table
    */
+  @Override
   public YBTable createTable(
       String keyspace, String name, Schema schema, CreateTableOptions builder) throws Exception {
     Deferred<YBTable> d = asyncClient.createTable(keyspace, name, schema, builder);
@@ -286,6 +295,7 @@ public class YBClient implements AutoCloseable {
    * Create a CQL keyspace.
    * @param non-null name of the keyspace.
    */
+  @Override
   public CreateKeyspaceResponse createKeyspace(String keyspace) throws Exception {
     Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -295,6 +305,7 @@ public class YBClient implements AutoCloseable {
    * Create a keyspace (namespace) for the specified database type.
    * @param non-null name of the keyspace.
    */
+  @Override
   public CreateKeyspaceResponse createKeyspace(String keyspace, YQLDatabase databaseType)
       throws Exception {
     Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace, databaseType);
@@ -307,6 +318,7 @@ public class YBClient implements AutoCloseable {
    * @param keyspaceName CQL keyspace to delete
    * @return an rpc response object
    */
+  @Override
   public DeleteNamespaceResponse deleteNamespace(String keyspaceName) throws Exception {
     Deferred<DeleteNamespaceResponse> d = asyncClient.deleteNamespace(keyspaceName);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -319,6 +331,7 @@ public class YBClient implements AutoCloseable {
    * @param name the table's name
    * @return an rpc response object
    */
+  @Override
   public DeleteTableResponse deleteTable(final String keyspace, final String name)
       throws Exception {
     Deferred<DeleteTableResponse> d = asyncClient.deleteTable(keyspace, name);
@@ -336,6 +349,7 @@ public class YBClient implements AutoCloseable {
    * @param ato the alter table builder
    * @return an rpc response object
    */
+  @Override
   public AlterTableResponse alterTable(String keyspace, String name, AlterTableOptions ato)
       throws Exception {
     Deferred<AlterTableResponse> d = asyncClient.alterTable(keyspace, name, ato);
@@ -348,6 +362,7 @@ public class YBClient implements AutoCloseable {
    * @return rpc response object containing the master heartbeat delays and rpc error if any
    * @throws Exception when the rpc fails
    */
+  @Override
   public GetMasterHeartbeatDelaysResponse getMasterHeartbeatDelays() throws Exception {
     Deferred<GetMasterHeartbeatDelaysResponse> d = asyncClient.getMasterHeartbeatDelays();
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -361,6 +376,7 @@ public class YBClient implements AutoCloseable {
    * @param name Table's name, if the table was renamed then that name must be checked against
    * @return a boolean indicating if the table is done being altered
    */
+  @Override
   public boolean isAlterTableDone(String keyspace, String name) throws Exception {
     long totalSleepTime = 0;
     while (totalSleepTime < getDefaultAdminOperationTimeoutMs()) {
@@ -405,11 +421,13 @@ public class YBClient implements AutoCloseable {
    *
    * @return a list of tablet servers
    */
+  @Override
   public ListTabletServersResponse listTabletServers() throws Exception {
     Deferred<ListTabletServersResponse> d = asyncClient.listTabletServers();
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public ListLiveTabletServersResponse listLiveTabletServers() throws Exception {
     Deferred<ListLiveTabletServersResponse> d = asyncClient.listLiveTabletServers();
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -420,6 +438,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return a list of masters
    */
+  @Override
   public ListMastersResponse listMasters() throws Exception {
     Deferred<ListMastersResponse> d = asyncClient.listMasters();
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -430,6 +449,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return a list of master raft peers
    */
+  @Override
   public ListMasterRaftPeersResponse listMasterRaftPeers() throws Exception {
     Deferred<ListMasterRaftPeersResponse> d = asyncClient.listMastersRaftPeers();
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -440,6 +460,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return the configuration
    */
+  @Override
   public GetMasterClusterConfigResponse getMasterClusterConfig() throws Exception {
     Deferred<GetMasterClusterConfigResponse> d = asyncClient.getMasterClusterConfig();
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -451,6 +472,7 @@ public class YBClient implements AutoCloseable {
    * @param config the new config to set on the cluster.
    * @return the configuration
    */
+  @Override
   public ChangeMasterClusterConfigResponse changeMasterClusterConfig(
       CatalogEntityInfo.SysClusterConfigEntryPB config) throws Exception {
     Deferred<ChangeMasterClusterConfigResponse> d = asyncClient.changeMasterClusterConfig(config);
@@ -463,6 +485,7 @@ public class YBClient implements AutoCloseable {
    * @param isEnable if true, load balancer is enabled on master, else is disabled.
    * @return the response of the operation.
    */
+  @Override
   public ChangeLoadBalancerStateResponse changeLoadBalancerState(boolean isEnable)
       throws Exception {
     Deferred<ChangeLoadBalancerStateResponse> d = asyncClient.changeLoadBalancerState(isEnable);
@@ -474,6 +497,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return the response of the operation.
    */
+  @Override
   public GetLoadBalancerStateResponse getLoadBalancerState()
       throws Exception {
     Deferred<GetLoadBalancerStateResponse> d = asyncClient.getLoadBalancerState();
@@ -485,6 +509,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return the response with percent load completed.
    */
+  @Override
   public GetLoadMovePercentResponse getLoadMoveCompletion() throws Exception {
     Deferred<GetLoadMovePercentResponse> d;
     GetLoadMovePercentResponse resp;
@@ -496,6 +521,7 @@ public class YBClient implements AutoCloseable {
     return resp;
   }
 
+  @Override
   public AreNodesSafeToTakeDownResponse areNodesSafeToTakeDown(
       Set<String> masterIps, Set<String> tserverIps, long followerLagBoundMs) throws Exception {
     ListTabletServersResponse tabletServers = listTabletServers();
@@ -522,6 +548,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return the response with percent load completed.
    */
+  @Override
   public GetLoadMovePercentResponse getLeaderBlacklistCompletion() throws Exception {
     Deferred<GetLoadMovePercentResponse> d;
     GetLoadMovePercentResponse resp;
@@ -541,6 +568,7 @@ public class YBClient implements AutoCloseable {
    *     about.
    * @return a deferred object that yields if the load is balanced.
    */
+  @Override
   public IsLoadBalancedResponse getIsLoadBalanced(int numServers) throws Exception {
     Deferred<IsLoadBalancedResponse> d = asyncClient.getIsLoadBalanced(numServers);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -551,6 +579,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return a deferred object that yields if the load is balanced.
    */
+  @Override
   public IsLoadBalancerIdleResponse getIsLoadBalancerIdle() throws Exception {
     Deferred<IsLoadBalancerIdleResponse> d = asyncClient.getIsLoadBalancerIdle();
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -561,12 +590,14 @@ public class YBClient implements AutoCloseable {
    *
    * @return a deferred object that yields if the load is balanced.
    */
+  @Override
   public AreLeadersOnPreferredOnlyResponse getAreLeadersOnPreferredOnly() throws Exception {
     Deferred<AreLeadersOnPreferredOnlyResponse> d = asyncClient.getAreLeadersOnPreferredOnly();
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   /** Check if initdb executed by the master is done running. */
+  @Override
   public IsInitDbDoneResponse getIsInitDbDone() throws Exception {
     Deferred<IsInitDbDoneResponse> d = asyncClient.getIsInitDbDone();
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -579,6 +610,7 @@ public class YBClient implements AutoCloseable {
    * @param timeoutMS timeout in milliseconds to wait for.
    * @return returns true if the master is properly initialized, false otherwise.
    */
+  @Override
   public boolean waitForMaster(HostAndPort hp, long timeoutMS) throws Exception {
     if (!waitForServer(hp, timeoutMS)) {
       return false;
@@ -611,6 +643,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return The uuid of the leader master, or null if no leader found.
    */
+  @Override
   public String getLeaderMasterUUID() {
     for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
       Optional<GetMasterRegistrationResponse> resp = getMasterRegistrationResponse(hostAndPort);
@@ -622,6 +655,7 @@ public class YBClient implements AutoCloseable {
     return null;
   }
 
+  @Override
   public List<GetMasterRegistrationResponse> getMasterRegistrationResponseList() {
     List<GetMasterRegistrationResponse> result = new ArrayList<>();
     for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
@@ -659,6 +693,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return The host and port of the leader master, or null if no leader found.
    */
+  @Override
   public HostAndPort getLeaderMasterHostAndPort() {
     List<HostAndPort> masterAddresses = asyncClient.getMasterAddresses();
     Map<HostAndPort, TabletClient> clients = new HashMap<>();
@@ -838,16 +873,19 @@ public class YBClient implements AutoCloseable {
    *     update
    * @return The change config response object.
    */
+  @Override
   public ChangeConfigResponse changeMasterConfig(String host, int port, boolean isAdd)
       throws Exception {
     return changeMasterConfig(host, port, isAdd, false /* useHost */);
   }
 
+  @Override
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd, boolean useHost) throws Exception {
     return changeMasterConfig(host, port, isAdd, useHost, null /* hostAddrToAdd */);
   }
 
+  @Override
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd, boolean useHost, String hostAddrToAdd)
       throws Exception {
@@ -939,6 +977,7 @@ public class YBClient implements AutoCloseable {
    *
    * @param timeoutMs the amount of time, in MS, to wait until a Leader is present
    */
+  @Override
   public void waitForMasterLeader(long timeoutMs) throws Exception {
     String leaderUuid = waitAndGetLeaderMasterUUID(timeoutMs);
 
@@ -948,6 +987,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** Enable encryption at rest using the key file specified */
+  @Override
   public boolean enableEncryptionAtRestInMemory(final String versionId) throws Exception {
     Deferred<ChangeEncryptionInfoInMemoryResponse> d;
     d = asyncClient.enableEncryptionAtRestInMemory(versionId);
@@ -956,6 +996,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** Disable encryption at rest */
+  @Override
   public boolean disableEncryptionAtRestInMemory() throws Exception {
     Deferred<ChangeEncryptionInfoInMemoryResponse> d;
     d = asyncClient.disableEncryptionAtRestInMemory();
@@ -963,6 +1004,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** Enable encryption at rest using the key file specified */
+  @Override
   public boolean enableEncryptionAtRest(final String file) throws Exception {
     Deferred<ChangeEncryptionInfoResponse> d;
     d = asyncClient.enableEncryptionAtRest(file);
@@ -970,12 +1012,14 @@ public class YBClient implements AutoCloseable {
   }
 
   /** Disable encryption at rest */
+  @Override
   public boolean disableEncryptionAtRest() throws Exception {
     Deferred<ChangeEncryptionInfoResponse> d;
     d = asyncClient.disableEncryptionAtRest();
     return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
   }
 
+  @Override
   public Pair<Boolean, String> isEncryptionEnabled() throws Exception {
     Deferred<IsEncryptionEnabledResponse> d = asyncClient.isEncryptionEnabled();
     IsEncryptionEnabledResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
@@ -988,6 +1032,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** Add universe keys in memory to a master at hp, with universe keys in format <id -> key> */
+  @Override
   public void addUniverseKeys(Map<String, byte[]> universeKeys, HostAndPort hp) throws Exception {
     Deferred<AddUniverseKeysResponse> d = asyncClient.addUniverseKeys(universeKeys, hp);
     AddUniverseKeysResponse resp = d.join();
@@ -1001,6 +1046,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** Check if a master at hp has universe key universeKeyId. Returns true if it does. */
+  @Override
   public boolean hasUniverseKeyInMemory(String universeKeyId, HostAndPort hp) throws Exception {
     Deferred<HasUniverseKeyInMemoryResponse> d =
         asyncClient.hasUniverseKeyInMemory(universeKeyId, hp);
@@ -1022,6 +1068,7 @@ public class YBClient implements AutoCloseable {
    * @param port the port number of the server
    * @return true if the server responded to ping
    */
+  @Override
   public boolean ping(final String host, int port) throws Exception {
     Deferred<PingResponse> d = asyncClient.ping(HostAndPort.fromParts(host, port));
     d.join(getDefaultAdminOperationTimeoutMs());
@@ -1036,6 +1083,7 @@ public class YBClient implements AutoCloseable {
    * @param value the value to set the flag to
    * @return true if the server successfully set the flag
    */
+  @Override
   public boolean setFlag(HostAndPort hp, String flag, String value) throws Exception {
     return setFlag(hp, flag, value, false);
   }
@@ -1049,6 +1097,7 @@ public class YBClient implements AutoCloseable {
    * @param force if the flag needs to be set even if it is not marked runtime safe
    * @return true if the server successfully set the flag
    */
+  @Override
   public boolean setFlag(HostAndPort hp, String flag, String value, boolean force)
       throws Exception {
     if (flag == null || flag.isEmpty() || value == null || value.isEmpty() || hp == null) {
@@ -1066,6 +1115,7 @@ public class YBClient implements AutoCloseable {
    * @param flag the flag to get.
    * @return string value of flag if valid, else empty string
    */
+  @Override
   public String getFlag(HostAndPort hp, String flag) throws Exception {
     if (flag == null || hp == null) {
       LOG.warn("Invalid arguments for hp: {}, flag {}", hp.toString(), flag);
@@ -1086,6 +1136,7 @@ public class YBClient implements AutoCloseable {
    * @param hp the host and port of the server
    * @return a comma separated string containing the list of master addresses
    */
+  @Override
   public String getMasterAddresses(HostAndPort hp) throws Exception {
     Deferred<GetMasterAddressesResponse> d = asyncClient.getMasterAddresses(hp);
     return d.join(getDefaultAdminOperationTimeoutMs()).getMasterAddresses();
@@ -1094,6 +1145,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#upgradeYsql(HostAndPort, boolean)
    */
+  @Override
   public UpgradeYsqlResponse upgradeYsql(HostAndPort hp, boolean useSingleConnection)
       throws Exception {
     Deferred<UpgradeYsqlResponse> d = asyncClient.upgradeYsql(hp, useSingleConnection);
@@ -1107,6 +1159,7 @@ public class YBClient implements AutoCloseable {
    * @return a object containing the list of status and schema of tablets
    *         that exist on the TServer.
    */
+  @Override
   public ListTabletsResponse listStatusAndSchemaOfTabletsForTServer(HostAndPort hp)
       throws Exception {
     Deferred<ListTabletsResponse> d = asyncClient.listStatusAndSchemaOfTabletsForTServer(hp);
@@ -1119,6 +1172,7 @@ public class YBClient implements AutoCloseable {
    * @param tserverHP host and port of the TServer.
    * @return the connectivity state response with per-node entries (alive, ping, last_failure).
    */
+  @Override
   public ConnectivityStateResponse getConnectivityState(HostAndPort tserverHP) throws Exception {
     Deferred<ConnectivityStateResponse> d = asyncClient.getConnectivityState(tserverHP);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -1131,6 +1185,7 @@ public class YBClient implements AutoCloseable {
    * @param hp host and port of the Tserver.
    * @return
    */
+  @Override
   public GetConsensusStateResponse getTabletConsensusStateFromTS(final String tabletId,
       final HostAndPort hp) throws Exception {
     Deferred<GetConsensusStateResponse> d = asyncClient.getTabletConsensusStateFromTS(tabletId, hp);
@@ -1146,6 +1201,7 @@ public class YBClient implements AutoCloseable {
    * @return
    * @throws Exception
    */
+  @Override
   public GetLatestEntryOpIdResponse getLatestEntryOpIds(final HostAndPort hp,
       List<String> tabletIds) throws Exception {
     Deferred<GetLatestEntryOpIdResponse> d = asyncClient.getLatestEntryOpIds(hp, tabletIds);
@@ -1159,6 +1215,7 @@ public class YBClient implements AutoCloseable {
    * @param isTserver true if host/port is for tserver, else its master.
    * @return server readiness response.
    */
+  @Override
   public IsServerReadyResponse isServerReady(HostAndPort hp, boolean isTserver) throws Exception {
     Deferred<IsServerReadyResponse> d = asyncClient.isServerReady(hp, isTserver);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -1170,6 +1227,7 @@ public class YBClient implements AutoCloseable {
    * @param hp host and port of the TServer.
    * @return response containing the list of tablet ids that exist on a TServer.
    */
+  @Override
   public ListTabletsForTabletServerResponse listTabletsForTabletServer(HostAndPort hp)
       throws Exception {
     Deferred<ListTabletsForTabletServerResponse> d = asyncClient.listTabletsForTabletServer(hp);
@@ -1182,6 +1240,7 @@ public class YBClient implements AutoCloseable {
    * @throws RuntimeException when the operation fails
    * @throws IllegalStateException when the input 'servers' array is empty or null
    */
+  @Override
   public boolean reloadCertificates(HostAndPort server)
       throws RuntimeException, IllegalStateException {
     if (server == null || server.getHost() == null || "".equals(server.getHost().trim()))
@@ -1200,9 +1259,7 @@ public class YBClient implements AutoCloseable {
     }
   }
 
-  public interface Condition {
-    boolean get() throws Exception;
-  }
+  public interface Condition extends YBClientApi.Condition {}
 
   private class ReplicaCountCondition implements Condition {
     private int numReplicas;
@@ -1343,6 +1400,7 @@ public class YBClient implements AutoCloseable {
    * Quick and dirty error injection on Wait based API's. After every use, for now, will get
    * automatically disabled.
    */
+  @Override
   public void injectWaitError() {
     injectWaitError = true;
   }
@@ -1407,6 +1465,7 @@ public class YBClient implements AutoCloseable {
    * @param timeoutMs the amount of time, in MS, to wait
    * @return true if the table the expected number of replicas, false otherwise
    */
+  @Override
   public boolean waitForReplicaCount(
       final YBTable table, final int numReplicas, final long timeoutMs) {
     Condition replicaCountCondition = new ReplicaCountCondition(table, numReplicas);
@@ -1420,6 +1479,7 @@ public class YBClient implements AutoCloseable {
    * @param timeoutMs the amount of time, in MS, to wait
    * @return true if the server responded to pings in the given time, false otherwise
    */
+  @Override
   public boolean waitForServer(final HostAndPort hp, final long timeoutMs) {
     Condition serverCondition = new ServerCondition(hp);
     return waitForCondition(serverCondition, timeoutMs);
@@ -1432,6 +1492,7 @@ public class YBClient implements AutoCloseable {
    * @param numServers expected number of servers which need to balanced.
    * @return true if the master leader does not return any error balance check.
    */
+  @Override
   public boolean waitForLoadBalance(final long timeoutMs, int numServers) {
     Condition loadBalanceCondition = new LoadBalanceCondition(numServers);
     return waitForCondition(loadBalanceCondition, timeoutMs);
@@ -1443,6 +1504,7 @@ public class YBClient implements AutoCloseable {
    * @param timeoutMs the amount of time, in MS, to wait
    * @return true if the load balancer is currently running.
    */
+  @Override
   public boolean waitForLoadBalancerActive(final long timeoutMs) {
     Condition loadBalancerActiveCondition = new LoadBalancerActiveCondition();
     return waitForCondition(loadBalancerActiveCondition, timeoutMs);
@@ -1454,6 +1516,7 @@ public class YBClient implements AutoCloseable {
    * @param timeoutMs the amount of time, in MS, to wait
    * @return true if the master leader does not return any error balance check.
    */
+  @Override
   public boolean waitForLoadBalancerIdle(final long timeoutMs) {
     Condition loadBalancerIdleCondition = new LoadBalancerIdleCondition();
     return waitForCondition(loadBalancerIdleCondition, timeoutMs);
@@ -1465,6 +1528,7 @@ public class YBClient implements AutoCloseable {
    * @param timeoutMs the amount of time, in MS, to wait.
    * @return true iff the leader count is balanced within timeoutMs.
    */
+  @Override
   public boolean waitForAreLeadersOnPreferredOnlyCondition(final long timeoutMs) {
     Condition areLeadersOnPreferredOnlyCondition = new AreLeadersOnPreferredOnlyCondition();
     return waitForCondition(areLeadersOnPreferredOnlyCondition, timeoutMs);
@@ -1481,12 +1545,14 @@ public class YBClient implements AutoCloseable {
    * @return true if the read only replica count for the table matches the expected within the
    *     expected time frame, false otherwise.
    */
+  @Override
   public boolean waitForExpectedReplicaMap(
       final long timeoutMs, YBTable table, Map<String, List<List<Integer>>> replicaMapExpected) {
     Condition replicaMapCondition = new ReplicaMapCondition(table, replicaMapExpected, timeoutMs);
     return waitForCondition(replicaMapCondition, timeoutMs);
   }
 
+  @Override
   public boolean waitForMasterHasUniverseKeyInMemory(
       final long timeoutMs, String universeKeyId, HostAndPort hp) {
     Condition universeKeyCondition = new MasterHasUniverseKeyInMemoryCondition(universeKeyId, hp);
@@ -1498,6 +1564,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return status of the step down via a response.
    */
+  @Override
   public LeaderStepDownResponse masterLeaderStepDown() throws Exception {
     String leader_uuid = getLeaderMasterUUID();
     String tablet_id = getMasterTabletId();
@@ -1510,6 +1577,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return a list of all the non-system tables
    */
+  @Override
   public ListTablesResponse getTablesList() throws Exception {
     // YEDIS tables are stored as system tables, so they have to be separated.
     ListTablesResponse nonSystemTables = getTablesList(null, true, null);
@@ -1530,6 +1598,7 @@ public class YBClient implements AutoCloseable {
    * @param nameFilter an optional table name filter
    * @return a deferred that contains the list of table names
    */
+  @Override
   public ListTablesResponse getTablesList(String nameFilter) throws Exception {
     return getTablesList(nameFilter, false, null);
   }
@@ -1544,6 +1613,7 @@ public class YBClient implements AutoCloseable {
    * @param namespace an optional filter to search tables in specific namespace
    * @return a deferred that contains the list of table names
    */
+  @Override
   public ListTablesResponse getTablesList(
       String nameFilter, boolean excludeSystemTables, String namespace) throws Exception {
     Deferred<ListTablesResponse> d =
@@ -1556,6 +1626,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return a list of all the namespaces
    */
+  @Override
   public ListNamespacesResponse getNamespacesList() throws Exception {
 
     // Fetch the namespaces of YSQL
@@ -1595,6 +1666,7 @@ public class YBClient implements AutoCloseable {
    * @param tableId the table id to subscribe to.
    * @return a deferred object for the response from server.
    */
+  @Override
   public CreateCDCStreamResponse createCDCStream(
       final HostAndPort hp,
       String tableId,
@@ -1607,11 +1679,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public CreateCDCStreamResponse createCDCStream(
       YBTable table, String nameSpaceName, String format, String checkpointType) throws Exception {
     return createCDCStream(table, nameSpaceName, format, checkpointType, "");
   }
 
+  @Override
   public CreateCDCStreamResponse createCDCStream(
       YBTable table, String nameSpaceName, String format, String checkpointType, String recordType)
       throws Exception {
@@ -1620,6 +1694,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public CreateCDCStreamResponse createCDCStream(
       YBTable table,
       String nameSpaceName,
@@ -1662,6 +1737,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public boolean waitForTableRemoval(final long timeoutMs, String name) {
     Condition TableDoesNotExistCondition = new TableDoesNotExistCondition(name);
     return waitForCondition(TableDoesNotExistCondition, timeoutMs);
@@ -1674,6 +1750,7 @@ public class YBClient implements AutoCloseable {
    * @param name a non-null table name
    * @return true if the table exists, else false
    */
+  @Override
   public boolean tableExists(String keyspace, String name) throws Exception {
     Deferred<Boolean> d = asyncClient.tableExists(keyspace, name);
     try {
@@ -1689,6 +1766,7 @@ public class YBClient implements AutoCloseable {
    * @param tableUUID a non-null table UUID
    * @return true if the table exists, else false
    */
+  @Override
   public boolean tableExistsByUUID(String tableUUID) throws Exception {
     Deferred<Boolean> d = asyncClient.tableExistsByUUID(tableUUID);
     try {
@@ -1705,6 +1783,7 @@ public class YBClient implements AutoCloseable {
    * @param name a non-null table name
    * @return a deferred that contains the schema for the specified table
    */
+  @Override
   public GetTableSchemaResponse getTableSchema(final String keyspace, final String name)
       throws Exception {
     Deferred<GetTableSchemaResponse> d = asyncClient.getTableSchema(keyspace, name);
@@ -1717,6 +1796,7 @@ public class YBClient implements AutoCloseable {
    * @param tableUUID a non-null table uuid
    * @return a deferred that contains the schema for the specified table
    */
+  @Override
   public GetTableSchemaResponse getTableSchemaByUUID(final String tableUUID) throws Exception {
     Deferred<GetTableSchemaResponse> d = asyncClient.getTableSchemaByUUID(tableUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -1730,6 +1810,7 @@ public class YBClient implements AutoCloseable {
    * @param name table to open
    * @return a YBTable if the table exists, else a MasterErrorException
    */
+  @Override
   public YBTable openTable(final String keyspace, final String name) throws Exception {
     Deferred<YBTable> d = asyncClient.openTable(keyspace, name);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -1741,6 +1822,7 @@ public class YBClient implements AutoCloseable {
    * @param table table info.
    * @return the set of tablet UUIDs of the table.
    */
+  @Override
   public Set<String> getTabletUUIDs(final YBTable table) throws Exception {
     Set<String> ids = new HashSet<>();
     for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
@@ -1756,6 +1838,7 @@ public class YBClient implements AutoCloseable {
    * @param name the table name
    * @return the set of tablet UUIDs of the table.
    */
+  @Override
   public Set<String> getTabletUUIDs(final String keyspace, final String name) throws Exception {
     return getTabletUUIDs(openTable(keyspace, name));
   }
@@ -1767,6 +1850,7 @@ public class YBClient implements AutoCloseable {
    * @param tableUUID table to open
    * @return a YBTable if the table exists, else a MasterErrorException
    */
+  @Override
   public YBTable openTableByUUID(final String tableUUID) throws Exception {
     Deferred<YBTable> d = asyncClient.openTableByUUID(tableUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -1778,6 +1862,7 @@ public class YBClient implements AutoCloseable {
    *
    * @see AsyncYBClient#setupUniverseReplication(String, Map, Set, Boolean)
    */
+  @Override
   public SetupUniverseReplicationResponse setupUniverseReplication(
       String replicationGroupName,
       Map<String, String> sourceTableIdsBootstrapIdMap,
@@ -1793,6 +1878,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public SetupUniverseReplicationResponse setupUniverseReplication(
       String replicationGroupName,
       Map<String, String> sourceTableIdsBootstrapIdMap,
@@ -1805,6 +1891,7 @@ public class YBClient implements AutoCloseable {
         null /* isTransactional */);
   }
 
+  @Override
   public IsSetupUniverseReplicationDoneResponse isSetupUniverseReplicationDone(
       String replicationGroupName) throws Exception {
     Deferred<IsSetupUniverseReplicationDoneResponse> d =
@@ -1812,6 +1899,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public SetUniverseReplicationEnabledResponse setUniverseReplicationEnabled(
       String replicationGroupName, boolean active) throws Exception {
     Deferred<SetUniverseReplicationEnabledResponse> d =
@@ -1819,6 +1907,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public AlterUniverseReplicationResponse alterUniverseReplicationAddTables(
       String replicationGroupName, Map<String, String> sourceTableIdsToAddBootstrapIdMap)
       throws Exception {
@@ -1828,6 +1917,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
       String replicationGroupName, Set<String> sourceTableIdsToRemove) throws Exception {
     Deferred<AlterUniverseReplicationResponse> d =
@@ -1836,6 +1926,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
       String replicationGroupName,
       Set<String> sourceTableIdsToRemove,
@@ -1847,6 +1938,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public AlterUniverseReplicationResponse alterUniverseReplicationSourceMasterAddresses(
       String replicationGroupName, Set<CommonNet.HostPortPB> sourceMasterAddresses)
       throws Exception {
@@ -1856,6 +1948,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public AlterUniverseReplicationResponse alterUniverseReplicationName(
       String replicationGroupName, String newReplicationGroupName) throws Exception {
     Deferred<AlterUniverseReplicationResponse> d =
@@ -1863,6 +1956,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public IsSetupUniverseReplicationDoneResponse isAlterUniverseReplicationDone(
       String replicationGroupName) throws Exception {
     Deferred<IsSetupUniverseReplicationDoneResponse> d =
@@ -1870,6 +1964,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public GetChangesResponse getChangesCDCSDK(
       YBTable table,
       String streamId,
@@ -1887,6 +1982,7 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public GetChangesResponse getChangesCDCSDK(
       YBTable table,
       String streamId,
@@ -1914,6 +2010,7 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public GetChangesResponse getChangesCDCSDK(
       YBTable table,
       String streamId,
@@ -1943,6 +2040,7 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public GetChangesResponse getChangesCDCSDK(
       YBTable table,
       String streamId,
@@ -1961,6 +2059,7 @@ public class YBClient implements AutoCloseable {
         needSchemaInfo, explicitCheckpoint, safeHybridTime, walSegmentIndex, null);
   }
 
+  @Override
   public GetChangesResponse getChangesCDCSDK(
       YBTable table,
       String streamId,
@@ -1976,6 +2075,28 @@ public class YBClient implements AutoCloseable {
       int walSegmentIndex,
       Long getchangesRespMaxSizeBytes)
       throws Exception {
+    return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+        needSchemaInfo, explicitCheckpoint, safeHybridTime, walSegmentIndex,
+        getchangesRespMaxSizeBytes, 0);
+  }
+
+  @Override
+  public GetChangesResponse getChangesCDCSDK(
+      YBTable table,
+      String streamId,
+      String tabletId,
+      long term,
+      long index,
+      byte[] key,
+      int write_id,
+      long time,
+      boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint,
+      long safeHybridTime,
+      int walSegmentIndex,
+      Long getchangesRespMaxSizeBytes,
+      long maxIndexInSortWindow)
+      throws Exception {
     Deferred<GetChangesResponse> d =
         asyncClient.getChangesCDCSDK(
             table,
@@ -1990,16 +2111,19 @@ public class YBClient implements AutoCloseable {
             explicitCheckpoint,
             safeHybridTime,
             walSegmentIndex,
-            getchangesRespMaxSizeBytes);
+            getchangesRespMaxSizeBytes,
+            maxIndexInSortWindow);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public GetCheckpointResponse getCheckpoint(YBTable table, String streamId, String tabletId)
       throws Exception {
     Deferred<GetCheckpointResponse> d = asyncClient.getCheckpoint(table, streamId, tabletId);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public GetDBStreamInfoResponse getDBStreamInfo(String streamId) throws Exception {
     Deferred<GetDBStreamInfoResponse> d = asyncClient.getDBStreamInfo(streamId);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
@@ -2015,6 +2139,7 @@ public class YBClient implements AutoCloseable {
    * @return an RPC response containing the list of child tablets
    * @throws Exception
    */
+  @Override
   public GetTabletListToPollForCDCResponse getTabletListToPollForCdc(
       YBTable table, String streamId, String tableId, String tabletId) throws Exception {
     Deferred<GetTabletListToPollForCDCResponse> d =
@@ -2032,6 +2157,7 @@ public class YBClient implements AutoCloseable {
    * @return an RPC response containing the list of tablets to poll for
    * @throws Exception
    */
+  @Override
   public GetTabletListToPollForCDCResponse getTabletListToPollForCdc(
       YBTable table, String streamId, String tableId) throws Exception {
     return getTabletListToPollForCdc(table, streamId, tableId, "");
@@ -2044,6 +2170,7 @@ public class YBClient implements AutoCloseable {
    * @return {@link SplitTabletResponse}
    * @throws Exception
    */
+  @Override
   public SplitTabletResponse splitTablet(String tabletId) throws Exception {
     Deferred<SplitTabletResponse> d = asyncClient.splitTablet(tabletId);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
@@ -2057,11 +2184,13 @@ public class YBClient implements AutoCloseable {
    * @return an RPC response of type {@link FlushTableResponse} containing the flush request ID
    * @throws Exception
    */
+  @Override
   public FlushTableResponse flushTable(String tableId) throws Exception {
     Deferred<FlushTableResponse> d = asyncClient.flushTable(tableId);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public FlushTabletsResponse flushTablets(String tserverIp, int rpcPort, List<String> tabletIds)
       throws Exception {
     HostAndPort hp = HostAndPort.fromParts(tserverIp, rpcPort);
@@ -2076,6 +2205,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public SetCheckpointResponse commitCheckpoint(
       YBTable table,
       String streamId,
@@ -2095,6 +2225,7 @@ public class YBClient implements AutoCloseable {
         null /* cdcsdkSafeTime */);
   }
 
+  @Override
   public SetCheckpointResponse commitCheckpoint(
       YBTable table,
       String streamId,
@@ -2131,6 +2262,7 @@ public class YBClient implements AutoCloseable {
    * @return an object containing the status details of the server.
    * @throws Exception
    */
+  @Override
   public GetStatusResponse getStatus(final String host, int port) throws Exception {
     Deferred<GetStatusResponse> d = asyncClient.getStatus(HostAndPort.fromParts(host, port));
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
@@ -2141,6 +2273,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return auto flag config for each server if exists, else a MasterErrorException.
    */
+  @Override
   public GetAutoFlagsConfigResponse autoFlagsConfig() throws Exception {
     Deferred<GetAutoFlagsConfigResponse> d = asyncClient.autoFlagsConfig();
     d.addErrback(
@@ -2166,6 +2299,7 @@ public class YBClient implements AutoCloseable {
    * @param force promotes auto flag forcefully if true.
    * @return response from the server for promoting auto flag config, else a MasterErrorException.
    */
+  @Override
   public PromoteAutoFlagsResponse promoteAutoFlags(
       String maxFlagClass, boolean promoteNonRuntimeFlags, boolean force) throws Exception {
     Deferred<PromoteAutoFlagsResponse> d =
@@ -2192,6 +2326,7 @@ public class YBClient implements AutoCloseable {
    * @return response from the server for rolling back auto flag config, else a
    *     MasterErrorException.
    */
+  @Override
   public RollbackAutoFlagsResponse rollbackAutoFlags(int rollbackVersion) throws Exception {
     Deferred<RollbackAutoFlagsResponse> d =
         asyncClient.getRollbackAutoFlagsResponse(rollbackVersion);
@@ -2215,6 +2350,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return An {@link StartYsqlMajorCatalogUpgradeResponse} object containing the response.
    */
+  @Override
   public StartYsqlMajorCatalogUpgradeResponse startYsqlMajorCatalogUpgrade() throws Exception {
     Deferred<StartYsqlMajorCatalogUpgradeResponse> d = asyncClient.startYsqlMajorCatalogUpgrade();
     d.addErrback(
@@ -2237,6 +2373,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return An {@link IsYsqlMajorCatalogUpgradeDoneResponse} indicating the status of the upgrade.
    */
+  @Override
   public IsYsqlMajorCatalogUpgradeDoneResponse isYsqlMajorCatalogUpgradeDone() throws Exception {
     Deferred<IsYsqlMajorCatalogUpgradeDoneResponse> d = asyncClient.isYsqlMajorCatalogUpgradeDone();
     d.addErrback(
@@ -2259,6 +2396,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return An {@link FinalizeYsqlMajorCatalogUpgradeResponse} object containing the response.
    */
+  @Override
   public FinalizeYsqlMajorCatalogUpgradeResponse finalizeYsqlMajorCatalogUpgrade()
       throws Exception {
     Deferred<FinalizeYsqlMajorCatalogUpgradeResponse> d =
@@ -2283,6 +2421,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return An {@link RollbackYsqlMajorCatalogVersionResponse} object containing the response.
    */
+  @Override
   public RollbackYsqlMajorCatalogVersionResponse rollbackYsqlMajorCatalogVersion()
       throws Exception {
     Deferred<RollbackYsqlMajorCatalogVersionResponse> d =
@@ -2307,6 +2446,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return An {@link GetYsqlMajorCatalogUpgradeStateResponse} object containing the response.
    */
+  @Override
   public GetYsqlMajorCatalogUpgradeStateResponse getYsqlMajorCatalogUpgradeState()
       throws Exception {
     Deferred<GetYsqlMajorCatalogUpgradeStateResponse> d =
@@ -2326,6 +2466,7 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public SetCheckpointResponse bootstrapTablet(
       YBTable table,
       String streamId,
@@ -2353,6 +2494,7 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public DeleteUniverseReplicationResponse deleteUniverseReplication(
       String replicationGroupName, boolean ignoreErrors) throws Exception {
     Deferred<DeleteUniverseReplicationResponse> d =
@@ -2360,11 +2502,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public DeleteUniverseReplicationResponse deleteUniverseReplication(String replicationGroupName)
       throws Exception {
     return deleteUniverseReplication(replicationGroupName, false /* ignoreErrors */);
   }
 
+  @Override
   public GetUniverseReplicationResponse getUniverseReplication(String replicationGroupName)
       throws Exception {
     Deferred<GetUniverseReplicationResponse> d =
@@ -2373,6 +2517,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** @see {@link AsyncYBClient#getUniverseReplicationInfo(String)} */
+  @Override
   public GetUniverseReplicationInfoResponse getUniverseReplicationInfo(String replicationGroupName)
     throws Exception {
     Deferred<GetUniverseReplicationInfoResponse> d =
@@ -2381,6 +2526,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** @see {@link AsyncYBClient#getXClusterOutboundReplicationGroupInfo(String)} */
+  @Override
   public GetXClusterOutboundReplicationGroupInfoResponse getXClusterOutboundReplicationGroupInfo(
       String replicationGroupName) throws Exception {
     Deferred<GetXClusterOutboundReplicationGroupInfoResponse> d =
@@ -2389,6 +2535,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** @see {@link AsyncYBClient#getXClusterOutboundReplicationGroups(String)} */
+  @Override
   public GetXClusterOutboundReplicationGroupsResponse getXClusterOutboundReplicationGroups(
     @Nullable String namespaceId) throws Exception {
     Deferred<GetXClusterOutboundReplicationGroupsResponse> d =
@@ -2396,6 +2543,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public BootstrapUniverseResponse bootstrapUniverse(
       final HostAndPort hostAndPort, List<String> tableIds) throws Exception {
     Deferred<BootstrapUniverseResponse> d = asyncClient.bootstrapUniverse(hostAndPort, tableIds);
@@ -2403,6 +2551,7 @@ public class YBClient implements AutoCloseable {
   }
 
   /** See {@link AsyncYBClient#changeXClusterRole(org.yb.cdc.CdcConsumer.XClusterRole)} */
+  @Override
   public ChangeXClusterRoleResponse changeXClusterRole(XClusterRole role) throws Exception {
     Deferred<ChangeXClusterRoleResponse> d = asyncClient.changeXClusterRole(role);
     return d.join(getDefaultAdminOperationTimeoutMs());
@@ -2416,6 +2565,7 @@ public class YBClient implements AutoCloseable {
    * @return A deferred object that yields a {@link IsBootstrapRequiredResponse} which contains a
    *     map of each table id to a boolean showing whether bootstrap is required for that table
    */
+  @Override
   public IsBootstrapRequiredResponse isBootstrapRequired(Map<String, String> tableIdsStreamIdMap)
       throws Exception {
     Deferred<IsBootstrapRequiredResponse> d = asyncClient.isBootstrapRequired(tableIdsStreamIdMap);
@@ -2428,6 +2578,7 @@ public class YBClient implements AutoCloseable {
    *
    * @see YBClient#isBootstrapRequired(java.util.Map)
    */
+  @Override
   public List<IsBootstrapRequiredResponse> isBootstrapRequiredParallel(
       Map<String, String> tableIdStreamIdMap, int partitionSize) throws Exception {
     // Partition the tableIdStreamIdMap.
@@ -2458,6 +2609,7 @@ public class YBClient implements AutoCloseable {
     return isBootstrapRequiredList;
   }
 
+  @Override
   public GetReplicationStatusResponse getReplicationStatus(@Nullable String replicationGroupName)
       throws Exception {
     Deferred<GetReplicationStatusResponse> d =
@@ -2465,16 +2617,19 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public GetXClusterSafeTimeResponse getXClusterSafeTime() throws Exception {
     Deferred<GetXClusterSafeTimeResponse> d = asyncClient.getXClusterSafeTime();
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public XClusterFailoverResponse xClusterFailover(String replicationGroupId) throws Exception {
     Deferred<XClusterFailoverResponse> d = asyncClient.xClusterFailover(replicationGroupId);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public IsXClusterFailoverDoneResponse isXClusterFailoverDone(String replicationGroupId)
       throws Exception {
     Deferred<IsXClusterFailoverDoneResponse> d =
@@ -2482,6 +2637,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public WaitForReplicationDrainResponse waitForReplicationDrain(
       List<String> streamIds, @Nullable Long targetTime) throws Exception {
     Deferred<WaitForReplicationDrainResponse> d =
@@ -2489,6 +2645,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public WaitForReplicationDrainResponse waitForReplicationDrain(List<String> streamIds)
       throws Exception {
     return waitForReplicationDrain(streamIds, null /* targetTime */);
@@ -2500,6 +2657,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#xClusterCreateOutboundReplicationGroup(String, Set<String>)
    */
+  @Override
   public XClusterCreateOutboundReplicationGroupResponse xClusterCreateOutboundReplicationGroup(
       String replicationGroupId,
       Set<String> namespaceIds,
@@ -2513,6 +2671,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#isXClusterBootstrapRequired(String, String)
    */
+  @Override
   public IsXClusterBootstrapRequiredResponse isXClusterBootstrapRequired(
       String replicationGroupId, String namespaceId) throws Exception {
     Deferred<IsXClusterBootstrapRequiredResponse> d =
@@ -2523,6 +2682,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#createXClusterReplication(String, Set<CommonNet.HostPortPB>)
    */
+  @Override
   public CreateXClusterReplicationResponse createXClusterReplication(
       String replicationGroupId, Set<CommonNet.HostPortPB> targetMasterAddresses) throws Exception {
     Deferred<CreateXClusterReplicationResponse> d =
@@ -2533,6 +2693,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#isCreateXClusterReplicationDone(String, Set<CommonNet.HostPortPB>)
    */
+  @Override
   public IsCreateXClusterReplicationDoneResponse isCreateXClusterReplicationDone(
       String replicationGroupId, Set<CommonNet.HostPortPB> targetMasterAddresses) throws Exception {
     Deferred<IsCreateXClusterReplicationDoneResponse> d =
@@ -2541,6 +2702,7 @@ public class YBClient implements AutoCloseable {
   }
 
   // Used by YBA to delete outbound replication from the source universe,
+  @Override
   public XClusterDeleteOutboundReplicationGroupResponse xClusterDeleteOutboundReplicationGroup(
       String replicationGroupId) throws Exception {
     Deferred<XClusterDeleteOutboundReplicationGroupResponse> d =
@@ -2551,6 +2713,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#xClusterDeleteOutboundReplicationGroup(String, Set<CommonNet.HostPortPB>)
    */
+  @Override
   public XClusterDeleteOutboundReplicationGroupResponse xClusterDeleteOutboundReplicationGroup(
       String replicationGroupId, @Nullable Set<CommonNet.HostPortPB> targetMasterAddresses)
       throws Exception {
@@ -2563,6 +2726,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#xClusterAddNamespaceToOutboundReplicationGroup(String, String)
    */
+  @Override
   public XClusterAddNamespaceToOutboundReplicationGroupResponse
       xClusterAddNamespaceToOutboundReplicationGroup(String replicationGroupId, String namespaceId)
           throws Exception {
@@ -2574,6 +2738,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#xClusterRemoveNamespaceFromOutboundReplicationGroup(String, String)
    */
+  @Override
   public XClusterRemoveNamespaceFromOutboundReplicationGroupResponse
       xClusterRemoveNamespaceFromOutboundReplicationGroup(
         String replicationGroupId, String namespaceId)
@@ -2587,6 +2752,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#alterUniverseReplication(String, String)
    */
+  @Override
   public AlterUniverseReplicationResponse
       alterUniverseReplicationRemoveNamespace(String replicationGroupId, String namespaceId)
           throws Exception {
@@ -2598,6 +2764,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#addNamespaceToXClusterReplication(String, Set<CommonNet.HostPortPB>, String)
    */
+  @Override
   public AddNamespaceToXClusterReplicationResponse addNamespaceToXClusterReplication(
       String replicationGroupId,
       Set<CommonNet.HostPortPB> targetMasterAddresses,
@@ -2612,6 +2779,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#isAlterXClusterReplicationDone(String, Set<CommonNet.HostPortPB>)
    */
+  @Override
   public IsAlterXClusterReplicationDoneResponse isAlterXClusterReplicationDone(
       String replicationGroupId, Set<CommonNet.HostPortPB> targetMasterAddresses)
       throws Exception {
@@ -2631,6 +2799,7 @@ public class YBClient implements AutoCloseable {
    * @return details for the namespace.
    * @throws Exception
    */
+  @Override
   public GetNamespaceInfoResponse getNamespaceInfo(String keyspaceName, YQLDatabase databaseType)
       throws Exception {
     Deferred<GetNamespaceInfoResponse> d = asyncClient.getNamespaceInfo(keyspaceName, databaseType);
@@ -2640,6 +2809,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
    */
+  @Override
   public ListCDCStreamsResponse listCDCStreams(
       String tableId, String namespaceId, MasterReplicationOuterClass.IdTypePB idType)
       throws Exception {
@@ -2650,6 +2820,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#deleteCDCStream(Set, boolean, boolean)
    */
+  @Override
   public DeleteCDCStreamResponse deleteCDCStream(
       Set<String> streamIds, boolean ignoreErrors, boolean forceDelete) throws Exception {
     Deferred<DeleteCDCStreamResponse> d =
@@ -2660,6 +2831,7 @@ public class YBClient implements AutoCloseable {
   /**
    * @see AsyncYBClient#getTabletLocations(List<String>, String, boolean, boolean)
    */
+  @Override
   public GetTabletLocationsResponse getTabletLocations(
       List<String> tabletIds, String tableId, boolean includeHidden, boolean includeDeleted)
       throws Exception {
@@ -2668,6 +2840,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public CreateSnapshotScheduleResponse createSnapshotSchedule(
       YQLDatabase databaseType, String keyspaceName, long retentionInSecs, long timeIntervalInSecs)
       throws Exception {
@@ -2677,6 +2850,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public EditSnapshotScheduleResponse editSnapshotSchedule(
       UUID snapshotScheduleUUID,
       long retentionInSecs,
@@ -2688,6 +2862,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public CreateSnapshotScheduleResponse createSnapshotSchedule(
       YQLDatabase databaseType,
       String keyspaceName,
@@ -2701,6 +2876,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public DeleteSnapshotScheduleResponse deleteSnapshotSchedule(UUID snapshotScheduleUUID)
       throws Exception {
     Deferred<DeleteSnapshotScheduleResponse> d =
@@ -2708,6 +2884,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public ListSnapshotSchedulesResponse listSnapshotSchedules(UUID snapshotScheduleUUID)
       throws Exception {
     Deferred<ListSnapshotSchedulesResponse> d =
@@ -2715,6 +2892,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public RestoreSnapshotScheduleResponse restoreSnapshotSchedule(
       UUID snapshotScheduleUUID, long restoreTimeInMillis) throws Exception {
     Deferred<RestoreSnapshotScheduleResponse> d =
@@ -2722,6 +2900,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public ListSnapshotRestorationsResponse listSnapshotRestorations(UUID restorationUUID)
       throws Exception {
     Deferred<ListSnapshotRestorationsResponse> d =
@@ -2729,6 +2908,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public ListSnapshotsResponse listSnapshots(UUID snapshotUUID, boolean listDeletedSnapshots)
       throws Exception {
     Deferred<ListSnapshotsResponse> d =
@@ -2736,11 +2916,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public DeleteSnapshotResponse deleteSnapshot(UUID snapshotUUID) throws Exception {
     Deferred<DeleteSnapshotResponse> d = asyncClient.deleteSnapshot(snapshotUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public CloneNamespaceResponse cloneNamespace(
       YQLDatabase databaseType,
       String sourceKeyspaceName,
@@ -2753,6 +2935,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public CloneNamespaceResponse cloneNamespace(
       YQLDatabase databaseType,
       String sourceKeyspaceName,
@@ -2766,12 +2949,14 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public ListClonesResponse listClones(String keyspaceId, Integer cloneSeqNo)
       throws Exception {
     Deferred<ListClonesResponse> d = asyncClient.listClones(keyspaceId, cloneSeqNo);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public ValidateReplicationInfoResponse validateReplicationInfo(
       ReplicationInfoPB replicationInfoPB) throws Exception {
     Deferred<ValidateReplicationInfoResponse> d =
@@ -2779,6 +2964,7 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  @Override
   public SetPreferredZonesResponse setPreferredZones(
       Map<Integer, List<CommonNet.CloudInfoPB>> prioritiesMap)
       throws Exception {
@@ -2792,6 +2978,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return An {@link ValidateFlagValueResponse} object containing the response.
    */
+  @Override
   public ValidateFlagValueResponse validateFlagValue(
       String flagName, String flagValue) throws Exception {
     Deferred<ValidateFlagValueResponse> d =
@@ -2812,6 +2999,22 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Validates a batch of flags directly against a specific master or tserver process.
+   *
+   * Unlike {@link #validateFlagValue(String, String)}, this method does not throw on
+   * validation failure. Errors are returned in ValidateFlagValueResponse.getErrors().
+  *
+   * @param hp    host and port of the target tserver (port 9100) or master (port 7100)
+   * @param flags map of flag name, values to validate
+   * @return response with a per-flag errors map; empty map means all flags are valid
+   */
+  @Override
+  public ValidateFlagValueResponse validateFlagValues(
+      final HostAndPort hp, Map<String, String> flags) throws Exception {
+    return asyncClient.validateFlagValues(hp, flags).join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Analogous to {@link #shutdown()}.
    *
    * @throws Exception if an error happens while closing the connections
@@ -2826,6 +3029,7 @@ public class YBClient implements AutoCloseable {
    *
    * @throws Exception
    */
+  @Override
   public void shutdown() throws Exception {
     asyncClient.shutdown();
   }
@@ -2835,6 +3039,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return a timeout in milliseconds
    */
+  @Override
   public long getDefaultOperationTimeoutMs() {
     return asyncClient.getDefaultOperationTimeoutMs();
   }
@@ -2844,6 +3049,7 @@ public class YBClient implements AutoCloseable {
    *
    * @return a timeout in milliseconds
    */
+  @Override
   public long getDefaultAdminOperationTimeoutMs() {
     return asyncClient.getDefaultAdminOperationTimeoutMs();
   }

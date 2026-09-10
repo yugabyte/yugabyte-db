@@ -1322,6 +1322,8 @@ public class YbcBackupUtil {
         return CloudType.AZURE;
       case Util.NFS:
         return CloudType.NFS;
+      case Util.OCI:
+        return CloudType.OCI;
       default:
         throw new PlatformServiceException(BAD_REQUEST, "Invalid bucket type provided");
     }

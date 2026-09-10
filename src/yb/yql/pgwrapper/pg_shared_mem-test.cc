@@ -13,6 +13,8 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include <signal.h>
+
 #include <string>
 
 #include <boost/interprocess/mapped_region.hpp>
@@ -21,8 +23,12 @@
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -33,12 +39,15 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(TEST_pg_client_crash_on_shared_memory_send);
 DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_uint64(io_thread_pool_size);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_transactional_read_delay_ms);
+DECLARE_uint64(TEST_doc_op_next_result_prefetching_delay_ms);
 DECLARE_uint64(TEST_shared_exchange_big_response_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
-
+DECLARE_uint64(TEST_big_shared_memory_segment_initial_id);
+DECLARE_int32(TEST_slowdown_pgsql_aggregate_read_ms);
 
 namespace yb {
 
@@ -139,7 +148,7 @@ TEST_F(PgSharedMemTest, TimeOut) {
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0)", kNumRows));
 
-    FLAGS_TEST_transactional_read_delay_ms =
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) =
         delay ? FLAGS_ysql_client_read_write_timeout_ms * 2 : 0;
     auto result = conn.FetchRow<int64_t>(
         "SELECT SUM(key) FROM t WHERE key > 0 OR key < 0");
@@ -234,6 +243,84 @@ TEST_F(PgSharedMemTest, AbandonedBigResponse) {
     auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(result, value);
   }
+}
+
+class PgSharedMemNextResultPrefetchingDelayTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    PgSharedMemTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_doc_op_next_result_prefetching_delay_ms) =
+        FLAGS_ysql_client_read_write_timeout_ms + 2 * kExtraDelayMs;
+  }
+
+  int GetReadWriteTimeout() const override {
+    return RegularBuildVsSanitizers(2, 10) * 1000;
+  }
+
+  static constexpr auto kExtraDelayMs = 500;
+};
+
+// The test checks absence of unexpectedly missed responses after first request timeout.
+// Test simulates the following situation:
+// 1. pggate initiates request over shared exchange
+// 2. t-server respond with delay large then request's deadline
+// 3. pggate marks request as failed due to timeout
+// 4. pggate initiates new read request, but shared exchange is busy, so request goes over RPC
+// 5. pggate initiates prefetching of next request after delay, to be sure that shared exchange is
+//   free and request will go over it
+// 6. pggate initiates new read request without waiting for previous request's response,
+//    it is expected that shared exchange is busy and request will go over RPC
+// Note: In case on step #6 shared exchange will be used, the response for prefetching request
+//       (sent on step #5) will be overwritten. Later pggate's attempt to get response for this
+//       request will fail with the 'Timed out waiting kResponseSent, state: kIdle' error
+TEST_F_EX(
+    PgSharedMemTest, ReadAfterPreviousRequestTimeout, PgSharedMemNextResultPrefetchingDelayTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE long_text(k INT, v TEXT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION any_read(key INT) RETURNS INT AS $$"
+      "DECLARE"
+      " result INT;"
+      "BEGIN "
+      "  SELECT v FROM t WHERE k = key INTO result; "
+      "  RETURN result; "
+      "END;$$ LANGUAGE plpgsql"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION read_after_shared_exchange_timeout() RETURNS INT AS $$ "
+      "DECLARE"
+      " result INT; "
+      " msg_text TEXT; "
+      "BEGIN "
+      "  BEGIN "
+      "    SELECT SUM(LENGTH(v)) FROM long_text INTO result; "
+      "  EXCEPTION WHEN OTHERS THEN "
+      "    GET STACKED DIAGNOSTICS msg_text = MESSAGE_TEXT; "
+      "    RAISE NOTICE 'Expected time out exception: %', msg_text; "
+      "  END;"
+      "  SELECT COUNT(any_read(k)) FROM t INTO result;"
+      "  RETURN result; "
+      "END;$$ LANGUAGE plpgsql"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_shared_exchange_big_response_delay_ms) =
+      FLAGS_ysql_client_read_write_timeout_ms + kExtraDelayMs;
+  constexpr auto kFetchRowLimit = 10;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s, s FROM generate_series(1, $0) AS s", kFetchRowLimit * 2));
+
+  auto do_read_after_shared_exchange_timeout = [&conn]() {
+    return conn.FetchRow<int32_t>("SELECT read_after_shared_exchange_timeout()");
+  };
+
+  // Warmup YSQL caches
+  ASSERT_RESULT(do_read_after_shared_exchange_timeout());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO long_text SELECT s, '$0' FROM generate_series(1, 10) AS s",
+      RandomHumanReadableString(512*100)));
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_fetch_row_limit = $0", kFetchRowLimit));
+  auto row = ASSERT_RESULT(do_read_after_shared_exchange_timeout());
+  ASSERT_EQ(row, 20);
 }
 
 TEST_F(PgSharedMemTest, Crash) {
@@ -332,6 +419,161 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   ASSERT_OK(WaitFor([client_service] {
     return client_service->TEST_SessionsCount() <= 1;
   }, 5s * kTimeMultiplier, "Sessions cleanup"));
+}
+
+// The test checks PgClientService detects postgres process (with in-flight RPC) termination faster
+// than session expiration based on heartbeat and performs required session cleanup actions.
+TEST_F(PgSharedMemTest, ConnectionWithInFlightRPCShutdown) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  constexpr auto kNumIterations = 16;
+  constexpr auto kWaitTimeout = 5s * kTimeMultiplier;
+
+  {
+    // Slowdown some further queries to simulate in-flight RPC
+    auto flag_guard = ChangeFlagTemporary(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms, 5000);
+    TestThreadHolder thread_holder;
+    for ([[maybe_unused]] const auto _ : std::views::iota(0, kNumIterations)) {
+      auto aux_conn = ASSERT_RESULT(Connect());
+      const auto aux_conn_backend_pid = aux_conn.BackendPID();
+      thread_holder.AddThread(
+          [aux_conn = std::move(aux_conn)]() mutable {
+            const auto status = ResultToStatus(aux_conn.FetchRow<PGUint64>(
+                "SELECT COUNT(*) FROM t"));
+            ASSERT_TRUE(status.IsNetworkError());
+          });
+      constexpr auto kMinQueryRunningTimeMsecs = 100 * kTimeMultiplier;
+      ASSERT_OK(WaitFor(
+          [&conn, aux_conn_backend_pid] {
+            return TryTerminateBackendWithRunningQuery(
+                conn, aux_conn_backend_pid, kMinQueryRunningTimeMsecs);
+          },
+          kWaitTimeout, "Active query termination"));
+    }
+  }
+
+  auto& client_service = *cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
+  ASSERT_OK(WaitFor(
+      [&client_service] { return client_service.TEST_SessionsCount() <= 2; },
+      kWaitTimeout, "Sessions cleanup"));
+}
+
+class PgSharedMemBigSegmentOverflowTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_big_shared_memory_segment_initial_id) =
+        tserver::kBigSharedMemoryMaxId;
+    PgSharedMemTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgSharedMemTest, BigDataOverflow, PgSharedMemBigSegmentOverflowTest) {
+  auto no_allocated_segments_functor = [this] {
+    auto usage = SumBigSharedMemUsage();
+    LOG(INFO) << "Allocated big shared mem bytes: " << usage.first;
+    return usage.first == 0;
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto value = RandomHumanReadableString(boost::interprocess::mapped_region::get_page_size());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES (1, '$0')", value));
+
+  ASSERT_OK(WaitFor(no_allocated_segments_functor, 5s, "No allocated segments"));
+
+  for (size_t i = 0; i < 2; ++i) {
+    auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(result, value);
+
+    auto usage = SumBigSharedMemUsage();
+    ASSERT_GT(usage.first, 0); // allocated big shared memory segment
+    ASSERT_EQ(usage.second, 0); // big shared memory segment in use
+
+    auto segment_in_pool_functor = [this] {
+      auto usage = SumBigSharedMemUsage();
+      LOG(INFO) << "Big shared mem bytes, allocated: " << usage.first << ", available: "
+                << usage.second;
+      return usage.first == usage.second;
+    };
+
+    ASSERT_OK(WaitFor(
+        segment_in_pool_functor, 5s, "Connection released big shared memory segment"));
+    usage = SumBigSharedMemUsage();
+    ASSERT_GT(usage.first, 0); // Check segment still in pool.
+
+    ASSERT_OK(WaitFor(
+        no_allocated_segments_functor,
+        FLAGS_big_shared_memory_segment_expiration_time_ms * 2ms,
+        "Big shared memory segment cleaned up"));
+  }
+}
+
+class PgSharedMemSchedulerBlockTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    // A single IO thread makes one blocked session destructor stall the whole scheduler.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_io_thread_pool_size) = 1;
+    PgSharedMemTest::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  static constexpr int kReadDelayMs = RegularBuildVsSanitizers(10000, 30000);
+};
+
+// Reproduces GH #33616. PgSessionSharedMemoryManager::Impl destructor waits without a deadline
+// for the shared exchange to become idle. Expired sessions are destroyed on an RPC scheduler
+// thread from the messenger IO thread pool, so the wait blocks scheduler tasks, including all
+// periodic timers (e.g. Raft heartbeats). The test keeps a request busy in the tserver with a
+// delayed transactional read and kills the PG backend so its session is destroyed mid-request.
+// While the destructor blocks the only IO thread, no scheduler task can run, which is observed
+// naturally: a bystander connection closed during that window does not get its session cleaned
+// up in time, since session cleanup runs on the same scheduler.
+TEST_F_EX(PgSharedMemTest, SessionShutdownBlocksScheduler, PgSharedMemSchedulerBlockTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  const auto backend_pid = conn.BackendPID();
+  std::optional<PGConn> bystander = ASSERT_RESULT(Connect());
+
+  auto* client_service =
+      cluster_->mini_tablet_server(kPgTsIndex)->server()->TEST_GetPgClientService();
+  const auto num_sessions = client_service->TEST_SessionsCount();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) = kReadDelayMs;
+  auto reset_delay = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) = 0;
+  });
+
+  // The INSERT makes the transaction real, so the SELECT takes the delayed transactional read
+  // path: it hangs in the tserver keeping the shared exchange busy, and fails when the backend
+  // is killed below.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn] {
+    ASSERT_NOK(conn.Fetch("SELECT * FROM t"));
+  });
+  // Let the read reach the tserver and mark the exchange busy.
+  SleepFor(1s * kTimeMultiplier);
+
+  ASSERT_EQ(kill(backend_pid, SIGKILL), 0);
+  thread_holder.JoinAll();
+
+  // The dead backend's session expires and its destructor runs on the scheduler IO thread.
+  ASSERT_OK(WaitFor([client_service, num_sessions] {
+    return client_service->TEST_SessionsCount() < num_sessions;
+  }, 10s * kTimeMultiplier, "Killed backend session expired"));
+  // Give the destructor time to start waiting on the busy exchange.
+  SleepFor(2s * kTimeMultiplier);
+
+  bystander.reset();
+  ASSERT_OK(WaitFor([client_service, num_sessions] {
+    return client_service->TEST_SessionsCount() <= num_sessions - 2;
+  }, MonoDelta::FromMilliseconds(kReadDelayMs / 4), "Bystander session cleaned up"));
 }
 
 } // namespace yb::pgwrapper

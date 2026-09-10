@@ -35,6 +35,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
@@ -1629,6 +1630,34 @@ TEST_F(PgSingleTServerTest, FastBackwardScanSnapshotIsolationIntentRead) {
 
   // Final validation.
   ASSERT_OK(fetch_and_validate("NULL, 2000, 3; NULL, 5, 2; 4096, 5, 1"));
+}
+
+TEST_F(PgSingleTServerTest, FastBackwardScanAddColumnPackedRowV2) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t(h int, r int, c_1 int, PRIMARY KEY(h, r asc))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT 1, r, r FROM generate_series(1, 5) r"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN c_new int"));
+
+  const auto stmt = "SELECT c_1, c_new, r FROM t WHERE h = 1 ORDER BY r DESC";
+  const auto explain =
+      ASSERT_RESULT(conn.FetchAllAsString(std::string{"EXPLAIN ANALYZE "} + std::string{stmt}));
+  ASSERT_TRUE(Slice(explain).starts_with("Index Scan Backward")) << explain;
+
+  const auto result = ASSERT_RESULT(conn.FetchAllAsString(stmt));
+  ASSERT_EQ(result, "5, NULL, 5; 4, NULL, 4; 3, NULL, 3; 2, NULL, 2; 1, NULL, 1");
 }
 
 TEST_F_EX(PgSingleTServerTest, ColocatedJoinPerformance,

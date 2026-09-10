@@ -67,13 +67,34 @@ public class MetricQueryResponse {
   /**
    * Format MetricQueryResponse object as a json for graph(plot.ly) consumption.
    *
-   * @param metricName, metric name
-   * @param config, metric definition
-   * @param metricSettings, metric query settings
-   * @return JsonNode, Json data that plot.ly can understand
+   * <p>Convenience overload used by call sites without universe context; skips the resolver-based
+   * lookup entirely.
    */
   public List<MetricGraphData> getGraphData(
       String metricName, MetricConfigDefinition config, MetricSettings metricSettings) {
+    return getGraphData(metricName, config, metricSettings, null);
+  }
+
+  /**
+   * Format MetricQueryResponse object as a json for graph(plot.ly) consumption.
+   *
+   * @param metricName metric name
+   * @param config metric definition
+   * @param metricSettings metric query settings
+   * @param k8sPodNodeNameResolver resolver keyed off cluster / helm-release metadata rather than
+   *     live NodeDetails, so it also handles historical samples whose pods have since been removed.
+   *     When non-null the resolved node name is used verbatim, which correctly encodes AZ suffix
+   *     for multi-AZ universes and {@code -readonly} for read-replica clusters. Also carries the
+   *     universe-level multi-AZ flag used by the fallback path when the resolver can't identify a
+   *     particular pod. Callers without universe context can pass {@code null}, in which case the
+   *     fallback path defaults to multi-AZ naming for backward compatibility.
+   * @return JsonNode, Json data that plot.ly can understand
+   */
+  public List<MetricGraphData> getGraphData(
+      String metricName,
+      MetricConfigDefinition config,
+      MetricSettings metricSettings,
+      K8sPodNodeNameResolver k8sPodNodeNameResolver) {
     List<MetricGraphData> metricGraphDataList = new ArrayList<>();
 
     Layout layout = config.getLayout();
@@ -92,7 +113,8 @@ public class MetricQueryResponse {
       if (metricGraphData.instanceName == null
           && (metricName.startsWith(CONTAINER_METRIC_PREFIX)
               || metricName.startsWith(KUBELET_VOLUME_METRIC_PREFIX))) {
-        metricGraphData.instanceName = getInstanceNameLabelForKubernetes(metricInfo, metricName);
+        metricGraphData.instanceName =
+            getInstanceNameLabelForKubernetes(metricInfo, metricName, k8sPodNodeNameResolver);
       }
       metricGraphData.tableId = getAndRemoveLabelValue(metricInfo, TABLE_ID);
       metricGraphData.tableName = getAndRemoveLabelValue(metricInfo, TABLE_NAME);
@@ -219,28 +241,87 @@ public class MetricQueryResponse {
     return value;
   }
 
-  private String getInstanceNameLabelForKubernetes(ObjectNode metricInfo, String metricName) {
-    metricInfo.remove(NAMESPACE);
-    // For container volume metrics, use pvc instead of pod_name
-    if (metricName.startsWith(CONTAINER_VOLUME_METRIC_PREFIX)
-        || metricName.startsWith(KUBELET_VOLUME_METRIC_PREFIX)) {
-      return getInstanceNameLabel(
-          getAndRemoveLabelValue(metricInfo, PVC),
-          getAndRemoveLabelValue(metricInfo, AZ_NAME),
-          true);
+  // PVC names for yb-master/yb-tserver pods are formed by Kubernetes as
+  // `<volumeClaimTemplateName>-<podName>`. In the yugabyte Helm chart:
+  //   * volumeClaimTemplate name is `datadir<N>` in old naming style, or
+  //     `<fullname>datadir<N>` in new naming style (where `<fullname>` is the helm-release-
+  //     derived prefix like `ybamalyshev-single-pdmc-`);
+  //   * pod name is `yb-<server>-<idx>` in old naming style, or `<fullname>yb-<server>-<idx>`
+  //     in new naming style.
+  // So actual PVC labels look like `datadir0-yb-tserver-0` (old) or
+  // `ybamalyshev-single-pdmc-datadir0-ybamalyshev-single-pdmc-yb-tserver-0` (new). We use a
+  // non-greedy leading `.*?` to accept the new-style fullname prefix without accidentally
+  // capturing later `datadir<N>` occurrences (there is only one per PVC, at the boundary
+  // between the volume-claim-template name and the pod name).
+  private static final Pattern PVC_DATADIR_POD_PATTERN = Pattern.compile("^.*?(datadir\\d+)-(.+)$");
+
+  private String getInstanceNameLabelForKubernetes(
+      ObjectNode metricInfo, String metricName, K8sPodNodeNameResolver k8sPodNodeNameResolver) {
+    // Read the namespace before removing it - the resolver uses it as a fallback disambiguator
+    // for old-naming-style universes where the pod name doesn't embed the helm release. We
+    // still strip the label from `metricInfo` (as before) so it doesn't leak into the graph's
+    // `labels` map.
+    String namespaceLabel = getAndRemoveLabelValue(metricInfo, NAMESPACE);
+    // The AZ label is always emitted by Prometheus but is only part of the YBA node name when the
+    // universe spans multiple AZs. Strip it unconditionally so it doesn't leak into `labels`;
+    // we decide separately (below) whether to fold it into the instance name.
+    String azNameLabel = getAndRemoveLabelValue(metricInfo, AZ_NAME);
+
+    boolean isVolumeMetric =
+        metricName.startsWith(CONTAINER_VOLUME_METRIC_PREFIX)
+            || metricName.startsWith(KUBELET_VOLUME_METRIC_PREFIX);
+    String rawLabel =
+        isVolumeMetric
+            ? getAndRemoveLabelValue(metricInfo, PVC)
+            : getAndRemoveLabelValue(metricInfo, POD_NAME);
+    if (rawLabel == null) {
+      return null;
     }
-    // For rest of container metrics, use pod_name
-    return getInstanceNameLabel(
-        getAndRemoveLabelValue(metricInfo, POD_NAME),
-        getAndRemoveLabelValue(metricInfo, AZ_NAME),
-        false);
+
+    // Recover the pod name (and, for volume metrics, the datadir suffix). The datadir isn't part
+    // of the YBA node name but we append it after resolution so per-volume series stay
+    // distinguishable on the graph.
+    String podName = rawLabel;
+    String datadirSuffix = null;
+    if (isVolumeMetric) {
+      Matcher m = PVC_DATADIR_POD_PATTERN.matcher(rawLabel);
+      if (m.matches()) {
+        datadirSuffix = m.group(1);
+        podName = m.group(2);
+      }
+    }
+
+    // Preferred path: ask the resolver, which derives the node name from the universe's cluster /
+    // helm-release metadata. That metadata is independent of live NodeDetails records, so it
+    // correctly labels historical samples for pods that have since been removed - which is why
+    // we can't just look up the current `Universe.getNodes()`.
+    String resolvedNodeName =
+        k8sPodNodeNameResolver == null
+            ? null
+            : k8sPodNodeNameResolver.resolveNodeName(podName, namespaceLabel, azNameLabel);
+    if (resolvedNodeName != null) {
+      return datadirSuffix != null ? resolvedNodeName + "_" + datadirSuffix : resolvedNodeName;
+    }
+
+    // Fallback (no resolver, or the resolver couldn't match e.g. because the cluster itself
+    // was removed): reconstruct a best-effort node name from the Prometheus labels alone. This
+    // path cannot add `-readonly` because we don't know the cluster type, but it still matches
+    // YBA's node naming for primary clusters. When the resolver isn't available we default to
+    // multi-AZ naming to preserve prior behavior for callers without universe context.
+    boolean multiAZ = k8sPodNodeNameResolver == null || k8sPodNodeNameResolver.isMultiAZ();
+    String azName = multiAZ ? azNameLabel : null;
+    return getInstanceNameLabel(rawLabel, azName, isVolumeMetric);
   }
 
   private String getInstanceNameLabel(String baseLabel, String azName, boolean extractDatadir) {
-    if (azName == null) return baseLabel;
     try {
+      // The pod name is of the form `<helm-release>-yb-{master,tserver}-<idx>`; strip the release
+      // prefix so the label matches YBA's node name (`yb-tserver-0`, `yb-master-2`, etc.). This is
+      // applied regardless of `azName` so single-AZ pods aren't rendered as their full pod name.
       String suffix = baseLabel.substring(baseLabel.lastIndexOf("yb-"));
-      suffix += "_" + azName;
+      if (azName != null) {
+        suffix += "_" + azName;
+      }
       if (extractDatadir) {
         Matcher matcher = Pattern.compile("(datadir\\d+)").matcher(baseLabel);
         if (matcher.find()) {

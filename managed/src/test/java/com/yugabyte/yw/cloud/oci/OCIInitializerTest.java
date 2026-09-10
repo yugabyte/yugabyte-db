@@ -9,7 +9,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -27,12 +26,14 @@ import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import play.Environment;
 import play.libs.Json;
 
 public class OCIInitializerTest extends FakeDBApplication {
 
   private Customer customer;
   private Provider provider;
+  private Region region;
   private OCIInitializer ociInitializer;
   private ConfigHelper mockConfigHelper;
   private CloudQueryHelper mockCloudQueryHelper;
@@ -41,7 +42,7 @@ public class OCIInitializerTest extends FakeDBApplication {
   public void setup() {
     customer = ModelFactory.testCustomer();
     provider = ModelFactory.newProvider(customer, CloudType.oci, "OCI");
-    Region region = Region.create(provider, "us-ashburn-1", "US Ashburn", "yb-image");
+    region = Region.create(provider, "us-ashburn-1", "US Ashburn", "yb-image");
     AvailabilityZone.createOrThrow(region, "ashburn-ad-1", "Ashburn AD-1", "subnet-1");
     provider.save();
 
@@ -50,6 +51,8 @@ public class OCIInitializerTest extends FakeDBApplication {
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
     ReflectionTestUtils.setField(ociInitializer, "configHelper", mockConfigHelper);
     ReflectionTestUtils.setField(ociInitializer, "cloudQueryHelper", mockCloudQueryHelper);
+    ReflectionTestUtils.setField(
+        ociInitializer, "environment", app.injector().instanceOf(Environment.class));
   }
 
   @Test
@@ -84,29 +87,58 @@ public class OCIInitializerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testInitializeAddsApiInstanceTypesAndPriceComponents() {
-    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata)).thenReturn(Map.of());
+  public void testFamilyFromShape() {
+    assertEquals("E4", OCIPriceUtil.familyFromShape("VM.Standard.E4.Flex"));
+    assertEquals("E5", OCIPriceUtil.familyFromShape("BM.Standard.E5.192"));
+    assertEquals("X9", OCIPriceUtil.familyFromShape("VM.Standard3.Flex"));
+    assertEquals("X9", OCIPriceUtil.familyFromShape("BM.Standard3.64"));
+    assertEquals("X7", OCIPriceUtil.familyFromShape("VM.Standard2.1"));
+    assertEquals("X7", OCIPriceUtil.familyFromShape("VM.Standard2.24"));
+    assertEquals("X7", OCIPriceUtil.familyFromShape("BM.Standard2.52"));
+    assertEquals("OptimizedX9", OCIPriceUtil.familyFromShape("VM.Optimized3.Flex"));
+    assertEquals("E2Micro", OCIPriceUtil.familyFromShape("VM.Standard.E2.1.Micro"));
+    assertEquals("E2", OCIPriceUtil.familyFromShape("VM.Standard.E2.2"));
+    assertEquals(null, OCIPriceUtil.familyFromShape("VM.DenseIO.E4.Flex"));
+    assertEquals(null, OCIPriceUtil.familyFromShape("VM.GPU.A10.1"));
+  }
 
-    ObjectNode apiResult = Json.newObject();
-    ObjectNode instanceType = Json.newObject();
-    instanceType.put("numCores", 2);
-    instanceType.put("memSizeGb", 12.5);
-    instanceType.putObject("prices").put("us-ashburn-1", 0.25);
-    apiResult.set("VM.Standard.A1.Flex", instanceType);
-    when(mockCloudQueryHelper.getInstanceTypes(any(), anyString())).thenReturn(apiResult);
+  @Test
+  public void testInitializeStoresBundledPriceMeters() {
+    when(mockConfigHelper.getConfig(ConfigType.OCIInstanceTypeMetadata)).thenReturn(Map.of());
+    when(mockCloudQueryHelper.getInstanceTypes(any(), anyString())).thenReturn(Json.newObject());
 
     ociInitializer.initialize(customer.getUuid(), provider.getUuid());
 
-    InstanceType createdType = InstanceType.get(provider.getUuid(), "VM.Standard.A1.Flex");
-    assertNotNull(createdType);
-    assertEquals(2, (int) createdType.getNumCores().doubleValue());
-    assertEquals(12.5, createdType.getMemSizeGB().doubleValue(), 0.001);
+    PriceComponent e4Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("E4"));
+    assertNotNull(e4Ocpu);
+    assertEquals(0.025, e4Ocpu.getPriceDetails().pricePerHour, 0.0001);
 
-    PriceComponent component =
-        PriceComponent.get(provider.getUuid(), "us-ashburn-1", "VM.Standard.A1.Flex");
-    assertNotNull(component);
-    assertEquals(0.25, component.getPriceDetails().pricePerHour, 0.0001);
-    assertEquals(6.0, component.getPriceDetails().pricePerDay, 0.0001);
-    assertEquals(180.0, component.getPriceDetails().pricePerMonth, 0.0001);
+    PriceComponent a1Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("A1"));
+    assertNotNull(a1Ocpu);
+    assertEquals(0.01, a1Ocpu.getPriceDetails().pricePerHour, 0.0001);
+
+    PriceComponent e4Memory =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.memoryComponentCode("E4"));
+    assertNotNull(e4Memory);
+    assertEquals(0.0015, e4Memory.getPriceDetails().pricePerHour, 0.0001);
+
+    PriceComponent blockStorage =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.blockStorageComponentCode());
+    assertNotNull(blockStorage);
+    assertEquals(
+        OCIPriceUtil.monthlyToHourly(0.0255), blockStorage.getPriceDetails().pricePerHour, 1e-9);
+
+    PriceComponent blockVpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.blockVpuComponentCode());
+    assertNotNull(blockVpu);
+    assertEquals(
+        OCIPriceUtil.monthlyToHourly(0.0017), blockVpu.getPriceDetails().pricePerHour, 1e-9);
   }
 }

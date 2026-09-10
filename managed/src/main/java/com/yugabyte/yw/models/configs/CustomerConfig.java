@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.configs;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_GCS;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_OCI;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageOCIData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -437,6 +439,8 @@ public class CustomerConfig extends Model {
         return CustomerConfigStorageAzureData.class;
       } else if (NAME_NFS.equals(name)) {
         return CustomerConfigStorageNFSData.class;
+      } else if (NAME_OCI.equals(name)) {
+        return CustomerConfigStorageOCIData.class;
       }
     } else if (type == ConfigType.ALERTS) {
       if (ALERTS_PREFERENCES.equals(name)) {

@@ -1,4 +1,4 @@
-import { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useRef, useState } from 'react';
 import { find } from 'lodash';
 import { DropdownButton, OverlayTrigger, MenuItem, Tooltip } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -18,6 +18,7 @@ import {
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action } from '../../redesign/features/rbac';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
+import { EDIT_RUNTIME_CONFIG_QUERY_PARAM } from '../../redesign/helpers/constants';
 import './AdvancedConfig.scss';
 
 const DEFAULT_RUNTIME_TAG_FILTER = ['PUBLIC'];
@@ -70,6 +71,7 @@ export const ConfigData: FC<ConfigDataProps> = ({
     type: '',
     scope: ''
   });
+  const autoEditHandledRef = useRef(false);
 
   const runtimeConfigEntries = runtimeConfigs?.data?.configEntries;
 
@@ -118,6 +120,59 @@ export const ConfigData: FC<ConfigDataProps> = ({
   useEffect(() => {
     fetchUiTagFilter();
   }, [scope]);
+
+  // Deep-link: /admin/advanced/global-config?editRuntimeConfigKey=<key>
+  // Opens the Edit Config modal once runtime config data has loaded.
+  useEffect(() => {
+    if (autoEditHandledRef.current) {
+      return;
+    }
+    if (scope !== RunTimeConfigScope.GLOBAL) {
+      return;
+    }
+    if (
+      !isNonEmptyArray(runtimeConfigEntries) ||
+      !isNonEmptyArray(runtimeConfigsKeyMetadata?.data)
+    ) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const editKey = params.get(EDIT_RUNTIME_CONFIG_QUERY_PARAM);
+    if (!editKey) {
+      return;
+    }
+
+    const metadata = runtimeConfigsKeyMetadata.data.find(
+      (configKeyMetadata: { key: string }) => configKeyMetadata.key === editKey
+    );
+    const entry = runtimeConfigEntries.find((configEntry: { key: string }) => configEntry.key === editKey);
+    if (!metadata || !entry) {
+      return;
+    }
+
+    autoEditHandledRef.current = true;
+    setSearchText(editKey);
+    setConfigData({
+      displayName: metadata.displayName,
+      helpTxt: metadata.helpTxt,
+      type: metadata.dataType?.name,
+      scope: metadata.scope,
+      configKey: metadata.key,
+      configID: 0,
+      configTags: metadata.tags,
+      configValue: entry.value,
+      isConfigInherited: entry.inherited
+    });
+    setEditConfig(true);
+
+    params.delete(EDIT_RUNTIME_CONFIG_QUERY_PARAM);
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${
+      window.location.hash
+    }`;
+    window.history.replaceState({}, '', nextUrl);
+  }, [scope, runtimeConfigEntries, runtimeConfigsKeyMetadata]);
 
   const fetchUiTagFilter = async () => {
     const uiTagFilterResponse: any = await getRuntimeConfig(

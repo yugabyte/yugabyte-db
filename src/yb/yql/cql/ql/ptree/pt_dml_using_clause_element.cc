@@ -15,6 +15,8 @@
 
 #include "yb/common/ql_type.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/status.h"
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"

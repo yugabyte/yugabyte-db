@@ -38,6 +38,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
 #include "yb/util/net/net_util.h"

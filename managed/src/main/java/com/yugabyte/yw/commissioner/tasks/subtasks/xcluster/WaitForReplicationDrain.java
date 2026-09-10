@@ -19,7 +19,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.client.WaitForReplicationDrainResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForReplicationDrain extends XClusterConfigTaskBase {
@@ -72,7 +72,7 @@ public class WaitForReplicationDrain extends XClusterConfigTaskBase {
     Duration subtaskTimeout =
         confGetter.getConfForScope(universe, UniverseConfKeys.waitForReplicationDrainTimeout);
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       List<String> activeStreamIds = new ArrayList<>();
       if (xClusterConfig.getType() == ConfigType.Txn) {
         activeStreamIds.addAll(xClusterConfig.getStreamIdsWithReplicationSetup());

@@ -30,6 +30,7 @@ SELECT yb_get_tablet_for_key(current_database(), 'tablet_key_nulltest'::regclass
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_nulltest'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_nulltest'::regclass::oid, ROW(NULL::int, 1, 2))
 ) AS null_non_pk_ok;
 
@@ -57,12 +58,14 @@ INSERT INTO tablet_key_hash VALUES ('one', 1), ('hundred', 100), ('thousand', 10
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_hash'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_hash'::regclass::oid, ROW('one', 1))
 ) AS ok;
 
 SELECT COUNT(*) BETWEEN 1 AND 3 AS all_in_metadata
 FROM yb_tablet_metadata ytm
 WHERE ytm.relname = 'tablet_key_hash'
+  AND ytm.db_name = current_database()
   AND ytm.tablet_id IN (
     yb_get_tablet_for_key(current_database(), 'tablet_key_hash'::regclass::oid, ROW('one', 1)),
     yb_get_tablet_for_key(current_database(), 'tablet_key_hash'::regclass::oid, ROW('hundred', 100)),
@@ -85,6 +88,7 @@ INSERT INTO tablet_key_range VALUES ('first', 50), ('second', 150), ('third', 25
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_range'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_range'::regclass::oid, ROW('first', 50))
 ) AS ok;
 
@@ -100,6 +104,7 @@ FROM (
 SELECT COUNT(*) = 3 AS all_in_metadata
 FROM yb_tablet_metadata ytm
 WHERE ytm.relname = 'tablet_key_range'
+  AND ytm.db_name = current_database()
   AND ytm.tablet_id IN (
     yb_get_tablet_for_key(current_database(), 'tablet_key_range'::regclass::oid, ROW('first', 50)),
     yb_get_tablet_for_key(current_database(), 'tablet_key_range'::regclass::oid, ROW('second', 150)),
@@ -123,18 +128,21 @@ INSERT INTO tablet_key_range_composite VALUES
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_range_composite'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_range_composite'::regclass::oid, ROW('alpha'))
 ) AS in_metadata
 UNION ALL
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_range_composite'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_range_composite'::regclass::oid, ROW('east', 2000))
 )
 UNION ALL
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_range_composite'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_range_composite'::regclass::oid,
         ROW('west'::text, 5000, '2024-12-01'::timestamp))
 );
@@ -142,6 +150,7 @@ SELECT EXISTS (
 SELECT COUNT(*) = 3 AS all_in_metadata
 FROM yb_tablet_metadata ytm
 WHERE ytm.relname = 'tablet_key_range_composite'
+  AND ytm.db_name = current_database()
   AND ytm.tablet_id IN (
     yb_get_tablet_for_key(current_database(), 'tablet_key_range_composite'::regclass::oid, ROW('alpha')),
     yb_get_tablet_for_key(current_database(), 'tablet_key_range_composite'::regclass::oid, ROW('east', 2000)),
@@ -159,12 +168,14 @@ INSERT INTO tablet_key_hash_range VALUES ('a', 1, 100), ('b', 2, 200), ('c', 3, 
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_hash_range'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_hash_range'::regclass::oid, ROW('a', 1, 100))
 ) AS in_metadata;
 
 SELECT COUNT(*) >= 1 AS in_metadata
 FROM yb_tablet_metadata ytm
 WHERE ytm.relname = 'tablet_key_hash_range'
+  AND ytm.db_name = current_database()
   AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_hash_range'::regclass::oid, ROW('a', 1, 100));
 
 -- -----------------------------------------------------------------------------
@@ -191,12 +202,14 @@ SELECT yb_get_tablet_for_key(current_database(), 'tablet_key_2h2r'::regclass::oi
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_2h2r'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_2h2r'::regclass::oid, ROW(1, 2, 10, 20))
 ) AS full_key_ok;
 -- Full row (5 values: v, h1, h2, r1, r2) - success
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_2h2r'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_2h2r'::regclass::oid, ROW('nopk', 1, 2, 10, 20))
 ) AS full_row_ok;
 
@@ -212,6 +225,7 @@ INSERT INTO tablet_key_reorder VALUES (1, 'mid', 2), (10, 'x', 20);
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_reorder'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_reorder'::regclass::oid, ROW(1, 2))
 ) AS pk_only_ok;
 
@@ -219,6 +233,7 @@ SELECT EXISTS (
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_reorder'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_reorder'::regclass::oid, ROW(1, 'mid', 2))
 ) AS full_row_ok;
 
@@ -235,6 +250,7 @@ INSERT INTO tablet_key_uuid VALUES ('data1', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_uuid'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_uuid'::regclass::oid,
         ROW('data1', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid))
 ) AS ok;
@@ -244,6 +260,7 @@ INSERT INTO tablet_key_text VALUES (1, 'apple'), (2, 'zebra');
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_text'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_text'::regclass::oid, ROW(1, 'apple'))
 ) AS ok;
 SELECT yb_get_tablet_for_key(current_database(), 'tablet_key_text'::regclass::oid, ROW(1, 'apple')) <>
@@ -254,6 +271,7 @@ INSERT INTO tablet_key_ts VALUES ('a', '2024-03-15'::timestamp), ('b', '2024-07-
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'tablet_key_ts'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'tablet_key_ts'::regclass::oid, ROW('a', '2024-03-15'::timestamp))
 ) AS ok;
 SELECT COUNT(DISTINCT tablet_id) = 3 AS three_tablets
@@ -277,9 +295,16 @@ SELECT 'crossdb_t'::regclass::oid AS crossdb_oid \gset
 
 \c :orig_db
 
--- Cross-db: yb_tablet_metadata filters via JOIN to pg_class (current DB only),
--- so tablets from other DBs are not visible; we only check non-null here.
+-- Cross-db: the returned tablet lives in another database.  yb_tablet_metadata
+-- is now global (no longer filtered to the current DB), so that tablet is
+-- visible when we filter on its db_name.
 SELECT yb_get_tablet_for_key('tablet_key_crossdb_test', :crossdb_oid, ROW('a', 1)) IS NOT NULL AS crossdb_ok;
+SELECT EXISTS (
+  SELECT 1 FROM yb_tablet_metadata ytm
+  WHERE ytm.db_name = 'tablet_key_crossdb_test'
+    AND ytm.relname = 'crossdb_t'
+    AND ytm.tablet_id = yb_get_tablet_for_key('tablet_key_crossdb_test', :crossdb_oid, ROW('a', 1))
+) AS crossdb_tablet_visible;
 
 SELECT yb_get_tablet_for_key('nonexistent_database', :crossdb_oid, ROW('a', 1));
 SELECT yb_get_tablet_for_key('tablet_key_crossdb_test', :crossdb_oid, ROW('a', 'x'::text));
@@ -307,6 +332,7 @@ SELECT yb_get_tablet_for_key(current_database(), 'pt_parent_test'::regclass::oid
 SELECT EXISTS (
   SELECT 1 FROM yb_tablet_metadata ytm
   WHERE ytm.relname = 'pt_parent_test_p1'
+    AND ytm.db_name = current_database()
     AND ytm.tablet_id = yb_get_tablet_for_key(current_database(), 'pt_parent_test_p1'::regclass::oid, ROW('x', 50))
 ) AS child_tablet_in_metadata;
 

@@ -127,7 +127,12 @@ export const ConfigureRegionModal = ({
   const classes = useStyles();
   const fieldLabel = {
     region: 'Region',
-    vnet: providerCode === ProviderCode.AZU ? 'Virtual Network Name' : 'VPC ID',
+    vnet:
+      providerCode === ProviderCode.AZU
+        ? 'Virtual Network Name'
+        : providerCode === ProviderCode.OCI
+          ? 'VCN ID'
+          : 'VPC ID',
     securityGroupId:
       providerCode === ProviderCode.AZU
         ? 'Security Group Name (Optional)'
@@ -139,13 +144,17 @@ export const ConfigureRegionModal = ({
           ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
           : 'Custom Machine Image ID (Optional)',
     sharedSubnet: 'Shared Subnet',
-    instanceTemplate: 'Instance Template (Optional)',
+    instanceTemplate:
+      providerCode === ProviderCode.OCI
+        ? 'Instance Configuration OCID (Optional)'
+        : 'Instance Template (Optional)',
     azuNetworkRGOverride: 'Network Resource Group (Optional)',
     azuRGOverride: 'Resource Group (Optional)'
   };
   const shouldExposeField: Record<keyof ConfigureRegionFormValues, boolean> = {
     fieldId: false,
-    instanceTemplate: providerCode === ProviderCode.GCP,
+    instanceTemplate:
+      providerCode === ProviderCode.GCP || providerCode === ProviderCode.OCI,
     regionData: true,
     securityGroupId:
       providerCode !== ProviderCode.GCP &&
@@ -153,9 +162,8 @@ export const ConfigureRegionModal = ({
       vpcSetupType === VPCSetupType.EXISTING,
     sharedSubnet: providerCode === ProviderCode.GCP,
     vnet:
-      providerCode !== ProviderCode.GCP &&
-      providerCode !== ProviderCode.OCI &&
-      vpcSetupType === VPCSetupType.EXISTING,
+      providerCode === ProviderCode.OCI ||
+      (providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING),
     ybImage:
       !osPatchingEnabled &&
       providerCode !== ProviderCode.OCI &&

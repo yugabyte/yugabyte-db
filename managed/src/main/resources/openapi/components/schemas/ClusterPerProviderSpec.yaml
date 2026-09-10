@@ -1,0 +1,16 @@
+title: ClusterPerProviderSpec
+description: Cloud Provider settings for the cluster. Part of ClusterSpec.
+type: object
+allOf:
+  - $ref: "./ClusterProviderSpec.yaml"
+  - properties:
+      nodes_specs:
+        description: Hierarchical node specification for this provider. Matches ProviderSpecification.nodesSpecs.
+        $ref: "./ProviderRootNodesSpec.yaml"
+      networking_spec:
+        $ref: "./ClusterNetworkingSpec.yaml"
+      instance_tags:
+        description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
+        type: object
+        additionalProperties:
+          type: string

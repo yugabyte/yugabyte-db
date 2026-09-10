@@ -7,6 +7,8 @@ import static play.mvc.Results.ok;
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.CleanupCollectionInfo;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.CollectFilesRequest;
@@ -19,6 +21,7 @@ import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseCrossCloudFederationSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
@@ -40,10 +43,15 @@ import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
+import api.v2.models.UniverseUpdateProxyConfig;
+import api.v2.models.UniverseVMImageUpgradeSpec;
 import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
 import api.v2.models.YBAValidationResponse;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.models.Audit;
 import java.io.InputStream;
 import java.util.UUID;
@@ -57,8 +65,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Inject
   public UniverseApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
       UniverseManagementHandler universeHandler,
       UniverseUpgradesManagementHandler universeUpgradeHandler) {
+    super(auditService, config, gFlagsAuditHandler);
     this.universeHandler = universeHandler;
     this.universeUpgradeHandler = universeUpgradeHandler;
   }
@@ -105,6 +117,17 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags universeEditGFlags)
       throws Exception {
     return universeUpgradeHandler.editGFlags(request, cUUID, uniUUID, universeEditGFlags);
+  }
+
+  @Override
+  public YBATask editVMImage(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseVMImageUpgradeSpec universeVMImageUpgradeSpec)
+      throws Exception {
+    return universeUpgradeHandler.vmImageUpgrade(
+        request, cUUID, uniUUID, universeVMImageUpgradeSpec);
   }
 
   @Override
@@ -237,6 +260,13 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
+  public CheckResizeOptionsResp checkResizeOptions(
+      Request request, UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec checkResizeOptionsSpec)
+      throws Exception {
+    return universeHandler.checkResizeOptions(cUUID, uniUUID, checkResizeOptionsSpec);
+  }
+
+  @Override
   public void deleteAttachDetachMetadata(Request request, UUID cUUID, UUID uniUUID)
       throws Exception {
     universeHandler.deleteAttachDetachMetadata(request, cUUID, uniUUID);
@@ -282,6 +312,13 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask operatorImportUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
     return universeHandler.operatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask manageCrossCloudFederation(
+      Request request, UUID cUUID, UUID uniUUID, UniverseCrossCloudFederationSpec spec)
+      throws Exception {
+    return universeHandler.manageCrossCloudFederation(request, cUUID, uniUUID, spec);
   }
 
   @Override
@@ -357,5 +394,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
       throws Exception {
     return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
+  }
+
+  @Override
+  public YBATask updateProxyConfig(
+      Request request, UUID cUUID, UUID uniUUID, UniverseUpdateProxyConfig spec) throws Exception {
+    return universeUpgradeHandler.updateProxyConfig(request, cUUID, uniUUID, spec);
   }
 }

@@ -512,14 +512,34 @@ public class NodeUniverseManager extends DevopsBase {
       long timeoutSec,
       boolean authEnabled,
       boolean cpEnabled) {
+    return runYsqlCommand(
+        node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, true);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled,
+      boolean logCmdOutput) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     Provider provider = Util.getProviderForNode(node, universe);
     if (provider.getCloudCode() == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
-          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
+          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, logCmdOutput);
     }
     return runYsqlBatchCommands(
-        node, universe, dbName, List.of(ysqlCommand), timeoutSec, authEnabled, cpEnabled);
+        node,
+        universe,
+        dbName,
+        List.of(ysqlCommand),
+        timeoutSec,
+        authEnabled,
+        cpEnabled,
+        logCmdOutput);
   }
 
   public ShellResponse runYsqlBatchCommands(
@@ -530,6 +550,19 @@ public class NodeUniverseManager extends DevopsBase {
       long timeoutSec,
       boolean authEnabled,
       boolean cpEnabled) {
+    return runYsqlBatchCommands(
+        node, universe, dbName, ysqlCommands, timeoutSec, authEnabled, cpEnabled, true);
+  }
+
+  public ShellResponse runYsqlBatchCommands(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled,
+      boolean logCmdOutput) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -574,12 +607,14 @@ public class NodeUniverseManager extends DevopsBase {
     String bashCommandStr = String.join(" ", bashCommand);
     command.add(bashCommandStr);
     Map<String, String> valsToRedact = new HashMap<>();
-    if (bashCommandStr.contains(Util.YSQL_PASSWORD_KEYWORD)) {
+    if (!logCmdOutput) {
+      valsToRedact.put(bashCommandStr, Util.REDACTED_YSQL_QUERY);
+    } else if (bashCommandStr.contains(Util.YSQL_PASSWORD_KEYWORD)) {
       valsToRedact.put(bashCommandStr, Util.redactYsqlQuery(bashCommandStr));
     }
     ShellProcessContext context =
         ShellProcessContext.builder()
-            .logCmdOutput(valsToRedact.isEmpty())
+            .logCmdOutput(logCmdOutput && valsToRedact.isEmpty())
             .timeoutSecs(timeoutSec)
             .redactedVals(valsToRedact)
             .build();

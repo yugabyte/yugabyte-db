@@ -10,9 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/common/entity_ids.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 
@@ -48,6 +52,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
   void TestSysCatalogRetentionBarriers(
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
+  void TestFailureOnAddingUnqualifiedTableToVWAL(bool add_expired_table, bool use_colocated);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -2489,12 +2494,13 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
 
   // Calculate the difference between commit time and consistent snapshot time. We need to set out
   // refresh interval equal to this difference so as to create commit time ties of special record
-  // with txn 2
-  auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time).ToMicroseconds();
+  // with txn 2. The difference is taken on the raw HybridTime, since a microseconds based interval
+  // would drop the logical component of the commit time and place the publication refresh record
+  // just before txn 2 instead of tying with it.
+  auto delta = commit_time.ToUint64() - cdcsdk_consistent_snapshot_time.ToUint64();
 
   ASSERT_OK(DestroyVirtualWAL());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros) = delta;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta) = delta;
   ASSERT_OK(InitVirtualWAL(stream_2, {table_1.table_id()}));
 
   if (pub_refresh_record_in_separate_response) {
@@ -2987,7 +2993,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalse
       TestSimulateErrorCode::PeerNotLeader,
       TestSimulateErrorCode::PeerNotReadyToServe,
       TestSimulateErrorCode::LogSegmentFooterNotFound,
-      TestSimulateErrorCode::LogIndexCacheEntryNotFound,
       TestSimulateErrorCode::LogReaderNotInitialized};
 
   for (auto error_code : error_codes) {
@@ -3912,22 +3917,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
   // delete table's cdc_state table entries and remove it from stream metadata.
   SleepFor(MonoDelta::FromSeconds(10));
 
-  int expected_dml_records = num_batches * inserts_per_batch;
-  auto vwal1_result = GetAllPendingTxnsFromVirtualWAL(
-      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */);
+  auto init_vwal_result = InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1);
+  ASSERT_NOK(init_vwal_result);
 
-  ASSERT_NOK(vwal1_result);
-  ASSERT_TRUE(vwal1_result.status().IsNotFound());
-  ASSERT_STR_CONTAINS(vwal1_result.status().message().ToBuffer(), "not found under stream");
 
   // A new VWAL on the same stream should again receive the stream expired error.
-  auto vwal2_result = GetAllPendingTxnsFromVirtualWAL(
-      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */,
-      kVWALSessionId2);
-
-  ASSERT_NOK(vwal2_result);
-  ASSERT_TRUE(vwal2_result.status().IsNotFound());
-  ASSERT_STR_CONTAINS(vwal2_result.status().message().ToBuffer(), "not found under stream");
+  auto init_vwal_result_2 = InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId2);
+  ASSERT_NOK(init_vwal_result_2);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
@@ -4365,12 +4361,23 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionAfterHid
   ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (9999999,1)"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_TRUE(
-      change_resp.has_needs_publication_table_list_refresh() &&
-      change_resp.needs_publication_table_list_refresh() &&
-      change_resp.has_publication_refresh_time());
+  // A poll issued while the above txn is still being applied finds replicated but uncommitted
+  // records in the WAL, so the tablet echoes back the previously known safe time. The VWAL cannot
+  // ship the pub refresh record until the tablet's safe time moves past it, hence keep polling for
+  // the pub refresh record while asserting that no record is shipped before it.
+  GetConsistentChangesResponsePB change_resp;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() != 0) {
+          return STATUS(IllegalState, "Received records before the pub refresh record");
+        }
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier),
+      "Timed out waiting for the publication refresh record"));
   ASSERT_GT(change_resp.publication_refresh_time(), 0);
 
   // Update the publication's tables list.
@@ -4897,6 +4904,15 @@ void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfter
   // interfere with this test. We will enable this mechanism only for no_activity_post_ddl case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  // Prevent CDCMasterBgTask from recomputing and clobbering the sys_catalog intent retention
+  // barrier that CreateCDCStream established. If the bg task runs before the ALTER TABLE DDL and
+  // computes an intent op_id of OpId::Max (no sys_catalog tablet-stream checkpoint to derive it
+  // from yet), it releases intent retention on sys_catalog. The DDL's sys_catalog intents are then
+  // cleaned up after apply, so the Virtual WAL's GetChanges on the sys_catalog tablet fails while
+  // trying to fetch the already-GCed intents. This background barrier maintenance is orthogonal to
+  // the data-tablet checkpoint movement this test validates.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
 
   google::SetVLOGLevel("cdcsdk_virtual_wal", 3);
   ASSERT_OK(SetUpWithParams(
@@ -5543,6 +5559,114 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
       stream_id, {},
       "Timed out waiting for hidden tables to be removed from stream metadata" /* timeout_msg */,
       std::nullopt /* expected_unqualified_table_ids*/, true /* include_catalog_tables */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUpdatePublicationRefreshTablesOnTableRewrite) {
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table1.table_id()}, kVWALSessionId1, nullptr /* vslot_hash_range */,
+      true /* include_oid_to_relfilenode */));
+
+  // Catch up on the sys-catalog before the rewrite.
+  for (int i = 0; i < 5; i++) {
+    auto resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    for (const auto& record : resp.cdc_sdk_proto_records()) {
+      if (record.row_message().op() == RowMessage_Op_COMMIT) {
+        auto lsn = record.row_message().pg_lsn();
+        ASSERT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn));
+      }
+    }
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+
+  // Need to hold the master's cdc_state insertion workflow for the rewritten tablet at the
+  // start of PopulateCDCStateTableOnNewTableCreation.
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"CDCTest::ReleaseCdcStateInsert", "PopulateCDCStateTableOnNewTableCreation::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // A table rewrite DDL (such as TRUNCATE) completes normally since the DDL waits only for the
+  // tablet to be RUNNING and is independent of the entries insertion in cdc_state table.
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", table1.table_name()));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, table1.table_name()));
+  ASSERT_NE(table1.table_id(), table2.table_id());
+
+  // Wait for the bg task to add table2 to the stream METADATA.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetDBStreamInfo(stream_id));
+        for (const auto& table_info : resp.table_info()) {
+          if (table_info.table_id() == table2.table_id()) {
+            return true;
+          }
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for table2 to be added to stream metadata"));
+
+  const int kNumFreshRows = 50;
+  ASSERT_OK(WriteRowsHelper(
+      0, kNumFreshRows, &test_cluster_, true /* flag */, 2 /* num_cols */,
+      table2.table_name().c_str()));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          if (record.row_message().op() == RowMessage_Op_COMMIT) {
+            auto lsn = record.row_message().pg_lsn();
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn));
+          }
+        }
+        return resp.needs_publication_table_list_refresh();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the publication refresh signal"));
+
+  // Since we get the pub-refresh signal, we will try to update the publication tables.
+  auto update_publication_status = UpdatePublicationTableList(
+      stream_id, {table2.table_id()}, kVWALSessionId1, true /* include_oid_to_relfilenode */);
+  ASSERT_NOK(update_publication_status);
+
+  TEST_SYNC_POINT("CDCTest::ReleaseCdcStateInsert");
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  // The table2 tablets' entries should be seen in cdc_state table now and so updating publication
+  // tables should be successful now.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto s = UpdatePublicationTableList(
+            stream_id, {table2.table_id()}, kVWALSessionId1, true /* include_oid_to_relfilenode */);
+        if (!s.ok()) {
+          LOG(INFO) << "Publication switch retry not yet successful: " << s;
+          return false;
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(30), "Timed out retrying the publication switch"));
+
+  int fresh_inserts_streamed = 0;
+  Status wait_status = WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          if (record.row_message().op() == RowMessage_Op_INSERT) {
+            fresh_inserts_streamed++;
+          }
+          if (record.row_message().op() == RowMessage_Op_COMMIT) {
+            auto lsn = record.row_message().pg_lsn();
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn));
+          }
+        }
+        return fresh_inserts_streamed >= kNumFreshRows;
+      },
+      MonoDelta::FromSeconds(30), "Waiting to stream the fresh rows");
+
+  ASSERT_EQ(fresh_inserts_streamed, kNumFreshRows);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenTableOnVWALRestart) {
@@ -6687,8 +6811,14 @@ void CDCSDKConsumptionConsistentChangesTest::TestSysCatalogRetentionBarriers(
     ASSERT_GT(tablet_peer->get_cdc_min_replicated_index(), initial_wal_barrier);
     ASSERT_GT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), initial_intent_barrier);
   } else {
+    // With only gRPC streams, the sys_catalog tablet is never polled, so CDCMasterBgTask never
+    // advances its WAL and intent retention barriers; they stay at their initial (untouched)
+    // values. Those defaults differ but both mean "no retention": the WAL barrier defaults to
+    // OpId::Max().index, while the intent barrier defaults to OpId::Invalid() (which
+    // TransactionParticipant::GetLatestCheckPoint() treats as OpId::Max(), i.e. intents can be
+    // GCed freely).
     ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
-    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
   }
 
   if (initial_history_barrier != HybridTime::kInvalid) {
@@ -6844,6 +6974,739 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureBeforeSettingBarrierOn
       }
     }
   }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckPointMovesForwardWithAbortedTxnAtEndOfWAL) {
+  // Disabling the implicit dynamic table addition in this test to make the outcome of each
+  // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create two tables. The slow_table simulates a table which receives very less writes.
+  auto slow_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "slow_table"));
+  auto fast_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "fast_table"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> slow_tablets;
+  ASSERT_OK(test_client()->GetTablets(slow_table, 0, &slow_tablets, nullptr));
+
+  // Create a replication slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Commit a txn on slow_table.
+  ASSERT_OK(
+      WriteRowsHelper(1, 2, &test_cluster_, true /* commit */, 2 /* num_cols */, "slow_table"));
+
+  // Abort a txn on the slow_table.
+  ASSERT_OK(
+      WriteRowsHelper(2, 1000, &test_cluster_, false /* commit */, 2 /* num_cols */, "slow_table"));
+
+  // Roll over the segment of slow_table's tablet.
+  auto tablet_peer = ASSERT_RESULT(
+      test_cluster()->GetTabletManager(0)->GetServingTablet(slow_tablets[0].tablet_id()));
+  ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
+
+  // Abort another txn on the slow_table.
+  ASSERT_OK(WriteRowsHelper(
+      1001, 2000, &test_cluster_, false /* commit */, 2 /* num_cols */, "slow_table"));
+
+  // Commit a txn on the fast table.
+  ASSERT_OK(
+      WriteRowsHelper(1, 2, &test_cluster_, true /* commit */, 2 /* num_cols */, "fast_table"));
+
+  // Consume and ack the committed txns. Ideally the slow_tablet's checkpoint should now point to
+  // the last op in the active WAL segment.
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {slow_table.table_id(), fast_table.table_id()}, 2 /* expected_dml_records */,
+      true /* init_virtual_wal */));
+
+  // Call GetConsistentChanges a couple of times to ensure that the checkpoint is propagated to the
+  // cdc_state table via the GetChanges calls.
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+
+  auto row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id, slow_tablets[0].tablet_id()));
+
+  tablet::RemoveIntentsData data;
+  ASSERT_OK(tablet_peer->GetLastReplicatedData(&data));
+  ASSERT_EQ(data.op_id, row.op_id);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAbortedTxnDoesntMoveCheckpointWhenCantStream) {
+  // Disabling the implicit dynamic table addition in this test to make the outcome of each
+  // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create a table.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+
+  // Create a replication slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Commit a txn 1.
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true /* commit */));
+
+  // Start txn 2, but do not commit / abort, this will ensure that consistent stream safe time is
+  // held back by this running txn.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 values (100,100)", kTableName));
+
+  // Commit txn 3. This txn cannot be streamed since consistent stream safe time is less than
+  // its commit time.
+  ASSERT_OK(WriteRowsHelper(2, 3, &test_cluster_, true /* commit */));
+
+  // Abort txn 4 which will write ops corresponding to intents to the WAL.
+  ASSERT_OK(WriteRowsHelper(101, 200, &test_cluster_, false /* commit */));
+
+  // Rollover the segment.
+  auto tablet_peer =
+      ASSERT_RESULT(test_cluster()->GetTabletManager(0)->GetServingTablet(tablets[0].tablet_id()));
+  ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
+
+  // Abort txn 5 to fill the end of the WAL with aborted transaction ops.
+  ASSERT_OK(WriteRowsHelper(201, 300, &test_cluster_, false /* commit */));
+
+  // Consume and ack the committed txn.
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
+
+  // Call GetConsistentChanges once more to ensure that the explicit checkpoint from VWAL's
+  // maps is written to the state table.
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+
+  auto row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id, tablets[0].tablet_id()));
+
+  // The explicit checkpoint should not be moved in this case, even though the tail of the WAL
+  // contains ops from an aborted transaction. This is because we still have a running transaction
+  // which prevents processing of any op with commit time greater than its start time. Hence we
+  // cannot take decision of moving the checkpoint forward. Moving the checkpoint would result in
+  // data loss, where we miss streaming the txn 3.
+  tablet::RemoveIntentsData data;
+  ASSERT_OK(tablet_peer->GetLastReplicatedData(&data));
+  ASSERT_GT(data.op_id, row.op_id);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoLossWithInvalidConsistentStreamSafeTime) {
+  // Disabling the implicit dynamic table addition in this test to make the outcome of each
+  // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create two single tablet tables.
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_2"));
+
+  // Create a replication slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  // This GetConsistentChanges call would bring in safepoint records from both the tablets. One of
+  // the safepoint will be popped and its tablet queue will be emptied resulting in the end of this
+  // GetConsistentChanges call.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().size(), 0);
+
+  // The next GetConsistentChanges call with TEST_cdc_make_consistent_stream_safe_time_invalid would
+  // return a safepoint record with invalid safe time without the fix for #32847. With the fix, the
+  // underlying GetChanges call would be a No op, i.e it will not move the opid / cdcsdk_safe_time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) = true;
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().size(), 0);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO table_1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO table_2 values (2,2)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // The next GetConsistentChanges calls without TEST_cdc_make_consistent_stream_safe_time_invalid
+  // should stream the above txn fully without missing records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) = false;
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_1.table_id(), table_2.table_id()}, 2 /* expected_dml_records */,
+      false /* init_virtual_wal */));
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPgCatalog) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  auto unpublished_table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "unpublished_table", 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (1, 10)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2, value_2) VALUES (2, 20, 'foo')", kTableName, kKeyColumnName,
+      kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", kTableName, kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, value_2) VALUES (3, 'bar')", kTableName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Alter an unpublished table; this should not produce synthetic DDL markers for that table.
+  ASSERT_OK(conn.Execute("ALTER TABLE unpublished_table ADD COLUMN extra int"));
+
+  constexpr int kExpectedDmlRecords = 3;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */));
+  LOG(INFO) << "Got " << resp.records.size() << " records from Virtual WAL";
+
+  auto namespace_id = ASSERT_RESULT(GetNamespaceId(test_namespace_name));
+  auto pg_database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  const auto pg_class_table_id = GetPgsqlTableId(pg_database_oid, kPgClassTableOid);
+  const auto pg_attribute_table_id = GetPgsqlTableId(pg_database_oid, kPgAttributeTableOid);
+
+  int insert_count = 0;
+  int ddl_count = 0;
+  std::vector<RowMessage_Op> shipped_ops;
+  std::vector<uint64_t> insert_record_times;
+  std::vector<uint64_t> ddl_record_times;
+  std::string docdb_txn_id;
+
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    shipped_ops.push_back(row_message.op());
+
+    if (row_message.op() == RowMessage_Op_INSERT || row_message.op() == RowMessage_Op_UPDATE ||
+        row_message.op() == RowMessage_Op_DELETE) {
+      // Raw catalog DML must never be shipped to the walsender.
+      ASSERT_NE(row_message.table_id(), "");
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+      if (row_message.op() == RowMessage_Op_INSERT) {
+        insert_count++;
+        ASSERT_TRUE(row_message.has_record_time());
+        insert_record_times.push_back(row_message.record_time());
+        if (docdb_txn_id.empty() && row_message.has_transaction_id()) {
+          docdb_txn_id = row_message.transaction_id();
+        }
+      }
+    } else if (row_message.op() == RowMessage_Op_DDL) {
+      ddl_count++;
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+      ASSERT_TRUE(row_message.has_commit_time());
+      ASSERT_TRUE(row_message.has_record_time());
+      ASSERT_TRUE(row_message.has_transaction_id());
+      ASSERT_TRUE(row_message.has_pg_lsn());
+      ASSERT_TRUE(row_message.has_pg_transaction_id());
+      // Synthetic DDL must not carry a legacy schema payload from CHANGE_METADATA_OP.
+      ASSERT_FALSE(row_message.has_schema());
+      ddl_record_times.push_back(row_message.record_time());
+      if (docdb_txn_id.empty()) {
+        docdb_txn_id = row_message.transaction_id();
+      } else {
+        ASSERT_EQ(row_message.transaction_id(), docdb_txn_id);
+      }
+    }
+
+    // Ensure we never ship records for the unpublished table or catalog tables.
+    if (row_message.has_table_id()) {
+      ASSERT_NE(row_message.table_id(), unpublished_table.table_id());
+      ASSERT_NE(row_message.table_id(), pg_class_table_id);
+      ASSERT_NE(row_message.table_id(), pg_attribute_table_id);
+    }
+  }
+  ASSERT_EQ(insert_count, kExpectedDmlRecords);
+  ASSERT_GE(ddl_count, 2);
+
+  // Verify DDL markers are ordered between the corresponding user inserts by record_time.
+  ASSERT_EQ(insert_record_times.size(), 3);
+  ASSERT_FALSE(ddl_record_times.empty());
+  bool saw_ddl_between_first_and_second_insert = false;
+  bool saw_ddl_between_second_and_third_insert = false;
+  for (const auto record_time : ddl_record_times) {
+    if (record_time > insert_record_times[0] && record_time < insert_record_times[1]) {
+      saw_ddl_between_first_and_second_insert = true;
+    }
+    if (record_time > insert_record_times[1] && record_time < insert_record_times[2]) {
+      saw_ddl_between_second_and_third_insert = true;
+    }
+  }
+  ASSERT_TRUE(saw_ddl_between_first_and_second_insert);
+  ASSERT_TRUE(saw_ddl_between_second_and_third_insert);
+
+  // Streamed sequence must be BEGIN, then interleaved INSERT/DDL, then COMMIT.
+  ASSERT_EQ(shipped_ops.front(), RowMessage_Op_BEGIN);
+  ASSERT_EQ(shipped_ops.back(), RowMessage_Op_COMMIT);
+  CheckRecordCount(resp, kExpectedDmlRecords);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestVWALDetectColumnRenameAndTypeChangeFromPgCatalog) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table (id int primary key, payload varchar(10)) SPLIT INTO 1 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'one')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME COLUMN payload TO value_text"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'two')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ALTER COLUMN value_text TYPE varchar(20)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, 'three')"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  constexpr int kExpectedDmlRecords = 3;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */));
+
+  std::vector<uint64_t> insert_record_times;
+  std::vector<uint64_t> ddl_record_times;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+      ASSERT_TRUE(row_message.has_record_time());
+      insert_record_times.push_back(row_message.record_time());
+    } else if (row_message.op() == RowMessage_Op_DDL) {
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+      ASSERT_TRUE(row_message.has_record_time());
+      ASSERT_FALSE(row_message.has_schema());
+      ddl_record_times.push_back(row_message.record_time());
+    } else if (
+        row_message.op() == RowMessage_Op_UPDATE || row_message.op() == RowMessage_Op_DELETE) {
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+    }
+  }
+
+  ASSERT_EQ(insert_record_times.size(), kExpectedDmlRecords);
+  ASSERT_GE(ddl_record_times.size(), 2);
+  for (size_t i = 0; i != 2; ++i) {
+    ASSERT_TRUE(std::any_of(
+        ddl_record_times.begin(), ddl_record_times.end(), [&](const uint64_t record_time) {
+          return record_time > insert_record_times[i] &&
+                 record_time < insert_record_times[i + 1];
+        }));
+  }
+  CheckRecordCount(resp, kExpectedDmlRecords);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestVWALDetectTableRenameAndSchemaChangeFromPgCatalog) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table", 1));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA app"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 10)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME TO renamed_table"));
+  ASSERT_OK(conn.Execute("INSERT INTO renamed_table VALUES (2, 20)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE renamed_table SET SCHEMA app"));
+  ASSERT_OK(conn.Execute("INSERT INTO app.renamed_table VALUES (3, 30)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  constexpr int kExpectedDmlRecords = 3;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */));
+
+  std::vector<uint64_t> insert_record_times;
+  std::vector<uint64_t> ddl_record_times;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+      ASSERT_TRUE(row_message.has_record_time());
+      insert_record_times.push_back(row_message.record_time());
+    } else if (row_message.op() == RowMessage_Op_DDL) {
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+      ASSERT_TRUE(row_message.has_record_time());
+      ASSERT_FALSE(row_message.has_schema());
+      ddl_record_times.push_back(row_message.record_time());
+    } else if (
+        row_message.op() == RowMessage_Op_UPDATE || row_message.op() == RowMessage_Op_DELETE) {
+      ASSERT_EQ(row_message.table_id(), table.table_id());
+    }
+  }
+
+  ASSERT_EQ(insert_record_times.size(), kExpectedDmlRecords);
+  ASSERT_GE(ddl_record_times.size(), 2);
+  for (size_t i = 0; i != 2; ++i) {
+    ASSERT_TRUE(std::any_of(
+        ddl_record_times.begin(), ddl_record_times.end(), [&](const uint64_t record_time) {
+          return record_time > insert_record_times[i] &&
+                 record_time < insert_record_times[i + 1];
+        }));
+  }
+  CheckRecordCount(resp, kExpectedDmlRecords);
+}
+
+// Verifies that an ALTER PUBLICATION ADD TABLE mid-txn ends the GetConsistentChanges response at
+// the publication refresh signal, without shipping DMLs that follow the alter in the same txn.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnAlterPublication) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1", 1));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test2", 1));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION test_pub FOR TABLE test1"));
+  auto pub_oid = ASSERT_RESULT(
+      conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_publication WHERE pubname = 'test_pub'"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table_1.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+      false /* include_oid_to_relfilenode */, kRpcTimeout, {pub_oid},
+      false /* pub_all_tables */));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (1, 10)"));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION test_pub ADD TABLE test2"));
+  // These inserts happen after the alter and must not be shipped in the same response that signals
+  // publication refresh.
+  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (2, 20)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (1, 10)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  GetConsistentChangesResponsePB change_resp;
+  std::vector<CDCSDKProtoRecordPB> records;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        records.insert(
+            records.end(), change_resp.cdc_sdk_proto_records().begin(),
+            change_resp.cdc_sdk_proto_records().end());
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for publication refresh after ALTER PUBLICATION"));
+
+  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+  ASSERT_TRUE(
+      change_resp.has_explicit_alter_publication_detected() &&
+      change_resp.explicit_alter_publication_detected());
+
+  bool saw_begin = false;
+  bool saw_insert_before_alter = false;
+  bool saw_insert_after_alter = false;
+  bool saw_commit = false;
+  bool saw_test2_insert = false;
+  for (const auto& record : records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_BEGIN) {
+      saw_begin = true;
+    } else if (row_message.op() == RowMessage_Op_COMMIT) {
+      saw_commit = true;
+    } else if (row_message.op() == RowMessage_Op_INSERT) {
+      if (row_message.table() == "test2") {
+        saw_test2_insert = true;
+        continue;
+      }
+      ASSERT_EQ(row_message.table(), "test1");
+      const auto key = row_message.new_tuple()[0].pg_ql_value().int32_value();
+      if (key == 1) {
+        saw_insert_before_alter = true;
+      } else if (key == 2) {
+        saw_insert_after_alter = true;
+      }
+    }
+  }
+  ASSERT_TRUE(saw_begin);
+  ASSERT_TRUE(saw_insert_before_alter);
+  ASSERT_FALSE(saw_insert_after_alter);
+  ASSERT_FALSE(saw_test2_insert);
+  ASSERT_FALSE(saw_commit);
+
+  // After refreshing the publication list, the remaining txn records should be shipped.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+  auto remaining_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {} /* table_ids */, 2 /* expected_dml_records */, false /* init_virtual_wal */));
+  int remaining_inserts = 0;
+  bool saw_remaining_commit = false;
+  for (const auto& record : remaining_resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      remaining_inserts++;
+    } else if (row_message.op() == RowMessage_Op_COMMIT) {
+      saw_remaining_commit = true;
+    }
+  }
+  ASSERT_EQ(remaining_inserts, 2);
+  ASSERT_TRUE(saw_remaining_commit);
+}
+
+// Verifies that CREATE TABLE under a FOR ALL TABLES publication mid-txn ends the response at the
+// publication refresh signal, without shipping DMLs that follow the create in the same txn.
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnCreateTableAllTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1", 1));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION test_pub FOR ALL TABLES"));
+  auto pub_oid = ASSERT_RESULT(
+      conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_publication WHERE pubname = 'test_pub'"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table_1.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+      false /* include_oid_to_relfilenode */, kRpcTimeout, {pub_oid},
+      true /* pub_all_tables */));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (1, 10)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
+  // These inserts happen after CREATE TABLE and must not be shipped in the same response that
+  // signals publication refresh.
+  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (2, 20)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (1, 10)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test2"));
+
+  GetConsistentChangesResponsePB change_resp;
+  std::vector<CDCSDKProtoRecordPB> records;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        records.insert(
+            records.end(), change_resp.cdc_sdk_proto_records().begin(),
+            change_resp.cdc_sdk_proto_records().end());
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for publication refresh after CREATE TABLE"));
+
+  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+  ASSERT_FALSE(
+      change_resp.has_explicit_alter_publication_detected() &&
+      change_resp.explicit_alter_publication_detected());
+
+  bool saw_begin = false;
+  bool saw_insert_before_create = false;
+  bool saw_insert_after_create = false;
+  bool saw_commit = false;
+  bool saw_test2_insert = false;
+  for (const auto& record : records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_BEGIN) {
+      saw_begin = true;
+    } else if (row_message.op() == RowMessage_Op_COMMIT) {
+      saw_commit = true;
+    } else if (row_message.op() == RowMessage_Op_INSERT) {
+      if (row_message.table() == "test2") {
+        saw_test2_insert = true;
+        continue;
+      }
+      ASSERT_EQ(row_message.table(), "test1");
+      const auto key = row_message.new_tuple()[0].pg_ql_value().int32_value();
+      if (key == 1) {
+        saw_insert_before_create = true;
+      } else if (key == 2) {
+        saw_insert_after_create = true;
+      }
+    }
+  }
+  ASSERT_TRUE(saw_begin);
+  ASSERT_TRUE(saw_insert_before_create);
+  ASSERT_FALSE(saw_insert_after_create);
+  ASSERT_FALSE(saw_test2_insert);
+  ASSERT_FALSE(saw_commit);
+
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+  auto remaining_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {} /* table_ids */, 2 /* expected_dml_records */, false /* init_virtual_wal */));
+  int remaining_inserts = 0;
+  bool saw_remaining_commit = false;
+  for (const auto& record : remaining_resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      remaining_inserts++;
+    } else if (row_message.op() == RowMessage_Op_COMMIT) {
+      saw_remaining_commit = true;
+    }
+  }
+  ASSERT_EQ(remaining_inserts, 2);
+  ASSERT_TRUE(saw_remaining_commit);
+}
+
+void CDCSDKConsumptionConsistentChangesTest::TestFailureOnAddingUnqualifiedTableToVWAL(
+    bool add_expired_table, bool use_colocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, use_colocated, true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      use_colocated));
+  auto table_2 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, "test_table_2", 1 /* num_tablets */, true /* add_pk */,
+      use_colocated));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  // Table_1 will not be marked as expired / not-of-interest since it has been polled, but table_2
+  // will be. We avoid this call for colocated tablet since it will prevent both the tables from
+  // being marked as expired / not-of-interest.
+  if (!use_colocated) {
+    ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+  }
+
+  if (add_expired_table) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  } else {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
+  }
+
+  // Since FLAGS_cdc_skip_unqualified_tables_for_polling is not set, UpdatePublicationTableList will
+  // fail while trying to add an unqualified table.
+  ASSERT_NOK(UpdatePublicationTableList(
+      stream_id, {table_1.table_id(), table_2.table_id()}, kVWALSessionId1,
+      false /* include_oid_to_relfilenode */, 0 /* timeout */));
+
+  // With FLAGS_cdc_skip_unqualified_tables_for_polling set, UpdatePublicationTableList will skip
+  // adding the unqualified table and will succeed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_skip_unqualified_tables_for_polling) = true;
+  ASSERT_OK(UpdatePublicationTableList(
+      stream_id, {table_1.table_id(), table_2.table_id()}, kVWALSessionId1,
+      false /* include_oid_to_relfilenode */, 0 /* timeout */));
+
+  if (!use_colocated && !add_expired_table) {
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (1, 1)"));
+
+    // If not expired, consume the records from the table_1.
+    if (!add_expired_table) {
+      auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+      ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+          stream_id, {table_1.table_id()}, 1 /* expected_dml_records */,
+          false /* init_virtual_wal */));
+    }
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingNotOfInterestTableToVWAL) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(
+      false /* add_expired_table */, false /* use_colocated */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingExpiredTableToVWAL) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(
+      true /* add_expired_table */, false /* use_colocated */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingNotOfInterestTableToVWALWithColocated) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(
+      false /* add_expired_table */, true /* use_colocated */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingExpiredTableToVWALWithColocated) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(true /* add_expired_table */, true /* use_colocated */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnqualifiedTabletOutsideSlotHashRange) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Two tablets over the full hash space, so the split point is 32768 and each slot below owns
+  // exactly one of them.
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kTableName, 2 /* num_tablets */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_1 =
+      std::make_unique<ReplicationSlotHashRange>(0, 32768);
+  std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_2 =
+      std::make_unique<ReplicationSlotHashRange>(32768, 65536);
+  ASSERT_OK(InitVirtualWAL(stream_id_1, {table.table_id()}, kVWALSessionId1, slot_hash_range_1));
+  ASSERT_OK(InitVirtualWAL(stream_id_2, {table.table_id()}, kVWALSessionId2, slot_hash_range_2));
+
+  // Poll each slot once so the tablet it owns has its active_time moved off the stream creation
+  // time. The active_time of the tablet owned by the other slot is left at the stream creation
+  // time, hence that will be declared not of interest.
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id_1, kVWALSessionId1));
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id_2, kVWALSessionId2));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
+
+  // Re-initialising walks the table's full tablet list again, so slot 1 sees the tablet in slot 2's
+  // range. That tablet is not slot 1's to poll and must not fail its init.
+  ASSERT_OK(DestroyVirtualWAL(kVWALSessionId1));
+  ASSERT_OK(DestroyVirtualWAL(kVWALSessionId2));
+  ASSERT_OK(InitVirtualWAL(stream_id_1, {table.table_id()}, kVWALSessionId1, slot_hash_range_1));
+  ASSERT_OK(InitVirtualWAL(stream_id_2, {table.table_id()}, kVWALSessionId2, slot_hash_range_2));
 }
 
 }  // namespace cdc

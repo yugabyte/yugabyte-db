@@ -49,3 +49,63 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/providers/{providerUUID}/image-bundles/{iBUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: providerUUID
+      in: path
+      description: Provider UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: iBUUID
+      in: path
+      description: Image Bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getImageBundle
+    summary: Get an image bundle
+    description: |
+      Returns a single image bundle for the specified provider.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Image Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/ImageBundleResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Provider or image bundle not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview

@@ -34,6 +34,7 @@
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <atomic>
 #include <list>
 #include <memory>
@@ -88,6 +89,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
 using std::map;
@@ -162,6 +164,10 @@ const size_t kPartitionGroupSize = 4;
 #endif
 
 std::atomic<int64_t> lookup_serial_{1};
+
+const Status kPartitionNotYetRunningStatus = STATUS(
+    TryAgain, "Tablet for requested partition is not yet running",
+    ClientError(ClientErrorCode::kTabletNotYetRunning));
 
 } // namespace
 
@@ -390,11 +396,39 @@ RemoteTablet::~RemoteTablet() {
   }
 }
 
+template <class ConsensusPB>
+Status RemoteTablet::CheckRaftConfigIsNewerUnlocked(const ConsensusPB& consensus_state) const {
+  const auto tablet_opid = raft_config_opid_index_.load();
+  const auto incoming_opid = consensus_state.config().committed_op_index();
+  SCHECK(
+      incoming_opid >= tablet_opid, Incomplete,
+      "TabletConsensusInfo contains a staler opid than the remote tablet");
+
+  // If the opid_index of the incoming ConsensusInfo is the same as the current remote tablet, we
+  // can only proceed if the leader_uuid is different from the current one. This is because if the
+  // tablet we just requested is a hidden tablet, it is possible that it returns a NOT_THE_LEADER
+  // error, but in the consensus info it returned it is still the leader, so we will end up in a
+  // loop.
+  SCHECK(
+      !(incoming_opid == tablet_opid && current_leader_uuid_ == consensus_state.leader_uuid()),
+      Incomplete,
+      "Incoming consensus information contains the same leader and participants as the remote "
+      "tablet so no need for refresh.");
+  return Status::OK();
+}
+
+template <class ConsensusPB>
+Status RemoteTablet::CheckRaftConfigIsNewer(const ConsensusPB& consensus_state) const {
+  SharedLock lock(mutex_);
+  return CheckRaftConfigIsNewerUnlocked(consensus_state);
+}
+
 template <class RaftPB, class ConsensusPB>
-Status RemoteTablet::RefreshFromRaftConfig(
+Status RemoteTablet::RefreshFromRaftConfigIfNewer(
     const TabletServerMap& tservers, const RaftPB& raft_config,
     const ConsensusPB& consensus_state) {
   std::lock_guard lock(mutex_);
+  RETURN_NOT_OK(CheckRaftConfigIsNewerUnlocked(consensus_state));
   std::vector<std::shared_ptr<RemoteReplica>> new_replicas;
   std::string leader_uuid = "";
   for (const auto& peer : raft_config.peers()) {
@@ -407,8 +441,9 @@ Status RemoteTablet::RefreshFromRaftConfig(
     new_replicas.emplace_back(std::make_shared<RemoteReplica>((*tserver).get(), role));
   }
   replicas_ = std::move(new_replicas);
-  raft_config_opid_index_ = consensus_state.config().committed_op_index();
-  VLOG(1) << "Raft config refresh succeeded with opid_index: " << raft_config_opid_index_
+  const auto new_opid_index = consensus_state.config().committed_op_index();
+  raft_config_opid_index_.store(new_opid_index);
+  VLOG(1) << "Raft config refresh succeeded with opid_index: " << new_opid_index
             << " for tablet: " << tablet_id_
             << ", replicas are now: " << ReplicasAsStringUnlocked();
   current_leader_uuid_ = leader_uuid;
@@ -531,7 +566,7 @@ void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_repl
 
 void RemoteTablet::SetRaftConfigOpIdIndex(int64_t raft_config_opid_index) {
   std::lock_guard lock(mutex_);
-  raft_config_opid_index_ = raft_config_opid_index;
+  raft_config_opid_index_.store(raft_config_opid_index);
 }
 
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
@@ -683,7 +718,7 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   return found;
 }
 
-void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
+bool RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard lock(mutex_);
   for (auto& replica : replicas_) {
@@ -693,8 +728,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
-  DCHECK(found) << "Tablet " << tablet_id_ << ": Specified server not found: "
-                << server->ToString() << ". Replicas: " << ReplicasAsStringUnlocked();
+  return found;
 }
 
 std::string RemoteTablet::current_leader_uuid() const {
@@ -765,15 +799,7 @@ void LookupCallbackVisitor::operator()(const LookupTabletCallback& tablet_callba
     tablet_callback(*error_status_);
     return;
   }
-  auto remote_tablet = boost::get<RemoteTabletPtr>(param_);
-  if (remote_tablet == nullptr) {
-    static const Status error_status = STATUS(
-        TryAgain, "Tablet for requested partition is not yet running",
-        ClientError(ClientErrorCode::kTabletNotYetRunning));
-    tablet_callback(error_status);
-    return;
-  }
-  tablet_callback(remote_tablet);
+  tablet_callback(boost::get<RemoteTabletPtr>(param_));
 }
 
 void LookupCallbackVisitor::operator()(
@@ -800,6 +826,7 @@ MetaCache::~MetaCache() {
 void MetaCache::SetLocalTabletServer(const string& permanent_uuid,
                                      const shared_ptr<TabletServerServiceProxy>& proxy,
                                      const LocalTabletServer* local_tserver) {
+  std::lock_guard lock(mutex_);
   const auto entry = ts_cache_.emplace(permanent_uuid,
                                        std::make_unique<RemoteTabletServer>(permanent_uuid,
                                                                             proxy,
@@ -820,18 +847,24 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
 }
 
-template <class PB>
-Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const PB& pb) {
-  std::string_view permanent_uuid(pb.permanent_uuid());
-  auto it = ts_cache_.find(permanent_uuid);
-  if (it != ts_cache_.end()) {
-    it->second->UpdateFromRaftPeer(pb);
-    return Status::OK();
+template <class RaftPB>
+void MetaCache::UpdateCachedTabletServersWithRaftPeersUnlocked(const RaftPB& raft_config) {
+  for (const auto& peer : raft_config.peers()) {
+    std::string_view permanent_uuid(peer.permanent_uuid());
+    if (auto it = ts_cache_.find(permanent_uuid); it != ts_cache_.end()) {
+      it->second->UpdateFromRaftPeer(peer);
+    }
   }
-  VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
-  SCHECK(
-      ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second,
-      IllegalState, "Failed to emplace a remote tablet server into tablet server cache");
+}
+
+template <class RaftPB>
+Status MetaCache::InsertMissingTabletServersFromRaftPeersUnlocked(const RaftPB& raft_config) {
+  for (const auto& peer : raft_config.peers()) {
+    std::string_view permanent_uuid(peer.permanent_uuid());
+    if (ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(peer)).second) {
+      VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
+    }
+  }
   return Status::OK();
 }
 
@@ -1063,12 +1096,15 @@ Status MetaCache::ProcessTabletLocations(
 
     for (const TabletLocationsPB& loc : locations) {
       auto remote = VERIFY_RESULT(ProcessTabletLocation(loc, lookup_context, &processed_tables));
+      bool not_yet_running = !remote && !deleted_tablets_.contains(loc.tablet_id());
 
       auto it = tablet_lookups_by_id_.find(loc.tablet_id());
       if (it != tablet_lookups_by_id_.end()) {
         while (auto* lookup = it->second.lookups.Pop()) {
-          to_notify.emplace_back(std::move(lookup->callback),
-                                 LookupCallbackVisitor(remote));
+          to_notify.emplace_back(
+              std::move(lookup->callback),
+              not_yet_running ? LookupCallbackVisitor(kPartitionNotYetRunningStatus)
+                              : LookupCallbackVisitor(remote));
           delete lookup;
         }
       }
@@ -1132,8 +1168,6 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
   // Next, update the tablet caches.
   if (location.is_deleted()) {
     VLOG_WITH_PREFIX(5) << "Marking tablet " << tablet_id << " as deleted";
-
-    tablet_lookups_by_id_.erase(tablet_id);
     tablets_by_id_.erase(tablet_id);
     deleted_tablets_.insert(tablet_id);
     return RemoteTabletPtr();
@@ -1282,38 +1316,47 @@ Status MetaCache::DoRefreshTabletInfoWithConsensusInfo(const PB& tablet_consensu
       consensus_state.has_leader_uuid() &&
           consensus::IsRaftConfigMember(consensus_state.leader_uuid(), consensus_state.config()),
       Incomplete, "Requires a valid leader in TabletConsensusInfo for refresh");
+
+  const auto& raft_config = consensus_state.config();
+  RemoteTabletPtr remote;
   {
-    std::lock_guard lock(mutex_);
-    RemoteTabletPtr remote = FindPtrOrNull(tablets_by_id_, tablet_consensus_info.tablet_id());
+    // Try the refresh under a shared lock first, so that redundant responses (e.g. during a
+    // leadership change) don't serialize against each other or block the lookup path.
+    SharedLock lock(mutex_);
+    remote = FindPtrOrNull(tablets_by_id_, tablet_consensus_info.tablet_id());
     SCHECK(
         remote, NotFound,
         "Cannot find a matching remote tablet for the TabletConsensusInfo from a tablet "
         "server.");
-    auto tablet_opid = remote->raft_config_opid_index();
-    // If the opid_index of the incoming ConsensusInfo is the same as the current remote tablet, we
-    // can only proceed if the leader_uuid is different from the current one. This is because if the
-    // tablet we just requested is a hidden tablet, it is possible that it returns a NOT_THE_LEADER
-    // error, but in the consensus info it returned it is still the leader, so we will end up in a
-    // loop.
-    SCHECK(
-        consensus_state.config().committed_op_index() >= tablet_opid, Incomplete,
-        "TabletConsensusInfo contains a staler opid than the remote tablet");
-
-    SCHECK(
-        !(tablet_opid == consensus_state.config().committed_op_index() &&
-          remote->current_leader_uuid() == consensus_state.leader_uuid()),
-        Incomplete,
-        "Incoming consensus information contains the same leader and participants as the remote "
-        "tablet so no need for refresh.");
+    RETURN_NOT_OK(remote->CheckRaftConfigIsNewer(consensus_state));
 
     VLOG_WITH_PREFIX(1) << "Using Tablet Consensus Info to refresh metacache for tablet "
             << tablet_consensus_info.tablet_id();
-    const auto& raft_config = consensus_state.config();
-    for (const auto& peer : raft_config.peers()) {
-      RETURN_NOT_OK(UpdateTabletServerWithRaftPeerUnlocked(peer));
+
+    const bool all_peers_cached = std::all_of(
+        raft_config.peers().begin(), raft_config.peers().end(),
+        [this](const auto& peer) REQUIRES_SHARED(mutex_) {
+          return ts_cache_.find(peer.permanent_uuid()) != ts_cache_.end();
+        });
+    if (all_peers_cached) {
+      RETURN_NOT_OK(remote->RefreshFromRaftConfigIfNewer(ts_cache_, raft_config, consensus_state));
+      UpdateCachedTabletServersWithRaftPeersUnlocked(raft_config);
+      return Status::OK();
     }
-    return remote->RefreshFromRaftConfig(ts_cache_, raft_config, consensus_state);
   }
+
+  TEST_SYNC_POINT("MetaCache::DoRefreshTabletInfoWithConsensusInfo:BeforeInsertMissingPeers");
+
+  {
+    std::lock_guard lock(mutex_);
+    RETURN_NOT_OK(InsertMissingTabletServersFromRaftPeersUnlocked(raft_config));
+  }
+
+  SharedLock lock(mutex_);
+  RETURN_NOT_OK(remote->RefreshFromRaftConfigIfNewer(ts_cache_, raft_config, consensus_state));
+
+  UpdateCachedTabletServersWithRaftPeersUnlocked(raft_config);
+  return Status::OK();
 }
 
 int64_t MetaCache::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
@@ -1775,8 +1818,9 @@ class LookupByKeyRpc : public LookupRpc {
         auto& lookups_group = lookup_by_group_iter->second;
         while (auto* lookup = lookups_group.lookups.Pop()) {
           auto remote_it = processed_table.second.find(*lookup->partition_start);
-          auto lookup_visitor = LookupCallbackVisitor(
-              remote_it != processed_table.second.end() ? remote_it->second : nullptr);
+          auto lookup_visitor = remote_it != processed_table.second.end()
+              ? LookupCallbackVisitor(remote_it->second)
+              : LookupCallbackVisitor(kPartitionNotYetRunningStatus);
           to_notify->emplace_back(std::move(lookup->callback), lookup_visitor);
           delete lookup;
         }
@@ -1989,7 +2033,8 @@ void MetaCache::LookupByIdFailed(
   CoarseTimePoint max_deadline;
   {
     std::lock_guard lock(mutex_);
-    if (status.IsNotFound() && response_partition_list_version.has_value()) {
+    if ((status.IsNotFound() || status.IsDeleted()) &&
+        response_partition_list_version.has_value()) {
       auto tablet = LookupTabletByIdFastPathUnlocked(tablet_id);
       if (tablet && *tablet) {
         const auto tablet_last_known_table_partition_list_version =
@@ -2397,7 +2442,7 @@ bool MetaCache::DoLookupTabletById(
         if (use_cache) {
           if (!include_deleted) {
             tablet = std::nullopt;
-            status = STATUS(NotFound, "Tablet deleted");
+            status = STATUS(Deleted, "Tablet deleted");
           }
           return true;
         }
@@ -2493,6 +2538,23 @@ void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
     // We just loop on all tablets; if a tablet does not have a replica on this
     // TS, MarkReplicaFailed() returns false and we ignore the return value.
     tablet.second->MarkReplicaFailed(ts, ts_status);
+  }
+}
+
+void MetaCache::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  SharedLock<decltype(mutex_)> lock(mutex_);
+
+  for (const auto& uuid : ts_uuids) {
+    auto it = ts_cache_.find(uuid);
+    if (it == ts_cache_.end()) {
+      continue;
+    }
+    auto* ts = it->second.get();
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "Marking replicas on leader-blacklisted tserver " << ts->ToString() << " as followers.";
+    for (const auto& tablet : tablets_by_id_) {
+      tablet.second->MarkTServerAsFollower(ts);
+    }
   }
 }
 

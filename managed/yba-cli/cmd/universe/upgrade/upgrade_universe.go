@@ -7,6 +7,8 @@ package upgrade
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade/gflags"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade/telemetryconfig"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // UpgradeUniverseCmd represents the universe command
@@ -28,6 +30,12 @@ func init() {
 	UpgradeUniverseCmd.AddCommand(upgradeSoftwareCmd)
 	UpgradeUniverseCmd.AddCommand(gflags.UpgradeGflagsCmd)
 	UpgradeUniverseCmd.AddCommand(upgradeVMImageCmd)
+
+	// Preview on the server, so the command is gated the same way.
+	util.PreviewCommand(
+		UpgradeUniverseCmd,
+		[]*cobra.Command{telemetryconfig.UpgradeExportTelemetryConfigCmd},
+	)
 
 	UpgradeUniverseCmd.PersistentFlags().StringP("name", "n", "",
 		"[Required] The name of the universe to be upgraded.")

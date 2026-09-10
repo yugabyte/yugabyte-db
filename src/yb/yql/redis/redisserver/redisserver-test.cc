@@ -36,6 +36,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
@@ -876,7 +877,17 @@ void TestRedisService::TearDown() {
     } else {
       EXPECT_EQ(0, allocated_sessions);
     }
-    EXPECT_EQ(allocated_sessions, CountSessions(METRIC_redis_available_sessions));
+    // A block queues its responses to the client before it returns its session to the pool, so a
+    // client that has seen the last reply can reach here while the handler thread has not released
+    // the session yet. Wait for the pool to quiesce instead of sampling it once.
+    size_t available_sessions = 0;
+    auto status = WaitFor(
+        [this, &available_sessions, allocated_sessions] {
+          available_sessions = CountSessions(METRIC_redis_available_sessions);
+          return available_sessions == allocated_sessions;
+        },
+        MonoDelta::FromSeconds(30 * kTimeMultiplier), "All redis sessions returned to the pool");
+    EXPECT_EQ(allocated_sessions, available_sessions) << status;
   }
 
   CloseRedisClient();
@@ -5108,16 +5119,25 @@ TEST_F(TestRedisService, TestExpireAt) {
   SyncClient();
   DoRedisTestInt(__LINE__, {"EXPIREAT", k2, std::to_string(std::time(0))}, 1);
   CheckExpiredPrimitive(&k2);
-  // Test PExpireAt
+  // Test PExpireAt.
   DoRedisTestOk(__LINE__, {"SET", k2, value});
   SyncClient();
-  DoRedisTestInt(__LINE__, {"PEXPIREAT", k2, std::to_string(std::time(0) * 1000 + 3200)}, 1);
+  // PEXPIREAT takes an absolute deadline in milliseconds. Anchor it to the current wall-clock
+  // time in milliseconds instead of std::time(0) * 1000: the latter truncates to whole seconds,
+  // leaving the key with up to ~1000ms less TTL than the millisecond checks below assume. That
+  // made the checks' lower bounds sit exactly at the truncation floor, so any RPC or scheduling
+  // jitter under load pushed the observed TTL below them.
+  int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+  DoRedisTestInt(__LINE__, {"PEXPIREAT", k2, std::to_string(now_ms + 3200)}, 1);
   DoRedisTestApproxInt(__LINE__, {"TTL", k2}, 3, second_error);
   DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 3200, 2 * millisecond_error);
   SyncClient();
   std::this_thread::sleep_for(1s);
-  DoRedisTestApproxInt(__LINE__, {"TTL", k2}, 2, second_error);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 2200, 2 * millisecond_error);
+  // Widen the tolerances of the post-sleep checks to absorb oversleep and RPC latency observed
+  // under loaded ASAN/TSAN builds, which can delay the batch by an extra second or more.
+  DoRedisTestApproxInt(__LINE__, {"TTL", k2}, 2, 2 * second_error);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k2}, 2200, 4 * millisecond_error);
   SyncClient();
   std::this_thread::sleep_for(3s);
   CheckExpiredPrimitive(&k2);

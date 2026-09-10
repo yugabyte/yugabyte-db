@@ -100,8 +100,10 @@ void LogGCOp::Perform() {
 
   Status s = tablet_peer_->RunLogGC();
   if (!s.ok()) {
-    s = s.CloneAndPrepend("Unexpected error while running Log GC from TabletPeer");
-    LOG(DFATAL) << s.ToString();
+    // Log GC races with tablet shutdown, e.g. a tombstone delete, so shutdown is expected here.
+    s = s.CloneAndPrepend("Error while running Log GC from TabletPeer");
+    LOG_IF(WARNING, s.IsShutdownInProgress()) << s.ToString();
+    LOG_IF(DFATAL, !s.IsShutdownInProgress()) << s.ToString();
   }
 
   sem_.unlock();
@@ -126,7 +128,8 @@ ResetStaleRetentionBarriersOp::ResetStaleRetentionBarriersOp(
           MaintenanceOp::LOW_IO_USAGE),
       tablet_(tablet),
       tablet_peer_(tablet_peer),
-      op_last_successful_run_time_(MonoTime::Min()),
+      wal_intent_barrier_last_reset_time_(MonoTime::Min()),
+      history_barrier_last_reset_time_(MonoTime::Min()),
       cdcsdk_reset_retention_barriers_op_duration_(
           METRIC_cdcsdk_reset_retention_barriers_op_duration.Instantiate(
               tablet->GetTableMetricsEntity())),
@@ -136,20 +139,40 @@ ResetStaleRetentionBarriersOp::ResetStaleRetentionBarriersOp(
       sem_(1) {}
 
 void ResetStaleRetentionBarriersOp::UpdateStats(MaintenanceOpStats* stats) {
-  double seconds_since_last_refresh;
-  if (!tablet_peer_->is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
+  // WAL/intent and history barriers have independent staleness clocks, since one group can be
+  // advanced without the other. This op is needed if either of them is stale.
+  double seconds_since_wal_intent_barriers_last_refresh;
+  double seconds_since_history_barrier_last_refresh;
+  bool is_wal_intent_barriers_stale = tablet_peer_->is_cdc_min_replicated_index_stale(
+      &seconds_since_wal_intent_barriers_last_refresh);
+  bool is_history_barrier_stale =
+      tablet_peer_->is_cdc_sdk_safe_time_stale(&seconds_since_history_barrier_last_refresh);
+  if (!is_wal_intent_barriers_stale && !is_history_barrier_stale) {
     stats->set_cdcsdk_reset_stale_retention_barrier(false);
     stats->set_runnable(false);
     return;
   }
 
-  // If the last successful execution of this op predates the tablet's most recent refresh of the
-  // cdc_min_replicated_index, mark the op runnable so it can reset any stale retention barriers.
-  auto cdc_min_replicated_index_last_refresh_time =
-      MonoTime::Now() - MonoDelta::FromSeconds(seconds_since_last_refresh);
-  if (op_last_successful_run_time_ <= cdc_min_replicated_index_last_refresh_time) {
+  // A group's (WAL/intent or history) stale barrier is released only if it has been refreshed since
+  // this op last released it.
+  // The two groups use independent reset times: releasing the WAL/intent group must not suppress
+  // releasing the history barrier once it later goes stale, and vice versa.
+  auto now = MonoTime::Now();
+  bool should_release_wal_intent_barriers =
+      is_wal_intent_barriers_stale &&
+      wal_intent_barrier_last_reset_time_ <=
+          now - MonoDelta::FromSeconds(seconds_since_wal_intent_barriers_last_refresh);
+  bool should_release_history_barrier =
+      is_history_barrier_stale &&
+      history_barrier_last_reset_time_ <=
+          now - MonoDelta::FromSeconds(seconds_since_history_barrier_last_refresh);
+
+  if (should_release_wal_intent_barriers || should_release_history_barrier) {
     stats->set_cdcsdk_reset_stale_retention_barrier(true);
     stats->set_runnable(sem_.GetValue() == 1);
+  } else {
+    stats->set_cdcsdk_reset_stale_retention_barrier(false);
+    stats->set_runnable(false);
   }
 }
 
@@ -160,12 +183,23 @@ bool ResetStaleRetentionBarriersOp::Prepare() {
 void ResetStaleRetentionBarriersOp::Perform() {
   CHECK(!sem_.try_lock());
 
-  Status s = tablet_peer_->reset_all_cdc_retention_barriers_if_stale();
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unexpected error while resetting retention barriers from TabletPeer");
+  auto reset_result = tablet_peer_->reset_cdc_retention_barriers_if_stale();
+  if (!reset_result.ok()) {
+    auto s = reset_result.status().CloneAndPrepend(
+        "Unexpected error while resetting retention barriers from TabletPeer");
     LOG(DFATAL) << s.ToString();
   } else {
-    op_last_successful_run_time_ = MonoTime::Now();
+    // Stamp the reset time only for the barrier group(s) actually released, so that UpdateStats
+    // tracks each group's last release independently and won't try to release a group again until
+    // it has been refreshed since this reset.
+    auto now = MonoTime::Now();
+    if (reset_result->move_cdc_min_replicated_index ||
+        reset_result->move_cdc_sdk_min_checkpoint_op_id) {
+      wal_intent_barrier_last_reset_time_ = now;
+    }
+    if (reset_result->move_cdc_sdk_safe_time) {
+      history_barrier_last_reset_time_ = now;
+    }
   }
   sem_.unlock();
 }

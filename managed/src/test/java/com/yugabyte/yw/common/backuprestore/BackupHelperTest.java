@@ -701,6 +701,59 @@ public class BackupHelperTest extends FakeDBApplication {
 
   @Test
   @Parameters({"true", "false"})
+  public void testValidateStorageConfigImmutableStorageOnInbuiltYbcK8s(
+      boolean immutableStorageSupported) {
+    // k8s universe using YBDB in-built YBC.
+    Universe k8sUniverse =
+        ModelFactory.createUniverse(
+            "k8s-immutable-" + immutableStorageSupported,
+            UUID.randomUUID(),
+            testCustomer.getId(),
+            CloudType.kubernetes,
+            null /* placementInfo */,
+            null /* rootCA */,
+            true /* enableYbc */);
+    k8sUniverse =
+        Universe.saveDetails(
+            k8sUniverse.getUniverseUUID(),
+            universe ->
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .setUseYbdbInbuiltYbc(true));
+    final Universe universe = k8sUniverse;
+
+    CustomerConfig storageConfig =
+        ModelFactory.createS3StorageConfig(testCustomer, "TEST-IMMUT-" + immutableStorageSupported);
+
+    when(mockRuntimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    when(mockAWSUtil.isImmutableStorageEnabled(any())).thenReturn(true);
+    when(mockYbcManager.getEnabledBackupFeatures(any(UUID.class)))
+        .thenReturn(
+            BackupServiceTaskEnabledFeaturesResponse.newBuilder()
+                .setImmutableStorage(immutableStorageSupported)
+                .build());
+
+    if (immutableStorageSupported) {
+      // YBC supports immutable storage -> precheck passes (no exception).
+      spyBackupHelper.validateStorageConfigForBackupOnUniverse(storageConfig, universe);
+    } else {
+      // YBC does not support immutable storage -> precheck rejects the request.
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  spyBackupHelper.validateStorageConfigForBackupOnUniverse(
+                      storageConfig, universe));
+      assertTrue(ex.getMessage().contains("Immutable storage is not supported"));
+    }
+  }
+
+  @Test
+  @Parameters({"true", "false"})
   public void testGetSkipPreflightValidationRuntimeValue(boolean value) {
     when(mockRuntimeConfGetter.getConfForScope(
             eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))

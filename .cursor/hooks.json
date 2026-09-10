@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "matcher": "\\bpush\\b",
+        "command": ".agents/scripts/block-git-push.sh",
+        "failClosed": true
+      }
+    ]
+  }
+}

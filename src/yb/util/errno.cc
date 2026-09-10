@@ -41,6 +41,7 @@
 #endif
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/status.h"
 
 DEFINE_UNKNOWN_bool(suicide_on_eio, true,

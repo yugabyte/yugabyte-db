@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class DeleteTablesFromUniverse extends AbstractTaskBase {
@@ -59,7 +59,7 @@ public class DeleteTablesFromUniverse extends AbstractTaskBase {
     }
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       keyspaceTablesMap.forEach(
           (keyspace, tableNames) ->
               tableNames.forEach(

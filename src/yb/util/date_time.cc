@@ -97,19 +97,24 @@ Result<GregorianCalendar> CreateCalendar() {
   return cal;
 }
 
+// Format a UTC offset as "+HH:MM" or "-HH:MM"; the sign is taken from the whole offset.
+string FormatUtcOffset(const time_duration& offset) {
+  const char sign = offset.is_negative() ? '-' : '+';
+  const int hours = abs(narrow_cast<int>(offset.hours()));
+  const int minutes = abs(narrow_cast<int>(offset.minutes()));
+  char buffer[7]; // "+HH:MM" or "-HH:MM"
+  const size_t result = snprintf(buffer, sizeof(buffer), "%c%2.2d:%2.2d", sign, hours, minutes);
+  CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
+  return buffer;
+}
+
 // Get system (local) time zone.
 string GetSystemTimezone() {
   // Get system timezone by getting current UTC time, converting to local time and computing the
   // offset.
   const ptime utc_time = microsec_clock::universal_time();
   const ptime local_time = boost::date_time::c_local_adjustor<ptime>::utc_to_local(utc_time);
-  const time_duration offset = local_time - utc_time;
-  const int hours = narrow_cast<int>(offset.hours());
-  const int minutes = narrow_cast<int>(offset.minutes());
-  char buffer[7]; // "+HH:MM" or "-HH:MM"
-  const size_t result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, minutes);
-  CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
-  return buffer;
+  return FormatUtcOffset(local_time - utc_time);
 }
 
 /* Subset of supported Timezone formats https://docs.oracle.com/cd/E51711_01/DR/ICU_Time_Zones.html
@@ -145,15 +150,7 @@ Result<string> GetTimezone(string timezoneID) {
     return STATUS(InvalidArgument, "Invalid Timezone: " + timezoneID +
         "\nUse standardized timezone such as \"America/New_York\" or offset such as UTC-07:00.");
   }
-  time_duration td = milliseconds(tzone->getRawOffset());
-  const int hours = narrow_cast<int>(td.hours());
-  const int minutes = narrow_cast<int>(td.minutes());
-  char buffer[7]; // "+HH:MM" or "-HH:MM"
-  const size_t result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, abs(minutes));
-  if (result <= 0 || result >= sizeof(buffer)) {
-    return STATUS(Corruption, "Parsing timezone into timezone offset string failed");
-  }
-  return buffer;
+  return FormatUtcOffset(milliseconds(tzone->getRawOffset()));
 }
 
 Result<time_zone_ptr> StringToTimezone(const string& tz, bool use_utc) {

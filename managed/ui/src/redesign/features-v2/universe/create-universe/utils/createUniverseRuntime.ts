@@ -8,3 +8,11 @@ export const isV2CreateEditUniverseEnabled = (runtimeConfigs: RunTimeConfig) => 
     )?.value === 'true'
   );
 };
+
+export const isNewUniverseExperienceForAllUsers = (runtimeConfigs: RunTimeConfig) => {
+  return (
+    runtimeConfigs?.configEntries?.find(
+      (config) => config.key === RuntimeConfigKey.ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS
+    )?.value === 'true'
+  );
+};

@@ -404,9 +404,13 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     if (!key_slice.starts_with(key_prefix)) {
       break;
     }
-    // If the key ends at the transaction id then it is transaction metadata (status tablet,
-    // isolation level etc.).
-    if (key_slice.size() > txn_reverse_index_prefix.size()) {
+    // Skip metadata records:
+    // - transaction id: transaction metadata
+    // - transaction id + transaction metadata update time: transaction metadata update
+    // - transaction id + 00: post-apply metadata
+    if (key_slice.size() > txn_reverse_index_prefix.size() &&
+        key_slice[txn_reverse_index_prefix.size() - 1] !=
+            dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime) {
       auto reverse_index_value = reverse_index_iter.value();
 
       // The intents with kDeleteVectorIds value type correspond to the tombstones added for

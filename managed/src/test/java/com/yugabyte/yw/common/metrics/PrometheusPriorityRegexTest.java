@@ -63,7 +63,9 @@ public class PrometheusPriorityRegexTest {
         "leader_memory_pressure_rejections",
         "follower_memory_pressure_rejections",
         "operation_memory_pressure_rejections",
-        "rpc_inbound_calls_rejected_because_memory_pressure"
+        "rpc_inbound_calls_rejected_because_memory_pressure",
+        "docdb_keys_found",
+        "docdb_obsolete_keys_found_past_cutoff"
       };
 
   @Test

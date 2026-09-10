@@ -47,6 +47,7 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_ysql_lease.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 
@@ -100,6 +101,8 @@ void MasterTestBase::SetUp() {
   proxy_client_ = std::make_unique<MasterClientProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_ddl_ = std::make_unique<MasterDdlProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
+  proxy_ysql_lease_ = std::make_unique<MasterYsqlLeaseProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_heartbeat_ = std::make_unique<MasterHeartbeatProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());

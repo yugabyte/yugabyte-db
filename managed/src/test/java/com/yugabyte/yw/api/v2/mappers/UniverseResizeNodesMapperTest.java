@@ -12,17 +12,28 @@ import api.v2.models.ClusterResizeNodeSpec;
 import api.v2.models.ClusterResizeStorageSpec;
 import api.v2.models.K8SNodeResourceSpec;
 import api.v2.models.PerProcessResizeNodeSpec;
+import api.v2.models.PerProviderResizeNodesSpec;
+import api.v2.models.ResizeProviderNodeSpec;
+import api.v2.models.ResizeProviderRootNodesSpec;
 import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResizeNodesCluster;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Test;
@@ -146,6 +157,49 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 800, tserverDevice.volumeSize);
     assertEquals((Object) 6000, tserverDevice.diskIops);
     assertEquals((Object) 250, tserverDevice.throughput);
+
+    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
+    assertEquals((Object) 100, cluster.userIntent.masterDeviceInfo.volumeSize);
+    assertEquals((Object) 5000, cluster.userIntent.masterDeviceInfo.diskIops);
+  }
+
+  @Test
+  public void testMasterResizeSyncsLegacyFieldsWhenAlreadySet() {
+    UUID cUUID = UUID.randomUUID();
+    UniverseResizeNodes req = new UniverseResizeNodes();
+
+    PerProcessResizeNodeSpec masterSpec = new PerProcessResizeNodeSpec();
+    masterSpec.setInstanceType("c5.4xlarge");
+    masterSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(200).diskIops(6000));
+
+    ClusterResizeNodeSpec nodeSpec = new ClusterResizeNodeSpec();
+    nodeSpec.setMaster(masterSpec);
+
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    resizeCluster.setNodeSpec(nodeSpec);
+    req.addClustersItem(resizeCluster);
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    Cluster v1c = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1c.userIntent.dedicatedNodes = true;
+    v1c.userIntent.instanceType = "c5.xlarge";
+    v1c.userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    v1c.userIntent.masterInstanceType = "c5.xlarge";
+    v1c.userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    v1Params.clusters.add(v1c);
+
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+
+    Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    NodeDetails masterNode = new NodeDetails();
+    masterNode.dedicatedTo = ServerType.MASTER;
+
+    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
+    assertEquals("c5.4xlarge", cluster.userIntent.getInstanceTypeForNode(masterNode));
+    assertEquals((Object) 200, cluster.userIntent.masterDeviceInfo.volumeSize);
+    assertEquals((Object) 6000, cluster.userIntent.masterDeviceInfo.diskIops);
+    assertEquals((Object) 1, cluster.userIntent.masterDeviceInfo.numVolumes);
+    assertEquals((Object) 200, cluster.userIntent.getDeviceInfoForNode(masterNode).volumeSize);
   }
 
   @Test
@@ -466,5 +520,254 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 600, cluster.userIntent.getDeviceInfoForNode(az2Node).volumeSize);
     assertEquals((Object) 5000, cluster.userIntent.getDeviceInfoForNode(az2Node).diskIops);
     assertEquals((Object) 300, cluster.userIntent.getDeviceInfoForNode(az2Node).throughput);
+  }
+
+  @Test
+  public void testProviderNodesSpecsMergedIntoProviderSpecification() {
+    UUID cUUID = UUID.randomUUID();
+    UUID providerUUID = UUID.randomUUID();
+
+    DeviceInfo existingDevice = new DeviceInfo();
+    existingDevice.volumeSize = 100;
+    existingDevice.numVolumes = 1;
+
+    ProviderSpecification providerSpecification = new ProviderSpecification();
+    providerSpecification.setProviderUUID(providerUUID);
+    providerSpecification.setProviderType(CloudType.aws);
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("c5.xlarge")
+                    .deviceInfo(existingDevice)
+                    .build())
+            .build());
+
+    Cluster v1Cluster = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1Cluster.userIntent.providerSpecifications = new ArrayList<>(List.of(providerSpecification));
+
+    UniverseResizeNodes req = new UniverseResizeNodes();
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    PerProviderResizeNodesSpec providerNodesSpec = new PerProviderResizeNodesSpec();
+    providerNodesSpec.setProvider(providerUUID);
+    ResizeProviderNodeSpec tserverSpec = new ResizeProviderNodeSpec();
+    tserverSpec.setInstanceType("c5.2xlarge");
+    tserverSpec.setStorageSpec(
+        new ClusterResizeStorageSpec().volumeSize(500).diskIops(3000).throughput(125));
+    ResizeProviderRootNodesSpec nodesSpec = new ResizeProviderRootNodesSpec();
+    nodesSpec.setTserverSpecification(tserverSpec);
+    providerNodesSpec.setNodesSpec(nodesSpec);
+    resizeCluster.addProviderNodesSpecsItem(providerNodesSpec);
+    req.addClustersItem(resizeCluster);
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    v1Params.clusters.add(v1Cluster);
+
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+
+    Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    ProviderSpecification resized = cluster.userIntent.getProviderSpecification(providerUUID);
+    assertNotNull(resized);
+    assertEquals("c5.2xlarge", resized.getNodesSpecs().getTserverSpecification().getInstanceType());
+    DeviceInfo device = resized.getNodesSpecs().getTserverSpecification().getDeviceInfo();
+    assertNotNull(device);
+    assertEquals((Object) 500, device.volumeSize);
+    assertEquals((Object) 3000, device.diskIops);
+    assertEquals((Object) 125, device.throughput);
+    // Unspecified fields are preserved from the existing provider nodes spec.
+    assertEquals((Object) 1, device.numVolumes);
+  }
+
+  @Test
+  public void testNestedTserverStorageSpecKeepsStorageClass() {
+    UUID cUUID = UUID.randomUUID();
+    UniverseResizeNodes req = new UniverseResizeNodes();
+
+    // Only the volume size changes, sent both at cluster level and nested under tserver - the
+    // payload YBA clients send for a GCP smart resize.
+    ClusterResizeNodeSpec nodeSpec = new ClusterResizeNodeSpec();
+    nodeSpec.setInstanceType("n1-standard-1");
+    nodeSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(380));
+    PerProcessResizeNodeSpec tserverSpec = new PerProcessResizeNodeSpec();
+    tserverSpec.setInstanceType("n1-standard-1");
+    tserverSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(380));
+    nodeSpec.setTserver(tserverSpec);
+
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    resizeCluster.setNodeSpec(nodeSpec);
+    req.addClustersItem(resizeCluster);
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    Cluster v1c = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1c.userIntent.instanceType = "n1-standard-1";
+    v1c.userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 375);
+    v1c.userIntent.deviceInfo.storageClass = "standard";
+    v1Params.clusters.add(v1c);
+
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+
+    Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    NodeDetails tserverNode = new NodeDetails();
+    tserverNode.dedicatedTo = ServerType.TSERVER;
+    DeviceInfo resolved = cluster.userIntent.getDeviceInfoForNode(tserverNode);
+
+    // The sparse per-process override must not erase fields the request did not mention -
+    // storageClass in particular, since it defaults to "" rather than null (PLAT-22326).
+    assertEquals((Object) 380, resolved.volumeSize);
+    assertEquals("standard", resolved.storageClass);
+    assertEquals((Object) 1, resolved.numVolumes);
+    assertEquals("/mnt/d0", resolved.mountPoints);
+    assertEquals(PublicCloudConstants.StorageType.GP2, resolved.storageType);
+
+    // Smart resize compares whole DeviceInfo objects, so volume size must be the only difference.
+    DeviceInfo expected = cluster.userIntent.deviceInfo.clone();
+    expected.volumeSize = 380;
+    assertEquals(expected, resolved);
+  }
+
+  @Test
+  public void testNestedTserverStorageSpecKeepsExistingOverrideFields() {
+    UUID cUUID = UUID.randomUUID();
+    UniverseResizeNodes req = new UniverseResizeNodes();
+
+    ClusterResizeNodeSpec nodeSpec = new ClusterResizeNodeSpec();
+    PerProcessResizeNodeSpec tserverSpec = new PerProcessResizeNodeSpec();
+    tserverSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(380));
+    nodeSpec.setTserver(tserverSpec);
+
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    resizeCluster.setNodeSpec(nodeSpec);
+    req.addClustersItem(resizeCluster);
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    Cluster v1c = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1c.userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 375);
+    DeviceInfo existingOverride = new DeviceInfo();
+    existingOverride.numVolumes = 2;
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    Map<ServerType, PerProcessDetails> perProcess = new HashMap<>();
+    PerProcessDetails existing = new PerProcessDetails();
+    existing.setDeviceInfo(existingOverride);
+    perProcess.put(ServerType.TSERVER, existing);
+    overrides.setPerProcess(perProcess);
+    v1c.userIntent.setUserIntentOverrides(overrides);
+    v1Params.clusters.add(v1c);
+
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+
+    Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    PerProcessDetails tserverOverrides =
+        cluster.userIntent.getUserIntentOverrides().getPerProcess().get(ServerType.TSERVER);
+    assertEquals((Object) 380, tserverOverrides.getDeviceInfo().volumeSize);
+    assertEquals((Object) 2, tserverOverrides.getDeviceInfo().numVolumes);
+  }
+
+  /** Primary cluster with a base DeviceInfo plus a tserver per-process DeviceInfo override. */
+  private Cluster clusterWithTserverOverride(UUID cUUID, DeviceInfo tserverOverride) {
+    Cluster v1c = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1c.userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 375);
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    Map<ServerType, PerProcessDetails> perProcess = new HashMap<>();
+    PerProcessDetails tserver = new PerProcessDetails();
+    tserver.setDeviceInfo(tserverOverride);
+    perProcess.put(ServerType.TSERVER, tserver);
+    overrides.setPerProcess(perProcess);
+    v1c.userIntent.setUserIntentOverrides(overrides);
+    return v1c;
+  }
+
+  private UniverseResizeNodes resizeReqWithTserverSpec(
+      UUID cUUID, PerProcessResizeNodeSpec tserverSpec) {
+    ClusterResizeNodeSpec nodeSpec = new ClusterResizeNodeSpec();
+    nodeSpec.setTserver(tserverSpec);
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    resizeCluster.setNodeSpec(nodeSpec);
+    UniverseResizeNodes req = new UniverseResizeNodes();
+    req.addClustersItem(resizeCluster);
+    return req;
+  }
+
+  private DeviceInfo mappedTserverOverride(UniverseResizeNodes req, Cluster v1c, UUID cUUID) {
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    v1Params.clusters.add(v1c);
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+    return v1Params
+        .getClusterByUuid(cUUID)
+        .userIntent
+        .getUserIntentOverrides()
+        .getPerProcess()
+        .get(ServerType.TSERVER)
+        .getDeviceInfo();
+  }
+
+  @Test
+  public void testNestedTserverStorageSpecWinsOverExistingOverride() {
+    UUID cUUID = UUID.randomUUID();
+    DeviceInfo existing = new DeviceInfo();
+    existing.volumeSize = 375;
+    existing.numVolumes = 2;
+
+    PerProcessResizeNodeSpec tserverSpec = new PerProcessResizeNodeSpec();
+    tserverSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(380));
+
+    DeviceInfo result =
+        mappedTserverOverride(
+            resizeReqWithTserverSpec(cUUID, tserverSpec),
+            clusterWithTserverOverride(cUUID, existing),
+            cUUID);
+
+    // The request wins on the field it sets, and only on that field.
+    assertEquals((Object) 380, result.volumeSize);
+    assertEquals((Object) 2, result.numVolumes);
+  }
+
+  @Test
+  public void testEmptyNestedTserverStorageSpecKeepsExistingOverride() {
+    UUID cUUID = UUID.randomUUID();
+    DeviceInfo existing = new DeviceInfo();
+    existing.volumeSize = 375;
+    existing.numVolumes = 2;
+
+    // The v2 resize API cannot express "remove this override" - an all-empty storage_spec must
+    // leave what is already on the universe alone rather than clearing it.
+    PerProcessResizeNodeSpec tserverSpec = new PerProcessResizeNodeSpec();
+    tserverSpec.setStorageSpec(new ClusterResizeStorageSpec());
+
+    DeviceInfo result =
+        mappedTserverOverride(
+            resizeReqWithTserverSpec(cUUID, tserverSpec),
+            clusterWithTserverOverride(cUUID, existing),
+            cUUID);
+
+    assertEquals((Object) 375, result.volumeSize);
+    assertEquals((Object) 2, result.numVolumes);
+  }
+
+  @Test
+  public void testNestedTserverInstanceTypeOnlyKeepsExistingStorageOverride() {
+    UUID cUUID = UUID.randomUUID();
+    DeviceInfo existing = new DeviceInfo();
+    existing.volumeSize = 375;
+    existing.numVolumes = 2;
+
+    PerProcessResizeNodeSpec tserverSpec = new PerProcessResizeNodeSpec();
+    tserverSpec.setInstanceType("n1-standard-2");
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    v1Params.clusters.add(clusterWithTserverOverride(cUUID, existing));
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(
+        resizeReqWithTserverSpec(cUUID, tserverSpec), v1Params);
+
+    PerProcessDetails tserverOverrides =
+        v1Params
+            .getClusterByUuid(cUUID)
+            .userIntent
+            .getUserIntentOverrides()
+            .getPerProcess()
+            .get(ServerType.TSERVER);
+    assertEquals("n1-standard-2", tserverOverrides.getInstanceType());
+    // An instance-type-only resize must not disturb the storage override.
+    assertEquals((Object) 375, tserverOverrides.getDeviceInfo().volumeSize);
+    assertEquals((Object) 2, tserverOverrides.getDeviceInfo().numVolumes);
   }
 }

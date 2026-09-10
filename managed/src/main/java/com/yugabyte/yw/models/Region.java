@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -195,6 +196,9 @@ public class Region extends Model {
     } else if (cloudType.equals(CloudType.azu)) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setVnet(vnetName);
+    } else if (cloudType.equals(CloudType.oci)) {
+      OCIRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setVnet(vnetName);
     }
   }
 
@@ -255,6 +259,9 @@ public class Region extends Model {
       regionCloudInfo.setYbImage(ybImage);
     } else if (cloudType.equals(CloudType.azu)) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setYbImage(ybImage);
+    } else if (cloudType.equals(CloudType.oci)) {
+      OCIRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
     }
   }

@@ -1,0 +1,108 @@
+title: SupportBundleSpec
+description: |
+  Collection settings that were persisted with the support bundle.
+
+  Reflects the request the bundle was created from, after server-side defaults have been resolved.
+type: object
+properties:
+  components:
+    description: |
+      Components collected into this support bundle. Names what the server kept after dropping
+      whatever the universe cannot produce, so it can be a subset of what the request asked for.
+    items:
+      $ref: "./SupportBundleComponentType.yaml"
+    type: array
+  start_date:
+    description: Start date logs were filtered from.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  end_date:
+    description: End date logs were filtered till.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  node_names:
+    description: |
+      Universe nodes that node-level components were collected from. Empty or absent means every
+      node in the universe was considered. Global-level components are collected once for the
+      universe and are not scoped by this list.
+    type: array
+    items:
+      type: string
+    example:
+      - yb-15-universe-n1
+      - yb-15-universe-n2
+  files_component_specs:
+    description: Specs that drove the generic node-level FilesComponent.
+    type: array
+    items:
+      $ref: "./FilesComponentSpec.yaml"
+  bash_component_specs:
+    description: Specs that drove the node-level BashComponent.
+    type: array
+    items:
+      $ref: "./BashComponentSpec.yaml"
+  ysql_component_specs:
+    description: Specs that drove the node-level YSQLComponent.
+    type: array
+    items:
+      $ref: "./YSQLComponentSpec.yaml"
+  ycql_component_specs:
+    description: Specs that drove the node-level YCQLComponent.
+    type: array
+    items:
+      $ref: "./YCQLComponentSpec.yaml"
+  yb_admin_component_specs:
+    description: Specs that drove the node-level YbAdminComponent.
+    type: array
+    items:
+      $ref: "./YbAdminComponentSpec.yaml"
+  yba_component_specs:
+    description: Specs that drove the global-level YBAComponent.
+    type: array
+    items:
+      $ref: "./YbaComponentSpec.yaml"
+  max_core_file_size:
+    description: Max size in bytes of the collected cores (if any).
+    type: integer
+    format: int64
+  max_num_recent_cores:
+    description: Max number of most recent cores collected (if any).
+    type: integer
+    format: int32
+  prom_dump_start_date:
+    description: Start date Prometheus metrics were filtered from.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  prom_dump_end_date:
+    description: End date Prometheus metrics were filtered till.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  prom_metrics_format:
+    description: Format of the Prometheus metrics dump.
+    $ref: "./PrometheusMetricsFormat.yaml"
+  prom_metrics_step_sec:
+    description: Downsample step in seconds applied to the Prometheus metrics dump.
+    type: integer
+    format: int32
+  prometheus_metrics_types:
+    description: Prometheus exports included in the metrics dump.
+    type: array
+    items:
+      $ref: "./PrometheusMetricsType.yaml"
+  pa_dump_start_date:
+    description: Start date Perf Advisor data was filtered from.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  pa_dump_end_date:
+    description: End date Perf Advisor data was filtered till.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+  pa_metrics_format:
+    description: Format of the Perf Advisor metrics dump.
+    $ref: "./PrometheusMetricsFormat.yaml"

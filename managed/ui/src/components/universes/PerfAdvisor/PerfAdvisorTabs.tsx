@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { withRouter } from 'react-router';
-import { Box } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { PerfAdvisorOverviewDashboard } from '../AttachUniverseToPerfAdvisor/PerfAdvisorOverviewDashboard';
+import { PaRegistrationMode } from '../../../redesign/features/PerfAdvisor/api';
 import { isPaDrilldownUrl } from '../AttachUniverseToPerfAdvisor/perfAdvisorUrlHelpers';
 import { YBTabsPanel } from '../../../components/panels';
 
@@ -12,6 +13,7 @@ interface PerfAdvisorTabsProps {
   timezone: string;
   apiUrl: string;
   registrationStatus: boolean;
+  registrationMode?: PaRegistrationMode;
   location?: any;
   router?: any;
 }
@@ -28,6 +30,7 @@ const PerfAdvisorTabsComponent = ({
   timezone,
   apiUrl,
   registrationStatus,
+  registrationMode,
   location,
   router
 }: PerfAdvisorTabsProps) => {
@@ -88,12 +91,25 @@ const PerfAdvisorTabsComponent = ({
     {
       key: ConfigTabKey.METRICS,
       title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
-    },
-    {
-      key: ConfigTabKey.ANOMALIES,
-      title: t('clusterDetail.troubleshoot.perfAdvisorAnomaliesTab')
     }
   ];
+
+  // In online mode this collector scrapes the universe but keeps nothing - every view below reads
+  // local data, so they would all render empty. Say where the data went instead.
+  if (registrationMode === PaRegistrationMode.ONLINE) {
+    return (
+      <Box p={4} data-testid="PerfAdvisorTabs-OnlineMode">
+        <Typography variant="body1">
+          {t('clusterDetail.troubleshoot.onlineModeTitle')}
+        </Typography>
+        <Box mt={1}>
+          <Typography variant="body2" color="textSecondary">
+            {t('clusterDetail.troubleshoot.onlineModeSubText')}
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
 
   // On a query/anomaly drilldown, hide the horizontal Cluster Load / Metrics
   // tabs and render only the drilldown content.
@@ -124,7 +140,6 @@ const PerfAdvisorTabsComponent = ({
               timezone={timezone}
               apiUrl={apiUrl}
               registrationStatus={registrationStatus}
-              showStandaloneAnomalies={tab.key === ConfigTabKey.ANOMALIES}
             />
           </Tab>
         ))}

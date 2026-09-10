@@ -24,7 +24,8 @@
 
 #include "access/relscan.h"
 #include "access/tableam.h"
-#include "access/yb_scan.h"
+#include "access/yb_table_scan.h"
+#include "access/yb_table_scan_options.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBitmapTablescan.h"
 #include "nodes/nodeFuncs.h"
@@ -49,7 +50,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	TupleTableSlot *slot;
 	YbTBMIterateResult *ybtbmres;
 	ExprContext *econtext;
-	YbScanDesc	ybScan;
+	TableScanDesc tsdesc;
 
 	/*
 	 * extract necessary information from index scan node
@@ -103,16 +104,15 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	if (!node->ss.ss_currentScanDesc)
 		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
 
-	ybScan = node->ss.ss_currentScanDesc->ybscan;
+	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
 	 * If the bitmaps have exceeded work_mem just select everything from the
 	 * main table. The correct remote filters have already been applied.
 	 */
-	if (node->work_mem_exceeded && !ybScan->is_exec_done)
+	if (node->work_mem_exceeded && !yb_scan_desc_is_exec_done(tsdesc))
 	{
-		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
-		ybScan->is_exec_done = true;
+		yb_scan_desc_exec_select(tsdesc);
 	}
 
 	while (true)
@@ -133,8 +133,8 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 			const int	ybctid_size = (node->average_ybctid_bytes > 0 ?
 									   node->average_ybctid_bytes :
 									   26);
-			const int	row_limit = ybScan->exec_params->yb_fetch_row_limit;
-			const int	size_limit = (ybScan->exec_params->yb_fetch_size_limit /
+			const int	row_limit = yb_scan_desc_get_fetch_row_limit(tsdesc);
+			const int	size_limit = (yb_scan_desc_get_fetch_size_limit(tsdesc) /
 									  ybctid_size);
 
 			const int	count = Min(row_limit > 0 ? row_limit : INT_MAX,
@@ -146,16 +146,14 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 				break;
 
 			/* Fetch the next yb_fetch_row_limit ybctids */
-			HandleYBStatus(YBCPgFetchRequestedYbctids(ybScan->handle,
-													  ybScan->exec_params,
-													  ybtbmres->ybctid_vector));
+			yb_scan_desc_fetch_ybctids(tsdesc, ybtbmres->ybctid_vector);
 		}
 
 		/* We have yb_fetch_row_limit rows fetched, get them one by one */
 		while (true)
 		{
-			ybFetchNext(ybScan->handle, slot,
-						RelationGetRelid(node->ss.ss_currentRelation));
+			yb_scan_desc_fetch_next(tsdesc, slot,
+									RelationGetRelid(node->ss.ss_currentRelation));
 
 			if (ybtbmres)
 				++ybtbmres->index;
@@ -267,26 +265,21 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 											  &plan.rel_pushdown),
 											 scanstate->ss.ps.state);
 
-	tsdesc = palloc(sizeof(TableScanDescData));
-	tsdesc->rs_rd = scanstate->ss.ss_currentRelation;
-	tsdesc->rs_snapshot = scanstate->ss.ps.state->es_snapshot;
-	tsdesc->rs_nkeys = 0;
-	tsdesc->rs_key = NULL;
-	tsdesc->rs_flags = SO_TYPE_BITMAPSCAN;
-	tsdesc->rs_parallel = NULL;
-	tsdesc->ybscan = YbBeginScan(tsdesc->rs_rd,
-								 NULL,	/* index */
-								 false,	/* xs_want_itup */
-								 tsdesc->rs_nkeys,
-								 tsdesc->rs_key,
-								 (Scan *) &plan,	/* pg_scan_plan */
-								 yb_pushdown,	/* rel_pushdown */
-								 NULL,	/* idx_pushdown */
-								 scanstate->aggrefs,	/* aggrefs */
-								 0,	/* distinct_prefixlen */
-								 &scanstate->ss.ps.state->yb_exec_params,
-								 false,	/* is_internal_scan */
-								 false);	/* fetch_ybctids_only */
+	{
+		YbTableScanOptions yb_options = {
+			.pg_scan_plan = (Scan *) &plan,
+			.rel_pushdown = yb_pushdown,
+			.aggrefs = scanstate->aggrefs,
+			.exec_params = &scanstate->ss.ps.state->yb_exec_params,
+			.rowmark = YBC_NO_ROW_MARK,
+		};
+
+		tsdesc = table_beginscan_bm_yb(scanstate->ss.ss_currentRelation,
+									   scanstate->ss.ps.state->es_snapshot,
+									   0,	/* nkeys */
+									   NULL,	/* keys */
+									   &yb_options);
+	}
 
 	if (yb_pushdown)
 		pfree(yb_pushdown);
@@ -298,7 +291,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 
 		if (recheck_pushdown)
 		{
-			YbApplyPrimaryPushdown(tsdesc->ybscan->handle, recheck_pushdown);
+			yb_scan_desc_apply_primary_pushdown(tsdesc, recheck_pushdown);
 			pfree(recheck_pushdown);
 		}
 	}
@@ -360,7 +353,7 @@ ExecReScanYbBitmapTableScan(YbBitmapTableScanState *node)
 		 * For rescan, end the previous scan. Set the old scan to null so we
 		 * recreate it when we need to.
 		 */
-		ybc_heap_endscan(tsdesc);
+		table_endscan(tsdesc);
 		node->ss.ss_currentScanDesc = NULL;
 	}
 
@@ -433,7 +426,7 @@ ExecEndYbBitmapTableScan(YbBitmapTableScanState *node)
 	 * close heap scan
 	 */
 	if (tsdesc != NULL)
-		ybc_heap_endscan(tsdesc);
+		table_endscan(tsdesc);
 }
 
 /* ----------------------------------------------------------------

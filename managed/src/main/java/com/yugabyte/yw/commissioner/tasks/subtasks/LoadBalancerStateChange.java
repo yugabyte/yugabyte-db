@@ -17,7 +17,7 @@ import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ChangeLoadBalancerStateResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 // This class runs the task that helps modify the load balancer state maintained
 // on the master leader.
@@ -54,7 +54,7 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
   public void run() {
     ChangeLoadBalancerStateResponse resp;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info("Running {}: masterHostPorts={}.", getName(), universe.getMasterAddresses());
       resp = client.changeLoadBalancerState(taskParams().enable);
     } catch (Exception e) {

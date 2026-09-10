@@ -69,6 +69,14 @@ public class HealthCheckMetrics {
   public static final Set<String> SKIP_CLEANUP_METRICS =
       ImmutableSet.of(DDL_ATOMICITY_CHECK_METRIC);
 
+  public static final String YNP_VERSION_METRIC = "yb_node_ynp_version";
+  public static final String YNP_VERSION_SKEW_METRIC = "yb_node_ynp_version_skew";
+  // Metrics of node health checks that a runtime config can turn off. Nothing re-publishes their
+  // names once the check stops running, so they are seeded into the cleanup set instead - otherwise
+  // values written while the check was enabled outlive it by the metric TTL and keep alerting.
+  public static final Set<String> RUNTIME_DISABLEABLE_CHECK_METRICS =
+      ImmutableSet.of(YNP_VERSION_METRIC, YNP_VERSION_SKEW_METRIC);
+
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS_WITHOUT_STATUS =
       ImmutableList.<PlatformMetrics>builder()
           .add(PlatformMetrics.YB_UNIV_HEALTH_STATUS)

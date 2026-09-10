@@ -56,7 +56,7 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.ConnectivityStateResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.tserver.TserverService.ConnectivityEntryPB;
 import org.yb.tserver.TserverTypes.TabletServerErrorPB;
 
@@ -68,7 +68,7 @@ public class ConnectivityCheckerTest extends FakeDBApplication {
   @Mock private YBClientService ybClientService;
   @Mock private MetricService metricService;
   @Mock private ExecutorService executorService;
-  @Mock private YBClient ybClient;
+  @Mock private YBClientApi ybClient;
   @Mock private Customer customer;
   @Mock private Universe universe;
 

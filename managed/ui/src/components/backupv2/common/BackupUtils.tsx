@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import moment from 'moment';
 import { useSelector } from 'react-redux';
-import { keyBy, mapValues, capitalize, lowerCase, find } from 'lodash';
+import { keyBy, mapValues, capitalize, lowerCase, find, flatMap } from 'lodash';
 import { Backup_Options_Type, Backup_States, CustomerConfig, IBackup, IUniverse } from './IBackup';
 import { Alert } from 'react-bootstrap';
 import { TableType } from '../../../redesign/helpers/dtos';
@@ -264,3 +264,36 @@ export const isSigningRegionEnabled = (runtimeConfigs: RunTimeConfig) => {
 export const isS3BackupProxyEnabled = (runtimeConfigs: RunTimeConfig) => {
   return find(runtimeConfigs?.configEntries, (config) => config.key === ENABLE_S3_BACKUP_PROXY)?.value === 'true';
 };
+
+export const isImmutableStorageEnabled = (storageConfigs: any, storageConfigUUID: string) => {
+  const selectedStorageConfig: any = flatMap((storageConfigs as any).map((c:any) => c.options))
+    .find((c: any) => c.value === storageConfigUUID);
+  return selectedStorageConfig?.data?.IMMUTABLE_STORAGE ?? false;
+};
+
+export const hasImmutableStorageAmongBackups = (
+  groupedStorageConfigs: any,
+  backups: IBackup[]
+): boolean =>
+  backups.some((backup) =>
+    isImmutableStorageEnabled(groupedStorageConfigs, backup.commonBackupInfo.storageConfigUUID)
+  );
+
+export const AZURE_IMMUTABLE_STORAGE_MSG = (noIcon = false) => (
+  <span className="alert-message warning">
+    {noIcon ? null : <i className="fa fa-warning" />}
+    <span>
+      <b>Warning!</b> You have selected immutable storage. When a backup is deleted, only the YBA metadata is removed.<br/>
+      The backup itself is <b>not deleted</b> from the cloud storage 
+    </span>
+  </span>
+);
+
+export const BACKUP_WITH_IMMUTABLE_STORAGE_MSG = () => (
+  <span className="alert-message warning">
+    <span>
+      <b>Warning!</b> Some of the selected items use a storage configuration with immutable storage enabled.
+      Proceeding with the deletion will <b>remove only the YBA metadata</b>. The actual backup data will remain in the cloud storage. 
+    </span>
+  </span>
+);

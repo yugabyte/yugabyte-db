@@ -14,6 +14,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.ITask;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
@@ -71,6 +73,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -82,6 +85,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -119,6 +123,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
@@ -266,7 +271,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Combine the existing nodes with new non-primary (read-only / add-on) cluster nodes.
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
-
+    if (taskParams.universeSettings != null) {
+      universeDetails.universeSettings = taskParams.universeSettings;
+    }
     universe.setUniverseDetails(universeDetails);
   }
 
@@ -1095,14 +1102,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
-      // Add audit log config from the primary cluster
-      params.auditLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-      // Add query log config from the primary cluster
-      params.queryLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
-      params.metricsExportConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+      // Telemetry export config from the primary cluster (master log config is sourced from the
+      // ExportTelemetryConfig table, not userIntent).
+      params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
 
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -1202,9 +1204,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // Update the swamper target file.
     createSwamperTargetUpdateTask(false /* removeFile */);
-
-    // Create alert definitions.
-    createUnivCreateAlertDefinitionsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Create default redis table.
     checkAndCreateRedisTableTask(primaryCluster);
@@ -1433,13 +1432,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.otelCollectorEnabled = taskParams().otelCollectorEnabled;
     // Add audit log config from the primary cluster
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    params.auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-    // Add query log config from the primary cluster
-    params.queryLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
-    params.metricsExportConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+    params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
     // Which user the node exporter service will run as
     params.nodeExporterUser = taskParams().nodeExporterUser;
     // Development testing variable.
@@ -1539,6 +1532,84 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Fans out per-node {@link ManageCloudFederation} tasks to configure ({@code enabled=true}) or
+   * tear down ({@code enabled=false}) GCS-on-AWS federated IAM on the given nodes. AWS and on-prem
+   * (AWS-backed) providers only; the audience comes from the provider's federated-IAM config. The
+   * caller decides when to invoke this: the provider flag at create, the universe's {@code
+   * federationConfigured} flag at edit/add-node, or the v2 enable/disable API.
+   */
+  protected void createConfigureCloudFederationTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      Collection<NodeDetails> nodes,
+      boolean enabled) {
+    if (nodes == null || nodes.isEmpty()) {
+      return;
+    }
+    Common.CloudType nodeCloud = userIntent.providerType;
+    if ((nodeCloud != Common.CloudType.aws && nodeCloud != Common.CloudType.onprem)
+        || !NodeAgentClient.isCloudTypeSupported(nodeCloud)) {
+      return;
+    }
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    String gcsAudience = CloudInfoInterface.getCrossCloudFederationAudience(provider);
+    if (enabled && StringUtils.isBlank(gcsAudience)) {
+      log.warn(
+          "Federated IAM requested but not enabled / no audience on provider {}; skipping",
+          provider.getUuid());
+      return;
+    }
+
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureCloudFederation");
+    for (NodeDetails node : nodes) {
+      ManageCloudFederation.Params params = new ManageCloudFederation.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.gcsAudience = gcsAudience;
+      params.enabled = enabled;
+      ManageCloudFederation task = createTask(ManageCloudFederation.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Configuring);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Persists {@code userIntent.federationConfigured} per cluster. When {@code enabling}, a cluster
+   * is marked true iff its provider has federated IAM enabled with an audience (a non-eligible
+   * cluster like a GCP read replica stays false); when disabling, all clusters are set false.
+   * Enqueue this after the {@link #createConfigureCloudFederationTasks} subtask group so it runs
+   * only when every node subtask succeeded (a failed node subtask aborts the task first), so the
+   * flag is never left in a partial "true" state.
+   */
+  protected void createPersistFederationConfiguredTask(boolean enabling) {
+    createUpdateUniverseFieldsTask(
+            u ->
+                u.getUniverseDetails()
+                    .clusters
+                    .forEach(
+                        c -> {
+                          boolean configured = false;
+                          if (enabling) {
+                            Provider p =
+                                Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+                            configured =
+                                CloudInfoInterface.getCrossCloudFederationAudience(p) != null;
+                          }
+                          c.userIntent.setFederationConfigured(configured);
+                        }))
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /** True if this universe's primary cluster is (persisted) configured for federated IAM. */
+  protected boolean isUniverseFederationConfigured() {
+    Cluster primary = getUniverse().getUniverseDetails().getPrimaryCluster();
+    return primary != null && primary.userIntent.isFederationConfigured();
+  }
+
+  /**
    * Creates a task list to configure the newly provisioned nodes and adds it to the task queue.
    * Includes tasks such as setting up the 'yugabyte' user and installing the passed in software
    * package.
@@ -1574,12 +1645,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
       // Add audit log config from the primary cluster
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      params.auditLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-      params.queryLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
-      params.metricsExportConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+      params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
       // Set if this node is a master in shell mode.
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -2385,13 +2451,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task to do the provisioning via YNP.
-   *
-   * @param nodes a collection of nodes to be processed.
-   */
   public SubTaskGroup createYNPProvisioningTask(
-      Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      BiConsumer<NodeDetails, YNPProvisioning.Params> paramsCustomizer) {
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2418,11 +2481,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
-          params.isYbPrebuiltImage = isYbPrebuiltImage;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
           params.userIntent = userIntent;
+          paramsCustomizer.accept(n, params);
           YNPProvisioning task = createTask(YNPProvisioning.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
@@ -2476,8 +2539,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> nodesToBeCreated,
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
-
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2544,7 +2605,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 boolean isYbPrebuiltImage =
                     !shouldInstallDbSoftware(
                         universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
-                createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
+                createYNPProvisioningTask(
+                        universe, filteredNodes, (n, p) -> p.isYbPrebuiltImage = isYbPrebuiltImage)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               }
               createInstallNodeAgentTasks(universe, filteredNodes)
@@ -4133,10 +4195,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               boolean configureCgroup = true;
               // If any cluster cannot configure cgroup, set it to false.
               for (Cluster c : u.getUniverseDetails().clusters) {
-                Provider provider =
-                    Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-                boolean configure = Util.configureCgroup(c.userIntent, provider, true, confGetter);
-                configureCgroup = configure && configureCgroup;
+                for (UUID providerUUID : c.userIntent.getAllProviderUUIDs()) {
+                  Provider provider = Provider.getOrBadRequest(providerUUID);
+                  boolean configure =
+                      Util.configureCgroup(c.userIntent, provider, true, confGetter);
+                  configureCgroup = configure && configureCgroup;
+                }
               }
               u.getUniverseDetails()
                   .getPrimaryCluster()
@@ -4430,19 +4494,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   protected SubTaskGroup createCheckDuplicateInstances(
       Universe universe, Collection<NodeDetails> nodes) {
-    // Cache cloud types for clusters to avoid multiple provider lookups.
-    final Map<UUID, CloudType> cloudTypes = new HashMap<>();
     return doInPrecheckSubTaskGroup(
         "CheckDuplicateInstances",
         subTaskGroup -> {
           for (NodeDetails node : nodes) {
             Cluster cluster = universe.getCluster(node.placementUuid);
-            CloudType cloudType =
-                cloudTypes.computeIfAbsent(
-                    node.placementUuid,
-                    k ->
-                        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider))
-                            .getCloudCode());
+            CloudType cloudType = cluster.getProviderCloudType(node);
             if (!cloudType.isPublicCloud()) {
               log.debug(
                   "Skipping duplicate instance check for non-CSP node {} in cluster {}",

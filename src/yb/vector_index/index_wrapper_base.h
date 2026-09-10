@@ -20,15 +20,55 @@
 
 #include "yb/rocksdb/util/heap.h"
 
+#include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 #include "yb/util/two_group_mutex.h"
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_payload_map.h"
+
+namespace rocksdb {
+class Cache;
+}
 
 DECLARE_bool(TEST_vector_index_exact);
 
 namespace yb::vector_index {
+
+// RAII handle for space reserved in a block cache. While alive it keeps `bytes` of the cache's
+// capacity consumed -- which forces the cache to evict other blocks -- and releases that space on
+// destruction. Move-only.
+class BlockCacheReservation {
+ public:
+  BlockCacheReservation() = default;
+  BlockCacheReservation(BlockCacheReservation&& rhs) noexcept;
+  BlockCacheReservation& operator=(BlockCacheReservation&& rhs) noexcept;
+
+  BlockCacheReservation(const BlockCacheReservation&) = delete;
+  void operator=(const BlockCacheReservation&) = delete;
+
+  ~BlockCacheReservation();
+
+  explicit operator bool() const {
+    return cache_ != nullptr;
+  }
+
+  // Releases the reserved space back to the cache.
+  void Reset();
+
+  // Reserves `bytes` in `cache`. Returns an empty reservation if there is nothing to reserve or
+  // reservations are disabled. In strict mode, returns TryAgain if the reservation cannot be made.
+  static Result<BlockCacheReservation> Create(
+    rocksdb::Cache* cache, size_t bytes, rocksdb::Cache::ReservationMode reservation_mode);
+
+ private:
+  BlockCacheReservation(rocksdb::Cache* cache, size_t bytes) : cache_(cache), bytes_(bytes) {}
+
+  rocksdb::Cache* cache_ = nullptr;
+  size_t bytes_ = 0;
+};
 
 // Base class for index wrappers.
 // Contains common parts of index wrapper implementations.
@@ -36,19 +76,19 @@ namespace yb::vector_index {
 template<class Impl, IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
  public:
-  Status Insert(VectorId vector_id, const Vector& v) override {
+  Status Insert(VectorId vector_id, const Vector& v, Slice payload) override {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }
     if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
       std::unique_lock lock(TEST_search_exact_mutex_);
-      return impl().DoInsert(vector_id, v);
+      return impl().DoInsert(vector_id, v, payload);
     }
     // Take the write side: concurrent inserts run together (the backend coordinates them via its
     // own per-node locks) but exclude searches, whose lock-free traversal must not observe a
     // half-applied insert.
     TwoGroupMutex::WriteLock lock(search_insert_mutex_);
-    return impl().DoInsert(vector_id, v);
+    return impl().DoInsert(vector_id, v, payload);
   }
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> SaveToFile(const std::string& path) override {
@@ -86,11 +126,11 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
       const Vector& query_vector, const SearchOptions& options) const {
     using Entry = VectorWithDistance<DistanceResult>;
     rocksdb::BinaryHeap<Entry> top;
-    for (const auto& [vector_id, vector] : *this) {
-      if (options.filter && !options.filter(vector_id)) {
+    for (const auto& entry : *this) {
+      if (options.filter && !options.filter(entry.vector_id, entry.payload)) {
         continue;
       }
-      Entry element(vector_id, this->Distance(vector, query_vector));
+      Entry element(entry, this->Distance(entry.vector, query_vector));
       if (top.size() < options.max_num_results) {
         top.push(element);
       } else if (element < top.top()) {
@@ -112,7 +152,22 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return immutable_.load(std::memory_order_acquire);
   }
 
- private:
+  // Reserve `bytes` of `block_cache` space for this index's in-memory footprint, replacing any
+  // prior reservation. Reserving lowers the cache's effective capacity, so the cache evicts other
+  // blocks instead of letting the index grow total memory consumption past the limits (#32357).
+  // Subclasses call this from their Reserve() with the backend-specific estimate of the chunk's
+  // footprint; the reservation is a no-op when `block_cache` is null, `bytes` is zero, or disabled.
+  Status ReserveBlockCacheSpace(
+      rocksdb::Cache* block_cache, size_t bytes,
+      rocksdb::Cache::ReservationMode reservation_mode) {
+    // Release any prior reservation first so ConsumeSpace does not double-count it.
+    block_cache_reservation_.Reset();
+
+    block_cache_reservation_ = VERIFY_RESULT(
+        BlockCacheReservation::Create(block_cache, bytes, reservation_mode));
+    return Status::OK();
+  }
+
   Impl& impl() {
     return *static_cast<Impl*>(this);
   }
@@ -121,9 +176,14 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return *static_cast<const Impl*>(this);
   }
 
+ private:
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
   mutable std::shared_mutex TEST_search_exact_mutex_;
+
+  // Block cache space reserved for this index's footprint (#32357). Held for the index's lifetime
+  // and released on destruction. Empty when no block cache is set or the feature is disabled.
+  BlockCacheReservation block_cache_reservation_;
 
   // Coordinates lock-free searches against concurrent inserts on a mutable index: many inserts run
   // together and many searches run together, but a search phase and an insert phase never overlap,
@@ -131,6 +191,89 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   // concurrent searches are each internally safe rely on this for cross-group exclusion. Taken only
   // while the index is mutable; immutable indexes have no writers and stay lock-free.
   mutable TwoGroupMutex search_insert_mutex_;
+};
+
+// Base class for index wrappers whose implementations cannot store attached vector payloads in
+// their own format. Keeps the payloads in VectorPayloadMap, external to the wrapped
+// implementation, and serializes them to a separate payload file next to the index file.
+// Payloads are indexed by the slot the implementation assigns to the vector, so instead of
+// Reserve/DoInsert/DoSaveToFile/DoLoadFromFile children implement DoReserve/DoInsertVector/
+// DoSaveIndex/DoLoadIndex, which deal with the index only, while this class handles the payloads.
+// DoInsertVector returns the slot assigned to the inserted vector. Children attach payloads to
+// search results themselves, since slots of the found vectors are only visible to them.
+//
+// Whether the chunk stores payloads is fixed at creation (see StoreVectorPayload) or, for loaded
+// chunks, determined by the presence of the payload file. A chunk that stores payloads expects a
+// non-empty payload for every inserted vector; a chunk that does not ignores payloads entirely.
+template<class Impl, IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, DistanceResult> {
+ public:
+  explicit IndexWrapperWithExternalPayload(StoreVectorPayload store_vector_payload) {
+    if (store_vector_payload) {
+      payloads_.emplace();
+    }
+  }
+
+  Status Reserve(
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
+      rocksdb::Cache::ReservationMode reservation_mode) override {
+    RETURN_NOT_OK(this->impl().DoReserve(
+        num_vectors, max_concurrent_inserts, max_concurrent_reads, reservation_mode));
+    if (payloads_) {
+      // The implementation could reserve more slots than requested, cover all of them.
+      payloads_->Reserve(this->impl().Capacity());
+    }
+    return Status::OK();
+  }
+
+  Status DoInsert(VectorId vector_id, const Vector& v, Slice payload) {
+    auto slot = VERIFY_RESULT(this->impl().DoInsertVector(vector_id, v));
+    if (payloads_) {
+      RSTATUS_DCHECK(
+          !payload.empty(), InvalidArgument,
+          "Vector $0 has no payload, while the chunk stores payloads", vector_id);
+      payloads_->Insert(slot, payload);
+    } else {
+      DCHECK(payload.empty());
+    }
+    return Status::OK();
+  }
+
+  Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
+    auto new_index = VERIFY_RESULT(this->impl().DoSaveIndex(path));
+    // When the index was converted to a different implementation, it also stores the payloads.
+    if (!new_index && payloads_) {
+      RETURN_NOT_OK(payloads_->SaveToFile(path, this->impl().Size()));
+    }
+    return new_index;
+  }
+
+  Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
+    RETURN_NOT_OK(this->impl().DoLoadIndex(path, max_concurrent_reads));
+    if (Env::Default()->FileExists(VectorIndexPayloadFilePath(path))) {
+      payloads_.emplace();
+      return payloads_->LoadFromFile(path);
+    }
+    payloads_.reset();
+    return Status::OK();
+  }
+
+  std::vector<std::string> StoredFiles(const std::string& path) const override {
+    // The index file itself is always stored, payloads only add a companion file to it.
+    if (!payloads_) {
+      return {path};
+    }
+    return {path, VectorIndexPayloadFilePath(path)};
+  }
+
+ protected:
+  // Returns the payload map or nullptr when the chunk does not store payloads.
+  const VectorPayloadMap* payloads() const {
+    return payloads_ ? &*payloads_ : nullptr;
+  }
+
+ private:
+  std::optional<VectorPayloadMap> payloads_;
 };
 
 template <typename Vector, typename IteratorImpl>

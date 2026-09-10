@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteCDCStreamResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 /**
  * It will remove all the bootstrap IDs created using {@link BootstrapProducer} task that could not
@@ -96,7 +96,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
     }
     log.info("Bootstrap ids to be deleted: {}", bootstrapIds);
 
-    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(sourceUniverse)) {
       // The `OBJECT_NOT_FOUND` error will be ignored.
       DeleteCDCStreamResponse resp =
           client.deleteCDCStream(bootstrapIds, true /* ignoreErrors */, forceDelete);

@@ -20,13 +20,15 @@
 
 namespace yb::pggate {
 
-FlushFuture::FlushFuture(PerformFuture&& future, PgSession& session, PgDocMetrics& metrics)
-    : future_(std::move(future)), session_(&session), metrics_(&metrics) {}
+FlushFuture::FlushFuture(
+    PerformFuture&& future, PgSession& session, PgDocMetrics& metrics, PgOid relation_oid)
+    : future_(std::move(future)), session_(&session), metrics_(&metrics),
+      relation_oid_(relation_oid) {}
 
 Status FlushFuture::Get() {
   uint64_t duration = 0;
   {
-    auto watcher = session_->StartWaitEvent(ash::WaitStateCode::kStorageFlush);
+    auto watcher = session_->StartWaitEvent(ash::WaitStateCode::kStorageFlush, relation_oid_);
     RETURN_NOT_OK(metrics_->CallWithDuration(
         [this] { return future_.Get(*session_); }, &duration));
   }

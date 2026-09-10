@@ -32,6 +32,7 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <algorithm>
 #include <tuple>
 #include <utility>
 
@@ -122,6 +123,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -181,6 +183,13 @@ DEFINE_RUNTIME_int32(backfill_index_timeout_grace_margin_ms, -1,
              "of writes and return successfully the RPC with the information about "
              "how far we have processed the rows.");
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
+
+DEFINE_RUNTIME_bool(backfill_index_check_snapshot_too_old, true,
+    "Whether an index backfill's read of the indexed table registers its fixed read time with the "
+    "retention policy, failing with SnapshotTooOld if the tablet's history cutoff has already "
+    "advanced past that read time.  Without the check, such a read can silently return "
+    "garbage-collected state and produce an incorrect index.");
+TAG_FLAG(backfill_index_check_snapshot_too_old, advanced);
 
 DEFINE_RUNTIME_bool(yql_allow_compatible_schema_versions, true,
             "Allow YCQL requests to be accepted even if they originate from a client who is ahead "
@@ -274,6 +283,12 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
 DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
     "Consider only user keys while determining middle key for tablet split");
 
+DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, false,
+    "If true, detect split keys so each child tablet holds roughly the same amount of SST data. "
+    "If false, 2-way splits use an approximate middle key, and N-way splits evenly divide hash "
+    "space (hash-partitioned tables only).");
+TAG_FLAG(use_cross_split_key_detection_algorithm, advanced);
+
 DEFINE_RUNTIME_uint32(cdcsdk_retention_barrier_no_revision_interval_secs, 120,
     "Duration for which CDCSDK retention barriers cannot be revised from the "
     "cdcsdk_block_barrier_revision_start_time");
@@ -319,6 +334,18 @@ DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
     "Sleep before applying intents to docdb after transaction commit");
 
+DEFINE_test_flag(double, inject_delay_before_external_intents_write_probability, 0.0,
+    "Probability of injecting a random delay between an external write batch's regular db "
+    "write and its intents db write in ApplyKeyValueRowOperations. Each firing sleeps for a "
+    "duration drawn uniformly from [0, TEST_inject_delay_before_external_intents_write_max_ms]. "
+    "Widens the otherwise sub-millisecond window in which a regular db flush can force-advance "
+    "the intents db flushed frontier past not-yet-written external intents (see "
+    "advance_intents_flushed_op_id_to_match_regular).");
+
+DEFINE_test_flag(uint64, inject_delay_before_external_intents_write_max_ms, 100,
+    "Upper bound in milliseconds of the random delay injected when "
+    "TEST_inject_delay_before_external_intents_write_probability fires.");
+
 DEFINE_test_flag(bool, skip_remove_intent, false,
     "If true, remove intent will be skipped");
 
@@ -327,13 +354,26 @@ DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
 
 DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
     "If true, the flushed op id of intents db may be updated to match that of "
-    "regular db during flushing regular db memtable");
+    "regular db during flushing regular db memtable. Implicitly disabled for a "
+    "tablet once it has applied an external (xCluster target) write batch, until "
+    "the next tserver restart.");
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
 
+DEFINE_RUNTIME_uint64(cdc_min_sec_to_retain_intent, 8 * 3600,
+    "Minimum number of seconds for which intent SST files of tablets under CDCSDK replication are "
+    "retained when cdc_enable_time_based_intent_retention is true. Intent SST files are not "
+    "deleted until their maximum hybrid time is at least this many seconds old. This flag is not "
+    "applicable when cdc_enable_time_based_intent_retention is false.");
+
+DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, false, true,
+    "Allow transaction metadata update records to be written to intentsdb.");
+
 DECLARE_bool(cdc_immediate_transaction_cleanup);
+DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -520,13 +560,6 @@ storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
 }
 
 
-Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
-  if (time) {
-    return time;
-  }
-  return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
-}
-
 class ActiveCompactionToken {
  public:
   explicit ActiveCompactionToken(std::atomic<size_t>& counter) : counter_(counter) {
@@ -556,10 +589,11 @@ class Tablet::RocksDbListener : public rocksdb::EventListener {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "RocksDB flush completed, triggering cleanup of recently applied transactions";
       auto status = participant->ProcessRecentlyAppliedTransactions();
-      if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
-        LOG_WITH_PREFIX_AND_FUNC(DFATAL)
-            << "Failed to clean up recently applied transactions: " << status;
-      }
+      // Best-effort cleanup; a failure is not fatal. Suppress the expected ShutdownInProgress (a
+      // full shutdown stops the scoped-op counter); the rarer TryAgain during restore/truncate
+      // still warns to aid investigation.
+      LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+          << "Failed to clean up recently applied transactions: " << status;
     }
   }
 
@@ -602,7 +636,10 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
-    ERROR_NOT_OK(tablet_.MayModifyIntentsDbFlushedOpId(), log_prefix_);
+    auto status = tablet_.MayModifyIntentsDbFlushedOpId();
+    // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+        << "Failed to update intents db flushed op id: " << status;
   }
 
  private:
@@ -678,7 +715,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       return;
     }
     {
-      auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
+      auto smallest = db->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
       if (smallest) {
         down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
             table_id_to_min_schema_version);
@@ -730,7 +767,9 @@ Tablet::Tablet(const TabletInitData& data)
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
-      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
+      schedule_tablet_metadata_validation_(
+          std::move(data.schedule_tablet_metadata_validation)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -810,7 +849,7 @@ Tablet::Tablet(const TabletInitData& data)
     SplitDone();
   }
   auto restoration_hybrid_time = metadata_->restoration_hybrid_time();
-  if (restoration_hybrid_time && transaction_participant_ && FLAGS_consistent_restore) {
+  if (restoration_hybrid_time && transaction_participant_) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
@@ -821,15 +860,14 @@ Tablet::Tablet(const TabletInitData& data)
 }
 
 Tablet::~Tablet() {
-  if (StartShutdown()) {
-    CompleteShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
+  if (StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse)) {
+    CompleteShutdown();
   } else {
     auto state = state_;
     if (state != kShutdown) {
       LOG_WITH_PREFIX(DFATAL) << "Destroying Tablet that did not complete shutdown: " << state;
-      // Still try to complete shutdown in release builds, but disable flush in this state to
-      // minimize risk of flushing potentially corrupted data.
-      CompleteShutdown(DisableFlushOnShutdown::kTrue, AbortOps::kFalse);
+      // Still try to complete shutdown in release builds.
+      CompleteShutdown();
     }
   }
   if (regulardb_block_based_table_mem_tracker_) {
@@ -920,14 +958,22 @@ struct Tablet::IntentsDbFlushFilterState {
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
-  void AddLargestFlushedIndex(const storage::UserFrontierPtr& flushed_frontier) {
-    if (!flushed_frontier) {
-      largest_flushed_index.push_back(std::numeric_limits<int64_t>::min());
-      return;
+  void AddLargestFlushedIndex(
+      const storage::UserFrontierPtr& flushed_frontier,
+      const storage::UserFrontierPtr& smallest_mem_frontier) {
+    int64_t flushed_index = std::numeric_limits<int64_t>::min();
+    if (flushed_frontier) {
+      flushed_index = static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier).op_id().index;
     }
-    const auto& consensus_frontier =
-        static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier);
-    largest_flushed_index.push_back(consensus_frontier.op_id().index);
+    // The flushed frontier alone could overstate what is durable: a single apply op id may span
+    // both a flushed and an unflushed batch of a large transaction. So clamp the largest flushed
+    // index to one below the smallest op id that is still only in memory.
+    if (smallest_mem_frontier) {
+      auto mem_index =
+          static_cast<const docdb::ConsensusFrontier&>(*smallest_mem_frontier).op_id().index;
+      flushed_index = std::min(flushed_index, mem_index - 1);
+    }
+    largest_flushed_index.push_back(flushed_index);
   }
 
   bool HasNewData(int64_t memtable_op_index) const {
@@ -962,7 +1008,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   VLOG_WITH_PREFIX(4) << __func__;
 
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
-    state->vector_indexes = VectorIndexList(vector_indexes_->List());
+    state->vector_indexes = vector_indexes_->List();
   }
 
   auto frontiers = memtable.Frontiers();
@@ -974,10 +1020,16 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       // We allow to flush intents DB only after regular DB.
       // Otherwise we could lose applied intents when corresponding regular records were not
       // flushed.
-      state->AddLargestFlushedIndex(regular_db_->GetFlushedFrontier());
+      const storage::FrontierKinds frontier_kinds{
+          storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
+      auto regular_frontiers = regular_db_->GetFrontiers(frontier_kinds);
+      state->AddLargestFlushedIndex(
+          regular_frontiers.flushed, regular_frontiers.in_memory.smallest);
       if (state->vector_indexes) {
         for (const auto& vector_index : *state->vector_indexes) {
-          state->AddLargestFlushedIndex(vector_index->GetFlushedFrontier());
+          auto vector_frontiers = vector_index->GetFrontiers(frontier_kinds);
+          state->AddLargestFlushedIndex(
+              vector_frontiers.flushed, vector_frontiers.in_memory.smallest);
         }
       }
       VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -1205,7 +1257,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   regular_rocksdb_options.compaction_context_factory = docdb::CreateCompactionContextFactory(
       retention_policy_, &key_bounds_,
       std::bind(&Tablet::CompactionHybridTimeConstraints, this, _1),
-      metadata_.get(), vector_indexes_.get());
+      metadata_.get(), vector_indexes_.get(),
+      docdb::CreateCompactionMetrics(tablet_metrics_entity_));
 
   regular_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     {
@@ -1243,6 +1296,34 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
 
   const auto& db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
+
+  // Tiered storage: populate db_paths from the tablet's persisted tier_paths so RocksDB is
+  // aware of all tier directories at open time.
+  // Invariants:
+  //   - slot 0 must equal db_dir (MANIFEST/CURRENT/OPTIONS live there).
+  //   - target_size = UINT64_MAX for every slot so RocksDB's automatic
+  //    size-based db_path selection does not spill files to another path_id.
+  {
+    const auto& tier_paths = metadata()->tier_paths();
+    if (!tier_paths.empty()) {
+      auto* fs = metadata()->fs_manager();
+      regular_rocksdb_options.db_paths.clear();
+      std::string desc;
+      for (const auto& tp : tier_paths) {
+        if (tp.path != db_dir) {
+          RETURN_NOT_OK(CreateTabletDirectories(tp.path, fs));
+        }
+        regular_rocksdb_options.db_paths.emplace_back(
+            tp.path, std::numeric_limits<uint64_t>::max());
+        desc += Format("$0[$1]=$2 ", tp.tier, tp.path_id, tp.path);
+      }
+      LOG_IF_WITH_PREFIX(DFATAL, regular_rocksdb_options.db_paths.front().path != db_dir)
+          << "tier_paths[0] (" << regular_rocksdb_options.db_paths.front().path
+          << ") does not match home rocksdb_dir (" << db_dir << ")";
+      LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
+                            << " tiered db_paths: " << desc;
+    }
+  }
 
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::DB* db = nullptr;
@@ -1348,12 +1429,15 @@ void Tablet::RegularDbFilesChanged() {
   }
 }
 
-void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
+void Tablet::SetCleanupPool(
+    ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
+  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+
   if (!transaction_participant_) {
     return;
   }
 
-  cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  cleanup_intent_files_token_ = intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   CleanupIntentFiles();
 }
@@ -1487,14 +1571,23 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_start_ht_cdc_unstreamed_txns =
         transaction_participant_->GetMinStartHTCDCUnstreamedTxns();
-    if (FLAGS_cdc_immediate_transaction_cleanup &&
-        metadata_->is_under_cdc_sdk_replication()) {
-      if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
-          min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
-        VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Cannot delete because of CDC, min_start_ht_cdc_unstreamed_txns: "
-            << min_start_ht_cdc_unstreamed_txns << ", best file max ht: " << best_file_max_ht;
-        break;
+    if (metadata_->is_under_cdc_sdk_replication()) {
+      if (FLAGS_cdc_enable_time_based_intent_retention) {
+        auto file_age = clock_->Now().PhysicalDiff(best_file_max_ht);
+        if (file_age.ToSeconds() < static_cast<int64_t>(FLAGS_cdc_min_sec_to_retain_intent)) {
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << "Cannot delete because of time-based intent retention, file age (seconds): "
+              << file_age.ToSeconds() << ", best file max ht: " << best_file_max_ht;
+          break;
+        }
+      } else if (FLAGS_cdc_immediate_transaction_cleanup) {
+        if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
+            min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << "Cannot delete because of CDC, min_start_ht_cdc_unstreamed_txns: "
+              << min_start_ht_cdc_unstreamed_txns << ", best file max ht: " << best_file_max_ht;
+          break;
+        }
       }
     }
     if (best_file->name_id == previous_name_id) {
@@ -1518,7 +1611,8 @@ void Tablet::DoCleanupIntentFiles() {
         FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
         rocksdb::FlushReason::kIntentFilesCleanup);
     if (!flush_status.ok()) {
-      LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Failed to flush regular db or vector indexes: " << flush_status;
       break;
     }
     auto delete_status = intents_db_->DeleteFile(best_file->Name());
@@ -1554,7 +1648,7 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
-  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+  vector_indexes().List().EnableAutoCompactions();
 
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
@@ -1592,20 +1686,71 @@ Status Tablet::DoEnableCompactions() {
 void Tablet::MarkFinishedBootstrapping() {
   CHECK_EQ(state_, kBootstrapping);
   state_ = kOpen;
+}
+
+void Tablet::Start() {
+  if (transaction_coordinator_) {
+    transaction_coordinator_->Start();
+  }
+
+  if (transaction_participant_) {
+    transaction_participant_->Start();
+  }
+
+  // A read racing ahead of this still skips the cache and does not fill it.
+  ArmColocatedTombstoneCaches();
+
+  // Launch vector index backfill only now, after the tablet has been published by its TabletPeer.
+  // The backfill resolves transaction statuses of provisional records, which reads the tablet's
+  // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
+  // that assignment.
   vector_indexes_->LaunchBackfillsIfNecessary();
 }
 
-bool Tablet::StartShutdown() {
+bool Tablet::StartShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
   if (!shutdown_requested_.compare_exchange_strong(expected, true)) {
     return false;
   }
+  // shutdown_requested_ is now set, so the vector index backfill will observe it and exit. This
+  // sync point fires before StartShutdownStorages pauses read/write operations, so a test can
+  // release a backfill parked at TabletVectorIndexes::Backfill:Start here without deadlocking that
+  // pause.
+  TEST_SYNC_POINT("Tablet::StartShutdown");
+
+  snapshots_->StartShutdown();
+
+  // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
+  // operations below: otherwise a poll could submit a transaction status update operation against
+  // the paused tablet and fail with a non-shutdown status, tripping a DFATAL. See issue #32211.
+  if (transaction_coordinator_) {
+    transaction_coordinator_->StartShutdown();
+  }
 
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
   }
+
+  // Abort in-flight safe time waits before StartShutdownStorages pauses read/write operations.
+  // Safe time stops advancing once shutdown starts, so an operation blocked in
+  // MvccManager::SafeTime/SafeTimeForFollower (e.g. a vector index backfill resolving an aborted
+  // transaction) would otherwise never release its ScopedRWOperation, deadlocking the pause.
+  mvcc_.StartShutdown();
+
+  // Start shutting the RocksDB instances down (signalling shutdown, pausing read/write operations)
+  // here, before TabletPeer::CompleteShutdown drains the peer strand. StartShutdownStorages signals
+  // RocksDB shutdown, which releases any writer parked in DBImpl::DelayWrite on a write stall (the
+  // stall loop breaks out once the DB reports it is shutting down). Otherwise the shutdown would
+  // deadlock: the strand drain waits for in-flight RemoveIntents (and similar) tasks to finish, but
+  // a RemoveIntents write stalled on an intents-DB write stall that never clears would never be
+  // released until StartShutdownStorages runs -- which used to happen only later, from
+  // CompleteShutdown, i.e. after the strand drain. See issue #32211.
+  // The op pauses must outlive this call (they keep operations paused until the RocksDB instances
+  // are destroyed in CompleteShutdownStorages), so they are stored in a member.
+  shutdown_op_pauses_ = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
 
   return true;
 }
@@ -1617,18 +1762,20 @@ Status Tablet::CompleteStartup() {
   return EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
 }
 
-void Tablet::CompleteShutdown(
-    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+void Tablet::CompleteShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
-  StartShutdown();
+  // StartShutdown must have been called before CompleteShutdown (via TabletPeer::StartShutdown or
+  // Tablet::~Tablet). It runs StartShutdownStorages and populates shutdown_op_pauses_, which we
+  // consume below.
+  LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
+      << "CompleteShutdown called without a preceding StartShutdown";
 
-  auto op_pauses = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
-
+  snapshots_->CompleteShutdown();
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
-    transaction_coordinator_->Shutdown();
+    transaction_coordinator_->CompleteShutdown();
   }
 
   if (transaction_participant_) {
@@ -1657,7 +1804,7 @@ void Tablet::CompleteShutdown(
   // Shutdown the RocksDB instance for this tablet, if present.
   // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  CompleteShutdownStorages(op_pauses);
+  CompleteShutdownStorages(shutdown_op_pauses_);
 
   {
     std::lock_guard compaction_lock(full_compaction_token_mutex_);
@@ -1668,7 +1815,7 @@ void Tablet::CompleteShutdown(
 
   state_ = kShutdown;
 
-  for (auto* op_pause : op_pauses.AsArray()) {
+  for (auto* op_pause : shutdown_op_pauses_.AsArray()) {
     // Release the mutex that prevents snapshot restore / truncate operations from running. Such
     // operations are no longer possible because the tablet has shut down. When we start the
     // "read/write operation pause", we incremented the "exclusive operation" counter. This will
@@ -1683,8 +1830,17 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops, Stop stop) {
   TabletScopedRWOperationPauses op_pauses;
 
-  auto pause = [this,
-                stop](const BlockingRocksDbShutdownStart is_blocking) -> ScopedRWOperationPause {
+  // For graceful shutdown flush all storages while they are fully operational, so the intents DB
+  // flush filter keeps the intents DB flushed OpId behind the vector index flushed OpIds.
+  // Entries applied after this flush are recovered from the WAL during bootstrap (GH #32691).
+  if (!disable_flush_on_shutdown && !TEST_disable_flush_on_shutdown_ &&
+      FLAGS_flush_rocksdb_on_shutdown) {
+    WARN_NOT_OK(
+        Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kShutdown),
+        LogPrefix() + "Failed to flush storages before shutdown");
+  }
+
+  auto pause = [this, stop](const BlockingRocksDbShutdownStart is_blocking) {
     auto op_pause = PauseReadWriteOperations(is_blocking, stop);
     if (!op_pause.ok()) {
       LOG(FATAL) << "Failed to stop read/write operations: " << op_pause.status();
@@ -1692,11 +1848,11 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     return op_pause;
   };
 
+  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
+
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
   vector_indexes_->StartShutdown();
-
-  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
   bool expected = false;
   // If shutdown has been already requested, we still might need to wait for all pending read/write
@@ -1704,25 +1860,23 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
   if (rocksdb_shutdown_requested_.compare_exchange_strong(expected, true)) {
     for (auto* db : {regular_db_.get(), intents_db_.get()}) {
       if (db) {
-        db->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
+        // Flushes are either already done above or not desired at all. Also at this point the
+        // intents DB flush filter cannot check the vector index flushed state anymore.
+        db->SetDisableFlushOnShutdown();
         db->StartShutdown();
       }
     }
   }
 
-  if (abort_ops) {
-    abort_pending_op_status_holder_.SetError(
-        STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix()));
-  }
+  // Abort in-flight operations polling the abort source (e.g. iterators), so the pause below
+  // does not wait for their natural completion. Clearing the signal on return is safe: both
+  // counters are drained and disabled by then.
+  auto abort_scope = abort_ops
+      ? std::make_optional(abort_pending_op_source_.Abort(
+            STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix())))
+      : std::nullopt;
 
   op_pauses.not_blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kFalse);
-
-  if (abort_ops) {
-    // Clean aborted status after all pending operations have been completed.
-    // This is necessary for the cases when we want to start rocksdb again for the tablet, for
-    // example after truncate or restore.
-    abort_pending_op_status_holder_.Reset();
-  }
 
   return op_pauses;
 }
@@ -1730,6 +1884,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
 std::vector<std::string> Tablet::CompleteShutdownStorages(
     const TabletScopedRWOperationPauses& ops_pauses) {
   // We need ops_pauses just to guarantee that PauseReadWriteOperations has been called.
+
+  // Both op counters have drained by this point, so every reader that was blocking RocksDB
+  // shutdown is gone and the DBs are about to be destroyed.
+  TEST_SYNC_POINT("Tablet::CompleteShutdownStorages:Start");
 
   if (intents_db_) {
     intents_db_->ListenFilesChanged(nullptr);
@@ -1760,6 +1918,12 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
 Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, LogPrefix());
+
+  // Tiered storage: hand DestroyDB the regular DB's tier disks so its cleanup removes SST files
+  // spread across all tiers.
+  for (const auto& tp : metadata()->tier_paths()) {
+    rocksdb_options.db_paths.emplace_back(tp.path, std::numeric_limits<uint64_t>::max());
+  }
 
   Status status;
   for (const auto& db_path : db_paths) {
@@ -1881,6 +2045,29 @@ Status Tablet::ApplyOperation(
       batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time, apply_to_storages);
 }
 
+Status Tablet::WriteTransactionMetadataUpdate(
+    OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+    const LWTransactionMetadataPB& metadata_update) {
+  if (!FLAGS_enable_transaction_metadata_update) {
+    return Status::OK();
+  }
+
+  docdb::ConsensusFrontiers frontiers;
+  InitFrontiers(op_id, write_hybrid_time, /*commit_ht=*/HybridTime::kInvalid, frontiers);
+
+  docdb::TransactionMetadataUpdateWriter writer(transaction_id, write_hybrid_time, metadata_update);
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(&writer);
+
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope(/* allow_when_closing= */ true));
+  WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+  if (auto duration = write_batch.GetWriteGroupJoinDuration().ToMicroseconds()) {
+    metrics_->Increment(TabletEventStats::kIntentDbWriteThreadJoinDuration, duration);
+  }
+
+  return Status::OK();
+}
+
 Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
     const storage::UserFrontiers& frontiers) {
@@ -1961,11 +2148,16 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers, vector_indexes_->List(), apply_to_storages);
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
+        table_type(), &can_advance_intents_flush_op_id_);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
     WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+    // External-intent table tombstones: second notify after the memtable publish so a concurrent
+    // IntentAwareIterator miss cannot re-cache "no tombstone" under the raised watermark
+    // (see NonTransactionalBatchWriter::FlushPendingTableTombstoneNotifies).
+    batcher.FlushPendingTableTombstoneNotifies();
 
     if (!vector_indexes_->has_vector_deletion() &&
         frontiers.Largest().has_vector_deletion()) {
@@ -1973,6 +2165,15 @@ Status Tablet::ApplyKeyValueRowOperations(
     }
 
     if (intents_write_batch.Count() != 0) {
+      TEST_SYNC_POINT("Tablet::ApplyKeyValueRowOperations:BeforeIntentsWrite");
+      if (PREDICT_FALSE(RandomActWithProbability(
+              FLAGS_TEST_inject_delay_before_external_intents_write_probability))) {
+        const auto delay_ms = RandomUniformInt<uint64>(
+            0, FLAGS_TEST_inject_delay_before_external_intents_write_max_ms);
+        LOG_WITH_PREFIX(INFO) << "TEST: injecting " << delay_ms
+                              << " ms delay before external intents write";
+        SleepFor(MonoDelta::FromMilliseconds(delay_ms));
+      }
       if (!metadata_->IsUnderXClusterReplication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
@@ -2450,14 +2651,16 @@ Status Tablet::Flush(
   ScopedRWOperation pending_op;
   if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
     pending_op = CreateScopedRWOperationBlockingRocksDbShutdownStart();
-    LOG_IF(DFATAL, !pending_op.ok())
+    // A background flush (e.g. from TabletMemoryManager) legitimately races with shutdown of the
+    // tablet it picked, and its caller just logs the returned error.
+    LOG_IF(DFATAL, !pending_op.ok() && !IsShutdownRequested())
         << "CreateScopedRWOperationBlockingRocksDbShutdownStart failed";
     RETURN_NOT_OK(pending_op);
   }
 
   VectorIndexList vector_indexes_list;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
-    vector_indexes_list = VectorIndexList(vector_indexes_->List());
+    vector_indexes_list = vector_indexes_->List();
     vector_indexes_list.Flush();
   }
 
@@ -2496,7 +2699,7 @@ Status Tablet::Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason) 
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
-  RETURN_NOT_OK(VectorIndexList(vector_indexes_->List()).WaitForFlush());
+  RETURN_NOT_OK(vector_indexes_->List().WaitForFlush());
 
   if (regular_db_) {
     RETURN_NOT_OK(regular_db_->WaitForFlush());
@@ -2536,7 +2739,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
-  auto vector_indexes = vector_indexes_->List();
+  auto vector_indexes = vector_indexes_->List().impl();
   docdb::ApplyIntentsContextCompleteListener complete_listener;
   if (!vector_indexes_->has_vector_deletion()) {
     complete_listener = [this](const docdb::ConsensusFrontiers& frontiers) {
@@ -2548,7 +2751,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, data.op_id, &key_bounds_, *metadata_, frontiers, intents_db_.get(),
-      vector_indexes, data.apply_to_storages, std::move(complete_listener));
+      vector_indexes, data.apply_to_storages, table_type(), std::move(complete_listener));
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);
@@ -2721,7 +2924,8 @@ Status Tablet::GetIntentsForCDC(
 
 HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
-  return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  auto safe_time = mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
@@ -2746,20 +2950,22 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 Status Tablet::SetAllCDCRetentionBarriersUnlocked(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
     HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
-    HybridTime min_start_ht_cdc_unstreamed_txns) {
+    HybridTime min_start_ht_cdc_unstreamed_txns,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   // WAL, History, Intents Retention
   RETURN_NOT_OK(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
                                                       cdc_sdk_intents_op_id,
                                                       cdc_sdk_history_cutoff,
                                                       require_history_cutoff,
-                                                      initial_retention_barrier));
+                                                      initial_retention_barrier,
+                                                      barrier_move_selector));
   // Intents Retention setting on txn_participant
   // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
   // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
   // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
-  if (txn_participant) {
+  if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id && txn_participant) {
     VLOG_WITH_PREFIX_AND_FUNC(1)
         << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
@@ -2778,14 +2984,16 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
 // retention barrier
 Status Tablet::SetAllInitialCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "CDC Retention barrier initialization request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
 
   cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
-  if (log && log->cdc_min_replicated_index() > cdc_wal_index) {
+  if (barrier_move_selector.move_cdc_min_replicated_index && log &&
+      log->cdc_min_replicated_index() > cdc_wal_index) {
     log->set_cdc_min_replicated_index(cdc_wal_index);
   }
   auto intent_retention_duration =
@@ -2796,7 +3004,7 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
   return SetAllCDCRetentionBarriersUnlocked(
       cdc_wal_index, cdc_sdk_intents_op_id, intent_retention_duration, cdc_sdk_history_cutoff,
       require_history_cutoff, true /* initial_retention_barrier */,
-      min_start_ht_cdc_unstreamed_txns);
+      min_start_ht_cdc_unstreamed_txns, barrier_move_selector);
 }
 
 // This is called From ChangeMetadaOperation::Apply during the
@@ -2828,7 +3036,7 @@ Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
 Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
     MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff) {
+    bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "Move forward CDC Retention barrier request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
@@ -2843,7 +3051,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
       FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) {
     VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
 
-    if (log) {
+    if (barrier_move_selector.move_cdc_min_replicated_index && log) {
       log->set_cdc_min_replicated_index(cdc_wal_index);
     }
 
@@ -2852,7 +3060,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     RETURN_NOT_OK(SetAllCDCRetentionBarriersUnlocked(
         cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
         require_history_cutoff, false /* initial_retention_barrier */,
-        min_start_ht_cdc_unstreamed_txns));
+        min_start_ht_cdc_unstreamed_txns, barrier_move_selector));
     return true;
   } else {
     VLOG_WITH_PREFIX(1) << "Revision of CDC retention barriers is currently blocked";
@@ -2927,6 +3135,38 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
         *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
   }
 
+  // Analogous to ScheduleValidation on tablet open for non-colocated index tablets.
+  if (schedule_tablet_metadata_validation_) {
+    schedule_tablet_metadata_validation_(*metadata_);
+  }
+
+  // New colocated DocReadContext is constructed unarmed (watermark kMax). Arm with the create HT.
+  //
+  // Arming here is safe against the colocation-id reuse case (DROP then CREATE with the same id),
+  // where the DROP's tombstone lands at its commit hybrid time via an APPLYING op that raft may
+  // order either side of this ADD_TABLE. Note that gives no ordering between the create HT and the
+  // tombstone HT, so the two cases are covered differently:
+  //   - tombstone applies after this: its notify resolves GetTableInfo(colocation_id) through the
+  //     colocation_to_table entry this op just repointed, so it raises *this* context's watermark.
+  //   - tombstone applied before this: its commit hybrid time was already known when this op's ht
+  //     was assigned, so hybrid-clock propagation puts ht above it.
+  // PgMiniTest.TestNoStaleDataOnColocationIdReuse covers the applies-after leg.
+  //
+  // A replayed ADD_TABLE re-arms an already-armed context and bumps the generation, dropping a warm
+  // cache. Perf only.
+  if (table_info_ptr->doc_read_context && table_info_ptr->schema().has_colocation_id()) {
+    HybridTime arm_ht = ht;
+    if (!arm_ht.is_valid() || arm_ht == HybridTime::kMax) {
+      auto safe_time = SafeTime(RequireLease::kFalse);
+      if (safe_time.ok()) {
+        arm_ht = *safe_time;
+      }
+    }
+    if (arm_ht.is_valid() && arm_ht != HybridTime::kMax) {
+      table_info_ptr->doc_read_context->AdvanceTombstoneCacheWatermark(arm_ht);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -2959,9 +3199,10 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
   return Status::OK();
 }
 
-Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
+Status Tablet::MarkBackfillDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
-  auto status = metadata_->OnBackfillDone(op_id, table_id);
+  auto status = metadata_->OnBackfillDone(op_id, table_id, birth_time);
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
     return status;
@@ -3045,6 +3286,12 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
         current_table_info->table_id);
   }
 
+  // The alter could bring back a vector column that was missing when its vector index table was
+  // added to the tablet (see TabletVectorIndexes::DoCreateIndex), instantiate such indexes now.
+  RETURN_NOT_OK(vector_indexes_->CreateSkippedIndexes(
+      VERIFY_RESULT(metadata_->GetTableInfo(current_table_info->table_id)),
+      state_ == State::kBootstrapping));
+
   // Cleanup the index from cache which are deleted or updated.
   if (current_table_info->index_map && !current_table_info->index_map->empty()) {
     for (const auto& index : *current_table_info->index_map) {
@@ -3059,7 +3306,18 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   }
 
   // Flush the updated schema metadata to disk.
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // SetSchema built new DocReadContexts, which start unarmed.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
+}
+
+void Tablet::ArmColocatedTombstoneCaches() {
+  auto safe_time = SafeTime(RequireLease::kFalse);
+  if (safe_time.ok() && safe_time->is_valid()) {
+    metadata_->ArmColocatedTombstoneCaches(*safe_time);
+  }
 }
 
 Status Tablet::InsertPackedSchemaForXClusterTarget(
@@ -3071,7 +3329,13 @@ Status Tablet::InsertPackedSchemaForXClusterTarget(
       current_table_info->table_id);
 
   // Flush the updated schema metadata to disk.
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // This is an AlterSchema early return, so it misses the arm at the end of AlterSchema. The two
+  // TableInfos built above (version-1 and version) carry fresh unarmed DocReadContexts and
+  // colocation_to_table now points at them, so without this the cache stays off until restart.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
 }
 
 Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
@@ -3120,6 +3384,10 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
   return serialized_backfill_spec;
 }
 
+constexpr auto kBackfillReadSnapshotTooOldRemedy =
+    "Consider increasing tserver timestamp_history_retention_interval_sec above the expected "
+    "CREATE INDEX duration and retrying";
+
 // On success, returns
 // - backfilled_until
 // - num rows processed in table
@@ -3129,7 +3397,7 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
 // - IllegalState: for nonretryable errors
 Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     pgwrapper::PGConn* conn, const string& query) {
-  auto result = conn->FetchRow<std::string, double>(query);
+  auto result = conn->FetchRow<std::string, double, double>(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
     LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
@@ -3139,14 +3407,28 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
       return STATUS(TryAgain, libpq_error_msg);
     }
+    // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
+    // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
+    // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
+    // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
+    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
+    if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
+      return STATUS(IllegalState, Format(
+          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy));
+    }
     return STATUS(IllegalState, libpq_error_msg);
   }
-  const auto [returned_spec, num_rows_backfilled_in_index] = *result;
+  const auto [returned_spec, num_rows_backfilled_in_index, num_rows_scanned] = *result;
   PgsqlBackfillSpecPB spec;
   spec.ParseFromString(a2b_hex(returned_spec));
-  VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }";
+  VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }"
+          << ", rows scanned: " << num_rows_scanned;
   VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
-  return std::make_tuple(spec.next_row_key(), spec.count(), num_rows_backfilled_in_index);
+  // The spec's count only accounts for the rows returned to postgres, which excludes the rows DocDB
+  // filtered out when the index predicate is pushed down.  Postgres reports the number of rows
+  // scanned separately, which is the number of base table rows that were processed.
+  return std::make_tuple(
+      spec.next_row_key(), static_cast<uint64_t>(num_rows_scanned), num_rows_backfilled_in_index);
 }
 
 struct BackfillParams {
@@ -3398,6 +3680,27 @@ Status Tablet::BackfillIndexes(
   // We must hold this RequestScope for the lifetime of this iterator to ensure backfill has a
   // consistent snapshot of the tablet w.r.t. transaction state.
   RequestScope scope = VERIFY_RESULT(CreateRequestScope());
+  // The scan below reads via a direct iterator, not the guarded tserver read path, so register the
+  // fixed backfill read time with the retention policy ourselves.  This rejects the read with
+  // SnapshotTooOld if the history cutoff has already advanced past the read time (reading anyway
+  // can silently return garbage-collected state and build an incorrect index) and prevents
+  // compaction from garbage-collecting history past the read time for the duration of this chunk.
+  ScopedReadOperation backfill_read_op;
+  if (PREDICT_TRUE(FLAGS_backfill_index_check_snapshot_too_old)) {
+    auto read_op_result = ScopedReadOperation::Create(
+        this, RequireLease::kFalse, ReadHybridTime::SingleTime(read_time));
+    if (!read_op_result.ok()) {
+      if (read_op_result.status().IsSnapshotTooOld() && metrics()) {
+        metrics()->Increment(TabletCounters::kBackfillReadsRejectedBelowHistoryCutoff);
+      }
+      LOG_WITH_PREFIX(WARNING) << "Rejecting index backfill read at " << read_time << ": "
+                               << read_op_result.status();
+      return STATUS_FORMAT(
+          IllegalState, "Index backfill read of the indexed table failed: $0. $1",
+          read_op_result.status().message().ToBuffer(), kBackfillReadSnapshotTooOldRemedy);
+    }
+    backfill_read_op = std::move(*read_op_result);
+  }
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline,
       docdb::SkipSeek(!backfill_from.empty())));
@@ -3913,9 +4216,7 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
 
 ScopedRWOperation Tablet::CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
     const CoarseTimePoint deadline) const {
-  return ScopedRWOperation(
-      &pending_op_counter_not_blocking_rocksdb_shutdown_start_, abort_pending_op_status_holder_,
-      deadline);
+  return ScopedRWOperation(&pending_op_counter_not_blocking_rocksdb_shutdown_start_, deadline);
 }
 
 ScopedRWOperation Tablet::CreateScopedRWOperationBlockingRocksDbShutdownStart(
@@ -4122,6 +4423,25 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
   OpId intents_op_id = docdb::MaxPersistentOpIdForDb(intents_db_.get(),
                                                      /*invalid_if_no_new_data*/ false);
 
+  // Read the flag AFTER 'regular_op_id', never before. An external batch goes through these steps,
+  // in this order:
+  //   1. its entries are written into the regular db memtable M;
+  //   2. still inside that same write, NonTransactionalBatchWriter::Apply clears the flag -- and
+  //      only after Apply returns does WriteBatch::Iterate stamp M's frontier with the op id;
+  //   3. M is switched, which needs the write thread, so only after that write completes;
+  //   4. M is flushed, and only now does the batch's op id reach regular_op_id.
+  // So if 'regular_op_id' covers an external batch, the flag was cleared in step 2, before its op
+  // id was even stamped into M's frontier -- this load must read false. Reading the flag before
+  // 'regular_op_id' has no such ordering: with multiple flush threads, an earlier flush's listener
+  // could pass the check while a later flush covers the batch, bringing the bug back.
+  //
+  // Conversely, if the flag is true here, nothing covered by 'regular_op_id' is waiting for an
+  // intents db write => advancing the intents flushed op id up to 'regular_op_id' is safe.
+  if (!can_advance_intents_flush_op_id_.load(std::memory_order_acquire)) {
+    VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: external intents write seen";
+    return Status::OK();
+  }
+
   auto intents_flush_ability = intents_db_->GetFlushAbility();
   VLOG_WITH_PREFIX(4) << "regular_op_id: " << regular_op_id << ", intents_op_id: " << intents_op_id
                       << ", intents_flush_ability: " << intents_flush_ability;
@@ -4231,7 +4551,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_getting_safe_time);
   if (require_lease == RequireLease::kFalse) {
-    return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+    return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
   if (ht_lease_provider_) {
@@ -4240,7 +4560,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     if (!ht_lease_result.ok()) {
       if (require_lease == RequireLease::kFallbackToFollower &&
           ht_lease_result.status().IsIllegalState()) {
-        return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
       }
       return ht_lease_result.status();
     }
@@ -4259,7 +4579,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
         InternalError, "Read request hybrid time after leader lease: $0, lease: $1",
         min_allowed, ht_lease);
   }
-  return CheckSafeTime(mvcc_.SafeTime(min_allowed, deadline, ht_lease), min_allowed);
+  return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
 ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
@@ -4825,13 +5145,6 @@ const std::string& Tablet::tablet_id() const {
 // TODO(tsplit): move `partition_split_key` outside the method,
 // covered by https://github.com/yugabyte/yugabyte-db/issues/30092.
 Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_split_key) const {
-  auto error_prefix = [this]() {
-    return Format(
-        "Failed to detect middle key, key_bounds [\"$1\" - \"$2\")",
-        Slice(key_bounds_.lower).ToDebugHexString(),
-        Slice(key_bounds_.upper).ToDebugHexString());
-  };
-
   // TODO(tsplit): should take key_bounds_ into account.
   Slice lower_bound_key;
   if (FLAGS_tablet_split_use_middle_user_key) {
@@ -4839,37 +5152,51 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
     LOG_WITH_PREFIX(INFO) << "Middle split key lower bound: " << lower_bound_key.ToDebugHexString();
   }
   auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey(lower_bound_key));
+  return ValidateAndEncodeSplitKey(std::move(middle_key), partition_split_key);
+}
 
-  // In some rare cases middle key can point to a special internal record which is not visible
+Result<std::string> Tablet::ValidateAndEncodeSplitKey(
+    std::string split_key, std::string* partition_split_key) const {
+  auto error_prefix = [this]() {
+    return Format(
+        "Failed to detect split key, key_bounds [\"$1\" - \"$2\")",
+        Slice(key_bounds_.lower).ToDebugHexString(),
+        Slice(key_bounds_.upper).ToDebugHexString());
+  };
+
+  // In some rare cases the candidate can point to a special internal record which is not visible
   // for a user, but tablet splitting routines expect the specific structure for partition keys
   // that does not match the struct of the internally used records. Moreover, it is expected
-  // to have two child tablets with alive user records after the splitting, but the split
+  // to have child tablets with alive user records after the splitting, but the split
   // by the internal record will lead to a case when one tablet will consist of internal records
   // only and these records will be compacted out at some point making an empty tablet.
-  if (PREDICT_FALSE(dockv::IsMetaKeyType(dockv::DecodeKeyEntryType(middle_key[0])))) {
+  if (PREDICT_FALSE(split_key.empty())) {
+    return STATUS_FORMAT(IllegalState, "$0: got empty key", error_prefix());
+  }
+  if (PREDICT_FALSE(dockv::IsMetaKeyType(dockv::DecodeKeyEntryType(split_key[0])))) {
     return STATUS_FORMAT(
         IllegalState, "$0: got internal record \"$1\"",
-        error_prefix(), Slice(middle_key).ToDebugHexString());
+        error_prefix(), Slice(split_key).ToDebugHexString());
   }
 
   const auto key_part = metadata()->partition_schema()->IsHashPartitioning()
                             ? dockv::DocKeyPart::kUpToHashCode
                             : dockv::DocKeyPart::kWholeDocKey;
-  const auto split_key_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(middle_key, key_part));
+  const auto split_key_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(split_key, key_part));
   if (PREDICT_FALSE(split_key_size == 0)) {
     // Using this verification just to have a more sensible message. The below verification will
     // not pass with split_key_size == 0 also, but its message is not accurate enough. This failure
     // may happen when a key cannot be decoded with key_part inside DocKey::EncodedSize and the key
-    // still valid for any reason (e.g. gettining non-hash key for hash partitioning).
+    // still valid for any reason (e.g. getting non-hash key for hash partitioning).
     return STATUS_FORMAT(
         IllegalState, "$0: got unexpected key \"$1\"",
-        error_prefix(), Slice(middle_key).ToDebugHexString());
+        error_prefix(), Slice(split_key).ToDebugHexString());
   }
 
-  middle_key.resize(split_key_size);
-  const Slice middle_key_slice(middle_key);
-  if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
-      (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
+  split_key.resize(split_key_size);
+  const Slice key_slice(split_key);
+  if (key_slice.compare(key_bounds_.lower) <= 0 ||
+      (!key_bounds_.upper.empty() && key_slice.compare(key_bounds_.upper) >= 0)) {
     // This error occurs if there is no key strictly between the tablet lower and upper bound. It
     // causes the tablet split manager to temporarily delay splitting for this tablet.
     // The error can occur if:
@@ -4880,23 +5207,23 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
     //    an uncompacted tablet anyways.
     return STATUS_EC_FORMAT(IllegalState,
         tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-        "$0: got \"$1\"", error_prefix(), middle_key_slice.ToDebugHexString());
+        "$0: got \"$1\"", error_prefix(), key_slice.ToDebugHexString());
   }
 
-  // Check middle_key is strictly between tablet's partition bounds.
+  // Check key is strictly between tablet's partition bounds.
   const auto& partition_start = metadata()->partition()->partition_key_start();
   const auto& partition_end   = metadata()->partition()->partition_key_end();
   if (metadata()->partition_schema()->IsRangePartitioning()) {
     // No extra conversion is required for the range partitioning.
-    if (partition_start < middle_key && (partition_end.empty() || middle_key < partition_end)) {
-      return middle_key;
+    if (partition_start < split_key && (partition_end.empty() || split_key < partition_end)) {
+      return split_key;
     }
   } else {
     // Sanity check.
     CHECK(metadata()->partition_schema()->IsHashPartitioning());
 
-    // It is required to compare hash codes for the hash paritioning.
-    const auto key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
+    // It is required to compare hash codes for the hash partitioning.
+    const auto key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(split_key));
     if (key_hash.has_value()) {
       const auto key_hash_code = *key_hash;
       const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
@@ -4906,28 +5233,32 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
         if (partition_split_key) {
           *partition_split_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(key_hash_code);
         }
-        return middle_key;
+        return split_key;
       }
     }
   }
 
-  // This error occurs when middle key is not strictly between partition bounds.
+  // This error occurs when key is not strictly between partition bounds.
   return STATUS_EC_FORMAT(IllegalState,
       tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
       "$0 partition bounds [\"$1\" - \"$2\"): got \"$3\"",
       error_prefix(), Slice{partition_start}.ToDebugHexString(),
-      Slice{partition_end}.ToDebugHexString(), middle_key_slice.ToDebugHexString());
+      Slice{partition_end}.ToDebugHexString(), key_slice.ToDebugHexString());
 }
 
 Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) const {
   SCHECK_GE(
       split_factor, kDefaultNumSplitParts, InvalidArgument, "Split factor must be at least 2");
 
+  if (FLAGS_use_cross_split_key_detection_algorithm) {
+    return DoGetSplitKeysCross(split_factor);
+  }
+
   if (split_factor > kDefaultNumSplitParts) {
     // Use a naive transitional N-way partitioning algorithm for hash-partitioned tables.
     if (metadata()->partition_schema()->IsHashPartitioning()) {
-      const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
-          metadata()->partition()->GetKeysAsHashBoundsInclusive());
+      const auto hash_bounds =
+          VERIFY_RESULT_PREPEND_FUNC(metadata()->partition()->GetKeysAsHashBoundsInclusive());
       const auto split_keys_result = dockv::PartitionSchema::CreateHashSplitKeys(
           split_factor, hash_bounds.first, hash_bounds.second);
       if (!split_keys_result.ok()) {
@@ -4936,8 +5267,9 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) con
             tserver::TabletServerError(
                 tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
             "Failed to detect split keys for using split factor $1: "
-            "partition [\"$2\" - \"$3\"] is too small", split_factor,
-            Uint16ToHexString(hash_bounds.first), Uint16ToHexString(hash_bounds.second));
+            "partition [\"$2\" - \"$3\"] is too small",
+            split_factor, Uint16ToHexString(hash_bounds.first),
+            Uint16ToHexString(hash_bounds.second));
       }
 
       const auto num_keys = split_factor - 1;
@@ -4945,16 +5277,15 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) con
       split_keys.partition_keys = std::move(*split_keys_result);
       split_keys.encoded_keys.reserve(num_keys);
       for (const auto& partition_key : split_keys.partition_keys) {
-        split_keys.encoded_keys.push_back(VERIFY_RESULT(
-            metadata()->partition_schema()->GetEncodedPartitionKey(partition_key)));
+        split_keys.encoded_keys.push_back(
+            VERIFY_RESULT(metadata()->partition_schema()->GetEncodedPartitionKey(partition_key)));
       }
 
       return split_keys;
     }
 
     return STATUS_FORMAT(
-        NotSupported,
-        "Split factor $0 (tablet $1) is not supported for the range partitioning",
+        NotSupported, "Split factor $0 (tablet $1) is not supported for the range partitioning",
         split_factor, tablet_id());
   }
 
@@ -4964,13 +5295,88 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) con
     partition_key = encoded_key;
   }
 
-  return SplitKeysData {
-    .encoded_keys = {encoded_key},
-    .partition_keys = {partition_key}
-  };
+  return SplitKeysData{{encoded_key}, {partition_key}};
+}
+
+Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor) const {
+  SCHECK_GE(
+      split_factor, kDefaultNumSplitParts, InvalidArgument, "Split factor must be at least 2");
+
+  const int num_keys = split_factor - 1;
+
+  // Puts lower bound to data key so metadata can't be used as split key
+  Slice lower_bound_key = key_bounds_.lower;
+  if (FLAGS_tablet_split_use_middle_user_key) {
+    lower_bound_key =
+        std::max(lower_bound_key, Slice(&dockv::kMinRegularDbTableRowFirstByte, 1));
+  }
+  const Slice upper_bound_key = key_bounds_.upper;
+
+  const uint64_t total_data_size = VERIFY_RESULT(regular_db_->TotalDataSize());
+  SCHECK_GT(total_data_size, 0U, IllegalState, "No SST data available for size-based split");
+
+  SplitKeysData split_keys;
+  split_keys.encoded_keys.reserve(num_keys);
+  split_keys.partition_keys.reserve(num_keys);
+
+  const uint64_t lower_cross = VERIFY_RESULT(regular_db_->Cross(lower_bound_key));
+  const uint64_t upper_cross = upper_bound_key.empty()
+    ? total_data_size : VERIFY_RESULT(regular_db_->Cross(upper_bound_key));
+
+  DCHECK_GE(upper_cross, lower_cross);
+  auto chunk_size = (upper_cross - lower_cross) / split_factor;
+
+  std::string last_key_buf = lower_bound_key.ToBuffer();
+  for (int i = 0; i < num_keys; ++i) {
+    auto target_size = lower_cross + chunk_size * (i + 1);
+    auto split_data_key =
+        regular_db_->FindTargetKey(last_key_buf, upper_bound_key, target_size);
+    if (PREDICT_FALSE(!split_data_key.ok())) {
+      // The Cross search found nothing to measure. For a 2-way split the approximate middle key is
+      // a fine answer, so fall back rather than fail; call GetEncodedMiddleSplitKey directly, since
+      // going through DoGetSplitKeys would re-check the flag and recurse. Not extended to wider
+      // splits: the only non-Cross N-way algorithm divides hash space evenly rather than data,
+      // which is what Cross exists to replace, so falling back would quietly return a bad split.
+      if (split_data_key.status().IsIncomplete() && split_factor == kDefaultNumSplitParts) {
+        LOG_WITH_PREFIX_AND_FUNC(WARNING)
+            << "Cross split key detection did not converge, falling back to the middle key: "
+            << split_data_key.status();
+        std::string partition_key;
+        auto encoded_key = VERIFY_RESULT(GetEncodedMiddleSplitKey(&partition_key));
+        if (partition_key.empty()) {
+          partition_key = encoded_key;
+        }
+        return SplitKeysData{{encoded_key}, {partition_key}};
+      }
+      return split_data_key.status();
+    }
+    std::string split_partition_key;
+    auto split_encoded_key = VERIFY_RESULT(
+        ValidateAndEncodeSplitKey(std::move(*split_data_key), &split_partition_key));
+    if (split_partition_key.empty()) {
+      split_partition_key = split_encoded_key;
+    }
+    if (!split_keys.encoded_keys.empty() && split_encoded_key <= split_keys.encoded_keys.back()) {
+      return STATUS_EC_FORMAT(
+          IllegalState,
+          tserver::TabletServerError(
+              tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+          "Failed to detect strictly increasing split keys for split factor $0: "
+          "got \"$1\" after \"$2\"",
+          split_factor, Slice(split_encoded_key).ToDebugHexString(),
+          Slice(split_keys.encoded_keys.back()).ToDebugHexString());
+    }
+    last_key_buf = split_encoded_key;
+    split_keys.encoded_keys.push_back(std::move(split_encoded_key));
+    split_keys.partition_keys.push_back(std::move(split_partition_key));
+  }
+
+  return split_keys;
 }
 
 Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
   auto result = DoGetSplitKeys(split_factor);
   if (!result.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(INFO) << result.status();
@@ -5061,7 +5467,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions&
 
 Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
-  tablet::VectorIndexList vector_index_list { vector_indexes().Collect(vector_index_ids) };
+  auto vector_index_list = vector_indexes().Collect(vector_index_ids);
   vector_index_list.Compact();
   auto status = vector_index_list.WaitForCompaction();
   WARN_WITH_PREFIX_NOT_OK(
@@ -5251,7 +5657,7 @@ Status Tablet::RestoreFinished(
   metadata_->UnregisterRestoration(restoration_id);
   if (restoration_hybrid_time) {
     metadata_->SetRestorationHybridTime(restoration_hybrid_time);
-    if (transaction_participant_ && FLAGS_consistent_restore) {
+    if (transaction_participant_) {
       transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
     }
   }
@@ -5264,9 +5670,7 @@ Status Tablet::RestoreFinished(
 
 Status Tablet::CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time) {
   auto restoration_hybrid_time = metadata_->CheckCompleteRestorations(restoration_complete_time);
-  if (restoration_hybrid_time != HybridTime::kMin
-      && transaction_participant_
-      && FLAGS_consistent_restore) {
+  if (restoration_hybrid_time != HybridTime::kMin && transaction_participant_) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
 
@@ -5336,8 +5740,9 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
   for (const auto& file : inputs) {
     input_names.push_back(file->fd.GetNumber());
     if (!file->smallest.user_frontier) {
-      // This should not happen, so consider input range as a full range.
-      LOG(DFATAL) << "Input file without frontier: " << file->ToString();
+      // Frontiers are reset on files imported by bulk load, otherwise it should not happen.
+      // In both cases consider input range as a full range.
+      LOG_IF(DFATAL, !file->imported) << "Input file without frontier: " << file->ToString();
       result.input_min = HybridTime::kMin;
       result.input_max = HybridTime::kMax;
       continue;
@@ -5369,13 +5774,13 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
     result.HandleOtherRange(min_running_ht, HybridTime::kMax);
   }
 
-  auto frontiers = regular_db_->CalcMemTableFrontiers();
-  if (frontiers.first) {
-    DCHECK_ONLY_NOTNULL(frontiers.second.get());
+  auto frontiers = regular_db_->GetInMemoryFrontiers();
+  if (frontiers.smallest) {
+    DCHECK_ONLY_NOTNULL(frontiers.largest.get());
     VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Mem table frontiers: " << frontiers.first->ToString()
-        << "-" << frontiers.second->ToString();
-    result.HandleOtherRange(*frontiers.first, *frontiers.second);
+        << "Mem table frontiers: " << frontiers.smallest->ToString()
+        << "-" << frontiers.largest->ToString();
+    result.HandleOtherRange(*frontiers.smallest, *frontiers.largest);
   }
 
   auto files = regular_db_->GetLiveFilesMetaData();
@@ -5676,17 +6081,13 @@ Status Tablet::GetTabletKeyRanges(
     WriteBuffer* keys_buffer, TableIdView colocated_table_id) const {
   if (table_type_ != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
-        NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: ", tablet_id());
-  }
-  if (!metadata_->colocated()) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "GetTabletKeyRanges is only supported for colocated tables, tablet_id: ", tablet_id());
+        NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: $0", tablet_id());
   }
   if (!metadata_->partition_schema()->IsRangePartitioning()) {
     return STATUS_FORMAT(
         NotSupported,
-        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: ", tablet_id());
+        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: $0",
+        tablet_id());
   }
   return GetTabletKeyRanges(
       lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, direction, max_key_length,
@@ -5731,6 +6132,12 @@ Result<RetrieveFullDocKeyResult> RetrieveFullDocKey(
 
   for (; data_entry.Valid(); data_entry = MoveIterator<direction>(data_iter)) {
     VLOG_WITH_FUNC(2) << log_prefix << "data_entry.key: " << data_entry.key.ToDebugHexString();
+    if (direction == Direction::kBackward && !end_bound.empty() && data_entry.key < end_bound) {
+      // The doc key prefix of data_entry.key is also below end_bound, so nothing left to return.
+      // RocksDB records of the doc key equal to end_bound sort above it (they have a hybrid time
+      // suffix) and are excluded by the decoded key check below.
+      return RetrieveFullDocKeyResult::kReachedEnd;
+    }
     // Use encoded doc key to avoid breaking data related to the same row into halves.
     const auto doc_key_size_result =
         dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
@@ -5959,9 +6366,6 @@ Status Tablet::GetTabletKeyRanges(
     partition_lower_bound_key = table_key_prefix;
     encoded_partition_key_end = IncrementedCopy(table_key_prefix);
     partition_upper_bound_key = encoded_partition_key_end;
-  } else if (key_bounds_.IsInitialized()) {
-    partition_lower_bound_key = key_bounds_.lower;
-    partition_upper_bound_key = key_bounds_.upper;
   } else {
     const auto partition_schema = metadata_->partition_schema();
     const auto partition = metadata_->partition();
@@ -6013,6 +6417,13 @@ Status Tablet::GetTabletKeyRanges(
 
   RSTATUS_DCHECK(
       use_empty_as_last_key.has_value(), InternalError, "use_empty_as_last_key is not set");
+
+  // Regular DB metadata records (see IsRegularDBMetaKeyType) sort before all user table rows and
+  // are not valid doc keys, so start from the minimum possible table row key instead.
+  const Slice table_rows_start(&dockv::kMinRegularDbTableRowFirstByte, 1);
+  if (lower_bound_key < table_rows_start) {
+    lower_bound_key = table_rows_start;
+  }
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
                                << " upper_bound_key: " << upper_bound_key.ToDebugHexString()

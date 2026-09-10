@@ -58,6 +58,7 @@
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -202,6 +203,9 @@ void MiniTabletServer::Shutdown() {
   }
   if (started_) {
     if (shutdown_pg_) {
+      // The ysql lease threads call back into the PgSupervisor to restart or kill PG. Stop them
+      // first, since shutdown_pg_ destroys the PgSupervisor in the mini cluster.
+      server_->ShutdownYSQLLeaseManager();
       shutdown_pg_();
     }
     // Save bind address and port so we can later restart the server.
@@ -252,7 +256,15 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
     if (!tablet) {
       return Status::OK();
     }
-    return tablet->Flush(mode, flags, rocksdb::FlushReason::kTestOnly);
+    // A tablet can start shutting down concurrently (e.g. tombstoned while being remote
+    // bootstrapped), and then it has nothing left to flush. Holding the blocking operation across
+    // the flush skips such a tablet instead of tripping the DFATAL inside Tablet::Flush.
+    auto flush_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
+    if (!flush_op.ok()) {
+      return Status::OK();
+    }
+    return tablet->Flush(
+        mode, flags | tablet::FlushFlags::kNoScopedOperation, rocksdb::FlushReason::kTestOnly);
   });
 }
 
@@ -265,7 +277,10 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     if (!tablet) {
       return Status::OK();
     }
-    return tablet->ForceManualRocksDBCompact(skip_flush);
+    const auto status = tablet->ForceManualRocksDBCompact(skip_flush);
+    // A tablet whose RocksDB shutdown has already started, e.g. because it is being deleted
+    // concurrently, has nothing left to compact.
+    return status.IsShutdownInProgress() ? Status::OK() : status;
   });
 }
 

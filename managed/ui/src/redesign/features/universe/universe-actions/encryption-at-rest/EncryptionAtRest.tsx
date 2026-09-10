@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import clsx from 'clsx';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
@@ -23,6 +23,7 @@ import { YBLoading } from '../../../../../components/common/indicators';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { transitToUniverse } from '../../universe-form/utils/helpers';
 
 //EAR Component
 interface EncryptionAtRestProps {
@@ -50,10 +51,10 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     api.getKMSConfigs
   );
   //fetch kms history
-  const {
-    data: kmsHistory = [],
-    isLoading: isKMSHistoryLoading
-  } = useQuery(QUERY_KEY.getKMSHistory, () => api.getKMSHistory(universeId));
+  const { data: kmsHistory = [], isLoading: isKMSHistoryLoading } = useQuery(
+    QUERY_KEY.getKMSHistory,
+    () => api.getKMSHistory(universeId)
+  );
 
   //kms info
   const { encryptionAtRestEnabled, kmsConfigUUID } = encryptionAtRestConfig;
@@ -71,7 +72,17 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit } = formMethods;
+  const { control, watch, handleSubmit, reset } = formMethods;
+
+  // Modal stays mounted in SecurityTab; defaultValues only apply on first mount.
+  useEffect(() => {
+    if (!open) return;
+    reset({
+      encryptionAtRestEnabled,
+      kmsConfigUUID: kmsConfigUUID ?? '',
+      rotateUniverseKey: false
+    });
+  }, [open, encryptionAtRestEnabled, kmsConfigUUID, reset]);
 
   //watch field values
   const earToggleEnabled = watch(EAR_FIELD_NAME);
@@ -99,6 +110,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     {
       onSuccess: () => {
         void queryClient.invalidateQueries(QUERY_KEY.getKMSHistory);
+        void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeId]);
 
         if (earToggleEnabled) {
           //enabling kms for the first time
@@ -117,7 +129,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
           //disabling kms
           toast.warn(t('universeActions.encryptionAtRest.earDisabedSuccess'), TOAST_OPTIONS);
         }
-
+        if (universeId) transitToUniverse(universeId);
         onClose();
       },
       onError: () => {

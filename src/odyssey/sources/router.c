@@ -885,9 +885,11 @@ static uint32_t yb_count_all_active_routes(od_router_t *router, od_route_t *curr
  */
 static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 					 od_route_t *current_route,
-					 uint32_t per_route_quota)
+					 uint32_t per_route_quota,
+					 uint32_t recipient_pool_size)
 {
 	od_server_t *idle_server = NULL;
+	od_instance_t *instance = router->global->instance;
 	od_router_lock(router);
 
 	od_route_pool_t *pool = &router->route_pool;
@@ -905,17 +907,27 @@ static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 		uint32_t route_yb_in_use =
 			od_server_pool_total(&route->server_pool);
 		if (route_yb_in_use > per_route_quota) {
-			idle_server = od_pg_server_pool_next(&route->server_pool,
-				OD_SERVER_IDLE);
-
 			/*
-			 * Note the lack of od_route_unlock(route) in this case.
-			 * The caller is responsible for unlocking the route once it is done
-			 * shutting down this server.
+			 * YB: When the recipient route is at or over quota, only evict
+			 * from a donor route that has at least two more connections than
+			 * the recipient, so donating one slot never makes the recipient
+			 * overshoot the donor.
 			 */
-			if (idle_server) {
-				od_router_unlock(router);
-				return idle_server;
+			bool donor_is_up_by_two = route_yb_in_use > recipient_pool_size + 1;
+			bool recipient_is_under_quota = recipient_pool_size < per_route_quota;
+			if (recipient_is_under_quota || donor_is_up_by_two) {
+				idle_server = od_pg_server_pool_next(
+					&route->server_pool, OD_SERVER_IDLE);
+
+				/*
+				 * Note the lack of od_route_unlock(route) in this case.
+				 * The caller is responsible for unlocking the route once it is done
+				 * shutting down this server.
+				 */
+				if (idle_server) {
+					od_router_unlock(router);
+					return idle_server;
+				}
 			}
 		}
 		od_route_unlock(route);
@@ -1207,7 +1219,9 @@ od_router_status_t od_router_attach(od_router_t *router,
 					(uint32_t)instance->config.yb_ysql_max_connections /
 						num_active_routes;
 				od_server_t *idle_server =
-					yb_get_idle_server_to_close(router, route, per_route_quota);
+					yb_get_idle_server_to_close(
+						router, route, per_route_quota,
+						connections_in_pool);
 				if (idle_server) {
 					// Close the server and make space for ourselves.
 					od_route_t *idle_route = idle_server->route;

@@ -59,6 +59,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
@@ -724,10 +725,8 @@ class BlockerData {
 
     if (should_signal) {
       if (txn_status_ht_.is_special()) {
-        // We might see kMax for status COMITTED. Edit the below check on failures, if encountered.
-        DCHECK(IsAbortedUnlocked() || IsPromotedUnlocked())
-            << "Unexpected special status ht in blocker " << txn_status_or_res_
-            << " @ " << txn_status_ht_;
+        // Special ht is expected for committed/promoted transactions, or when the txn status rpc
+        // to the coordinator fails and txn_status_ht_ stays at its kMin initializer.
         txn_status_ht_ = now;
       }
       return GetWaitersToSignalUnlocked();

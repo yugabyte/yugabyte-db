@@ -25,7 +25,6 @@ import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApi;
@@ -136,13 +135,15 @@ public class PlatformTest extends FakeDBApplication {
   // call start in test method instead of setup so that we can test cases where remote app
   // is not running
   FakeApi startRemoteApp() {
-    remoteApp =
-        provideApplication(
-            ImmutableMap.of(
-                "play.allowGlobalApplication",
-                false,
-                AppConfigHelper.YB_STORAGE_PATH,
-                remoteStorage.getRoot().getAbsolutePath()));
+    // The remote app is a fully independent YBA instance and must not share the local instance's
+    // database (otherwise e.g. the singleton HA config row collides). With H2 each application got
+    // its own random in-memory database; on the shared embedded Postgres we request an isolated
+    // one.
+    Map<String, Object> remoteConfig = new java.util.HashMap<>();
+    remoteConfig.put("play.allowGlobalApplication", false);
+    remoteConfig.put(AppConfigHelper.YB_STORAGE_PATH, remoteStorage.getRoot().getAbsolutePath());
+    remoteConfig.putAll(com.yugabyte.yw.common.TestPostgres.newIsolatedDatabaseConfig());
+    remoteApp = provideApplication(remoteConfig);
     Helpers.start(remoteApp);
     mat = remoteApp.getWrappedApplication().materializer();
     Database remoteEBenServer = DB.getDefault();

@@ -16,8 +16,8 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -69,17 +69,25 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
 
     doNothing().when(mockTelemetryProviderService).throwExceptionIfRuntimeFlagDisabled();
     doNothing().when(mockTelemetryProviderService).validateTelemetryProvider(any());
-    doCallRealMethod().when(mockTelemetryProviderService).list(any(UUID.class));
-    doCallRealMethod().when(mockTelemetryProviderService).list(any(Set.class));
-    doCallRealMethod().when(mockTelemetryProviderService).save(any());
-    doCallRealMethod()
+    // Defensive setUp stubs: each is only exercised by a subset of the tests. Declared lenient so
+    // that under the shared embedded-Postgres infra (where test ordering can leave some of them
+    // unused in a given run) MockitoJUnitRunner's strict-stub check does not fail. Functional
+    // assertions are unaffected.
+    lenient().doCallRealMethod().when(mockTelemetryProviderService).list(any(UUID.class));
+    lenient().doCallRealMethod().when(mockTelemetryProviderService).list(any(Set.class));
+    lenient().doCallRealMethod().when(mockTelemetryProviderService).save(any());
+    lenient()
+        .doCallRealMethod()
         .when(mockTelemetryProviderService)
         .checkIfExists(any(UUID.class), any(UUID.class));
-    doCallRealMethod().when(mockTelemetryProviderService).getOrBadRequest(any(), any());
-    doCallRealMethod().when(mockTelemetryProviderService).getOrBadRequest(any(UUID.class));
-    doCallRealMethod().when(mockTelemetryProviderService).get(any(UUID.class));
-    doCallRealMethod().when(mockTelemetryProviderService).isProviderInUse(any(), any());
-    doCallRealMethod().when(mockTelemetryProviderService).delete(any(UUID.class));
+    lenient().doCallRealMethod().when(mockTelemetryProviderService).getOrBadRequest(any(), any());
+    lenient()
+        .doCallRealMethod()
+        .when(mockTelemetryProviderService)
+        .getOrBadRequest(any(UUID.class));
+    lenient().doCallRealMethod().when(mockTelemetryProviderService).get(any(UUID.class));
+    lenient().doCallRealMethod().when(mockTelemetryProviderService).isProviderInUse(any(), any());
+    lenient().doCallRealMethod().when(mockTelemetryProviderService).delete(any(UUID.class));
     doNothing()
         .when(mockTelemetryProviderService)
         .throwRuntimeFlagDisabledForExporterTypeException(any());

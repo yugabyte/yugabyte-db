@@ -92,5 +92,16 @@ export const useExportTelemetryStyles = makeStyles((theme) => ({
     alignItems: 'center',
 
     width: 'fit-content'
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+
+    width: '100%',
+    marginTop: theme.spacing(1)
+  },
+  headerInput: {
+    flex: 1
   }
 }));

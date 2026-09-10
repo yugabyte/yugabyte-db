@@ -5,12 +5,18 @@ package com.yugabyte.yw.common.operator;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -34,6 +40,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Indexer;
@@ -43,6 +50,7 @@ import io.yugabyte.operator.v1alpha1.RestoreJobSpec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -60,6 +68,12 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
   @Mock
   MixedOperation<RestoreJob, KubernetesResourceList<RestoreJob>, Resource<RestoreJob>>
       resourceClient;
+
+  @Mock
+  NonNamespaceOperation<RestoreJob, KubernetesResourceList<RestoreJob>, Resource<RestoreJob>>
+      inNamespaceResourceClient;
+
+  @Mock Resource<RestoreJob> restoreJobResource;
 
   @Mock BackupHelper backupHelper;
   @Mock ValidatingFormFactory formFactory;
@@ -242,5 +256,138 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     assertEquals(testCustomer.getUuid(), params.customerUUID);
     assertEquals(testUniverse.getUniverseUUID(), params.getUniverseUUID());
     assertEquals(testStorageConfig.getConfigUUID(), params.storageConfigUUID);
+  }
+
+  @Test
+  public void testGetRestoreParamsResolvesKmsConfigWhenSet() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    UUID resolvedKmsConfigUUID = UUID.randomUUID();
+    doReturn(resolvedKmsConfigUUID)
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(eq("test-kms-config-cr"), eq(NAMESPACE));
+
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    restoreJob.getSpec().setKmsConfig("test-kms-config-cr");
+
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    // The referenced KMSConfig CR is resolved to its YBA config UUID and plumbed into the params.
+    assertEquals(resolvedKmsConfigUUID, params.kmsConfigUUID);
+    verify(operatorUtils).resolveReadyKmsConfigUuid(eq("test-kms-config-cr"), eq(NAMESPACE));
+  }
+
+  @Test
+  public void testGetRestoreParamsLeavesKmsConfigNullWhenUnset() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    // kmsConfig left unset on the spec (plaintext backup case).
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertNull(params.kmsConfigUUID);
+    verify(operatorUtils, never()).resolveReadyKmsConfigUuid(anyString(), anyString());
+  }
+
+  @Test
+  public void testOmitKeyspaceRestoresEachPieceToOriginalName() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    BackupTableParams pieceOne = new BackupTableParams();
+    pieceOne.setKeyspace("db_one");
+    pieceOne.storageLocation = "s3://test-bucket/db_one";
+    BackupTableParams pieceTwo = new BackupTableParams();
+    pieceTwo.setKeyspace("db_two");
+    pieceTwo.storageLocation = "s3://test-bucket/db_two";
+    BackupTableParams backupInfo = testBackup.getBackupInfo();
+    backupInfo.backupList = new ArrayList<>(List.of(pieceOne, pieceTwo));
+    testBackup.setBackupInfo(backupInfo);
+    testBackup.save();
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    restoreJob.getSpec().setKeyspace(null);
+
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertEquals(2, params.backupStorageInfoList.size());
+    assertEquals("db_one", params.backupStorageInfoList.get(0).keyspace);
+    assertEquals("db_two", params.backupStorageInfoList.get(1).keyspace);
+  }
+
+  @Test
+  public void testNamedKeyspaceRenamesSingleKeyspaceBackup() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    BackupTableParams piece = new BackupTableParams();
+    piece.setKeyspace("original_db");
+    piece.storageLocation = "s3://test-bucket/original_db";
+    BackupTableParams backupInfo = testBackup.getBackupInfo();
+    backupInfo.backupList = new ArrayList<>(List.of(piece));
+    testBackup.setBackupInfo(backupInfo);
+    testBackup.save();
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    restoreJob.getSpec().setKeyspace("renamed_db");
+
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertEquals(1, params.backupStorageInfoList.size());
+    assertEquals("renamed_db", params.backupStorageInfoList.get(0).keyspace);
+  }
+
+  @Test
+  public void testNamedKeyspaceWithMultiKeyspaceBackupFailsWithoutTask() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    BackupTableParams pieceOne = new BackupTableParams();
+    pieceOne.setKeyspace("db_one");
+    pieceOne.storageLocation = "s3://test-bucket/db_one";
+    BackupTableParams pieceTwo = new BackupTableParams();
+    pieceTwo.setKeyspace("db_two");
+    pieceTwo.storageLocation = "s3://test-bucket/db_two";
+    BackupTableParams backupInfo = testBackup.getBackupInfo();
+    backupInfo.backupList = new ArrayList<>(List.of(pieceOne, pieceTwo));
+    testBackup.setBackupInfo(backupInfo);
+    testBackup.save();
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    restoreJob.getSpec().setKeyspace("one_name_for_all");
+
+    Exception ex =
+        assertThrows(
+            Exception.class, () -> restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob));
+    assertTrue(ex.getMessage().contains("single keyspace"));
+
+    when(resourceClient.inNamespace(NAMESPACE)).thenReturn(inNamespaceResourceClient);
+    when(inNamespaceResourceClient.resource(any(RestoreJob.class))).thenReturn(restoreJobResource);
+
+    restoreJobReconciler.onAdd(restoreJob);
+    verify(backupHelper, never()).createRestoreTask(any(), any());
   }
 }

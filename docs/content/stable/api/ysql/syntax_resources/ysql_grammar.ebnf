@@ -151,6 +151,11 @@ alter_procedure = 'ALTER' 'PROCEDURE' subprogram_name '(' [ subprogram_signature
                  ( special_fn_and_proc_attribute |
                    ( alterable_fn_and_proc_attribute { alterable_fn_and_proc_attribute } ['RESTRICT'] ) ) ;
 
+(* 'ALTER' 'ROUTINE' *)
+alter_routine = 'ALTER' 'ROUTINE' subprogram_name '(' [ subprogram_signature ] ')' \
+                 ( special_fn_and_proc_attribute |
+                 ( ( alterable_fn_and_proc_attribute | alterable_fn_only_attribute ) { ( alterable_fn_and_proc_attribute | alterable_fn_only_attribute ) } ['RESTRICT'] ) ) ;
+
 (* 'ALTER' 'ROLE' *)
 alter_role = 'ALTER' 'ROLE' role_specification [ [ 'WITH' ] alter_role_option { ',' alter_role_option } ] ;
 
@@ -227,6 +232,7 @@ alter_table_action =
     | 'RENAME' 'TO' table_name
     | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
     | 'ALTER' [ 'COLUMN' ] column_name [ alter_column_action ]
+    | 'ALTER' 'CONSTRAINT' constraint_name [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ]
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name
@@ -267,6 +273,26 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              'PRIMARY' 'KEY' |
                              references_clause )
                           [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
+
+(* 'ALTER' 'TYPE' *)
+alter_type_rename = 'ALTER' 'TYPE' type_name 'RENAME' 'TO' new_name ;
+
+alter_type_owner = 'ALTER' 'TYPE' type_name 'OWNER' 'TO'
+                     ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) ;
+
+alter_type_set_schema = 'ALTER' 'TYPE' type_name 'SET' 'SCHEMA' schema_name ;
+
+alter_type_rename_value = 'ALTER' 'TYPE' type_name 'RENAME' 'VALUE'
+                            existing_enum_value 'TO' new_enum_value ;
+
+alter_type_add_value = 'ALTER' 'TYPE' type_name 'ADD' 'VALUE' [ 'IF' 'NOT' 'EXISTS' ]
+                         new_enum_value [ ( 'BEFORE' | 'AFTER' ) existing_enum_value ] ;
+
+alter_type_drop_attribute = 'ALTER' 'TYPE' type_name
+                              drop_attribute_action { ',' drop_attribute_action } ;
+
+drop_attribute_action = 'DROP' 'ATTRIBUTE' [ 'IF' 'EXISTS' ] attribute_name
+                          [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'ALTER' 'INDEX' *)
 alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
@@ -963,7 +989,9 @@ alter_aggregate = 'ALTER' 'AGGREGATE' aggregate_name '(' aggregate_signature ')'
 
 alter_aggregate_action =
   'RENAME' 'TO' new_name |
-  'OWNER' 'TO' ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) ;
+  'OWNER' 'TO' ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) |
+  'SET' 'SCHEMA' schema_name ;
+
 
 (* 'DROP' 'AGGREGATE' *)
 drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] ( aggregate_name '(' aggregate_signature ')' )
@@ -1569,6 +1597,8 @@ using_expression = expression ;
 check_expression = expression ;
 condition = expression ;
 new_name = name ;
+new_enum_value = text_literal ;
+existing_enum_value = text_literal ;
 version = text_literal ;
 extension_name = name ;
 

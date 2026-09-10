@@ -24,6 +24,7 @@
 #include "yb/util/algorithm_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 namespace yb::dockv {
 

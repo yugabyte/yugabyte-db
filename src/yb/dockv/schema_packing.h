@@ -90,6 +90,15 @@ class SchemaPacking {
     return columns_[idx];
   }
 
+  size_t vector_columns_count() const {
+    return vector_columns_idx_.size();
+  }
+
+  const ColumnPackingData& vector_column_packing_data(size_t idx) const {
+    DCHECK_LT(idx, vector_columns_idx_.size());
+    return columns_[vector_columns_idx_[idx]];
+  }
+
   // Size of prefix before actual data.
   size_t prefix_len() const {
     return varlen_columns_count_ * sizeof(uint32_t);
@@ -134,6 +143,7 @@ class SchemaPacking {
   bool DoCouldPack(const Col& values) const;
 
   std::vector<ColumnPackingData> columns_;
+  boost::container::small_vector<size_t, 2> vector_columns_idx_;
   IdMapping column_to_idx_;
   size_t varlen_columns_count_;
 };

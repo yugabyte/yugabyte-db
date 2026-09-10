@@ -80,9 +80,27 @@ class TableReader {
   // the data for that key begins (or would begin if the key were
   // present in the file).  The returned value is in terms of file
   // bytes, and so includes effects like compression of the underlying data.
-  // E.g., the approximate offset of the last key in the table will
-  // be close to the file length.
+  // If the key is greater than the last key in the file, return the approximate
+  // end of the data (see ApproximateOffsetOfDataEnd).
+  // Pure virtual on purpose: this is a size estimate with no error channel (see
+  // VersionSet::ApproximateSize, which returns plain uint64_t), so a reader that cannot answer
+  // must say so by returning 0, not by failing. Leaving it pure means a new TableReader cannot
+  // forget to decide.
   virtual uint64_t ApproximateOffsetOf(const Slice& key) = 0;
+
+  // Given a key, return the byte offset of the smallest key in the file that is greater than or
+  // equal to the given key.
+  // If the key is greater than the last key in the file, return the approximate end of the data
+  // If the key is less than the first key in the file, return 0.
+  virtual yb::Result<uint64_t> SeekOffsetOf(const Slice& key) {
+    return STATUS(NotSupported, "SeekOffsetOf() not supported");
+  }
+
+  // Returns approximate offset of the end of all data blocks (i.e. approximate size of the
+  // data in the file, ignoring metadata/index/filter blocks). Used for total file size
+  // estimation (see DB::TotalDataSize) and as the past-the-last-key answer for
+  // ApproximateOffsetOf(). Formats that don't support this return 0.
+  virtual uint64_t ApproximateOffsetOfDataEnd() const { return 0; }
 
   // Set up the table for Compaction. Might change some parameters with
   // posix_fadvise
@@ -131,6 +149,21 @@ class TableReader {
   // into two parts containing roughly the same number of keys.
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) {
     return STATUS(NotSupported, "GetMiddleKey() not supported");
+  }
+
+  // Returns an approximate middle key of the SST file within the bounds
+  // (lower_bound_key, upper_bound_key]. Both bounds are required: an empty bound returns
+  // InvalidArgument.
+  // The result is a key that exists in the data blocks -- never a shortened index separator --
+  // strictly above lower_bound_key and no higher than upper_bound_key. Only the position is
+  // approximate: how near the middle it lands depends on the index's restart granularity, and when
+  // the index cannot supply an interior midpoint at all the answer comes from a single data block
+  // and may sit well off centre.
+  // Returns Incomplete when this file has no key in that range, or has one but nothing it can
+  // offer as a midpoint. Either way the caller should move on (see Version::FindTargetKey).
+  virtual yb::Result<std::string> GetMiddleKeyWithinBounds(
+      Slice lower_bound_key, Slice upper_bound_key) {
+    return STATUS(NotSupported, "GetMiddleKeyWithinBounds() not supported");
   }
 };
 

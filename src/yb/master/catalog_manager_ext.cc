@@ -50,6 +50,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
@@ -118,7 +119,7 @@ DEFINE_RUNTIME_bool(enable_namespace_snapshot_workflow, true,
     "part of snapshot");
 
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
-                 "Probability of crash during the RESTORE_SYS_CATALOG phase.");
+    "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
 DEFINE_test_flag(bool, import_snapshot_failed, false,
     "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
@@ -147,8 +148,10 @@ DEFINE_RUNTIME_AUTO_bool(enable_export_snapshot_using_relfilenode, kExternal, fa
 
 DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 
 namespace yb {
@@ -1079,6 +1082,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -2197,12 +2201,11 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     VLOG_WITH_FUNC(2) << "Committed to disk: table " << table->id() << " repartition from "
                       << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
 
-    // Commit to memory. Commit new tablets (addition) first since that doesn't break anything.
-    // Commit table next since new tablets are already committed and ready to be referenced. Commit
-    // old tablets (deletion) last since the table is not referencing them anymore.
+    // Release tablet locks before table lock otherwise we may deadlock with heartbeats.
+    // Note that in-mem table->tablet map has already been updated by this point.
     unlocker_new.Commit();
-    table_lock.Commit();
     unlocker_old.Commit();
+    table_lock.Commit();
     VLOG_WITH_FUNC(1) << "Committed to memory: table " << table->id() << " repartition from "
                       << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
   }
@@ -2267,12 +2270,7 @@ Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>&
   }
   // Check if table schemas match (if present in snapshot).
   if (!snapshot_data->pg_schema_name.empty()) {
-    if (table->GetTableType() != PGSQL_TABLE_TYPE) {
-      LOG_WITH_FUNC(DFATAL) << "ExternalTableSnapshotData.pg_schema_name set when table type is not"
-          << " PGSQL: schema name: " << snapshot_data->pg_schema_name
-          << ", table type: " << TableType_Name(table->GetTableType());
-      // If not a debug build, ignore pg_schema_name.
-    } else {
+    if (table->ShouldLookupPgSchemaName(table_lock)) {
       const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
           VERIFY_RESULT(table->GetPgTableAllOids())));
       const string& external_schema_name = snapshot_data->pg_schema_name;
@@ -2282,6 +2280,16 @@ Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>&
                             << " for " << table->ToString();
         return false;
       }
+    } else {
+      // If not a debug build, ignore pg_schema_name.
+      LOG_WITH_FUNC(DFATAL)
+          << "ExternalTableSnapshotData.pg_schema_name is set but pg schema name lookup is not "
+          << "supported for table " << table->ToString()
+          << ": snapshot pg_schema_name=" << snapshot_data->pg_schema_name
+          << ", table_type=" << TableType_Name(table->GetTableType())
+          << ", is_system=" << table->is_system()
+          << ", is_sequences_system_table=" << table->IsSequencesSystemTable(table_lock)
+          << ", is_colocation_parent=" << table->IsColocationParentTable();
     }
   }
 
@@ -2517,15 +2525,26 @@ Status CatalogManager::ImportTableEntry(
       }
     }
 
-    // Restore partition key version.
-    if (persisted_schema.table_properties().partitioning_version() !=
-        schema.table_properties().partitioning_version()) {
+    // Restore table properties fixed at create time (partitioning_version,
+    // owns_vector_reverse_mapping) from backup snapshot metadata.
+    const bool restore_partitioning_version =
+        persisted_schema.table_properties().partitioning_version() !=
+        schema.table_properties().partitioning_version();
+    const bool restore_owns_vector_reverse_mapping =
+        persisted_schema.table_properties().owns_vector_reverse_mapping() !=
+        schema.table_properties().owns_vector_reverse_mapping();
+    if (restore_partitioning_version || restore_owns_vector_reverse_mapping) {
       auto l = table->LockForWrite();
-      auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
-      table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+      auto* table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
+      if (restore_partitioning_version) {
+        table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+      }
+      if (restore_owns_vector_reverse_mapping) {
+        table_props->set_owns_vector_reverse_mapping(
+            schema.table_properties().owns_vector_reverse_mapping());
+      }
 
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
-      // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
@@ -3290,6 +3309,9 @@ void CatalogManager::CleanupHiddenTablets(
   }
 
   if (!tablets_to_delete.empty()) {
+    std::sort(
+        tablets_to_delete.begin(), tablets_to_delete.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs->tablet_id() < rhs->tablet_id(); });
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
     WARN_NOT_OK(
         DeleteOrHideTabletsAndSendRequests(
@@ -3661,20 +3683,11 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
 
   const auto& table_id = req->table().table_id();
   auto table_result = FindTableById(table_id);
-  if (table_result.ok() && (*table_result)->GetTableType() == PGSQL_TABLE_TYPE) {
-    auto pg_tbl_oids = (*table_result)->GetPgTableAllOids();
-    if (pg_tbl_oids.ok()) {
-      // pgschema_name inside that schema object comes from SchemaPB.DEPRECATED_pgschema_name.
-      // So, instead we query the pgschema_name from the pg_class+pg_namespace tables.
-      auto pgschema_name = GetYsqlManager().GetPgSchemaName(
-          *pg_tbl_oids, ReadHybridTime::FromUint64(read_time));
-      if (pgschema_name.ok() && !pgschema_name->empty()) {
-        resp->set_pgschema_name(std::move(*pgschema_name));
-      } else {
-        LOG(WARNING) << "Unable to find schema name for YSQL table "
-                     << (*table_result)->name() << " id " << table_id
-                     << " due to error: " << pgschema_name.status();
-      }
+  if (table_result.ok()) {
+    auto pgschema_name = LookupPgSchemaNameForTable(
+        **table_result, ReadHybridTime::FromUint64(read_time));
+    if (pgschema_name) {
+      resp->set_pgschema_name(std::move(*pgschema_name));
     }
   }
 
@@ -3810,24 +3823,103 @@ Status CatalogManager::GetYsqlYbSystemTableInfo(
   return Status::OK();
 }
 
+namespace {
+
+// The oldest read time pinned by a live ysql transaction anywhere in the cluster, as reported by
+// tserver heartbeats, or an invalid HybridTime when nothing is pinned. Only populated on the master
+// leader, which is the only master tservers heartbeat to.
+HybridTime ClusterYsqlOldestPinnedReadTime(const DbOidToHybridTimeMap& pins) {
+  HybridTime pin = HybridTime::kInvalid;
+  // The sys catalog tablet applies a single cutoff to all of its cotables, so the catalog of every
+  // database is retained back to the oldest pin in the cluster.
+  for (const auto& [db_oid, db_pin] : pins) {
+    pin.MakeAtMost(db_pin);
+  }
+  return pin;
+}
+
+}  // namespace
+
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
   auto cutoff = master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
 
   DCHECK_EQ(metadata->table_id(), kSysCatalogTableId);
 
+  const auto now = Clock()->Now();
   auto syscatalog_history_retention_interval_sec =
       ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_syscatalog_history_retention_interval_sec);
   if (syscatalog_history_retention_interval_sec) {
     HybridTime allowed_from_syscatalog_flag =
-        Clock()->Now().AddSeconds(-syscatalog_history_retention_interval_sec);
+        now.AddSeconds(-syscatalog_history_retention_interval_sec);
     cutoff.MakeAtMost({allowed_from_syscatalog_flag, allowed_from_syscatalog_flag});
   }
   cutoff.MakeAtMost({metadata->cdc_sdk_safe_time(), metadata->cdc_sdk_safe_time()});
   VLOG(2) << "CDC SDK history cutoff: " << cutoff.ToString()
           << " for tablet: " << metadata->raft_group_id();
 
+  // Hold back the pg catalog tables (this tablet's cotables) for transactions that may still read
+  // them at their own read time. The leader has the live picture from heartbeats; every master,
+  // leader or follower, additionally honors the pin published to the sys catalog, which is all a
+  // follower has to go on.
+  if (FLAGS_enable_db_history_retention_pins) {
+    auto pin = ClusterYsqlOldestPinnedReadTime(
+        master_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes());
+    pin.MakeAtMost(GetPublishedYsqlHistoryRetentionPin());
+    if (pin.is_valid()) {
+      // A transaction that outlives the hard cap keeps publishing its pin until it fails with
+      // snapshot too old and aborts, and a published pin is not refreshed at all while there is no
+      // leader. Applying the cap here, against the local clock, ages both out.
+      pin.MakeAtLeast(now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec));
+      cutoff.cotables_cutoff_ht.MakeAtMost(pin);
+    }
+  }
+
   return cutoff;
+}
+
+HybridTime CatalogManager::GetPublishedYsqlHistoryRetentionPin() const {
+  return ysql_history_retention_pin_.ysql_pin();
+}
+
+Status CatalogManager::PersistYsqlHistoryRetentionPin(const LeaderEpoch& epoch) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return Status::OK();
+  }
+  const auto cluster_pins =
+      master_->ts_manager()->GetClusterYsqlDbPinsForPublishing(TimeSinceElectedLeader());
+  // Publishing an incomplete map after failover would drop a pin a transaction still needs.
+  if (!cluster_pins.ready) {
+    return Status::OK();
+  }
+  const auto pin = ClusterYsqlOldestPinnedReadTime(cluster_pins.pins);
+  if (pin == GetPublishedYsqlHistoryRetentionPin()) {
+    return Status::OK();
+  }
+
+  auto l = ysql_history_retention_pin_.LockForWrite();
+  auto& pb = l.mutable_data()->pb;
+  if (pin.is_valid()) {
+    pb.set_ysql_oldest_pinned_read_time(pin.value());
+  } else {
+    pb.clear_ysql_oldest_pinned_read_time();
+  }
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(epoch, &ysql_history_retention_pin_),
+      "Publishing the ysql catalog history retention pin");
+  l.Commit();
+  ysql_history_retention_pin_.RefreshCachedYsqlPin();
+
+  LOG_WITH_PREFIX(INFO) << "Published ysql catalog history retention pin: " << pin;
+  return Status::OK();
+}
+
+Status CatalogManager::RefreshYsqlHistoryRetentionPin() {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return Status::OK();
+  }
+  return sys_catalog_->Load<HistoryRetentionPinLoader>(
+      "ysql history retention pin", ysql_history_retention_pin_);
 }
 
 namespace {

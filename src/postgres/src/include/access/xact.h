@@ -551,8 +551,14 @@ extern void YbBeginInternalSubTransactionForReadCommittedStatement();
 /*
  * Determine if the transaction block contains a savepoint other than the
  * internal ones created for READ COMMITTED isolation level.
+ *
+ * The ysql_bypass_anonymous_savepoint_ddl_check gflag is a backward compatibility
+ * escape hatch that hides anonymous subtransactions from this check. It exists
+ * only to preserve the behavior of the buggy DDL code path and should not be
+ * extended to any other caller, so every other caller passes
+ * skip_backward_compat_escape_hatch = true to opt out of it.
  */
-extern bool YBTransactionContainsNonReadCommittedSavepoint(void);
+extern bool YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch);
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
 extern void YbCommitTransactionCommandIntermediate(void);
 extern void YBMarkDataSent(void);

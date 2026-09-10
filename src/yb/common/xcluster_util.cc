@@ -17,6 +17,7 @@
 #include "yb/common/ysql_utils.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb::xcluster {
 

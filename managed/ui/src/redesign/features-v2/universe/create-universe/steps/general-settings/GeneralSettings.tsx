@@ -8,8 +8,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
 import {
@@ -22,54 +23,80 @@ import { generateUniqueName } from '../../../../../helpers/utils';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
-  initialCreateUniverseFormState,
   StepsRef
 } from '../../CreateUniverseContext';
+import {
+  resetProviderDependentSettings,
+  usePersistStepFormValues
+} from '../../helpers/persistStepFormValues';
+import { useGeneralSettingsDefaults } from '../../helpers/useGeneralSettingsDefaults';
+import {
+  buildGeneralSettingsDefaults,
+  CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
+  CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
+  fetchCreateUniverseDbVersions,
+  fetchCreateUniverseProviders,
+  transformDbVersionQueryData
+} from '../../helpers/generalSettingsDefaults';
 import { GeneralSettingsValidationSchema } from './ValidationSchema';
 import { GeneralSettingsProps } from './dtos';
-import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
 import {
   CLOUD,
   DATABASE_VERSION,
   PROVIDER_CONFIGURATION,
-  UNIVERSE_NAME,
-  REGIONS_FIELD,
-  RESILIENCE_TYPE,
-  RESILIENCE_FORM_MODE,
-  RESILIENCE_FACTOR,
-  FAULT_TOLERANCE_TYPE,
-  NODE_COUNT,
-  SINGLE_AVAILABILITY_ZONE
+  UNIVERSE_NAME
 } from '../../fields/FieldNames';
 import ShuffleIcon from '../../../../../assets/shuffle.svg';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
+import { Box } from '@material-ui/core';
 
 const CONTROL_WIDTH = '480px';
 
 export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { generalSettings, resilienceAndRegionsSettings },
+    { generalSettings },
     {
       moveToNextPage,
       saveGeneralSettings,
       saveResilienceAndRegionsSettings,
+      saveNodesAvailabilitySettings,
       saveInstanceSettings
     }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
+
+  const { data: providers } = useQuery(
+    CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
+    fetchCreateUniverseProviders
+  );
+  const { data: dbVersions } = useQuery(
+    CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
+    fetchCreateUniverseDbVersions,
+    { select: transformDbVersionQueryData }
+  );
+
+  const defaultValues = useMemo(
+    () => buildGeneralSettingsDefaults(providers, dbVersions, generalSettings),
+    // First paint only: providers/DB versions are already in the React Query cache from CreateUniverse.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   const methods = useForm<GeneralSettingsProps>({
     resolver: yupResolver(GeneralSettingsValidationSchema(t)),
-    defaultValues: generalSettings,
+    defaultValues,
     mode: 'onChange'
   });
+
+  usePersistStepFormValues(methods.watch, methods.getValues, saveGeneralSettings);
+  useGeneralSettingsDefaults(methods);
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
-          saveGeneralSettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
@@ -80,21 +107,24 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const { errors } = methods.formState;
   const cloud = methods.watch('cloud');
+  const providerConfiguration = methods.watch(PROVIDER_CONFIGURATION);
+  const previousProviderUuidRef = useRef(providerConfiguration?.uuid);
 
   useEffect(() => {
-    saveResilienceAndRegionsSettings({
-      [REGIONS_FIELD]: [],
-      [SINGLE_AVAILABILITY_ZONE]: '',
-      [RESILIENCE_TYPE]: resilienceAndRegionsSettings?.[RESILIENCE_TYPE] ?? ResilienceType.REGULAR,
-      [RESILIENCE_FORM_MODE]:
-        resilienceAndRegionsSettings?.[RESILIENCE_FORM_MODE] ?? ResilienceFormMode.GUIDED,
-      [RESILIENCE_FACTOR]: resilienceAndRegionsSettings?.[RESILIENCE_FACTOR] ?? 3,
-      [FAULT_TOLERANCE_TYPE]:
-        resilienceAndRegionsSettings?.[FAULT_TOLERANCE_TYPE] ?? FaultToleranceType.AZ_LEVEL,
-      [NODE_COUNT]: resilienceAndRegionsSettings?.[NODE_COUNT] ?? 1
+    const providerUuid = providerConfiguration?.uuid;
+    const previousProviderUuid = previousProviderUuidRef.current;
+    previousProviderUuidRef.current = providerUuid;
+
+    // Selecting the initial provider is not a provider change. This also prevents
+    // returning to this step from clearing the previously configured placement.
+    if (!previousProviderUuid || previousProviderUuid === providerUuid) return;
+
+    resetProviderDependentSettings({
+      saveResilienceAndRegionsSettings,
+      saveNodesAvailabilitySettings,
+      saveInstanceSettings
     });
-    saveInstanceSettings(initialCreateUniverseFormState.instanceSettings!);
-  }, [cloud]);
+  }, [providerConfiguration?.uuid]);
 
   return (
     <FormProvider {...methods}>
@@ -121,7 +151,9 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               }}
             />
           </div>
+          <Box maxWidth={740}>
           <CloudField<GeneralSettingsProps> name={CLOUD} label={t('cloudProvider')} />
+          </Box>
           {cloud && (
             <ProviderConfigurationField<GeneralSettingsProps>
               name={PROVIDER_CONFIGURATION}

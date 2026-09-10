@@ -70,7 +70,7 @@ class RestartTest : public YBTableTestBase {
   }
 
   void ShutdownTabletPeer(const std::shared_ptr<tablet::TabletPeer> &tablet_peer) {
-    ASSERT_OK(tablet_peer->Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
+    ASSERT_OK(tablet_peer->TEST_Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
                                     tablet::DisableFlushOnShutdown::kFalse));
   }
 
@@ -132,7 +132,7 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
       tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   ASSERT_OK(tablet_server->WaitStarted());
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
+  auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(2, segments.size());
@@ -207,7 +207,7 @@ TEST_F(RestartTest, BootstrapReplaysUnflushedWritesFromWAL) {
     auto* ts = mini_cluster()->mini_tablet_server(0);
     auto peer = ASSERT_RESULT(ts->server()->tablet_manager()->GetServingTablet(tablet_id));
     log::SegmentSequence segments;
-    auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+    auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
     ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
     ASSERT_GE(segments.size(), 2);
     log::ReadableLogSegmentPtr first = ASSERT_RESULT(segments.front());

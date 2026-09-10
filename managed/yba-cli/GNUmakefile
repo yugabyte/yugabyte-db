@@ -6,7 +6,7 @@ VERSION := $(strip $(shell ../../build-support/get_version.sh))
 
 # go compile options
 GOOS ?= $(shell uname -s | tr A-Z a-z)
-GOARCH := $(shell [[ $$(uname -m) == "x86_64" ]] && echo -n 'amd64' || echo -n 'arm64')
+GOARCH := $(shell test "$$(uname -m)" = "x86_64" && echo amd64 || echo arm64)
 
 # Build Tags
 BUILD_TYPE ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_type')
@@ -72,6 +72,12 @@ clean-package:
 	rm -rf ${PACKAGE_DIR}
 	rm -rf ${PACKAGE_NAME}
 
+# Not part of `clean`: wiping the module cache forces every dependency to be
+# re-downloaded from the proxy (~650MB) on the next build.
+.PHONY: clean-modcache
+clean-modcache:
+	go clean -modcache
+
 
 .PHONY: updateclient
 updateclient: updatev1client updatev2client
@@ -94,6 +100,5 @@ license:
 
 .PHONY: fmt
 fmt:
-	go clean -modcache
 	GOBIN=$(PWD)/bin go install github.com/segmentio/golines@latest
 	$(GOLINES) --max-len=100 -w .

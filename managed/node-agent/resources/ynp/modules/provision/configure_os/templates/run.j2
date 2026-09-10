@@ -35,10 +35,12 @@ fi
 sed -i 's/\(*[[:space:]]*soft[[:space:]]*nproc[[:space:]]*\)[0-9]\+/\1{{ nproc_limit }}/' /etc/security/limits.d/20-nproc.conf
 
 
-# Determine the PLATFORM_ID
+# Determine the PLATFORM_ID e.g platform:el8
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
+# Extract the EL version from the platform_id e.g 8
+platform_el_version=$(echo "$platform_id" | grep -oP '(?<=platform:el)\d+(?=\D|$)' || echo "0")
 
-if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+if [[ "$platform_el_version" -ge 8 ]]; then
   # Check and set DefaultLimitNOFILE in /etc/systemd/system.conf
   if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/system.conf; then
     echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/system.conf
@@ -216,10 +218,7 @@ if ! grep -qxF "${xdg_runtime_env}" {{ yb_user_home }}/.bashrc >/dev/null 2>&1; 
     su - {{ yb_user }} -c "echo '${xdg_runtime_env}' >> {{ yb_user_home }}/.bashrc"
 fi
 
-# Determine the PLATFORM_ID
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
-
-if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+if [[ "$platform_el_version" -ge 8 ]]; then
     # Stop user systemd service
     su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1" || true
     

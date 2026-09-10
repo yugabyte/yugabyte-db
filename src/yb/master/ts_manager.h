@@ -73,6 +73,11 @@ class TSInformationPB;
 using TSCountCallback = std::function<void()>;
 using TSDescriptorMap = std::map<std::string, TSDescriptorPtr>;
 
+struct ClusterYsqlDbPins {
+  DbOidToHybridTimeMap pins;
+  bool ready = false;
+};
+
 using LeaseExpiredCallback = std::function<void(const std::string&, uint64_t, LeaderEpoch)>;
 
 // Tracks the servers that the master has heard from, along with their
@@ -162,6 +167,35 @@ class TSManager {
 
   size_t NumLiveDescriptors() const;
 
+  // Iterates over all live TSDescriptors and returns the oldest read HybridTime pin for each
+  // database with at least one live transaction on any live tserver. Tservers heartbeat only the
+  // leader, so this is empty on a master follower.
+  //
+  // Each database's pin will only increase monotonically once master has received at least one
+  // heartbeat from every live tserver. It is possible for a database's pin to decrease if a new
+  // tserver sends its first heartbeat, but given that live tservers will send a heartbeat every
+  // second and we have a 15 minute hard cap on compaction
+  // (timestamp_history_retention_interval_sec), we assume that by the time compaction is
+  // triggered, each tserver would have either heartbeated the master once with its local pins,
+  // or have been dropped from the cluster.
+  DbOidToHybridTimeMap GetClusterYsqlDbOldestPinnedReadTimes() const;
+
+  // The same map, plus whether it is complete enough to hand to a consumer that will hold on to
+  // it: tservers cache it, and the pin published to the sys catalog outlives this leader.
+  // Publishing an incomplete map to either drops a pin a live transaction still needs.
+  //
+  // Leader only -- time_since_elected_leader is meaningless on a master that was never elected.
+  // A caller that just reads the pins for its own immediate use wants the overload above.
+  //
+  // After a re-election, if persist_tserver_registry is enabled, the new master loads the previous
+  // master's live TSDescriptors, so it knows which tservers it has not heard from yet and holds
+  // ready false until each has heartbeated. Tservers dropped during the re-election are marked
+  // unresponsive after a minute of silence and so cannot hold ready false indefinitely. If
+  // persist_tserver_registry is disabled the new leader cannot tell that an absent tserver exists
+  // at all, so it waits out initial_tserver_registration_duration_secs instead, similar to the
+  // load balancer's initial delay.
+  ClusterYsqlDbPins GetClusterYsqlDbPinsForPublishing(MonoDelta time_since_elected_leader) const;
+
   // Find TServers that are currently in the state LIVE but have not heartbeated for a long time.
   // Transition all such TServers into the UNRESPONSIVE state.
   Status MarkUnresponsiveTServers(const LeaderEpoch& epoch);
@@ -172,6 +206,9 @@ class TSManager {
   Status RemoveTabletServer(
       const std::string& permanent_uuid, const BlacklistSet& blacklist,
       const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch);
+
+  // Mark live tservers as needing a leader blacklist notification on the next heartbeat.
+  void MarkTServersForLeaderBlacklistNotification();
 
   // Make sure all live tservers are on the expected version.
   Status ValidateAllTserverVersions(ValidateVersionInfoOp op) const;

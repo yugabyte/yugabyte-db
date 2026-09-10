@@ -52,6 +52,7 @@ static void yb_check_invalid_indexes();
 static void yb_check_installed_extensions();
 static void yb_check_pgcrypto_schema();
 static void yb_check_yb_role_prefix();
+static void yb_check_removed_renamed_catalog_acls();
 static void yb_check_stale_acl_grantors();
 
 #define YB_SUPERUSER  "yb_superuser"
@@ -237,6 +238,7 @@ check_and_dump_old_cluster(bool live_check)
 	yb_check_installed_extensions();
 	yb_check_pgcrypto_schema();
 	yb_check_yb_role_prefix();
+	yb_check_removed_renamed_catalog_acls();
 	yb_check_stale_acl_grantors();
 
 	if (yb_has_check_fatal)
@@ -2234,4 +2236,435 @@ yb_check_stale_acl_grantors()
 	{
 		check_ok();
 	}
+}
+
+/* Closes a parenthesis the caller opens. */
+#define YB_ACL_INIT_PRIVS(classoid, objid, objsubid) \
+	"      SELECT initprivs FROM pg_init_privs pip\n" \
+	"      WHERE pip.objoid = " objid "\n" \
+	"        AND pip.classoid = '" classoid "'::regclass\n" \
+	"        AND pip.objsubid = " objsubid ")\n"
+
+/* Shared by the detection query and the mitigation UPDATE of every kind. */
+#define YB_ACL_SKIP_EXTENSION_OWNED(catalog, objid) \
+	"  AND NOT EXISTS (\n" \
+	"      SELECT 1 FROM pg_depend d\n" \
+	"      WHERE d.classid = '" catalog "'::regclass\n" \
+	"        AND d.objid = " objid "\n" \
+	"        AND d.objsubid = 0\n" \
+	"        AND d.deptype = 'e')\n"
+
+#define YB_ACL_SKIP_IF_INIT_PRIVS_MATCH(aclcol, classoid, objid, objsubid) \
+	"  AND " aclcol " IS DISTINCT FROM (\n" \
+	YB_ACL_INIT_PRIVS(classoid, objid, objsubid)
+
+/* Both halves for a kind named by a column of its own catalog. %s is the list. */
+#define YB_ACL_DETECT_SQL(objexpr, aclcol, catalog, scope, objid, objsubid) \
+	"SELECT " objexpr " AS obj,\n" \
+	"       array_to_string(" aclcol ", ', ') AS acl\n" \
+	"FROM " catalog "\n" \
+	"WHERE " scope "\n" \
+	"  AND " objexpr " = ANY(%s::text[])\n" \
+	YB_ACL_SKIP_EXTENSION_OWNED(catalog, objid) \
+	YB_ACL_SKIP_IF_INIT_PRIVS_MATCH(aclcol, catalog, objid, objsubid) \
+	"ORDER BY obj"
+
+#define YB_ACL_FIX_SQL(objexpr, aclcol, catalog, scope, objid, objsubid) \
+	"    UPDATE " catalog " SET " aclcol " = (\n" \
+	YB_ACL_INIT_PRIVS(catalog, objid, objsubid) \
+	"    WHERE " scope "\n" \
+	"      AND " objexpr " = ANY(%s::text[])\n" \
+	YB_ACL_SKIP_EXTENSION_OWNED(catalog, objid) \
+	YB_ACL_SKIP_IF_INIT_PRIVS_MATCH(aclcol, catalog, objid, objsubid) \
+	"    ;\n"
+
+/* Every function's identity, built once by joining pg_type instead of rendering per row. */
+#define YB_ACL_FUNCTION_IDENTS \
+	"WITH idents AS (\n" \
+	"  SELECT p.oid AS oid,\n" \
+	"         p.proname || '(' ||\n" \
+	"         coalesce(string_agg(t.typname::text, ', ' ORDER BY a.ord), '') || ')' AS obj\n" \
+	"  FROM pg_proc p\n" \
+	"  LEFT JOIN LATERAL unnest(p.proargtypes) WITH ORDINALITY AS a(typid, ord) ON true\n" \
+	"  LEFT JOIN pg_type t ON t.oid = a.typid\n" \
+	"  WHERE p.pronamespace = 'pg_catalog'::regnamespace\n" \
+	"  GROUP BY p.oid, p.proname)\n"
+
+/* PG11 objects gone in PG15 (#32356), keyed on the identity the source renders. */
+#define YB_REMOVED_FUNCTIONS \
+	/* PG12 removed the abstime, reltime and tinterval family entirely. */ \
+	"\"abstime(timestamptz)\"," \
+	"\"abstime(timestamp)\"," \
+	"\"abstimeeq(abstime, abstime)\"," \
+	"\"abstimege(abstime, abstime)\"," \
+	"\"abstimegt(abstime, abstime)\"," \
+	"\"abstimein(cstring)\"," \
+	"\"abstimele(abstime, abstime)\"," \
+	"\"abstimelt(abstime, abstime)\"," \
+	"\"abstimene(abstime, abstime)\"," \
+	"\"abstimeout(abstime)\"," \
+	"\"abstimerecv(internal)\"," \
+	"\"abstimesend(abstime)\"," \
+	"\"btabstimecmp(abstime, abstime)\"," \
+	"\"btreltimecmp(reltime, reltime)\"," \
+	"\"bttintervalcmp(tinterval, tinterval)\"," \
+	"\"date(abstime)\"," \
+	"\"date_part(text, abstime)\"," \
+	"\"date_part(text, reltime)\"," \
+	"\"interval(reltime)\"," \
+	"\"intinterval(abstime, tinterval)\"," \
+	"\"isfinite(abstime)\"," \
+	"\"max(abstime)\"," \
+	"\"min(abstime)\"," \
+	"\"mktinterval(abstime, abstime)\"," \
+	"\"reltime(interval)\"," \
+	"\"reltimeeq(reltime, reltime)\"," \
+	"\"reltimege(reltime, reltime)\"," \
+	"\"reltimegt(reltime, reltime)\"," \
+	"\"reltimein(cstring)\"," \
+	"\"reltimele(reltime, reltime)\"," \
+	"\"reltimelt(reltime, reltime)\"," \
+	"\"reltimene(reltime, reltime)\"," \
+	"\"reltimeout(reltime)\"," \
+	"\"reltimerecv(internal)\"," \
+	"\"reltimesend(reltime)\"," \
+	"\"time(abstime)\"," \
+	"\"timemi(abstime, reltime)\"," \
+	"\"timenow()\"," \
+	"\"timepl(abstime, reltime)\"," \
+	"\"timestamp(abstime)\"," \
+	"\"timestamptz(abstime)\"," \
+	"\"tinterval(abstime, abstime)\"," \
+	"\"tintervalct(tinterval, tinterval)\"," \
+	"\"tintervalend(tinterval)\"," \
+	"\"tintervaleq(tinterval, tinterval)\"," \
+	"\"tintervalge(tinterval, tinterval)\"," \
+	"\"tintervalgt(tinterval, tinterval)\"," \
+	"\"tintervalin(cstring)\"," \
+	"\"tintervalle(tinterval, tinterval)\"," \
+	"\"tintervalleneq(tinterval, reltime)\"," \
+	"\"tintervallenge(tinterval, reltime)\"," \
+	"\"tintervallengt(tinterval, reltime)\"," \
+	"\"tintervallenle(tinterval, reltime)\"," \
+	"\"tintervallenlt(tinterval, reltime)\"," \
+	"\"tintervallenne(tinterval, reltime)\"," \
+	"\"tintervallt(tinterval, tinterval)\"," \
+	"\"tintervalne(tinterval, tinterval)\"," \
+	"\"tintervalout(tinterval)\"," \
+	"\"tintervalov(tinterval, tinterval)\"," \
+	"\"tintervalrecv(internal)\"," \
+	"\"tintervalrel(tinterval)\"," \
+	"\"tintervalsame(tinterval, tinterval)\"," \
+	"\"tintervalsend(tinterval)\"," \
+	"\"tintervalstart(tinterval)\"," \
+	/* PG12: smgr and opaque internal pseudo-types */ \
+	"\"opaque_in(cstring)\"," \
+	"\"opaque_out(opaque)\"," \
+	"\"shell_out(opaque)\"," \
+	"\"smgreq(smgr, smgr)\"," \
+	"\"smgrin(cstring)\"," \
+	"\"smgrne(smgr, smgr)\"," \
+	"\"smgrout(smgr)\"," \
+	/* PG14: transform procs and the factorial operator's backing function */ \
+	"\"interval_transform(internal)\"," \
+	"\"numeric_fac(int8)\"," \
+	"\"numeric_transform(internal)\"," \
+	"\"time_transform(internal)\"," \
+	"\"timestamp_izone_transform(internal)\"," \
+	"\"timestamp_transform(internal)\"," \
+	"\"timestamp_zone_transform(internal)\"," \
+	"\"varbit_transform(internal)\"," \
+	"\"varchar_transform(internal)\"," \
+	/* PG14 changed these from anyarray and anyelement to anycompatible*. */ \
+	"\"array_append(anyarray, anyelement)\"," \
+	"\"array_cat(anyarray, anyarray)\"," \
+	"\"array_position(anyarray, anyelement)\"," \
+	"\"array_position(anyarray, anyelement, int4)\"," \
+	"\"array_positions(anyarray, anyelement)\"," \
+	"\"array_prepend(anyelement, anyarray)\"," \
+	"\"array_remove(anyarray, anyelement)\"," \
+	"\"array_replace(anyarray, anyelement, anyelement)\"," \
+	"\"lag(anyelement, int4, anyelement)\"," \
+	"\"lead(anyelement, int4, anyelement)\"," \
+	"\"width_bucket(anyelement, anyarray)\"," \
+	/* PG15: backup control functions renamed or dropped */ \
+	"\"pg_backup_start_time()\"," \
+	"\"pg_is_in_backup()\"," \
+	"\"pg_start_backup(text, bool, bool)\"," \
+	"\"pg_stop_backup()\"," \
+	"\"pg_stop_backup(bool, bool)\"," \
+	/* Geometric functions removed */ \
+	"\"close_lb(line, box)\"," \
+	"\"close_sl(lseg, line)\"," \
+	"\"dist_lb(line, box)\"," \
+	"\"path_center(path)\"," \
+	"\"point(path)\"," \
+	/* The input arguments changed. */ \
+	"\"get_bit(bytea, int4)\"," \
+	"\"pg_create_logical_replication_slot(name, name, bool, name)\"," \
+	/* The line above as rendered before ysql migration V59.2. */ \
+	"\"pg_create_logical_replication_slot(name, name, bool)\"," \
+	"\"pg_terminate_backend(int4)\"," \
+	"\"set_bit(bytea, int4, int4)\"," \
+	"\"yb_active_session_history()\"," \
+	/* Other pg_catalog objects removed in PG15 */ \
+	"\"binary_upgrade_set_next_toast_pg_type_oid(oid)\"," \
+	"\"currtid(oid, tid)\"," \
+	"\"yb_index_check(oid)\"" \
+
+/* pg_pltemplate went in PG13. yb_int_pg_stats_v11 is YB-internal. */
+#define YB_REMOVED_RELATIONS \
+	"\"pg_pltemplate\"," \
+	"\"pg_pltemplate_name_index\"," \
+	"\"yb_int_pg_stats_v11\"" \
+
+/* Array types and removed relations' rowtypes are inert, but kept for parity. */
+#define YB_REMOVED_TYPES \
+	"\"_abstime\"," \
+	"\"_reltime\"," \
+	"\"_tinterval\"," \
+	"\"abstime\"," \
+	"\"opaque\"," \
+	"\"pg_pltemplate\"," \
+	"\"reltime\"," \
+	"\"smgr\"," \
+	"\"tinterval\"," \
+	"\"yb_int_pg_stats_v11\"" \
+
+/* A column grant sets attacl only, so these are not covered by the relation entry. */
+#define YB_REMOVED_COLUMNS \
+	"\"pg_attrdef.adsrc\"," \
+	"\"pg_class.relhasoids\"," \
+	"\"pg_constraint.consrc\"," \
+	"\"pg_database.datlastsysoid\"," \
+	"\"pg_pltemplate.tmplacl\"," \
+	"\"pg_pltemplate.tmpldbacreate\"," \
+	"\"pg_pltemplate.tmplhandler\"," \
+	"\"pg_pltemplate.tmplinline\"," \
+	"\"pg_pltemplate.tmpllibrary\"," \
+	"\"pg_pltemplate.tmplname\"," \
+	"\"pg_pltemplate.tmpltrusted\"," \
+	"\"pg_pltemplate.tmplvalidator\"," \
+	"\"pg_pltemplate_name_index.tmplname\"," \
+	"\"pg_proc.protransform\"," \
+	"\"pg_stat_activity.rss_mem_bytes\"," \
+	"\"pg_stat_ssl.clientdn\"," \
+	"\"pg_stat_ssl.compression\"," \
+	"\"pg_stat_wal_receiver.received_lsn\"," \
+	"\"pg_statistic_ext.stxdependencies\"," \
+	"\"pg_statistic_ext.stxndistinct\"," \
+	"\"yb_int_pg_stats_v11.attname\"," \
+	"\"yb_int_pg_stats_v11.avg_width\"," \
+	"\"yb_int_pg_stats_v11.correlation\"," \
+	"\"yb_int_pg_stats_v11.elem_count_histogram\"," \
+	"\"yb_int_pg_stats_v11.histogram_bounds\"," \
+	"\"yb_int_pg_stats_v11.inherited\"," \
+	"\"yb_int_pg_stats_v11.most_common_elem_freqs\"," \
+	"\"yb_int_pg_stats_v11.most_common_elems\"," \
+	"\"yb_int_pg_stats_v11.most_common_freqs\"," \
+	"\"yb_int_pg_stats_v11.most_common_vals\"," \
+	"\"yb_int_pg_stats_v11.n_distinct\"," \
+	"\"yb_int_pg_stats_v11.null_frac\"," \
+	"\"yb_int_pg_stats_v11.range_bounds_histogram\"," \
+	"\"yb_int_pg_stats_v11.range_empty_frac\"," \
+	"\"yb_int_pg_stats_v11.range_length_histogram\"," \
+	"\"yb_int_pg_stats_v11.schemaname\"," \
+	"\"yb_int_pg_stats_v11.tablename\"" \
+
+/* One entry per ACL-bearing catalog. Lists are printf args and must not contain %. */
+typedef struct YbRemovedAclKind
+{
+	const char *label;			/* printed for each affected object */
+	const char *detect_sql;
+	const char *fix_sql;
+	const char *objects;
+} YbRemovedAclKind;
+
+static const YbRemovedAclKind yb_removed_acl_kinds[] = {
+	{
+		"Function",
+		YB_ACL_FUNCTION_IDENTS
+		"SELECT i.obj AS obj, array_to_string(p.proacl, ', ') AS acl\n"
+		"FROM idents i JOIN pg_proc p ON p.oid = i.oid\n"
+		"WHERE i.obj = ANY(%s::text[])\n"
+		YB_ACL_SKIP_EXTENSION_OWNED("pg_proc", "p.oid")
+		YB_ACL_SKIP_IF_INIT_PRIVS_MATCH("p.proacl", "pg_proc", "p.oid", "0")
+		"ORDER BY i.obj",
+
+		"    " YB_ACL_FUNCTION_IDENTS
+		"    UPDATE pg_proc SET proacl = (\n"
+		YB_ACL_INIT_PRIVS("pg_proc", "pg_proc.oid", "0")
+		"    WHERE pg_proc.oid IN (SELECT oid FROM idents WHERE obj = ANY(%s::text[]))\n"
+		YB_ACL_SKIP_EXTENSION_OWNED("pg_proc", "pg_proc.oid")
+		YB_ACL_SKIP_IF_INIT_PRIVS_MATCH("proacl", "pg_proc", "pg_proc.oid", "0")
+		"    ;\n",
+		"'{" YB_REMOVED_FUNCTIONS "}'"
+	},
+	{
+		"Relation",
+		YB_ACL_DETECT_SQL("relname", "relacl", "pg_class",
+						  "relnamespace = 'pg_catalog'::regnamespace",
+						  "pg_class.oid", "0"),
+		YB_ACL_FIX_SQL("relname", "relacl", "pg_class",
+					   "relnamespace = 'pg_catalog'::regnamespace",
+					   "pg_class.oid", "0"),
+		"'{" YB_REMOVED_RELATIONS "}'"
+	},
+	{
+		"Type",
+		YB_ACL_DETECT_SQL("typname", "typacl", "pg_type",
+						  "typnamespace = 'pg_catalog'::regnamespace",
+						  "pg_type.oid", "0"),
+		YB_ACL_FIX_SQL("typname", "typacl", "pg_type",
+					   "typnamespace = 'pg_catalog'::regnamespace",
+					   "pg_type.oid", "0"),
+		"'{" YB_REMOVED_TYPES "}'"
+	},
+
+	/* Named from pg_class, so this one cannot use the assembly above. */
+	{
+		"Column",
+		"SELECT c.relname || '.' || a.attname AS obj,\n"
+		"       array_to_string(a.attacl, ', ') AS acl\n"
+		"FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid\n"
+		"WHERE c.relnamespace = 'pg_catalog'::regnamespace\n"
+		"  AND a.attnum > 0 AND NOT a.attisdropped\n"
+		"  AND c.relname || '.' || a.attname = ANY(%s::text[])\n"
+		YB_ACL_SKIP_EXTENSION_OWNED("pg_class", "a.attrelid")
+		YB_ACL_SKIP_IF_INIT_PRIVS_MATCH("a.attacl", "pg_class", "a.attrelid",
+										"a.attnum")
+		"ORDER BY obj",
+
+		"    UPDATE pg_attribute a SET attacl = (\n"
+		YB_ACL_INIT_PRIVS("pg_class", "a.attrelid", "a.attnum")
+		"    WHERE a.attrelid IN (\n"
+		"          SELECT c.oid FROM pg_class c\n"
+		"          WHERE c.relnamespace = 'pg_catalog'::regnamespace)\n"
+		"      AND a.attnum > 0 AND NOT a.attisdropped\n"
+		"      AND (SELECT c.relname FROM pg_class c WHERE c.oid = a.attrelid)\n"
+		"          || '.' || a.attname = ANY(%s::text[])\n"
+		YB_ACL_SKIP_EXTENSION_OWNED("pg_class", "a.attrelid")
+		YB_ACL_SKIP_IF_INIT_PRIVS_MATCH("a.attacl", "pg_class", "a.attrelid",
+										"a.attnum")
+		"    ;\n",
+
+		"'{" YB_REMOVED_COLUMNS "}'"
+	}
+};
+
+/*
+ * yb_check_removed_renamed_catalog_acls()
+ *
+ * Check for modified ACLs on pg_catalog objects removed or renamed in PG15.
+ */
+static void
+yb_check_removed_renamed_catalog_acls()
+{
+	int			dbnum;
+	bool		found = false;
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "pg_catalog_removed_object_acls.txt");
+
+	prep_status("Checking for modified ACLs on removed catalog objects");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
+		bool		db_header_printed = false;
+		bool		affected[lengthof(yb_removed_acl_kinds)];
+		int			kindno;
+
+		for (kindno = 0; kindno < lengthof(yb_removed_acl_kinds); kindno++)
+		{
+			const YbRemovedAclKind *kind = &yb_removed_acl_kinds[kindno];
+			PGresult   *res;
+			int			ntups;
+			int			rowno;
+			int			i_obj;
+			int			i_acl;
+
+			affected[kindno] = false;
+
+			res = executeQueryOrDie(conn, kind->detect_sql, kind->objects);
+
+			ntups = PQntuples(res);
+			if (ntups > 0)
+			{
+				found = true;
+				affected[kindno] = true;
+
+				if (script == NULL &&
+					(script = fopen_priv(output_path, "w")) == NULL)
+					pg_fatal("could not open file \"%s\": %s\n", output_path,
+							 strerror(errno));
+
+				if (!db_header_printed)
+				{
+					yb_fprintf_and_log(script, "In database: %s\n",
+									   active_db->db_name);
+					db_header_printed = true;
+				}
+
+				i_obj = PQfnumber(res, "obj");
+				i_acl = PQfnumber(res, "acl");
+
+				for (rowno = 0; rowno < ntups; rowno++)
+					yb_fprintf_and_log(script,
+									   "    %s: pg_catalog.%s  ACL: %s\n",
+									   kind->label,
+									   PQgetvalue(res, rowno, i_obj),
+									   PQgetvalue(res, rowno, i_acl));
+			}
+
+			PQclear(res);
+		}
+
+		if (db_header_printed)
+		{
+			yb_fprintf_and_log(script, "    \\c %s\n", active_db->db_name);
+			yb_fprintf_and_log(script, "    SET search_path = pg_catalog;\n");
+			yb_fprintf_and_log(script,
+							   "    SET yb_non_ddl_txn_for_sys_tables_allowed TO on;\n");
+
+			for (kindno = 0; kindno < lengthof(yb_removed_acl_kinds); kindno++)
+			{
+				const YbRemovedAclKind *kind = &yb_removed_acl_kinds[kindno];
+
+				if (!affected[kindno])
+					continue;
+				yb_fprintf_and_log(script, kind->fix_sql, kind->objects);
+			}
+
+			yb_fprintf_and_log(script,
+							   "    RESET yb_non_ddl_txn_for_sys_tables_allowed;\n");
+			yb_fprintf_and_log(script, "    RESET search_path;\n");
+			yb_fprintf_and_log(script, "\n");
+		}
+
+		PQfinish(conn);
+	}
+
+	if (script)
+		fclose(script);
+
+	if (found)
+	{
+		yb_fatal("Your installation contains modified ACL entries on pg_catalog\n"
+				 "objects that are removed or renamed in PostgreSQL 15. This can\n"
+				 "happen when privileges on those objects are changed (for example,\n"
+				 "REVOKE ALL ON ALL FUNCTIONS IN SCHEMA pg_catalog FROM <role>).\n"
+				 "These ACL entries cause major version upgrade to fail.\n"
+				 "To fix, connect to each database listed below and run the commands\n"
+				 "printed for each affected database.\n"
+				 "A list of affected objects and fix commands is printed above and in\n"
+				 "the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+		check_ok();
 }

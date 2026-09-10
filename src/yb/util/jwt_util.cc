@@ -19,8 +19,10 @@
 #include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/util/format.h"
 #include "yb/util/jwtcpp_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using jwt::decoded_jwt;

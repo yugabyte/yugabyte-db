@@ -3353,21 +3353,19 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	NodeTag		yb_node_tag;
-	CommandTag	yb_command_tag;
+	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
 	YbDdlMode	ddl_mode;
 
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
 	/*
-	 * Remember the NodeTag and the CommandTag of the DDL currently being
-	 * executed so that we can set it into the next transaction.
+	 * Remember DDL state of the statement currently being executed so that we
+	 * can restore it on the next transaction.
 	 */
 	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
 	{
-		yb_node_tag = YBGetCurrentStmtDdlNodeTag();
-		yb_command_tag = YBGetCurrentStmtDdlCommandTag();
+		YBGetDdlOriginalStmtState(&yb_ddl_stmt_state);
 		ddl_mode = YBGetCurrentDdlMode();
 	}
 
@@ -3380,7 +3378,7 @@ YbCommitTransactionCommandIntermediate(void)
 	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
 	{
 		YBAddDdlTxnState(ddl_mode);
-		YBSetDdlOriginalNodeAndCommandTag(yb_node_tag, yb_command_tag);
+		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
 	}
 }
 
@@ -5130,7 +5128,7 @@ YbBeginInternalSubTransactionForReadCommittedStatement()
 }
 
 bool
-YBTransactionContainsNonReadCommittedSavepoint(void)
+YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch)
 {
 	if (!IsTransactionBlock())
 		return false;
@@ -5154,10 +5152,15 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 			 * correctly catch this, but to avoid breaking existing extensions
 			 * (like pg_partman) during upgrades, we skip returning true if
 			 * the backward-compatibility flag is enabled.
+			 *
+			 * That escape hatch exists only to preserve the behavior of the
+			 * buggy DDL code path, so it must not be extended to other callers.
+			 * Those pass skip_backward_compat_escape_hatch to opt out of it.
 			 */
 			if (s->parent)
 			{
-				if (!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
+				if (skip_backward_compat_escape_hatch ||
+					!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
 					return true;
 			}
 		}

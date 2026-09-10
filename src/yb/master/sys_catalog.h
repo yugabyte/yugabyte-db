@@ -56,6 +56,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/shutdown_controller.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
@@ -194,6 +195,7 @@ class SysCatalogTable {
   static Schema BuildTableSchema();
 
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const { return raft_notifications_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
@@ -483,6 +485,8 @@ class SysCatalogTable {
   // Thread pool for callbacks on Raft replication events.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
+
   // Thread pool for preparing transactions, shared between all tablets.
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
 
@@ -516,6 +520,11 @@ class SysCatalogTable {
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
+
+  // Makes the two-phase StartShutdown / CompleteShutdown run at most once, in order. A removed
+  // master going into shell mode (GoIntoShellMode) can race with process shutdown; both drive
+  // the tablet peer shutdown.
+  ShutdownController shutdown_controller_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };

@@ -52,6 +52,8 @@
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::placeholders;
 
@@ -1154,6 +1156,57 @@ bool XClusterTargetManager::IsTableReplicated(const TableId& table_id) const {
   return !GetStreamIdsForTable(table_id).empty();
 }
 
+Result<bool> XClusterTargetManager::IsTableUsingTargetAppliedFilter(
+    const TableId& consumer_table_id) const {
+  // Currently N:1 replication is not supported, so there should be only one stream_id for the
+  // table. If support is added in the future, a mixed config conservatively returns false so the
+  // target falls back to running a local backfill, which can cause duplicate applies but is safer
+  // than having missed writes.
+  const auto stream_ids = GetStreamIdsForTable(consumer_table_id);
+  if (stream_ids.empty()) {
+    return false;
+  }
+  auto cluster_config = catalog_manager_.ClusterConfig();
+  SCHECK(cluster_config, IllegalState, "ClusterConfig is not available");
+
+  const auto& consumer_registry = cluster_config->LockForRead()->pb.consumer_registry();
+  const auto& producer_map = consumer_registry.producer_map();
+  for (const auto& [replication_group_id, stream_id] : stream_ids) {
+    const auto* producer_entry = FindOrNull(producer_map, replication_group_id.ToString());
+    SCHECK_FORMAT(
+        producer_entry, IllegalState,
+        "Producer entry for replication group $0 not found in consumer registry while checking "
+        "table $1",
+        replication_group_id, consumer_table_id);
+    const auto* stream_entry = FindOrNull(producer_entry->stream_map(), stream_id.ToString());
+    SCHECK_FORMAT(
+        stream_entry, IllegalState,
+        "Stream entry $0 not found in consumer registry under replication group $1 while checking "
+        "table $2",
+        stream_id, replication_group_id, consumer_table_id);
+    if (!stream_entry->xcluster_use_target_applied_filter()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Result<bool> XClusterTargetManager::ShouldTargetSkipLocalIndexBackfill(
+    const std::vector<TableId>& index_table_ids) const {
+  for (const auto& index_table_id : index_table_ids) {
+    auto index_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+    auto table_id = index_table_id;
+    if (index_info->colocated()) {
+      // Colocated indexes don't have their own stream, they use the colocation parent's stream.
+      table_id = index_info->LockForRead()->pb.parent_table_id();
+    }
+    if (!VERIFY_RESULT(IsTableUsingTargetAppliedFilter(table_id))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 Result<TableId> XClusterTargetManager::GetTableIdForStreamId(
     const xcluster::ReplicationGroupId& replication_group_id,
     const xrepl::StreamId& stream_id) const {
@@ -1456,7 +1509,7 @@ Status XClusterTargetManager::AddTableToReplicationGroup(
       master_, catalog_manager_, data, epoch);
 }
 
-Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+Result<XClusterBackfillDecision> XClusterTargetManager::TryGetXClusterInfoForIndexBackfill(
     const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
     const LeaderEpoch& epoch) const {
   auto& xcluster_manager = *master_.xcluster_manager();
@@ -1476,7 +1529,7 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
         "Failed while preparing index for xCluster");
 
     LOG(INFO) << "Using " << backfill_ht << " as the backfill read time";
-    return backfill_ht;
+    return XClusterBackfillDecision::RunLocalAtHybridTime(backfill_ht);
   }
 
   if (IsNamespaceInAutomaticDDLMode(indexed_table->namespace_id())) {
@@ -1498,23 +1551,30 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
       RETURN_NOT_OK(ht.FromUint64(xcluster_table_info.xcluster_backfill_hybrid_time()));
       if (!ht.is_special()) {
         SCHECK(
-            !xcluster_backfill_hybrid_time || ht != xcluster_backfill_hybrid_time, InvalidArgument,
+            !xcluster_backfill_hybrid_time || ht == xcluster_backfill_hybrid_time, InvalidArgument,
             "Indexes have different xCluster backfill hybrid times");
         xcluster_backfill_hybrid_time = ht;
       }
     }
 
-      if (xcluster_backfill_hybrid_time) {
-        LOG(INFO) << "Using provided xcluster_backfill_hybrid_time "
-                  << xcluster_backfill_hybrid_time << " as the backfill read time";
-        return xcluster_backfill_hybrid_time;
+    if (xcluster_backfill_hybrid_time) {
+      // When the target-applied filter is enabled, the source now replicates backfill writes.
+      // At this point, the target should've received the backfill writes, so skip local backfill.
+      if (VERIFY_RESULT(ShouldTargetSkipLocalIndexBackfill(index_table_ids))) {
+        LOG(INFO) << "Skipping local index backfill for indexed_table " << indexed_table->id();
+        return XClusterBackfillDecision::DeferToReplicatedBackfill(xcluster_backfill_hybrid_time);
       }
 
-      // Possible to get here for manually created indexes.  Fallback to DB-scoped flow.
-      // (We allow this because we want to be able to create an index manually via backdoors that
-      // don't have this time set.)
-      LOG(WARNING) << "No xCluster backfill hybrid time set for indexes in automatic mode, "
-                   << "falling back to non-automatic mode flow.";
+      LOG(INFO) << "Using provided xcluster_backfill_hybrid_time "
+                << xcluster_backfill_hybrid_time << " as the backfill read time";
+      return XClusterBackfillDecision::RunLocalAtHybridTime(xcluster_backfill_hybrid_time);
+    }
+
+    // Possible to get here for manually created indexes.  Fallback to DB-scoped flow.
+    // (We allow this because we want to be able to create an index manually via backdoors that
+    // don't have this time set.)
+    LOG(WARNING) << "No xCluster backfill hybrid time set for indexes in automatic mode, "
+                 << "falling back to non-automatic mode flow.";
   }
 
   if (is_colocated) {
@@ -1526,7 +1586,7 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
     // entries use the same external HT field.  To ensure transactional correctness we just need to
     // pick a time higher than the time that was picked on the source side.  Since the table is
     // created on the source universe before the target this is always guaranteed to be true.
-    return std::nullopt;
+    return XClusterBackfillDecision::RunLocalWithTabletSafeTime();
   }
 
   if (xcluster_manager.IsTableReplicationConsumer(indexed_table_id)) {
@@ -1537,20 +1597,20 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
           "Invalid xCluster safe time for namespace ", indexed_table->namespace_id());
 
       LOG(INFO) << "Using xCluster safe time " << *safe_time_result << " as the backfill read time";
-      return *safe_time_result;
+      return XClusterBackfillDecision::RunLocalAtHybridTime(*safe_time_result);
     }
 
     if (safe_time_result.status().IsNotFound()) {
       VLOG(1) << "Table " << indexed_table->id()
               << "does not belong to transactional replication, continue with "
                  "GetSafeTimeForTablet";
-      return std::nullopt;
+      return XClusterBackfillDecision::RunLocalWithTabletSafeTime();
     }
 
     return safe_time_result.status();
   }
 
-  return std::nullopt;
+  return XClusterBackfillDecision::RunLocalWithTabletSafeTime();
 }
 
 Result<HybridTime> XClusterTargetManager::PrepareAndGetBackfillTimeForBiDirectionalIndex(

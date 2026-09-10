@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * yb_index_check.c
- * Utiity to check if a YB index is consistent with its base relation.
+ * Utility to check if a YB index is consistent with its base relation.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -25,24 +25,30 @@
 
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/relation.h"
+#include "access/tupdesc.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
 #include "executor/tuptable.h"
 #include "executor/ybModifyTable.h"
 #include "fmgr.h"
+#include "funcapi.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
+#include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
@@ -59,24 +65,101 @@
 #define IndAttrDetail(indexrel, ybbasectid_datum, attnum)	\
 	"index: '%s', ybbasectid: '%s', index attnum: %d", RelationGetRelationName(indexrel), YBDatumToString(ybbasectid_datum, BYTEAOID), attnum
 
+#define YB_RETURN_RECORD_TABLERELID 0
+#define YB_RETURN_RECORD_INDEXRELID 1
+#define YB_RETURN_RECORD_YBCTID 2
+#define YB_RETURN_RECORD_TABLECOLS 3
+#define YB_RETURN_RECORD_YBBASECTID 4
+#define YB_RETURN_RECORD_INDEXCOLS 5
+#define YB_RETURN_RECORD_ERROR_CATEGORY 6
+
+#define YB_RETURN_RECORD_NATTS 7
+
+#define YB_INDEX_CORRUPTION_ERROR_LIST \
+	X(INDEX_SPURIOUS_ROW, "SPURIOUS_ROW") \
+	X(INDEX_MISSING_ROW, "MISSING_ROW") \
+	X(INDEX_KEY_MISMATCH, "BINARY_KEY_MISMATCH") \
+	X(INDEX_NULL_MISMATCH, "NULL_MISMATCH") \
+	X(INDEX_BINARY_NONKEY_MISMATCH, "BINARY_NONKEY_MISMATCH") \
+	X(INDEX_SEMANTIC_NONKEY_MISMATCH, "SEMANTIC_NONKEY_MISMATCH") \
+	X(INDEX_UNIQUE_SUFFIX_NOT_NULL, "UNIQUE_SUFFIX_NOT_NULL") \
+	X(INDEX_UNIQUE_SUFFIX_MISMATCH, "UNIQUE_SUFFIX_MISMATCH") \
+	X(INDEX_YBBASECTID_NULL, "YBBASECTID_NULL") \
+
+typedef enum YbIndexCorruptionErrors
+{
+#define X(enum_entry, _) enum_entry,
+	YB_INDEX_CORRUPTION_ERROR_LIST
+#undef X
+} YbIndexCorruptionErrors;
+
+static const char *const yb_index_error_strings[] = {
+#define X(_, string_literal) string_literal,
+	YB_INDEX_CORRUPTION_ERROR_LIST
+#undef X
+};
+
+/* Configuration for logging index inconsistencies. */
+typedef struct YbIndexInconsistencyLogStore
+{
+	/*
+	 * Number of index inconsistencies to log before the checker aborts.
+	 * Initialised to log_num_errors.
+	 *  -1 — abort signal: the checker must stop immediately.
+	 *   0 — error out on the next inconsistency (log_num_errors was 0).
+	 *   1 — log the next inconsistency, then transition to -1 (abort).
+	 *  >1 — log the next inconsistency and decrement.
+	 */
+	int			log_max_index_inconsistencies;
+	/* A tuple store to hold information about the index inconsistencies. */
+	Tuplestorestate *tupstore;
+	/* A tuple descriptor to describe the tuple store. */
+	TupleDesc	tupdesc;
+	 /* Extra read pointer used to scan the store for deduplicating index inconsistencies. */
+	int			dedup_readptr;
+} YbIndexInconsistencyLogStore;
+
+/* Struct to represent metadata about a single index inconsistency. */
+typedef struct YbIndexErrorInfo
+{
+	Oid			tablerelid;		/* OID of the base table that the index
+								 * belongs to. */
+	Oid			indexrelid;		/* OID of the index that this inconsistency is
+								 * found in. This is useful when dealing with
+								 * partitioned indexes. */
+
+	TupleTableSlot *outslot;	/* Join slot that detected the error; */
+
+	Datum		ybctid;			/* Tuple ID of the base table row */
+	Datum		ybbasectid;		/* Tuple ID that the index row points to */
+
+	YbIndexCorruptionErrors error_category; /* Type of inconsistency */
+	int			index_attnum;	/* Attribute number of the corrupted column in
+								 * the inconsistent index row */
+} YbIndexErrorInfo;
+
 typedef Plan *(*YbIssueDetectionPlan) (Relation baserel, Relation indexrel,
 									   Datum lower_bound_ybctid,
 									   bool multi_snapshot_mode);
 
 typedef void (*YbIssueDetectionCheck) (TupleTableSlot *outslot,
+									   Relation baserel,
 									   Relation indexrel,
-									   List *equality_opcodes);
+									   List *equality_opcodes,
+									   YbIndexInconsistencyLogStore *log_store);
 
 int			yb_test_index_check_num_batches_per_snapshot = -1;
 bool		yb_test_slowdown_index_check = false;
 
-static void do_index_check(Oid indexoid, bool multi_snapshot_mode);
-static void partitioned_index_check(Oid parentindexId,
-									bool multi_snapshot_mode);
+static void do_index_check(Oid indexoid, bool multi_snapshot_mode,
+						   YbIndexInconsistencyLogStore *log_store);
+static void partitioned_index_check(Oid parentindexId, bool multi_snapshot_mode,
+									YbIndexInconsistencyLogStore *log_store);
 
 /* Detect inconsistent index rows. */
 static size_t detect_inconsistent_rows(Relation baserel, Relation indexrel,
-									   bool multi_snapshot_mode);
+									   bool multi_snapshot_mode,
+									   YbIndexInconsistencyLogStore *log_store);
 static Plan *inconsistent_row_detection_plan(Relation baserel,
 											 Relation indexrel,
 											 Datum lower_bound_ybctid,
@@ -86,13 +169,16 @@ static Plan *outer_indexrel_scan_plan(Relation indexrel,
 									  bool multi_snapshot_mode);
 static Plan *inner_baserel_scan_plan(Relation baserel, Relation indexrel);
 static void inconsistent_row_detection_check(TupleTableSlot *outslot,
+											 Relation baserel,
 											 Relation indexrel,
-											 List *equality_opcodes);
+											 List *equality_opcodes,
+											 YbIndexInconsistencyLogStore *log_store);
 
 /* Detect missing index rows. */
 static void detect_missing_rows(Relation baserel, Relation indexrel,
 								size_t actual_index_rowcount,
-								bool multi_snapshot_mode);
+								bool multi_snapshot_mode,
+								YbIndexInconsistencyLogStore *log_store);
 static Plan *missing_row_detection_plan(Relation baserel, Relation indexrel,
 										Datum lower_bound_ybctid,
 										bool multi_snapshot_mode);
@@ -101,15 +187,18 @@ static Plan *outer_baserel_scan_plan(Relation baserel, Relation indexrel,
 									 bool multi_snapshot_mode);
 static Plan *inner_indexrel_scan_plan(Relation indexrel);
 static void missing_row_detection_check(TupleTableSlot *outslot,
+										Relation baserel,
 										Relation indexrel,
-										List *unsed_equality_opcodes);
+										List *unused_equality_opcodes,
+										YbIndexInconsistencyLogStore *log_store);
 static int64 get_expected_index_rowcount(Relation baserel, Relation indexrel);
 
 static size_t detect_index_issues(Relation baserel, Relation indexrel,
 								  YbIssueDetectionPlan issue_detection_plan,
 								  YbIssueDetectionCheck issue_detection_check,
 								  char *task_identifier,
-								  bool multi_snapshot_mode);
+								  bool multi_snapshot_mode,
+								  YbIndexInconsistencyLogStore *log_store);
 
 /* Helper functions. */
 static List *get_equality_opcodes(Relation indexrel);
@@ -137,15 +226,75 @@ static List *get_partial_index_predicate(Relation baserel, Relation indexrel,
 										 List **partial_idx_colrefs,
 										 bool *partial_idx_pushdown);
 
+/* Log-table and error reporting */
+static const char *index_inconsistency_error_category_string(YbIndexCorruptionErrors err);
+static YbIndexCorruptionErrors index_inconsistency_error_category_from_string(const char *str);
+static void col_to_jsonb_repr(JsonbParseState **pstate, TupleTableSlot *outslot,
+							  int slot_attno, Form_pg_attribute attr);
+static Datum populate_table_cols_data(TupleTableSlot *outslot, Relation indexrel);
+static Datum populate_index_cols_data(TupleTableSlot *outslot, Relation indexrel);
+static void log_index_error(YbIndexCorruptionErrors error_enum, int log_level,
+							Relation indexrel,
+							Datum ybctid, Datum ybbasectid_datum, int index_attnum);
+static void push_index_inconsistency_to_tuplestore(const YbIndexErrorInfo *info,
+												   Relation baserel, Relation indexrel,
+												   YbIndexInconsistencyLogStore *log_store);
+static bool ybctid_already_reported_as_key_mismatch(Datum ybctid,
+													YbIndexInconsistencyLogStore *log_store);
+static void handle_index_error(const YbIndexErrorInfo *info,
+							   Relation baserel, Relation indexrel,
+							   YbIndexInconsistencyLogStore *log_store);
+static bool should_abort_execution(YbIndexInconsistencyLogStore *log_store);
+
 Datum
 yb_index_check(PG_FUNCTION_ARGS)
 {
 	Oid			indexoid = PG_GETARG_OID(0);
 	bool		multi_snapshot_mode = !PG_GETARG_BOOL(1);
 	int			savedGUCLevel = -1;
+	int			log_num_errors = PG_GETARG_INT32(2);
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	YbIndexInconsistencyLogStore log_store;
 
 	if (yb_test_index_check_num_batches_per_snapshot == 0)
 		multi_snapshot_mode = false;
+
+	if (log_num_errors < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("log_num_errors must be a non-negative integer")));
+
+	/*
+	 * log_num_errors > 0 requires multi_snapshot_mode (to log missing index
+	 * rows).
+	 */
+	if (log_num_errors > 0 && !multi_snapshot_mode)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("log_num_errors > 0 is not supported with single_snapshot_mode")));
+
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+	get_call_result_type(fcinfo, NULL, &log_store.tupdesc);
+	Assert(log_store.tupdesc != NULL && log_store.tupdesc->natts == YB_RETURN_RECORD_NATTS);
+	log_store.tupstore = tuplestore_begin_heap(true /* randomAccess */ , false /* interXact */ ,
+											   work_mem);
+	log_store.dedup_readptr = tuplestore_alloc_read_pointer(log_store.tupstore, EXEC_FLAG_REWIND);
+	MemoryContextSwitchTo(oldcontext);
+
+	log_store.log_max_index_inconsistencies = log_num_errors;
 
 	uint64		original_read_point PG_USED_FOR_ASSERTS_ONLY =
 		YBCPgGetCurrentReadPoint();
@@ -155,7 +304,7 @@ yb_index_check(PG_FUNCTION_ARGS)
 	if (is_txn_block)
 		ereport(NOTICE,
 				(errmsg("yb_index_check() is prone to 'Restart read required' "
-						"erorrs when executed from within a transaction "
+						"errors when executed from within a transaction "
 						"block.")));
 
 	if (!is_txn_block)
@@ -167,7 +316,7 @@ yb_index_check(PG_FUNCTION_ARGS)
 								 true, 0, false);
 	}
 
-	do_index_check(indexoid, multi_snapshot_mode);
+	do_index_check(indexoid, multi_snapshot_mode, &log_store);
 
 	if (!is_txn_block)
 		AtEOXact_GUC(false, savedGUCLevel);
@@ -178,11 +327,16 @@ yb_index_check(PG_FUNCTION_ARGS)
 	 */
 	Assert(original_read_point == YBCPgGetCurrentReadPoint());
 
-	PG_RETURN_VOID();
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = log_store.tupstore;
+	rsinfo->setDesc = log_store.tupdesc;
+
+	tuplestore_donestoring(log_store.tupstore);
+	return (Datum) 0;
 }
 
 static void
-do_index_check(Oid indexoid, bool multi_snapshot_mode)
+do_index_check(Oid indexoid, bool multi_snapshot_mode, YbIndexInconsistencyLogStore *log_store)
 {
 	/*
 	 * Open the base and the index relation with AccessShareLock since we read
@@ -194,7 +348,7 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode)
 	if (indexrel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 	{
 		relation_close(indexrel, lockmode);
-		return partitioned_index_check(indexoid, multi_snapshot_mode);
+		return partitioned_index_check(indexoid, multi_snapshot_mode, log_store);
 	}
 
 	if (indexrel->rd_rel->relkind != RELKIND_INDEX)
@@ -223,10 +377,11 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode)
 	PG_TRY();
 	{
 		size_t		actual_index_rowcount =
-			detect_inconsistent_rows(baserel, indexrel, multi_snapshot_mode);
+			detect_inconsistent_rows(baserel, indexrel, multi_snapshot_mode, log_store);
 
-		detect_missing_rows(baserel, indexrel, actual_index_rowcount,
-							multi_snapshot_mode);
+		if (!should_abort_execution(log_store))
+			detect_missing_rows(baserel, indexrel, actual_index_rowcount,
+								multi_snapshot_mode, log_store);
 	}
 	PG_CATCH();
 	{
@@ -241,7 +396,8 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode)
 }
 
 static void
-partitioned_index_check(Oid parentindexId, bool multi_snapshot_mode)
+partitioned_index_check(Oid parentindexId, bool multi_snapshot_mode,
+						YbIndexInconsistencyLogStore *log_store)
 {
 	ListCell   *lc;
 
@@ -249,18 +405,22 @@ partitioned_index_check(Oid parentindexId, bool multi_snapshot_mode)
 	{
 		Oid			childindexId = ObjectIdGetDatum(lfirst_oid(lc));
 
-		do_index_check(childindexId, multi_snapshot_mode);
+		do_index_check(childindexId, multi_snapshot_mode, log_store);
+		if (should_abort_execution(log_store))
+			break;
 	}
 }
 
 static size_t
 detect_inconsistent_rows(Relation baserel, Relation indexrel,
-						 bool multi_snapshot_mode)
+						 bool multi_snapshot_mode,
+						 YbIndexInconsistencyLogStore *log_store)
 {
 	return detect_index_issues(baserel, indexrel,
 							   inconsistent_row_detection_plan,
 							   inconsistent_row_detection_check,
-							   "detect_inconsistent_rows", multi_snapshot_mode);
+							   "detect_inconsistent_rows", multi_snapshot_mode,
+							   log_store);
 }
 
 /*
@@ -295,7 +455,7 @@ inconsistent_row_detection_plan(Relation baserel, Relation indexrel,
 	 * - index attributes from the outer and the inner subplan such that
 	 *   semantically same attributes are next to each other: (outer.att1,
 	 *   inner.att1, outer.att2, inner.att2, ... and so on)
-	 * - outer.ybuniqueidxkeysuffix (if index is uniue)
+	 * - outer.ybuniqueidxkeysuffix (if index is unique)
 	 * - outer.ybctid
 	 */
 	Expr	   *expr;
@@ -320,7 +480,7 @@ inconsistent_row_detection_plan(Relation baserel, Relation indexrel,
 		plan_tlist = lappend(plan_tlist, target_entry);
 	}
 
-	/* outer.ybuniqueidxkeysuffix (if index is uniue) */
+	/* outer.ybuniqueidxkeysuffix (if index is unique) */
 	attr = SystemAttributeDefinition(YBTupleIdAttributeNumber);
 	if (indexrel->rd_index->indisunique)
 	{
@@ -336,7 +496,7 @@ inconsistent_row_detection_plan(Relation baserel, Relation indexrel,
 	target_entry = makeTargetEntry(expr, ++resno, "", false);
 	plan_tlist = lappend(plan_tlist, target_entry);
 
-	/* Join claue */
+	/* Join clause */
 	Var		   *join_clause_lhs = makeVar(OUTER_VAR, 1, attr->atttypid,
 										  attr->atttypmod, attr->attcollation, 0);
 	Var		   *join_clause_rhs = makeVar(INNER_VAR, 1, attr->atttypid,
@@ -431,9 +591,9 @@ outer_indexrel_scan_plan(Relation indexrel, Datum lower_bound_ybctid,
  *		SELECT ybctid, index attributes from baserel where ybctid IN (....)
  *		AND <partial index predicate, if any>
  * This makes the inner subplan of BNL. So this must be an IndexScan, but this
- * scans the base relation. To achive this, index scan is done an a dummy index
+ * scans the base relation. To achieve this, index scan is done on a dummy index
  * on the ybctid column. Under the hood, it works as an IndexOnlyScan on the
- * base relation. This is similair to how PK index scan works in YB.
+ * base relation. This is similar to how PK index scan works in YB.
  */
 static Plan *
 inner_baserel_scan_plan(Relation baserel, Relation indexrel)
@@ -463,7 +623,10 @@ inner_baserel_scan_plan(Relation baserel, Relation indexrel)
 		Expr	   *expr = get_index_attr_expr(baserel, indexrel, i, &indexprs,
 											   &next_expr);
 
-		/* Assert that type of index attribute match base relation attribute. */
+		/*
+		 * Assert that type of index attribute matches base relation
+		 * attribute.
+		 */
 		Assert(exprType((Node *) expr) ==
 			   TupleDescAttr(indexdesc, i)->atttypid);
 		target_entry = makeTargetEntry(expr, ++resno, "", false);
@@ -491,9 +654,20 @@ inner_baserel_scan_plan(Relation baserel, Relation indexrel)
 	return (Plan *) base_scan;
 }
 
+/*
+ * Note that a single index row may have several (unrelated) inconsistencies.
+ * For example, a row may have both an INDEX_KEY_MISMATCH as well as INDEX_BINARY_NONKEY_MISMATCH,
+ * which were produced by two different queries.
+ * The logging framework reports only the first inconsistency encountered. This is acceptable
+ * because it suffices to know that something is wrong with the index row, so that it can be
+ * avoided or repaired.
+ */
 static void
-inconsistent_row_detection_check(TupleTableSlot *outslot, Relation indexrel,
-								 List *equality_opcodes)
+inconsistent_row_detection_check(TupleTableSlot *outslot,
+								 Relation baserel,
+								 Relation indexrel,
+								 List *equality_opcodes,
+								 YbIndexInconsistencyLogStore *log_store)
 {
 	bool		indisunique = indexrel->rd_index->indisunique;
 	bool		indnullsnotdistinct = indexrel->rd_index->indnullsnotdistinct;
@@ -523,27 +697,47 @@ inconsistent_row_detection_check(TupleTableSlot *outslot, Relation indexrel,
 	Form_pg_attribute ind_att =
 		TupleDescAttr(outslot->tts_tupleDescriptor, attnum);
 	Datum		ybbasectid_datum = slot_getattr(outslot, ++attnum, &ind_null);
-	Datum		ybctid_datum PG_USED_FOR_ASSERTS_ONLY =
-		slot_getattr(outslot, ++attnum, &base_null);
+	Datum		ybctid_datum = slot_getattr(outslot, ++attnum, &base_null);
 
 	if (ind_null)
-		ereport(ERROR,
-				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("index has row with ybbasectid == null"),
-				 errdetail(IndRelDetail(indexrel))));
+	{
+		YbIndexErrorInfo info = {
+			.tablerelid = RelationGetRelid(baserel),
+			.indexrelid = RelationGetRelid(indexrel),
+			.outslot = outslot,
+			.ybctid = (Datum) 0,
+			.ybbasectid = (Datum) 0,
+			.error_category = INDEX_YBBASECTID_NULL,
+			.index_attnum = -1,
+		};
+
+		handle_index_error(&info, baserel, indexrel, log_store);
+		return;
+	}
 
 	if (base_null)
-		ereport(ERROR,
-				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("index contains spurious row"),
-				 errdetail(IndRowDetail(indexrel, ybbasectid_datum))));
+	{
+		YbIndexErrorInfo info = {
+			.tablerelid = RelationGetRelid(baserel),
+			.indexrelid = RelationGetRelid(indexrel),
+			.outslot = outslot,
+			.ybctid = ybbasectid_datum, /* log row gets NULL; ereport uses
+										 * ybbasectid */
+			.ybbasectid = ybbasectid_datum,
+			.error_category = INDEX_SPURIOUS_ROW,
+			.index_attnum = -1,
+		};
+
+		handle_index_error(&info, baserel, indexrel, log_store);
+		return;
+	}
 
 	/*
 	 * TODO: datumIsEqual() returns false due to header size mismatch for types
 	 * with variable length. For instance, in the following case, ybbasectid is
 	 * VARATT_IS_1B, whereas ybctid VARATT_IS_4B. Look into it.
 	 */
-	/* Assert the join condiition. */
+	/* Assert the join condition. */
 	Assert(datum_image_eq(ybbasectid_datum, ybctid_datum, ind_att->attbyval,
 						  ind_att->attlen));
 
@@ -563,10 +757,18 @@ inconsistent_row_detection_check(TupleTableSlot *outslot, Relation indexrel,
 			if (ind_null && base_null)
 				continue;
 
-			ereport(ERROR,
-					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("inconsistent index row due to NULL mismatch"),
-					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, i + 1))));
+			YbIndexErrorInfo info = {
+				.tablerelid = RelationGetRelid(baserel),
+				.indexrelid = RelationGetRelid(indexrel),
+				.outslot = outslot,
+				.ybctid = ybctid_datum,
+				.ybbasectid = ybbasectid_datum,
+				.error_category = INDEX_NULL_MISMATCH,
+				.index_attnum = i + 1,
+			};
+
+			handle_index_error(&info, baserel, indexrel, log_store);
+			return;
 		}
 
 		if (datum_image_eq(ind_datum, base_datum, ind_att->attbyval,
@@ -575,25 +777,55 @@ inconsistent_row_detection_check(TupleTableSlot *outslot, Relation indexrel,
 
 		/* Index key should be binary equal to base relation counterpart. */
 		if (i < indnkeyatts)
-			ereport(ERROR,
-					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("inconsistent index row due to binary mismatch of key attribute"),
-					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, i + 1))));
+		{
+			YbIndexErrorInfo info = {
+				.tablerelid = RelationGetRelid(baserel),
+				.indexrelid = RelationGetRelid(indexrel),
+				.outslot = outslot,
+				.ybctid = ybctid_datum,
+				.ybbasectid = ybbasectid_datum,
+				.error_category = INDEX_KEY_MISMATCH,
+				.index_attnum = i + 1,
+			};
+
+			handle_index_error(&info, baserel, indexrel, log_store);
+			return;
+		}
 
 		RegProcedure proc_oid = lfirst_int(list_nth_cell(equality_opcodes, i));
 
 		if (proc_oid == InvalidOid)
-			ereport(ERROR,
-					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("inconsistent index row due to binary mismatch of non-key attribute"),
-					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, i + 1))));
+		{
+			YbIndexErrorInfo info = {
+				.tablerelid = RelationGetRelid(baserel),
+				.indexrelid = RelationGetRelid(indexrel),
+				.outslot = outslot,
+				.ybctid = ybctid_datum,
+				.ybbasectid = ybbasectid_datum,
+				.error_category = INDEX_BINARY_NONKEY_MISMATCH,
+				.index_attnum = i + 1,
+			};
+
+			handle_index_error(&info, baserel, indexrel, log_store);
+			return;
+		}
 
 		if (!DatumGetBool(OidFunctionCall2Coll(proc_oid, DEFAULT_COLLATION_OID,
 											   ind_datum, base_datum)))
-			ereport(ERROR,
-					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("inconsistent index row due to semantic mismatch of non-key attribute"),
-					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, i + 1))));
+		{
+			YbIndexErrorInfo info = {
+				.tablerelid = RelationGetRelid(baserel),
+				.indexrelid = RelationGetRelid(indexrel),
+				.outslot = outslot,
+				.ybctid = ybctid_datum,
+				.ybbasectid = ybbasectid_datum,
+				.error_category = INDEX_SEMANTIC_NONKEY_MISMATCH,
+				.index_attnum = i + 1,
+			};
+
+			handle_index_error(&info, baserel, indexrel, log_store);
+			return;
+		}
 	}
 
 	if (indisunique)
@@ -606,34 +838,57 @@ inconsistent_row_detection_check(TupleTableSlot *outslot, Relation indexrel,
 		if (indnullsnotdistinct || !indkeyhasnull)
 		{
 			if (!ind_null)
-				ereport(ERROR,
-						(errcode(ERRCODE_INDEX_CORRUPTED),
-						 errmsg("ybuniqueidxkeysuffix is (unexpectedly) not null"),
-						 errdetail(IndRowDetail(indexrel, ybbasectid_datum))));
+			{
+				YbIndexErrorInfo info = {
+					.tablerelid = RelationGetRelid(baserel),
+					.indexrelid = RelationGetRelid(indexrel),
+					.outslot = outslot,
+					.ybctid = ybctid_datum,
+					.ybbasectid = ybbasectid_datum,
+					.error_category = INDEX_UNIQUE_SUFFIX_NOT_NULL,
+					.index_attnum = -1,
+				};
+
+				handle_index_error(&info, baserel, indexrel, log_store);
+				return;
+			}
 		}
 		else
 		{
-			bool		equal = datum_image_eq(ybbasectid_datum,
-											   ybuniqueidxkeysuffix_datum,
-											   ind_att->attbyval, ind_att->attlen);
+			/*
+			 * In case of NULLS DISTINCT, the suffix must equal ybbasectid.
+			 * A NULL suffix is a mismatch and can cause datum_image_eq to crash.
+			 */
+			if (ind_null ||
+				!datum_image_eq(ybbasectid_datum, ybuniqueidxkeysuffix_datum,
+								ind_att->attbyval, ind_att->attlen))
+			{
+				YbIndexErrorInfo info = {
+					.tablerelid = RelationGetRelid(baserel),
+					.indexrelid = RelationGetRelid(indexrel),
+					.outslot = outslot,
+					.ybctid = ybctid_datum,
+					.ybbasectid = ybbasectid_datum,
+					.error_category = INDEX_UNIQUE_SUFFIX_MISMATCH,
+					.index_attnum = -1,
+				};
 
-			if (!equal)
-				ereport(ERROR,
-						(errcode(ERRCODE_INDEX_CORRUPTED),
-						 errmsg("ybuniqueidxkeysuffix and ybbasectid mismatch"),
-						 errdetail(IndRowDetail(indexrel, ybbasectid_datum))));
+				handle_index_error(&info, baserel, indexrel, log_store);
+				return;
+			}
 		}
 	}
 }
 
 static void
 detect_missing_rows(Relation baserel, Relation indexrel,
-					size_t actual_index_rowcount, bool multi_snapshot_mode)
+					size_t actual_index_rowcount, bool multi_snapshot_mode,
+					YbIndexInconsistencyLogStore *log_store)
 {
 	if (multi_snapshot_mode)
 		detect_index_issues(baserel, indexrel, missing_row_detection_plan,
 							missing_row_detection_check, "detect_missing_rows",
-							multi_snapshot_mode);
+							multi_snapshot_mode, log_store);
 	else
 	{
 		size_t		expected_index_rowcount =
@@ -642,12 +897,15 @@ detect_missing_rows(Relation baserel, Relation indexrel,
 		/* We already verified that index doesn't contain spurious rows. */
 		Assert(expected_index_rowcount >= actual_index_rowcount);
 		if (actual_index_rowcount != expected_index_rowcount)
+		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("index is missing some rows: expected %ld, actual "
-							"%ld",
-							expected_index_rowcount, actual_index_rowcount),
-					 errdetail(IndRelDetail(indexrel))));
+					 errmsg("index row count does not match base table"),
+					 errdetail("Index: '%s'; expected %ld rows, actual %ld",
+							   RelationGetRelationName(indexrel),
+							   (long) expected_index_rowcount,
+							   (long) actual_index_rowcount)));
+		}
 	}
 }
 
@@ -705,7 +963,7 @@ missing_row_detection_plan(Relation baserel, Relation indexrel,
 	target_entry = makeTargetEntry(expr, ++resno, "", false);
 	plan_tlist = lappend(plan_tlist, target_entry);
 
-	/* Join claue */
+	/* Join clause */
 	Var		   *join_clause_lhs = makeVar(OUTER_VAR, 1, attr->atttypid,
 										  attr->atttypmod, attr->attcollation, 0);
 	Var		   *join_clause_rhs = makeVar(INNER_VAR, 1, attr->atttypid,
@@ -852,8 +1110,10 @@ inner_indexrel_scan_plan(Relation indexrel)
 }
 
 static void
-missing_row_detection_check(TupleTableSlot *outslot, Relation indexrel,
-							List *unsed_equality_opcodes)
+missing_row_detection_check(TupleTableSlot *outslot,
+							Relation baserel, Relation indexrel,
+							List *unused_equality_opcodes,
+							YbIndexInconsistencyLogStore *log_store)
 {
 	Assert(!TTS_EMPTY(outslot));
 	bool		ind_null;
@@ -876,11 +1136,18 @@ missing_row_detection_check(TupleTableSlot *outslot, Relation indexrel,
 		Datum		ybctid = slot_getattr(outslot, 3, &base_null);
 
 		Assert(!base_null);
-		ereport(ERROR,
-				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("index '%s' is missing row corresponding to ybctid "
-						"'%s'", RelationGetRelationName(indexrel),
-						YBDatumToString(ybctid, BYTEAOID))));
+		YbIndexErrorInfo info = {
+			.tablerelid = RelationGetRelid(baserel),
+			.indexrelid = RelationGetRelid(indexrel),
+			.outslot = outslot, /* 3-col slot; no table_cols/index_cols built */
+			.ybctid = ybctid,
+			.ybbasectid = (Datum) 0,
+			.error_category = INDEX_MISSING_ROW,
+			.index_attnum = -1,
+		};
+
+		handle_index_error(&info, baserel, indexrel, log_store);
+		return;
 	}
 
 	/*
@@ -948,12 +1215,15 @@ get_expected_index_rowcount(Relation baserel, Relation indexrel)
 /*
  * Common driver function that fetches and executes the plan and runs the output
  * through the check function. Returns the number of rows processed.
+ * If log_num_errors is 0, the function errors out on the first inconsistency encountered.
+ * If log_num_errors is > 0, the function logs up to log_num_errors inconsistencies.
  */
 static size_t
 detect_index_issues(Relation baserel, Relation indexrel,
 					YbIssueDetectionPlan issue_detection_plan,
 					YbIssueDetectionCheck issue_detection_check, char *task_id,
-					bool multi_snapshot_mode)
+					bool multi_snapshot_mode,
+					YbIndexInconsistencyLogStore *log_store)
 {
 	Datum		lower_bound_ybctid = 0;
 	bool		execution_complete = false;
@@ -985,11 +1255,17 @@ detect_index_issues(Relation baserel, Relation indexrel,
 
 		while (!batch_complete && (outslot = ExecProcNode(planstate)))
 		{
-			issue_detection_check(outslot, indexrel, equality_opcodes);
+			issue_detection_check(outslot, baserel, indexrel, equality_opcodes, log_store);
+
+			if (should_abort_execution(log_store))
+			{
+				execution_complete = true;
+				break;
+			}
 
 			if (multi_snapshot_mode)
 			{
-				/* Update the  lower_bound_ybctid. */
+				/* Update the lower_bound_ybctid. */
 				bool		null;
 				Datum		ybctid = slot_getattr(outslot,
 												  outslot->tts_tupleDescriptor->natts,
@@ -1027,7 +1303,7 @@ detect_index_issues(Relation baserel, Relation indexrel,
 		if (multi_snapshot_mode)
 			PopActiveSnapshot();
 
-		execution_complete = !outslot;
+		execution_complete = execution_complete || !outslot;
 		ExecEndNode(planstate);
 		MemoryContextSwitchTo(oldctxt);
 		cleanup_estate(estate);
@@ -1398,4 +1674,417 @@ yb_compute_row_ybctid(PG_FUNCTION_ARGS)
 	ExecDropSingleTupleTableSlot(slot);
 	RelationClose(rel);
 	return result;
+}
+
+static bool
+should_abort_execution(YbIndexInconsistencyLogStore *log_store)
+{
+	return log_store->log_max_index_inconsistencies == -1;
+}
+
+static const char *
+index_inconsistency_error_category_string(YbIndexCorruptionErrors err)
+{
+	if (err >= lengthof(yb_index_error_strings))
+		elog(ERROR, "Unexpected index corruption error: %d", err);
+
+	return yb_index_error_strings[err];
+}
+
+static YbIndexCorruptionErrors
+index_inconsistency_error_category_from_string(const char *str)
+{
+	for (int i = 0; i < lengthof(yb_index_error_strings); i++)
+	{
+		if (strcmp(str, yb_index_error_strings[i]) == 0)
+			return (YbIndexCorruptionErrors) i;
+	}
+	elog(ERROR, "Unexpected index corruption error string: %s", str);
+	pg_unreachable();
+}
+
+/*
+ * Convert one column's value to a JSONB key-value pair where the key is the name of the column
+ * (as stored in the pg_attribute table) and the value is the JSONB representation of the value of
+ * the column.
+ */
+static void
+col_to_jsonb_repr(JsonbParseState **pstate, TupleTableSlot *outslot,
+				  int slot_attno, Form_pg_attribute attr)
+{
+	Assert(slot_attno >= 1 && slot_attno <= outslot->tts_tupleDescriptor->natts);
+
+	JsonbValue	key;
+	JsonbValue	val;
+	bool		isnull;
+	Datum		d = slot_getattr(outslot, slot_attno, &isnull);
+
+	key.type = jbvString;
+	key.val.string.val = NameStr(attr->attname);
+	key.val.string.len = strlen(key.val.string.val);
+	pushJsonbValue(pstate, WJB_KEY, &key);
+
+	/*
+	 * If the column is NULL, it doesn't matter what its original data type is.
+	 * Push a NULL value into the JSONB object.
+	 */
+	if (isnull)
+	{
+		val.type = jbvNull;
+		pushJsonbValue(pstate, WJB_VALUE, &val);
+		return;
+	}
+
+	/*
+	 * If the column's data is a scalar that can be represented as a non-string JSONB value
+	 * (bool, int, numeric etc), convert and push it into the JSONB object.
+	 * Notes:
+	 * - The JSONB library doesn't extern the JSONB data types, so the pushing logic happens
+	 *   automagically.
+	 * - The only known exception to this is when the column's data represents special values
+	 *   (such as infinity, NaN, etc), in which case the JSONB's string representation of the
+	 *   value is used. This is a narrow usecase that is not worth explicitly handling.
+	 */
+	if (yb_datum_to_jsonb_non_string_scalar_value(d, attr->atttypid, pstate))
+		return;
+
+	/*
+	 * For all other data types, convert the column's value to a postgres string and push it into
+	 * the JSONB object.
+	 * Note that we use postgres' built-in output functions for this rather than using the JSONB
+	 * library's equivalent functions as the string representation can vary between the two.
+	 */
+	Oid			typoutput;
+	bool		typisvarlena;
+	char	   *outstr;
+
+	getTypeOutputInfo(attr->atttypid, &typoutput, &typisvarlena);
+	outstr = OidOutputFunctionCall(typoutput, d);
+	val.type = jbvString;
+	val.val.string.val = pstrdup(outstr);
+	val.val.string.len = strlen(val.val.string.val);
+	pushJsonbValue(pstate, WJB_VALUE, &val);
+	pfree(outstr);
+}
+
+/*
+ * Build JSONB object of table columns from outslot.
+ */
+static Datum
+populate_table_cols_data(TupleTableSlot *outslot, Relation indexrel)
+{
+	JsonbParseState *pstate = NULL;
+	JsonbValue *res;
+	int			indnatts = indexrel->rd_index->indnatts;
+	TupleDesc	indexdesc = RelationGetDescr(indexrel);
+
+	pushJsonbValue(&pstate, WJB_BEGIN_OBJECT, NULL);
+
+	/*
+	 * The outslot is laid out as follows (counting starts from 1):
+	 * 1. indexrel.ybbasectid
+	 * 2. baserel.ybctid
+	 * 3. indexrel.index_attnum_1
+	 * 4. baserel.index_attnum_1
+	 * 5. indexrel.index_attnum_2
+	 * 6. baserel.index_attnum_2
+	 * ...
+	 * 4 + 2 * (indnatts - 1): baserel.index_attnum_indnatts
+	 */
+	for (int i = 0; i < indnatts; i++)
+		col_to_jsonb_repr(&pstate, outslot, 4 + 2 * i, TupleDescAttr(indexdesc, i));
+
+	res = pushJsonbValue(&pstate, WJB_END_OBJECT, NULL);
+	return JsonbPGetDatum(JsonbValueToJsonb(res));
+}
+
+/*
+ * Build JSONB object of index columns from outslot.
+ */
+static Datum
+populate_index_cols_data(TupleTableSlot *outslot, Relation indexrel)
+{
+	JsonbParseState *pstate = NULL;
+	JsonbValue *res;
+	int			indnatts = indexrel->rd_index->indnatts;
+	TupleDesc	indexdesc = RelationGetDescr(indexrel);
+
+	pushJsonbValue(&pstate, WJB_BEGIN_OBJECT, NULL);
+
+	/*
+	 * The outslot is layed out as follows (counting starts from 1):
+	 * 1. indexrel.ybbasectid
+	 * 2. baserel.ybctid
+	 * 3. indexrel.index_attnum_1
+	 * 4. baserel.index_attnum_1
+	 * 5. indexrel.index_attnum_2
+	 * 6. baserel.index_attnum_2
+	 * ...
+	 * 3 + 2 * (indnatts - 1): indexrel.index_attnum_indnatts
+	 */
+	for (int i = 0; i < indnatts; i++)
+		col_to_jsonb_repr(&pstate, outslot, 3 + 2 * i, TupleDescAttr(indexdesc, i));
+
+	res = pushJsonbValue(&pstate, WJB_END_OBJECT, NULL);
+	return JsonbPGetDatum(JsonbValueToJsonb(res));
+}
+
+static void
+log_index_error(YbIndexCorruptionErrors error_enum, int log_level,
+				Relation indexrel,
+				Datum ybctid, Datum ybbasectid_datum, int index_attnum)
+{
+	switch (error_enum)
+	{
+		case INDEX_SPURIOUS_ROW:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("index contains spurious row"),
+					 errdetail(IndRowDetail(indexrel, ybbasectid_datum))));
+			break;
+
+		case INDEX_MISSING_ROW:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("index '%s' is missing row corresponding to ybctid '%s'",
+							RelationGetRelationName(indexrel),
+							YBDatumToString(ybctid, BYTEAOID))));
+			break;
+
+		case INDEX_YBBASECTID_NULL:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("index has row with ybbasectid == null"),
+					 errdetail(IndRelDetail(indexrel))));
+			break;
+
+		case INDEX_KEY_MISMATCH:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("inconsistent index row due to binary mismatch of key attribute"),
+					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, index_attnum))));
+			break;
+
+		case INDEX_NULL_MISMATCH:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("inconsistent index row due to null mismatch"),
+					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, index_attnum))));
+			break;
+
+		case INDEX_BINARY_NONKEY_MISMATCH:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("inconsistent index row due to binary mismatch of non-key attribute"),
+					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, index_attnum))));
+			break;
+
+		case INDEX_SEMANTIC_NONKEY_MISMATCH:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("inconsistent index row due to semantic mismatch of non-key attribute"),
+					 errdetail(IndAttrDetail(indexrel, ybbasectid_datum, index_attnum))));
+			break;
+
+		case INDEX_UNIQUE_SUFFIX_NOT_NULL:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("ybuniqueidxkeysuffix is (unexpectedly) not null"),
+					 errdetail(IndRowDetail(indexrel, ybbasectid_datum))));
+			break;
+
+		case INDEX_UNIQUE_SUFFIX_MISMATCH:
+			ereport(log_level,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg("ybuniqueidxkeysuffix and ybbasectid mismatch"),
+					 errdetail(IndRowDetail(indexrel, ybbasectid_datum))));
+			break;
+
+		default:
+			elog(ERROR, "log_index_error: unexpected error enum %d", (int) error_enum);
+			break;
+	}
+}
+
+/*
+ * Push one index inconsistency error into the invocation's tuplestore.
+ */
+static void
+push_index_inconsistency_to_tuplestore(const YbIndexErrorInfo *info,
+									   Relation baserel, Relation indexrel,
+									   YbIndexInconsistencyLogStore *log_store)
+{
+	Assert(log_store->tupstore != NULL && log_store->tupdesc != NULL);
+
+	YbIndexCorruptionErrors category = info->error_category;
+	bool		ybctid_is_null = (category == INDEX_SPURIOUS_ROW ||
+								  category == INDEX_YBBASECTID_NULL);
+	bool		ybbasectid_is_null = (category == INDEX_MISSING_ROW ||
+									  category == INDEX_YBBASECTID_NULL);
+
+	/*
+	 * In the missing row scenario, none of the table attributes (except the ybctid) are retrieved
+	 * by the join. The index attributes are missing because the row does not exist in the index.
+	 * Therefore, the tablecols and indexcols are NULL.
+	 * TODO(kramanathan): Enhance logging in this scenario by retrieving relevant table attributes.
+	 */
+	bool		tablecols_is_null = (ybctid_is_null || ybbasectid_is_null);
+	bool		indexcols_is_null = ybbasectid_is_null;
+
+	Datum		values[YB_RETURN_RECORD_NATTS];
+	bool		nulls[YB_RETURN_RECORD_NATTS];
+
+	nulls[YB_RETURN_RECORD_TABLERELID] = false;
+	values[YB_RETURN_RECORD_TABLERELID] = ObjectIdGetDatum(info->tablerelid);
+	nulls[YB_RETURN_RECORD_INDEXRELID] = false;
+	values[YB_RETURN_RECORD_INDEXRELID] = ObjectIdGetDatum(info->indexrelid);
+
+	nulls[YB_RETURN_RECORD_YBCTID] = ybctid_is_null;
+	values[YB_RETURN_RECORD_YBCTID] = info->ybctid;
+
+	nulls[YB_RETURN_RECORD_TABLECOLS] = tablecols_is_null;
+	if (!tablecols_is_null)
+		values[YB_RETURN_RECORD_TABLECOLS] = populate_table_cols_data(info->outslot, indexrel);
+	else
+		values[YB_RETURN_RECORD_TABLECOLS] = (Datum) 0;
+
+	nulls[YB_RETURN_RECORD_YBBASECTID] = ybbasectid_is_null;
+	values[YB_RETURN_RECORD_YBBASECTID] = info->ybbasectid;
+
+	nulls[YB_RETURN_RECORD_INDEXCOLS] = indexcols_is_null;
+	if (!indexcols_is_null)
+		values[YB_RETURN_RECORD_INDEXCOLS] = populate_index_cols_data(info->outslot, indexrel);
+	else
+		values[YB_RETURN_RECORD_INDEXCOLS] = (Datum) 0;
+
+	nulls[YB_RETURN_RECORD_ERROR_CATEGORY] = false;
+	values[YB_RETURN_RECORD_ERROR_CATEGORY] =
+		CStringGetTextDatum(index_inconsistency_error_category_string(category));
+
+	tuplestore_putvalues(log_store->tupstore, log_store->tupdesc, values, nulls);
+}
+
+/*
+ * Scan the tuplestore to check if the given ybctid has already been recorded
+ * as an index-key corruption: INDEX_KEY_MISMATCH, INDEX_NULL_MISMATCH,
+ * INDEX_UNIQUE_SUFFIX_NOT_NULL, or INDEX_UNIQUE_SUFFIX_MISMATCH.
+ *
+ * A key mismatch with a base row indicates that the index row has corrupt key
+ * attributes; this includes both the key columns as well as the unique suffix
+ * column. The checker will also detect the same base row as having a
+ * "missing" index row during the second scan phase, resulting in a duplicate
+ * report of the same logical error. Suppress this duplication by scanning
+ * the already-recorded tuples. The number of tuples in the store (ie. the
+ * number of index inconsistencies) is expected to be small, so a sequential
+ * scan of the store is acceptable.
+ *
+ * The scan uses a dedicated read pointer so that pointer 0 (the one the SRF
+ * return path reads from) remains at the start of the store. Leaving the
+ * default pointer mid-store or at EOF would make the function return incorrect
+ * results.
+ */
+static bool
+ybctid_already_reported_as_key_mismatch(Datum ybctid,
+										YbIndexInconsistencyLogStore *log_store)
+{
+	TupleTableSlot *slot;
+	bool		found = false;
+
+	Assert(log_store->tupstore != NULL && log_store->tupdesc != NULL);
+
+	if (tuplestore_tuple_count(log_store->tupstore) == 0)
+		return false;
+
+	slot = MakeSingleTupleTableSlot(log_store->tupdesc, &TTSOpsMinimalTuple);
+
+	/* Scan via the deduplication pointer; leave pointer 0 untouched. */
+	tuplestore_select_read_pointer(log_store->tupstore, log_store->dedup_readptr);
+	tuplestore_rescan(log_store->tupstore);
+
+	while (!found &&
+		   tuplestore_gettupleslot(log_store->tupstore,
+								   true /* forward */ ,
+								   false /* copy */ ,
+								   slot))
+	{
+		bool		isnull;
+		Datum		error_category_datum;
+		Datum		stored_ybctid;
+		char	   *error_category_str;
+		YbIndexCorruptionErrors error_category;
+
+		error_category_datum = slot_getattr(slot, YB_RETURN_RECORD_ERROR_CATEGORY + 1, &isnull);
+		Assert(!isnull);
+
+		error_category_str = TextDatumGetCString(error_category_datum);
+		error_category = index_inconsistency_error_category_from_string(error_category_str);
+		pfree(error_category_str);
+
+		/* Only index-key corruptions produce a correspinding MISSING_ROW. */
+		if (error_category != INDEX_KEY_MISMATCH &&
+			error_category != INDEX_NULL_MISMATCH &&
+			error_category != INDEX_UNIQUE_SUFFIX_NOT_NULL &&
+			error_category != INDEX_UNIQUE_SUFFIX_MISMATCH)
+			continue;
+
+		stored_ybctid = slot_getattr(slot, YB_RETURN_RECORD_YBCTID + 1, &isnull);
+		Assert(!isnull);
+
+		found = DatumGetBool(DirectFunctionCall2(byteaeq, ybctid, stored_ybctid));
+	}
+
+	tuplestore_select_read_pointer(log_store->tupstore, 0);
+	ExecDropSingleTupleTableSlot(slot);
+	return found;
+}
+
+/*
+ * This function handles logging of index inconsistencies for all error categories.
+ * Errors are always logged to logfile, and pushed to a tuple store if
+ * log_num_errors is greater than 0.
+ */
+static void
+handle_index_error(const YbIndexErrorInfo *info,
+				   Relation baserel, Relation indexrel,
+				   YbIndexInconsistencyLogStore *log_store)
+{
+	/*
+	 * If the error is a missing row that was already reported as an index-key
+	 * corruption skip it without touching the budget.
+	 */
+	if (info->error_category == INDEX_MISSING_ROW &&
+		ybctid_already_reported_as_key_mismatch(info->ybctid, log_store))
+		return;
+
+	int			log_level;
+
+	if (log_store->log_max_index_inconsistencies == 0)
+		log_level = ERROR;
+	else
+	{
+		log_level = LOG;
+		/*
+		 * If this is the last inconsistency to log, set the budget to a sentinel value to signal
+		 * the checker to terminate after logging.
+		 */
+		if (log_store->log_max_index_inconsistencies == 1)
+			log_store->log_max_index_inconsistencies = -1;
+		else
+			log_store->log_max_index_inconsistencies--;
+	}
+
+	log_index_error(info->error_category, log_level, indexrel,
+					info->ybctid, info->ybbasectid, info->index_attnum);
+
+	/* We haven't errored out, so store the error in the tuplestore. */
+	push_index_inconsistency_to_tuplestore(info, baserel, indexrel, log_store);
+
+	if (should_abort_execution(log_store))
+	{
+		int64		num_errors = tuplestore_tuple_count(log_store->tupstore);
+
+		ereport(NOTICE,
+				(errmsg("index checker aborted: maximum reportable errors (%ld) reached. Consider dropping and recreating the index.",
+						(long) num_errors)));
+	}
 }

@@ -31,8 +31,6 @@
 
 bool		YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-extern bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
-
 bool		YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 
 bool		is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,

@@ -1,5 +1,6 @@
 package com.yugabyte.yw.cloud.aws;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -49,6 +50,13 @@ public class AWSInitializerTest extends FakeDBApplication {
     providerDetails.setCloudInfo(cloudInfo);
     defaultProvider.setDetails(providerDetails);
     defaultProvider.save();
+  }
+
+  @Test
+  public void testParseCompactStorageDetails() {
+    assertArrayEquals(
+        new String[] {"1", "x", "1900", "GB", "NVMe", "SSD"},
+        AWSInitializer.parseStorageDetails("1x1900 GB NVMe SSD"));
   }
 
   @Test

@@ -20,7 +20,7 @@ typedef struct MemoryContextData *MemoryContext;
 typedef char *pg_stack_base_t;
 
 extern sigjmp_buf *PG_exception_stack;
-extern MemoryContext CurrentMemoryContext;
+extern MemoryContext YbCurrentMemoryContext;
 extern ErrorContextCallback *error_context_stack;
 extern ErrorData *CopyErrorData();
 extern void FlushErrorState();
@@ -85,7 +85,7 @@ template <typename Func, Func func, typename... FuncArgs>
 typename std::invoke_result<Func, FuncArgs...>::type
 __PostgresFunctionGuard__(const char *func_name, FuncArgs... args) {
 	std::lock_guard<std::recursive_mutex> lock(pgduckdb::GlobalProcessLock::GetLock());
-	MemoryContext ctx = CurrentMemoryContext;
+	MemoryContext ctx = YbCurrentMemoryContext;
 
 	{ // PG_TRY
 		PgExceptionGuard g;
@@ -96,7 +96,7 @@ __PostgresFunctionGuard__(const char *func_name, FuncArgs... args) {
 		}
 	}
 
-	CurrentMemoryContext = ctx;
+	YbCurrentMemoryContext = ctx;
 
 	ErrorData *edata = nullptr;
 	{ // PG_CATCH
@@ -124,7 +124,7 @@ __PostgresFunctionGuard__(const char *func_name, FuncArgs... args) {
 template <typename T, typename ReturnType, typename... FuncArgs>
 ReturnType
 __PostgresMemberGuard__(ReturnType (T::*func)(FuncArgs... args), T *instance, const char *func_name, FuncArgs... args) {
-	MemoryContext ctx = CurrentMemoryContext;
+	MemoryContext ctx = YbCurrentMemoryContext;
 
 	{ // Scope for PG_END_TRY
 		PgExceptionGuard g;
@@ -135,7 +135,7 @@ __PostgresMemberGuard__(ReturnType (T::*func)(FuncArgs... args), T *instance, co
 		}
 	} // PG_END_TRY();
 
-	CurrentMemoryContext = ctx;
+	YbCurrentMemoryContext = ctx;
 
 	ErrorData *edata = nullptr;
 

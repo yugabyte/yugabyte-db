@@ -20,6 +20,7 @@
 
 #include "yb/hnsw/hnsw_fwd.h"
 
+#include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
 
@@ -33,23 +34,8 @@ namespace yb::ann_methods {
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-class UsearchIndexFactory {
- public:
-  static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
-      vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-      const vector_index::HNSWOptions& options, HnswBackend backend,
-      const std::shared_ptr<MemTracker>& mem_tracker);
-};
-
-template<vector_index::IndexableVectorType Vector,
-         vector_index::ValidDistanceResultType DistanceResult>
-class SimplifiedUsearchIndexFactory {
- public:
-  static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
-      vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
-    return UsearchIndexFactory<Vector, DistanceResult>::Create(
-        mode, nullptr, options, HnswBackend::USEARCH, nullptr);
-  }
-};
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateUsearchIndexTraits(
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+    HnswBackend backend, const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods

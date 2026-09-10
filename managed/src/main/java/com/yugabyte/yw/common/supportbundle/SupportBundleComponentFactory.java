@@ -9,6 +9,11 @@ public class SupportBundleComponentFactory {
 
   private final ApplicationLogsComponent applicationLogsComponent;
   private final UniverseLogsComponent universeLogsComponent;
+  private final FilesComponent filesComponent;
+  private final BashComponent bashComponent;
+  private final YSQLComponent ysqlComponent;
+  private final YCQLComponent ycqlComponent;
+  private final YbAdminComponent ybAdminComponent;
   private final OutputFilesComponent outputFilesComponent;
   private final ErrorFilesComponent errorFilesComponent;
   private final CoreFilesComponent coreFilesComponent;
@@ -24,11 +29,17 @@ public class SupportBundleComponentFactory {
   private final SystemLogsComponent systemLogsComponent;
   private final TabletReportComponent tabletReportComponent;
   private final PerfAdvisorComponent perfAdvisorComponent;
+  private final YBAComponent ybaComponent;
 
   @Inject
   public SupportBundleComponentFactory(
       ApplicationLogsComponent applicationLogsComponent,
       UniverseLogsComponent universeLogsComponent,
+      FilesComponent filesComponent,
+      BashComponent bashComponent,
+      YSQLComponent ysqlComponent,
+      YCQLComponent ycqlComponent,
+      YbAdminComponent ybAdminComponent,
       OutputFilesComponent outputFilesComponent,
       ErrorFilesComponent errorFilesComponent,
       CoreFilesComponent coreFilesComponent,
@@ -43,9 +54,15 @@ public class SupportBundleComponentFactory {
       PrometheusMetricsComponent prometheusMetricsComponent,
       SystemLogsComponent systemLogsComponent,
       TabletReportComponent tabletReportComponent,
-      PerfAdvisorComponent perfAdvisorComponent) {
+      PerfAdvisorComponent perfAdvisorComponent,
+      YBAComponent ybaComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
     this.universeLogsComponent = universeLogsComponent;
+    this.filesComponent = filesComponent;
+    this.bashComponent = bashComponent;
+    this.ysqlComponent = ysqlComponent;
+    this.ycqlComponent = ycqlComponent;
+    this.ybAdminComponent = ybAdminComponent;
     this.outputFilesComponent = outputFilesComponent;
     this.errorFilesComponent = errorFilesComponent;
     this.coreFilesComponent = coreFilesComponent;
@@ -61,6 +78,7 @@ public class SupportBundleComponentFactory {
     this.systemLogsComponent = systemLogsComponent;
     this.tabletReportComponent = tabletReportComponent;
     this.perfAdvisorComponent = perfAdvisorComponent;
+    this.ybaComponent = ybaComponent;
   }
 
   // Maps the support bundle component type to its respective implementation
@@ -70,6 +88,21 @@ public class SupportBundleComponentFactory {
     switch (componentType) {
       case UniverseLogs:
         supportBundleComponent = this.universeLogsComponent;
+        break;
+      case FilesComponent:
+        supportBundleComponent = this.filesComponent;
+        break;
+      case BashComponent:
+        supportBundleComponent = this.bashComponent;
+        break;
+      case YSQLComponent:
+        supportBundleComponent = this.ysqlComponent;
+        break;
+      case YCQLComponent:
+        supportBundleComponent = this.ycqlComponent;
+        break;
+      case YbAdminComponent:
+        supportBundleComponent = this.ybAdminComponent;
         break;
       case ApplicationLogs:
         supportBundleComponent = this.applicationLogsComponent;
@@ -118,6 +151,9 @@ public class SupportBundleComponentFactory {
         break;
       case TabletReport:
         supportBundleComponent = this.tabletReportComponent;
+        break;
+      case YBAComponent:
+        supportBundleComponent = this.ybaComponent;
         break;
       default:
         break;

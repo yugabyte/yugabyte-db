@@ -60,6 +60,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
@@ -67,6 +68,8 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -94,7 +97,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -298,9 +301,9 @@ public class BackupHelper {
           BAD_REQUEST, "Point-In-Time-Restorable backup not allowed for non-YBC universes");
     }
 
-    if (!isSkipConfigBasedPreflightValidation(universe)) {
-      validateStorageConfig(customerConfig);
-    }
+    // Snapshot the cross-cloud federation audience onto the backup so YBA can rebuild the federated
+    // credentials to delete it later, even after the universe (and its provider link) is gone.
+    taskParams.crossCloudFederationAudience = resolveCrossCloudFederationAudience(universe);
 
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     log.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
@@ -367,6 +370,7 @@ public class BackupHelper {
 
     CustomerConfigStorageData configData =
         (CustomerConfigStorageData) customerConfig.getDataObject();
+    applyCrossCloudFederationAudience(configData, universe);
 
     if (!isSkipConfigBasedPreflightValidation(universe)) {
       storageUtilFactory
@@ -516,12 +520,61 @@ public class BackupHelper {
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
+    validateStorageConfig(config, null);
+  }
+
+  public void validateStorageConfig(CustomerConfig config, @Nullable Universe universe)
+      throws PlatformServiceException {
     log.info(String.format("Validating storage config %s", config.getConfigName()));
     CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     if (StringUtils.isBlank(configData.backupLocation)) {
       throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
     }
+    applyCrossCloudFederationAudience(configData, universe);
     storageUtilFactory.getStorageUtil(config.getName()).validateStorageConfig(configData);
+  }
+
+  /**
+   * Stamps the resolved provider GCP audience on a useGcpIam GCS config so YBA authenticates to the
+   * bucket via in-process WIF (for preflight/delete) instead of ADC. No-op for
+   * non-GCS/non-useGcpIam configs or when no universe context / audience is available.
+   */
+  public void applyCrossCloudFederationAudience(
+      CustomerConfigData configData, @Nullable Universe universe) {
+    if (configData instanceof CustomerConfigStorageGCSData) {
+      CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
+      if (gcs.useGcpIam) {
+        gcs.federationAudience = resolveCrossCloudFederationAudience(universe);
+      }
+    }
+  }
+
+  /**
+   * Resolves the provider-level GCP Workload Identity Federation audience for a universe, or null
+   * when cross-cloud federation is disabled, no universe context is available, or the provider has
+   * no audience configured.
+   */
+  @Nullable
+  public String resolveCrossCloudFederationAudience(@Nullable Universe universe) {
+    if (universe == null) {
+      return null;
+    }
+    try {
+      Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      // Only universes whose nodes are configured for federation (federationConfigured) need the
+      // audience for YBA-side WIF (preflight/delete); the audience itself comes from the provider.
+      if (primaryCluster == null
+          || primaryCluster.userIntent == null
+          || !primaryCluster.userIntent.isFederationConfigured()) {
+        return null;
+      }
+      Provider provider =
+          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      return CloudInfoInterface.getCrossCloudFederationAudience(provider);
+    } catch (Exception e) {
+      log.warn("Could not resolve cross-cloud federation audience: {}", e.getMessage());
+      return null;
+    }
   }
 
   public void validateRestoreOverwrites(
@@ -666,6 +719,9 @@ public class BackupHelper {
         && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
       validateIfYbdbInbuiltYbcHasAzureIAM(universe);
     }
+    if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
+      validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
+    }
   }
 
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
@@ -683,6 +739,24 @@ public class BackupHelper {
           BAD_REQUEST,
           "Azure IAM is not supported in the YB-Controller version running on this Kubernetes"
               + " Universe.");
+    }
+  }
+
+  // For k8s universes: if useYbdbInbuiltYbc is true, need to check if immutable storage feature
+  // is supported
+  private void validateIfYbdbInbuiltYbcHasImmutableStorage(Universe universe) {
+    if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+        && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getImmutableStorage()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Immutable storage is not supported in the YB-Controller version running on this"
+              + " Kubernetes Universe.");
     }
   }
 
@@ -784,7 +858,7 @@ public class BackupHelper {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");
     }
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       return client.getTablesList().getTableInfoList();
     } catch (Exception e) {
       log.warn(e.toString());
@@ -1301,6 +1375,12 @@ public class BackupHelper {
    * @param config
    * @param universe
    */
+  public void validateStorageConfigForBackupOnUniverse(
+      UUID storageConfigUUID, UUID customerUUID, Universe universe) {
+    CustomerConfig config = customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
+    validateStorageConfigForBackupOnUniverse(config, universe);
+  }
+
   public void validateStorageConfigForBackupOnUniverse(CustomerConfig config, Universe universe) {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;

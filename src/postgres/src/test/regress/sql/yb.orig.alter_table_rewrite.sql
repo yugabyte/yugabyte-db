@@ -577,13 +577,12 @@ WHERE new.relname = 'idx_collation';
 \set explain 'EXPLAIN (COSTS OFF)'
 \set Q1 '/*+ IndexScan(collation_test idx_collation) */'
 \set Q2 '/*+ SeqScan(collation_test) */'
-\set Pnext :iter_Q2
 SELECT $$
 :P :Q
 SELECT encode(name::bytea, 'escape') as utf8_bytes
 FROM collation_test WHERE name > 'x' ORDER BY name;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 DROP TABLE table_info;
 DROP TABLE index_info;
 RESET enable_seqscan;

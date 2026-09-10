@@ -96,6 +96,21 @@ public class CreateBackup extends UniverseTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    boolean ybcBackup =
+        !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
+            && universe.isYbcEnabled()
+            && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+    createBackupStorageConfigValidateTask(
+            params().storageConfigUUID,
+            params().customerUUID,
+            params().getUniverseUUID(),
+            ybcBackup)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+  }
+
+  @Override
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
@@ -118,15 +133,19 @@ public class CreateBackup extends UniverseTaskBase {
       lockUniverse(-1 /* expectedUniverseVersion */);
       isUniverseLocked = true;
       try {
-        // Check if the storage config is in active state or not.
+        // Clear any previous subtasks if any.
+        getRunnableTask().reset();
+
+        // Run storage-config network checks before Backup.create() (PLAT-20585).
+        createPrecheckTasks(universe);
+        getRunnableTask().runSubTasks();
+
         CustomerConfig customerConfig =
             customerConfigService.getOrBadRequest(
                 params().customerUUID, params().storageConfigUUID);
         if (!customerConfig.getState().equals(ConfigState.Active)) {
           throw new RuntimeException("Storage config cannot be used as it is not in Active state");
         }
-        // Clear any previous subtasks if any.
-        getRunnableTask().reset();
 
         if (isFirstTry()
             && !universe

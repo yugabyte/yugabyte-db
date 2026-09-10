@@ -41,6 +41,7 @@
 
 #include "yb/server/monitored_task.h"
 
+#include "yb/util/format.h"
 #include "yb/util/url-coding.h"
 
 using strings::Substitute;

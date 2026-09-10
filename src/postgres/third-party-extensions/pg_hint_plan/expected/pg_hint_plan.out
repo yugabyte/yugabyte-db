@@ -29,10 +29,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 (7 rows)
 
 LOAD 'pg_hint_plan';
-ERROR:  LOAD not supported yet
-LINE 1: LOAD 'pg_hint_plan';
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SET pg_hint_plan.debug_print TO on;
 SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
  ?column? 

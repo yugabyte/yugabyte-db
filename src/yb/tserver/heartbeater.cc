@@ -98,6 +98,8 @@ DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be di
 DEFINE_test_flag(bool, tserver_disable_catalog_refresh_on_heartbeat, false,
     "When set, disable trigger of catalog cache refresh from tserver-master heartbeat path.");
 
+DECLARE_bool(enable_db_history_retention_pins);
+
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
 using std::shared_ptr;
@@ -356,6 +358,16 @@ Status HeartbeatPoller::TryHeartbeat() {
     }
   }
 
+  // Load local database history retention pins onto heartbeat for
+  // master to aggregate and calculate global history retention pins
+  if (FLAGS_enable_db_history_retention_pins) {
+    auto* pins = req.mutable_ts_ysql_db_oldest_pinned_read_times();
+    pins->clear();
+    for (const auto& [db_oid, pin] : server_.GetYsqlDbOldestPinnedReadTimes()) {
+      (*pins)[db_oid].set_db_level_oldest_read_time(pin.ToPB());
+    }
+  }
+
   RETURN_NOT_OK(server_.XClusterPopulateMasterHeartbeatRequest(
       req, last_hb_response_.needs_full_tablet_report()));
 
@@ -461,6 +473,17 @@ Status HeartbeatPoller::TryHeartbeat() {
 
     RETURN_NOT_OK(server_.XClusterHandleMasterHeartbeatResponse(resp));
 
+    if (resp.leader_blacklisted_tservers_with_no_leaders_size() > 0) {
+      // Mark the tservers as followers if they are leader-blacklisted. When the tserver gets
+      // removed from the blacklist, we don't receive any reset signal from the master. The
+      // meta cache would eventually figure out when a peer sends the latest consensus config
+      // or it makes a GatTabletLocations call to the master.
+      std::vector<std::string> blacklisted_uuids(
+          resp.leader_blacklisted_tservers_with_no_leaders().begin(),
+          resp.leader_blacklisted_tservers_with_no_leaders().end());
+      server_.MarkTServersAsFollowers(blacklisted_uuids);
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
@@ -556,6 +579,8 @@ Status HeartbeatPoller::TryHeartbeat() {
   }
 
   RETURN_NOT_OK(server_.tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
+
+  server_.UpdateClusterYsqlDbOldestPinnedReadTimes(last_hb_response_);
 
   if (last_hb_response_.has_transaction_tables_version()) {
     server_.UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());

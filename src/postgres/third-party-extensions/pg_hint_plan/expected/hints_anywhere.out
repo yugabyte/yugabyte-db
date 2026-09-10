@@ -1,8 +1,4 @@
 LOAD 'pg_hint_plan';
-ERROR:  LOAD not supported yet
-LINE 1: LOAD 'pg_hint_plan';
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SET client_min_messages TO log;
 \set SHOW_CONTEXT always
 SET pg_hint_plan.debug_print TO on;

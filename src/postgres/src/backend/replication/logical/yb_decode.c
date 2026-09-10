@@ -31,6 +31,7 @@
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
+#include "replication/yb_virtual_wal_client.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -93,8 +94,13 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 			 * Start a transaction so that we can get the relation by oid in
 			 * case of change operations. This transaction must be aborted
 			 * after processing the corresponding commit record.
+			 *
+			 * In the pull model (SQL function API e.g.
+			 * pg_logical_slot_get_changes), we are already inside the
+			 * caller's transaction, so we must not start a new one.
 			 */
-			StartTransactionCommand();
+			if (am_walsender)
+				StartTransactionCommand();
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
@@ -120,11 +126,18 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				YBDecodeCommit(ctx, record);
 
 				/*
-				 * Abort the transaction that we started upon receiving the BEGIN
-				 * message.
+				 * Abort the transaction that we started upon receiving the
+				 * BEGIN message. Only done in the push model (walsender)
+				 * where we explicitly started the transaction.
+				 *
+				 * In the pull model, the caller's transaction is still
+				 * active and must not be aborted.
 				 */
-				AbortCurrentTransaction();
-				Assert(!IsTransactionState());
+				if (am_walsender)
+				{
+					AbortCurrentTransaction();
+					Assert(!IsTransactionState());
+				}
 				break;
 			}
 
@@ -428,6 +441,13 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 			 "yb_start_decoding_at = %lu.",
 			 yb_record->xid, commit_lsn, ctx->yb_start_decoding_at);
 		ReorderBufferForget(ctx->reorder, yb_record->xid, commit_lsn);
+
+		/*
+		 * The client never sees this transaction, so it will never acknowledge
+		 * it. Hence, remember the filtered commit_lsn and acknowledge it before
+		 * the next GetConsistentChanges call.
+		 */
+		YBCTrackFilteredTransaction(commit_lsn);
 		return;
 	}
 

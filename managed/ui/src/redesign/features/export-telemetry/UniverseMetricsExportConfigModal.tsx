@@ -7,13 +7,16 @@ import { AxiosError } from 'axios';
 
 import { YBModal, YBModalProps } from '../../components/YBModal/YBModal';
 import { YBToggleField } from '../../components';
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
+import { K8S_SUPPORTED_SCRAPE_CONFIG_TARGETS } from '@app/redesign/features-v2/universe/edit-universe/settings/telemetry-export-tab/k8sTelemetrySupport';
 import { api, universeQueryKey } from '@app/redesign/helpers/api';
-import { getIsMetricsExportSupported, getUniverseMetricsExportConfig } from './utils';
+import { CloudType } from '@app/redesign/helpers/dtos';
+import { handleServerError } from '@app/utils/errorHandlingUtils';
+import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
 import { configureMetricsExport } from '@app/v2/api/universe/universe';
 import { ConfigureMetricsExportReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { TelemetryProviderConfigSelectField } from './telemetryProviderConfigSelect/TelemetryProviderConfigSelectField';
-import { handleServerError } from '@app/utils/errorHandlingUtils';
-import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
+import { getIsMetricsExportSupported, getUniverseMetricsExportConfig } from './utils';
 
 import toastStyles from '../../styles/toastStyles.module.scss';
 
@@ -103,6 +106,9 @@ export const UniverseMetricsExportConfigModal = ({
   const defaultMetricsExportConfigUuid = universeMetricsExportConfig?.exporterUuid;
   const configureMetricsExportMutation = useMutation(
     (formValues: FormValues) => {
+      const isKubernetesUniverse =
+        getPrimaryCluster(universeQuery.data?.universeDetails.clusters ?? [])?.userIntent
+          .providerType === CloudType.kubernetes;
       const requestBody: ConfigureMetricsExportReqBody = {
         install_otel_collector:
           formValues.shouldExportMetrics &&
@@ -110,7 +116,10 @@ export const UniverseMetricsExportConfigModal = ({
         metrics_export_config: {
           universe_metrics_exporter_config: formValues.shouldExportMetrics
             ? [{ exporter_uuid: formValues.telemetryConfigUuid ?? '' }]
-            : []
+            : [],
+          ...(formValues.shouldExportMetrics && isKubernetesUniverse
+            ? { scrape_config_targets: K8S_SUPPORTED_SCRAPE_CONFIG_TARGETS }
+            : {})
         }
       };
       return configureMetricsExport(universeUuid, requestBody);

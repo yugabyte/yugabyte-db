@@ -71,6 +71,6 @@ bla
 
 ## See also
 
-- [`DECLARE`](../dml_declare)
-- [`FETCH`](../dml_fetch)
-- [`CLOSE`](../dml_close)
+- [DECLARE](../dml_declare)
+- [FETCH](../dml_fetch)
+- [CLOSE](../dml_close)

@@ -13,6 +13,8 @@
 
 #include "yb/util/libbacktrace_util.h"
 
+#include <pthread.h>
+#include <csignal>
 #include <regex>
 #include <string>
 #include <thread>
@@ -179,10 +181,20 @@ GlobalBacktraceState::GlobalBacktraceState() {
   // to locking common mutexes from signal handler. See
   // https://github.com/yugabyte/yugabyte-db/issues/6672 for more details.
   // OK to use std::thread here because this thread is very short-lived.
+  //
+  // Block all signals while spawning the helper thread so it inherits a fully-blocked signal
+  // mask.  Otherwise an asynchronous signal (e.g. PostgreSQL's SIGALRM handler handle_sig_alarm)
+  // may be delivered to this thread and run a handler that touches process-global state such as
+  // InterruptHoldoffCount and MyLatch, racing with the thread that triggered initialization.
+  // The original mask is restored in the parent once the helper has been created.
+  sigset_t all_signals, old_signals;
+  sigfillset(&all_signals);
+  pthread_sigmask(SIG_SETMASK, &all_signals, &old_signals);
   std::thread backtrace_thread([&] {  // NOLINT
       backtrace_full(bt_state_, /* skip = */ 1, DummyCallback,
                      BacktraceErrorCallback, nullptr);
   });
+  pthread_sigmask(SIG_SETMASK, &old_signals, nullptr);
   backtrace_thread.join();
 }
 

@@ -105,6 +105,7 @@ set(COMMON_SRCS
   tablespace_parser.cc
   termination_monitor.cc
   transaction.cc
+  txn_error_injection.cc
   wire_protocol.cc
   llvm_profile_dumper.cc
   version_info.cc

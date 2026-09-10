@@ -32,6 +32,9 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include <sys/stat.h>
+
+#include <algorithm>
 #include <map>
 #include <set>
 #include <unordered_set>
@@ -54,6 +57,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -65,6 +69,8 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
 DEFINE_UNKNOWN_bool(enable_data_block_fsync, true,
@@ -92,12 +98,19 @@ DEFINE_test_flag(bool, simulate_fs_create_failure, false,
 DEFINE_test_flag(bool, simulate_fs_create_with_empty_uuid, false,
                  "Simulate empty uuid during opening filesystem root.");
 
+
 METRIC_DEFINE_entity(drive);
 
 METRIC_DEFINE_counter(drive, drive_fault,
                       "Drive Fault. Tablet Server isn't able to read/write on this drive.",
                       yb::MetricUnit::kUnits,
                       "Drive Fault. Tablet Server isn't able to read/write on this drive.");
+
+DEFINE_NON_RUNTIME_bool(export_drive_io_metrics, true,
+    "Whether to export per-drive write throughput and sync latency metrics on the 'drive' "
+    "metric entity. When disabled, the instrumentation in the writable-file layer sees no "
+    "registered drive for any path and does no work at all.");
+TAG_FLAG(export_drive_io_metrics, advanced);
 
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
@@ -118,18 +131,45 @@ const char *FsManager::kWalFileNamePrefix = "wal";
 const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
+const char *FsManager::kDefaultStorageTier = "ssd";
+
+const std::vector<std::string>& FsManager::ValidStorageTiers() {
+  static const std::vector<std::string> kTiers = {"ssd", "hdd"};
+  return kTiers;
+}
+
+bool FsManager::IsValidStorageTier(const std::string& tier) {
+  const auto& tiers = ValidStorageTiers();
+  return std::find(tiers.begin(), tiers.end(), tier) != tiers.end();
+}
 
 namespace {
 
 const char kRaftGroupMetadataDirName[] = "tablet-meta";
 const char kInstanceMetadataFileName[] = "instance";
 const char kAutoFlagsConfigFileName[] = "auto_flags_config";
+const char kYsqlDbHistoryRetentionPinsFileName[] = "ysql_db_history_retention_pins";
 const char kFsLockFileName[] = "fs-lock";
 const char kConsensusMetadataDirName[] = "consensus-meta";
 const char kLogsDirName[] = "logs";
 const char kTmpInfix[] = ".tmp";
 const char kCheckFileTemplate[] = "check.XXXXXX";
 const char kPrefixMetricId[] = "drive:";
+
+// Splits path:tier tokens into path and tier.
+std::pair<std::string, std::string> ParseDataDirSpec(const std::string& spec) {
+  // no colon, return the path and default tier
+  auto pos = spec.rfind(':');
+  if (pos == std::string::npos) {
+    return {spec, FsManager::kDefaultStorageTier};
+  }
+  // colon exists but no tier, return the path and default tier
+  std::string tier = spec.substr(pos + 1);
+  if (tier.empty()) {
+    return {spec.substr(0, pos), FsManager::kDefaultStorageTier};
+  }
+  return {spec.substr(0, pos), tier};
+}
 
 std::string DataDir(const std::string& root, const std::string& server_type) {
   return JoinPathSegments(GetServerTypeDataPath(root, server_type), FsManager::kDataDirName);
@@ -143,13 +183,41 @@ std::string WalDir(const std::string& root, const std::string& server_type) {
 
 FsManagerOpts::FsManagerOpts()
     : read_only(false) {
+  // split fs_data_dirs into tokens; "/a:ssd,/b:hdd" -> ["/a:ssd", "/b:hdd"]
+  const std::vector<std::string> raw_data_tokens(
+      strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty()));
+
+  // Parse each "path:tier" token from fs_data_dirs.
+  std::vector<std::pair<std::string, std::string>> parsed_data_tokens;
+  parsed_data_tokens.reserve(raw_data_tokens.size());
+  data_paths.reserve(raw_data_tokens.size());
+  for (const auto& token : raw_data_tokens) {
+    auto parsed = ParseDataDirSpec(token);
+    data_paths.push_back(parsed.first);
+    tier_by_path[parsed.first] = parsed.second;
+    parsed_data_tokens.push_back(std::move(parsed));
+  }
+
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
-    // It is sufficient if user sets the data dirs. By default we use the same
-    // directories for WALs as well.
-    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(fs_wal_dirs, FLAGS_fs_data_dirs));
+    // WAL defaults to data dirs from the fastest tier with disks: prefer the
+    // default tier ("ssd"), else failover to the next tier in ValidStorageTiers().
+    std::vector<std::string> selected_wal_paths;
+    selected_wal_paths.reserve(parsed_data_tokens.size());
+    for (const auto& tier_name : FsManager::ValidStorageTiers()) {
+      for (const auto& [path, tier] : parsed_data_tokens) {
+        if (tier == tier_name) {
+          selected_wal_paths.push_back(path);
+        }
+      }
+      if (!selected_wal_paths.empty()) {
+        break;
+      }
+    }
+
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(
+        fs_wal_dirs, JoinStrings(selected_wal_paths, ",")));
   }
   wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
-  data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
 }
 
 FsManagerOpts::~FsManagerOpts() = default;
@@ -171,6 +239,7 @@ FsManager::FsManager(Env* env,
       read_only_(opts.read_only),
       wal_fs_roots_(opts.wal_paths),
       data_fs_roots_(opts.data_paths),
+      tier_by_data_path_(opts.tier_by_path),
       server_type_(opts.server_type),
       metric_registry_(opts.metric_registry),
       parent_mem_tracker_(opts.parent_mem_tracker) {
@@ -187,6 +256,19 @@ Status FsManager::Init() {
   // The wal root must be set.
   if (data_fs_roots_.empty()) {
     return STATUS(IOError, "List of data directories (fs_data_dirs) not provided");
+  }
+
+  // WAL dirs must not carry storage-tier annotations.
+  // WAL always runs on the fastest available storage.
+  for (const string& wal_root : wal_fs_roots_) {
+    auto [path, tier] = ParseDataDirSpec(wal_root);
+    if (path != wal_root) {
+      return STATUS(InvalidArgument, Substitute(
+          "Storage-tier annotation \":$0\" is not allowed in --fs_wal_dirs "
+          "(WAL should always use the fastest available storage). "
+          "Remove the tier suffix from: $1",
+          tier, wal_root));
+    }
   }
 
   // Deduplicate all of the roots.
@@ -249,6 +331,29 @@ Status FsManager::Init() {
 
   for (const RootMap::value_type& e : canonicalized_roots) {
     canonicalized_all_fs_roots_.insert(e.second);
+  }
+
+  // Build tier maps from data_fs_roots_ + tier_by_data_path_.
+  for (const std::string& raw_root : data_fs_roots_) {
+    const std::string& canonical_root = FindOrDie(canonicalized_roots, raw_root);
+
+    std::string tier = kDefaultStorageTier;
+    auto tier_it = tier_by_data_path_.find(raw_root);
+    if (tier_it != tier_by_data_path_.end() && !tier_it->second.empty()) {
+      tier = tier_it->second;
+    }
+
+    if (!IsValidStorageTier(tier)) {
+      return STATUS(InvalidArgument, Substitute(
+          "Invalid storage tier \"$0\" for data dir \"$1\" in --fs_data_dirs. "
+          "Valid storage tiers are: $2",
+          tier, raw_root, JoinStrings(ValidStorageTiers(), ", ")));
+    }
+
+    auto [it, inserted] = tier_by_canonicalized_fs_root_.emplace(canonical_root, tier);
+    if (inserted) {
+      data_roots_by_tier_[tier].push_back(DataDir(canonical_root, server_type_));
+    }
   }
 
   if (VLOG_IS_ON(1)) {
@@ -379,6 +484,7 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
                    << " Write Result: " << write_result;
       canonicalized_wal_fs_roots_.erase(root);
       canonicalized_data_fs_roots_.erase(root);
+      dropped_fs_roots_.insert(root);
       has_faulty_drive_ = true;
       CreateAndSetFaultDriveMetric(root);
       continue;
@@ -399,6 +505,12 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
           metadata_->uuid(), pb->uuid()));
     }
   }
+  // Check the data-root pins before creating anything. A swapped or mis-mounted root must be
+  // caught here, ahead of CreateFileSystemRoots() below: that call adopts a root that reads as
+  // empty by writing a fresh instance file into it, which is right for a genuine disk replacement
+  // and exactly wrong for a volume that failed to mount.
+  RETURN_NOT_OK(VerifyExistingDataRootPins());
+
   if (!metadata_) {
     return STATUS(NotFound, "Metadata wasn't found");
   }
@@ -412,6 +524,10 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
       LOG(INFO) << dir << " was created";
     }
   }
+
+  // Deliberately after the per-root write check above, so the startup check's own writes stay
+  // out of the drive counters. Do not move this earlier.
+  SetUpDriveIoMetrics();
 
   LOG(INFO) << "Opened local filesystem: " << JoinStrings(canonicalized_all_fs_roots_, ",")
             << std::endl << metadata_->DebugString();
@@ -457,6 +573,13 @@ Status FsManager::DeleteFileSystemLayout(ShouldDeleteLogs also_delete_logs) {
     AppendValues(GetConsensusMetadataDirs(), &removal_list);
     for (const string& root : canonicalized_all_fs_roots_) {
       removal_list.push_back(GetInstanceMetadataPath(root));
+      // The pin certifies a layout that is about to stop existing, so it goes with it. It also has
+      // to go, along with any temp file a crash mid-write left beside it: CreateInitialFileSystem-
+      // Layout(), which typically follows, refuses to run on a root whose server directory is not
+      // empty, and neither file is matched by the exact-path removals in this list.
+      WARN_NOT_OK(
+          DeleteFsRootPinFile(env_, GetFsRootPinPath(root)),
+          Substitute("Unable to remove the data root pin under $0", root));
     }
     auto data_dirs = GetDataRootDirs();
     removal_list.insert(removal_list.begin(), data_dirs.begin(), data_dirs.end());
@@ -464,6 +587,11 @@ Status FsManager::DeleteFileSystemLayout(ShouldDeleteLogs also_delete_logs) {
     const auto auto_flags_config_path = GetAutoFlagsConfigPath();
     if (!auto_flags_config_path.empty()) {
       removal_list.push_back(auto_flags_config_path);
+    }
+
+    const auto pins_path = GetYsqlDbHistoryRetentionPinsPath();
+    if (env_->FileExists(pins_path)) {
+      removal_list.push_back(pins_path);
     }
 
     removal_set.insert(removal_list.begin(), removal_list.end());
@@ -538,12 +666,9 @@ Status FsManager::CreateFileSystemRoots(const InstanceMetadataPB& metadata,
   std::deque<ScopedFileDeleter> delete_on_failure;
   unordered_set<string> to_sync;
 
-  std::set<std::string> roots = canonicalized_data_fs_roots_;
-  roots.insert(canonicalized_wal_fs_roots_.begin(), canonicalized_wal_fs_roots_.end());
-
   // All roots are either empty or non-existent. Create missing roots and all
   // subdirectories.
-  for (const auto& root : roots) {
+  for (const auto& root : UsableFsRoots()) {
     bool created;
     std::string out_dir;
     RETURN_NOT_OK(SetupRootDir(env_, root, server_type_, &out_dir, &created));
@@ -680,15 +805,36 @@ Status FsManager::CheckWrite(const std::string& root) {
   return Status::OK();
 }
 
-void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
+scoped_refptr<MetricEntity> FsManager::GetOrCreateDriveMetricEntity(const std::string& path) {
   MetricEntity::AttributeMap attrs;
   attrs["drive_path"] = path;
-  auto metric_entity = METRIC_ENTITY_drive.Instantiate(metric_registry_,
-                                                       kPrefixMetricId + path,
-                                                       attrs);
-  auto counter = METRIC_drive_fault.Instantiate(metric_entity);
+  return METRIC_ENTITY_drive.Instantiate(metric_registry_, kPrefixMetricId + path, attrs);
+}
+
+void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
+  if (metric_registry_ == nullptr) {
+    return;
+  }
+  auto counter = METRIC_drive_fault.Instantiate(GetOrCreateDriveMetricEntity(path));
   counter->Increment();
   counters_.emplace_back(std::move(counter));
+}
+
+std::set<string> FsManager::UsableFsRoots() const {
+  // The exclusion this promises is not done here: the write-check failure path above erases the
+  // faulted root from both of these sets, so it simply is not found. See the declaration.
+  std::set<string> roots = canonicalized_wal_fs_roots_;
+  roots.insert(canonicalized_data_fs_roots_.begin(), canonicalized_data_fs_roots_.end());
+  return roots;
+}
+
+void FsManager::SetUpDriveIoMetrics() {
+  if (!FLAGS_export_drive_io_metrics || metric_registry_ == nullptr) {
+    return;
+  }
+  for (const auto& root : UsableFsRoots()) {
+    yb::RegisterDriveIoMetrics(GetOrCreateDriveMetricEntity(root), root);
+  }
 }
 
 Status FsManager::CreateDirIfMissing(const string& path, bool* created) {
@@ -733,6 +879,28 @@ vector<string> FsManager::GetWalRootDirs() const {
     wal_dirs.push_back(WalDir(canonicalized_wal_fs_root, server_type_));
   }
   return wal_dirs;
+}
+
+const std::string& FsManager::GetTierForDataRoot(
+    const std::string& canonicalized_fs_root) const {
+  auto it = tier_by_canonicalized_fs_root_.find(canonicalized_fs_root);
+  if (it != tier_by_canonicalized_fs_root_.end()) {
+    return it->second;
+  }
+  static const std::string kDefault(kDefaultStorageTier);
+  return kDefault;
+}
+
+std::vector<std::string> FsManager::GetDataRootDirsForTier(const std::string& tier) const {
+  auto it = data_roots_by_tier_.find(tier);
+  if (it != data_roots_by_tier_.end()) {
+    return it->second;
+  }
+  return {};
+}
+
+const std::map<std::string, std::vector<std::string>>& FsManager::GetDataRootsByTier() const {
+  return data_roots_by_tier_;
 }
 
 std::string FsManager::GetRaftGroupMetadataDir(const std::string& data_dir) {
@@ -837,6 +1005,209 @@ Result<std::vector<std::string>> FsManager::ListTabletIds(
   return std::vector<std::string>(tablet_ids.begin(), tablet_ids.end());
 }
 
+// ==========================================================================
+//  Data-root pinning: detection of swapped data mounts
+// ==========================================================================
+
+std::string FsManager::GetFsRootPinPath(const string& root) const {
+  return FsRootPinPath(root, server_type_);
+}
+
+Result<std::map<std::string, std::vector<std::string>>> FsManager::ListTabletIdsByRoot() {
+  RETURN_NOT_OK(Init());
+
+  std::map<std::string, std::vector<std::string>> result;
+  for (const string& root : canonicalized_data_fs_roots_) {
+    auto& ids = result[root];
+    const auto dir = GetRaftGroupMetadataDir(GetServerTypeDataPath(root, server_type_));
+    if (!env_->FileExists(dir)) {
+      // A root that has never held tablets. Not an error; it is the zero-superblock case of the
+      // pin decision.
+      continue;
+    }
+    std::vector<std::string> children = VERIFY_RESULT_PREPEND(
+        ListDir(dir), Substitute("Couldn't list tablets in metadata directory $0", dir));
+    for (const auto& child : children) {
+      // Pass a null Env so that temp files are ignored rather than deleted: this path must stay
+      // read-only, it is what the offline survey runs.
+      if (!CheckTabletId(/* env = */ nullptr, dir, child)) {
+        continue;
+      }
+      ids.push_back(child);
+    }
+    std::sort(ids.begin(), ids.end());
+  }
+  return result;
+}
+
+Result<FsRootPinReport> FsManager::SurveyDataRoots(
+    const std::vector<TabletSuperblockEvidence>& evidence,
+    FsRootEvidenceComplete evidence_complete) {
+  RETURN_NOT_OK(Init());
+
+  FsRootPinInputs inputs;
+  inputs.server_type = server_type_;
+  inputs.data_roots = canonicalized_data_fs_roots_;
+  inputs.wal_roots = canonicalized_wal_fs_roots_;
+  inputs.evidence = evidence;
+  inputs.evidence_complete = evidence_complete;
+  inputs.dropped_roots = dropped_fs_roots_;
+
+  for (const string& root : canonicalized_data_fs_roots_) {
+    inputs.pin_files[root] = ReadFsRootPinFile(env_, GetFsRootPinPath(root));
+
+    // Classify the root by its instance file, exactly as CheckAndOpenFileSystemRoots does, so that
+    // the offline survey reaches the same conclusions as the server. Reading the protobuf rather
+    // than stat-ing it matters: in one field incident a node's instance file was present but
+    // failed its checksum, which is a read corruption that any existence check would miss.
+    InstanceMetadataPB instance;
+    const auto read_result =
+        pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root), &instance);
+    if (read_result.IsNotFound()) {
+      // Ways a root can look like this: a node that has never been formatted -- normal, and the
+      // case where every root looks like this; a blank replacement volume at an existing mount
+      // point, which is what the adoption path in CreateFileSystemRoots() exists for; a root newly
+      // added to --fs_data_dirs; or a volume that did not mount, which presents as an empty
+      // directory on the root filesystem and would otherwise pass as "a root with no tablets".
+      // EvaluateFsRootPins separates the never-formatted node from the rest by whether any sibling
+      // is formatted. Nothing on disk separates the rest from each other, which is why
+      // kUnformatted only ever warns.
+      inputs.unformatted_roots.insert(root);
+    } else if (!read_result.ok()) {
+      // The server would drop this root and run without it, so the tablets on it are invisible to
+      // everything downstream. Say so rather than report a clean node.
+      inputs.dropped_roots.insert(root);
+    }
+  }
+
+  inputs.likely_unmounted_roots = RootsLikelyUnmounted(canonicalized_data_fs_roots_);
+
+  return EvaluateFsRootPins(inputs);
+}
+
+std::set<string> FsManager::RootsLikelyUnmounted(const std::set<string>& roots) {
+  // A data root whose volume failed to mount is a real, usually empty, directory sitting on the
+  // root filesystem. From inside the process that is visible as st_dev matching "/" - the same
+  // device identity the pin file's filesystem-UUID probe goes by.
+  //
+  // Only meaningful as a *relative* signal, and only ever used to word a warning more sharply:
+  // a single-drive node, a bind mount, and most container layouts all legitimately put data roots
+  // on the root device, so this must not gate anything.
+  struct stat root_fs_stat;
+  if (stat("/", &root_fs_stat) != 0) {
+    return {};
+  }
+
+  std::set<string> on_root_fs;
+  size_t stat_failures = 0;
+  for (const auto& root : roots) {
+    struct stat root_stat;
+    if (stat(root.c_str(), &root_stat) != 0) {
+      ++stat_failures;
+      continue;
+    }
+    if (root_stat.st_dev == root_fs_stat.st_dev) {
+      on_root_fs.insert(root);
+    }
+  }
+  // A root we could not stat is unknown, not evidence either way. What makes this signal
+  // meaningful is a split among the roots we could see: at least one on the root device and at
+  // least one demonstrably not. All known roots on the root device, or none of them, tells us
+  // nothing: that is a single-drive node, an all-container layout, or a total mount failure.
+  const size_t known = roots.size() - stat_failures;
+  if (on_root_fs.empty() || on_root_fs.size() == known) {
+    return {};
+  }
+  return on_root_fs;
+}
+
+Status FsManager::ApplyFsRootPinReport(const FsRootPinReport& report, bool may_write) {
+  const auto policy = FsRootPinPolicyFromFlags();
+
+  // Emitted whenever there is warning-level content, not only when warning is the report's *top*
+  // severity. Do not "simplify" this to HasWarnings(): that is `Severity() == kWarning` exactly,
+  // so it goes false the moment any root also fails - the case where the operator most needs the
+  // whole picture. Concretely: with /mnt/d0 swapped and /mnt/d2's volume not mounted, the refusal
+  // would name d0 and say nothing about d2, so remounting d0 and restarting would let d2 be
+  // adopted as a fresh empty root.
+  const auto warnings = report.WarningMessage();
+  if (!warnings.empty()) {
+    LOG(WARNING) << "Data volume layout anomalies that do not by themselves refuse startup:\n"
+                 << warnings;
+  }
+
+  if (report.HasFailure()) {
+    const auto message = report.FailureMessage();
+    if (report.ShouldRefuseStartup(policy)) {
+      // LOG_AND_RETURN_FROM_MAIN_NOT_OK turns this into a single aggregated FATAL. Deliberately not
+      // a per-tablet FATAL and not a restart loop: the operator needs one message naming every
+      // affected root, once.
+      return STATUS(
+          IllegalState, message + "\nRefusing to start until the mounts are corrected.\n");
+    }
+    // Configured to tolerate this one. Log the identical diagnosis so the evidence is in the log
+    // either way, and fall through -- but not to the pin writes, see below.
+    LOG(ERROR) << "Starting anyway, per --fs_root_pin_enforce / "
+               << "--fs_root_pin_refuse_on_superblock_conflict, despite:" << message;
+  }
+
+  // Never record new state on a node we have just diagnosed as wrong, whatever the policy says
+  // about refusing. Certification is evidence-gated and so is safe in isolation, but a report with
+  // a failure in it is not a picture we should be adding to.
+  if (!may_write || read_only_ || !policy.write_pins || report.HasFailure()) {
+    return Status::OK();
+  }
+
+  for (const auto& root : report.CertifiableRoots()) {
+    const auto pin = FsRootPin::ForMountPoint(root);
+    const auto pin_path = GetFsRootPinPath(root);
+    RETURN_NOT_OK_PREPEND(
+        WriteFsRootPinFile(env_, pin_path, pin),
+        Substitute("Unable to pin data root $0", root));
+    const auto* verdict = report.FindRoot(root);
+    LOG(INFO) << "Pinned data root " << root << " at " << pin_path << " (filesystem UUID "
+              << (pin.filesystem_uuid.empty() ? "unknown" : pin.filesystem_uuid)
+              << ", certified by " << (verdict ? verdict->superblocks_with_evidence : 0)
+              << " tablet superblocks)";
+  }
+  return Status::OK();
+}
+
+Status FsManager::VerifyExistingDataRootPins() {
+  // Tablets have not been enumerated at this point, so unpinned roots come back kPending and are
+  // left for CertifyDataRoots(). Everything that can be decided from the pin files alone -- the
+  // common case, and the cheapest one -- is decided here, before anything else runs.
+  auto report = VERIFY_RESULT(SurveyDataRoots({}, FsRootEvidenceComplete::kFalse));
+
+  if (report.HasFailure()) {
+    // Only on the failure path, and only a directory listing: tell the operator how much data is
+    // on each affected root. We cannot say which tablets disagree here -- that needs the parsed
+    // superblocks, which live a layer up -- but "412 tablet superblocks under this root" is what
+    // turns an abstract path complaint into something an operator can act on.
+    auto ids_by_root = ListTabletIdsByRoot();
+    if (ids_by_root.ok()) {
+      for (auto& verdict : report.verdicts) {
+        auto it = ids_by_root->find(verdict.root);
+        if (it != ids_by_root->end()) {
+          verdict.superblocks_seen = it->second.size();
+        }
+      }
+    } else {
+      LOG(WARNING) << "Could not count tablets per data root for the failure message: "
+                   << ids_by_root.status();
+    }
+  }
+
+  return ApplyFsRootPinReport(report, /* may_write = */ false);
+}
+
+Status FsManager::CertifyDataRoots(const std::vector<TabletSuperblockEvidence>& evidence) {
+  auto report = VERIFY_RESULT(SurveyDataRoots(evidence, FsRootEvidenceComplete::kTrue));
+  RETURN_NOT_OK(ApplyFsRootPinReport(report, /* may_write = */ true));
+  LOG(INFO) << report.SummaryLine();
+  return Status::OK();
+}
+
 Result<std::string> FsManager::GetExistingInstanceMetadataPath() const {
   for (const string& root : canonicalized_all_fs_roots_) {
     auto instance_metadata_path = GetInstanceMetadataPath(root);
@@ -860,6 +1231,19 @@ std::string FsManager::GetFsLockFilePath(const string& root) const {
 std::string FsManager::GetDefaultRootDir() const {
   DCHECK(initted_);
   return GetServerTypeDataPath(canonicalized_default_fs_root_, server_type_);
+}
+
+std::string FsManager::GetYsqlDbHistoryRetentionPinsPath() const {
+  return JoinPathSegments(GetDefaultRootDir(), kYsqlDbHistoryRetentionPinsFileName);
+}
+
+Status FsManager::ReadYsqlDbHistoryRetentionPins(Message* msg) const {
+  return pb_util::ReadPBContainerFromPath(env_, GetYsqlDbHistoryRetentionPinsPath(), msg);
+}
+
+Status FsManager::WriteYsqlDbHistoryRetentionPins(const Message* msg) const {
+  return pb_util::WritePBContainerToPath(
+      env_, GetYsqlDbHistoryRetentionPinsPath(), *msg, pb_util::OVERWRITE, pb_util::SYNC);
 }
 
 std::vector<std::string> FsManager::GetConsensusMetadataDirs() const {

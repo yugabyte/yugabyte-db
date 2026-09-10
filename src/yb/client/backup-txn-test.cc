@@ -411,7 +411,7 @@ TEST_F(BackupTxnTest, Failure) {
 }
 
 TEST_F(BackupTxnTest, Restart) {
-  FLAGS_timestamp_history_retention_interval_sec =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
       std::chrono::duration_cast<std::chrono::seconds>(kWaitTimeout).count() *
       kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;

@@ -366,16 +366,24 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
     // being promoted to VOTER because if above logic to delay it. So the next update consensus
     // request would come only after the previous StartRemoteBootstrap times out, which changes
     // the role to FOLLOWER, and thus the new peer can start an election.
-    ASSERT_OK(log_waiter.WaitFor(timeout_secs * 1s * kTimeMultiplier));
+    ASSERT_OK(log_waiter.WaitFor(3 * timeout_secs * 1s * kTimeMultiplier));
     LOG(INFO) << "Triggering election as step down failed.";
     ASSERT_OK_PREPEND(cluster_->StartElection(new_master.get()), "Start Election failed");
-    SleepFor(MonoDelta::FromSeconds(2));
   }
 
-  // Ensure that the new leader is the new master we spun up above.
-  ExternalMaster* new_leader = cluster_->GetLeaderMaster();
-  LOG(INFO) << "New leader " << new_leader->bound_rpc_hostport().ToString();
-  ASSERT_EQ(new_master->bound_rpc_addr().port(), new_leader->bound_rpc_addr().port());
+  // Ensure that the new leader is the new master we spun up above. A forced election can be lost
+  // when the failure detector of the new master starts a competing pre-election, so keep
+  // triggering elections until the new master wins one.
+  ASSERT_OK(WaitFor([this, &new_master]() -> Result<bool> {
+    ExternalMaster* leader = cluster_->GetLeaderMaster();
+    LOG(INFO) << "Current leader " << leader->bound_rpc_hostport().ToString();
+    if (leader->bound_rpc_addr().port() == new_master->bound_rpc_addr().port()) {
+      return true;
+    }
+    RETURN_NOT_OK(cluster_->StartElection(new_master.get()));
+    return false;
+  }, 60s * kTimeMultiplier, "New master to become the leader", 1s /* initial_delay */,
+     1.0 /* delay_multiplier */));
 
   // This check ensures that the sys catalog is loaded into new leader even when it has a
   // pending config change.

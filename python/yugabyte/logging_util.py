@@ -120,9 +120,5 @@ def set_build_root(build_root: str) -> None:
     get_log_arg_rewriter().add_rewrite('YB_BUILD_ROOT', build_root)
 
 
-def set_linuxbrew_dir(linuxbrew_dir: str) -> None:
-    get_log_arg_rewriter().add_rewrite('YB_LINUXBREW_DIR', linuxbrew_dir)
-
-
 def rewrite_logging_arg(arg: str) -> str:
     return get_log_arg_rewriter().rewrite_arg(arg)

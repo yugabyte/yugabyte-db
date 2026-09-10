@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.annotations.BlockYnpManagedProvider;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -102,6 +103,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockYnpManagedProvider(operation = "Adding an availability zone")
   public Result create(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
@@ -149,6 +151,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
+  @BlockYnpManagedProvider(operation = "Adding an availability zone")
   public Result createZoneNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
@@ -189,6 +192,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
+  @BlockYnpManagedProvider(operation = "Editing an availability zone")
   public Result editZoneNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
@@ -242,6 +246,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockYnpManagedProvider(operation = "Editing an availability zone")
   public Result edit(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
@@ -283,6 +288,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockYnpManagedProvider(operation = "Deleting an availability zone")
   public Result delete(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);

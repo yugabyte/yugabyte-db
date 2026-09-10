@@ -56,8 +56,18 @@ spec:
                     Name of the backup to be restored,
                     refers to a backup CR name.
                   type: string
+                kmsConfig:
+                  description: >
+                    Optional. Name of the KMSConfig CR to use when restoring an
+                    encryption-at-rest (EAR) backup, used to decrypt the backup's universe keys.
+                    Required only when the backup is encrypted; leave unset for plaintext backups.
+                  type: string
                 keyspace:
-                  description: Name of the keyspace to be restored.
+                  description: >
+                    Destination YSQL database or YCQL keyspace name.
+                    Omit to restore each backup piece to its original name.
+                    Setting this field is a rename and is only valid when the
+                    backup contains a single keyspace.
                   type: string
                 useTablespaces:
                   description: Restore tablespace information from the backup.

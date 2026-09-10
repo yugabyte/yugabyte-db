@@ -70,6 +70,7 @@ int main() {
 #else
 
 #include "yb/util/flags.h"
+#include "yb/util/status_log.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS

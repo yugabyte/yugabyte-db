@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <future>
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/cdc/xcluster_types.h"
 

@@ -35,6 +35,7 @@
 
 #include "yb/common/opid.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.messages.h"

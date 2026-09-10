@@ -117,10 +117,12 @@
 
 /* YB includes */
 #include "access/heaptoast.h"
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
+#include "access/yb_scan_core.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/ip.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
@@ -133,6 +135,7 @@
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
+#include <netdb.h>
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -178,6 +181,15 @@ static int	yb_tcmalloc_sample_period = 1024 * 1024;	/* 1MB */
 /* YB: ConnMgr variables used to track SIGHUP */
 uint64_t	yb_conn_mgr_sighup_logical_client_version = 0;
 bool		yb_conn_mgr_sighup_had_backend_guc_change = false;
+
+/*
+ * YB: GUC storage variables for CM logical-client metadata.
+ * Written by Odyssey on every client attach via the 'G' packet; read back
+ * by pg_stat_activity through the PgBackendStatus shared memory entry.
+ */
+char	   *yb_ycm_internal_client_addr;
+int			yb_ycm_internal_client_port;
+char	   *yb_conn_mgr_client_hostname;
 
 static int	GUC_check_errcode_value;
 
@@ -250,6 +262,14 @@ static void assign_maintenance_io_concurrency(int newval, void *extra);
 static bool check_application_name(char **newval, void **extra, GucSource source);
 static void assign_application_name(const char *newval, void *extra);
 static bool check_cluster_name(char **newval, void **extra, GucSource source);
+static bool check_yb_conn_mgr_client_addr(char **newval, void **extra,
+										  GucSource source);
+static void assign_yb_conn_mgr_client_addr(const char *newval, void *extra);
+static bool check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source);
+static void assign_yb_conn_mgr_client_hostname(const char *newval, void *extra);
+static bool check_yb_conn_mgr_client_port(int *newval, void **extra,
+										  GucSource source);
+static void assign_yb_conn_mgr_client_port(int newval, void *extra);
 static const char *show_unix_socket_permissions(void);
 static const char *show_log_file_mode(void);
 static const char *show_data_directory_mode(void);
@@ -323,7 +343,8 @@ static bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newv
 																	 GucSource source);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
-static ConfigVariable *ProcessConfigFileInternal(GucContext context,
+static ConfigVariable *ProcessConfigFileInternal(const char *yb_config_file,
+												 GucContext context,
 												 bool applySettings, int elevel);
 
 /*
@@ -689,6 +710,13 @@ const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
 	{NULL, 0, false}
 };
 
+const struct config_enum_entry yb_db_history_retention_pin_mode_options[] = {
+	{"none", YB_DB_HISTORY_RETENTION_PIN_MODE_NONE, false},
+	{"ddl_only", YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY, false},
+	{"all", YB_DB_HISTORY_RETENTION_PIN_MODE_ALL, false},
+	{NULL, 0, false}
+};
+
 const struct config_enum_entry yb_sampling_algorithm_options[] = {
 	{"full_table_scan", YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN, false},
 	{"block_based_sampling", YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING, false},
@@ -868,6 +896,7 @@ static char *recovery_target_lsn_string;
 static char *restrict_nonsystem_relation_kind_string;
 
 bool		yb_enable_memory_tracking = true;
+bool		yb_enable_pg_subscription = false;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
@@ -878,6 +907,7 @@ bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
+static bool yb_conn_mgr_selective_deallocate;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -2684,6 +2714,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_pg_subscription", PGC_POSTMASTER, REPLICATION_SUBSCRIBERS,
+			gettext_noop("Enable pg_subscription commands."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_subscription,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_pg_export_snapshot", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Enable pg_export_snapshot and SET TRANSACTION SNAPSHOT for synchronizing snapshots across transactions."),
 			NULL,
@@ -2704,6 +2745,18 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_replication_slot_consumption,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_replication_slot_query_api", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable the query API (pull model) for logical "
+						 "replication via pg_logical_slot_get/peek_changes."),
+			NULL,
+			GUC_NOT_IN_SAMPLE,
+		},
+		&yb_enable_replication_slot_query_api,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -2770,6 +2823,19 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_consistent_replication_from_hash_range,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_replication_slot_exclusive_lock", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Acquire a cluster-wide exclusive advisory lock while a "
+						 "replication slot is in use so that only one consumer can "
+						 "use it at a time across the universe."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_slot_exclusive_lock,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2879,6 +2945,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_all_drops,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_walsender_keepalive_after_each_record", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the walsender sends a keepalive after every "
+						 "decoded record."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_walsender_keepalive_after_each_record,
 		false,
 		NULL, NULL, NULL
 	},
@@ -3283,7 +3361,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		/* YB: Not for general use */
-		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, UNGROUPED,
+		{YB_YCM_IS_CLIENT_YSQLCONNMGR, PGC_BACKEND, UNGROUPED,
 			gettext_noop("Identifies that connection is created by "
 						 "Ysql Connection Manager."),
 			NULL
@@ -3446,7 +3524,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		/* YB: Not for general use */
-		{"yb_use_tserver_key_auth", PGC_BACKEND, UNGROUPED,
+		{YB_YCM_USE_TSERVER_KEY_AUTH, PGC_BACKEND, UNGROUPED,
 			gettext_noop("If set, the client connection will be authenticated via "
 						 "'yb-tserver-key' auth"),
 			NULL,
@@ -3528,7 +3606,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_index_backfill_scan_optimization,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3881,6 +3959,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_dump_presplit_in_create", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, ysql_dump records yb_presplit inside the CREATE statement's "
+						 "WITH clause instead of a separate ALTER ... SET (yb_presplit=...)."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_dump_presplit_in_create,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_pg_stat_statements_rpc_stats", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("If true, enable RPC execution time stats for pg_stat_statements."),
 			NULL,
@@ -4118,7 +4208,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_conn_mgr_selective_deallocate", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("Enables connection-manager-aware DEALLOCATE behavior."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -4146,7 +4236,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_qpm_configuration.show_max_exec_params,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4166,7 +4256,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too."),
-			NULL,
+			gettext_noop("Requires yb_ddl_transaction_block_enabled to be on."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
@@ -4439,8 +4529,21 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_reorderbuffer_max_memory_kb", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum reorder buffer memory in kilobytes before logical "
+						 "replication changes are streamed or spilled to disk."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_KB
+		},
+		&yb_reorderbuffer_max_memory_kb,
+		4096, 64, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_reorderbuffer_max_changes_in_memory", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Maximum number of changes kept in memory per transaction "
+			gettext_noop("DEPRECATED: Use yb_reorderbuffer_max_memory_kb instead. "
+						 "Maximum number of changes kept in memory per transaction "
 						 "in reorder buffer, which is used in streaming changes via "
 						 "logical replication. After that, changes are spooled to disk."),
 			NULL,
@@ -6260,6 +6363,22 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	/*
+	 * YB: Internal GUCs written by YSQL Connection Manager on every logical
+	 * client attach.
+	 */
+	{
+		{YB_YCM_CLIENT_PORT, PGC_USERSET, UNGROUPED,
+			gettext_noop("TCP port of the logical client connected through "
+						 "YSQL Connection Manager."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&yb_ycm_internal_client_port,
+		-1, -1, 65535,
+		check_yb_conn_mgr_client_port, assign_yb_conn_mgr_client_port, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -7432,6 +7551,38 @@ static struct config_string ConfigureNamesString[] =
 		check_application_name, assign_application_name, NULL
 	},
 
+	/*
+	 * YB: Internal GUCs written by YSQL Connection Manager on every logical
+	 * client attach.
+	 */
+	{
+		{YB_YCM_CLIENT_ADDR, PGC_USERSET, UNGROUPED,
+			gettext_noop("IP address of the logical client connected through "
+						 "YSQL Connection Manager."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&yb_ycm_internal_client_addr,
+		"",
+		check_yb_conn_mgr_client_addr, assign_yb_conn_mgr_client_addr, NULL
+	},
+
+	/*
+	 * YB: Internal GUCs written by YSQL Connection Manager on every logical
+	 * client attach.
+	 */
+	 {
+		{"yb_conn_mgr_client_hostname", PGC_USERSET, UNGROUPED,
+			gettext_noop("Hostname of the logical client connected through "
+						 "YSQL Connection Manager."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&yb_conn_mgr_client_hostname,
+		"",
+		check_yb_conn_mgr_client_hostname, assign_yb_conn_mgr_client_hostname, NULL
+	},
+
 	{
 		{"cluster_name", PGC_POSTMASTER, PROCESS_TITLE,
 			gettext_noop("Sets the name of the cluster, which is included in the process title."),
@@ -8084,6 +8235,25 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	{
+		{
+			"yb_db_history_retention_pin_mode", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Controls which transactions pin their read snapshot for history "
+						 "retention."),
+			gettext_noop("A pinned read snapshot holds back the history cutoff cluster-wide, which "
+						 "prevents \"snapshot too old\" errors for long-running statements and "
+						 "transactions (bounded by db_history_retention_pin_max_txn_age_sec). Configure one of:"
+						 " (a) ddl_only: Default. Only DDL transactions publish a pin."
+						 " (b) all: Both DML and DDL transactions publish a pin."
+						 " (c) none: No transaction publishes a pin."),
+			0
+		},
+		&yb_db_history_retention_pin_mode,
+		YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY,
+		yb_db_history_retention_pin_mode_options,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_sampling_algorithm", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Which sampling algorithm to use for YSQL. full_table_scan - scan the"
 						 " whole table and pick random rows, block_based_sampling - sample the"
@@ -8171,6 +8341,8 @@ static const char *const map_old_guc_names[] = {
 	"vacuum_mem", "maintenance_work_mem",
 	"yb_enable_parallel_append", "enable_parallel_append",
 	"yb_max_saop_merge_streams", "yb_max_merge_scan_streams",
+	"yb_is_client_ysqlconnmgr", YB_YCM_IS_CLIENT_YSQLCONNMGR,
+	"yb_use_tserver_key_auth", YB_YCM_USE_TSERVER_KEY_AUTH,
 	NULL
 };
 
@@ -14489,7 +14661,8 @@ show_all_file_settings(PG_FUNCTION_ARGS)
 	int			seqno;
 
 	/* Scan the config files using current context as workspace */
-	conf = ProcessConfigFileInternal(PGC_SIGHUP, false, DEBUG3);
+	conf = ProcessConfigFileInternal(NULL /* yb_config_file */ , PGC_SIGHUP,
+									 false /* applySettings */ , DEBUG3);
 
 	/* Build a tuplestore to return our results in */
 	InitMaterializedSRF(fcinfo, 0);
@@ -16765,6 +16938,150 @@ assign_application_name(const char *newval, void *extra)
 }
 
 static bool
+check_yb_conn_mgr_client_addr(char **newval, void **extra, GucSource source)
+{
+	/* Always allow reset to empty string */
+	if ((*newval)[0] == '\0')
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_addr.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_addr,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_ycm_internal_client_addr can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	/* Basic sanity: clean the string of non-ASCII bytes */
+	pg_clean_ascii(*newval);
+	return true;
+}
+
+static void
+assign_yb_conn_mgr_client_addr(const char *newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_addr() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	if (YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort))
+	{
+		/*
+		 * Resolve the logical-client hostname once during authentication.
+		 */
+		if (newval[0] != '\0' && log_hostname)
+		{
+			struct addrinfo hints;
+			struct addrinfo *gai_result;
+
+			MemSet(&hints, 0, sizeof(hints));
+			hints.ai_flags = AI_NUMERICHOST;
+			hints.ai_socktype = SOCK_STREAM;
+
+			if (getaddrinfo(newval, NULL, &hints, &gai_result) == 0)
+			{
+				char		remote_hostname[NI_MAXHOST];
+				int			ret;
+
+				ret = pg_getnameinfo_all((const struct sockaddr_storage *) gai_result->ai_addr,
+										gai_result->ai_addrlen,
+										remote_hostname, sizeof(remote_hostname),
+										NULL, 0,
+										NI_NAMEREQD);
+				freeaddrinfo(gai_result);
+
+				if (ret != 0)
+					ereport(WARNING,
+							(errmsg_internal("pg_getnameinfo_all() failed: %s",
+											gai_strerror(ret))));
+				else
+					SetConfigOption("yb_conn_mgr_client_hostname",
+									 remote_hostname,
+									 PGC_USERSET, PGC_S_CLIENT);
+			}
+		}
+	}
+
+	yb_pgstat_set_ycm_client_info(newval,
+							   NULL,
+							   newval[0] == '\0' ? "" : NULL);
+}
+
+static bool
+check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source)
+{
+	/* Always allow reset to empty string */
+	if ((*newval)[0] == '\0')
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_port.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_port,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_conn_mgr_client_hostname can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+	/* Only allow clean ASCII chars in the hostname */
+	pg_clean_ascii(*newval);
+
+	return true;
+}
+
+static void
+assign_yb_conn_mgr_client_hostname(const char *newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_hostname() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	yb_pgstat_set_ycm_client_info(NULL, NULL, newval);
+}
+
+static bool
+check_yb_conn_mgr_client_port(int *newval, void **extra, GucSource source)
+{
+	/* Always allow reset to -1 */
+	if (*newval == -1)
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_hostname.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_hostname,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_ycm_internal_client_port can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	return true;
+}
+
+static void
+assign_yb_conn_mgr_client_port(int newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_port() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	yb_pgstat_set_ycm_client_info(NULL, &newval, NULL);
+}
+
+
+static bool
 check_cluster_name(char **newval, void **extra, GucSource source)
 {
 	/* Only allow clean ASCII chars in the cluster name */
@@ -17749,6 +18066,30 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 							"when yb_enable_new_relation_fastpath_write is disabled.");
 		return false;
 	}
+
+	/*
+	 * A DDL inside a transaction block can only use the fastpath if it runs in
+	 * the enclosing transaction, which requires transactional DDL. Otherwise
+	 * this GUC would be silently ineffective.
+	 *
+	 * Only values supplied once the postmaster has read its configuration are
+	 * checked: SET, the validation pass of ALTER ROLE/DATABASE ... SET, and
+	 * connection request options. The configuration file is applied in file
+	 * order, and yb_ddl_transaction_block_enabled may be assigned after this
+	 * GUC - pg_wrapper writes ysql_pg_conf_csv entries ahead of the block it
+	 * generates from the PG gflags - so checking there would reject a
+	 * configuration whose final values are valid. The validator on the
+	 * ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks gflag rejects the
+	 * cluster-level combination instead, order-independently; a GUC enabled only
+	 * through ysql_pg_conf_csv is left to no-op silently.
+	 */
+	if (*newval && !yb_ddl_transaction_block_enabled && source >= PGC_S_CLIENT)
+	{
+		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
+							"when yb_ddl_transaction_block_enabled is disabled.");
+		return false;
+	}
+
 	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
 }
 

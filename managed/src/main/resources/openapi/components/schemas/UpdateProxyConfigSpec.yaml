@@ -1,0 +1,11 @@
+title: UpdateProxyConfigSpec
+description: |
+  Proxy settings for update_proxy_config.
+type: object
+properties:
+  proxy_config:
+    $ref: "./NodeProxyConfig.yaml"
+  az_networking:
+    description: Proxy settings overridden per Availability Zone identified by AZ uuid.
+    additionalProperties:
+      $ref: "./NodeProxyConfig.yaml"

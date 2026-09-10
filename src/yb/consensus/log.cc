@@ -95,6 +95,8 @@ using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;  // NOLINT.
 using namespace std::placeholders;
 
+METRIC_DECLARE_gauge_int64(log_wal_sync_overdue_ms);
+
 // Log retention configuration.
 // -----------------------------
 DEFINE_RUNTIME_int32(log_min_segments_to_retain, 2,
@@ -110,7 +112,7 @@ DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
     "set long enough such that a tablet server which has temporarily failed can be "
     "restarted within the given time period. If a server is down for longer than this "
     "amount of time, it is possible that its tablets will be re-replicated on other "
-    "machines.");
+    "machines. This value should match follower_unavailable_considered_failed_sec.");
 TAG_FLAG(log_min_seconds_to_retain, advanced);
 
 // Flag to enable background log sync. When enabled, we DON'T wait for performing fsync until
@@ -214,31 +216,14 @@ DEFINE_RUNTIME_int32(min_segment_size_bytes_to_rollover_at_flush, 0,
                     "Only rotate wals at least of this size (in bytes) at tablet flush."
                     "-1 to disable WAL rollover at flush. 0 to always rollover WAL at flush.");
 
-DEFINE_RUNTIME_uint32(max_disk_throughput_mbps, 300,
-    "The maximum disk throughput the disk attached to this node can support in MBps.");
-
-DEFINE_RUNTIME_uint32(reject_writes_min_disk_space_check_interval_sec, 60,
-    "Interval in seconds to check for disk space availability. The check will switch to aggressive "
-    "mode (every 10s) if the available disk space is less than --max_disk_throughput_mbps * "
-    "--reject_writes_min_disk_space_check_interval_sec. NOTE: Use a value higher than 10. If a "
-    "value less than 10 is used, then we always run in aggressive check mode, potentially causing "
-    "performance degradations.");
-
-DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 0,
-    "Reject writes if less than this much disk space is available on the WAL directory and "
-    "--reject_writes_when_disk_full is enabled. If set to 0, defaults to "
-    "--max_disk_throughput_mbps * min(10, --reject_writes_min_disk_space_check_interval_sec).");
-
 DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
-DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
-DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 8 * 3600 * 1000,
-    "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
-    "If we haven't received an updated checkpoint from CDC consumer within the interval "
-    "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-    "consumer while determining which op IDs to delete from the intent. NOTE: Must be no larger "
-    "than cdc_wal_retention_time_secs * 1000.");
+    "Maximum downtime allowed for a CDC client, in milliseconds, to retain transaction intents "
+    "A successful GetChanges poll refreshes a tablet-stream's active time. If no successful "
+    "poll occurs within this period, the tablet-stream is considered expired and its CDC "
+    "checkpoint no longer prevents garbage collection of unconsumed transaction intents. "
+    "Must be no larger than cdc_wal_retention_time_secs * 1000.");
 TAG_FLAG(cdc_intent_retention_ms, advanced);
 
 DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
@@ -247,12 +232,12 @@ DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
 
 DEFINE_validator(cdc_intent_retention_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value <= static_cast<uint64_t>(FLAGS_cdc_wal_retention_time_secs) * 1000,
+        _value <= static_cast<uint64_t>(FINAL_FLAG_VALUE(cdc_wal_retention_time_secs)) * 1000,
         "Must be no larger than cdc_wal_retention_time_secs * 1000"));
 
 DEFINE_validator(cdc_wal_retention_time_secs,
     FLAG_DELAYED_COND_VALIDATOR(
-        FLAGS_cdc_intent_retention_ms <= static_cast<uint64_t>(_value) * 1000,
+        FINAL_FLAG_VALUE(cdc_intent_retention_ms) <= static_cast<uint64_t>(_value) * 1000,
         "Must be at least cdc_intent_retention_ms (in seconds)"));
 
 DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
@@ -290,7 +275,18 @@ bool IsMarkerType(LogEntryTypePB type) {
          type == LogEntryTypePB::FLUSH_MARKER;
 }
 
+// int64 max is the "no constraint" sentinel for WAL retention indexes, so print it as "<max_int>"
+// rather than the raw 9223372036854775807, which readers tend to misread as an error.
+std::string FormatIndex(int64_t index) {
+  return index == std::numeric_limits<int64_t>::max() ? "<max_int>" : std::to_string(index);
+}
+
 } // namespace
+
+std::string MinRetainLogIndexInfo::ToString() const {
+  return "{ earliest_needed_log_index: " + FormatIndex(earliest_needed_log_index) +
+         " log_index_needed_by_cdc: " + FormatIndex(log_index_needed_by_cdc) + " }";
+}
 
 // This class represents a batch of operations to be written and synced to the log. It is opaque to
 // the user and is managed by the Log class.
@@ -540,9 +536,8 @@ void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
   }
   if (!log_->sync_disabled_) {
     bool expected = false;
-    if (log_->periodic_sync_needed_.compare_exchange_strong(expected, true,
-                                                            std::memory_order_acq_rel)) {
-      log_->periodic_sync_earliest_unsync_entry_time_ = MonoTime::Now();
+    if (log_->periodic_sync_needed_.compare_exchange_strong(expected, true)) {
+      log_->periodic_sync_earliest_unsync_entry_time_.store(MonoTime::Now());
     }
     log_->periodic_sync_unsynced_bytes_ += entry_batch->total_size_bytes();
   }
@@ -717,10 +712,18 @@ Log::Log(
       pre_log_rollover_callback_(pre_log_rollover_callback),
       background_synchronizer_wait_state_(
           ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()),
-      min_start_ht_running_txns_callback_(std::move(min_start_ht_running_txns_callback)) {
+      min_start_ht_running_txns_callback_(std::move(min_start_ht_running_txns_callback)),
+      disk_space_checker_(options_.env, wal_dir_) {
   set_wal_retention_secs(options_.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
+    // The tablet entity outlives any one Log and is reused when the tablet is opened again on this
+    // server. InstantiateFunctionGauge() would then hand back the previous Log's gauge, already
+    // detached to a constant, so drop it first.
+    tablet_metric_entity_->RemoveFromMetricMap(&METRIC_log_wal_sync_overdue_ms);
+    metrics_->wal_sync_overdue_ms = METRIC_log_wal_sync_overdue_ms.InstantiateFunctionGauge(
+        tablet_metric_entity_, Bind(&Log::WalSyncOverdueMs, Unretained(this)));
+    metrics_->wal_sync_overdue_ms->AutoDetach(&metric_detacher_, 0);
   }
   if (background_synchronizer_wait_state_) {
     background_synchronizer_wait_state_->set_root_request_id(yb::Uuid::Generate());
@@ -733,20 +736,34 @@ Log::Log(
   }
 }
 
+int64_t Log::WalSyncOverdueMs() const {
+  if (durable_wal_write_ || !interval_durable_wal_write_ || !periodic_sync_needed_) {
+    return 0;
+  }
+  // The appender publishes periodic_sync_needed_, then the timestamp, then the byte count, in that
+  // order, and DoSync() resets needed then bytes. Reading the byte count before the timestamp
+  // means a non-zero count came after the timestamp of the same batch, so a scrape that lands
+  // between the appender's first two stores reads 0 instead of pairing a fresh "needed" with the
+  // previous batch's timestamp. The remaining window is a background DoSync() whose two resets
+  // become visible out of step, which is store-buffer sized; a value read there is at most one
+  // previous cycle old.
+  if (periodic_sync_unsynced_bytes_ == 0) {
+    return 0;
+  }
+  const MonoTime earliest_unsync_entry_time = periodic_sync_earliest_unsync_entry_time_;
+  const auto overdue = MonoTime::Now() - earliest_unsync_entry_time - interval_durable_wal_write_;
+  return std::max<int64_t>(overdue.ToMilliseconds(), 0);
+}
+
 Status Log::Init() {
   std::lock_guard write_lock(state_lock_);
   CHECK_EQ(kLogInitialized, log_state_);
   // Init the index
   log_index_ = VERIFY_RESULT(LogIndex::NewLogIndex(wal_dir_));
   // Reader for previous segments.
-  RETURN_NOT_OK(LogReader::Open(get_env(),
-                                log_index_,
-                                log_prefix_,
-                                wal_dir_,
-                                table_metric_entity_.get(),
-                                tablet_metric_entity_.get(),
-                                read_wal_mem_tracker_,
-                                &reader_));
+  reader_ = VERIFY_RESULT(LogReader::Open(
+      get_env(), log_index_, log_prefix_, wal_dir_, table_metric_entity_.get(),
+      tablet_metric_entity_.get(), read_wal_mem_tracker_));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
   // off in terms of sequence numbers.
@@ -1294,9 +1311,11 @@ void Log::DoSyncAndResetTaskInQueue() {
   fsync_task_in_queue_.store(false, std::memory_order_release);
 }
 
-// retuns
-// - kForceFsync when
-//   1. periodic_sync_needed_ is false, i.e no new appends happened since the last fsync.
+// returns
+// - kNoSync when
+//   1. periodic_sync_needed_ is false, i.e no new appends happened since the last fsync, or
+//   2. neither threshold below has been reached, or
+//   3. only the lower thresholds have been reached but FLAGS_log_enable_background_sync is not set.
 // - kAsyncFsync when
 //   1. time interval/unsynced data exceeds lower limits and FLAGS_log_enable_background_sync is set
 //      time lower limit: (interval_durable_wal_write_ * FLAGS_log_background_sync_interval_fraction
@@ -1306,6 +1325,13 @@ void Log::DoSyncAndResetTaskInQueue() {
 //   2. time interval/unsynced data exceeds upper limits
 //      time upper limit: interval_durable_wal_write_
 //      data upper limit: bytes_durable_wal_write_mb_ (MB)
+//
+// May be called from a thread other than the appender (see ::MaybeSyncInBackground), so it reads
+// the periodic_sync_* state rather than assuming exclusive access to it. periodic_sync_needed_ is
+// published by the appender before periodic_sync_earliest_unsync_entry_time_ is, so a racing
+// reader can pair a fresh "needed" with the previous cycle's timestamp and conclude the log is
+// more overdue than it is. That errs toward one extra fsync, never toward a missed one, which is
+// the direction this whole mechanism is supposed to err in.
 SyncType Log::FindSyncType() {
   if (durable_wal_write_) {
     return SyncType::kForceFsync;
@@ -1315,17 +1341,18 @@ SyncType Log::FindSyncType() {
     return SyncType::kNoSync;
   }
 
+  const auto earliest_unsync_entry_time =
+      periodic_sync_earliest_unsync_entry_time_.load();
+
   SyncType sync_type = SyncType::kNoSync;
   if (interval_durable_wal_write_) {
     MonoDelta interval_async_wal_write_ =
         MonoDelta::FromMilliseconds(interval_durable_wal_write_.ToMilliseconds() *
                                     FLAGS_log_background_sync_interval_fraction);
     auto time_now = MonoTime::Now();
-    auto time_async_threshold =
-        periodic_sync_earliest_unsync_entry_time_ + interval_async_wal_write_;
+    auto time_async_threshold = earliest_unsync_entry_time + interval_async_wal_write_;
     if (time_now > time_async_threshold) {
-      auto time_immediate_threshold =
-          periodic_sync_earliest_unsync_entry_time_ + interval_durable_wal_write_;
+      auto time_immediate_threshold = earliest_unsync_entry_time + interval_durable_wal_write_;
       sync_type = time_now > time_immediate_threshold ? SyncType::kForceFsync :
                                                         SyncType::kAsyncFsync;
     }
@@ -1347,6 +1374,53 @@ SyncType Log::FindSyncType() {
   }
 
   return sync_type;
+}
+
+bool Log::SubmitBackgroundSync() {
+  // Return if a sync task already exists in the queue.
+  bool expected = false;
+  if (!fsync_task_in_queue_.compare_exchange_strong(expected, true)) {
+    return false;
+  }
+  auto reset_task_in_queue = CancelableScopeExit([this] { fsync_task_in_queue_.store(false); });
+
+  Status status;
+  {
+    SharedLock lock(background_sync_token_mutex_);
+    if (!background_sync_threadpool_token_) {
+      // Close() has already retired the token, and performs a final DoSync() of its own.
+      return false;
+    }
+    status = background_sync_threadpool_token_->SubmitFunc([this] { DoSyncAndResetTaskInQueue(); });
+  }
+
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Pushing sync operation to log-sync queue failed with "
+                             << "status " << status;
+    return false;
+  }
+
+  reset_task_in_queue.Cancel();
+  return true;
+}
+
+bool Log::MaybeSyncInBackground() {
+  // With durable_wal_write_ the appender's own Sync() already fsyncs in line.
+  if (durable_wal_write_ || sync_disabled_) {
+    return false;
+  }
+
+  if (!periodic_sync_needed_.load()) {
+    return false;
+  }
+
+  if (FindSyncType() == SyncType::kNoSync) {
+    return false;
+  }
+
+  // No UpdateSegmentReadableOffset() here: nothing has been appended on this path, so the
+  // appender has already published the current offset and watermark.
+  return SubmitBackgroundSync();
 }
 
 // Finds type of sync that needs to be done and either spawns a task to execute
@@ -1389,18 +1463,7 @@ Status Log::Sync() {
       break;
     }
     case SyncType::kAsyncFsync: {
-      // return if a sync task already exists in the queue.
-      if (fsync_task_in_queue_.load(std::memory_order_acquire)) {
-        break;
-      }
-      fsync_task_in_queue_.store(true, std::memory_order_release);
-      auto status =
-          background_sync_threadpool_token_->SubmitFunc([this] { DoSyncAndResetTaskInQueue(); });
-      if (!status.ok()) {
-        LOG_WITH_PREFIX(WARNING) << "Pushing sync operation to log-sync queue failed with "
-                                 << "status " << status;
-        fsync_task_in_queue_.store(false, std::memory_order_release);
-      }
+      SubmitBackgroundSync();
       break;
     }
     case SyncType::kForceFsync: {
@@ -1424,12 +1487,19 @@ Status Log::UpdateSegmentReadableOffset() {
 }
 
 Status Log::GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_index_info,
-                                    SegmentSequence* segments_to_gc) const {
+                                    SegmentSequence* segments_to_gc,
+                                    std::string* retention_details) const {
   // For the lifetime of a Log::CopyTo call, log_copy_min_index_ may be set to something
   // other than std::numeric_limits<int64_t>::max(). This value will correspond to the
   // minimum op_idx which is currently being copied and must be retained. In order to
   // avoid concurrently deleting those ops, we bump min_op_idx here to be at-least as
   // low as log_copy_min_index_.
+  if (retention_details &&
+      log_copy_min_index_ < min_retain_log_index_info.earliest_needed_log_index) {
+    *retention_details += Format(
+        " Set earliest needed op ID idx to log_copy_min_index $0.",
+        log_copy_min_index_);
+  }
   int64_t min_op_idx =
       std::min(log_copy_min_index_, min_retain_log_index_info.earliest_needed_log_index);
 
@@ -1438,13 +1508,23 @@ Status Log::GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_
   // log_index_needed_by_cdc = int64 max (e.g. a caller with no xrepl constraint, or tests) still
   // cannot drop WAL that xrepl needs. The freshest value also wins over a slightly stale one the
   // caller may have computed earlier.
+  std::string xrepl_factors;
+  const auto log_xrepl_min_replicated_index =
+      GetXReplMinReplicatedIndex(retention_details ? &xrepl_factors : nullptr);
   auto xrepl_min_replicated_index =
-      std::min(min_retain_log_index_info.log_index_needed_by_cdc, GetXReplMinReplicatedIndex());
+      std::min(min_retain_log_index_info.log_index_needed_by_cdc, log_xrepl_min_replicated_index);
+  if (retention_details &&
+      xrepl_min_replicated_index != std::numeric_limits<int64_t>::max()) {
+    *retention_details += Format(
+        " cdc_min_replicated_index = min of [log_index_needed_by_cdc $0, $1] = $2.",
+        FormatIndex(min_retain_log_index_info.log_index_needed_by_cdc), xrepl_factors,
+        FormatIndex(xrepl_min_replicated_index));
+  }
 
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
-      min_op_idx, xrepl_min_replicated_index, segments_to_gc));
+      min_op_idx, xrepl_min_replicated_index, segments_to_gc, retention_details));
 
   if (segments_to_gc->size() > 0) {
     UpdateMinStartTimeRunningTxnsFromGCSegments((*segments_to_gc));
@@ -1454,11 +1534,15 @@ Status Log::GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_
       std::max<ssize_t>(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   ssize_t segments_to_gc_size = segments_to_gc->size();
   if (segments_to_gc_size > max_to_delete) {
-    VLOG_WITH_PREFIX(2)
-        << "GCing " << segments_to_gc_size << " in " << wal_dir_
-        << " would not leave enough remaining segments to satisfy minimum "
-        << "retention requirement. Only considering "
-        << max_to_delete << "/" << reader_->num_segments();
+    const auto retain_iter = segments_to_gc->begin() + max_to_delete;
+    const auto retention_detail = Format(
+        "log_min_segments_to_retain $0 capped GC at $1 of $2 segs. Retain start at $3.",
+        FLAGS_log_min_segments_to_retain, max_to_delete, reader_->num_segments(),
+        BaseName((*retain_iter)->path()));
+    VLOG_WITH_PREFIX(2) << retention_detail;
+    if (retention_details) {
+      *retention_details += " " + retention_detail;
+    }
     segments_to_gc->truncate(max_to_delete);
   } else if (segments_to_gc_size < max_to_delete) {
     auto extra_segments = max_to_delete - segments_to_gc_size;
@@ -1466,7 +1550,7 @@ Status Log::GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_
   }
 
   if PREDICT_TRUE(!FLAGS_TEST_disable_wal_retention_time) {
-    ApplyTimeRetentionPolicy(segments_to_gc);
+    ApplyTimeRetentionPolicy(segments_to_gc, retention_details);
   }
 
   return Status::OK();
@@ -1478,31 +1562,67 @@ Status Log::GetSegmentsToGC(const MinRetainLogIndexInfo& min_retain_log_index_in
   return GetSegmentsToGCUnlocked(min_retain_log_index_info, segments_to_gc);
 }
 
-int64_t Log::GetXReplMinReplicatedIndex() const {
-  auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
+int64_t Log::GetXReplMinReplicatedIndex(std::string* factors_detail) const {
+  const auto cdc_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
+  auto xrepl_min_replicated_index = cdc_min_replicated_index;
+  int64_t xcluster_min_index_to_retain = std::numeric_limits<int64_t>::max();
   std::lock_guard l(get_xcluster_index_lock_);
   if (get_xcluster_min_index_to_retain_) {
-    xrepl_min_replicated_index =
-        std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
+    xcluster_min_index_to_retain = get_xcluster_min_index_to_retain_(tablet_id_);
+    xrepl_min_replicated_index = std::min(xrepl_min_replicated_index, xcluster_min_index_to_retain);
+  }
+  if (factors_detail) {
+    *factors_detail = Format(
+        "cdc_min_replicated_index_ $0, xcluster_min_index_to_retain $1",
+        FormatIndex(cdc_min_replicated_index), FormatIndex(xcluster_min_index_to_retain));
   }
   return xrepl_min_replicated_index;
 }
 
-void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
-  // Don't GC segments that are newer than the configured time-based retention.
-  int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
+bool Log::SegmentAgedOutOfTimeRetention(const ReadableLogSegment& segment,
+                                        const uint32_t* cached_wal_retention_secs,
+                                        std::string* retention_details) const {
+  // For GC callers this check is redundant (GetSegmentsToGCUnlocked gates the whole
+  // ApplyTimeRetentionPolicy call on the same flag); it lives here so that callers applying
+  // the policy to a frozen snapshot (remote bootstrap) get the kill-switch as well.
+  if (PREDICT_FALSE(FLAGS_TEST_disable_wal_retention_time)) {
+    return true;
+  }
+  // Segments written by older YB builds may not have the timestamp info (TODO: make sure we
+  // indeed care about these old builds). In that case, we're allowed to GC them.
+  if (!segment.footer().has_close_timestamp_micros()) {
+    return true;
+  }
+  const int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
+  const int64_t age_seconds = (now - segment.footer().close_timestamp_micros()) / 1'000'000;
+  const uint32_t retention_secs =
+      cached_wal_retention_secs ? *cached_wal_retention_secs : wal_retention_secs();
 
+  if (age_seconds >= retention_secs) {
+    return true;
+  }
+  if (retention_details) {
+    *retention_details += Format(
+        " Time retention: retain start at $0, age $1s < min_wal_retention_secs $2s "
+        "(wal_retention_secs_ $3, cdc_wal_retention_time_secs $4, "
+        "log_min_seconds_to_retain $5).",
+        BaseName(segment.path()), age_seconds, retention_secs,
+        wal_retention_secs_.load(std::memory_order_acquire), FLAGS_cdc_wal_retention_time_secs,
+        FLAGS_log_min_seconds_to_retain);
+  }
+  return false;
+}
+
+void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc,
+                                   std::string* retention_details) const {
+  // Don't GC segments that are newer than the configured time-based retention. Segments here
+  // will always have a footer, since we don't return the in-progress segment up above.
+  const uint32_t cached_wal_retention_secs = wal_retention_secs();
   for (auto iter = segments_to_gc->begin(); iter != segments_to_gc->end(); ++iter) {
     const auto& segment = *iter;
-    // Segments here will always have a footer, since we don't return the in-progress segment up
-    // above. However, segments written by older YB builds may not have the timestamp info (TODO:
-    // make sure we indeed care about these old builds). In that case, we're allowed to GC them.
-    if (!segment->footer().has_close_timestamp_micros()) continue;
-
-    int64_t age_seconds = (now - segment->footer().close_timestamp_micros()) / 1000000;
-    if (age_seconds < wal_retention_secs()) {
+    if (!SegmentAgedOutOfTimeRetention(*segment, &cached_wal_retention_secs, retention_details)) {
       VLOG_WITH_PREFIX(2)
-          << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
+          << "Segment " << segment->path() << " is too young: "
           << "cannot GC it yet due to configured time-based retention policy.";
       // Truncate the list of segments to GC here -- if this one is too new, then all later ones are
       // also too new.
@@ -1639,13 +1759,16 @@ Status Log::GC(const MinRetainLogIndexInfo& min_retain_log_index_info, int32_t* 
       std::lock_guard l(state_lock_);
       CHECK_EQ(kLogWriting, log_state_);
 
-      RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_retain_log_index_info, &segments_to_delete));
+      std::string retention_details;
+      RETURN_NOT_OK(GetSegmentsToGCUnlocked(
+          min_retain_log_index_info, &segments_to_delete, &retention_details));
 
       if (segments_to_delete.empty()) {
         VLOG_WITH_PREFIX(1) << "No segments to delete.";
         *num_gced = 0;
         return Status::OK();
       }
+      LOG_WITH_PREFIX(DETAIL) << "Retention details:" << retention_details;
       // Trim the prefix of segments from the reader so that they are no longer referenced by the
       // log.
       const ReadableLogSegmentPtr& last_to_delete = VERIFY_RESULT(segments_to_delete.back());
@@ -1682,7 +1805,8 @@ Status Log::GC(const MinRetainLogIndexInfo& min_retain_log_index_info, int32_t* 
 }
 
 Status Log::GetGCableDataSize(
-    const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size) const {
+    const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size,
+    WalRetentionDiagnostics* diagnostics) const {
   if (min_retain_log_index_info.earliest_needed_log_index < 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Invalid min op index $0",
@@ -1697,7 +1821,37 @@ Status Log::GetGCableDataSize(
       return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
           log_state_, kLogWriting);
     }
-    Status s = GetSegmentsToGCUnlocked(min_retain_log_index_info, &segments_to_delete);
+    std::string* retention_details = nullptr;
+    if (diagnostics) {
+      retention_details = &diagnostics->details;
+      diagnostics->first_retained_segment_age_secs = -1;
+    }
+    Status s = GetSegmentsToGCUnlocked(
+        min_retain_log_index_info, &segments_to_delete, retention_details);
+
+    // Figure out the age of the first retained segment if diagnostics are requested.
+    if (diagnostics && s.ok() && reader_) {
+      std::optional<int64_t> first_retained_segment;
+      if (!segments_to_delete.empty()) {
+        // The first retained segment is the one right after the GC-eligible prefix.
+        const scoped_refptr<ReadableLogSegment> last_delete_segment =
+            CHECK_RESULT(segments_to_delete.back());
+        first_retained_segment = last_delete_segment->header().sequence_number() + 1;
+      } else {
+        // Nothing is GC-able, so every segment is being retained. Then get the oldest segment.
+        SegmentSequence segments;
+        if (reader_->GetSegmentsSnapshot(&segments).ok() && !segments.empty()) {
+          const scoped_refptr<ReadableLogSegment> oldest_segment = CHECK_RESULT(segments.front());
+          first_retained_segment = oldest_segment->header().sequence_number();
+        }
+      }
+      if (first_retained_segment) {
+        if (std::optional<int64_t> age_secs =
+              reader_->GetSegmentCloseAgeSecs(*first_retained_segment)) {
+          diagnostics->first_retained_segment_age_secs = *age_secs;
+        }
+      }
+    }
 
     if (!s.ok() || segments_to_delete.empty()) {
       return Status::OK();
@@ -1709,11 +1863,12 @@ Status Log::GetGCableDataSize(
   return Status::OK();
 }
 
-Result<LogReader*> Log::GetLogReader() const {
+Result<LogReaderPtr> Log::GetLogReader() const {
+  PerCpuRwSharedLock read_lock(state_lock_);
   if (!reader_) {
     return STATUS(IllegalState, "LogReader is not initialized");
   }
-  return reader_.get();
+  return reader_;
 }
 
 Status Log::GetSegmentsSnapshot(SegmentSequence* segments) const {
@@ -1762,8 +1917,11 @@ void Log::SetPerDbCgroup(Cgroup* cgroup) {
   if (allocation_token_) {
     allocation_token_->SetTaskCgroup(cgroup);
   }
-  if (background_sync_threadpool_token_) {
-    background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+  {
+    SharedLock lock(background_sync_token_mutex_);
+    if (background_sync_threadpool_token_) {
+      background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+    }
   }
 }
 
@@ -1782,8 +1940,18 @@ Status Log::Close() {
   switch (log_state_) {
     case kLogWriting:
       // Appender uses background_sync_threadpool_token_, so we should reset it
-      // post shutting down appender_.
-      background_sync_threadpool_token_.reset();
+      // post shutting down appender_. ::MaybeSyncInBackground can also be submitting through it
+      // from a consensus service thread right now, hence the lock.
+      {
+        std::unique_ptr<ThreadPoolToken> retired_token;
+        {
+          std::lock_guard token_lock(background_sync_token_mutex_);
+          retired_token = std::move(background_sync_threadpool_token_);
+        }
+        // Destroyed outside the lock: ~ThreadPoolToken waits for the running fsync, and holding
+        // the exclusive lock across that would park a submitter on a disk. A submission already
+        // in flight holds the shared lock, so it completes before the swap.
+      }
       // Now that we have shut background_sync_threadpool_token_, don't call ::Sync.
       // call ::DoSync instead.
       RETURN_NOT_OK(DoSync());
@@ -1946,22 +2114,22 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_i
   });
 
   SegmentSequence segments;
-  scoped_refptr<LogIndex> log_index;
   {
     UniqueLock<PerCpuRwMutex> l(state_lock_);
-    if (log_state_ != kLogInitialized) {
-      SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
+    SCHECK(
+        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
+        Format("Invalid log state: $0", log_state_));
+    {
       ReverseLock<decltype(l)> rlock(l);
+      // If the log is not yet open for writing (kLogInitialized, e.g. when SPLIT_OP is replayed
+      // during tablet bootstrap), open it first so we can rollover current active segment if it is
+      // not empty.
+      RETURN_NOT_OK(EnsureSegmentInitialized());
       // Rollover current active segment if it is not empty.
       RETURN_NOT_OK(AllocateSegmentAndRollOver());
     }
 
-    SCHECK(
-        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
-        Format("Invalid log state: $0", log_state_));
-    // Remember log_index, because it could be reset if someone closes the log after we release
-    // state_lock_.
-    log_index = log_index_;
+    SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
 
     // We skip the last snapshot segment because it might be mutable and is either:
@@ -2288,78 +2456,7 @@ void Log::LogEntryBatch::MarkReady() {
 }
 
 bool Log::HasSufficientDiskSpaceForWrite() {
-  const auto now = CoarseMonoClock::Now();
-  const auto last_disk_space_check_time =
-      last_disk_space_check_time_.load(std::memory_order_acquire);
-
-  auto check_interval_sec = disk_space_frequent_check_interval_sec_.load(std::memory_order_acquire);
-  if (check_interval_sec == 0) {
-    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
-  }
-
-  if (IsInitialized(last_disk_space_check_time) &&
-      (now - last_disk_space_check_time < check_interval_sec * 1s)) {
-    return has_free_disk_space_.load(std::memory_order_acquire);
-  }
-
-  std::unique_lock l(disk_space_mutex_, std::defer_lock);
-  if (!l.try_lock_for(std::chrono::milliseconds(0))) {
-    // Someone else is already checking disk space. Just use the cached value.
-
-    if (!IsInitialized(last_disk_space_check_time)) {
-      // Always wait for the initial value to be valid.
-      SharedLock shared_l(disk_space_mutex_);
-    }
-
-    return has_free_disk_space_.load(std::memory_order_acquire);
-  }
-
-  std::string path;
-  {
-    std::lock_guard lock(active_segment_mutex_);
-    path = active_segment_->path();
-  }
-
-  bool has_space = true;
-  const uint32 kAggressiveCheckIntervalSec = 10;
-  // Lets assume we need to check frequently. If we have enough space, we will increment to a
-  // higher value.
-  check_interval_sec =
-      std::min(kAggressiveCheckIntervalSec, FLAGS_reject_writes_min_disk_space_check_interval_sec);
-
-  const uint64 min_allowed_disk_space_mb =
-      FLAGS_reject_writes_min_disk_space_mb ? FLAGS_reject_writes_min_disk_space_mb
-                                            : FLAGS_max_disk_throughput_mbps * check_interval_sec;
-
-  const uint64 min_space_to_trigger_aggressive_check_mb =
-      FLAGS_max_disk_throughput_mbps * FLAGS_reject_writes_min_disk_space_check_interval_sec;
-
-  auto free_space_result = get_env()->GetFreeSpaceBytes(path);
-  if (!free_space_result.ok()) {
-    YB_LOG_EVERY_N_SECS(WARNING, 300) << "Unable to get free space: " << free_space_result;
-
-    // Fallback to the last known value.
-    return has_free_disk_space_.load(std::memory_order_acquire);
-  }
-  const auto free_space_mb = *free_space_result / 1024 / 1024;
-
-  if (free_space_mb < min_allowed_disk_space_mb) {
-    YB_LOG_EVERY_N_SECS(WARNING, 600) << "Not enough disk space available on " << path
-                                      << ". Free space: " << *free_space_result << " bytes";
-    has_space = false;
-  } else if (free_space_mb < min_space_to_trigger_aggressive_check_mb) {
-    YB_LOG_EVERY_N_SECS(WARNING, 600)
-        << "Low disk space on " << path << ". Free space: " << *free_space_result << " bytes";
-  } else {
-    // We have enough space so no need to check frequently.
-    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
-  }
-
-  disk_space_frequent_check_interval_sec_.store(check_interval_sec, std::memory_order_release);
-  has_free_disk_space_.store(has_space, std::memory_order_release);
-  last_disk_space_check_time_.store(now, std::memory_order_release);
-
-  return has_space;
+  return disk_space_checker_.HasSufficientDiskSpace();
 }
 
 void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {

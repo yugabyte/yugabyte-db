@@ -368,8 +368,19 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   // Get the last checkpoint of records read, even if it is external.
   OpId last_checkpoint =
       messages.empty() ? context.from_op_id : OpId::FromPB(messages.back()->id());
-  // Filter out WAL records that are external.
-  EraseIf([](const auto& msg) { return msg->write().has_external_hybrid_time(); }, &messages);
+  // Loop-prevention filter. Streams stamped with xcluster_use_target_applied_filter drop only WAL
+  // entries that were applied by an xCluster consumer; legacy streams use the historical
+  // external_hybrid_time filter.
+  const bool use_target_applied_filter = context.stream_metadata->UseTargetAppliedFilter();
+  EraseIf(
+      [use_target_applied_filter](const auto& msg) {
+        const auto& write = msg->write();
+        if (use_target_applied_filter) {
+          return write.xcluster_target_applied();
+        }
+        return write.has_external_hybrid_time();
+      },
+      &messages);
 
   *context.have_more_messages =
       PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ? HaveMoreMessages::kTrue

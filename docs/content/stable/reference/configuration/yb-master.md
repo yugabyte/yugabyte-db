@@ -952,10 +952,14 @@ Limits the number of total outstanding tablet splits. Limitation is disabled if 
 
 {{% tags/wrap %}}
 
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
-Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
+Limits the number of outstanding tablet splits per node. Limit includes tablets that are performing post-split compactions.
+
+- `-1` (default): the limit is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise).
+- `0`: limitation is disabled.
+- A positive value is used as-is.
 
 ##### --enable_tablet_split_of_pitr_tables
 
@@ -1142,7 +1146,7 @@ Number of seconds to retain log files. Log files older than this value will be d
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `102400`
+Default: `100`
 {{% /tags/wrap %}}
 
 Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
@@ -1218,6 +1222,35 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../additional-features/change-data-capture/using-logical-replication/).
+
+##### --ysql_yb_enable_implicit_dynamic_tables_logical_replication
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2026.1 and later.
+
+When set to `true`, modifications to a publication are reflected implicitly in logical replication streams, providing PostgreSQL-like semantics for dynamic tables.
+
+When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the bahavior in versions earlier than v2026.1.)
+
+For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
+
+##### --enable_table_rewrite_for_cdcsdk_table
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to `true`, CDC does not block DDLs that cause table rewrites on tables with active logical replication streams. CDC streams records from the re-written tablets after finishing data from the older tablets.
+
+When set to `false`, any DDL that causes a table rewrite is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1).
+
+For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
 
 ### LISTEN/NOTIFY flags
 
@@ -1552,7 +1585,7 @@ Default: `-1000` (use the built-in recommended value; commonly `0` when [--use_m
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -1775,10 +1808,12 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+If the value is `-1` (default) or `0`, the thread count is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise). A positive value is used as-is.
 
 ##### --auto_compact_check_interval_sec
 
@@ -2014,6 +2049,32 @@ Default: `300000`
 {{% /tags/wrap %}}
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
+
+### Multitenancy (resource governor) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+For information on other resource governor configuration flags, see the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governor-flags).
+
+##### --enable_qos
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables per-database CPU limits and the maximum database count cap. When `false`, per-database cgroups are not created and none of the other `qos_*` flags have any effect.
+
+##### --qos_max_db_count
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+The maximum number of non-template databases that can be created. `CREATE DATABASE` fails if it would exceed this limit. Because per-database cgroups are weighted equally, this cap sets the effective per-database minimum CPU as `1 / qos_max_db_count` (for example, a value of `20` guarantees each database at least 5% of the available CPU). Has no effect unless `enable_qos` is `true`.
 
 ### Other performance tuning options
 
@@ -2378,6 +2439,7 @@ When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

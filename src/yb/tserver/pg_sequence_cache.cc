@@ -18,6 +18,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tserver {
@@ -28,7 +29,8 @@ namespace tserver {
 // we annotate this with NO_THREAD_SAFETY_ANALYSIS.
 void PgSequenceCache::Entry::CheckNotAvailable() NO_THREAD_SAFETY_ANALYSIS { DCHECK(!available_); }
 
-PgSequenceCache::Entry::Entry() : cv_(&mutex_), available_(true), has_values_(false) {}
+PgSequenceCache::Entry::Entry()
+    : cv_(&mutex_), available_(true), has_values_(false), curr_value_(0), last_value_(0) {}
 
 std::optional<int64_t> PgSequenceCache::Entry::GetValueIfCached(int64_t inc_by) {
   CheckNotAvailable();
@@ -70,16 +72,19 @@ void PgSequenceCache::Entry::NotifyWaiter() {
 }
 
 Result<std::shared_ptr<PgSequenceCache::Entry>> PgSequenceCache::GetWhenAvailable(
-    const PgObjectId& sequence_id, const MonoTime& deadline) {
+    const PgObjectId& sequence_id, const MonoTime& deadline, bool create_if_not_exists) {
   std::shared_ptr<Entry> entry;
   {
     std::lock_guard cache_lock_guard(lock_);
-    if (!cache_.contains(sequence_id)) {
+    auto it = cache_.find(sequence_id);
+    if (it == cache_.end()) {
+      if (!create_if_not_exists) {
+        return nullptr;
+      }
       VLOG(3) << "Create cache entry for sequence id " << sequence_id;
-      cache_[sequence_id] = std::make_shared<Entry>();
+      it = cache_.emplace(sequence_id, std::make_shared<Entry>()).first;
     }
-
-    entry = cache_[sequence_id];
+    entry = it->second;
   }
 
   VLOG(3) << "Getting entry for sequence id " << sequence_id
@@ -95,6 +100,16 @@ Result<std::shared_ptr<PgSequenceCache::Entry>> PgSequenceCache::GetWhenAvailabl
 
   entry->available_ = false;
   return entry;
+}
+
+Status PgSequenceCache::Invalidate(const PgObjectId& sequence_id, const MonoTime& deadline) {
+  auto entry = VERIFY_RESULT(
+      GetWhenAvailable(sequence_id, deadline, /*create_if_not_exists=*/false));
+  if (entry) {
+    entry->has_values_ = false;
+    entry->NotifyWaiter();
+  }
+  return Status::OK();
 }
 
 }  // namespace tserver

@@ -17,6 +17,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/tools/yb-admin_client.h"
+#include "yb/tools/yb-admin_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -26,6 +27,7 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_hang_on_namespace_transition);
+DECLARE_bool(yb_admin_force_use_private_ip);
 
 namespace yb {
 namespace tools {
@@ -278,6 +280,132 @@ TEST_F(
   };
   ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(
       database, 0 /* retention_duration_hours */));
+}
+
+namespace {
+
+master::ListTabletServersResponsePB::Entry MakeTabletServerEntry(
+    const std::string& uuid, const std::string& host, uint16_t port, bool alive) {
+  master::ListTabletServersResponsePB::Entry entry;
+  entry.mutable_instance_id()->set_permanent_uuid(uuid);
+  HostPortToPB(
+      HostPort(host, port),
+      entry.mutable_registration()->mutable_common()->add_private_rpc_addresses());
+  entry.set_alive(alive);
+  return entry;
+}
+
+void AddBroadcastAddress(
+    master::ListTabletServersResponsePB::Entry* entry, const std::string& host, uint16_t port) {
+  HostPortToPB(
+      HostPort(host, port),
+      entry->mutable_registration()->mutable_common()->add_broadcast_addresses());
+}
+
+}  // namespace
+
+TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-10", "10.0.0.10", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive-30-b", "10.0.0.30", 9100, true);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive-30-a", "10.0.0.30", 9100, true);
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-20", "10.0.0.20", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive-15", "10.0.0.15", 9100, true);
+
+  SortListTabletServerEntries(servers);
+
+  ASSERT_EQ(5, servers.size());
+  EXPECT_EQ("uuid-alive-15", servers.Get(0).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-alive-30-a", servers.Get(1).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-alive-30-b", servers.Get(2).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-dead-10", servers.Get(3).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-dead-20", servers.Get(4).instance_id().permanent_uuid());
+}
+
+TEST(SelectTabletServerAddressTest, PrefersBroadcastAddress) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, FallsBackToPrivateAddress) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, SkipsDeadServers) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead", "192.0.2.1", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive", "192.0.2.2", 9100, true);
+
+  EXPECT_EQ("192.0.2.2", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, UsesDeadServerWhenNoServerIsAlive) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-1", "192.0.2.1", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-2", "192.0.2.2", 9100, false);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, TreatsUnreportedLivenessAsAlive) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-unknown", "192.0.2.1", 9100, true);
+  server->clear_alive();
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, ReturnsEmptyWhenNoAddressIsRegistered) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  master::ListTabletServersResponsePB::Entry entry;
+  entry.mutable_instance_id()->set_permanent_uuid("uuid-no-address");
+  entry.set_alive(true);
+  *servers.Add() = entry;
+
+  EXPECT_TRUE(SelectTabletServerAddress(servers).host().empty());
+}
+
+TEST(SelectTabletServerAddressTest, ReturnsEmptyWhenRegistrationHasNoAddresses) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  server->mutable_instance_id()->set_permanent_uuid("uuid-empty-registration");
+  server->set_alive(true);
+  server->mutable_registration()->mutable_common();
+
+  EXPECT_TRUE(SelectTabletServerAddress(servers).host().empty());
+}
+
+TEST(SelectTabletServerAddressTest, ForceUsePrivateIpPrefersPrivateAddress) {
+  google::FlagSaver flag_saver;
+  FLAGS_yb_admin_force_use_private_ip = true;
+
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, ForceUsePrivateIpFallsBackToBroadcastAddress) {
+  google::FlagSaver flag_saver;
+  FLAGS_yb_admin_force_use_private_ip = true;
+
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  server->mutable_instance_id()->set_permanent_uuid("uuid-broadcast-only");
+  server->set_alive(true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
 }
 
 }  // namespace tools

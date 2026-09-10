@@ -4,8 +4,6 @@ headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Using Point-in-time recovery in YugabyteDB Aeon
 headContent: Create a database clone for recovery or testing
-tags:
-  feature: early-access
 menu:
   stable_yugabyte-cloud:
     identifier: aeon-pitr

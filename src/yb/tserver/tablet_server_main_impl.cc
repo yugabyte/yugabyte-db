@@ -164,7 +164,9 @@ Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsql
   const auto conn_mgr_shmem_key =
       FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor.GetYsqlConnManagerStatsShmkey() : 0;
   auto ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
-      ysql_conn_mgr_conf, conn_mgr_shmem_key);
+      ysql_conn_mgr_conf, conn_mgr_shmem_key, [pg_supervisor = &pg_supervisor](MonoDelta timeout) {
+        return pg_supervisor->WaitForProcessStartAfterLastRestart(timeout);
+      });
   if (ysql_lease_enabled) {
     RETURN_NOT_OK(ysql_conn_mgr_supervisor->InitPaused());
   } else {

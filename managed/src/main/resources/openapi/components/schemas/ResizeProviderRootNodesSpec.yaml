@@ -1,0 +1,11 @@
+title: ResizeProviderRootNodesSpec
+description: 'Root-level resize node specification for a provider, optionally containing per-region and per-AZ overrides.'
+type: object
+allOf:
+  - $ref: "./ResizeProviderNodesSpec.yaml"
+  - properties:
+      region_nodes_specs:
+        description: Per-region resize node specification overrides.
+        type: array
+        items:
+          $ref: "./ResizeProviderRegionNodesSpec.yaml"

@@ -208,8 +208,8 @@ html {
   }
 
   .td-main {
-    main {
-      padding-top: 100px;
+    main.content-area {
+      padding-top: var(--docs-sticky-header-top);
     }
   }
 }
@@ -218,8 +218,8 @@ html {
   .td-main {
     flex-flow: column;
 
-    main {
-      padding-top: 170px;
+    main.content-area {
+      padding-top: var(--docs-sticky-header-top);
       padding-left: 0;
       padding-right: 0;
     }

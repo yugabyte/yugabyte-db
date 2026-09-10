@@ -63,7 +63,7 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
@@ -73,7 +73,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
-  private YBClient mockClient = mock(YBClient.class);
+  private YBClientApi mockClient = mock(YBClientApi.class);
 
   private Region region;
 

@@ -31,14 +31,17 @@ set(VECTOR_INDEX_SRCS
   benchmark_data.cc
   hnsw_options.cc
   hnsw_util.cc
+  index_wrapper_base.cc
   vector_id.cc
   vector_lsm.cc
   vector_lsm_metadata.cc
   vector_lsm_metrics.cc
+  vector_payload_map.cc
   )
 
 set(VECTOR_INDEX_LIBS
   vector_index_proto
+  yb_ash
   yb_common
   yb_storage
   yb_util

@@ -23,7 +23,11 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,10 +83,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yaml.snakeyaml.Yaml;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -92,7 +97,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private EditKubernetesUniverse editUniverse;
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final String NODE_PREFIX = "demo-universe";
   private static final String YB_SOFTWARE_VERSION = "1.0.0";
@@ -118,7 +123,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
     } catch (Exception e) {
     }
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {
@@ -225,6 +230,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.KubernetesCommandExecutor,
@@ -245,6 +251,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -257,6 +264,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.HandleKubernetesNamespacedServices,
@@ -280,6 +288,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
@@ -296,6 +305,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.CheckUnderReplicatedTablets,
@@ -329,6 +339,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -415,6 +426,17 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
   }
 
+  // Reads the "partition" map from the helm override file that was passed to helmUpgrade(...).
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> readPartitionOverrides(String overrideFilePath) {
+    try (InputStream is = new FileInputStream(new File(overrideFilePath))) {
+      Map<String, Object> overrides = new Yaml().loadAs(is, Map.class);
+      return (Map<String, Object>) overrides.get("partition");
+    } catch (IOException e) {
+      throw new RuntimeException("Could not read helm override file: " + overrideFilePath, e);
+    }
+  }
+
   @Test
   public void testAddNode() {
     setupUniverseSingleAZ(/* Create Masters */ true);
@@ -486,7 +508,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -496,6 +519,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+
+    // Tserver scale-up (master count unchanged) is a non-rolling operation: it must not set
+    // partition to 0, otherwise a prior non-restart template change would roll all existing
+    // master/tserver pods at once. Partition must protect the existing pods.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(3, partition.get("tserver"));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -563,7 +593,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(2))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -573,6 +604,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+
+    // Tserver scale-down (keepDeployment) is a non-rolling operation: it must not set partition
+    // to 0, otherwise a prior non-restart template change would roll all surviving master/tserver
+    // pods at once. Partition must equal the post-scale-down pod counts.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(2, partition.get("tserver"));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -646,7 +684,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -1130,5 +1169,115 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(thrown.getMessage().contains("does not exist"));
     assertTrue(thrown.getMessage().contains("nonexistent-sc"));
     assertTrue(thrown.getMessage().contains("tserver"));
+  }
+
+  @Test
+  public void testEditKubernetesUniverseIsRollbackable() {
+    // @CanRollback wiring: the K8s edit is rollbackable, the rollback task itself is not.
+    assertTrue(
+        com.yugabyte.yw.commissioner.Commissioner.canTaskTypeRollback(
+            TaskType.EditKubernetesUniverse));
+    assertFalse(
+        com.yugabyte.yw.commissioner.Commissioner.canTaskTypeRollback(
+            TaskType.RollbackEditKubernetesUniverse));
+  }
+
+  // Builds a pod list of 1 master + numTservers tservers in the single-AZ namespace.
+  private List<Pod> rollbackPods(int numTservers) {
+    StringBuilder sb = new StringBuilder("{\"items\": [");
+    sb.append(rollbackPodJson("yb-master-0", "1.2.3.0"));
+    for (int i = 0; i < numTservers; i++) {
+      sb.append(",").append(rollbackPodJson("yb-tserver-" + i, "1.2.3." + (i + 1)));
+    }
+    sb.append("]}");
+    return TestUtils.deserialize(sb.toString(), PodList.class).getItems();
+  }
+
+  private String rollbackPodJson(String hostname, String ip) {
+    return "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", \"podIP\": \""
+        + ip
+        + "\"}, \"spec\": {\"hostname\": \""
+        + hostname
+        + "\"}, \"metadata\": {\"namespace\": \""
+        + NODE_PREFIX
+        + "\"}}";
+  }
+
+  @Test
+  public void testRollbackEditKubernetesUniverseHappyPathAfterFailedExpand()
+      throws InterruptedException {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+
+    Universe universe = defaultUniverse;
+    int tserversBefore = universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes;
+
+    // Report the target (5-tserver) pod set for the expand attempt.
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(rollbackPods(5));
+    // Fail the edit in the safe window (scale-up helm upgrade, before the MarkRollbackUnsafe
+    // checkpoint). The freeze already captured the delta with rollbackSafe=true.
+    doThrow(new RuntimeException("helm boom"))
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 2;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.numNodes = 5;
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
+    TaskInfo failedEdit = submitTask(taskParams, newUserIntent, pi);
+    assertEquals(Failure, failedEdit.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertTrue(commissioner.canTaskRollbackDetailed(failedEdit));
+
+    // Scale-back-down rollback: helm succeeds, pods report the restored pre-edit set.
+    doNothing()
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenReturn(rollbackPods(tserversBefore));
+
+    UniverseDefinitionTaskParams rollbackParams =
+        Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    UUID rollbackUuid =
+        commissioner.submit(TaskType.RollbackEditKubernetesUniverse, rollbackParams);
+    TaskInfo rollbackInfo = waitForTask(rollbackUuid);
+    assertEquals(Success, rollbackInfo.getTaskState());
+
+    // Rollback scales the StatefulSet back down (helm) then restores details, in that order.
+    List<TaskType> rollbackTypes =
+        rollbackInfo.getSubTasks().stream().map(TaskInfo::getTaskType).collect(Collectors.toList());
+    int helmIdx = rollbackTypes.indexOf(TaskType.KubernetesCommandExecutor);
+    int restoreIdx = rollbackTypes.indexOf(TaskType.RestoreUniverseDetailsFromDelta);
+    int successIdx = rollbackTypes.indexOf(TaskType.UniverseUpdateSucceeded);
+    assertTrue("expected a helm/kubernetes command", helmIdx >= 0);
+    assertTrue("details restored after scale-down", restoreIdx > helmIdx);
+    assertTrue("update marked successful last", successIdx > restoreIdx);
+
+    // A scale-down helm upgrade was issued to shrink the StatefulSet back to the pre-edit size.
+    verify(mockKubernetesManager, atLeastOnce())
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        tserversBefore, universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+    assertTrue(universe.getUniverseDetails().updateSucceeded);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNull(universe.getStateTransitionDetails());
   }
 }

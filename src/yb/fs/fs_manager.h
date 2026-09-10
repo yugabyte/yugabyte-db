@@ -33,16 +33,21 @@
 #pragma once
 
 #include <iosfwd>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
+#include "yb/fs/fs_root_pin.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -79,8 +84,9 @@ struct FsManagerOpts {
   FsManagerOpts(const FsManagerOpts&);
   FsManagerOpts& operator=(const FsManagerOpts&);
 
-  // The aggregated registry associated with the server.
-  MetricRegistry* metric_registry;
+  // The aggregated registry associated with the server. Left null by callers that do not export
+  // metrics (tools, unit tests), so every use has to be null-checked.
+  MetricRegistry* metric_registry = nullptr;
 
   // The memory tracker under which all new memory trackers will be parented.
   // If NULL, new memory trackers will be parented to the root tracker.
@@ -91,6 +97,9 @@ struct FsManagerOpts {
 
   // The paths where data blocks will be stored. Cannot be empty.
   std::vector<std::string> data_paths;
+
+  // Storage tier stored by data path.
+  std::unordered_map<std::string, std::string> tier_by_path;
 
   // Whether or not read-write operations should be allowed. Defaults to false.
   bool read_only;
@@ -110,6 +119,8 @@ struct FsManagerOpts {
 // The current top-level dir layout is <yb.root.dir>/yb-data/<server>/. Subdirs under it are:
 //     logs/
 //     instance
+//     auto_flags_config
+//     ysql_db_history_retention_pins
 //     wals/<table>/<tablet>
 //     tablet-meta/<tablet>
 //     data/rocksdb/<table>/<tablet>/
@@ -123,6 +134,19 @@ class FsManager {
   static const char *kRocksDBDirName;
   static const char *kDataDirName;
 
+  // Storage-tier labels are a fixed, predefined set (see ValidStorageTiers()).
+  // Data roots in --fs_data_dirs that carry no explicit ":tier" suffix fall back
+  // to this default tier, so existing/unlabeled deployments keep working.
+  static const char *kDefaultStorageTier;  // = "ssd"
+
+  // The set of valid storage-tier labels, in a stable order. Any label outside
+  // this set is rejected at FsManager::Init(). kDefaultStorageTier is always a
+  // member.
+  static const std::vector<std::string>& ValidStorageTiers();
+
+  // Whether `tier` is one of ValidStorageTiers().
+  static bool IsValidStorageTier(const std::string& tier);
+
   // Only for unit tests.
   FsManager(Env* env, const std::string& root_path, const std::string& server_type);
 
@@ -131,6 +155,11 @@ class FsManager {
 
   Status ReadAutoFlagsConfig(google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
   Status WriteAutoFlagsConfig(const google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+
+  // Read/write the persisted cluster-wide per-database history retention pins.
+  // Read returns NotFound when no pins have been persisted yet.
+  Status ReadYsqlDbHistoryRetentionPins(google::protobuf::Message* msg) const;
+  Status WriteYsqlDbHistoryRetentionPins(const google::protobuf::Message* msg) const;
 
   // Initialize and load the basic filesystem metadata.
   // If the file system has not been initialized, returns NotFound.
@@ -168,6 +197,19 @@ class FsManager {
 
   std::vector<std::string> GetDataRootDirs() const;
 
+  // Returns the storage-tier label for a given canonicalized fs root (as
+  // returned by GetFsRootDirs()).  Returns kDefaultStorageTier when the root
+  // is not found in the tier map (e.g. WAL-only roots).
+  const std::string& GetTierForDataRoot(const std::string& canonicalized_fs_root) const;
+
+  // Returns all data-root directories (i.e. the paths that GetDataRootDirs()
+  // would return) that are tagged with the given tier label.
+  std::vector<std::string> GetDataRootDirsForTier(const std::string& tier) const;
+
+  // Returns the full tier -> data-root-dirs mapping (values are the same paths
+  // as GetDataRootDirs()).  Populated after Init().
+  const std::map<std::string, std::vector<std::string>>& GetDataRootsByTier() const;
+
   std::vector<std::string> GetWalRootDirs() const;
 
   // Used for tests only. If GetWalRootDirs returns an empty vector, we will crash the process.
@@ -199,6 +241,37 @@ class FsManager {
   // Read all RaftGroupMetadataDirs and fill tablet_id_to_path_.
   // Return the tablet IDs in the metadata directory.
   Result<std::vector<std::string>> ListTabletIds(CleanupTemporaryFiles cleanup_temporary_files);
+
+  // ==========================================================================
+  //  Data-root pinning: detection of swapped data mounts
+  // ==========================================================================
+
+  // Reads every data root's pin file and evaluates it against `evidence`. Writes nothing, and
+  // unlike CheckAndOpenFileSystemRoots it does not probe each root with a temp file, so it is safe
+  // to run against a live node's directories.
+  //
+  // Pass evidence_complete=kFalse when tablet superblocks have not been read yet; unpinned roots
+  // then come back kPending rather than being certified from evidence that was never gathered.
+  Result<FsRootPinReport> SurveyDataRoots(
+      const std::vector<TabletSuperblockEvidence>& evidence,
+      FsRootEvidenceComplete evidence_complete);
+
+  // Verifies the pins that already exist. Called from CheckAndOpenFileSystemRoots, i.e., at the
+  // first point we touch disk and before anything is created. It cannot certify an unpinned root,
+  // because tablets have not been enumerated at that point.
+  //
+  // Returns IllegalState, with the operator-facing report as the message, when any root must
+  // refuse startup.
+  Status VerifyExistingDataRootPins();
+
+  // Verifies pins and certifies unpinned roots from tablet superblock evidence, writing a pin for
+  // every root the evidence proves. Called once tablet metadata is loaded.
+  Status CertifyDataRoots(const std::vector<TabletSuperblockEvidence>& evidence);
+
+  // Read-only listing of tablet ids per data root, for the offline survey. Unlike ListTabletIds it
+  // tolerates a missing tablet-meta directory, never deletes temp files, does not populate
+  // tablet_id_to_path_, and reports cross-root duplicates instead of failing on the first one.
+  Result<std::map<std::string, std::vector<std::string>>> ListTabletIdsByRoot();
 
   Result<std::string> GetUniverseUuidFromTserverInstanceMetadata() const;
 
@@ -290,7 +363,39 @@ class FsManager {
   // Checks write to temporary file on root.
   Status CheckWrite(const std::string& path);
 
+  std::string GetYsqlDbHistoryRetentionPinsPath() const;
+
   void CreateAndSetFaultDriveMetric(const std::string& path);
+
+  // The union of the WAL and data roots we are actually going to use, i.e. excluding any dropped
+  // for failing the startup write check.
+  //
+  // Deliberately not canonicalized_all_fs_roots_, which is the same union as configured but is
+  // never narrowed afterwards: the write-check failure path in CheckAndOpenFileSystemRoots()
+  // erases a faulted root from the WAL and data sets only. That is the right set for callers that
+  // clean up (lock files, DeleteFileSystemLayout, DumpFileSystemTree), which still have business
+  // with a faulted root, and the wrong one for callers about to write to or account for a drive.
+  std::set<std::string> UsableFsRoots() const;
+
+  // Instantiates the 'drive' metric entity for every root we are going to use and wires it to the
+  // per-drive IO counters that the writable-file layer feeds. Until a root is registered here,
+  // writes under it are not attributed to any drive and cost nothing.
+  void SetUpDriveIoMetrics();
+
+  // Instantiates the 'drive' metric entity for 'path', creating it if needed.
+  scoped_refptr<MetricEntity> GetOrCreateDriveMetricEntity(const std::string& path);
+
+  // FsRootPinPath(root, server_type_): <root>/yb-data/<server_type>/fs-root-pin.json.
+  std::string GetFsRootPinPath(const std::string& root) const;
+
+  // Shared tail of VerifyExistingDataRootPins() and CertifyDataRoots(): logs the report and, when
+  // `may_write` and the report allows it, writes pins for the newly certified roots.
+  Status ApplyFsRootPinReport(const FsRootPinReport& report, bool may_write);
+
+  // Which of `roots` sit on the same device as "/" while at least one sibling does not, i.e.,
+  // which look like mount points whose volume did not mount. Returns empty when the answer
+  // carries no information (all of them, none of them, or any stat failure). Diagnostic only.
+  static std::set<std::string> RootsLikelyUnmounted(const std::set<std::string>& roots);
 
   // ==========================================================================
   //  file-system helpers
@@ -314,6 +419,9 @@ class FsManager {
   // as-is; they are first canonicalized during Init().
   const std::vector<std::string> wal_fs_roots_;
   const std::vector<std::string> data_fs_roots_;
+  // Storage-tier label keyed by (raw) data path. Paths absent from the map fall
+  // back to kDefaultStorageTier. Consumed while building the tier maps in Init().
+  const std::unordered_map<std::string, std::string> tier_by_data_path_;
   const std::string server_type_;
 
   MetricRegistry* metric_registry_;
@@ -329,6 +437,15 @@ class FsManager {
   std::string canonicalized_default_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
+
+  // Roots erased from the two sets above by the faulty-drive branch of
+  // CheckAndOpenFileSystemRoots. Kept so that the pin survey can say its answer is incomplete
+  // rather than report a clean node whose whole root went unexamined.
+  std::set<std::string> dropped_fs_roots_;
+
+  // Tier maps built during Init().
+  std::unordered_map<std::string, std::string> tier_by_canonicalized_fs_root_;
+  std::map<std::string, std::vector<std::string>> data_roots_by_tier_;
 
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;

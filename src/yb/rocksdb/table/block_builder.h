@@ -28,7 +28,7 @@
 
 #include "yb/rocksdb/types.h"
 
-#include "yb/util/byte_buffer.h"
+#include "yb/util/mem_tracked_byte_buffer.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/slice.h"
 

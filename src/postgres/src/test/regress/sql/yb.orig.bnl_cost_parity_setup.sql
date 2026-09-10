@@ -215,6 +215,26 @@ $$
     select repeat('#', length(trunc(abs(c))::bigint::text));
 $$;
 
+-- Join ranked method labels into one string, with labels that TIE on the
+-- ranking keys joined by '=' instead of ' ' (e.g. 'BNL=NL MJ HJ').  Without
+-- the tie marker, tied labels order alphabetically and read as if the first
+-- one won.  Both arrays must be ordered by (rank, label).
+drop function if exists rank_labels cascade;
+create function rank_labels(labels text[], ranks bigint[]) returns text
+language plpgsql immutable as
+$$
+declare
+    s text := labels[1];
+    i int;
+begin
+    for i in 2 .. coalesce(array_length(labels, 1), 0) loop
+        s := s || case when ranks[i] = ranks[i - 1] then '=' else ' ' end ||
+             labels[i];
+    end loop;
+    return s;
+end;
+$$;
+
 -- join_costs: for every (query, method) pair, run the hinted EXPLAIN ANALYZE,
 -- then surface
 --   * the root-node cost (what the planner compares, and what a LIMIT adjusts),

@@ -42,7 +42,8 @@ std::string ValueForKey(Slice key) {
 class TestIteratorFilter : public IteratorFilter {
  public:
   bool Filter(
-      const QueryOptions& options, Slice user_key, FilterKeyCache* cache, void* context) const {
+      const QueryOptions& options, Slice user_key, FilterKeyCache* cache,
+      FilterBlockCache* filter_cache, void* context) const {
     const auto& keys = *static_cast<std::vector<std::string>*>(context);
     auto it = std::lower_bound(keys.begin(), keys.end(), user_key);
     return it != keys.end() && Slice(*it).starts_with(user_key);

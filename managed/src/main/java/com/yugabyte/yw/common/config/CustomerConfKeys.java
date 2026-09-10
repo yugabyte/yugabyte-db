@@ -187,6 +187,16 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enables PA Collector configuration",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enablePaOnlineMode =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_pa_online_mode",
+          ScopeType.CUSTOMER,
+          "Enable PA online mode",
+          "Enables managing external Perf Advisor destinations and registering universes in"
+              + " online mode, where the local collector scrapes the universe and forwards"
+              + " everything it collects to an external Perf Advisor",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Integer> backupGcNumberOfRetries =
       new ConfKeyInfo<>(
           "yb.backupGC.number_of_retries",
@@ -255,7 +265,7 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "When enabled, newly created universes are automatically registered with the "
               + "first PA Collector for the customer.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 
   public static final ConfKeyInfo<Boolean> paAutoRegistrationAdvancedObservability =
       new ConfKeyInfo<>(
@@ -265,5 +275,5 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "When PA auto-registration is enabled, also enable advanced observability "
               + "(metrics export to Prometheus) for the universe.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

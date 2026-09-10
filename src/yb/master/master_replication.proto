@@ -72,6 +72,12 @@ message CDCStreamInfoPB {
   // This field decides whether the slot will use pub refresh mechanism or mechanism to poll sys
   // catalog tablet for detecting changes to publications.
   optional bool detect_publication_changes_implicitly = 16 [default = false];
+
+  // This field decides whether the slot is an internal LISTEN/NOTIFY notifications stream.
+  optional bool is_notification_slot = 17 [default = false];
+
+  // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
+  optional bool xcluster_use_target_applied_filter = 18 [default = false];
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -626,15 +632,6 @@ message XClusterReportNewAutoFlagConfigVersionResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB {
-  optional bytes stream_id = 1;
-  optional string cdcsdk_ysql_replication_slot_name = 2;
-}
-
-message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
-  optional MasterErrorPB error = 1;
-}
-
 message XClusterCreateOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
   repeated string namespace_ids = 2;
@@ -882,6 +879,29 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   repeated string deleted_tablet_entries = 3;
 }
 
+message CleanupStaleCDCStreamsRequestPB {
+  optional bool dry_run = 1 [default = false];
+}
+
+message CleanupStaleCDCStreamsResponsePB {
+  message StaleEntryPB {
+    message TablePB {
+      optional bytes table_id = 1;
+      optional string table_name = 2;
+    }
+
+    optional string tablet_id = 1;
+    optional bytes stream_id = 2;
+    optional bytes colocated_table_id = 3;
+    optional string reason = 4;
+    repeated TablePB tables = 5;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated StaleEntryPB stale_entries = 2;
+  repeated StaleEntryPB deleted_entries = 3;
+}
+
 message RemoveTablesFromCDCSDKStreamRequestPB {
   optional string stream_id = 1;
   repeated string table_ids = 2;
@@ -988,11 +1008,6 @@ service MasterReplication {
       XClusterReportNewAutoFlagConfigVersionRequestPB)
       returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
 
-  // Backfill a replication slot name to an existing CDCSDK stream.
-  rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
-      returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
-
   // xClusterOutboundReplicationGroup RPCs.
   rpc XClusterCreateOutboundReplicationGroup(
       XClusterCreateOutboundReplicationGroupRequestPB)
@@ -1045,6 +1060,8 @@ service MasterReplication {
   rpc ValidateAndSyncCDCStateEntriesForCDCSDKStream(
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB)
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
+  rpc CleanupStaleCDCStreams(CleanupStaleCDCStreamsRequestPB)
+      returns (CleanupStaleCDCStreamsResponsePB);
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);

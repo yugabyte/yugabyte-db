@@ -40,6 +40,8 @@
 
 #include "yb/storage/storage_types.h"
 
+#include "yb/util/status_format.h"
+
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile
@@ -112,7 +114,7 @@ struct Range {
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
-using UserFrontierRange = std::pair<yb::storage::UserFrontierPtr, yb::storage::UserFrontierPtr>;
+using UserFrontierRange = yb::storage::UserFrontierRange;
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -646,7 +648,7 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
-  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void SetDisableFlushOnShutdown() {}
   virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
@@ -842,7 +844,33 @@ class DB {
     return result;
   }
 
-  virtual yb::storage::UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+  // Computes the requested frontiers atomically (under a single lock) so the returned views are
+  // mutually consistent. This is the single primitive subclasses override; the accessors below are
+  // expressed in terms of it.
+  virtual yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) {
+    return {};
+  }
+
+  yb::storage::UserFrontierPtr GetFlushedFrontier() {
+    return GetFrontiers(yb::storage::FrontierKinds{yb::storage::FrontierKind::kFlushed}).flushed;
+  }
+
+  // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state.
+  UserFrontierRange GetInMemoryFrontiers() {
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemorySmallest,
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory;
+  }
+
+  // Returns the smallest or largest frontier of the in-memory (not yet flushed) state.
+  yb::storage::UserFrontierPtr GetInMemoryFrontier(yb::storage::UpdateUserValueType type) {
+    if (type == yb::storage::UpdateUserValueType::kSmallest) {
+      return GetFrontiers(yb::storage::FrontierKinds{
+          yb::storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+    }
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
+  }
 
   virtual Status ModifyFlushedFrontier(
       yb::storage::UserFrontierPtr values,
@@ -857,14 +885,6 @@ class DB {
   virtual yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
       yb::storage::UpdateUserValueType type) {
     return nullptr;
-  }
-
-  virtual yb::storage::UserFrontierPtr CalcMemTableFrontier(yb::storage::UpdateUserValueType type) {
-    return nullptr;
-  }
-
-  virtual UserFrontierRange CalcMemTableFrontiers() {
-    return {};
   }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
@@ -948,6 +968,24 @@ class DB {
 
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
+
+  // Returns an existing user key inside [lower_bound_key; upper_bound_key) whose Cross() value is
+  // close to `target_size` -- an absolute Cross value, not one relative to the lower bound.
+  // "Close" is bounded by FLAGS_find_target_key_max_deviation_ratio.
+  // An empty bound means no corresponding bound. The lower bound also happens to be exclusive,
+  // but callers needing strictly increasing results must still check for themselves.
+  // Returns Status(Incomplete) when no suitable key exists; callers that can tolerate a worse cut
+  // should fall back to GetMiddleKey() on it. Any other status is a real failure.
+  virtual yb::Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) = 0;
+
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
+  // `key` is a user key; empty means the start of the keyspace.
+  virtual yb::Result<uint64_t> Cross(Slice key) = 0;
+
+  // Returns the total size of the data (excluding metadata/index/filter blocks) across all
+  // SSTs in the current version.
+  virtual yb::Result<uint64_t> TotalDataSize() = 0;
 
   // If true, will allow compactions to fail without setting bg_error and not causing writes to
   // fail. Should only be used with extra care for troubleshooting when/while there are no other

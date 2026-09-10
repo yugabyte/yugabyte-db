@@ -11,18 +11,13 @@ menu:
     weight: 20
 type: indexpage
 ---
-<div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="scaling-queries-ysql/">
-          <div class="head">
-              <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-              <div class="title">Scaling queries</div>
-          </div>
-          <div class="body">
-              Performance test scalability of queries.
-          </div>
-      </a>
-  </div>
+{{<index/block>}}
 
-</div>
+  {{<index/item
+    title="Scaling queries"
+    body="Performance test scalability of queries."
+    href="scaling-queries-ysql/"
+    icon="fa-thin fa-gauge-high">}}
+
+{{</index/block>}}

@@ -19,7 +19,9 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 using std::vector;

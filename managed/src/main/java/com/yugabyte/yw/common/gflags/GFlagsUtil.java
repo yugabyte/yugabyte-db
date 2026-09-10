@@ -158,6 +158,7 @@ public class GFlagsUtil {
   public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
+  public static final String TRANSACTION_RPC_TIMEOUT_MS = "transaction_rpc_timeout_ms";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
   public static final String TIME_SOURCE = "time_source";
   public static final String ENABLE_QOS = "enable_qos";
@@ -211,6 +212,9 @@ public class GFlagsUtil {
   public static final String LOG_MIN_SECONDS_TO_RETAIN = "log_min_seconds_to_retain";
 
   public static final String ALLOWED_PREVIEW_FLAGS_CSV = "allowed_preview_flags_csv";
+
+  public static final Set<String> GFLAGS_ALLOWED_ONLY_IN_NON_ROLLING_UPGRADE =
+      ImmutableSet.of("emergency_repair_mode");
 
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
       Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
@@ -333,6 +337,7 @@ public class GFlagsUtil {
       extra_gflags.put(RAFT_HEARTBEAT_INTERVAL, String.valueOf(1500));
       extra_gflags.put(LEADER_LEASE_DURATION_MS, String.valueOf(6000));
       extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
+      extra_gflags.put(TRANSACTION_RPC_TIMEOUT_MS, String.valueOf(7500));
     }
     // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
     // make itests work.
@@ -882,8 +887,8 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.auditLogConfig);
-    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.queryLogConfig);
+    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getAuditLogConfig());
+    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getQueryLogConfig());
     return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
   }
 
@@ -1013,7 +1018,7 @@ public class GFlagsUtil {
 
   private static Map<String, String> getYcqlAuditFlags(AnsibleConfigureServers.Params taskParams) {
     Map<String, String> result = new HashMap<>();
-    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
+    AuditLogConfig auditLogConfig = taskParams.getAuditLogConfig();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
@@ -1496,6 +1501,58 @@ public class GFlagsUtil {
         retFlags = new HashMap<>();
       }
       return new HashMap<>(retFlags);
+    }
+  }
+
+  public static Set<String> getChangedGFlags(
+      Collection<Cluster> currentClusters,
+      Collection<Cluster> updatedClusters,
+      Collection<String> candidateGFlags) {
+    Set<String> changedGFlags = new TreeSet<>();
+    Map<UUID, Cluster> currentClustersByUuid =
+        currentClusters.stream()
+            .collect(Collectors.toMap(cluster -> cluster.uuid, cluster -> cluster));
+    Map<UUID, Cluster> updatedClustersByUuid =
+        updatedClusters.stream()
+            .collect(Collectors.toMap(cluster -> cluster.uuid, cluster -> cluster));
+
+    Set<UUID> clusterUuids = new HashSet<>(currentClustersByUuid.keySet());
+    clusterUuids.addAll(updatedClustersByUuid.keySet());
+    for (UUID clusterUuid : clusterUuids) {
+      Cluster currentCluster = currentClustersByUuid.get(clusterUuid);
+      Cluster updatedCluster = updatedClustersByUuid.get(clusterUuid);
+
+      Set<UUID> azUuids = new HashSet<>();
+      azUuids.add(null);
+      addPerAZGFlagUuids(azUuids, currentCluster);
+      addPerAZGFlagUuids(azUuids, updatedCluster);
+      for (UUID azUuid : azUuids) {
+        for (ServerType serverType : EnumSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+          Map<String, String> currentGFlags =
+              currentCluster == null
+                  ? Collections.emptyMap()
+                  : getGFlagsForAZ(azUuid, serverType, currentCluster, currentClusters);
+          Map<String, String> updatedGFlags =
+              updatedCluster == null
+                  ? Collections.emptyMap()
+                  : getGFlagsForAZ(azUuid, serverType, updatedCluster, updatedClusters);
+          for (String gflag : candidateGFlags) {
+            if (currentGFlags.containsKey(gflag) != updatedGFlags.containsKey(gflag)
+                || !Objects.equals(currentGFlags.get(gflag), updatedGFlags.get(gflag))) {
+              changedGFlags.add(gflag);
+            }
+          }
+        }
+      }
+    }
+    return changedGFlags;
+  }
+
+  private static void addPerAZGFlagUuids(Set<UUID> azUuids, @Nullable Cluster cluster) {
+    if (cluster != null
+        && cluster.userIntent.specificGFlags != null
+        && cluster.userIntent.specificGFlags.getPerAZ() != null) {
+      azUuids.addAll(cluster.userIntent.specificGFlags.getPerAZ().keySet());
     }
   }
 

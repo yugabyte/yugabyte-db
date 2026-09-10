@@ -83,7 +83,6 @@ static ArchiveHandle *_allocAH(const char *FileSpec, const ArchiveFormat fmt,
 							   SetupWorkerPtrType setupWorkerPtr);
 static void _getObjectDescription(PQExpBuffer buf, TocEntry *te);
 static void _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx);
-static char *sanitize_line(const char *str, bool want_hyphen);
 static void _doSetFixedOutputState(ArchiveHandle *AH);
 static void _doSetSessionAuth(ArchiveHandle *AH, const char *user);
 static void _reconnectToDB(ArchiveHandle *AH, const char *dbname);
@@ -284,6 +283,7 @@ dumpOptionsFromRestoreOptions(RestoreOptions *ropt)
 	dopt->include_everything = ropt->include_everything;
 	dopt->enable_row_security = ropt->enable_row_security;
 	dopt->sequence_data = ropt->sequence_data;
+	dopt->restrict_key = ropt->restrict_key ? pg_strdup(ropt->restrict_key) : NULL;
 
 	return dopt;
 }
@@ -539,6 +539,17 @@ RestoreArchive(Archive *AHX)
 		SetOutput(AH, ropt->filename, ropt->compression);
 
 	ahprintf(AH, "--\n-- YSQL database dump\n--\n\n");
+
+	/*
+	 * If generating plain-text output, enter restricted mode to block any
+	 * unexpected psql meta-commands.  A malicious source might try to inject
+	 * a variety of things via bogus responses to queries.  While we cannot
+	 * prevent such sources from affecting the destination at restore time, we
+	 * can block psql meta-commands so that the client machine that runs psql
+	 * with the dump output remains unaffected.
+	 */
+	if (ropt->restrict_key)
+		ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
 
 	if (AH->archiveRemoteVersion)
 		ahprintf(AH, "-- Dumped from database version %s\n",
@@ -822,6 +833,14 @@ RestoreArchive(Archive *AHX)
 		dumpTimestamp(AH, "Completed on", time(NULL));
 
 	ahprintf(AH, "--\n-- YSQL database dump complete\n--\n\n");
+
+	/*
+	 * If generating plain-text output, exit restricted mode at the very end
+	 * of the script. This is not pro forma; in particular, pg_dumpall
+	 * requires this when transitioning from one database to another.
+	 */
+	if (ropt->restrict_key)
+		ahprintf(AH, "\\unrestrict %s\n\n", ropt->restrict_key);
 
 	/*
 	 * Clean up & we're done.
@@ -3302,6 +3321,45 @@ _tocEntryIsACL(TocEntry *te)
 }
 
 /*
+ * YB: the restrict key for the CVE-2025-8714 brackets around YB control-flow
+ * meta-commands, like the owner check in _printTocEntry.  Only YB-generated,
+ * properly escaped content may appear inside those brackets.
+ *
+ * The key is always set here: every caller requires --include-yb-metadata,
+ * which pg_dump accepts only for plain-text output, and plain-text output
+ * always mints a key.  A NULL key would silently emit a bare \if inside a
+ * restricted region and only fail at restore time on the user's machine, so
+ * catch it here instead.
+ */
+static const char *
+ybRestrictKey(ArchiveHandle *AH)
+{
+	RestoreOptions *ropt = AH->public.ropt;
+
+	Assert(ropt->restrict_key);
+	return ropt->restrict_key;
+}
+
+/*
+ * YB: ahprintf counterparts of dumputils.c's ybAppendUnrestrict and
+ * ybAppendRestrict, for callers with no adjacent bracket to cancel and so no
+ * need of a buffer.  Callers that do have such a seam build into a PQExpBuffer
+ * with the dumputils helpers and write it with a single ahprintf, as
+ * _printTocEntry's owner block does.
+ */
+static void
+ybAppendUnrestrictAH(ArchiveHandle *AH)
+{
+	ahprintf(AH, "\\unrestrict %s\n", ybRestrictKey(AH));
+}
+
+static void
+ybAppendRestrictAH(ArchiveHandle *AH)
+{
+	ahprintf(AH, "\\restrict %s\n", ybRestrictKey(AH));
+}
+
+/*
  * Issue SET commands for parameters that we want to have set the same way
  * at all times during execution of a restore script.
  */
@@ -3362,18 +3420,22 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	if (AH->public.dopt->include_yb_metadata && first_run)
 	{
 		first_run = false;
+		ahprintf(AH, "\n-- Set variable use_tablespaces (if not already set)\n");
+		ybAppendUnrestrictAH(AH);
 		ahprintf(AH,
-				 "\n-- Set variable use_tablespaces (if not already set)\n"
 				 "\\if :{?use_tablespaces}\n"
 				 "\\else\n"
 				 "\\set use_tablespaces true\n"
 				 "\\endif\n");
+		ybAppendRestrictAH(AH);
+		ahprintf(AH, "\n-- Set variable use_roles (if not already set)\n");
+		ybAppendUnrestrictAH(AH);
 		ahprintf(AH,
-				 "\n-- Set variable use_roles (if not already set)\n"
 				 "\\if :{?use_roles}\n"
 				 "\\else\n"
 				 "\\set use_roles true\n"
 				 "\\endif\n");
+		ybAppendRestrictAH(AH);
 
 		/*
 		 * If the --create option is specified, the target database will be
@@ -3450,11 +3512,21 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 	else
 	{
 		PQExpBufferData connectbuf;
+		RestoreOptions *ropt = AH->public.ropt;
+
+		/*
+		 * We must temporarily exit restricted mode for \connect, etc.
+		 * Anything added between this line and the following \restrict must
+		 * be careful to avoid any possible meta-command injection vectors.
+		 */
+		ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
 
 		initPQExpBuffer(&connectbuf);
 		appendPsqlMetaConnect(&connectbuf, dbname);
-		ahprintf(AH, "%s\n", connectbuf.data);
+		ahprintf(AH, "%s", connectbuf.data);
 		termPQExpBuffer(&connectbuf);
+
+		ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
 	}
 
 	/*
@@ -3641,11 +3713,16 @@ _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 		PQclear(res);
 	}
 	else if (AH->public.dopt->include_yb_metadata)
-		ahprintf(AH,
-				 "\\if :use_tablespaces\n"
-				 "    %s;\n"
-				 "\\endif\n\n",
-				 qry->data);
+	{
+		ybAppendUnrestrictAH(AH);
+		ahprintf(AH, "\\if :use_tablespaces\n");
+		ybAppendRestrictAH(AH);
+		ahprintf(AH, "    %s;\n", qry->data);
+		ybAppendUnrestrictAH(AH);
+		ahprintf(AH, "\\endif\n");
+		ybAppendRestrictAH(AH);
+		ahprintf(AH, "\n");
+	}
 	else
 		ahprintf(AH, "%s;\n\n", qry->data);
 
@@ -4026,25 +4103,42 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 
 			if (AH->public.dopt->include_yb_metadata)
 			{
-				ahprintf(AH, "\\if :use_roles\n");
+				PQExpBufferData yb_buf;
+				const char *yb_key = ybRestrictKey(AH);
+
+				initPQExpBuffer(&yb_buf);
+				ybAppendUnrestrict(&yb_buf, yb_key);
+				appendPQExpBufferStr(&yb_buf, "\\if :use_roles\n");
+				ybAppendRestrict(&yb_buf, yb_key);
 				if (AH->public.dopt->yb_dump_role_checks)
 				{
 					PQExpBuffer role_buf = createPQExpBuffer();
 
 					appendStringLiteralAHX(role_buf, eff_owner, AH);
-					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
-							 ") AS role_exists \\gset\n"
-							 "\\if :role_exists\n"
-							 "    %s\n"
-							 "\\else\n"
-							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-							 "\\endif\n", role_buf->data, temp->data, fmtId(eff_owner));
+					ybAppendUnrestrict(&yb_buf, yb_key);
+					appendPQExpBuffer(&yb_buf,
+									  "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
+									  ") AS role_exists \\gset\n"
+									  "\\if :role_exists\n", role_buf->data);
+					ybAppendRestrict(&yb_buf, yb_key);
+					appendPQExpBuffer(&yb_buf, "    %s\n", temp->data);
+					ybAppendUnrestrict(&yb_buf, yb_key);
+					appendPQExpBufferStr(&yb_buf, "\\else\n"
+										 "    \\echo 'Skipping owner privilege due to missing role:' ");
+					ybAppendPsqlMetaLiteral(&yb_buf, eff_owner);
+					appendPQExpBufferStr(&yb_buf, "\n\\endif\n");
+					ybAppendRestrict(&yb_buf, yb_key);
 					destroyPQExpBuffer(role_buf);
 				}
 				else
-					ahprintf(AH, "    %s\n", temp->data);
+					appendPQExpBuffer(&yb_buf, "    %s\n", temp->data);
 
-				ahprintf(AH, "\\endif\n\n");
+				ybAppendUnrestrict(&yb_buf, yb_key);
+				appendPQExpBufferStr(&yb_buf, "\\endif\n");
+				ybAppendRestrict(&yb_buf, yb_key);
+				appendPQExpBufferChar(&yb_buf, '\n');
+				ahprintf(AH, "%s", yb_buf.data);
+				termPQExpBuffer(&yb_buf);
 			}
 			else
 				ahprintf(AH, "%s\n\n", temp->data);
@@ -4083,42 +4177,6 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			free(AH->currUser);
 		AH->currUser = NULL;
 	}
-}
-
-/*
- * Sanitize a string to be included in an SQL comment or TOC listing, by
- * replacing any newlines with spaces.  This ensures each logical output line
- * is in fact one physical output line, to prevent corruption of the dump
- * (which could, in the worst case, present an SQL injection vulnerability
- * if someone were to incautiously load a dump containing objects with
- * maliciously crafted names).
- *
- * The result is a freshly malloc'd string.  If the input string is NULL,
- * return a malloc'ed empty string, unless want_hyphen, in which case return a
- * malloc'ed hyphen.
- *
- * Note that we currently don't bother to quote names, meaning that the name
- * fields aren't automatically parseable.  "pg_restore -L" doesn't care because
- * it only examines the dumpId field, but someday we might want to try harder.
- */
-static char *
-sanitize_line(const char *str, bool want_hyphen)
-{
-	char	   *result;
-	char	   *s;
-
-	if (!str)
-		return pg_strdup(want_hyphen ? "-" : "");
-
-	result = pg_strdup(str);
-
-	for (s = result; *s != '\0'; s++)
-	{
-		if (*s == '\n' || *s == '\r')
-			*s = ' ';
-	}
-
-	return result;
 }
 
 /*

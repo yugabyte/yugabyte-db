@@ -12,7 +12,9 @@ package com.yugabyte.yw.common.alerts;
 import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.never;
@@ -21,6 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AssertHelper;
@@ -32,6 +35,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MaintenanceWindow;
@@ -308,5 +312,54 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     verify(swamperHelper, times(1))
         .writeAlertDefinition(updatedConfiguration, updatedDefinition, null);
     verify(queryHelper, times(4)).postManagementCommand("reload");
+  }
+
+  // A maintenance window that targets a specific set of universes should also
+  // suppress alerts from configurations whose target is 'all' (they fire for
+  // every universe, including the ones the window covers). The window filter's
+  // per-config target uses strict equality, so the AlertConfigurationWriter
+  // must additionally pick up any all=true configurations for such windows.
+  @Test
+  public void testMaintenanceWindowTargetedUniversesAlsoSuppressesAllTargetConfig() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
+
+    // Existing 'configuration' from setUp() has target { uuids: [universe] }.
+    // Create an additional configuration with target.all = true so we can check
+    // it also gets the maintenance window applied.
+    AlertConfiguration allTargetConfiguration =
+        ModelFactory.createAlertConfiguration(
+            customer,
+            universe,
+            c ->
+                c.setName("allTargetConfiguration")
+                    .setTarget(new AlertConfigurationTarget().setAll(true)));
+
+    AlertConfigurationApiFilter filter = new AlertConfigurationApiFilter();
+    filter.setTarget(
+        new AlertConfigurationTarget()
+            .setAll(false)
+            .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
+    MaintenanceWindow maintenanceWindow =
+        ModelFactory.createMaintenanceWindow(
+            customer.getUuid(),
+            window ->
+                window
+                    .setUuid(replaceFirstChar(window.getUuid(), 'a'))
+                    .setAlertConfigurationFilter(filter));
+
+    configurationWriter.process();
+
+    AlertConfiguration updatedConfiguration =
+        alertConfigurationService.get(configuration.getUuid());
+    AlertConfiguration updatedAllTargetConfiguration =
+        alertConfigurationService.get(allTargetConfiguration.getUuid());
+
+    assertThat(
+        updatedConfiguration.getMaintenanceWindowUuidsSet(),
+        containsInAnyOrder(maintenanceWindow.getUuid()));
+    assertThat(
+        "MW targeting specific universes must also apply to configs with target.all=true",
+        updatedAllTargetConfiguration.getMaintenanceWindowUuidsSet(),
+        hasItem(maintenanceWindow.getUuid()));
   }
 }

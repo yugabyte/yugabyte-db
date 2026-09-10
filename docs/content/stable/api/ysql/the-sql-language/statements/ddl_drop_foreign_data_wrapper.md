@@ -37,5 +37,5 @@ yugabyte=# DROP FOREIGN DATA WRAPPER my_wrapper CASCADE;
 ```
 ## See also
 
-- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper/)
-- [`ALTER FOREIGN DATA WRAPPER`](../ddl_alter_foreign_data_wrapper/)
+- [CREATE FOREIGN DATA WRAPPER](../ddl_create_foreign_data_wrapper/)
+- [ALTER FOREIGN DATA WRAPPER](../ddl_alter_foreign_data_wrapper/)

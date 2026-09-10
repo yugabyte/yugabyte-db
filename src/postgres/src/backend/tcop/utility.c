@@ -904,6 +904,20 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				closeAllVfds(); /* probably not necessary... */
 				/* Allowed names are restricted if you're not superuser */
 				load_file(stmt->filename, !superuser());
+
+				/*
+				 * If connection manager is used, mark the connection as sticky.
+				 * A library loaded via LOAD is local to the physical backend
+				 * that executed it; without stickiness, later queries from the
+				 * same logical client may be routed to a different backend that
+				 * has not loaded the library.
+				 */
+				if (YbIsClientYsqlConnMgr())
+				{
+					elog(LOG, "Incrementing sticky object count for LOAD '%s'",
+						 stmt->filename);
+					increment_sticky_object_count();
+				}
 			}
 			break;
 

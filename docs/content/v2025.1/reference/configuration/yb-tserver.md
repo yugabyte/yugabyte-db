@@ -1685,7 +1685,7 @@ The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memo
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -2262,6 +2262,25 @@ Default: `5000`
 
 Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
 
+### Explicit row locking flags
+
+To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+
+##### --ysql_yb_explicit_row_locking_batch_size
+
+{{% tags/wrap %}}
+
+Default: `1024`
+{{% /tags/wrap %}}
+
+Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. A larger batch size can improve throughput by reducing round-trips, but may consume more memory.
+
+This flag can be set dynamically using:
+
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
+
 ### Advisory lock flags
 
 To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
@@ -2685,6 +2704,7 @@ Enables Read Committed isolation. By default this flag is false and in this case
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

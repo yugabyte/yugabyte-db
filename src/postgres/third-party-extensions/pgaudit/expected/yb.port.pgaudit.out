@@ -2576,8 +2576,9 @@ ERROR:  extension "pg_stat_statements" already exists
 ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.1'; -- YB: change to latest version number
 WARNING:  AUDIT: SESSION,4,1,DDL,ALTER EXTENSION,,,ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.1';,<not logged>
 NOTICE:  version "1.10-yb-2.1" of extension "pg_stat_statements" is already installed
-DROP EXTENSION pg_stat_statements;
-WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements;,<not logged>
+DROP EXTENSION pg_stat_statements CASCADE; -- YB: CASCADE drops the gv$ global-view wrappers
+NOTICE:  drop cascades to 2 other objects
+WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements CASCADE;,<not logged>
 SET pgaudit.log_level = 'notice';
 -- Check that partition scans are skipped for auditing and do no result in an empty stack
 SET pgaudit.log = 'all';

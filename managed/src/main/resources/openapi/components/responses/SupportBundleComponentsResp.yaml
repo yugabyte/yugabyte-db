@@ -1,0 +1,7 @@
+description: List of available support bundle component types
+content:
+  application/json:
+    schema:
+      type: array
+      items:
+        $ref: "../schemas/SupportBundleComponentType.yaml"
