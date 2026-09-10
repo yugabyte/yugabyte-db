@@ -112,7 +112,7 @@ DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
     "set long enough such that a tablet server which has temporarily failed can be "
     "restarted within the given time period. If a server is down for longer than this "
     "amount of time, it is possible that its tablets will be re-replicated on other "
-    "machines.");
+    "machines. This value should match follower_unavailable_considered_failed_sec.");
 TAG_FLAG(log_min_seconds_to_retain, advanced);
 
 // Flag to enable background log sync. When enabled, we DON'T wait for performing fsync until

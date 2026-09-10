@@ -84,7 +84,8 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DEFINE_RUNTIME_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
-             "evicted from the config.");
+             "evicted from the config. This value should match "
+             "log_min_seconds_to_retain.");
 TAG_FLAG(follower_unavailable_considered_failed_sec, advanced);
 DEFINE_validator(follower_unavailable_considered_failed_sec,
   FLAG_DELAYED_COND_VALIDATOR(
