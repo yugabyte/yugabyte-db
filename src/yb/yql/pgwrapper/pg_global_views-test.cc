@@ -1055,18 +1055,24 @@ TEST_F(PgBuiltinGlobalViewsTest, TestGvYbTerminatedQueries) {
 TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatProgressCopy) {
   ASSERT_OK(conn_->Execute("CREATE TABLE gv_copy_tbl (k INT)"));
 
-  ASSERT_OK(cluster_->SetFlagOnTServers(
-      "TEST_tablet_inject_latency_on_apply_write_txn_ms",
-      Format("$0", 5000 * kTimeMultiplier)));
-
+  // Pace the row stream from the client so every COPY is still running while the
+  // view is polled. Holding the copies open by injecting DocDB apply latency
+  // instead stalls the tablet's Raft pipeline long enough to trigger a leader
+  // election, and the resulting leader change aborts COPY with an error that the
+  // query layer cannot retry.
   constexpr int kNumRows = 1000;
+  constexpr int kRowsPerPause = 100;
+  const MonoDelta pause = 500ms * kTimeMultiplier;
   TestThreadHolder thread_holder;
   for (int i = 0; i < GetNumTabletServers(); ++i) {
-    thread_holder.AddThreadFunctor([this, i] {
+    thread_holder.AddThreadFunctor([this, i, pause] {
       auto ts_conn = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(i)));
       ASSERT_OK(ts_conn.CopyFromStdin(
-          "gv_copy_tbl", [](PGConn::RowMaker<int32_t>& row) {
+          "gv_copy_tbl", [pause](PGConn::RowMaker<int32_t>& row) {
         for (int j = 0; j < kNumRows; ++j) {
+          if (j % kRowsPerPause == 0) {
+            SleepFor(pause);
+          }
           row(j);
         }
       }));
