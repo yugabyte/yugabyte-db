@@ -73,7 +73,7 @@ What action you take will depend on the type of provider used to create a univer
 
 | Provider | Action |
 | :--- | :--- |
-| AWS, Google, Azure | Minimal user action needed.<br><br>For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later), or run any universe task that causes node re-provisioning (for example, [upgrading Linux](../../manage-deployments/upgrade-nodes/) to apply security patches). |
+| AWS, Google, Azure, OCI | Minimal user action needed.<br><br>For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later), or run any universe task that causes node re-provisioning (for example, [upgrading Linux](../../manage-deployments/upgrade-nodes-csp/) to apply security patches). |
 | On-premises | Some user action is needed.<br><br>New nodes that you provision using [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/) are automatically configured with the correct THP settings.<br><br>For existing nodes that lack THP or have THP mis-configured, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later), or follow the boot disk replacement procedure in [Patch and upgrade the Linux operating system](../../manage-deployments/upgrade-nodes/) when you apply a regular Linux security patch. |
 
 ## Node agent
