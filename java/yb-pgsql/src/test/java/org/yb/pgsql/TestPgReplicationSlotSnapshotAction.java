@@ -76,6 +76,12 @@ public class TestPgReplicationSlotSnapshotAction extends BasePgSQLTest {
     stmt.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
   }
 
+  // CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use') additionally requires a
+  // read-only transaction.
+  private static void beginTxnRepeatableReadOnly(Statement stmt) throws SQLException {
+    stmt.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  }
+
   @Test
   public void createReplicationSlotNoExportSnapshot() throws Exception {
     SetupTable();
@@ -106,7 +112,7 @@ public class TestPgReplicationSlotSnapshotAction extends BasePgSQLTest {
          Statement statement1 = conn1.createStatement();
          Statement statement2 = conn2.createStatement()) {
       List<Row> expectedRows = selectAllFromT1Sorted(statement1);
-      beginTxnRepeatableRead(statement1);
+      beginTxnRepeatableReadOnly(statement1);
       createReplicationSlot(
           statement1, "rs_logical_use_snapshot", SnapshotAction.USE_SNAPSHOT);
       // Insert values from other session;

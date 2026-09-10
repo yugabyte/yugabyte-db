@@ -1744,8 +1744,9 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestUseSnapshotWithTransaction) {
   ASSERT_OK(WriteRowsHelper(1 /* start */, 101 /* end */, &test_cluster_, true));
 
   auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
-  // Start a transaction with REPEATABLE READ isolation (required for USE_SNAPSHOT)
-  ASSERT_OK(repl_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  // Start a transaction with REPEATABLE READ isolation (required for USE_SNAPSHOT).
+  // It must also be READ ONLY, which the walsender additionally checks.
+  ASSERT_OK(repl_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
 
   std::string slot_name = "test_use_snapshot_slot";
   auto result = ASSERT_RESULT(repl_conn.FetchFormat(
