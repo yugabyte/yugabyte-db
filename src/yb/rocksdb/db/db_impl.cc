@@ -6133,10 +6133,10 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
 
 yb::Result<std::string> DBImpl::FindTargetKey(
     Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) {
-  // TODO: lock is held over the entirety of FindTargetKey.
-  // Future optimization is to release lock in between reads
-  InstrumentedMutexLock lock(&mutex_);
-  auto* current_version = default_cf_handle_->cfd()->current();
+  auto* cfd = default_cf_handle_->cfd();
+  SuperVersion* sv = GetAndRefSuperVersion(cfd);
+  auto scope_exit = yb::ScopeExit([this, cfd, sv] { ReturnAndCleanupSuperVersion(cfd, sv); });
+  auto* current_version = sv->current;
 
   const auto lower_internal = InternalKey::MinPossibleForUserKey(lower_bound_key);
 
