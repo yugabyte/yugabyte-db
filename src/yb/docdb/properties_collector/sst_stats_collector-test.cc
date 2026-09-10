@@ -80,6 +80,26 @@ TEST_F(SstStatsCollectorTest, PropertiesRoundTrip) {
   EXPECT_NOK(SstStatsFromProperties(rocksdb::UserCollectedProperties()));
 }
 
+TEST_F(SstStatsCollectorTest, MalformedCoprefixSubtotalsAreRejected) {
+  // The coprefix field is hex from on-disk data; strings::a2b_hex only DCHECKs its input, so the
+  // parser must validate it. Build a valid property set, then corrupt just that property.
+  SstStats s;
+  s.coprefix_subtotals["\x01\x02"] = {.entries = 1, .rows = 1};
+  rocksdb::UserCollectedProperties valid;
+  SstStatsToProperties(s, &valid);
+  const std::string key(SstStatsPropertyKeys::kCoprefixSubtotals);
+  ASSERT_OK(SstStatsFromProperties(valid));
+
+  for (const auto& bad : {"zz:1:0:0:1",        // non-hex coprefix
+                          "abc:1:0:0:1",       // odd-length hex
+                          "0102:1:0:0",        // too few fields
+                          "0102:1:0:0:1:2"}) { // too many fields
+    auto properties = valid;
+    properties[key] = bad;
+    EXPECT_NOK(SstStatsFromProperties(properties)) << "accepted malformed input: " << bad;
+  }
+}
+
 TEST_F(SstStatsCollectorTest, CoprefixSubtotalsTruncationIsVisible) {
   // A colocated tablet with more tables than fit under the size cap: the parsed map is a prefix
   // and coprefix_subtotals_truncated says so, distinguishing it from "no subtotals".
@@ -91,6 +111,12 @@ TEST_F(SstStatsCollectorTest, CoprefixSubtotalsTruncationIsVisible) {
   }
   rocksdb::UserCollectedProperties properties;
   SstStatsToProperties(s, &properties);
+  // The marker never lands where it would parse as an empty item, and the cap is respected.
+  const auto& serialized = properties[std::string(SstStatsPropertyKeys::kCoprefixSubtotals)];
+  EXPECT_LE(serialized.size(), 4096);
+  EXPECT_NE(serialized.front(), ';');
+  EXPECT_TRUE(serialized.ends_with(";..."));
+
   const auto parsed = ASSERT_RESULT(SstStatsFromProperties(properties));
   EXPECT_TRUE(parsed.coprefix_subtotals_truncated);
   EXPECT_LT(parsed.coprefix_subtotals.size(), s.coprefix_subtotals.size());

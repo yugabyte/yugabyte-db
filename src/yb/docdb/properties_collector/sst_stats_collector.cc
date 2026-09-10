@@ -13,6 +13,7 @@
 
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
 
+#include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/walltime.h"
 
@@ -46,6 +47,8 @@ namespace yb::docdb {
 namespace {
 
 constexpr size_t kCoprefixSubtotalsMaxBytes = 4096;
+// Appended in place of the coprefix subtotals that did not fit under the cap.
+constexpr std::string_view kTruncationMarker = "...";
 
 // UserCollectedProperties is a std::map<std::string, std::string> without a transparent
 // comparator, so lookups need an owning key.
@@ -87,8 +90,14 @@ std::string SerializeCoprefixSubtotals(const std::map<std::string, CoprefixSubto
     std::string item = Format(
         "$0:$1:$2:$3:$4", strings::b2a_hex(coprefix), subtotal.entries, subtotal.tombstone_entries,
         subtotal.reclaimable_entries, subtotal.rows);
-    if (result.size() + item.size() + 1 > kCoprefixSubtotalsMaxBytes) {
-      result += ";...";
+    // Reserve room for the truncation marker so the value never exceeds the cap, and never emit a
+    // leading separator: ";..." would parse as an empty first item and fail the field count.
+    if (result.size() + item.size() + 1 + kTruncationMarker.size() + 1 >
+        kCoprefixSubtotalsMaxBytes) {
+      if (!result.empty()) {
+        result += ';';
+      }
+      result += kTruncationMarker;
       break;
     }
     if (!result.empty()) {
@@ -99,22 +108,34 @@ std::string SerializeCoprefixSubtotals(const std::map<std::string, CoprefixSubto
   return result;
 }
 
+// strings::a2b_hex only DCHECKs that its input is hex, so validate before calling it: the input
+// here is on-disk data, which can be corrupt.
+Result<std::string> DecodeHex(const std::string& text) {
+  SCHECK_EQ(text.size() % 2, 0, Corruption, Format("Odd-length hex string '$0'", text));
+  for (char c : text) {
+    SCHECK(ascii_isxdigit(static_cast<unsigned char>(c)), Corruption,
+           Format("Non-hex character in '$0'", text));
+  }
+  return strings::a2b_hex(text);
+}
+
 Result<std::map<std::string, CoprefixSubtotal>> ParseCoprefixSubtotals(
-    const std::string& text, bool* truncated) {
+    const std::string& text, bool& truncated) {
   std::map<std::string, CoprefixSubtotal> result;
+  truncated = false;
   if (text.empty()) {
     return result;
   }
   for (const auto& item : StringSplit(text, ';')) {
-    if (item == "...") {
+    if (item == kTruncationMarker) {
       // The serializer appends this marker when it stopped below the size cap: the map here is a
       // prefix of the tablet's tables, not all of them.
-      *truncated = true;
+      truncated = true;
       continue;
     }
     const auto fields = StringSplit(item, ':');
     SCHECK_EQ(fields.size(), 5, Corruption, Format("Malformed coprefix subtotal '$0'", item));
-    auto& subtotal = result[strings::a2b_hex(fields[0])];
+    auto& subtotal = result[VERIFY_RESULT(DecodeHex(fields[0]))];
     const auto parse = [&item](const std::string& field) -> Result<uint64_t> {
       return VERIFY_RESULT_PREPEND(
           CheckedStoull(Slice(field)), Format("Malformed coprefix subtotal '$0'", item));
@@ -275,7 +296,7 @@ Result<SstStats> SstStatsFromProperties(const rocksdb::UserCollectedProperties& 
   const auto subtotals = Find(properties, K::kCoprefixSubtotals);
   if (subtotals != properties.end()) {
     stats.coprefix_subtotals = VERIFY_RESULT(
-        ParseCoprefixSubtotals(subtotals->second, &stats.coprefix_subtotals_truncated));
+        ParseCoprefixSubtotals(subtotals->second, stats.coprefix_subtotals_truncated));
   }
   return stats;
 }
