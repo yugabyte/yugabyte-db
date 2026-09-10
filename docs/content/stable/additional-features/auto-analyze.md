@@ -151,6 +151,37 @@ SELECT * FROM yb_stat_auto_analyze() WHERE relname = 'test';
 
 In this example, ANALYZE has run twice. The first run recorded a cooldown of 10 seconds (`10000000` microseconds, the default `ysql_auto_analyze_min_cooldown_per_table`), and the second run doubled it to 20 seconds (`20000000` microseconds, using the default scale factor of 2). The `mutations` value of `25` reflects rows changed since the last ANALYZE that have not yet crossed the threshold for the next run.
 
+### pg_stat_user_tables
+
+PostgreSQL's [`pg_stat_user_tables`](https://www.postgresql.org/docs/15/monitoring-stats.html#MONITORING-PG-STAT-ALL-TABLES-VIEW) and `pg_stat_all_tables` views also record ANALYZE activity. Auto Analyze updates `last_autoanalyze` and `autoanalyze_count`. A session `ANALYZE` updates `last_analyze` and `analyze_count` instead.
+
+```sql
+SELECT relname,
+       last_analyze IS NOT NULL AS has_last_analyze,
+       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+       analyze_count, autoanalyze_count
+  FROM pg_stat_user_tables
+ WHERE relname = 'test';
+```
+
+```output
+ relname | has_last_analyze | has_last_autoanalyze | analyze_count | autoanalyze_count
+---------+------------------+----------------------+---------------+-------------------
+ test    | f                | t                    |             0 |                 2
+(1 row)
+```
+
+Use these views together with `yb_stat_auto_analyze()`; they answer different questions.
+
+| Question | Use |
+| :--- | :--- |
+| How many mutations has the service accumulated, and when is the next ANALYZE allowed? | `yb_stat_auto_analyze()` (`mutations`, `last_analyze_info` cooldown history). Cluster-wide. |
+| Did the last ANALYZE on this node come from Auto Analyze or from a session `ANALYZE`? How many of each? | `pg_stat_user_tables` (`last_autoanalyze` / `autoanalyze_count` vs `last_analyze` / `analyze_count`). Local to the postgres you queried. |
+
+`n_mod_since_analyze` in the PostgreSQL views is not the Auto Analyze mutation counter. Use the `mutations` column of `yb_stat_auto_analyze()` for that.
+
+`last_autoanalyze` is updated on the node that ran ANALYZE. In a multi-node cluster, query `yb_stat_auto_analyze()` for cluster-wide history.
+
 ## Limitations
 
 ANALYZE is technically considered a DDL statement (schema change) and normally conflicts with other [concurrent DDLs](../../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation). However, when run via the auto analyze service, ANALYZE can run concurrently with other DDL. In this case, ANALYZE is pre-empted by concurrent DDL and will be retried at a later point. However, when [transactional DDL](../../explore/transactions/transactional-ddl/) is enabled (off by default), certain kinds of transactions that contain DDL may face a `kConflict` error when a background ANALYZE from the auto analyze service interrupts this transaction. In such cases, it is recommended to disable the auto analyze service explicitly and trigger ANALYZE manually. Issue {{<issue 28903>}} tracks this scenario.
