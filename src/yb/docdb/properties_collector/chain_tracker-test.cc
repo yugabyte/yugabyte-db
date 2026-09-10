@@ -48,6 +48,16 @@ TEST_F(ChainTrackerTest, AnatomyStrip) {
   EXPECT_EQ(s.row_chain_hist.bucket(ExponentialHistogram::BucketIndex(3)), 1);
   EXPECT_EQ(s.row_chain_hist.TotalWeight(), 2);
 
+  // The byte-weighted twin buckets by the same LENGTH, weighted by the row's bytes -- it is not a
+  // distribution of row sizes. Pin both the bucket index and the weight.
+  const auto strip = AnatomyStrip();
+  uint64_t r1_bytes = 0, r2_bytes = 0;
+  for (size_t i = 0; i < strip.size(); ++i) {
+    (i < 6 ? r1_bytes : r2_bytes) += strip[i].key.size() + strip[i].value.size();
+  }
+  EXPECT_EQ(s.row_chain_bytes_hist.bucket(ExponentialHistogram::BucketIndex(6)), r1_bytes);
+  EXPECT_EQ(s.row_chain_bytes_hist.bucket(ExponentialHistogram::BucketIndex(3)), r2_bytes);
+
   // Stretches of consecutive reclaimable entries in file order:
   //   [packed v2, packed v1, col a v2, col a v1] = 4, [r2 tombstone, r2.a, r2.b] = 3.
   EXPECT_EQ(s.stretch_hist.TotalWeight(), 2);
