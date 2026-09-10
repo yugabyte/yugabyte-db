@@ -745,6 +745,15 @@ class Tablet : public AbstractTablet,
   std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
+  // Aggregate of the regular DB's per-file SST statistics; null unless the collector that produces
+  // them is enabled (--docdb_enable_sst_stats_collector).
+  docdb::SstStatsAggregator* sst_stats() const { return sst_stats_.get(); }
+
+  // Recomputes the aggregate from the whole live file set, correcting for the file-set changes the
+  // RocksDB listener does not see. Runs on a timer from TSTabletManager; no-op when the collector
+  // is disabled.
+  Status ResyncSstStats();
+
   void ListenNumSSTFilesChanged(std::function<void()> listener);
 
   // Returns the number of memtables in intents and regular db-s.
@@ -1475,6 +1484,10 @@ class Tablet : public AbstractTablet,
   std::mutex num_sst_files_changed_listener_mutex_;
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
+
+  // Created in OpenRegularDB when the SST statistics collector is enabled, and from then on
+  // maintained by RegularRocksDbListener. Locks internally.
+  std::unique_ptr<docdb::SstStatsAggregator> sst_stats_;
 
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;

@@ -68,6 +68,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/docdb_util.h"
+#include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
@@ -607,6 +608,10 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       : RocksDbListener(tablet, log_prefix) {}
 
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+    if (auto* sst_stats = tablet_.sst_stats()) {
+      sst_stats->OnCompactionCompleted(ci);
+    }
+
     auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
     if (ci.is_full_compaction) {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
@@ -631,6 +636,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
+    if (auto* sst_stats = tablet_.sst_stats()) {
+      sst_stats->OnFlushCompleted(flush_job_info);
+    }
     auto status = tablet_.MayModifyIntentsDbFlushedOpId();
     // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
     LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
@@ -1250,6 +1258,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   if (FLAGS_docdb_enable_sst_stats_collector) {
     regular_rocksdb_options.table_properties_collector_factories.push_back(
         docdb::MakeSstStatsCollectorFactory());
+    // Before DB::Open, so that the listener installed below always sees it.
+    sst_stats_ = std::make_unique<docdb::SstStatsAggregator>();
   }
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
@@ -4828,6 +4838,23 @@ uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
   return GetRegularDbStat([this] {
     return regular_db_->GetCurrentVersionNumSSTFiles();
   }, 0);
+}
+
+Status Tablet::ResyncSstStats() {
+  if (!sst_stats_) {
+    return Status::OK();
+  }
+  return sst_stats_->Resync(
+      [this](std::vector<rocksdb::LiveFileMetaData>* live_files,
+             rocksdb::TablePropertiesCollection* properties) -> Status {
+        // Reading a properties block can hit disk, so this must not hold component_lock_ or block
+        // the start of a RocksDB shutdown.
+        auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+        RETURN_NOT_OK(scoped_operation);
+        SCHECK(regular_db_, IllegalState, "No regular DB to read SST statistics from");
+        regular_db_->GetLiveFilesMetaData(live_files);
+        return regular_db_->GetPropertiesOfAllTables(properties);
+      });
 }
 
 std::pair<int, int> Tablet::GetNumMemtables() const {

@@ -257,6 +257,15 @@ DEFINE_NON_RUNTIME_int32(data_size_metric_updater_interval_sec, 60,
              "The interval time for the data size metric updater background task. "
              "If set to 0, it disables the background task.");
 
+DEFINE_NON_RUNTIME_int32(docdb_sst_stats_resync_interval_sec, 300,
+             "The interval at which each tablet's DocDB SST statistics aggregate is recomputed "
+             "from its whole live file set, correcting for file-set changes that produce no "
+             "RocksDB flush or compaction event (tablet open, remote bootstrap, snapshot restore, "
+             "files inherited by a split). Until the first pass, a tablet's aggregate covers only "
+             "the files written since it opened and no consumer reads it. If set to 0, it disables "
+             "the background task, which leaves the aggregate unusable. Only has an effect when "
+             "--docdb_enable_sst_stats_collector is set.");
+
 DEFINE_UNKNOWN_int32(send_wait_for_report_interval_ms, 60000,
              "The tick interval time to trigger updating all transaction coordinators with wait-for"
              " relationships.");
@@ -331,6 +340,7 @@ DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
 
+DECLARE_bool(docdb_enable_sst_stats_collector);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -495,6 +505,21 @@ void TSTabletManager::VerifyTabletData() {
                        << ": " << s;
         }
       }
+    }
+  }
+}
+
+void TSTabletManager::ResyncSstStats() {
+  for (const TabletPeerPtr& peer : GetTabletPeers()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    // Expected to fail on a tablet that starts shutting down mid-pass; the next pass covers it.
+    const auto status = tablet->ResyncSstStats();
+    if (!status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Failed to resync SST statistics of " << peer->tablet_id() << ": " << status;
     }
   }
 }
@@ -926,6 +951,9 @@ Status TSTabletManager::Init() {
   data_size_metric_updater_ = std::make_unique<rpc::Poller>(
       LogPrefix(), [this]() { return ts_data_size_metrics_->Update(); });
 
+  sst_stats_resync_poller_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::ResyncSstStats, this));
+
   metrics_emitter_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
 
@@ -1014,6 +1042,9 @@ Status TSTabletManager::Start() {
   StartScheduledTask(
       data_size_metric_updater_.get(), "Data size metric updater",
       FLAGS_data_size_metric_updater_interval_sec * 1s);
+  StartScheduledTask(
+      sst_stats_resync_poller_.get(), "SST statistics resync",
+      FLAGS_docdb_enable_sst_stats_collector ? FLAGS_docdb_sst_stats_resync_interval_sec * 1s : 0s);
 
   if (waiting_txn_registry_) {
     waiting_txn_registry_poller_->Start(
@@ -2658,6 +2689,8 @@ void TSTabletManager::StartShutdown() {
   tablet_metadata_validator_->StartShutdown();
 
   data_size_metric_updater_->Shutdown();
+
+  sst_stats_resync_poller_->Shutdown();
 
   metrics_emitter_->Shutdown();
 
