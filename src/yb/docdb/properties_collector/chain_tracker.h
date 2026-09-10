@@ -118,6 +118,10 @@ struct SstStats {
   // Only populated when subtotals are enabled AND the tablet is colocated; key = the raw
   // cotable / colocation prefix bytes. Rows without a coprefix (plain tables) record none.
   std::map<std::string, CoprefixSubtotal> coprefix_subtotals;
+  // Set only by SstStatsFromProperties, when the serialized subtotals were truncated at the size
+  // cap (so coprefix_subtotals is a prefix of the tablet's tables, not all of them). The collector
+  // itself never truncates its in-memory map, so it leaves this false.
+  bool coprefix_subtotals_truncated = false;
 
   // Derived identities (meaningful only while chain_valid).
   uint64_t shadowed_entries() const { return chain_entries - num_subdoc_keys; }
