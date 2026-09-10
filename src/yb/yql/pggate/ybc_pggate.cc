@@ -2808,6 +2808,7 @@ YbcStatus YBCYcqlStatementStats(YbcYCQLStatementStats** stats, size_t* num_stats
           .mean_time = info.mean_time(),
           .stddev_time = info.stddev_time(),
           .keyspace = YBCPAllocStdString(info.keyspace()),
+          .yb_latency_histogram = YBCPAllocStdString(info.yb_latency_histogram()),
       };
       ++dest;
     }
