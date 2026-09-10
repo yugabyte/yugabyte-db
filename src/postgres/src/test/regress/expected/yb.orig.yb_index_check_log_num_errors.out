@@ -74,7 +74,7 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |                      table_cols                      |       ybbasectid       |                      index_cols                      |   error_category    
 ------------+------------+------------------------+------------------------------------------------------+------------------------+------------------------------------------------------+---------------------
-      16473 |      16478 | \x47121048800000012121 | {"int_col": 99, "jsonb_col": "{\"key\": \"value\"}"} | \x47121048800000012121 | {"int_col": 10, "jsonb_col": "{\"key\": \"value\"}"} | BINARY_KEY_MISMATCH
+      16390 |      16395 | \x47121048800000012121 | {"int_col": 99, "jsonb_col": "{\"key\": \"value\"}"} | \x47121048800000012121 | {"int_col": 10, "jsonb_col": "{\"key\": \"value\"}"} | BINARY_KEY_MISMATCH
 (1 row)
 
 -- numeric (row 2)
@@ -87,7 +87,7 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |      table_cols       |       ybbasectid       |      index_cols       |   error_category    
 ------------+------------+------------------------+-----------------------+------------------------+-----------------------+---------------------
-      16473 |      16479 | \x47c0c448800000022121 | {"numeric_col": 99.9} | \x47c0c448800000022121 | {"numeric_col": 20.5} | BINARY_KEY_MISMATCH
+      16390 |      16396 | \x47c0c448800000022121 | {"numeric_col": 99.9} | \x47c0c448800000022121 | {"numeric_col": 20.5} | BINARY_KEY_MISMATCH
 (1 row)
 
 -- float (row 3): 30.25 and 9.5 are both exact in binary floating point
@@ -100,7 +100,7 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |     table_cols     |       ybbasectid       |      index_cols      |   error_category    
 ------------+------------+------------------------+--------------------+------------------------+----------------------+---------------------
-      16473 |      16480 | \x47fca048800000032121 | {"float_col": 9.5} | \x47fca048800000032121 | {"float_col": 30.25} | BINARY_KEY_MISMATCH
+      16390 |      16397 | \x47fca048800000032121 | {"float_col": 9.5} | \x47fca048800000032121 | {"float_col": 30.25} | BINARY_KEY_MISMATCH
 (1 row)
 
 -- bool (row 4)
@@ -113,7 +113,7 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |     table_cols      |       ybbasectid       |     index_cols     |   error_category    
 ------------+------------+------------------------+---------------------+------------------------+--------------------+---------------------
-      16473 |      16481 | \x479eaf48800000042121 | {"bool_col": false} | \x479eaf48800000042121 | {"bool_col": true} | BINARY_KEY_MISMATCH
+      16390 |      16398 | \x479eaf48800000042121 | {"bool_col": false} | \x479eaf48800000042121 | {"bool_col": true} | BINARY_KEY_MISMATCH
 (1 row)
 
 -- timestamp (row 5)
@@ -126,7 +126,7 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |               table_cols               |       ybbasectid       |               index_cols               |   error_category    
 ------------+------------+------------------------+----------------------------------------+------------------------+----------------------------------------+---------------------
-      16473 |      16482 | \x470a7348800000052121 | {"ts_col": "Sun Jun 15 12:00:00 2025"} | \x470a7348800000052121 | {"ts_col": "Wed May 01 00:00:00 2024"} | BINARY_KEY_MISMATCH
+      16390 |      16399 | \x470a7348800000052121 | {"ts_col": "Sun Jun 15 12:00:00 2025"} | \x470a7348800000052121 | {"ts_col": "Wed May 01 00:00:00 2024"} | BINARY_KEY_MISMATCH
 (1 row)
 
 -- text (row 6)
@@ -139,7 +139,7 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |       table_cols       |       ybbasectid       |      index_cols      |   error_category    
 ------------+------------+------------------------+------------------------+------------------------+----------------------+---------------------
-      16473 |      16483 | \x474e5848800000062121 | {"str_col": "updated"} | \x474e5848800000062121 | {"str_col": "str_6"} | BINARY_KEY_MISMATCH
+      16390 |      16400 | \x474e5848800000062121 | {"str_col": "updated"} | \x474e5848800000062121 | {"str_col": "str_6"} | BINARY_KEY_MISMATCH
 (1 row)
 
 -- NULL (row 7): index retains nullable_col=70; base table updated to NULL
@@ -152,7 +152,7 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |       table_cols       |       ybbasectid       |      index_cols      | error_category 
 ------------+------------+------------------------+------------------------+------------------------+----------------------+----------------
-      16473 |      16484 | \x4752cf48800000072121 | {"nullable_col": null} | \x4752cf48800000072121 | {"nullable_col": 70} | NULL_MISMATCH
+      16390 |      16401 | \x4752cf48800000072121 | {"nullable_col": null} | \x4752cf48800000072121 | {"nullable_col": 70} | NULL_MISMATCH
 (1 row)
 
 INSERT INTO t_key_mismatch_types VALUES
@@ -173,9 +173,9 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |                        table_cols                        |       ybbasectid       |                      index_cols                      |      error_category      
 ------------+------------+------------------------+----------------------------------------------------------+------------------------+------------------------------------------------------+--------------------------
-      16473 |      16478 | \x475d6048800000092121 | {"int_col": 999, "jsonb_col": "{\"key\": \"conflict\"}"} | \x475d6048800000092121 | {"int_col": 90, "jsonb_col": "{\"key\": \"value\"}"} | BINARY_KEY_MISMATCH
-      16473 |      16478 | \x47121048800000012121 | {"int_col": 99, "jsonb_col": "{\"key\": \"value\"}"}     | \x47121048800000012121 | {"int_col": 10, "jsonb_col": "{\"key\": \"value\"}"} | BINARY_KEY_MISMATCH
-      16473 |      16478 | \x47c3a248800000082121 | {"int_col": 80, "jsonb_col": "{\"key\": \"updated\"}"}   | \x47c3a248800000082121 | {"int_col": 80, "jsonb_col": "{\"key\": \"value\"}"} | SEMANTIC_NONKEY_MISMATCH
+      16390 |      16395 | \x475d6048800000092121 | {"int_col": 999, "jsonb_col": "{\"key\": \"conflict\"}"} | \x475d6048800000092121 | {"int_col": 90, "jsonb_col": "{\"key\": \"value\"}"} | BINARY_KEY_MISMATCH
+      16390 |      16395 | \x47121048800000012121 | {"int_col": 99, "jsonb_col": "{\"key\": \"value\"}"}     | \x47121048800000012121 | {"int_col": 10, "jsonb_col": "{\"key\": \"value\"}"} | BINARY_KEY_MISMATCH
+      16390 |      16395 | \x47c3a248800000082121 | {"int_col": 80, "jsonb_col": "{\"key\": \"updated\"}"}   | \x47c3a248800000082121 | {"int_col": 80, "jsonb_col": "{\"key\": \"value\"}"} | SEMANTIC_NONKEY_MISMATCH
 (3 rows)
 
 DROP TABLE t_key_mismatch_types;
@@ -208,10 +208,10 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         |               table_cols               |       ybbasectid       |              index_cols              |   error_category    
 ------------+------------+------------------------+----------------------------------------+------------------------+--------------------------------------+---------------------
-      16485 |      16490 | \x47121048800000012121 | {"lower": "updated", "int_col": "100"} | \x47121048800000012121 | {"lower": "hello", "int_col": "100"} | BINARY_KEY_MISMATCH
-      16485 |      16490 | \x47c0c448800000022121 | {"lower": null, "int_col": "200"}      | \x47c0c448800000022121 | {"lower": "world", "int_col": "200"} | NULL_MISMATCH
-      16485 |      16490 |                        |                                        | \x47fca048800000032121 | {"lower": "foo", "int_col": "300"}   | SPURIOUS_ROW
-      16485 |      16490 | \x479eaf48800000042121 |                                        |                        |                                      | MISSING_ROW
+      16402 |      16407 | \x47121048800000012121 | {"lower": "updated", "int_col": "100"} | \x47121048800000012121 | {"lower": "hello", "int_col": "100"} | BINARY_KEY_MISMATCH
+      16402 |      16407 | \x47c0c448800000022121 | {"lower": null, "int_col": "200"}      | \x47c0c448800000022121 | {"lower": "world", "int_col": "200"} | NULL_MISMATCH
+      16402 |      16407 |                        |                                        | \x47fca048800000032121 | {"lower": "foo", "int_col": "300"}   | SPURIOUS_ROW
+      16402 |      16407 | \x479eaf48800000042121 |                                        |                        |                                      | MISSING_ROW
 (4 rows)
 
 DROP TABLE t_expr;
@@ -247,17 +247,17 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         | table_cols  |       ybbasectid       |  index_cols  |   error_category    
 ------------+------------+------------------------+-------------+------------------------+--------------+---------------------
-      16496 |      16512 | \x4771cf488000000a2121 | {"val": 99} | \x4771cf488000000a2121 | {"val": 10}  | BINARY_KEY_MISMATCH
-      16501 |      16513 |                        |             | \x47f2fb488000006e2121 | {"val": 110} | SPURIOUS_ROW
-      16506 |      16514 | \x4718e848800001f42121 |             |                        |              | MISSING_ROW
+      16413 |      16429 | \x4771cf488000000a2121 | {"val": 99} | \x4771cf488000000a2121 | {"val": 10}  | BINARY_KEY_MISMATCH
+      16418 |      16430 |                        |             | \x47f2fb488000006e2121 | {"val": 110} | SPURIOUS_ROW
+      16423 |      16431 | \x4718e848800001f42121 |             |                        |              | MISSING_ROW
 (3 rows)
 
 -- Test that yb_index_check returns exactly LIMIT errors when the actual number of errors exceeds the LIMIT clause.
 SELECT * FROM yb_index_check(:idx, false, :yb_index_check_log_num_errors) LIMIT 2;
  tablerelid | indexrelid |         ybctid         | table_cols  |       ybbasectid       |  index_cols  |   error_category    
 ------------+------------+------------------------+-------------+------------------------+--------------+---------------------
-      16496 |      16512 | \x4771cf488000000a2121 | {"val": 99} | \x4771cf488000000a2121 | {"val": 10}  | BINARY_KEY_MISMATCH
-      16501 |      16513 |                        |             | \x47f2fb488000006e2121 | {"val": 110} | SPURIOUS_ROW
+      16413 |      16429 | \x4771cf488000000a2121 | {"val": 99} | \x4771cf488000000a2121 | {"val": 10}  | BINARY_KEY_MISMATCH
+      16418 |      16430 |                        |             | \x47f2fb488000006e2121 | {"val": 110} | SPURIOUS_ROW
 (2 rows)
 
 DROP TABLE t_part;
@@ -306,13 +306,13 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 :check_index
  tablerelid | indexrelid |         ybctid         | table_cols |       ybbasectid       |  index_cols  | error_category 
 ------------+------------+------------------------+------------+------------------------+--------------+----------------
-      16520 |      16536 |                        |            | \x47121048800000012121 | {"val": 1}   | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47c0c448800000022121 | {"val": 2}   | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47fca048800000032121 | {"val": 3}   | SPURIOUS_ROW
-      16520 |      16536 | \x4737fa48800000152121 |            |                        |              | MISSING_ROW
-      16520 |      16536 | \x47d5bf48800000162121 |            |                        |              | MISSING_ROW
-      16525 |      16537 |                        |            | \x47685b48800000652121 | {"val": 101} | SPURIOUS_ROW
-      16525 |      16537 | \x47f75e48800000792121 |            |                        |              | MISSING_ROW
+      16437 |      16453 |                        |            | \x47121048800000012121 | {"val": 1}   | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47c0c448800000022121 | {"val": 2}   | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47fca048800000032121 | {"val": 3}   | SPURIOUS_ROW
+      16437 |      16453 | \x4737fa48800000152121 |            |                        |              | MISSING_ROW
+      16437 |      16453 | \x47d5bf48800000162121 |            |                        |              | MISSING_ROW
+      16442 |      16454 |                        |            | \x47685b48800000652121 | {"val": 101} | SPURIOUS_ROW
+      16442 |      16454 | \x47f75e48800000792121 |            |                        |              | MISSING_ROW
 (7 rows)
 
 -- log_num_errors = 3: aborts after p1's 3 spurious row errors
@@ -321,9 +321,9 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE WHERE index
 NOTICE:  index checker aborted: maximum reportable errors (3) reached. Consider dropping and recreating the index.
  tablerelid | indexrelid | ybctid | table_cols |       ybbasectid       | index_cols | error_category 
 ------------+------------+--------+------------+------------------------+------------+----------------
-      16520 |      16536 |        |            | \x47121048800000012121 | {"val": 1} | SPURIOUS_ROW
-      16520 |      16536 |        |            | \x47c0c448800000022121 | {"val": 2} | SPURIOUS_ROW
-      16520 |      16536 |        |            | \x47fca048800000032121 | {"val": 3} | SPURIOUS_ROW
+      16437 |      16453 |        |            | \x47121048800000012121 | {"val": 1} | SPURIOUS_ROW
+      16437 |      16453 |        |            | \x47c0c448800000022121 | {"val": 2} | SPURIOUS_ROW
+      16437 |      16453 |        |            | \x47fca048800000032121 | {"val": 3} | SPURIOUS_ROW
 (3 rows)
 
 -- log_num_errors = 5: aborts after all 5 errors in p1 (3 spurious + 2 missing)
@@ -332,11 +332,11 @@ NOTICE:  index checker aborted: maximum reportable errors (3) reached. Consider 
 NOTICE:  index checker aborted: maximum reportable errors (5) reached. Consider dropping and recreating the index.
  tablerelid | indexrelid |         ybctid         | table_cols |       ybbasectid       | index_cols | error_category 
 ------------+------------+------------------------+------------+------------------------+------------+----------------
-      16520 |      16536 |                        |            | \x47121048800000012121 | {"val": 1} | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47c0c448800000022121 | {"val": 2} | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47fca048800000032121 | {"val": 3} | SPURIOUS_ROW
-      16520 |      16536 | \x4737fa48800000152121 |            |                        |            | MISSING_ROW
-      16520 |      16536 | \x47d5bf48800000162121 |            |                        |            | MISSING_ROW
+      16437 |      16453 |                        |            | \x47121048800000012121 | {"val": 1} | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47c0c448800000022121 | {"val": 2} | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47fca048800000032121 | {"val": 3} | SPURIOUS_ROW
+      16437 |      16453 | \x4737fa48800000152121 |            |                        |            | MISSING_ROW
+      16437 |      16453 | \x47d5bf48800000162121 |            |                        |            | MISSING_ROW
 (5 rows)
 
 -- log_num_errors = 6: logs all 5 errors in p1, then aborts after p2's 1 spurious row error
@@ -345,12 +345,12 @@ NOTICE:  index checker aborted: maximum reportable errors (5) reached. Consider 
 NOTICE:  index checker aborted: maximum reportable errors (6) reached. Consider dropping and recreating the index.
  tablerelid | indexrelid |         ybctid         | table_cols |       ybbasectid       |  index_cols  | error_category 
 ------------+------------+------------------------+------------+------------------------+--------------+----------------
-      16520 |      16536 |                        |            | \x47121048800000012121 | {"val": 1}   | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47c0c448800000022121 | {"val": 2}   | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47fca048800000032121 | {"val": 3}   | SPURIOUS_ROW
-      16520 |      16536 | \x4737fa48800000152121 |            |                        |              | MISSING_ROW
-      16520 |      16536 | \x47d5bf48800000162121 |            |                        |              | MISSING_ROW
-      16525 |      16537 |                        |            | \x47685b48800000652121 | {"val": 101} | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47121048800000012121 | {"val": 1}   | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47c0c448800000022121 | {"val": 2}   | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47fca048800000032121 | {"val": 3}   | SPURIOUS_ROW
+      16437 |      16453 | \x4737fa48800000152121 |            |                        |              | MISSING_ROW
+      16437 |      16453 | \x47d5bf48800000162121 |            |                        |              | MISSING_ROW
+      16442 |      16454 |                        |            | \x47685b48800000652121 | {"val": 101} | SPURIOUS_ROW
 (6 rows)
 
 -- log_num_errors = 7: logs all 7 errors across both partitions
@@ -359,13 +359,13 @@ NOTICE:  index checker aborted: maximum reportable errors (6) reached. Consider 
 NOTICE:  index checker aborted: maximum reportable errors (7) reached. Consider dropping and recreating the index.
  tablerelid | indexrelid |         ybctid         | table_cols |       ybbasectid       |  index_cols  | error_category 
 ------------+------------+------------------------+------------+------------------------+--------------+----------------
-      16520 |      16536 |                        |            | \x47121048800000012121 | {"val": 1}   | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47c0c448800000022121 | {"val": 2}   | SPURIOUS_ROW
-      16520 |      16536 |                        |            | \x47fca048800000032121 | {"val": 3}   | SPURIOUS_ROW
-      16520 |      16536 | \x4737fa48800000152121 |            |                        |              | MISSING_ROW
-      16520 |      16536 | \x47d5bf48800000162121 |            |                        |              | MISSING_ROW
-      16525 |      16537 |                        |            | \x47685b48800000652121 | {"val": 101} | SPURIOUS_ROW
-      16525 |      16537 | \x47f75e48800000792121 |            |                        |              | MISSING_ROW
+      16437 |      16453 |                        |            | \x47121048800000012121 | {"val": 1}   | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47c0c448800000022121 | {"val": 2}   | SPURIOUS_ROW
+      16437 |      16453 |                        |            | \x47fca048800000032121 | {"val": 3}   | SPURIOUS_ROW
+      16437 |      16453 | \x4737fa48800000152121 |            |                        |              | MISSING_ROW
+      16437 |      16453 | \x47d5bf48800000162121 |            |                        |              | MISSING_ROW
+      16442 |      16454 |                        |            | \x47685b48800000652121 | {"val": 101} | SPURIOUS_ROW
+      16442 |      16454 | \x47f75e48800000792121 |            |                        |              | MISSING_ROW
 (7 rows)
 
 \set yb_index_check_log_num_errors 100
@@ -386,11 +386,11 @@ LEFT JOIN yb_index_check(:idx_p3, false, :yb_index_check_log_num_errors) b
 ORDER BY a.ybbasectid, b.ybbasectid;
  a_tablerelid | a_indexrelid | a_table_cols | a_index_cols | b_tablerelid | b_indexrelid | b_table_cols | b_index_cols 
 --------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------
-        16520 |        16536 |              | {"val": 1}   |              |              |              | 
-        16520 |        16536 |              | {"val": 2}   |              |              |              | 
-        16520 |        16536 |              | {"val": 3}   |              |              |              | 
-        16520 |        16536 |              |              |              |              |              | 
-        16520 |        16536 |              |              |              |              |              | 
+        16437 |        16453 |              | {"val": 1}   |              |              |              | 
+        16437 |        16453 |              | {"val": 2}   |              |              |              | 
+        16437 |        16453 |              | {"val": 3}   |              |              |              | 
+        16437 |        16453 |              |              |              |              |              | 
+        16437 |        16453 |              |              |              |              |              | 
 (5 rows)
 
 -- Left join: p2 errors (2) LEFT JOIN p3 errors (0).
@@ -418,16 +418,16 @@ CROSS JOIN yb_index_check(:idx_p2, false, :yb_index_check_log_num_errors) b
 ORDER BY a.ybbasectid, b.ybbasectid;
  a_tablerelid | a_indexrelid | a_table_cols | a_index_cols | b_tablerelid | b_indexrelid | b_table_cols | b_index_cols 
 --------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------
-        16520 |        16536 |              | {"val": 1}   |        16525 |        16537 |              | {"val": 101}
-        16520 |        16536 |              | {"val": 1}   |        16525 |        16537 |              | 
-        16520 |        16536 |              | {"val": 2}   |        16525 |        16537 |              | {"val": 101}
-        16520 |        16536 |              | {"val": 2}   |        16525 |        16537 |              | 
-        16520 |        16536 |              | {"val": 3}   |        16525 |        16537 |              | {"val": 101}
-        16520 |        16536 |              | {"val": 3}   |        16525 |        16537 |              | 
-        16520 |        16536 |              |              |        16525 |        16537 |              | {"val": 101}
-        16520 |        16536 |              |              |        16525 |        16537 |              | {"val": 101}
-        16520 |        16536 |              |              |        16525 |        16537 |              | 
-        16520 |        16536 |              |              |        16525 |        16537 |              | 
+        16437 |        16453 |              | {"val": 1}   |        16442 |        16454 |              | {"val": 101}
+        16437 |        16453 |              | {"val": 1}   |        16442 |        16454 |              | 
+        16437 |        16453 |              | {"val": 2}   |        16442 |        16454 |              | {"val": 101}
+        16437 |        16453 |              | {"val": 2}   |        16442 |        16454 |              | 
+        16437 |        16453 |              | {"val": 3}   |        16442 |        16454 |              | {"val": 101}
+        16437 |        16453 |              | {"val": 3}   |        16442 |        16454 |              | 
+        16437 |        16453 |              |              |        16442 |        16454 |              | {"val": 101}
+        16437 |        16453 |              |              |        16442 |        16454 |              | {"val": 101}
+        16437 |        16453 |              |              |        16442 |        16454 |              | 
+        16437 |        16453 |              |              |        16442 |        16454 |              | 
 (10 rows)
 
 -- UNION ALL: all errors from p1 (5), p2 (2), and p3 (0) = 7 rows total.
@@ -442,13 +442,13 @@ FROM yb_index_check(:idx_p3, false, :yb_index_check_log_num_errors)
 ORDER BY tablerelid, indexrelid;
  tablerelid | indexrelid | table_cols |  index_cols  
 ------------+------------+------------+--------------
-      16520 |      16536 |            | {"val": 1}
-      16520 |      16536 |            | {"val": 2}
-      16520 |      16536 |            | {"val": 3}
-      16520 |      16536 |            | 
-      16520 |      16536 |            | 
-      16525 |      16537 |            | {"val": 101}
-      16525 |      16537 |            | 
+      16437 |      16453 |            | {"val": 1}
+      16437 |      16453 |            | {"val": 2}
+      16437 |      16453 |            | {"val": 3}
+      16437 |      16453 |            | 
+      16437 |      16453 |            | 
+      16442 |      16454 |            | {"val": 101}
+      16442 |      16454 |            | 
 (7 rows)
 
 DROP TABLE t_abort;
@@ -493,12 +493,12 @@ UPDATE pg_index SET indisready=TRUE, indisvalid=TRUE, indislive=TRUE
 :check_index
  tablerelid | indexrelid |         ybctid         |                       table_cols                        |       ybbasectid       |                      index_cols                       |      error_category      
 ------------+------------+------------------------+---------------------------------------------------------+------------------------+-------------------------------------------------------+--------------------------
-      16539 |      16544 | \x47121048800000012121 | {"k": 99, "incl_int": 100, "incl_json": "{\"a\": 1}"}   | \x47121048800000012121 | {"k": 10, "incl_int": 100, "incl_json": "{\"a\": 1}"} | BINARY_KEY_MISMATCH
-      16539 |      16544 | \x479eaf48800000042121 | {"k": 40, "incl_int": 400, "incl_json": "{\"a\": 44}"}  | \x479eaf48800000042121 | {"k": 40, "incl_int": 400, "incl_json": "{\"a\": 4}"} | BINARY_NONKEY_MISMATCH
-      16539 |      16544 |                        |                                                         | \x470a7348800000052121 | {"k": 50, "incl_int": 500, "incl_json": "{\"a\": 5}"} | SPURIOUS_ROW
-      16539 |      16544 | \x47c0c448800000022121 | {"k": null, "incl_int": 200, "incl_json": "{\"a\": 2}"} | \x47c0c448800000022121 | {"k": 20, "incl_int": 200, "incl_json": "{\"a\": 2}"} | NULL_MISMATCH
-      16539 |      16544 | \x47fca048800000032121 | {"k": 30, "incl_int": 999, "incl_json": "{\"a\": 3}"}   | \x47fca048800000032121 | {"k": 30, "incl_int": 300, "incl_json": "{\"a\": 3}"} | SEMANTIC_NONKEY_MISMATCH
-      16539 |      16544 | \x474e5848800000062121 |                                                         |                        |                                                       | MISSING_ROW
+      16456 |      16461 | \x47121048800000012121 | {"k": 99, "incl_int": 100, "incl_json": "{\"a\": 1}"}   | \x47121048800000012121 | {"k": 10, "incl_int": 100, "incl_json": "{\"a\": 1}"} | BINARY_KEY_MISMATCH
+      16456 |      16461 | \x479eaf48800000042121 | {"k": 40, "incl_int": 400, "incl_json": "{\"a\": 44}"}  | \x479eaf48800000042121 | {"k": 40, "incl_int": 400, "incl_json": "{\"a\": 4}"} | BINARY_NONKEY_MISMATCH
+      16456 |      16461 |                        |                                                         | \x470a7348800000052121 | {"k": 50, "incl_int": 500, "incl_json": "{\"a\": 5}"} | SPURIOUS_ROW
+      16456 |      16461 | \x47c0c448800000022121 | {"k": null, "incl_int": 200, "incl_json": "{\"a\": 2}"} | \x47c0c448800000022121 | {"k": 20, "incl_int": 200, "incl_json": "{\"a\": 2}"} | NULL_MISMATCH
+      16456 |      16461 | \x47fca048800000032121 | {"k": 30, "incl_int": 999, "incl_json": "{\"a\": 3}"}   | \x47fca048800000032121 | {"k": 30, "incl_int": 300, "incl_json": "{\"a\": 3}"} | SEMANTIC_NONKEY_MISMATCH
+      16456 |      16461 | \x474e5848800000062121 |                                                         |                        |                                                       | MISSING_ROW
 (6 rows)
 
 DROP TABLE t_all_errs;
@@ -515,7 +515,7 @@ UPDATE pg_index SET indnullsnotdistinct = true
 :check_index
  tablerelid | indexrelid |         ybctid         | table_cols  |       ybbasectid       | index_cols  |     error_category     
 ------------+------------+------------------------+-------------+------------------------+-------------+------------------------
-      16545 |      16550 | \x47121048800000012121 | {"a": null} | \x47121048800000012121 | {"a": null} | UNIQUE_SUFFIX_NOT_NULL
+      16462 |      16467 | \x47121048800000012121 | {"a": null} | \x47121048800000012121 | {"a": null} | UNIQUE_SUFFIX_NOT_NULL
 (1 row)
 
 DROP TABLE t_uq_suffix_nn;
@@ -531,7 +531,7 @@ UPDATE pg_index SET indnullsnotdistinct = false
 :check_index
  tablerelid | indexrelid |         ybctid         | table_cols  |       ybbasectid       | index_cols  |     error_category     
 ------------+------------+------------------------+-------------+------------------------+-------------+------------------------
-      16551 |      16556 | \x47121048800000012121 | {"a": null} | \x47121048800000012121 | {"a": null} | UNIQUE_SUFFIX_MISMATCH
+      16468 |      16473 | \x47121048800000012121 | {"a": null} | \x47121048800000012121 | {"a": null} | UNIQUE_SUFFIX_MISMATCH
 (1 row)
 
 DROP TABLE t_uq_suffix_mm;
@@ -561,8 +561,8 @@ EXPLAIN (COSTS OFF) SELECT yb_index_check('t_srf_select_idx'::regclass::oid, fal
 SELECT yb_index_check('t_srf_select_idx'::regclass::oid, false, :yb_index_check_log_num_errors);
                                                   yb_index_check                                                   
 -------------------------------------------------------------------------------------------------------------------
- (16557,16562,"\\x47121048800000012121","{""k"": 99}","\\x47121048800000012121","{""k"": 10}",BINARY_KEY_MISMATCH)
- (16557,16562,"\\x47fca048800000032121",,,,MISSING_ROW)
+ (16474,16479,"\\x47121048800000012121","{""k"": 99}","\\x47121048800000012121","{""k"": 10}",BINARY_KEY_MISMATCH)
+ (16474,16479,"\\x47fca048800000032121",,,,MISSING_ROW)
 (2 rows)
 
 DROP TABLE t_srf_select;
