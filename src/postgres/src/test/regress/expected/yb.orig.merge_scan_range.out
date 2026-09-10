@@ -2692,7 +2692,7 @@
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
                Merge Stream Key: r5n.r1
                Merge Streams: 4
-               Merge Cond: (n = ANY ('{0,1,2,3}'::integer[]))
+               Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 4
                Storage Table Rows Scanned: 20
