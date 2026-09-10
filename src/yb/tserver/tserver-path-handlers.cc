@@ -50,7 +50,10 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
 
+#include "yb/docdb/properties_collector/sst_stats_aggregator.h"
+
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/walltime.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
@@ -80,6 +83,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/monotime.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
 
@@ -231,6 +235,93 @@ tablet::TabletPeerPtr LoadTablet(TabletServer* tserver,
   return result;
 }
 
+string CompactDuration(int64_t micros) {
+  static constexpr std::array<std::pair<int64_t, const char*>, 4> kUnits = {{
+      {24 * 60 * 60 * MonoTime::kMicrosecondsPerSecond, "d"},
+      {60 * 60 * MonoTime::kMicrosecondsPerSecond, "h"},
+      {60 * MonoTime::kMicrosecondsPerSecond, "m"},
+      {MonoTime::kMicrosecondsPerSecond, "s"}}};
+  for (const auto& [unit_micros, suffix] : kUnits) {
+    if (micros >= unit_micros) {
+      return Format("$0$1", micros / unit_micros, suffix);
+    }
+  }
+  return Format("$0us", micros);
+}
+
+// "<5m: 3, <15m: 0, ..., >30d: 12", labelled from the band edges themselves so the page cannot
+// drift from AgeBands.
+string AgeBandsToHtml(const docdb::AgeBandCounts& counts) {
+  constexpr auto kLastBand = docdb::AgeBands::kNumBands - 1;
+  string result;
+  for (size_t i = 0; i < counts.size(); ++i) {
+    const auto label = i == kLastBand
+        ? Format("&gt;$0", CompactDuration(docdb::AgeBands::kEdgesMicros[kLastBand - 1]))
+        : Format("&lt;$0", CompactDuration(docdb::AgeBands::kEdgesMicros[i]));
+    result += Format("$0$1: $2", i == 0 ? "" : ", ", label, counts[i]);
+  }
+  return result;
+}
+
+// The per-tablet aggregate of what the SST statistics collector recorded in each file. Raw numbers
+// only: the distributions the collector also records are not in the aggregate, and rendering them
+// is tracked separately.
+void DumpSstStats(const tablet::TabletPeerPtr& peer, std::stringstream* output) {
+  *output << "<h2>SST Statistics</h2>\n";
+  auto tablet = peer->shared_tablet_maybe_null();
+  auto* sst_stats = tablet ? tablet->sst_stats() : nullptr;
+  if (sst_stats == nullptr) {
+    *output << "<p>Not collected (--docdb_enable_sst_stats_collector is not set).</p>\n";
+    return;
+  }
+
+  const auto snapshot = sst_stats->Get();
+  const auto& stats = snapshot.aggregate;
+  const auto row = [output](const string& name, const string& value) {
+    *output << Format("<tr><th>$0</th><td>$1</td></tr>\n", name, value);
+  };
+
+  *output << "<table class='table table-striped'>\n";
+  *output << "<tr><th>Statistic</th><th>Value</th></tr>\n";
+  if (snapshot.last_resync_micros == 0) {
+    // Whatever the listener has reported since this tablet opened, over an unknown share of the
+    // file set: the coverage counters below do not account for files nobody has looked at.
+    row("Last full resync", "never -- covers only files written since this tablet opened");
+  } else {
+    row("Last full resync",
+        Format("$0 ago", CompactDuration(GetCurrentTimeMicros() - snapshot.last_resync_micros)));
+  }
+  row("Files measured", Format("$0 of $1", stats.covered_files,
+                               stats.covered_files + stats.uncovered_files));
+  row("Raw bytes measured", Format("$0 of $1", stats.covered_raw_bytes,
+                                   stats.covered_raw_bytes + stats.uncovered_raw_bytes));
+  if (stats.partial_files > 0) {
+    row("Files with partial chain statistics", std::to_string(stats.partial_files));
+  }
+  if (stats.unsubtracted_files > 0) {
+    row("Compacted-away files still counted", std::to_string(stats.unsubtracted_files));
+  }
+  row("Entries", Format("$0 ($1 in unmeasured files)", stats.total_entries,
+                        stats.uncovered_entries));
+  row("Tombstone entries", std::to_string(stats.tombstone_entries));
+  row("Packed row entries", std::to_string(stats.packed_row_entries));
+  row("Meta entries", std::to_string(stats.meta_entries));
+  row("Chain-tracked entries / bytes",
+      Format("$0 / $1", stats.chain_entries, stats.chain_bytes));
+  row("Subdoc keys / rows", Format("$0 / $1", stats.num_subdoc_keys, stats.num_rows));
+  if (stats.partial_files == 0) {
+    row("Shadowed / repackable / collapsible",
+        Format("$0 / $1 / $2", stats.shadowed_entries(), stats.repackable_entries(),
+               stats.collapsible_entries()));
+  }
+  row("Dead rows / their entries", Format("$0 / $1", stats.dead_rows, stats.dead_row_entries));
+  row("Reclaimable entries / bytes",
+      Format("$0 / $1", stats.reclaimable_entries, stats.reclaimable_bytes));
+  row("Reclaimable entries by age", AgeBandsToHtml(stats.droppable_age_entries));
+  row("Reclaimable bytes by age", AgeBandsToHtml(stats.droppable_age_bytes));
+  *output << "</table>\n";
+}
+
 void HandleTabletPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
@@ -243,6 +334,8 @@ void HandleTabletPage(
   *output << "<h2>Schema</h2>\n";
   const SchemaPtr schema = peer->tablet_metadata()->schema();
   server::HtmlOutputSchemaTable(*schema, output);
+
+  DumpSstStats(peer, output);
 
   *output << "<h2>Other Tablet Info Pages</h2>" << endl;
 
