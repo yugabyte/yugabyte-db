@@ -1818,7 +1818,7 @@ YbTypeDetails(Oid elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign)
 		case ACLITEMOID:
 			*elmlen = sizeof(AclItem);
 			*elmbyval = false;
-			*elmalign = 'i';
+			*elmalign = 'd';
 			break;
 		case TIMETZOID:
 			*elmlen = 12;		/* sizeof(TimeTzADT) gives 16 */
