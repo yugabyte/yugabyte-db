@@ -244,8 +244,10 @@ void ChainTracker::CloseRow() {
   if (row_entries_ == 0) {
     return;
   }
+  // Both histograms bucket by CHAIN LENGTH; they differ in weight (rows vs the row's bytes), so
+  // together they answer "how many rows / how many bytes sit in chains of length >= L".
   stats_.row_chain_hist.Add(row_entries_);
-  stats_.row_chain_bytes_hist.Add(row_bytes_);
+  stats_.row_chain_bytes_hist.Add(row_entries_, row_bytes_);
   stats_.max_row_chain = std::max(stats_.max_row_chain, row_entries_);
   // Dead row: the newest covering write is a tombstone and nothing newer was written -- a row
   // re-inserted after a delete has an uncovered record head and stays live.

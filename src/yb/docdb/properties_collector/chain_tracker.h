@@ -100,7 +100,8 @@ struct SstStats {
   // Wall-clock reference the age bands are measured against (taken at collector construction).
   int64_t anchor_micros = 0;
 
-  // Row-chain length distribution, by row count and by bytes.
+  // Row-chain LENGTH distributions: both bucket by the row's entry count; the first weights each
+  // row as 1, the second by the row's raw bytes ("how many bytes sit in chains of length >= L").
   ExponentialHistogram row_chain_hist;
   ExponentialHistogram row_chain_bytes_hist;
   // Stretch distribution: maximal runs of consecutive reclaimable entries in file order, ignoring

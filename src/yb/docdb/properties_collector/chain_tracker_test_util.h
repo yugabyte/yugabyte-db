@@ -136,6 +136,7 @@ inline void ExpectIdentities(const SstStats& s) {
   ASSERT_EQ(s.collapsible_entries(), s.shadowed_entries() + s.repackable_entries());
   ASSERT_EQ(s.total_entries, s.chain_entries + s.meta_entries);
   ASSERT_EQ(s.row_chain_hist.TotalWeight(), s.num_rows);
+  ASSERT_EQ(s.row_chain_bytes_hist.TotalWeight(), s.chain_bytes);
   ASSERT_EQ(s.stretch_entries_hist.TotalWeight(), s.reclaimable_entries);
   ASSERT_EQ(s.stretch_bytes_hist.TotalWeight(), s.reclaimable_bytes);
   uint64_t banded_entries = 0, banded_bytes = 0;
