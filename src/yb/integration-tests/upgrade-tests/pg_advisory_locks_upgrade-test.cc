@@ -32,6 +32,12 @@ class PgAdvisoryLocksUpgradeTest : public UpgradeTestBase,
   }
 
   Status TestBasicFunctionality() {
+    // The pg_advisory_locks tablets are created before every tserver has registered, so right after
+    // startup the load balancer adds replicas and moves leaders. A leader move while a backend is
+    // blocked on an advisory lock strands the waiter in the old leader's wait queue until the
+    // acquire deadline, so let the cluster settle before taking any locks.
+    RETURN_NOT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client_, 5min * kTimeMultiplier));
+
     auto conn1 = VERIFY_RESULT(cluster_->ConnectToDB());
     RETURN_NOT_OK(conn1.Fetch("select pg_advisory_lock(1)"));
     RETURN_NOT_OK(conn1.Fetch("select pg_advisory_lock(1, 1)"));
@@ -61,13 +67,18 @@ class PgAdvisoryLocksUpgradeTest : public UpgradeTestBase,
       RETURN_NOT_OK(conn2.Fetch("select pg_advisory_lock(1)"));
       return Status::OK();
     });
+    // pg_locks fans out to every tserver, so it transiently fails while a transaction status tablet
+    // replica is still bootstrapping. Poll it on a dedicated connection, so that such an error does
+    // not abort conn1's transaction, and retry instead of failing the poll.
+    auto conn_locks = VERIFY_RESULT(cluster_->ConnectToDB());
     auto assert_num_waiting_locks = [&](int expected_waiting_num_locks) -> Status {
       return WaitFor([&]() -> Result<bool> {
-        auto num_waiting_locks = VERIFY_RESULT(
-            conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE NOT granted"));
-        return num_waiting_locks == expected_waiting_num_locks;
+        auto num_waiting_locks =
+            conn_locks.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE NOT granted");
+        WARN_NOT_OK(ResultToStatus(num_waiting_locks), "Failed to fetch waiting locks");
+        return num_waiting_locks.ok() && *num_waiting_locks == expected_waiting_num_locks;
       },
-      5s * kTimeMultiplier,
+      15s * kTimeMultiplier,
       Format("Timed out waiting for num waiting locks == $0", expected_waiting_num_locks));
     };
     RETURN_NOT_OK(assert_num_waiting_locks(1));

@@ -1544,9 +1544,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
       std::visit([&](auto&& old_txns_resp) {
         if (old_txns_resp->has_error()) {
-          // Ignore leadership and NOT_FOUND errors as we broadcast the request to all tservers.
-          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER ||
-              old_txns_resp->error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
+          // The request is broadcast to all tservers, so ignore errors meaning only that this node
+          // cannot serve the status tablet. The status_tablet_ids check below still fails the query
+          // if no node answered for some status tablet.
+          const auto error_code = old_txns_resp->error().code();
+          if (error_code == TabletServerErrorPB::NOT_THE_LEADER ||
+              error_code == TabletServerErrorPB::TABLET_NOT_FOUND ||
+              error_code == TabletServerErrorPB::TABLET_NOT_RUNNING) {
             return;
           }
           const auto& s = StatusFromPB(old_txns_resp->error().status());
