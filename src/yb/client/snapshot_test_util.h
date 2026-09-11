@@ -135,6 +135,9 @@ class SnapshotTestUtil {
 
   Result<Schedules> ListSchedules(const SnapshotScheduleId& id = SnapshotScheduleId::Nil());
 
+  // Marks the schedule as deleted. Retirement and snapshot collection happen asynchronously.
+  Status DeleteSchedule(const SnapshotScheduleId& id);
+
   Result<TxnSnapshotId> PickSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime hybrid_time);
 

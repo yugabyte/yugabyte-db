@@ -442,6 +442,19 @@ Result<Schedules> SnapshotTestUtil::ListSchedules(const SnapshotScheduleId& id) 
   return std::move(resp.schedules());
 }
 
+Status SnapshotTestUtil::DeleteSchedule(const SnapshotScheduleId& id) {
+  master::DeleteSnapshotScheduleRequestPB req;
+  master::DeleteSnapshotScheduleResponsePB resp;
+
+  req.set_snapshot_schedule_id(id.data(), id.size());
+
+  rpc::RpcController controller;
+  controller.set_timeout(60s);
+  RETURN_NOT_OK(
+      VERIFY_RESULT(MakeBackupServiceProxy()).DeleteSnapshotSchedule(req, &resp, &controller));
+  return ResponseStatus(resp);
+}
+
 Result<TxnSnapshotId> SnapshotTestUtil::PickSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime hybrid_time) {
   auto schedules = VERIFY_RESULT(ListSchedules(schedule_id));
