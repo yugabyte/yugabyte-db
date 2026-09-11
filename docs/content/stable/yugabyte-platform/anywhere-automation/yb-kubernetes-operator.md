@@ -39,8 +39,8 @@ The following additional CRDs support day 2 operations.
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
 | [PitrConfig](#configure-pitr) | Configure point-in-time recovery (PITR) for a universe. |
-| [PitrRestore](#restore-from-pitr) | {{<tags/feature/ea idea="2460">}}Restore a universe to a point in time using a PITR configuration. |
-| [DrConfig](#configure-xcluster-dr) | {{<tags/feature/ea idea="2460">}}Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
+| [PitrRestore](#restore-from-pitr) | Restore a universe to a point in time using a PITR configuration. |
+| [DrConfig](#configure-xcluster-dr) | Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
 
 For details of each CRD, run `kubectl explain` on the CR.
@@ -336,7 +336,7 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 
 ### Operator High Availability
 
-{{<tags/feature/ea idea="2460">}}If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
+If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
 
 For details, see [Operator High Availability](../../administer-yugabyte-platform/operator-high-availability/).
 
@@ -535,7 +535,7 @@ spec:
 
 #### Create a universe with read replicas
 
-{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
+Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
 
 ```sh
 kubectl apply universe-read-replica.yaml -n yb-platform
@@ -980,7 +980,7 @@ spec:
 
 #### Restore from PITR
 
-{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a universe to a state back in time when PITR is enabled for a database.
+Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a universe to a state back in time when PITR is enabled for a database.
 
 1. Create a universe:
 
@@ -1063,7 +1063,7 @@ spec:
 
 ### Configure xCluster DR
 
-{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, use the DrConfig CRD to create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. Both declarative operations (create, update the database list, delete) and imperative operations (switchover, failover, pause/resume, restart, replace replica) are supported.
+Starting from YugabyteDB Anywhere v2026.1, use the DrConfig CRD to create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. Both declarative operations (create, update the database list, delete) and imperative operations (switchover, failover, pause/resume, restart, replace replica) are supported.
 
 Before you create a DrConfig CR, ensure that the source and target universes and the storage configuration referenced in the CR exist. The following sections describe the DrConfig CR changes for each supported operation.
 
