@@ -248,6 +248,7 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
                   processTypes,
                   false /* remove master from quorum */,
                   false /* deconfigure */,
+                  false /* ignoreStopError */,
                   SubTaskGroupType.StoppingNodeProcesses);
               // Intentionally short-lived: it flips to Reprovisioning right below. Persisting
               // Stopped here is the point at which the node leaves Live, so a retry that fails

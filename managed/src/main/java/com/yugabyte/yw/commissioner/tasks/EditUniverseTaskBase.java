@@ -519,6 +519,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           EnumSet.of(ServerType.TSERVER),
           false /* remove master from quorum */,
           false /* deconfigure */,
+          false /* ignoreStopError */,
           SubTaskGroupType.UpdatingGFlags);
 
       AnsibleConfigureServers.Params params =
@@ -541,12 +542,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           SubTaskGroupType.UpdatingGFlags,
           false,
           true,
-          (serverType) ->
-              serverType == ServerType.MASTER
-                  ? confGetter.getConfForScope(
-                      getUniverse(), UniverseConfKeys.sleepAfterMasterRestartMs)
-                  : confGetter.getConfForScope(
-                      getUniverse(), UniverseConfKeys.sleepAfterTServerRestartMs));
+          true);
     }
   }
 

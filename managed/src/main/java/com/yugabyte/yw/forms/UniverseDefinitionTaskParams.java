@@ -2416,8 +2416,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public Cluster getClusterByNodeName(String nodeName) {
-    NodeDetails node =
-        nodeDetailsSet.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
+    NodeDetails node = Util.findByName(nodeDetailsSet, nodeName);
     if (node == null) {
       return null;
     }
