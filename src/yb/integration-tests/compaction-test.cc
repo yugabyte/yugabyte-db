@@ -80,6 +80,8 @@
 
 using namespace std::literals; // NOLINT
 
+METRIC_DECLARE_gauge_uint64(docdb_sst_total_entries);
+
 DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
@@ -570,6 +572,13 @@ class SstStatsAggregateTest : public CompactionTest {
     return tablets;
   }
 
+  uint64_t TotalEntriesGauge(const tablet::TabletPtr& tablet) {
+    const auto gauge = tablet->GetTabletMetricsEntity()->FindOrNull<FunctionGauge<uint64_t>>(
+        METRIC_docdb_sst_total_entries);
+    EXPECT_NE(gauge, nullptr);
+    return gauge ? gauge->value() : 0;
+  }
+
   // Asserts that what the listener accumulated matches what a read of the whole live file set
   // computes, and returns the aggregate.
   docdb::SstStatsAggregate CheckAgainstLiveFiles(const tablet::TabletPtr& tablet) {
@@ -622,6 +631,8 @@ TEST_F(SstStatsAggregateTest, ReplacesAggregatorAfterTruncate) {
   ASSERT_NE(old_stats, nullptr);
   const auto old_aggregate = old_stats->Get().aggregate;
   ASSERT_GT(old_aggregate.total_entries, 0);
+  ASSERT_OK(tablets_before.front()->ResyncSstStats());
+  ASSERT_EQ(TotalEntriesGauge(tablets_before.front()), old_aggregate.total_entries);
 
   const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
   ASSERT_OK(workload_->client().TruncateTable(table_info->id(), /* wait = */ true));
@@ -634,12 +645,14 @@ TEST_F(SstStatsAggregateTest, ReplacesAggregatorAfterTruncate) {
   ASSERT_OK(tablets_after.front()->ResyncSstStats());
   ASSERT_EQ(new_stats->Get().aggregate, docdb::SstStatsAggregate());
   ASSERT_GT(new_stats->Get().last_resync_micros, 0);
+  ASSERT_EQ(TotalEntriesGauge(tablets_after.front()), 0);
 
   rocksdb_listener_->Reset();
   ASSERT_OK(WriteAtLeastFilesPerDb(2));
   const auto new_aggregate = new_stats->Get().aggregate;
   ASSERT_GT(new_aggregate.total_entries, 0);
   ASSERT_EQ(new_aggregate.covered_files, tablets_after.front()->GetCurrentVersionNumSSTFiles());
+  ASSERT_EQ(TotalEntriesGauge(tablets_after.front()), new_aggregate.total_entries);
   // Holding the old shared_ptr is safe, but its aggregate belongs to the destroyed RocksDB.
   ASSERT_EQ(old_stats->Get().aggregate, old_aggregate);
 }

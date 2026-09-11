@@ -71,6 +71,7 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
+#include "yb/docdb/properties_collector/sst_stats_metrics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -1283,8 +1284,15 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
     // tablet (truncate, snapshot restore) replaces the previous aggregator, which stays alive for
     // as long as any reader still holds it.
     auto sst_stats = std::make_shared<docdb::SstStatsAggregator>();
-    std::lock_guard lock(sst_stats_mutex_);
-    sst_stats_ = std::move(sst_stats);
+    sst_stats_metrics_.reset();
+    if (tablet_metrics_entity_) {
+      sst_stats_metrics_ =
+          std::make_unique<docdb::SstStatsMetrics>(tablet_metrics_entity_, sst_stats);
+    }
+    {
+      std::lock_guard lock(sst_stats_mutex_);
+      sst_stats_ = std::move(sst_stats);
+    }
   }
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
@@ -1940,6 +1948,8 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
       db_uniq_ptr->reset();
     }
   }
+  // Freeze the gauges before making the old regular DB's aggregate unavailable.
+  sst_stats_metrics_.reset();
   {
     std::lock_guard lock(sst_stats_mutex_);
     // The file numbers tracked by this instance belong to the regular DB just destroyed. Existing
