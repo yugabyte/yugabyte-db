@@ -554,33 +554,51 @@ std::unordered_set<TabletServerId> GetReplicasWithOutstandingCompaction(
   return tservers_with_outstanding_compaction;
 }
 
-// Check if all live replicas are in RaftGroupStatePB::RUNNING state
-// (read replicas are ignored) and tablet is not under/over replicated.
-// Tablet is over-replicated if number of live replicas > rf,
-// otherwise, if live replicas < rf, tablet is under replicated.
-// where rf is the replication factor of a table, can get it from
-// CatalogManager::GetTableReplicationFactor.
+// Check that no replica of the tablet is being bootstrapped, that every replica other than read
+// replicas (OBSERVER) is a RUNNING voter, and that the number of voters equals rf, the table's
+// replication factor.
+//
+// A replica in NOT_STARTED or BOOTSTRAPPING state blocks the split whatever its member type: that
+// is how the master sees a remote bootstrap in progress, for a new peer (PRE_VOTER or PRE_OBSERVER)
+// as well as for an existing peer being re-bootstrapped in place. The check deliberately does not
+// look for PRE_VOTER specifically: while a peer is being remote bootstrapped, the destination
+// reports it without a consensus state, and the master then records it with member type
+// UNKNOWN_MEMBER_TYPE (see MasterHeartbeatServiceImpl::CreateNewReplicaForLocalMemory), so a
+// PRE_VOTER test alone lets a tablet with rf running voters plus one bootstrapping replica
+// through. Splitting such a tablet copies the bootstrapping peer into both children's Raft
+// configs, so each child then needs its own remote bootstrap too.
+//
+// A voter whose state is not RUNNING for any other reason (e.g. UNKNOWN right after a config change
+// until the peer reports again, or a peer that is shutting down) blocks the split as well; those
+// states are transient or already unhealthy.
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf) {
   size_t live_replicas = 0;
   for (const auto& [ts_uuid, replica] : replicas) {
-    if (replica.member_type == consensus::PRE_VOTER) {
+    // A read replica (OBSERVER) is ignored unless it is being bootstrapped right now; every other
+    // replica has to be RUNNING.
+    const bool is_read_replica = replica.member_type == consensus::OBSERVER;
+    if (replica.IsStarting() ||
+        (!is_read_replica && replica.state != tablet::RaftGroupStatePB::RUNNING)) {
       return STATUS_FORMAT(NotSupported,
-                           "One tablet peer is doing RBS as PRE_VOTER, "
-                           "tablet_id: $1, peer_uuid: $2, current RAFT state: $3",
-                            tablet_id, ts_uuid,
-                            RaftGroupStatePB_Name(replica.state));
+                           "At least one tablet peer is not running or is being bootstrapped, "
+                           "tablet_id: $0, peer_uuid: $1, member type: $2, current RAFT state: $3",
+                           tablet_id, ts_uuid,
+                           consensus::PeerMemberType_Name(replica.member_type),
+                           RaftGroupStatePB_Name(replica.state));
     }
-    if (replica.member_type == consensus::VOTER) {
-      live_replicas++;
-      if (replica.state != tablet::RaftGroupStatePB::RUNNING) {
-        return STATUS_FORMAT(NotSupported,
-                             "At least one tablet peer not running, "
-                             "tablet_id: $0, peer_uuid: $1, current RAFT state: $2",
-                             tablet_id, ts_uuid,
-                             RaftGroupStatePB_Name(replica.state));
-      }
+    if (is_read_replica) {
+      continue;
     }
+    if (replica.member_type != consensus::VOTER) {
+      return STATUS_FORMAT(NotSupported,
+                           "One tablet peer is not a voter (being added or remote bootstrapped), "
+                           "tablet_id: $0, peer_uuid: $1, member type: $2, current RAFT state: $3",
+                           tablet_id, ts_uuid,
+                           consensus::PeerMemberType_Name(replica.member_type),
+                           RaftGroupStatePB_Name(replica.state));
+    }
+    live_replicas++;
   }
   if (live_replicas != rf) {
     return STATUS_FORMAT(NotSupported,
@@ -902,15 +920,6 @@ void TabletSplitManager::DoSplitting(
 
   for (const auto& table : valid_tables) {
     VLOG(3) << Format("Processing table $0 for split", table->id());
-    auto replication_info = catalog_manager_.GetTableReplicationInfoNoDefault(table);
-    if (!replication_info.ok()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Skipping tablet splitting for table "
-                                       << table->id() << ": "
-                                       << "as fetching replication info failed with error "
-                                       << StatusToString(replication_info.status());
-      continue;
-    }
-    auto replication_factor = CatalogManagerUtil::GetReplicationFactor(*replication_info);
     auto tablets_result = table->GetTablets();
     if (!tablets_result) continue;
     for (const auto& tablet : *tablets_result) {
@@ -970,8 +979,6 @@ void TabletSplitManager::DoSplitting(
         RETURN_NOT_OK(catalog_manager_.ShouldSplitValidCandidate(*tablet, drive_info_opt.get()));
 
         const auto replicas = replica_cache.GetOrAdd(*tablet);
-        RETURN_NOT_OK(
-            CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor));
         const auto tservers_with_outstanding_compaction =
             GetReplicasWithOutstandingCompaction(*replicas);
         if (!tservers_with_outstanding_compaction.empty()) {

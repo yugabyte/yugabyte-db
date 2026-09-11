@@ -3109,6 +3109,14 @@ Status CatalogManager::ShouldSplitValidCandidate(
       tablet_info.table(), GetTablespaceManager(),
       ClusterConfig()->LockForRead()->pb.replication_info()));
 
+  // The tablet must have exactly rf running voters and no replica being remote bootstrapped, so
+  // that the split does not copy a bootstrapping peer into the children's Raft configs. Since this
+  // function runs both when a candidate is picked and again in DoSplitTablet right before the
+  // children are registered, a replica add that starts in between is caught as well.
+  RETURN_NOT_OK(CheckLiveReplicasForSplit(
+      tablet_info.id(), *tablet_info.GetReplicaLocations(),
+      CatalogManagerUtil::GetReplicationFactor(table_replication_info)));
+
   // If there is custom placement information present then
   // only count the tservers which the table has access to
   // according to the placement policy
