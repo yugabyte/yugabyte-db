@@ -107,6 +107,9 @@ YbHistPair
 YbHistParseState
 YbIndexBuildCallback
 YbIndexCondTypes
+YbIndexCorruptionErrors
+YbIndexErrorInfo
+YbIndexInconsistencyLogStore
 YbIndexPathInfo
 YbIndexProcessorState
 YbInsertOnConflictBatchState
