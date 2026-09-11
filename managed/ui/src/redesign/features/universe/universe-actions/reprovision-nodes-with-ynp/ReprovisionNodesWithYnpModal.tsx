@@ -22,7 +22,7 @@ import InfoIcon from '@app/redesign/assets/info-blue.svg';
 import InfoErrorIcon from '@app/redesign/assets/info-red.svg';
 
 const REPROVISION_NODES_DOCUMENTATION_URL =
-  'https://docs.yugabyte.com/stable/yugabyte-platform/prepare/server-nodes-software/';
+  'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/reprovision-nodes/';
 
 interface ReprovisionNodesWithYnpModalProps {
   universeUuid: string;
