@@ -141,9 +141,6 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
     result += Format(
         " yb_internal_conn_kind=$0", PqEscapeStringConn(settings.yb_internal_conn_kind));
   }
-  if (!settings.traceparent.empty()) {
-    result += Format(" yb_dist_traceparent=$0", PqEscapeStringConn(settings.traceparent));
-  }
   return result;
 }
 
@@ -936,6 +933,16 @@ PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
 }
 
 Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
+  auto conn_str = conn_str_;
+  auto conn_str_for_log = conn_str_for_log_;
+  // Capture the traceparent at connect time, not at builder-construction time: a stored
+  // builder can outlive the trace that was active when it was built.
+  const auto traceparent = dist_trace::GetActiveTraceparent();
+  if (!traceparent.empty()) {
+    const auto param = Format(" yb_dist_traceparent=$0", PqEscapeStringConn(traceparent));
+    conn_str += param;
+    conn_str_for_log += param;
+  }
   // If connect_timeout is specified, also set it as the total deadline among connection attempts
   // because that is likely what the caller intended.  There is logic in connectDBComplete to make
   // connect_timeout of 1 effectively mean 2, but don't bother with that conversion for this
@@ -943,9 +950,9 @@ Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
   if (connect_timeout_) {
     const auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(connect_timeout_);
     return PGConn::Connect(
-        conn_str_, deadline, simple_query_protocol, conn_str_for_log_, should_stop_);
+        conn_str, deadline, simple_query_protocol, conn_str_for_log, should_stop_);
   }
-  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_, should_stop_);
+  return PGConn::Connect(conn_str, simple_query_protocol, conn_str_for_log, should_stop_);
 }
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
@@ -1034,8 +1041,7 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .password = UInt64ToString(postgres_auth_key),
        .connect_timeout = connect_timeout,
        .yb_internal_conn_kind = std::string(yb_internal_conn_kind),
-       .should_stop = std::move(should_stop),
-       .traceparent = dist_trace::GetActiveTraceparent()});
+       .should_stop = std::move(should_stop)});
 }
 
 } // namespace yb::pgwrapper
