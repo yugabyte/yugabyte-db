@@ -819,9 +819,10 @@ Status TabletServer::RegisterServices() {
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
       client_future(), []() { return FLAGS_update_min_cdc_indices_interval_secs; });
 
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_ts_backup_svc_queue_length,
-      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
+  auto backup_service =
+      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity());
+  backup_service_ = backup_service;
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_backup_svc_queue_length, std::move(backup_service)));
 
   RETURN_NOT_OK(RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
 
@@ -1029,6 +1030,11 @@ void TabletServer::Shutdown() {
     remote_bootstrap_service->StartShutdown();
   }
 
+  // Release pending snapshot history guards before tablet storage teardown. Outstanding flush
+  // callbacks retain only their result/admission state, not the backup service or snapshot RPC.
+  if (auto backup_service = backup_service_.lock()) {
+    backup_service->Shutdown();
+  }
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
 

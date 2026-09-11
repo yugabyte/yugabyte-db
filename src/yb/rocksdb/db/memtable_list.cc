@@ -41,7 +41,6 @@
 #include "yb/util/result.h"
 
 using yb::Result;
-using std::ostringstream;
 
 namespace rocksdb {
 
@@ -308,11 +307,10 @@ bool MemTableList::IsFlushPending() const {
 }
 
 // Returns the memtables that need to be flushed.
-void MemTableList::PickMemtablesToFlush(
+Status MemTableList::PickMemtablesToFlush(
     autovector<MemTable*>* ret, const MemTableFilter& filter,
     const MutableCFOptions* mutable_cf_options) {
   const auto& memlist = current_->memlist_;
-  bool all_memtables_logged = false;
   bool write_blocked =
       mutable_cf_options &&
       yb::make_signed(current_->memlist_.size()) >= mutable_cf_options->max_write_buffer_number;
@@ -329,20 +327,15 @@ void MemTableList::PickMemtablesToFlush(
           break;
         }
       } else {
-        // This failure usually means that there is an empty immutable memtable. We need to output
-        // additional diagnostics in that case.
-        ostringstream ss;
-        if (!all_memtables_logged) {
-          ss << ". All memtables:\n";
-          for (const MemTable* memtable_for_logging : memlist) {
-            ss << "  " << memtable_for_logging->ToString() << "\n";
-          }
-          all_memtables_logged = true;
+        // A dependency failure must not bypass the filter's durability ordering. Undo any earlier
+        // selections; this job will fail without writing or installing a manifest entry.
+        LOG(ERROR) << "Failed when checking if memtable can be flushed: "
+                   << filter_result.status() << ". Memtable: " << m->ToString();
+        if (!ret->empty()) {
+          RollbackMemtableFlush(*ret, 0);
+          ret->clear();
         }
-        LOG(DFATAL) << "Failed when checking if memtable can be flushed (will still flush it): "
-                    << filter_result.status() << ". Memtable: " << m->ToString()
-                    << ss.str();
-        // Still flush the memtable so that this error does not keep occurring.
+        return filter_result.status();
       }
     }
     assert(!m->flush_completed_);
@@ -355,6 +348,7 @@ void MemTableList::PickMemtablesToFlush(
   }
 
   flush_requested_ = false;  // start-flush request is complete
+  return Status::OK();
 }
 
 void MemTableList::RollbackMemtableFlush(const autovector<MemTable*>& mems,

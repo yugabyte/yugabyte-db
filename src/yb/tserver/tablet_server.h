@@ -122,6 +122,7 @@ namespace tserver {
 
 class GetYSQLLeaseInfoResponsePB;
 class PgClientServiceImpl;
+class TabletServiceBackupImpl;
 class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
@@ -663,6 +664,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // An instance to remote bootstrap service. This pointer is no longer valid after
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
+  std::weak_ptr<TabletServiceBackupImpl> backup_service_;
 
   struct PgClientServiceHolder;
 

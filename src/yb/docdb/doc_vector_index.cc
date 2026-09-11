@@ -435,6 +435,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
       return lsm_.GetFlushAbility();
   }
 
+  Status GetFlushStatus() const override {
+    return lsm_.GetFlushStatus();
+  }
+
   Status CreateCheckpoint(const std::string& out) override {
     return lsm_.CreateCheckpoint(out);
   }

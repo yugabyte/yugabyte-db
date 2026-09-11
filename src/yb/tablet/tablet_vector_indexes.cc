@@ -916,11 +916,15 @@ Status VectorIndexList::WaitForFlush() {
     return Status::OK();
   }
 
+  Status result;
   for (const auto& index : *list_) {
-    RETURN_NOT_OK(index->WaitForFlush());
+    auto status = index->WaitForFlush();
+    if (result.ok()) {
+      result = status;
+    }
   }
 
-  return Status::OK();
+  return result;
 }
 
 void VectorIndexList::Flush() {
