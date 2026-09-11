@@ -281,7 +281,7 @@ SET hnsw.ef_search = 100;
 - Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Default values on vector columns are not supported when adding a column with `ALTER TABLE ... ADD COLUMN ... DEFAULT`. {{<issue 32936>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
-- [Time travel queries](../../../manage/backup-restore/time-travel-query/) are not currently supported. {{<issue 20829>}}
+- [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported. {{<issue 20829>}}
 
 ## Learn more
 
