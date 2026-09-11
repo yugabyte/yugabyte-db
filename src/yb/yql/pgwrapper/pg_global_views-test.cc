@@ -1021,6 +1021,56 @@ TEST_F(PgBuiltinGlobalViewsTest, TestSimpleGvs) {
   ASSERT_OK(VerifyTserverUuidsInView("pg_stat_user_indexes"));
 }
 
+// last_autoanalyze is local to the postgres that ran ANALYZE. Confirm
+// gv$pg_stat_user_tables surfaces another tserver's timestamp so operators
+// do not have to find the node that ran it.
+TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatUserTablesLastAutoanalyze) {
+  ASSERT_GE(GetNumTabletServers(), 2);
+  constexpr auto kTable = "gv_pgstat_analyze_tbl";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTable));
+
+  auto conn_ts1 = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(1)));
+  const auto ts1_uuid = ASSERT_RESULT(conn_ts1.FetchRow<Uuid>(
+      "SELECT yb_get_local_tserver_uuid()"));
+  ASSERT_OK(conn_ts1.Execute("SET yb_use_internal_auto_analyze_service_conn = true"));
+  ASSERT_OK(conn_ts1.ExecuteFormat("ANALYZE $0", kTable));
+
+  auto [local_has_last_analyze, local_has_last_autoanalyze, local_analyze_count,
+        local_autoanalyze_count] =
+      ASSERT_RESULT((conn_->FetchRow<bool, bool, PGUint64, PGUint64>(Format(
+          "SELECT last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
+          "analyze_count, autoanalyze_count "
+          "FROM pg_stat_user_tables WHERE relname = '$0'",
+          kTable))));
+  ASSERT_FALSE(local_has_last_analyze);
+  ASSERT_FALSE(local_has_last_autoanalyze);
+  ASSERT_EQ(0, local_analyze_count);
+  ASSERT_EQ(0, local_autoanalyze_count);
+
+  auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid, bool, bool, PGUint64, PGUint64>(Format(
+      "SELECT server_uuid, last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
+      "analyze_count, autoanalyze_count "
+      "FROM gv$$pg_stat_user_tables WHERE relname = '$0'",
+      kTable))));
+  bool found_ts1 = false;
+  for (const auto& [server_uuid, has_last_analyze, has_last_autoanalyze, analyze_count,
+                    autoanalyze_count] : rows) {
+    if (server_uuid == ts1_uuid) {
+      found_ts1 = true;
+      ASSERT_FALSE(has_last_analyze);
+      ASSERT_TRUE(has_last_autoanalyze);
+      ASSERT_EQ(0, analyze_count);
+      ASSERT_GE(autoanalyze_count, 1);
+    } else {
+      ASSERT_FALSE(has_last_analyze);
+      ASSERT_FALSE(has_last_autoanalyze);
+      ASSERT_EQ(0, analyze_count);
+      ASSERT_EQ(0, autoanalyze_count);
+    }
+  }
+  ASSERT_TRUE(found_ts1);
+}
+
 TEST_F(PgBuiltinGlobalViewsTest, TestGvYbTerminatedQueries) {
   constexpr auto kSleepDuration = 5 * kTimeMultiplier;
   for (int i = 0; i < GetNumTabletServers(); ++i) {
