@@ -19,6 +19,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
@@ -2979,6 +2980,47 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
   VerifyCatCacheRefreshMetricsHelper(
       0 /* num_full_refreshes */, 1 /* num_delta_refreshes */,
       std::make_pair(false, true) /* at_least */);
+}
+
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/31805.
+// The periodic lagging-catalog-versions check opens a libpq connection to the
+// local postmaster. When the postmaster is unreachable (stopped, or its unix
+// socket directory removed), the connect used to retry until the general 60s
+// client deadline, pinning a messenger io_thread for the full 60s per
+// invocation, and the task re-scheduled itself unconditionally even while the
+// tablet server was shutting down. Verify that the check gives up quickly and
+// that tablet server shutdown is not delayed by the check.
+TEST_F(PgCatalogVersionTest, CheckLaggingCatalogVersionsPostmasterDown) {
+  RestartClusterWithInvalMessageEnabled(
+      { "--check_lagging_catalog_versions_interval_secs=1" });
+  auto* ts = cluster_->tablet_server(0);
+  // Ensure the postmaster on ts is up and accepting connections.
+  pg_ts = ts;
+  ASSERT_RESULT(Connect());
+
+  // Arm the log watcher before making the postmaster unreachable: LogWaiter is
+  // edge-triggered and only sees log lines emitted after it is armed.
+  LogWaiter log_waiter(ts, "Could not get the set of lagging catalog versions");
+
+  // Remove the postmaster's unix socket directory. Connection attempts fail
+  // immediately with "No such file or directory", exactly like they do after
+  // the postmaster has shut down.
+  const auto socket_dir =
+      PgDeriveSocketDir(HostPort(ts->bind_host(), ts->pgsql_rpc_port()));
+  LOG(INFO) << "Removing postmaster socket directory " << socket_dir;
+  ASSERT_OK(Env::Default()->DeleteRecursively(socket_dir));
+
+  // The check runs every second and must fail fast. Before the fix the first
+  // failure was logged only after the full 60s connect deadline expired.
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(20 * kTimeMultiplier)));
+
+  // Graceful shutdown must not be blocked by an in-flight or re-scheduled
+  // check either.
+  const auto shutdown_start = MonoTime::Now();
+  ts->Shutdown(SafeShutdown::kTrue);
+  const auto shutdown_duration = MonoTime::Now() - shutdown_start;
+  LOG(INFO) << "Tablet server shutdown took " << shutdown_duration;
+  ASSERT_LT(shutdown_duration, MonoDelta::FromSeconds(30 * kTimeMultiplier));
 }
 
 // https://github.com/yugabyte/yugabyte-db/issues/27822
