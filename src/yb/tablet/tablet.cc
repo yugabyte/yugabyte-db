@@ -1065,6 +1065,17 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Flush ability: " << AsString(state->flush_ability);
   }
 
+  // A failed vector save cannot satisfy an intents durability dependency. Check even when flush
+  // ability was cached as kAlreadyFlushing; no further save task may remain to make progress.
+  if (state->vector_indexes) {
+    for (size_t idx = 0; idx != state->vector_indexes->size(); ++idx) {
+      if (state->flush_ability[idx + 1] != rocksdb::FlushAbility::kNoNewData &&
+          !state->Flushed(idx + 1, memtable_index)) {
+        RETURN_NOT_OK((*state->vector_indexes)[idx]->GetFlushStatus());
+      }
+    }
+  }
+
   // If regular db does not have anything to flush, it means that we have just added intents,
   // without apply, so it is OK to flush the intents RocksDB.
   if (!state->HasNewData(memtable_index)) {
@@ -1091,6 +1102,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     }
   }
 
+  TEST_SYNC_POINT_CALLBACK("Tablet::IntentsDbFlushFilter:Blocked", this);
   return false;
 }
 
@@ -1438,10 +1450,7 @@ void Tablet::RegularDbFilesChanged() {
 
 void Tablet::SetCleanupPool(
     ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
-  // intent_cleanup_pool is the unbounded raft pool; it doubles as the snapshot preflush pool
-  // because the bounded snapshot cleanup pool can be fully occupied by recursive deletions,
-  // which would starve the preflush until after the snapshot operation has already applied.
-  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler, intent_cleanup_pool);
+  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
 
   if (!transaction_participant_) {
     return;

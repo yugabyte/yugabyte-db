@@ -33,6 +33,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -45,6 +46,7 @@
 using namespace std::literals;
 using namespace yb::size_literals;
 
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 DECLARE_bool(vector_index_enable_compactions);
@@ -280,6 +282,9 @@ class VectorLSMTest
   vector_index::StoreVectorPayload store_vector_payload() const {
     return StorePayload(GetParam());
   }
+
+  void TestFlushRetirement(bool fail);
+  void TestOutOfOrderFlush(bool fail);
 
   void TestBootstrap(bool flush);
 
@@ -691,6 +696,183 @@ MergeFilterPtr VectorLSMTest::GetMergeFilter() {
 void VectorLSMTest::SetMergeFilter(MergeFilterPtr&& filter) {
   std::lock_guard lock(merge_filter_mutex_);
   merge_filter_ = std::move(filter);
+}
+
+void VectorLSMTest::TestFlushRetirement(bool fail) {
+  Status status;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  CountDownLatch retiring(1), release(1), completed(1);
+  auto* sync = SyncPoint::GetInstance();
+  if (fail) {
+    sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [](void* arg) {
+      *static_cast<Status*>(arg) = STATUS(IOError, "injected vector save failure");
+    });
+  }
+  sync->SetCallBack("VectorLSM::SaveChunk:BeforeRetirement", [&](void* arg) {
+    if (arg == &lsm) {
+      retiring.CountDown();
+      release.Wait();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(retiring.WaitFor(5s));
+  threads.AddThreadFunctor([&] {
+    status = lsm.WaitForFlush();
+    completed.CountDown();
+  });
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s));
+  threads.JoinAll();
+  if (fail) {
+    ASSERT_TRUE(status.IsIOError()) << status;
+    ASSERT_TRUE(lsm.Flush(false).IsIOError());
+    ASSERT_TRUE(InsertRandom(lsm, 4, 1).IsIOError());
+    ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  } else {
+    ASSERT_OK(status);
+  }
+}
+
+TEST_P(VectorLSMTest, FlushWaitsForRetirement) {
+  TestFlushRetirement(false);
+}
+
+TEST_P(VectorLSMTest, FlushErrorWaitsForRetirement) {
+  TestFlushRetirement(true);
+}
+
+void VectorLSMTest::TestOutOfOrderFlush(bool fail) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch first_saving(1), release_first(1), completed(1);
+  std::atomic<size_t> saves{0};
+  Status status;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [&](void* arg) {
+    if (saves.fetch_add(1) == 0) {
+      first_saving.CountDown();
+      release_first.Wait();
+      if (fail) {
+        *static_cast<Status*>(arg) = STATUS(IOError, "injected earlier chunk failure");
+      }
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release_first.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(first_saving.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(lsm.GetFlushStatus());
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  threads.AddThreadFunctor([&] {
+    status = lsm.Flush(/* wait = */ true);
+    completed.CountDown();
+  });
+  // B has saved and retired, but cannot enter the manifest ahead of A. No B task remains to
+  // discover A's eventual failure and complete B's synchronous promise.
+  ASSERT_OK(WaitFor([&] {
+    return lsm.NumSavedImmutableChunks() == 1 && lsm.TEST_PendingSaveTasks() == 1;
+  }, 5s * kTimeMultiplier, "later save task retired"));
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release_first.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
+  if (fail) {
+    ASSERT_TRUE(status.IsIOError()) << status;
+    ASSERT_TRUE(lsm.GetFlushStatus().IsIOError());
+    ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  } else {
+    ASSERT_OK(status);
+    ASSERT_OK(lsm.GetFlushStatus());
+    ASSERT_OK(lsm.WaitForFlush());
+  }
+}
+
+TEST_P(VectorLSMTest, OutOfOrderSynchronousFlush) {
+  TestOutOfOrderFlush(false);
+}
+
+TEST_P(VectorLSMTest, EarlierFailureCompletesSynchronousFlush) {
+  TestOutOfOrderFlush(true);
+}
+
+TEST_P(VectorLSMTest, ManifestFailureReleasesCompactionWaiter) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  for (size_t i = 0; i != 2; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, 4, 8));
+  }
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  CountDownLatch writing(1), release(1), waiting(1), completed(1), shutdown_done(1);
+  Status status;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::AddChunkToManifest:Status", [&](void* arg) {
+    writing.CountDown();
+    release.Wait();
+    *static_cast<Status*>(arg) = STATUS(IOError, "injected manifest failure");
+  });
+  sync->SetCallBack("VectorLSM::AcquireManifest:Waiting", [&](void* arg) {
+    if (arg == &lsm) {
+      waiting.CountDown();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(writing.WaitFor(5s * kTimeMultiplier));
+  threads.AddThreadFunctor([&] {
+    status = lsm.Compact(/* wait = */ true);
+    completed.CountDown();
+  });
+  ASSERT_TRUE(waiting.WaitFor(5s * kTimeMultiplier));
+  ASSERT_FALSE(completed.WaitFor(20ms));
+  release.CountDown();
+  ASSERT_TRUE(completed.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
+  ASSERT_TRUE(status.IsIOError()) << status;
+  ASSERT_TRUE(lsm.WaitForFlush().IsIOError());
+  ASSERT_TRUE(lsm.Compact(/* wait = */ true).IsIOError());
+  threads.AddThreadFunctor([&] {
+    lsm.StartShutdown();
+    lsm.CompleteShutdown();
+    shutdown_done.CountDown();
+  });
+  ASSERT_TRUE(shutdown_done.WaitFor(5s * kTimeMultiplier));
+  threads.JoinAll();
 }
 
 TEST_P(VectorLSMTest, Simple) {

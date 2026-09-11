@@ -71,12 +71,7 @@ class TabletSnapshots : public TabletComponent {
 
   Status Open();
 
-  // preflush_pool must not be starvable by long-running tasks (e.g. an unbounded pool): the
-  // prepare-time snapshot preflush is only useful if it starts before the operation is applied,
-  // and its token shutdown waits for queued tasks. May be null; then the preflush is scheduled
-  // inline from Prepare.
-  void SetCleanupPool(
-      ThreadPool* thread_pool, rpc::Scheduler* scheduler, ThreadPool* preflush_pool);
+  void SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* scheduler);
   void StartShutdown();
   void CompleteShutdown();
 
@@ -93,9 +88,6 @@ class TabletSnapshots : public TabletComponent {
   Status Delete(const SnapshotOperation& operation);
 
   Status RestoreFinished(SnapshotOperation* operation);
-
-  // Prepares the operation context for a snapshot operation.
-  Status Prepare(SnapshotOperation* operation);
 
   Result<std::string> RestoreToTemporary(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
 
@@ -197,7 +189,6 @@ class TabletSnapshots : public TabletComponent {
   void ScanDeletedSnapshotDirs();
   void ScheduleCleanup(PendingSnapshotDeletion deletion);
   void SubmitCleanup();
-  void SubmitPreflush();
   void RunCleanup();
   void ScheduleRetry();
   void PublishPendingDeletionState(const PendingSnapshotDeletion& deletion);
@@ -213,10 +204,6 @@ class TabletSnapshots : public TabletComponent {
   // without this mutex, and only the serial token may call RunCleanup.
   std::mutex cleanup_mutex_;
   std::unique_ptr<ThreadPoolToken> cleanup_token_ GUARDED_BY(cleanup_mutex_);
-  // Concurrent-mode token used to dispatch the best-effort prepare-time flush of snapshot
-  // creation. Lives on an unstarvable pool, not the bounded snapshot cleanup pool, so the flush
-  // cannot queue behind recursive snapshot directory deletions from any tablet.
-  std::unique_ptr<ThreadPoolToken> preflush_token_ GUARDED_BY(cleanup_mutex_);
   std::unordered_map<std::string, PendingSnapshotDeletion> pending_deletions_
       GUARDED_BY(cleanup_mutex_);
   rpc::ScheduledTaskTracker retry_task_tracker_;
