@@ -156,6 +156,8 @@ Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features, both Ear
 - [Transactional DDL](../../../../../explore/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
   Object locking depends on this flag as well.
 
+Do not enable these flags on a cluster that uses CDC. Transactional DDL currently doesn't support CDC. See [Limitations](../../../../../explore/transactions/transactional-ddl/#limitations).
+
 It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
 If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
 {{< /note >}}
