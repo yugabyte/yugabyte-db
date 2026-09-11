@@ -41,6 +41,12 @@ You can use the yb-tserver and yb-master binaries to manually start and configur
       href="yb-tserver/"
       icon="fa-thin fa-sliders">}}
 
+  {{<index/item
+      title="All YSQL configuration parameters"
+      body="Reference list of every YugabyteDB-specific YSQL configuration parameter."
+      href="all-ysql-configuration-parameters/"
+      icon="fa-thin fa-list">}}
+
 {{</index/block>}}
 
 ### Operating system and ports
