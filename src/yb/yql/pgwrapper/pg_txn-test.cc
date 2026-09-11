@@ -939,6 +939,9 @@ TEST_F(PgTxnTest, RepackWithDelayedApplyAfter) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  // A load balancer stepdown leaves the tablet without a ready leader, so the DocDB dump below
+  // would silently come back empty.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
