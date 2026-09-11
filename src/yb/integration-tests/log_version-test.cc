@@ -91,6 +91,8 @@ TEST_F(LogRollingTest, Rolling) {
   ASSERT_NE(header.GetByPrefix(fingerprint), "");
   const auto& initial_duration = header.GetByPrefix(kDurationPrefix);
   ASSERT_NE(initial_duration, "");
+  // Header duration has 1s granularity; ensure a second elapses so the fresh header differs.
+  SleepFor(MonoDelta::FromMilliseconds(1100));
   // In case of log rolling log_path link will be pointed to newly created file
   const auto initial_target = ASSERT_RESULT(env_->ReadLink(log_path));
   auto prev_size = ASSERT_RESULT(env_->GetFileSize(log_path));
