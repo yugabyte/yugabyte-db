@@ -2371,7 +2371,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitTabletDoingRBS) {
     const auto status = master::CheckLiveReplicasForSplit(
         tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor);
     ASSERT_NOK(status);
-    ASSERT_STR_CONTAINS(status.ToString(), "being bootstrapped");
+    ASSERT_STR_CONTAINS(status.ToString(), "is not running or is being bootstrapped");
   }
 
   // Let the split manager run a few times; nothing must be split while the RBS is paused.

@@ -575,24 +575,20 @@ Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf) {
   size_t live_replicas = 0;
   for (const auto& [ts_uuid, replica] : replicas) {
-    if (replica.IsStarting()) {
+    // A read replica (OBSERVER) is ignored unless it is being bootstrapped right now; every other
+    // replica has to be RUNNING.
+    const bool is_read_replica = replica.member_type == consensus::OBSERVER;
+    if (replica.IsStarting() ||
+        (!is_read_replica && replica.state != tablet::RaftGroupStatePB::RUNNING)) {
       return STATUS_FORMAT(NotSupported,
-                           "At least one tablet peer is being bootstrapped, "
+                           "At least one tablet peer is not running or is being bootstrapped, "
                            "tablet_id: $0, peer_uuid: $1, member type: $2, current RAFT state: $3",
                            tablet_id, ts_uuid,
                            consensus::PeerMemberType_Name(replica.member_type),
                            RaftGroupStatePB_Name(replica.state));
     }
-    if (replica.member_type == consensus::OBSERVER) {
+    if (is_read_replica) {
       continue;
-    }
-    if (replica.state != tablet::RaftGroupStatePB::RUNNING) {
-      return STATUS_FORMAT(NotSupported,
-                           "At least one tablet peer not running, "
-                           "tablet_id: $0, peer_uuid: $1, member type: $2, current RAFT state: $3",
-                           tablet_id, ts_uuid,
-                           consensus::PeerMemberType_Name(replica.member_type),
-                           RaftGroupStatePB_Name(replica.state));
     }
     if (replica.member_type != consensus::VOTER) {
       return STATUS_FORMAT(NotSupported,
@@ -932,7 +928,6 @@ void TabletSplitManager::DoSplitting(
                                        << StatusToString(replication_info.status());
       continue;
     }
-    auto replication_factor = CatalogManagerUtil::GetReplicationFactor(*replication_info);
     auto tablets_result = table->GetTablets();
     if (!tablets_result) continue;
     for (const auto& tablet : *tablets_result) {
@@ -992,8 +987,6 @@ void TabletSplitManager::DoSplitting(
         RETURN_NOT_OK(catalog_manager_.ShouldSplitValidCandidate(*tablet, drive_info_opt.get()));
 
         const auto replicas = replica_cache.GetOrAdd(*tablet);
-        RETURN_NOT_OK(
-            CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor));
         const auto tservers_with_outstanding_compaction =
             GetReplicasWithOutstandingCompaction(*replicas);
         if (!tservers_with_outstanding_compaction.empty()) {

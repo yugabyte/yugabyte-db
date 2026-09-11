@@ -3109,6 +3109,14 @@ Status CatalogManager::ShouldSplitValidCandidate(
       tablet_info.table(), GetTablespaceManager(),
       ClusterConfig()->LockForRead()->pb.replication_info()));
 
+  // The tablet must have exactly rf running voters and no replica being remote bootstrapped, so
+  // that the split does not copy a bootstrapping peer into the children's Raft configs. Since this
+  // function runs both when a candidate is picked and again in DoSplitTablet right before the
+  // children are registered, a replica add that starts in between is caught as well.
+  RETURN_NOT_OK(CheckLiveReplicasForSplit(
+      tablet_info.id(), *tablet_info.GetReplicaLocations(),
+      CatalogManagerUtil::GetReplicationFactor(table_replication_info)));
+
   // If there is custom placement information present then
   // only count the tservers which the table has access to
   // according to the placement policy
@@ -3445,23 +3453,6 @@ Status CatalogManager::DoSplitTablet(
       // longer be a valid candidate. This is not an unexpected error, but we should bail out of
       // splitting this tablet regardless.
       Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
-      if (!status.ok()) {
-        return STATUS_FORMAT(
-            InvalidArgument,
-            "Tablet split candidate $0 is no longer a valid split candidate: $1",
-            source_tablet_info->tablet_id(),
-            status);
-      }
-
-      // Re-check the replica set right before the children are registered. The same check ran when
-      // the candidate was picked, up to a background-task interval ago, and a replica add (remote
-      // bootstrap) may have started since. Children are created with the parent's committed Raft
-      // config, so splitting now would copy the bootstrapping peer into both children.
-      const auto replication_info =
-          VERIFY_RESULT(GetTableReplicationInfoNoDefault(source_tablet_info->table()));
-      status = CheckLiveReplicasForSplit(
-          source_tablet_info->tablet_id(), *source_tablet_info->GetReplicaLocations(),
-          CatalogManagerUtil::GetReplicationFactor(replication_info));
       if (!status.ok()) {
         return STATUS_FORMAT(
             InvalidArgument,
