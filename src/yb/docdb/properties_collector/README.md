@@ -187,11 +187,29 @@ The distributions do not aggregate this way. Bucket-wise merging is exact, but a
 shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per tablet against
 ~250 bytes for the scalars, so tablet-level distributions are built on demand instead.
 
+## Prometheus gauges
+
+`SstStatsMetrics` exports the aggregate as `docdb_sst_*` tablet-entity gauges, pulled on scrape:
+`total_entries`, `tombstone_entries`, `shadowed_entries`, `repackable_entries`, `dead_rows`,
+`dead_row_entries`, `reclaimable_entries`, `reclaimable_bytes`, and `files_without_stats`. They
+take the default `kSum` aggregation, so the table- and server-level rollups add up like the other
+docdb tablet metrics; table-level visibility additionally needs the name to match the scrape's
+`priority_regex` (`prometheus_metric_filter.cc`), which defaults to `.*` but is narrowed by some
+deployments.
+
+Additive scalars only: this metrics system exports no bucket vectors, so the distributions stay in
+the SST properties and on the tablet status page. Two cases report zero rather than a number that
+would read as real -- every gauge before the first resync, when the aggregate holds only the files
+the listener happened to see, and the two derived gauges while any covered file is partial, when
+their chain identities do not hold.
+
+These are for fleet visibility, alerting, and threshold tuning. Nothing inside the server reads
+them; the trigger reads the aggregate directly.
+
 ## Boundaries
 
-This component produces the per-file record and the per-tablet sum of it. The rest is separate: the
-`docdb_sst_*` Prometheus gauges for humans (additive scalars only; this metrics system exports no
-bucket vectors), and a full-compaction trigger clause that reads the aggregate directly. Every
+This component produces the per-file record, the per-tablet sum of it, and the gauges over that
+sum. The full-compaction trigger clause that reads the aggregate directly is separate. Every
 consumer must account for **coverage**: files that predate the collector or whose properties cannot
 be read carry no statistics, and a ratio over them silently reads near zero. The latter contribute
 to the uncovered file count, but their entry and raw-byte counts are unknown.
