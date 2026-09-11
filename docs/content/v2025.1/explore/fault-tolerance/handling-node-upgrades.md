@@ -16,6 +16,10 @@ There are many scenarios where you have to do planned maintenance on your cluste
 
 Let's see how YugabyteDB is resilient during planned maintenance, continuing without any service interruption.
 
+{{<note>}}
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
+{{</note>}}
+
 ## Setup
 
 Consider a setup where YugabyteDB is deployed in a single region (us-east-1) across 3 zones, with leaders and followers distributed across the 3 zones (a,b,c) with 6 nodes 1-6.
@@ -38,10 +42,6 @@ Consider a setup where YugabyteDB is deployed in a single region (us-east-1) acr
 <!-- end: nav tabs -->
 
 The application typically connects to all the nodes in the cluster as shown in the following illustration.
-
-{{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
-{{</note>}}
 
 ![Single region, 3 zones, 6 nodes](/images/explore/fault-tolerance/node-upgrades-setup.png)
 

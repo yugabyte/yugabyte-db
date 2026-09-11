@@ -55,9 +55,9 @@ Typically, the following sequence will be automated using scripts that call the 
 
 For each node in the universe, use the following general procedure:
 
-1. Stop the processes for the node to be patched.
+1. Enter maintenance mode for the node to be patched.
 
-    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Stop Processes**.
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Enter Maintenance Mode**.
 
     If using the YugabyteDB Anywhere API, use the following command:
 
@@ -90,9 +90,9 @@ For each node in the universe, use the following general procedure:
         --data-raw '{"nodeAction":"REPROVISION"}'
         ```
 
-1. Start the processes for the node.
+1. Exit maintenance mode for the node.
 
-    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Exit Maintenance Mode**.
 
     If using the YugabyteDB Anywhere API, use the following command:
 

@@ -16,6 +16,10 @@ There are many scenarios where you have to do planned maintenance on your cluste
 
 Let's see how YugabyteDB is resilient during planned maintenance, continuing without any service interruption.
 
+{{<note>}}
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
+{{</note>}}
+
 ## Setup
 
 Consider a setup where YugabyteDB is deployed in a single region (us-east-1) across 3 zones, with leaders and followers distributed across the 3 zones (a,b,c) with 6 nodes 1-6.
@@ -39,10 +43,6 @@ Consider a setup where YugabyteDB is deployed in a single region (us-east-1) acr
 
 The application typically connects to all the nodes in the cluster as shown in the following illustration.
 
-{{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
-{{</note>}}
-
 ![Single region, 3 zones, 6 nodes](/images/explore/fault-tolerance/node-upgrades-setup.png)
 
 ## Upgrading a node
@@ -64,7 +64,7 @@ To take a node offline locally, you can just stop the node.
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+To stop a node in YugabyteDB Anywhere, on the **Nodes** tab of your universe, click **Actions > Enter Maintenance Mode** for the node you want to stop.
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -108,7 +108,7 @@ To simulate bringing back a node online locally, you can just start the stopped 
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To restart a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+To restart the node in YugabyteDB Anywhere, on the **Nodes** tab of your universe, click **Actions > Exit Maintenance Mode** for the node you want to start.
 {{</nav/panel>}}
 
 {{</nav/panels>}}
