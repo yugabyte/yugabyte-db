@@ -96,18 +96,6 @@ const ViewMoreLink = styled('a')(({ theme }) => ({
   cursor: 'pointer'
 }));
 
-const ViewMoreLink = styled('a')(({ theme }) => ({
-  color: theme.palette.primary[600],
-  fontSize: '13px',
-  fontWeight: 400,
-  lineHeight: '16px',
-  textDecoration: 'underline',
-  textDecorationStyle: 'solid',
-  textUnderlinePosition: 'from-font',
-  marginLeft: '40px',
-  cursor: 'pointer'
-}));
-
 enum MapViewMode {
   REGIONS = 'regions',
   GEO_PARTITIONS = 'geo-partitions'
