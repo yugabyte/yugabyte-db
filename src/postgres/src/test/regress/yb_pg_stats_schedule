@@ -1,6 +1,0 @@
-# src/test/regress/yb_pg_stats_schedule
-#
-####################################################################################################
-# Port of upstream stats.sql (pg_stat_* cumulative stats, including last_analyze).
-####################################################################################################
-test: yb.port.stats

@@ -155,19 +155,21 @@ In this example, ANALYZE has run twice. The first run recorded a cooldown of 10 
 
 PostgreSQL's [`pg_stat_user_tables`](https://www.postgresql.org/docs/15/monitoring-stats.html#MONITORING-PG-STAT-ALL-TABLES-VIEW) and `pg_stat_all_tables` views also record ANALYZE activity. Auto Analyze updates `last_autoanalyze` and `autoanalyze_count`. A session `ANALYZE` updates `last_analyze` and `analyze_count` instead.
 
+Those counters live in the postgres that ran ANALYZE. `gv$pg_stat_user_tables` is the same view federated across tservers (one row per table per node, plus `server_uuid`). Enable it with `SET yb_enable_global_views = on` (superuser; or `ysql_pg_conf_csv=yb_enable_global_views=true`).
+
 ```sql
-SELECT relname,
+SELECT server_uuid, relname,
        last_analyze IS NOT NULL AS has_last_analyze,
        last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
        analyze_count, autoanalyze_count
-  FROM pg_stat_user_tables
- WHERE relname = 'test';
+  FROM gv$pg_stat_user_tables
+ WHERE relname = 'test' AND last_autoanalyze IS NOT NULL;
 ```
 
 ```output
- relname | has_last_analyze | has_last_autoanalyze | analyze_count | autoanalyze_count
----------+------------------+----------------------+---------------+-------------------
- test    | f                | t                    |             0 |                 2
+             server_uuid              | relname | has_last_analyze | has_last_autoanalyze | analyze_count | autoanalyze_count
+--------------------------------------+---------+------------------+----------------------+---------------+-------------------
+ 00000000-0000-0000-0000-000000000001 | test    | f                | t                    |             0 |                 2
 (1 row)
 ```
 
@@ -176,11 +178,9 @@ Use these views together with `yb_stat_auto_analyze()`; they answer different qu
 | Question | Use |
 | :--- | :--- |
 | How many mutations has the service accumulated, and when is the next ANALYZE allowed? | `yb_stat_auto_analyze()` (`mutations`, `last_analyze_info` cooldown history). Cluster-wide. |
-| Did the last ANALYZE on this node come from Auto Analyze or from a session `ANALYZE`? How many of each? | `pg_stat_user_tables` (`last_autoanalyze` / `autoanalyze_count` vs `last_analyze` / `analyze_count`). Local to the postgres you queried. |
+| Did ANALYZE come from Auto Analyze or from a session `ANALYZE`, and on which node? | `gv$pg_stat_user_tables` (`last_autoanalyze` / `autoanalyze_count` vs `last_analyze` / `analyze_count`, `server_uuid`). Local `pg_stat_user_tables` if you already know the node. |
 
 `n_mod_since_analyze` in the PostgreSQL views is not the Auto Analyze mutation counter. Use the `mutations` column of `yb_stat_auto_analyze()` for that.
-
-`last_autoanalyze` is updated on the node that ran ANALYZE. In a multi-node cluster, query `yb_stat_auto_analyze()` for cluster-wide history.
 
 ## Limitations
 
