@@ -91,8 +91,12 @@ struct SstStatsAggregate {
   uint64_t collapsible_entries() const { return chain_entries - num_rows; }
 
   SstStatsAggregate& operator+=(const SstStatsAggregate& other);
-  // Saturating. The caller only ever subtracts a file it added, but an underflow here would turn a
-  // bookkeeping slip into a gauge reading near 2^64 and a compaction trigger that never stops.
+  // Saturating, and deliberately without an assertion: a counter can underflow with the file set
+  // bookkeeping intact. Only a file that was added is ever subtracted, but the contribution
+  // computed at removal need not match the one computed at addition -- a file whose properties
+  // parsed when it was added can fail to parse when it is removed, which subtracts an
+  // uncovered-file contribution from a covered-file one. Wrapping would turn that, or a real
+  // bookkeeping slip, into a gauge reading near 2^64 and a compaction trigger that never stops.
   SstStatsAggregate& operator-=(const SstStatsAggregate& other);
 
   bool operator==(const SstStatsAggregate& other) const = default;
