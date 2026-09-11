@@ -2498,7 +2498,10 @@ retry1:
 				 * passthrough discards it: it must not reach guc_options.
 				 */
 				if (!YbIsAuthPassthroughInProgress(port))
+				{
 					port->yb_dist_traceparent = pstrdup(valptr);
+					pg_clean_ascii(port->yb_dist_traceparent);
+				}
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{

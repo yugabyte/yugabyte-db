@@ -2628,22 +2628,26 @@ TEST_F(DistTraceConnMgrTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TraceparentStartupParamViaConnMgr)) {
   const auto tp = GenerateTraceparent();
 
+  // Connection string with an explicit yb_dist_traceparent startup param; PGConnBuilder
+  // no longer takes one (it propagates the active trace instead), so build it directly.
+  auto conn_str = [&](uint16_t port) {
+    return Format(
+        "host=$0 port=$1 user=$2 yb_dist_traceparent='$3'",
+        pg_ts->bind_host(), port, PGConnSettings::kDefaultUser, tp.full);
+  };
+
   // Direct backend connection: the startup param populates yb_dist_tracecontext.
-  auto direct_conn = ASSERT_RESULT(PGConnBuilder({
-      .host = pg_ts->bind_host(),
-      .port = pg_ts->pgsql_rpc_port(),
-      .traceparent = tp.full,
-  }).Connect());
+  auto direct_conn_str = conn_str(pg_ts->pgsql_rpc_port());
+  auto direct_conn = ASSERT_RESULT(PGConn::Connect(
+      direct_conn_str, false /* simple_query_protocol */, direct_conn_str));
   ASSERT_EQ(
       ASSERT_RESULT(direct_conn.FetchRow<std::string>("SHOW yb_dist_tracecontext")),
       Format("traceparent='$0'", tp.full));
 
   // Conn mgr replays the startup packet under auth passthrough; the param must be discarded.
-  auto conn_mgr_conn = ASSERT_RESULT(PGConnBuilder({
-      .host = pg_ts->bind_host(),
-      .port = pg_ts->ysql_port(),
-      .traceparent = tp.full,
-  }).Connect());
+  auto conn_mgr_conn_str = conn_str(pg_ts->ysql_port());
+  auto conn_mgr_conn = ASSERT_RESULT(PGConn::Connect(
+      conn_mgr_conn_str, false /* simple_query_protocol */, conn_mgr_conn_str));
   ASSERT_EQ(
       ASSERT_RESULT(conn_mgr_conn.FetchRow<std::string>("SHOW yb_dist_tracecontext")), "");
 }
