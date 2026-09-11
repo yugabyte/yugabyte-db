@@ -9,7 +9,7 @@ menu:
   stable:
     parent: explore-change-data-capture-logical-replication
     identifier: monitor
-    weight: 30
+    weight: 70
 type: docs
 ---
 

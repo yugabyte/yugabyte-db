@@ -9,7 +9,7 @@ menu:
   stable:
     parent: explore-change-data-capture-logical-replication
     identifier: yugabytedb-connector
-    weight: 70
+    weight: 45
 type: docs
 rightNav:
   hideH4: true
