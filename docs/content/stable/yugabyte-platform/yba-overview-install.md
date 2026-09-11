@@ -52,7 +52,7 @@ To install YugabyteDB Anywhere and be able to deploy YugabyteDB universes requir
 
 - [Cloud permissions](../prepare/cloud-permissions/)
 
-  These are required when using Kubernetes or a public cloud provider (AWS, GCP, or Azure). Cloud permissions are not required when using an on-premises provider.
+  These are required when using Kubernetes or a public cloud provider (AWS, GCP, Azure, or OCI). Cloud permissions are not required when using an on-premises provider.
 
 - [Networking connectivity](../prepare/networking/)
 

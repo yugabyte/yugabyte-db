@@ -27,7 +27,7 @@ YugabyteDB Anywhere also supports [xCluster](../../architecture/docdb-replicatio
 YBA supports these deployments in the following environments:
 
 - On-premises - YBA can deploy YugabyteDB on VMs or bare metal hosts running various flavors of Linux, with the flexibility required to accommodate organizational security and compliance needs.
-- Public clouds - YBA can deploy cloud-native YugabyteDB clusters in AWS, Azure, and GCP. YBA understands the native instance types, volume types, availability zones, regions, and OS image availability on each cloud, and maps them seamlessly to YugabyteDB's fault tolerance and performance configurations.
+- Public clouds - YBA can deploy cloud-native YugabyteDB clusters in AWS, Azure, GCP, and OCI. YBA understands the native instance types, volume types, availability zones, regions, and OS image availability on each cloud, and maps them seamlessly to YugabyteDB's fault tolerance and performance configurations.
 - Kubernetes - YBA can deploy YugabyteDB in Kubernetes clusters and both map the zones available in a single Kubernetes cluster, and map multiple regions across different Kubernetes clusters to YugabyteDB's fault tolerance capabilities.
 
 ### Additional features
@@ -35,8 +35,8 @@ YBA supports these deployments in the following environments:
 YBA supports the following additional features:
 
 - Encryption in transit, with support for CA and self-signed certificates.
-- Encryption at rest, with integration with major Key Management Services (KMS), including AWS, GCP, Azure, and Hashicorp Vault.
-- Scheduled backups to cloud native storage such as AWS S3, Google GCS, and Azure Storage, as well as to vanilla NFS storage.
+- Encryption at rest, with integration with major Key Management Services (KMS), including AWS, GCP, Azure, OCI Vault, and Hashicorp Vault.
+- Scheduled backups to cloud native storage such as AWS S3, Google GCS, Azure Storage, and OCI Object Storage, as well as to vanilla NFS storage.
 - Alerting and monitoring, using [Prometheus](https://prometheus.io).
 - Integration with LDAP and OIDC for authentication.
 - High availability configuration for fast recovery of YBA in case of an outage.
@@ -80,13 +80,13 @@ YBA uses the cloud configuration information in a provider to deploy and manage 
 YBA supports three major types of provider configurations:
 
 1. On-premises.
-1. Public Cloud (AWS, GCP, or Azure).
+1. Public Cloud (AWS, GCP, Azure, or OCI).
 1. Kubernetes (for example, VMware Tanzu, Red Hat OpenShift, or Managed Kubernetes Service).
 
 | | On-premises | Cloud | Kubernetes |
 | :--- | :--- | :--- | :--- |
 | Advantages | Maximum flexibility | Maximum automation | It's&nbsp;Kubernetes |
-| Platforms | Private cloud, bare metal,<br>AWS, Azure, GCP | AWS, Azure, GCP | Kubernetes |
+| Platforms | Private cloud, bare metal,<br>AWS, Azure, GCP, OCI | AWS, Azure, GCP, OCI | Kubernetes |
 | Permissions for YBA | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
 | Node&nbsp;provisioning | Manually created, with automatic provisioning using a script | Automatically created and provisioned | Via Helm |
 
@@ -105,7 +105,7 @@ With the on-premises provider, after creating VMs manually (that is, outside of 
 
 ### Public cloud
 
-If you are deploying a universe to a public cloud (AWS, Azure, or GCP) and want maximum automation when managing clusters (creating them, scaling them, patching the OS, and so on), use a public cloud provider configuration. This approach does require that you provide YBA with cloud and OS privileges.
+If you are deploying a universe to a public cloud (AWS, Azure, GCP, or OCI) and want maximum automation when managing clusters (creating them, scaling them, patching the OS, and so on), use a public cloud provider configuration. This approach does require that you provide YBA with cloud and OS privileges.
 
 For example:
 
