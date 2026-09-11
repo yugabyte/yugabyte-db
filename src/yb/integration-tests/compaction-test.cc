@@ -573,7 +573,7 @@ class SstStatsAggregateTest : public CompactionTest {
   // Asserts that what the listener accumulated matches what a read of the whole live file set
   // computes, and returns the aggregate.
   docdb::SstStatsAggregate CheckAgainstLiveFiles(const tablet::TabletPtr& tablet) {
-    auto* stats = tablet->sst_stats();
+    const auto stats = tablet->sst_stats();
     EXPECT_NE(stats, nullptr);
     const auto from_events = stats->Get().aggregate;
     EXPECT_OK(tablet->ResyncSstStats());
@@ -624,7 +624,7 @@ TEST_F(SstStatsCoverageTest, CountsFilesWrittenBeforeTheCollector) {
   ASSERT_OK(cluster_->RestartSync());
 
   for (const auto& tablet : WorkloadTablets()) {
-    auto* stats = tablet->sst_stats();
+    const auto stats = tablet->sst_stats();
     ASSERT_NE(stats, nullptr);
     ASSERT_OK(tablet->ResyncSstStats());
     const auto aggregate = stats->Get().aggregate;

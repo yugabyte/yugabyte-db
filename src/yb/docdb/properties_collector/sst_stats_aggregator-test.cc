@@ -283,4 +283,26 @@ TEST_F(SstStatsAggregatorTest, ResyncOvertakenByFlushIsDropped) {
   EXPECT_EQ(snapshot.last_resync_micros, 0);
 }
 
+TEST_F(SstStatsAggregatorTest, ResyncSurvivesReplayedFlush) {
+  SstStatsAggregator aggregator;
+  const auto file = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
+  aggregator.OnFlushCompleted(FlushOf(1, file));
+
+  const auto status = aggregator.Resync(
+      [&](std::vector<rocksdb::LiveFileMetaData>* live_files,
+          rocksdb::TablePropertiesCollection* properties) {
+        live_files->push_back(LiveFile(1));
+        (*properties)[PathOf(1)] = std::make_shared<rocksdb::TableProperties>(file);
+        // An event replayed for a file already counted leaves the file set alone, so the snapshot
+        // taken above still describes it and must not be discarded as overtaken.
+        aggregator.OnFlushCompleted(FlushOf(1, file));
+        return Status::OK();
+      });
+  ASSERT_OK(status);
+
+  const auto snapshot = aggregator.Get();
+  EXPECT_EQ(snapshot.aggregate.total_entries, 100);
+  EXPECT_GT(snapshot.last_resync_micros, 0);
+}
+
 }  // namespace yb::docdb
