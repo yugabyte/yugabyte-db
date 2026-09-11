@@ -30,10 +30,7 @@ namespace {
 
 void AddTo(uint64_t& lhs, uint64_t rhs) { lhs += rhs; }
 
-void SubtractFrom(uint64_t& lhs, uint64_t rhs) {
-  DCHECK_GE(lhs, rhs);
-  lhs -= std::min(lhs, rhs);
-}
+void SubtractFrom(uint64_t& lhs, uint64_t rhs) { lhs -= std::min(lhs, rhs); }
 
 // Applies `op` to every counter of the aggregate, pairing each with its counterpart in `other`.
 template <class Op>
@@ -117,19 +114,21 @@ SstStatsAggregate SstFileContribution(const rocksdb::TableProperties& properties
 
 void SstStatsAggregator::AddFile(
     uint64_t file_number, const rocksdb::TableProperties& properties) {
-  ++event_seqno_;
   if (!counted_files_.insert(file_number).second) {
+    // A replayed event for a file already counted leaves the aggregate alone, so it must not bump
+    // the sequence number either: a resync in flight is still valid over this file set.
     return;
   }
+  ++event_seqno_;
   aggregate_ += SstFileContribution(properties);
 }
 
 void SstStatsAggregator::RemoveFile(
     uint64_t file_number, const rocksdb::TableProperties* properties) {
-  ++event_seqno_;
   if (counted_files_.erase(file_number) == 0) {
     return;
   }
+  ++event_seqno_;
   if (properties == nullptr) {
     ++aggregate_.unsubtracted_files;
     return;
