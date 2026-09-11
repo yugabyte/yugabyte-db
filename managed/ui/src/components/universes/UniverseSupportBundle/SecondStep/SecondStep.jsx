@@ -118,6 +118,7 @@ export const selectionOptions = [
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
   { label: 'Tablet meta files', value: 'TabletMeta' },
   { label: 'Tablet Report', value: 'TabletReport' },
+  { label: 'Cluster Config', value: 'ClusterConfig' },
   { label: 'Node agent logs', value: 'NodeAgent' },
   { label: 'Core Files', value: 'CoreFiles' },
   { label: 'YB-Controller logs', value: 'YbcLogs' },

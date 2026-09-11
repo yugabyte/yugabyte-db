@@ -71,6 +71,9 @@ public class BundleDetails {
     @EnumValue("TabletReport")
     TabletReport(ComponentLevel.GlobalLevel),
 
+    @EnumValue("ClusterConfig")
+    ClusterConfig(ComponentLevel.GlobalLevel),
+
     @EnumValue("K8sInfo")
     K8sInfo(ComponentLevel.GlobalLevel),
 

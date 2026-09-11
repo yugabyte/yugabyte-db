@@ -28,6 +28,7 @@ public class SupportBundleComponentFactory {
   private final PrometheusMetricsComponent prometheusMetricsComponent;
   private final SystemLogsComponent systemLogsComponent;
   private final TabletReportComponent tabletReportComponent;
+  private final ClusterConfigComponent clusterConfigComponent;
   private final PerfAdvisorComponent perfAdvisorComponent;
   private final YBAComponent ybaComponent;
 
@@ -54,6 +55,7 @@ public class SupportBundleComponentFactory {
       PrometheusMetricsComponent prometheusMetricsComponent,
       SystemLogsComponent systemLogsComponent,
       TabletReportComponent tabletReportComponent,
+      ClusterConfigComponent clusterConfigComponent,
       PerfAdvisorComponent perfAdvisorComponent,
       YBAComponent ybaComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
@@ -77,6 +79,7 @@ public class SupportBundleComponentFactory {
     this.prometheusMetricsComponent = prometheusMetricsComponent;
     this.systemLogsComponent = systemLogsComponent;
     this.tabletReportComponent = tabletReportComponent;
+    this.clusterConfigComponent = clusterConfigComponent;
     this.perfAdvisorComponent = perfAdvisorComponent;
     this.ybaComponent = ybaComponent;
   }
@@ -151,6 +154,9 @@ public class SupportBundleComponentFactory {
         break;
       case TabletReport:
         supportBundleComponent = this.tabletReportComponent;
+        break;
+      case ClusterConfig:
+        supportBundleComponent = this.clusterConfigComponent;
         break;
       case YBAComponent:
         supportBundleComponent = this.ybaComponent;
