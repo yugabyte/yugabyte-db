@@ -19,6 +19,24 @@
 
 namespace yb {
 
+PrometheusMetricFilter::PrometheusMetricFilter(const MetricPrometheusOptions& opts)
+    : active_table_ids_(opts.active_table_ids) {}
+
+bool PrometheusMetricFilter::ShouldExportTableMetrics(
+    const MetricEntity::AttributeMap& attributes, const std::string& metric_entity_type) const {
+  if (!active_table_ids_) {
+    return true;
+  }
+  // xCluster series carry a table id but are aggregated per stream, so they are not part of the
+  // table-level metrics the active-table list controls.
+  if (metric_entity_type == kXClusterMetricEntityName ||
+      metric_entity_type == kCdcsdkMetricEntityName) {
+    return true;
+  }
+  const auto table_id = attributes.find("table_id");
+  return table_id == attributes.end() || active_table_ids_->contains(table_id->second);
+}
+
 namespace {
 
 class PrometheusMetricFilterV1 : public PrometheusMetricFilter {
@@ -39,7 +57,8 @@ class PrometheusMetricFilterV1 : public PrometheusMetricFilter {
 };
 
 PrometheusMetricFilterV1::PrometheusMetricFilterV1(const MetricPrometheusOptions& opts)
-    : priority_regex_(opts.priority_regex_string),
+    : PrometheusMetricFilter(opts),
+      priority_regex_(opts.priority_regex_string),
       general_metrics_allowlist_(opts.general_metrics_allowlist) {}
 
 bool PrometheusMetricFilterV1::ShouldCollectMetric(const std::string& metric_name) const {
@@ -101,7 +120,8 @@ class PrometheusMetricFilterV2 : public PrometheusMetricFilter {
 };
 
 PrometheusMetricFilterV2::PrometheusMetricFilterV2(const MetricPrometheusOptions& opts)
-    : table_allowlist_(opts.table_allowlist_string),
+    : PrometheusMetricFilter(opts),
+      table_allowlist_(opts.table_allowlist_string),
       table_blocklist_(opts.table_blocklist_string),
       server_allowlist_(opts.server_allowlist_string),
       server_blocklist_(opts.server_blocklist_string) {}

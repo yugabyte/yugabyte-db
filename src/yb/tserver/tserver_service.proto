@@ -166,6 +166,9 @@ service TabletServerService {
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 
+  rpc SetActiveTableIdsForMetrics(SetActiveTableIdsForMetricsRequestPB)
+      returns (SetActiveTableIdsForMetricsResponsePB);
+
   rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
       returns (AdminExecutePgsqlResponsePB);
 
@@ -267,6 +270,21 @@ message GetMetricsRequestPB {
 message GetMetricsResponsePB {
   repeated TserverMetricsInfoPB metrics  = 1;
   optional TabletServerErrorPB error = 2;
+}
+
+message SetActiveTableIdsForMetricsRequestPB {
+  // The complete set of tables whose table-level metrics should be exported by
+  // /prometheus-metrics. Each request replaces the previous set.
+  repeated string table_ids = 1;
+}
+
+message SetActiveTableIdsForMetricsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // State of enable_active_table_metrics_filtering on this tablet server. The list is stored
+  // either way, but no scrape uses it while this is false, so the caller can surface that its
+  // list is not being applied.
+  optional bool filtering_enabled = 2;
 }
 
 message GetLogLocationRequestPB {

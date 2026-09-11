@@ -18,6 +18,7 @@
 #include <functional>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/map-util.h"
@@ -112,6 +113,13 @@ struct MetricPrometheusOptions : public MetricOptions {
 
   std::string server_allowlist_string = ".*";
   std::string server_blocklist_string = "";
+
+  // Whether this scrape should use the active table IDs stored by the server.
+  bool apply_table_ids_filter = false;
+
+  // Missing means all tables. A present, possibly empty set limits table-level
+  // metrics to the listed table IDs.
+  std::shared_ptr<const std::unordered_set<std::string>> active_table_ids;
 };
 
 struct MetricHelpAndType {

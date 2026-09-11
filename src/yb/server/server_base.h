@@ -224,6 +224,8 @@ class RpcAndWebServerBase : public RpcServerBase {
     return false;
   }
 
+  virtual void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const {}
+
   static void DisplayIconTile(std::stringstream* output, const std::string icon,
                               const std::string caption, const std::string url);
 

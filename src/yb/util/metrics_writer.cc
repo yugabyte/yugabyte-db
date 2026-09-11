@@ -44,6 +44,8 @@ Status PrometheusWriter::FlushScrapeTimeAggregatedValues() {
       // This metric has been removed, so we don't need to output it.
       continue;
     }
+    // Entries excluded by the active-table list are never aggregated, so the budget below only
+    // accounts for entries that will be flushed.
     auto& aggregated_values = metric_info.scrape_time_aggregated_values_;
     if (remaining_allowed_entries_ < aggregated_values.size()) {
       num_of_entries_cut_off_ += aggregated_values.size();
@@ -207,9 +209,11 @@ Status PrometheusWriter::WriteSingleEntry(
 
   if (aggregation_levels & kTableLevel) {
     DCHECK(table_id_it != attributes.end());
-    AddScrapeTimeAggregatedEntry(
-        table_id_it->second, type, description, attributes, name, value,
-        aggregation_function, metric_entity_type, metric_prototype_holder);
+    if (prometheus_metric_filter_->ShouldExportTableMetrics(attributes, metric_entity_type)) {
+      AddScrapeTimeAggregatedEntry(
+          table_id_it->second, type, description, attributes, name, value,
+          aggregation_function, metric_entity_type, metric_prototype_holder);
+    }
   }
 
   if (aggregation_levels & kServerLevel) {
@@ -260,6 +264,9 @@ Status PrometheusWriter::FlushPreAggregatedValues(
   const auto& pre_aggregated_metric_info_by_metric_name =
       metrics_aggregator.pre_aggregated_metric_info_by_metric_name();
 
+  // Reused across metrics to avoid reallocating for every metric name.
+  std::vector<std::pair<const MetricEntity::AttributeMap*, int64_t>> entries_to_flush;
+
   for (const auto& [name, metric_info_ptr] : pre_aggregated_metric_info_by_metric_name) {
     const auto& metric_info = *metric_info_ptr;
 
@@ -273,17 +280,6 @@ Status PrometheusWriter::FlushPreAggregatedValues(
     bool need_table_or_stream_level_values = aggregation_levels & kTableLevel ||
                                              aggregation_levels & kStreamLevel;
 
-    // Make sure we have enough space to write all the entries.
-    auto num_output_entries = (need_table_or_stream_level_values)
-                              ? metric_info.num_aggregated_value_holders()
-                              : 0;
-    num_output_entries += (need_server_level_values) ? 1 : 0;
-    if (remaining_allowed_entries_ < num_output_entries) {
-      num_of_entries_cut_off_ += num_output_entries;
-      continue;
-    }
-    remaining_allowed_entries_ -= num_output_entries;
-
     // Retrieve attributes_ptr_by_aggregation_id map.
     auto attributes_ptr_by_aggregation_id_it =
         attributes_ptr_by_metric_entity_type_and_aggregation_id.find(
@@ -295,11 +291,12 @@ Status PrometheusWriter::FlushPreAggregatedValues(
     }
     const auto& attributes_ptr_by_aggregation_id = attributes_ptr_by_aggregation_id_it->second;
 
-    // Begin flushing the metric.
-    const auto& metric_help = metric_info.help_and_type_.help;
-    const auto& metric_type = metric_info.help_and_type_.type;
+    // Collect the entries to flush, so that the entry budget below only accounts for entries
+    // that are actually exported.
     const auto pre_aggregated_values = metric_info.GetPreAggregatedValues(
         need_server_level_values, need_table_or_stream_level_values);
+    entries_to_flush.clear();
+    entries_to_flush.reserve(pre_aggregated_values.size());
     for (const auto& [aggregation_id, value] : pre_aggregated_values) {
       auto attributes_ptr_it = attributes_ptr_by_aggregation_id.find(aggregation_id);
       if (attributes_ptr_it == attributes_ptr_by_aggregation_id.end()) {
@@ -309,9 +306,25 @@ Status PrometheusWriter::FlushPreAggregatedValues(
         // This can happen when a new tablet is added during the flush.
         continue;
       }
+      if (!prometheus_metric_filter_->ShouldExportTableMetrics(
+              *attributes_ptr_it->second, metric_info.metric_entity_type_)) {
+        continue;
+      }
+      entries_to_flush.emplace_back(attributes_ptr_it->second.get(), value);
+    }
 
+    if (remaining_allowed_entries_ < entries_to_flush.size()) {
+      num_of_entries_cut_off_ += entries_to_flush.size();
+      continue;
+    }
+    remaining_allowed_entries_ -= entries_to_flush.size();
+
+    // Begin flushing the metric.
+    const auto& metric_help = metric_info.help_and_type_.help;
+    const auto& metric_type = metric_info.help_and_type_.type;
+    for (const auto& [attributes_ptr, value] : entries_to_flush) {
       FlushHelpAndTypeIfRequested(name, metric_help, metric_type);
-      RETURN_NOT_OK(FlushSingleEntry(*attributes_ptr_it->second, name, value));
+      RETURN_NOT_OK(FlushSingleEntry(*attributes_ptr, name, value));
     }
   }
 
