@@ -3,8 +3,6 @@ title: Full move for Kubernetes universes
 headerTitle: Full move for Kubernetes universes
 linkTitle: Kubernetes full move
 description: Modify storage class, volume count, and volume size on running YugabyteDB Anywhere Kubernetes universes.
-tags:
-  feature: early-access
 headcontent: Change volume attributes on operator and non-operator Kubernetes universes
 aliases:
   - /stable/yugabyte-platform/manage-deployments/kubernetes-full-move/
@@ -16,7 +14,7 @@ menu:
 type: docs
 ---
 
-{{<tags/feature/ea idea="2459">}} Full move for Kubernetes universes lets you modify storage attributes such as volume count, storage class, and volume size on existing universes. Decreasing volume size is supported and is carried out through a full move (persistent volumes cannot be shrunk in place).
+Full move for Kubernetes universes lets you modify storage attributes such as volume count, storage class, and volume size on existing universes. Decreasing volume size is supported and is carried out through a full move (persistent volumes cannot be shrunk in place).
 
 {{< note title="Version requirement" >}}
 
