@@ -11984,38 +11984,48 @@ void CatalogManager::HandleAssignPreparingTablet(const TabletInfoPtr& tablet,
   VLOG(1) << "Assign new tablet " << tablet->ToString();
 }
 
-Status CatalogManager::HandleAssignCreatingTablet(const TabletInfoPtr& tablet,
-                                                  DeferredAssignmentActions* deferred,
-                                                  std::vector<TabletInfoPtr>* new_tablets) {
+bool CatalogManager::ShouldReplaceCreatingTablet(const TabletInfo& tablet) {
   MonoDelta time_since_updated =
-      MonoTime::Now().GetDeltaSince(tablet->last_update_time());
+      MonoTime::Now().GetDeltaSince(tablet.last_update_time());
   int64_t remaining_timeout_ms =
       FLAGS_tablet_creation_timeout_ms - time_since_updated.ToMilliseconds();
 
-  if (tablet->LockForRead()->pb.has_split_parent_tablet_id()) {
-    // No need to recreate post-split tablets, since this is always done on source tablet replicas.
-    VLOG_WITH_FUNC(2) << "Post-split tablet " << AsString(tablet) << " still being created.";
-    return Status::OK();
+  auto lock = tablet.LockForRead();
+  if (lock->pb.state() != SysTabletsEntryPB::CREATING) {
+    return false;
   }
 
-  if (tablet->LockForRead()->pb.created_by_clone()) {
+  if (lock->pb.has_split_parent_tablet_id()) {
+    // No need to recreate post-split tablets, since this is always done on source tablet replicas.
+    VLOG_WITH_FUNC(2) << "Post-split tablet " << tablet.ToString() << " still being created.";
+    return false;
+  }
+
+  if (lock->pb.created_by_clone()) {
     // No need to recreate cloned tablets, since this is always done on source tablet replicas.
-    VLOG_WITH_FUNC(2) << "Cloned tablet " << AsString(tablet) << " still being created.";
-    return Status::OK();
+    VLOG_WITH_FUNC(2) << "Cloned tablet " << tablet.ToString() << " still being created.";
+    return false;
   }
 
   // Skip the tablet if the assignment timeout is not yet expired.
   if (remaining_timeout_ms > 0) {
-    VLOG_WITH_FUNC(2) << "Tablet " << tablet->ToString() << " still being created. "
+    VLOG_WITH_FUNC(2) << "Tablet " << tablet.ToString() << " still being created. "
             << remaining_timeout_ms << "ms remain until timeout.";
-    return Status::OK();
+    return false;
   }
 
+  return true;
+}
+
+Status CatalogManager::HandleAssignCreatingTablet(
+    const TabletInfoPtr& tablet, const TabletInfoPtr& replacement,
+    DeferredAssignmentActions* deferred, TabletInfos* new_tablets) {
   const PersistentTabletInfo& old_info = tablet->metadata().state();
 
   // The "tablet creation" was already sent, but we didn't receive an answer
   // within the timeout. So the tablet will be replaced by a new one.
-  auto replacement = CreateTabletInfo(tablet->table(), old_info.pb.partition());
+  SetupTabletInfo(
+      *replacement, *tablet->table(), old_info.pb.partition(), SysTabletsEntryPB::PREPARING);
   LOG(WARNING) << "Tablet " << tablet->ToString() << " was not created within "
                << "the allowed timeout. Replacing with a new tablet "
                << replacement->tablet_id();
@@ -12108,18 +12118,27 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   RETURN_NOT_OK(InitializeTableLoadState(table_id, ts_descs, &table_load_state));
   table_load_state.SortLoad();
 
-  // Take write locks on all tablets to be processed, and ensure that they are
-  // unlocked at the end of this scope.
+  // Replacements for tablets that timed out in CREATING state are created before any write lock
+  // is taken, so old and new tablets can all be locked in tablet id order, the order
+  // DeleteOrHideTabletsAndSendRequests uses.
+  std::unordered_map<TabletInfo*, TabletInfoPtr> replacements;
+  auto locked_tablets = tablets;
   for (const TabletInfoPtr& tablet : tablets) {
+    if (ShouldReplaceCreatingTablet(*tablet)) {
+      auto replacement = MakeUnlockedTabletInfo(tablet->table());
+      locked_tablets.push_back(replacement);
+      replacements.emplace(tablet.get(), std::move(replacement));
+    }
+  }
+  std::ranges::sort(locked_tablets, std::less<>(), &TabletInfo::tablet_id);
+  for (const TabletInfoPtr& tablet : locked_tablets) {
     tablet->mutable_metadata()->StartMutation();
   }
-  ScopedInfoCommitter<TabletInfo> unlocker_in(&tablets);
+  // Unlocks all tablets, including unused replacements, at the end of this scope.
+  ScopedInfoCommitter<TabletInfo> unlocker(&locked_tablets);
 
-  // Any tablets created by the helper functions will also be created in a
-  // locked state, so we must ensure they are unlocked before we return to
-  // avoid deadlocks.
+  // Replacements added to the table, removed again if the round fails.
   TabletInfos new_tablets;
-  ScopedInfoCommitter<TabletInfo> unlocker_out(&new_tablets);
 
   DeferredAssignmentActions deferred;
 
@@ -12134,9 +12153,15 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
         HandleAssignPreparingTablet(tablet, &deferred);
         break;
 
-      case SysTabletsEntryPB::CREATING:
-        RETURN_NOT_OK(HandleAssignCreatingTablet(tablet, &deferred, &new_tablets));
+      case SysTabletsEntryPB::CREATING: {
+        auto it = replacements.find(tablet.get());
+        if (it != replacements.end()) {
+          auto replacement = std::move(it->second);
+          replacements.erase(it);
+          RETURN_NOT_OK(HandleAssignCreatingTablet(tablet, replacement, &deferred, &new_tablets));
+        }
         break;
+      }
 
       default:
         VLOG_WITH_FUNC(2)
@@ -12144,6 +12169,12 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
             << SysTabletsEntryPB_State_Name(t_state);
         break;
     }
+  }
+
+  // A tablet may have left CREATING state between the check and the write lock.
+  for (const auto& [_, replacement] : replacements) {
+    replacement->mutable_metadata()->AbortMutation();
+    std::erase(locked_tablets, replacement);
   }
 
   // Nothing to do.
@@ -12217,8 +12248,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       }
     }
 
-    unlocker_out.Abort();  // tablet.unlock
-    unlocker_in.Abort();
+    unlocker.Abort();
 
     return s;
   }
@@ -12236,8 +12266,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
-  unlocker_out.Commit();
-  unlocker_in.Commit();
+  unlocker.Commit();
 
   {
     LockGuard lock(mutex_);

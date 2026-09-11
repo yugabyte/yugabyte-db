@@ -2252,12 +2252,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void HandleAssignPreparingTablet(const TabletInfoPtr& tablet,
                                    DeferredAssignmentActions* deferred);
 
-  // Assign tablets and send CreateTablet RPCs to tablet servers.
+  // Returns true if the tablet stayed in CREATING state past tablet_creation_timeout_ms and has
+  // to be replaced. Takes only a read lock, so it can run before the write locks are acquired.
+  bool ShouldReplaceCreatingTablet(const TabletInfo& tablet);
+
+  // Replaces a tablet whose creation timed out with 'replacement', which must be write locked.
   // The out param 'new_tablets' should have any newly-created TabletInfo
   // objects appended to it.
-  Status HandleAssignCreatingTablet(const TabletInfoPtr& tablet,
-                                  DeferredAssignmentActions* deferred,
-                                  TabletInfos* new_tablets);
+  Status HandleAssignCreatingTablet(
+      const TabletInfoPtr& tablet, const TabletInfoPtr& replacement,
+      DeferredAssignmentActions* deferred, TabletInfos* new_tablets);
 
   // Send the create tablet requests to the selected peers of the consensus configurations.
   // The creation is async, and at the moment there is no error checking on the
