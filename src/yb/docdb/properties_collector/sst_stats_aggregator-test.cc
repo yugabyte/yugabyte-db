@@ -36,6 +36,16 @@ rocksdb::LiveFileMetaData LiveFile(uint64_t file_number) {
 }
 
 // A file holding `entries` entries of which `reclaimable` are garbage, all in one age band.
+//
+// The counts are distinct multiples of the two arguments rather than all equal: the aggregate
+// sums a dozen like-typed uint64 counters, and a field added into the wrong slot stays invisible
+// whenever two fields share a value. Byte counters are 10x their entry counter for the same
+// reason. chain_entries == total_entries is the one deliberate tie -- nothing here is a meta or
+// unparseable entry, so the whole file is chain-tracked.
+//
+// The entries >= entries/2 >= entries/4 ordering preserves the collector's Ec >= K >= R (see
+// SstStats), keeping shadowed/repackable/collapsible non-negative. Inverting it would assert
+// against a file the tracker cannot produce.
 SstStats FileStats(uint64_t entries, uint64_t reclaimable) {
   SstStats stats;
   stats.total_entries = entries;
@@ -62,6 +72,9 @@ rocksdb::TableProperties FileProperties(
   return properties;
 }
 
+// 20 raw bytes per entry keeps the file's raw size above FileStats' reclaimable_bytes for every
+// reclaimable <= entries, so the coverage counters never see a file claiming more garbage than it
+// holds. UncoveredFile uses the same scale so the two are comparable byte for byte.
 rocksdb::TableProperties CoveredFile(uint64_t entries, uint64_t reclaimable) {
   const auto stats = FileStats(entries, reclaimable);
   return FileProperties(entries, entries * 20, &stats);
