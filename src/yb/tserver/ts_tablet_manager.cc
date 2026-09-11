@@ -510,6 +510,25 @@ void TSTabletManager::VerifyTabletData() {
 }
 
 void TSTabletManager::ResyncSstStats() {
+  if (!sst_stats_resync_pool_) {
+    return;
+  }
+  if (sst_stats_resync_active_.exchange(true)) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300)
+        << "Skipping SST statistics resync: the previous pass is still running";
+    return;
+  }
+  const auto status = sst_stats_resync_pool_->SubmitFunc([this]() {
+    ResyncSstStatsForAllTablets();
+    sst_stats_resync_active_.store(false);
+  });
+  if (!status.ok()) {
+    sst_stats_resync_active_.store(false);
+    YB_LOG_EVERY_N_SECS(WARNING, 60) << "Failed to schedule SST statistics resync: " << status;
+  }
+}
+
+void TSTabletManager::ResyncSstStatsForAllTablets() {
   for (const TabletPeerPtr& peer : GetTabletPeers()) {
     auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
@@ -951,8 +970,14 @@ Status TSTabletManager::Init() {
   data_size_metric_updater_ = std::make_unique<rpc::Poller>(
       LogPrefix(), [this]() { return ts_data_size_metrics_->Update(); });
 
-  sst_stats_resync_poller_ = std::make_unique<rpc::Poller>(
-      LogPrefix(), std::bind(&TSTabletManager::ResyncSstStats, this));
+  if (FLAGS_docdb_enable_sst_stats_collector) {
+    RETURN_NOT_OK(ThreadPoolBuilder("sst-stats-resync")
+                      .set_min_threads(1)
+                      .set_max_threads(1)
+                      .Build(&sst_stats_resync_pool_));
+    sst_stats_resync_poller_ = std::make_unique<rpc::Poller>(
+        LogPrefix(), std::bind(&TSTabletManager::ResyncSstStats, this));
+  }
 
   metrics_emitter_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
@@ -1042,9 +1067,11 @@ Status TSTabletManager::Start() {
   StartScheduledTask(
       data_size_metric_updater_.get(), "Data size metric updater",
       FLAGS_data_size_metric_updater_interval_sec * 1s);
-  StartScheduledTask(
-      sst_stats_resync_poller_.get(), "SST statistics resync",
-      FLAGS_docdb_enable_sst_stats_collector ? FLAGS_docdb_sst_stats_resync_interval_sec * 1s : 0s);
+  if (sst_stats_resync_poller_) {
+    StartScheduledTask(
+        sst_stats_resync_poller_.get(), "SST statistics resync",
+        FLAGS_docdb_sst_stats_resync_interval_sec * 1s);
+  }
 
   if (waiting_txn_registry_) {
     waiting_txn_registry_poller_->Start(
@@ -2690,7 +2717,9 @@ void TSTabletManager::StartShutdown() {
 
   data_size_metric_updater_->Shutdown();
 
-  sst_stats_resync_poller_->Shutdown();
+  if (sst_stats_resync_poller_) {
+    sst_stats_resync_poller_->Shutdown();
+  }
 
   metrics_emitter_->Shutdown();
 
@@ -2762,6 +2791,12 @@ void TSTabletManager::CompleteShutdown() {
 
   if (snapshot_cleanup_pool_) {
     snapshot_cleanup_pool_->Shutdown();
+  }
+
+  // After the poller shut down in StartShutdown, so nothing is submitted behind this; waits for a
+  // sweep already walking the tablet peers.
+  if (sst_stats_resync_pool_) {
+    sst_stats_resync_pool_->Shutdown();
   }
   if (raft_pool_) {
     raft_pool_->Shutdown();

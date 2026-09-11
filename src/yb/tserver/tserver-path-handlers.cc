@@ -269,7 +269,9 @@ string AgeBandsToHtml(const docdb::AgeBandCounts& counts) {
 void DumpSstStats(const tablet::TabletPeerPtr& peer, std::stringstream* output) {
   *output << "<h2>SST Statistics</h2>\n";
   auto tablet = peer->shared_tablet_maybe_null();
-  auto* sst_stats = tablet ? tablet->sst_stats() : nullptr;
+  // Held across the Get() below: a truncate or a snapshot restore concurrent with this request
+  // replaces the tablet's aggregator.
+  const auto sst_stats = tablet ? tablet->sst_stats() : nullptr;
   if (sst_stats == nullptr) {
     *output << "<p>Not collected (--docdb_enable_sst_stats_collector is not set).</p>\n";
     return;

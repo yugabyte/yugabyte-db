@@ -615,7 +615,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       : RocksDbListener(tablet, log_prefix) {}
 
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
-    if (auto* sst_stats = tablet_.sst_stats()) {
+    if (const auto sst_stats = tablet_.sst_stats()) {
       sst_stats->OnCompactionCompleted(ci);
     }
 
@@ -643,7 +643,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
-    if (auto* sst_stats = tablet_.sst_stats()) {
+    if (const auto sst_stats = tablet_.sst_stats()) {
       sst_stats->OnFlushCompleted(flush_job_info);
     }
     auto status = tablet_.MayModifyIntentsDbFlushedOpId();
@@ -1265,8 +1265,12 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   if (FLAGS_docdb_enable_sst_stats_collector) {
     regular_rocksdb_options.table_properties_collector_factories.push_back(
         docdb::MakeSstStatsCollectorFactory());
-    // Before DB::Open, so that the listener installed below always sees it.
-    sst_stats_ = std::make_unique<docdb::SstStatsAggregator>();
+    // Before DB::Open, so that the listener installed below always sees it. A reopen of a live
+    // tablet (truncate, snapshot restore) replaces the previous aggregator, which stays alive for
+    // as long as any reader still holds it.
+    auto sst_stats = std::make_shared<docdb::SstStatsAggregator>();
+    std::lock_guard lock(sst_stats_mutex_);
+    sst_stats_ = std::move(sst_stats);
   }
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
@@ -4847,11 +4851,19 @@ uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
   }, 0);
 }
 
+std::shared_ptr<docdb::SstStatsAggregator> Tablet::sst_stats() const {
+  std::lock_guard lock(sst_stats_mutex_);
+  return sst_stats_;
+}
+
 Status Tablet::ResyncSstStats() {
-  if (!sst_stats_) {
+  // Held for the whole resync: a truncate or a snapshot restore may install a new aggregator while
+  // this one is still installing its result.
+  const auto sst_stats = this->sst_stats();
+  if (!sst_stats) {
     return Status::OK();
   }
-  return sst_stats_->Resync(
+  return sst_stats->Resync(
       [this](std::vector<rocksdb::LiveFileMetaData>* live_files,
              rocksdb::TablePropertiesCollection* properties) -> Status {
         // Reading a properties block can hit disk, so this must not hold component_lock_ or block
