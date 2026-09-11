@@ -244,6 +244,11 @@ YBTableCreator& YBTableCreator::skip_index_backfill(const bool skip_index_backfi
   return *this;
 }
 
+YBTableCreator& YBTableCreator::follow_table_mode(master::YbFollowTableMode mode) {
+  follow_table_mode_ = mode;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::use_mangled_column_name(bool value) {
   index_info_->set_use_mangled_column_name(value);
   return *this;
@@ -414,6 +419,11 @@ Status YBTableCreator::Create() {
     req.set_is_unique_index(index_info_->is_unique());
     req.set_skip_index_backfill(skip_index_backfill_);
     req.set_is_backfill_deferred(index_info_->is_backfill_deferred());
+
+    // Prototype: forward follow-table mode (SPLIT FOLLOWING TABLE) to the master.
+    if (follow_table_mode_ != master::FOLLOW_TABLE_NONE) {
+      req.set_follow_table_mode(follow_table_mode_);
+    }
   }
 
   auto deadline = CoarseMonoClock::Now() +

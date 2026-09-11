@@ -27,6 +27,12 @@ namespace master {
 YB_STRONGLY_TYPED_BOOL(IgnoreTtlValidation);
 YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
 YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexesValidation);
+// Prototype (follow-table index): suppresses only the "follow-table indexes do not split
+// independently" check, leaving every other table-level check in force. Set by the
+// follow-table split reconciler so it can ask "would this table be splittable if it were
+// an ordinary index?" without having to claim a manual split, which would waive the
+// disabled lists, PITR and replica-limit protections along with it.
+YB_STRONGLY_TYPED_BOOL(IgnoreFollowTableExclusion);
 
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
@@ -65,7 +71,9 @@ class TabletSplitManager {
       const TableInfoPtr& table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse,
       IgnoreVectorIndexesValidation ignore_vector_indexes_validation =
-          IgnoreVectorIndexesValidation::kFalse);
+          IgnoreVectorIndexesValidation::kFalse,
+      IgnoreFollowTableExclusion ignore_follow_table_exclusion =
+          IgnoreFollowTableExclusion::kFalse);
 
   // Tablet-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.

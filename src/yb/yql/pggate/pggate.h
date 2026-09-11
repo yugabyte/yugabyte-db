@@ -412,6 +412,8 @@ class PgApiImpl {
 
   Status CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets);
 
+  Status CreateIndexSetFollowTable(PgStatement *handle);
+
   Status CreateIndexSetVectorOptions(PgStatement *handle, YbcPgVectorIdxOptions *options);
 
   Status CreateIndexSetHnswOptions(PgStatement *handle, int m, int m0, int ef_construction);

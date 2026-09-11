@@ -1436,6 +1436,26 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_enable_follow_table_index", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prototype: enables 'CREATE INDEX ... SPLIT FOLLOWING TABLE'."),
+			gettext_noop("When true, a hash-partitioned secondary index whose hash key "
+						 "matches its base table's may be created with SPLIT FOLLOWING "
+						 "TABLE. Split boundaries are then actively kept in step: the index "
+						 "is split to match new boundaries in the base table. Placement is "
+						 "only a best-effort preference: the cluster balancer steers replica "
+						 "and leader moves toward the matching base tablet when it can do so "
+						 "without disturbing load balance, and never at the cost of it. "
+						 "Co-location is therefore not guaranteed, and in a settled cluster "
+						 "an index tablet's leader will frequently sit on a different node "
+						 "than its base tablet's leader. When false, that syntax is "
+						 "rejected."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_follow_table_index,
+		false,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_prefer_bnl", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("If enabled, planner will force a preference of batched"
 						 " nested loop join plans over classic nested loop"

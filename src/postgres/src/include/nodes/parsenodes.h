@@ -2426,7 +2426,8 @@ typedef struct Constraint
 typedef enum
 {
 	NUM_TABLETS = 0,
-	SPLIT_POINTS = 1
+	SPLIT_POINTS = 1,
+	FOLLOW_TABLE = 2			/* YB: index follows its base table's split mapping */
 } YbSplitType;
 
 typedef struct YbOptSplit
