@@ -1342,6 +1342,32 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
         "query receiver should not carry a bare query_log_type",
         config.replace("yugabyte.query_log_type", ""),
         not(containsString("query_log_type")));
+    // PLAT-22327: attributes the receiver parses out of the log line (pgaudit CSV fields, log
+    // level, log_line_prefix tokens) must reach the exporter namespaced under "yugabyte." here
+    // too, with the bare key deleted - same as the VM path.
+    for (String parsedAttr :
+        ImmutableList.of(
+            "log.file.name",
+            "log_level",
+            "audit_type",
+            "statement_id",
+            "substatement_id",
+            "class",
+            "command",
+            "object_type",
+            "object_name",
+            "statement",
+            "timestamp_with_ms",
+            "process_id")) {
+      assertThat(
+          parsedAttr + " must be namespaced under yugabyte.",
+          config,
+          containsString("key: yugabyte." + parsedAttr));
+      assertThat(
+          "the bare " + parsedAttr + " must be deleted after the rename",
+          config,
+          containsString("{key: " + parsedAttr + ", action: delete}"));
+    }
     // file_storage queue dir must be auto-created, else the collector crash-loops on startup.
     assertThat(config, containsString("create_directory: true"));
     // Clean YAML: no SnakeYAML Java class tags leaking into the collector config.
