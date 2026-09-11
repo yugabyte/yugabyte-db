@@ -7,7 +7,7 @@ aliases:
   - /stable/deploy/yugabyte-cloud/
 menu:
   stable_yugabyte-cloud:
-    name: "Overview"
+    name: "YugabyteDB Aeon"
     identifier: yugabyte-cloud
     parent: yugabytedb-managed
     weight: 1
