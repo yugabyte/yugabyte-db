@@ -59,24 +59,16 @@ NAME                                             READY   STATUS    RESTARTS   AG
 kube-prometheus-stack-operator-5577f9747-hqzbw   1/1     Running   0          4d19h
 ```
 
-To use a custom Prometheus instance with a universe on Kubernetes:
+To use a custom Prometheus instance with a universe on Kubernetes, Add the following configuration to the [Kubernetes Overrides](../../../scale-deployments/edit-helm-overrides/):
 
-1. In YugabyteDB Anywhere, navigate to the universe you want to monitor.
+```yaml
+serviceMonitor:
+  enabled: true
+  extraLabels:
+    release: prom
+```
 
-1. Click **Actions** and choose **Edit Kubernetes Overrides**.
-
-1. Add the following configuration:
-
-    ```yaml
-    serviceMonitor:
-      enabled: true
-      extraLabels:
-        release: prom
-    ```
-
-    This enables a service monitor and adds an extra label `release: prom`, which is required by the Prometheus Operator to discover the service monitor.
-
-1. Click **Upgrade**.
+This enables a service monitor and adds an extra label `release: prom`, which is required by the Prometheus Operator to discover the service monitor.
 
 To verify the configuration:
 

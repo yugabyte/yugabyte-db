@@ -57,7 +57,7 @@ sudo firewall-cmd --reload
 
 ### Networking for xCluster
 
-When two database clusters are connected via [xCluster replication](../../manage-deployments/xcluster-replication/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters. If nodes use DNS addresses, those addresses must be resolvable on all nodes.
+When two database clusters are connected via [xCluster replication](../../create-deployments/xcluster-replication/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters. If nodes use DNS addresses, those addresses must be resolvable on all nodes.
 
 In addition, YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 
@@ -65,7 +65,7 @@ YugabyteDB Anywhere uses ICMP to verify connectivity between universes during xC
 
 ### Overriding default port assignments
 
-When [deploying a universe](../../create-deployments/create-universe-multi-zone/), you can customize the following ports:
+When [deploying a universe](../../create-deployments/create-universes-wizard/), you can customize the following ports:
 
 - YB-Master HTTP(S)
 - YB-Master RPC

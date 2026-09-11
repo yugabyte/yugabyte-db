@@ -4,6 +4,8 @@ headerTitle: Set up xCluster Replication
 linkTitle: Setup
 description: Setting up xCluster Replication for a universe
 headContent: Start replication from your source to your target
+aliases:
+  - /stable/yugabyte-platform/manage-deployments/xcluster-replication/xcluster-replication-setup/
 menu:
   stable_yugabyte-platform:
     parent: xcluster-replication

@@ -38,32 +38,54 @@ Only YSQL database audit logs can be exported, not YCQL.
 
 ## Database audit log
 
-To enable database audit logging for a universe, do the following:
+{{< tabpane text=true >}}
 
-1. On the universe **Logs** tab, click **Enable Database Audit Logging**.
+{{% tab header="New UI" lang="new" %}}
 
-    ![Configure Audit logging](/images/yp/log-export/configure-audit-logging.png)
+{{<tags/ui/new>}}To enable database audit logging for a universe, navigate to the universe and do the following:
 
-1. Select the YSQL statements to log.
+1. Click **Settings > Logs** and under **Compliance Logs** click **Enable Audit Logging**.
 
-    - **Read** - SELECT and COPY when the source is a relation or a query.
-    - **Write** - INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.
-    - **Function** - Function calls and DO blocks.
-    - **Role** - Statements related to roles and privileges: GRANT, REVOKE, and CREATE/ALTER/DROP ROLE.
-    - **DDL** - All DDL that is not included in the ROLE class.
-    - **Misc** - Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, and SET.
+1. Configure the log settings. See [YSQL audit log settings](#ysql-audit-log-settings).
 
-1. Configure the [YSQL audit log settings](#ysql-audit-log-settings).
+1. Click **Enable** when you are done.
 
-1. Select the export configuration to use.
+1. Click **Settings > Telemetry Export**, and click **Export Audit Logs**.
 
-1. Click **Enable and Export Database Audit Log**.
+1. Select the [export configuration](../anywhere-export-configuration/) for the tool you want to export to.
+
+{{% /tab %}}
+
+{{% tab header="Classic UI" lang="classic" %}}
+
+{{<tags/ui/classic>}}To enable database audit logging for a universe, navigate to the universe and do the following:
+
+1. On the **Logs** tab, click **Enable Database Audit Logging**.
+
+1. Configure the log settings. See [YSQL audit log settings](#ysql-audit-log-settings).
+
+1. Select the [export configuration](../anywhere-export-configuration/) for the tool you want to export to.
+
+1. Click **Enable** when you are done.
+
+{{% /tab %}}
+
+{{< /tabpane >}}
 
 YugabyteDB Anywhere begins the rolling restart.
 
 ### YSQL audit log settings
 
-The YSQL audit logging settings are derived from the settings for logging used by the pgaudit extension. Statements are always logged.
+You can log the following the YSQL statements:
+
+- **Read** - SELECT and COPY when the source is a relation or a query.
+- **Write** - INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.
+- **Function** - Function calls and DO blocks.
+- **Role** - Statements related to roles and privileges: GRANT, REVOKE, and CREATE/ALTER/DROP ROLE.
+- **DDL** - All DDL that is not included in the ROLE class.
+- **Misc** - Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, and SET.
+
+The YSQL audit logging settings are derived from the settings for logging used by the pgaudit extension.
 
 | Option | Description | Default |
 | :----- | :----- | :------ |

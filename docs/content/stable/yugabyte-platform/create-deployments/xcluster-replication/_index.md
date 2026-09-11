@@ -6,11 +6,12 @@ description: Enable xCluster Replication between universes
 headContent: Active universe with standby using xCluster deployment
 menu:
   stable_yugabyte-platform:
-    parent: manage-deployments
+    parent: create-deployments
     identifier: xcluster-replication
-    weight: 90
+    weight: 40
 aliases:
   - /stable/yugabyte-platform/create-deployments/async-replication-platform
+  - /stable/yugabyte-platform/manage-deployments/xcluster-replication/
 type: indexpage
 showRightNav: true
 rightNav:

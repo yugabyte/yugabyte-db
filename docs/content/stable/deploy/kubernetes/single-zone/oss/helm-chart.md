@@ -328,7 +328,7 @@ For example, if you set `resource.tserver.limits.memory: 4Gi` in your Helm chart
 
 ### Readiness probes
 
-Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
+Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/scale-deployments/edit-helm-overrides/#readiness-probes), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
 
 The following probes are available:
 
@@ -370,7 +370,7 @@ tserver:
 
 [Liveness probes](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes) determine whether Kubernetes should restart the YugabyteDB container. After enough consecutive failures, the [kubelet](https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/) restarts the container. Readiness probes only govern whether traffic is sent to the pod.
 
-Like readiness, liveness behavior comes from the Helm chart used for direct installs and for [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
+Like readiness, liveness behavior comes from the Helm chart used for direct installs and for [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/scale-deployments/edit-helm-overrides/).
 
 YB-Master and YB-TServer pods share the top-level `livenessProbe` and `customLivenessProbe` entries in [`values.yaml`](https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml).
 

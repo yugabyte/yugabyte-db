@@ -37,7 +37,7 @@ To bind to the LDAP server using TLS, include the `ldaptls=1` option in the `ysq
 host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldapserver.example.org ldapbasedn=""dc=example,dc=org"" ldapsearchattribute=uid ldapbinddn=""cn=admin,dc=example,dc=org"" ldapbindpasswd=secret ldaptls=1"
 ```
 
-For more information, see [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
+For more information, see [Edit configuration flags](../../../scale-deployments/edit-config-flags/).
 
 When entering the flag value in YugabyteDB Anywhere, do not enclose it in single quotes, as you would in a Linux shell.
 
