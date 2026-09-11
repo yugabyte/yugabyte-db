@@ -63,7 +63,9 @@ Commit the resulting fixes -- amend Step 1's commit or add a new one -- before S
 
 ### Step 2: Base branch
 
-The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always rebases and pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.
+The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` defaults to `master`. Backports are not opened with this skill — use `/backport-commit` instead.
+
+**One exception: a stacked PR.** If the current branch is named `feature-stack/<feature>/<change>`, this change is a member of a PR stack and its base is the *parent* change, not `master`. Pass `-b feature-stack/<feature>/<parent-change>`. Only the bottom PR of a stack targets `master`. See [Stacked PRs](#stacked-prs) before going further.
 
 ### Step 3: Gather PR metadata
 
@@ -162,6 +164,7 @@ Exit codes:
 - `0` — PR created. Last stdout line is the PR URL.
 - `2` — rebase conflict; resolve, `git rebase --continue`, then re-run.
 - `3` — lint failed; fix as a NEW commit (do not amend a pushed commit, per `src/AGENTS.md`), then re-run.
+- `4` — append-only push was not a fast-forward (the PR is already out of draft). Integrate the remote branch with `git merge` — **not** a rebase — then re-run. See [Pushing follow-up commits](#pushing-follow-up-commits).
 - `1` — pre-flight failure (dirty tree, missing remote, etc.).
 
 Confirm the title and body with the user before invoking the script.
@@ -185,12 +188,44 @@ Output:
 
 Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-msg-<issue>.txt`, `/tmp/claude/pr-body-<issue>.md`).
 
+## Pushing follow-up commits
+
+`git-push.sh` picks its mode from the PR's review state, so the same command is right at every stage — but know which mode you're in, because the recovery differs.
+
+| PR state | What the helper does |
+| --- | --- |
+| No PR yet, or PR is a **draft** | Integrates the remote branch, rebases onto the latest `upstream/<base>`, lints, force-pushes with `--force-with-lease`. |
+| PR is **ready for review** | Append-only: no rebase, fast-forward check, plain push. Non-fast-forward → exit `4`. |
+| `-f` passed | Rebase + force-push regardless. |
+
+**Why the split:** a rebase renews every SHA on the branch, which marks reviewers' existing line comments "outdated" and destroys the diff-since-their-last-look. That's cheap to lose while the PR is a draft and expensive once someone is reading it.
+
+**On exit `4`,** don't reach for `-f`. Read the message — it distinguishes *the remote is ahead of you* (`git merge --ff-only`) from *your branch and the remote diverged* (`git merge <remote>/<branch>`). Use `-f` only when the user has said reviewers agreed to eat the churn.
+
+**To pick up newer `master` on a live PR, merge — don't rebase:**
+
+```
+git merge upstream/master
+```
+
+The merge commit never reaches `master` (the repo squash-merges every PR), so it costs nothing. `git-push.sh` prints how far behind the branch is but deliberately won't merge for you — that's the author's call, mid-review.
+
+## Stacked PRs
+
+A stack is for a feature that splits into several dependent changes reviewed in parallel. Reach for it only when the user asks for one; a single PR is the default.
+
+- **Branch naming is load-bearing:** `feature-stack/<feature-name>/<change-name>`. `git-push.sh` warns on anything that doesn't match that shape but still pushes — GitHub's rulesets are the authority on which names the `feature-stack/**/*` exclude admits, so the script won't refuse a name that might be legal. If the push bounces off `Block Creations`, the warning explaining why is already on screen.
+- **Stack branches live in `yugabyte/yugabyte-db`, not your fork.** GitHub can only chain PRs whose head branches it owns. This prefix is the only exception to the never-push-to-upstream rule; the rulesets exclude `refs/heads/feature-stack/**/*` and nothing else. `git-push.sh` detects the prefix and retargets automatically — you don't pass a flag.
+- **Each PR points at its parent:** `create-pr.sh -b feature-stack/<feature>/<parent-change>`. Only the bottom PR uses `-b master` (the default). The script verifies the parent exists upstream before opening the PR.
+- **Never point a fork branch at a `feature-stack/` base.** It looks like a stack member but its build won't work. `create-pr.sh` rejects this with instructions to rename the branch.
+- **Every PR in the stack runs its own full CI.** Open all but the bottom one with `-D` (draft) and promote each with `gh pr ready <num>` only when the PR below it lands — otherwise one push to the feature costs N full Jenkins runs.
+
 ## Notes
 
-- **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script.
+- **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script. (`git-push.sh` does push a `feature-stack/<feature>/<change>` branch to upstream — that's the sanctioned stacked-PR path, and the script is the only thing allowed to do it.)
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
-- Never force-push without explicit user permission; when authorized, prefer `--force-with-lease`.
-- CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill).
+- **Don't force-push a branch whose PR is out of draft** — `git-push.sh` already refuses, and `-f` overrides that refusal. Only pass `-f` when the user explicitly authorizes it. Before the PR leaves draft, force-pushing is the normal, expected behavior and needs no permission.
+- CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill). Note that a **draft PR runs only the cheap checks** — `bld-*.yml` all gate on `github.event.pull_request.draft == false` — so leaving a PR in draft until it's genuinely ready is a real cost saving, not just a notification setting.
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:
   - **Body update:** `jq -Rs '{body: .}' < new-body.md | gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<num> --input -`

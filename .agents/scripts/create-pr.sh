@@ -2,6 +2,11 @@
 # new-pr: rebase the current branch on upstream/<base>, run the linter, push
 #         to the user's fork, and open a cross-repo PR with reviewers.
 #
+# A "feature-stack/<feature>/<change>" branch is the exception: it lives in
+# the main repo (GitHub can only chain PRs whose head branches it owns), so
+# the push goes upstream and the PR is same-repo, with -b naming the parent
+# change in the stack.
+#
 # Designed to be invoked from the /create-pr Claude Code skill once metadata
 # (issue, title, body, reviewers) has been gathered. Usable standalone too.
 #
@@ -35,6 +40,8 @@
 #                  arrive as "org/slug"; the org/ prefix is stripped before
 #                  routing the slug to team_reviewers[].
 #   -b base        Base branch on the upstream repo (default: master).
+#                  For a stacked PR, the parent "feature-stack/<feature>/
+#                  <change>" branch that this change builds on.
 #   -D             Open the PR as a GitHub draft. Useful when you want to
 #                  read the rendered PR before notifications fire and before
 #                  reviewers are auto-pinged. Convert with
@@ -82,7 +89,8 @@ Optional:
                  and Test plan. **Required when the branch changes any
                  .proto file** -- the script aborts otherwise.
   -r reviewers   Comma-separated handles and/or team slugs (org/slug)
-  -b base        Base branch (default: master)
+  -b base        Base branch (default: master). For a stacked PR, the
+                 parent feature-stack/<feature>/<change> branch.
   -D             Open the PR as a GitHub draft (\`gh pr create --draft\`).
                  Convert with \`gh pr ready <num>\` when ready for review.
 
@@ -238,26 +246,6 @@ gh_user=$(gh api user --jq '.login' 2>/dev/null || true)
   exit 1
 }
 
-# Detect fork remote (a non-upstream remote whose URL contains
-# "<gh_user>/<repo_name>").
-FORK_REMOTE="${FORK_REMOTE:-}"
-if [[ -z "$FORK_REMOTE" ]]; then
-  repo_name="${GH_REPO#*/}"
-  while read -r remote; do
-    [[ "$remote" == "$UPSTREAM_REMOTE" ]] && continue
-    url=$(git remote get-url "$remote" 2>/dev/null || true)
-    if [[ "$url" == *"${gh_user}/${repo_name}"* ]]; then
-      FORK_REMOTE="$remote"
-      break
-    fi
-  done < <(git remote)
-fi
-[[ -z "$FORK_REMOTE" ]] && {
-  echo "error: no fork remote found; expected a remote pointing at" >&2
-  echo "       <your-gh-user>/${GH_REPO#*/}. Set FORK_REMOTE=<name> to override." >&2
-  exit 1
-}
-
 current_branch=$(git symbolic-ref --short HEAD 2>/dev/null) || {
   echo "error: HEAD is detached; check out a feature branch first" >&2
   exit 1
@@ -267,13 +255,65 @@ current_branch=$(git symbolic-ref --short HEAD 2>/dev/null) || {
   exit 1
 }
 
-echo ">>> upstream=${UPSTREAM_REMOTE}, fork=${FORK_REMOTE}," \
-     "base=${base_branch}, branch=${current_branch}"
+# A member of a PR stack lives in the main repo, not in a fork -- GitHub can
+# only chain PRs whose head branches it owns. git-push.sh checks the naming
+# convention; here we only need to know which repo the head branch is in,
+# because that decides the -H spec (same-repo vs cross-repo) below.
+is_stack_branch=false
+[[ "$current_branch" =~ ^feature-stack/ ]] && is_stack_branch=true
+
+# Targeting a feature-stack branch from a fork produces a PR that looks like a
+# stack member but does not build. Catch it here rather than after CI fails.
+if [[ "$base_branch" == feature-stack/* ]]; then
+  if ! $is_stack_branch; then
+    echo "error: -b names the stack branch '$base_branch', but this branch" >&2
+    echo "       ('$current_branch') is not a feature-stack branch." >&2
+    echo "       A stack member must itself be feature-stack/<feature>/<change>" >&2
+    echo "       in the main repo; a fork branch pointed at a stack base is a" >&2
+    echo "       plain PR and its build will not work. Rename with:" >&2
+    echo "         git branch -m feature-stack/<feature-name>/<change-name>" >&2
+    exit 1
+  fi
+  if ! git ls-remote --exit-code --heads "$UPSTREAM_REMOTE" "$base_branch" \
+       >/dev/null 2>&1; then
+    echo "error: parent branch '$base_branch' does not exist on $GH_REPO." >&2
+    echo "       Push the parent change first, then stack this one on it." >&2
+    exit 1
+  fi
+fi
+
+FORK_REMOTE="${FORK_REMOTE:-}"
+if $is_stack_branch; then
+  echo ">>> upstream=${UPSTREAM_REMOTE}, head=${GH_REPO} (stack branch)," \
+       "base=${base_branch}, branch=${current_branch}"
+else
+  # Detect fork remote (a non-upstream remote whose URL contains
+  # "<gh_user>/<repo_name>").
+  if [[ -z "$FORK_REMOTE" ]]; then
+    repo_name="${GH_REPO#*/}"
+    while read -r remote; do
+      [[ "$remote" == "$UPSTREAM_REMOTE" ]] && continue
+      url=$(git remote get-url "$remote" 2>/dev/null || true)
+      if [[ "$url" == *"${gh_user}/${repo_name}"* ]]; then
+        FORK_REMOTE="$remote"
+        break
+      fi
+    done < <(git remote)
+  fi
+  [[ -z "$FORK_REMOTE" ]] && {
+    echo "error: no fork remote found; expected a remote pointing at" >&2
+    echo "       <your-gh-user>/${GH_REPO#*/}. Set FORK_REMOTE=<name> to override." >&2
+    exit 1
+  }
+  echo ">>> upstream=${UPSTREAM_REMOTE}, fork=${FORK_REMOTE}," \
+       "base=${base_branch}, branch=${current_branch}"
+fi
 
 # Lint, validate destination, and push via the shared helper. git-push.sh
 # does its own remote detection but we pass UPSTREAM_REMOTE/FORK_REMOTE
 # explicitly via env to keep the two scripts agreeing on which remotes to
-# use, and to skip the second auto-detect.
+# use, and to skip the second auto-detect. FORK_REMOTE is empty for a stack
+# branch, which pushes to upstream and never resolves a fork.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO" \
   "${script_dir}/git-push.sh" -b "$base_branch"
@@ -306,7 +346,14 @@ fi
 # user -- the FORK_REMOTE detection above already required the URL to
 # match <gh_user>/<repo>, so URL parsing here would just rederive the
 # same value (and got fragile for SSH aliases / non-standard remote URLs).
-pr_head="${gh_user}:${current_branch}"
+# A stack branch already lives in $GH_REPO, so it takes the bare name: the
+# <owner>:<branch> form would send gh looking for a fork that has no such
+# branch.
+if $is_stack_branch; then
+  pr_head="${current_branch}"
+else
+  pr_head="${gh_user}:${current_branch}"
+fi
 
 if (( draft )); then
   echo ">>> creating PR (draft): ${full_title}"
