@@ -41,6 +41,11 @@ class DocDBKVFormatter {
       const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const = 0;
 
   virtual Status ProcessArgument(const std::string& argument) = 0;
+
+  // Packing schemas live in the tablet superblock rather than in the SST files, so a formatter
+  // that was not handed one falls back to printing packed rows as hex. Lets sst_dump say so up
+  // front instead of leaving the reader to wonder why every row is opaque.
+  virtual bool CanDecodePackedRows() const = 0;
 };
 
 class SSTDumpTool {

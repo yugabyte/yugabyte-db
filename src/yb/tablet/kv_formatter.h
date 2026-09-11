@@ -47,6 +47,8 @@ class KVFormatter : public rocksdb::DocDBKVFormatter {
 
   Status ProcessArgument(const std::string& argument) override;
 
+  bool CanDecodePackedRows() const override;
+
  private:
   std::unique_ptr<SchemaPackingProviderFromSuperblock> schema_packing_provider_;
 };
