@@ -920,14 +920,6 @@ void TabletSplitManager::DoSplitting(
 
   for (const auto& table : valid_tables) {
     VLOG(3) << Format("Processing table $0 for split", table->id());
-    auto replication_info = catalog_manager_.GetTableReplicationInfoNoDefault(table);
-    if (!replication_info.ok()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Skipping tablet splitting for table "
-                                       << table->id() << ": "
-                                       << "as fetching replication info failed with error "
-                                       << StatusToString(replication_info.status());
-      continue;
-    }
     auto tablets_result = table->GetTablets();
     if (!tablets_result) continue;
     for (const auto& tablet : *tablets_result) {
