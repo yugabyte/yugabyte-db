@@ -4069,7 +4069,9 @@ class ControlScript(object):
                                 "-ysql_password={}".format(
                                 self.configs.saved_data.get("database_password")),
                                 "-ycql_password={}".format(
-                                self.configs.saved_data.get("database_password"))])
+                                self.configs.saved_data.get("database_password")),
+                                "-certs_dir_name={}".format(
+                                self.configs.saved_data.get("certs_dir"))])
 
                         if self.configs.saved_data.get("ysql_port"):
                             yugabyted_ui_cmd.append("-ysql_port={}".format(
