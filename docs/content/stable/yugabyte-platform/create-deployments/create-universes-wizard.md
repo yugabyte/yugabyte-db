@@ -50,7 +50,7 @@ To create a universe:
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general)
+1. [General Settings](#general-settings)
 1. [Placement](#placement)
 1. [Hardware](#hardware)
 1. [Database](#database)

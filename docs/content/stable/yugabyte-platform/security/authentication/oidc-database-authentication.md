@@ -371,7 +371,7 @@ Valid keys for `ycql_jwt_conf` are described in the following table:
 
 After these options are configured, the JWT from the IdP is supplied as the password when connecting to YCQL.
 
-The following shows an example OIDC flag configuration for Azure AD (without identity mapping). Set these flags [using YugabyteDB Anywhere](../../scale-deployments/edit-config-flags/); `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
+The following shows an example OIDC flag configuration for Azure AD (without identity mapping). Set these flags [using YugabyteDB Anywhere](../../../scale-deployments/edit-config-flags/); `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
 
 ```sh
 use_cassandra_authentication=true
@@ -380,7 +380,7 @@ ycql_jwt_conf={jwt_jwks_url=https://login.microsoftonline.com/<tenant_id>/discov
 ycql_jwt_users_to_skip_csv=cassandra
 ```
 
-The following shows an example OIDC flag configuration for JumpCloud (without identity mapping). Set these flags [using YugabyteDB Anywhere](../../scale-deployments/edit-config-flags/); `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
+The following shows an example OIDC flag configuration for JumpCloud (without identity mapping). Set these flags [using YugabyteDB Anywhere](../../../scale-deployments/edit-config-flags/); `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
 
 ```sh
 use_cassandra_authentication=true

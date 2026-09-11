@@ -107,6 +107,8 @@ Placement determines how resilient the universe is to domain (that is, node, zon
 
 With a resilient universe, planned outages such as maintenance and upgrades are performed using a rolling restart, meaning your workloads are not interrupted.
 
+#### Setup modes
+
 When creating or modifying universe placement, you choose **Regular Cluster** (production) or **Single-Node Cluster** (development and testing only). For regular clusters, you then choose **Guided** or **Expert** mode.
 
 | | Guided | Expert |

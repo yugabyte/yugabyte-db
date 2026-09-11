@@ -138,7 +138,7 @@ During YB-TServer startup, the FSManager (File System Manager) module checks the
 
 The following two recommendations are specific to [YugabyteDB Anywhere](../../../yugabyte-platform/).
 
-**Option 1**: Increase the disk volume size using the [Edit Universe](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-a-universe) option. Note the following important considerations:
+**Option 1**: Increase the disk volume size using the [Edit Universe](../../../yugabyte-platform/scale-deployments/edit-universe/#vertical-scaling) option. Note the following important considerations:
 
 - Preflight checks - YugabyteDB Anywhere performs preflight checks to ensure a smooth [smart resize](../../../yugabyte-platform/manage-deployments/edit-universe/#smart-resize) operation. One of the checks verifies there is no leaderless tablet in the cluster. To bypass this check, you can disable the `yb.checks.leaderless_tablets.enabled` global [runtime configuration flag](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) as a Super Admin user.
 
