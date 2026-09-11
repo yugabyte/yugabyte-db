@@ -199,12 +199,18 @@ Status TaskRunner::Wait(StopWaitIfFailed stop_wait_if_failed) {
 void TaskRunner::CompleteTask(const Status& status) {
   bool is_first_failure = false;
   if (!status.ok()) {
-    bool expected = false;
-    if (failed_.compare_exchange_strong(expected, true)) {
-      is_first_failure = true;
+    {
+      // Set failed_ under mutex_ together with first_failure_. Wait() checks failed_ while
+      // holding mutex_, so otherwise it could observe the flag before the status is stored and
+      // return OK.
       std::lock_guard lock(mutex_);
-      first_failure_ = status;
-    } else {
+      bool expected = false;
+      if (failed_.compare_exchange_strong(expected, true)) {
+        is_first_failure = true;
+        first_failure_ = status;
+      }
+    }
+    if (!is_first_failure) {
       LOG(WARNING) << status.message() << std::endl;
     }
   }
