@@ -678,6 +678,8 @@ HINT:  You need to rebuild PostgreSQL using --with-libxml.
 
 **Workaround**: Convert XML data to JSON format for compatibility with YugabyteDB, or handle XML processing at the application layer before inserting data.
 
+**Fixed In**: {{<release "2026.1">}}.
+
 ---
 
 ### JSONB subscripting
@@ -1392,11 +1394,11 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, or `TIMETZ`.
+**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, or `TIMETZ`.
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
-- Always skipped (both connectors): `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSQUERY`, `CIRCLE`, `VECTOR`, or `TIMETZ`.
+- Always skipped (both connectors): `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSQUERY`, `CIRCLE`, `VECTOR`, `XML`, or `TIMETZ`.
 - Skipped by [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): `HSTORE`, `TSVECTOR`, `CITEXT`, `LTREE`, or `ARRAY OF ENUMS`. (These are supported by the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) (default).)
 
 Refer to [cutover to target](../../reference/cutover-archive/cutover/#yugabytedb-grpc-vs-yugabytedb-connector) for how or when to configure these connectors.
@@ -1431,6 +1433,8 @@ CREATE TABLE combined_tbl (
 ```
 
 **Workaround**: To migrate the data, a workaround is to convert the type to text and import the data to target; to read the data on the target YugabyteDB, you need to create some user defined functions similar to XML functions.
+
+**Fixed In**: {{<release "2026.1">}}.
 
 **Example**
 
