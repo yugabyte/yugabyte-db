@@ -52,86 +52,93 @@ CDC in YugabyteDB provides the following guarantees.
 | At least once delivery | Changes from transactions are streamed at least once. Changes from transactions may be streamed again in case of restart after failure. For example, this can happen in the case of a Kafka Connect node failure. If the Kafka Connect node pushes the records to Kafka and crashes before committing the offset, it will again get the same set of records upon restart. |
 | No gaps in change stream | Receiving changes that are part of a transaction with commit time *t* implies that you have already received changes from all transactions with commit time lower than *t*. Thus, receiving any change for a row with commit timestamp *t* implies that you have received all older changes for that row. |
 
-## Key concepts
+## Key Concepts
 
-The YugabyteDB logical replication feature makes use of PostgreSQL concepts like replication slot, publication, replica identity, and so on. Understanding these key concepts is crucial for setting up and managing a logical replication environment effectively.
+Understanding key concepts like replication slots, publications, replica identity, and LSNs is crucial for managing CDC effectively.
 
 {{<lead link="./key-concepts/">}}
-Review [key concepts](./key-concepts) of YugabyteDB CDC with logical replication.
+Review [key concepts](./key-concepts/) of YugabyteDB CDC with logical replication.
 {{</lead>}}
 
-## Getting started
+## Getting Started
 
-Get started with YugabyteDB logical replication using the YugabyteDB Connector.
+Get up and running quickly with your first CDC deployment.
 
 {{<lead link="./get-started/">}}
-[Get started](./get-started) using the connector.
+[Get started](./get-started/) with the YugabyteDB Connector.
 {{</lead>}}
 
-## Monitoring
+## Set Up and Configure CDC
 
-You can monitor the activities and status of the deployed connectors using the http end points provided by YugabyteDB.
+Configure your cluster for CDC with gflags, retention policies, and use-case-specific tuning.
 
-{{<lead link="./monitor/">}}
-Learn how to [monitor](./monitor/) your CDC setup.
+{{<lead link="./setup-configuration/">}}
+[Setup and Configuration](./setup-configuration/) - Gflags reference, retention policies, and tuning by use case.
+{{</lead>}}
+
+## Operational Procedures
+
+Learn how to safely manage your CDC deployment during active replication.
+
+{{<lead link="./operational-procedures/">}}
+[Operational Procedures](./operational-procedures/) - Safe DDL operations, publication management, slot recovery, and troubleshooting.
 {{</lead>}}
 
 ## YugabyteDB Connector
 
-To capture and stream your changes in YugabyteDB to an external system, you need a connector that can read the changes in YugabyteDB and stream it out. For this, you can use the YugabyteDB Connector, which is based on the Debezium platform. The connector is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
+Stream your changes to Kafka and other external systems using the YugabyteDB Connector.
 
 {{<lead link="./yugabytedb-connector/">}}
-For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/).
+[YugabyteDB Connector](./yugabytedb-connector/) - Kafka Connect integration and configuration reference.
 {{</lead>}}
 
-## Limitations
+## Best Practices
 
-- Log Sequence Number ([LSN](../using-logical-replication/key-concepts/#lsn-type)) Comparisons Across Slots.
+Optimize performance, reliability, and resource usage.
 
-    In the case of YugabyteDB, the LSN  does not represent the byte offset of a WAL record. Hence, arithmetic on LSN and any other usages of the LSN making this assumption will not work. Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
+{{<lead link="./best-practices/">}}
+[Best Practices](./best-practices/) - Parallel consumption, fan-out patterns, load balancing, and Kafka strategies.
+{{</lead>}}
 
-- The following functions are currently unsupported:
+## Advanced Topics
 
-  - `pg_current_wal_lsn`
-  - `pg_wal_lsn_diff`
-  - `IDENTIFY SYSTEM`
-  - `txid_current`
-  - `pg_stat_replication`
+Dive deeper into schema evolution, snapshots, replication origins, and DDL streaming.
 
-  Additionally, the functions responsible for pulling changes instead of the server streaming it are unsupported as well. They are described in [Replication Functions](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-REPLICATION) in the PostgreSQL documentation.
+{{<lead link="./advanced-topic/">}}
+[Advanced Topics](./advanced-topic/) - Architectural details and advanced configuration scenarios.
+{{</lead>}}
 
-- Restriction on DDLs
+## Monitoring
 
-    DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
+Track metrics, lag, and health of your CDC deployment.
 
-- CDC currently doesn't support [Transactional DDL](../../../explore/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
+{{<lead link="./monitor/">}}
+[Monitoring](./monitor/) - Metrics, endpoints, and health checks.
+{{</lead>}}
 
-- CDC is not supported on tables that are also the target of xCluster replication (see issue {{<issue 15534>}}). However, both CDC and xCluster can work simultaneously on the same source tables.
+## Key Limitations by Version
 
-    When performing [switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/) or [failover](../../../deploy/multi-dc/async-replication/async-transactional-failover/) on xCluster, if you are using CDC, remember to also reconfigure CDC to use the new primary universe.
+| Feature | v2024.2 | v2025.1 | v2025.2 | v2026.1 |
+|---------|---------|---------|---------|---------|
+| Replica identity | PK only | Full support | Full support | Full support |
+| Table schema evolution | Limited | Limited | Limited | Full (non-colocated) |
+| DDL rewrite blocking | Blocked | Blocked | Blocked | Non-blocking |
+| Intra-txn before-image | Manual | Manual | Auto | Auto |
+| Savepoints | No | No | Yes (v2.2.0+) | Yes |
+| Implicit publication changes | N/A | No | No | Yes |
 
-- Starting in v2026.1, CDC supports streaming DDLs that cause table rewrites on non-colocated tables. CDC detects the rewrite, notifies the client, and transitions to the new tablets. For configuration, limitations, and unsupported scenarios, refer to [Streaming DDLs causing table rewrite](./advanced-topic/#streaming-ddls-causing-table-rewrite). In versions earlier than v2026.1, CDC blocks DDLs that cause table rewrites when logical replication is active; DROP TABLE and TRUNCATE TABLE operations after slot creation are also not supported.
+See [Setup and Configuration - Limitations](./setup-configuration/#limitations-by-version) for complete details.
 
-- When you truncate a table that is being replicated by CDC, CDC does not send a truncate record to the client. Tracked in issue {{<issue 29674>}}.
+### Common Limitations
 
-- When a DDL causes a table rewrite, CDC re-sends existing data that was re-written to the new tablets. Tracked in issue {{<issue 31636>}}.
+- **LSN not comparable across slots:** Use separate Kafka topics for each slot to avoid missed records.
+- **Transactional DDL not supported:** Do not enable `ysql_yb_ddl_transaction_block_enabled`.
+- **Unsupported functions:** `pg_current_wal_lsn`, `pg_wal_lsn_diff`, `IDENTIFY SYSTEM`, `txid_current`, `pg_stat_replication`.
+- **Table rewrites:** v2026.1+ allows non-blocking rewrites for non-colocated tables; earlier versions require slot drop.
+- **Single consumer per slot:** Multiple consumers will cause conflicts; use multiple slots for parallel consumption.
+- **xCluster conflict:** CDC and xCluster cannot both replicate the same table.
+- **YCQL not supported:** Only YSQL tables are supported.
 
-- DDLs that cause table rewrites on _colocated_ tables remain blocked when CDC is enabled, even in v2026.1 and later. Tracked in issue {{<issue 31908>}}.
+### CDC with Point-in-Time Recovery
 
-- YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
-
-- Transaction savepoints are not supported in versions earlier than v2025.2.2.0. Issue {{<issue 10936>}}.
-
-- Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
-
-- A replication slot should be consumed by at most one consumer at a time. However, there is currently no locking mechanism to enforce this. As a result, you should ensure that multiple consumers do not consume from a slot simultaneously. Tracked in issue {{<issue 20755>}}.
-
-- If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event unless the YB-TServer flag [cdc_enable_intra_transactional_before_image](../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) is enabled (v2025.2.4.0+). With that flag enabled, CDC returns the row state immediately before each intra-transactional operation. If the replica identity is not CHANGE and a before image still cannot be found, CDC throws an error while processing the event.
-
-    To handle updates/deletes with a non-CHANGE replica identity when no before image is available, set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC sends a null before-image instead of failing with an error.
-
-- Adding an expired or not-of-interest table to a publication renders the replication slot associated with this publication unusable. In such a scenario, the slot must be dropped and a new slot must be created to proceed. Tracked in issue {{<issue 28310>}}.
-
-### CDC with point-in-time recovery
-
-[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with logical replication configured, you need to create new replication slots after the restore is complete, and start streaming from that point. Creating new slots ensures that you start streaming from the correct checkpoints.
+[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) allows you to restore to a specific point in time. For databases with logical replication configured, create new replication slots after the restore is complete and start streaming from that point.
