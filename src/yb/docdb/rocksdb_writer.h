@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <span>
 
 #include <boost/logic/tribool.hpp>
@@ -407,7 +408,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes,
-      const StorageSet& apply_to_storages, TableType table_type);
+      const StorageSet& apply_to_storages, TableType table_type,
+      std::atomic<bool>* can_advance_intents_flush_op_id);
 
   bool Empty() const;
 
@@ -443,6 +445,7 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   DocVectorIndexesPtr vector_indexes_;
   StorageSet apply_to_storages_;
   TableType table_type_;
+  std::atomic<bool>* can_advance_intents_flush_op_id_;
 };
 
 // Context class for dumping intents records for a transaction.
