@@ -35,6 +35,7 @@
 #include <pthread.h>
 #include <sys/types.h>
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <queue>
@@ -203,6 +204,11 @@ class ServicePoolImpl final : public InboundCallHandler {
     }
 
     thread_pool->Enqueue(task);
+  }
+
+  size_t QueueSize() const {
+    return static_cast<size_t>(
+        std::max<int64_t>(queued_calls_.load(std::memory_order_relaxed), 0));
   }
 
   const Counter* RpcsTimedOutInQueueMetricForTests() const {
@@ -497,6 +503,10 @@ void ServicePool::Process(InboundCallPtr call, Queue queue) {
 
 void ServicePool::FillEndpoints(RpcEndpointMap* map) {
   impl_->FillEndpoints(RpcServicePtr(this), map);
+}
+
+size_t ServicePool::QueueSize() const {
+  return impl_->QueueSize();
 }
 
 const Counter* ServicePool::RpcsTimedOutInQueueMetricForTests() const {

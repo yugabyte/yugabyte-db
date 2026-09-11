@@ -79,6 +79,7 @@ class ServicePool : public RpcService {
 
   void FillEndpoints(RpcEndpointMap* map) override;
   void Process(InboundCallPtr call, Queue queue) override;
+  size_t QueueSize() const override;
   const Counter* RpcsTimedOutInQueueMetricForTests() const;
   const Counter* RpcsQueueOverflowMetric() const;
   std::string service_name() const;

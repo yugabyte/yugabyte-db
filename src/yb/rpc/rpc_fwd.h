@@ -83,6 +83,7 @@ class Rpcs;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
+class ServiceQueueMonitor;
 class Sidecars;
 class Stream;
 class StreamReadBuffer;
