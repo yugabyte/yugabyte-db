@@ -66,6 +66,16 @@ export-dir: <export-dir-name>
 # Default : info
 log-level: info
 
+# Maximum size (in MB) of a yb-voyager log file before it is rotated.
+# Also applies to the Debezium log file during live migration.
+# Default : 200
+log-max-size-mb: 200
+
+# Maximum number of rotated yb-voyager log files to retain.
+# Use -1 to retain all rotated log files.
+# Default : 10
+log-max-backups: 10
+
 # Enable or disable sending diagnostics to Yugabyte
 # Accepted values - (true, false, yes, no, 1, 0)
 # Default : true

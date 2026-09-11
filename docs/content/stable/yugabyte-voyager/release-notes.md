@@ -29,6 +29,23 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.9.2 - September 15, 2026
+
+### New features
+
+- Added support for a custom partition key in the CDC phase of [import data](../reference/data-migration/import-data/) using `--cdc-partition-key-overrides`, so change events for a table can be routed on a chosen list of columns instead of its primary key during live migration. For example, `--cdc-partition-key-overrides 'sales.orders:(customer_id)'`.
+- Added `--log-max-size-mb` and `--log-max-backups` to control yb-voyager log rotation. Available as CLI flags or [configuration file](../reference/configuration-file/) keys, either globally or per command. `--log-max-backups -1` retains all rotated files.
+
+### Enhancements
+
+- Added YugabyteDB v2026.1 as the latest stable supported target version.
+- Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) reports no longer flag XML data type columns and XML functions as unsupported when the target is YugabyteDB v2026.1 or later, reporting them only as a live-migration caveat.
+- Multi-range columns are now reported as live-migration caveats when the target is YugabyteDB v2025.1 or later, where they were previously not reported at all.
+- [Export data](../reference/data-migration/export-data/) for live migration now fails fast when a table in scope has a DEFERRABLE UNIQUE or PRIMARY KEY constraint, listing the affected tables instead of stalling later during the streaming phase.
+- In [import data](../reference/data-migration/import-data/), with `--cdc-partition-key auto`, a table having a unique index on a STORED generated column is now routed using the table strategy, and an explicit `pk` or custom strategy on such a table is rejected before the snapshot begins.
+- Improved live-migration conflict-detection logs: multi-column unique-index values are now rendered readably and table names appear as `schema.table`. The logs also report when a detected conflict clears and how long the event was blocked.
+- Errors that were previously ignored are now surfaced: failures closing with a written report, control, or batch file; failures persisting migration state; and invalid cloud-storage `--data-dir` URLs.
+
 ## v2026.9.1 - September 1, 2026
 
 ### Enhancements
