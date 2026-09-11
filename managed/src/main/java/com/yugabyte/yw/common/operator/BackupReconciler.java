@@ -329,7 +329,7 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
   @Override
   public void run() {
-    informer.addEventHandler(this);
+    informer.addEventHandler(HaAwareResourceEventHandler.wrap(operatorUtils, this));
     informer.run();
   }
 }

@@ -214,7 +214,7 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
 
   @Override
   public void run() {
-    informer.addEventHandler(this);
+    informer.addEventHandler(HaAwareResourceEventHandler.wrap(operatorUtils, this));
     informer.run();
   }
 }
