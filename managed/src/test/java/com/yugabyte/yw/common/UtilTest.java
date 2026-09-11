@@ -1070,4 +1070,22 @@ public class UtilTest extends FakeDBApplication {
 
     assertTrue(Util.configureCgroup(userIntent, provider, true, confGetter));
   }
+
+  @Test
+  public void testGetPostgresCompatiblePassword() {
+    Set<String> passwords = new HashSet<>();
+    for (int i = 0; i < 500; i++) {
+      String password = Util.getPostgresCompatiblePassword();
+      assertEquals(Util.POSTGRES_PASSWORD_LENGTH, password.length());
+      assertFalse("contains '$$': " + password, password.contains("$$"));
+      assertFalse("contains '$': " + password, password.contains("$"));
+      for (char c : password.toCharArray()) {
+        assertTrue(
+            "unexpected char '" + c + "' in " + password,
+            Util.POSTGRES_PASSWORD_ALLOWED_CHARS.indexOf(c) >= 0);
+      }
+      passwords.add(password);
+    }
+    assertEquals(500, passwords.size());
+  }
 }

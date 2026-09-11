@@ -179,6 +179,14 @@ public class Util {
    */
   public static final Pattern SHELL_SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9._-]+");
 
+  public static final int POSTGRES_PASSWORD_LENGTH = 20;
+
+  /**
+   * Safe-set of characters for generated Postgres passwords.
+   */
+  public static final String POSTGRES_PASSWORD_ALLOWED_CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@^*0123456789";
+
   public static final double EPSILON = 0.000001d;
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
@@ -1895,9 +1903,8 @@ public class Util {
   }
 
   public static String getPostgresCompatiblePassword() {
-    String allowedCharsInPassword =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@$^*0123456789";
-    return RandomStringUtils.secureStrong().next(20, allowedCharsInPassword);
+    return RandomStringUtils.secureStrong()
+            .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
   }
 
   public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {
