@@ -44,6 +44,8 @@
 
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/docdb/docdb_pgapi.h"
+
 #include "yb/gutil/bind.h"
 
 #include "yb/master/catalog_manager.h"
@@ -98,6 +100,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 DEFINE_NON_RUNTIME_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
@@ -157,6 +160,8 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
+DECLARE_bool(enable_ysql);
+
 namespace yb {
 namespace master {
 
@@ -215,6 +220,13 @@ Status Master::Init() {
   RETURN_NOT_OK(ThreadPoolBuilder("init").set_max_threads(1).Build(&init_pool_));
 
   RETURN_NOT_OK(DbServerBase::Init());
+
+  // The master hosts the sys catalog tablets and evaluates pushed-down filters on them through
+  // YbGate, exactly as the tserver does for user tablets. Initialize process-wide state in YbGate
+  // including the database encoding and the default locale.
+  if (FLAGS_enable_ysql) {
+    RETURN_NOT_OK(docdb::DocPgInit(pgwrapper::PgWrapper::GetPostgresExecutablePath()));
+  }
 
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
