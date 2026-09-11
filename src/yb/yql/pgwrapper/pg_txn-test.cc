@@ -90,7 +90,10 @@ struct ColumnTombstoneCounters {
 };
 
 // Reads the leader only. Compaction runs on every replica, so summing all of them would make the
-// expected delta depend on how many replicas happened to compact.
+// expected delta depend on how many replicas happened to compact. Callers must therefore disable
+// load balancing: a leader move between the two reads compares counters of two different peers,
+// and the promoted peer may be a replica that never even received the write, so it has nothing to
+// compact and its counter never moves.
 Result<ColumnTombstoneCounters> GetColumnTombstoneCounters(
     MiniCluster* cluster, const std::string& table_name) {
   const auto filter = ListPeersFilter::kLeaders;
@@ -1088,6 +1091,7 @@ TEST_F(PgTxnTest, RepackDisabledPreservesPackedRow) {
 TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
@@ -1141,6 +1145,7 @@ TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingDisabled) {
 TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingEnabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
@@ -1174,6 +1179,7 @@ TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingEnabled) {
 TEST_F(PgTxnTest, ColumnTombstoneOlderThanPackedRowIsCollected) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
@@ -1231,6 +1237,7 @@ TEST_F(PgTxnTest, ColumnTombstoneDroppedCounterWithKeepDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_keep_unmerged_column_tombstones_over_packed_row) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
