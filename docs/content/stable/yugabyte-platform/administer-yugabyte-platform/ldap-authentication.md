@@ -241,11 +241,21 @@ To map groups to roles, on the **Groups** tab, do the following:
 
 1. Select the YugabyteDB Anywhere role (built-in or custom) that you want to map the group to.
 
-    - To assign a built-in role, on the **Built-in Role** tab, select a role. You can't assign the SuperAdmin role to a group.
+    - To assign a built-in role, on the **Built-in Role** tab, select a role. By default, you can't assign the SuperAdmin role to a group. See [Assign SuperAdmin via group mapping](#assign-superadmin-via-group-mapping).
 
     - To assign a custom role (only available if you have enabled RBAC for groups), on the **Custom Role** tab, select a role and scope.
 
 1. Click **Save**.
+
+#### Assign SuperAdmin via group mapping
+
+By default, you can't assign the SuperAdmin role to an LDAP group or via role bindings to LDAP users. To allow this, set the **Allow SuperAdmin in LDAP/OIDC group and user role mappings** Global Runtime Configuration option (config key `yb.security.allow_superadmin_user_group_mapping`) to true. Refer to [Manage runtime configuration settings](../manage-runtime-config/). Only a Super Admin can change this global setting, and only a Super Admin can assign the SuperAdmin role when the setting is enabled.
+
+Keep this setting disabled unless you require SuperAdmin access for LDAP users. Prefer mapping a dedicated LDAP group to SuperAdmin rather than assigning the role broadly.
+
+Local Super Admin users can't sign in using SSO. LDAP-provisioned Super Admin users can sign in through LDAP as usual.
+
+If you remove all local users and rely only on LDAP Super Admins, an LDAP outage can lock you out of YugabyteDB Anywhere. Keep at least one local Super Admin, or recover access as described in [Recover Super Admin access](../../install-yugabyte-platform/create-admin-user/#recover-super-admin-access).
 
 ### Define the YugabyteDB Anywhere role
 
