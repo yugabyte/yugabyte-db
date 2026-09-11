@@ -246,8 +246,11 @@ Status InitDistTraceProvider(const resource_sdk::Resource& resource_attrs) {
 // supplied (through GUC or comment) traceparent header.
 class TraceparentCarrier : public context::propagation::TextMapCarrier {
  public:
-  explicit TraceparentCarrier(nostd::string_view traceparent = {})
-      : traceparent_(traceparent.data(), traceparent.size()) {}
+  explicit TraceparentCarrier(nostd::string_view traceparent = {}) {
+    if (!traceparent.empty()) {
+      traceparent_.assign(traceparent.data(), traceparent.size());
+    }
+  }
 
   nostd::string_view Get(nostd::string_view key) const noexcept override {
     if (key == trace::propagation::kTraceParent) {
