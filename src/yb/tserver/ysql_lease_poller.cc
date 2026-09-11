@@ -121,7 +121,7 @@ YsqlLeaseClient::~YsqlLeaseClient() {
 
 YsqlLeaseClient::Impl::Impl(
     TabletServer& server, const YsqlLeaderClientListener& listener)
-    : finder_(server.messenger(), server.proxy_cache(), nullptr),
+    : finder_(server.messenger(), server.proxy_cache(), nullptr, server.MakeCloudInfoPB()),
 #ifdef __linux__
       server_(server),
 #endif

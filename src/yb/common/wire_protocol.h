@@ -76,6 +76,10 @@ HostPortPB HostPortToPB(const HostPort& host_port);
 // Returns the HostPort created from the specified protobuf.
 HostPort HostPortFromPB(const HostPortPB& host_port_pb);
 
+// Whether two addresses are the same address. Host and port together are the identity: the
+// same host on another port is a different address.
+bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs);
+
 bool HasHostPortPB(
     const google::protobuf::RepeatedPtrField<HostPortPB>& list, const HostPortPB& hp);
 
@@ -100,16 +104,49 @@ YB_DEFINE_ENUM(UsePrivateIpMode, (cloud)(region)(zone)(never));
 // Returns mode for selecting between private and public IP.
 Result<UsePrivateIpMode> GetPrivateIpMode();
 
+// Returns the scope outside which node to node connections are encrypted.
+Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope();
+
 // Pick node's public host and port
 // registration - node registration information
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration);
+
+// Whether a connection went out on a node's broadcast address rather than its private one.
+// Distinct from a public address merely being permitted, which is the scope's answer: a node
+// that reported no broadcast address is reached privately whatever the scope allows.
+YB_STRONGLY_TYPED_BOOL(UsedBroadcastAddress);
+
+// An address to reach a node at, together with which list it came from. The two travel
+// together because a caller that encrypts has to know which one it got: what a connection
+// carries follows the address chosen for it, and recomputing that choice separately would
+// let the two answers drift apart.
+struct SelectedHostPort {
+  const HostPortPB& host_port;
+  UsedBroadcastAddress used_broadcast;
+};
+
+// Whether reaching a node at this address leaves its private address, which is what decides
+// whether the connection is held to node_to_node_encryption_required_on_broadcast. The
+// address decides it, not the list it was read from: a node that reports one address in both
+// lists, as the Kubernetes manifests in cloud/ do, is reached privately at it however it was
+// chosen. An address the node reports in neither list cannot be shown to be private, so it is
+// treated as broadcast.
+//
+// This also answers for an address chosen some other way than by selection. A tserver reaches
+// its master over an address the master configuration named, raced against every other, so
+// that connection's provenance is recovered here rather than selected.
+UsedBroadcastAddress UsesBroadcastAddress(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const HostPortPB& host_port);
+UsedBroadcastAddress UsesBroadcastAddress(
+    const ServerRegistrationPB& registration, const HostPortPB& host_port);
 
 // Pick host and port that should be used to connect node
 // broadcast_addresses - node public host ports
 // private_host_ports - node private host ports
 // connect_to - node placement information
 // connect_from - placement information of connect originator
-const HostPortPB& DesiredHostPort(
+SelectedHostPort SelectHostPort(
     const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
     const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
     const CloudInfoPB& connect_to,
@@ -118,8 +155,36 @@ const HostPortPB& DesiredHostPort(
 // Pick host and port that should be used to connect node
 // registration - node registration information
 // connect_from - placement information of connect originator
+SelectedHostPort SelectHostPort(
+    const ServerRegistrationPB& registration, const CloudInfoPB& connect_from);
+
+// The address SelectHostPort chooses, for callers that have no use for which list it came
+// from. Anything deciding a connection's transport must take both from one SelectHostPort
+// call instead, so that the address and the transport cannot describe different connections.
+const HostPortPB& DesiredHostPort(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from);
+
 const HostPortPB& DesiredHostPort(
     const ServerRegistrationPB& registration, const CloudInfoPB& connect_from);
+
+// Whether a connection to connect_to should be encrypted: node_to_node_encryption_scope
+// exempts destinations within a placement boundary, and
+// node_to_node_encryption_required_on_broadcast withholds that exemption from any connection
+// that did not stay on the destination's private address.
+//
+// used_broadcast comes from the same SelectHostPort call that chose the address, so the
+// transport always describes the connection actually being made.
+//
+// This answers the policy alone. A messenger built without encryption has no encrypted
+// transport to name, so ProxyContext::ProtocolFor pairs this with the transports the
+// messenger actually holds, the way SelectHostPort pairs the scope with the addresses a node
+// actually reported.
+bool UseEncryption(
+    UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from);
 
 HAS_MEMBER_FUNCTION(error);
 HAS_MEMBER_FUNCTION(status);

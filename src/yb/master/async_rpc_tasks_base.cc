@@ -13,6 +13,8 @@
 
 #include "yb/master/async_rpc_tasks_base.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
 
@@ -22,6 +24,8 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
 
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -534,9 +538,16 @@ void RetryingMasterRpcTask::DoRpcCallback() {
 }
 
 Status RetryingMasterRpcTask::ResetProxies() {
-  HostPort hostport = HostPortFromPB(DesiredHostPort(peer_, master_->MakeCloudInfoPB()));
-  master_test_proxy_ = std::make_unique<MasterTestProxy>(&master_->proxy_cache(), hostport);
-  master_cluster_proxy_ = std::make_unique<MasterClusterProxy>(&master_->proxy_cache(), hostport);
+  const auto connect_from = master_->MakeCloudInfoPB();
+  auto selected = SelectHostPort(peer_, connect_from);
+  HostPort hostport = HostPortFromPB(selected.host_port);
+  auto* protocol = &master_->proxy_cache().GetContext()->ProtocolFor(
+      rpc::Encrypted(
+          UseEncryption(selected.used_broadcast, peer_.cloud_info(), connect_from)));
+  master_test_proxy_ =
+      std::make_unique<MasterTestProxy>(&master_->proxy_cache(), hostport, protocol);
+  master_cluster_proxy_ =
+      std::make_unique<MasterClusterProxy>(&master_->proxy_cache(), hostport, protocol);
   return Status::OK();
 }
 
