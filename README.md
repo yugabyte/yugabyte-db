@@ -8,6 +8,7 @@
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
 [![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://communityinviter.com/apps/yugabyte-db/register)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
+[![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20YugabyteDB%20Guru-006BFF)](https://gurubase.io/g/yugabytedb)
 
 # What is YugabyteDB?
 
