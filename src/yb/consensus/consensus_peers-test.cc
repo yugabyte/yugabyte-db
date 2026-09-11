@@ -44,6 +44,7 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -418,6 +419,32 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   // OK to have called UpdateConsensus() a few times due to regularly
   // scheduled heartbeats.
   ASSERT_LT(mock_proxy->update_count() - initial_update_count, 5);
+}
+
+// A peer that registered several addresses is reachable at any of them, so a connect failure
+// on one moves the proxy to the next rather than leaving the peer unreachable.
+TEST_F(ConsensusPeersTest, TestAddressFallback) {
+  RaftPeerPB peer_pb;
+  peer_pb.set_permanent_uuid("peer-with-several-addresses");
+  peer_pb.add_last_known_private_addr()->set_host("private1");
+  peer_pb.add_last_known_private_addr()->set_host("private2");
+  peer_pb.add_last_known_broadcast_addr()->set_host("broadcast1");
+
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(&proxy_cache, peer_pb, CloudInfoPB());
+
+  // The broadcast address is preferred, then the private ones in the order registered.
+  const std::vector<string> kExpectedOrder = {"broadcast1", "private1", "private2"};
+  for (const auto& expected : kExpectedOrder) {
+    ASSERT_EQ(expected, proxy.TEST_HostPort().host());
+    // The last address leaves nothing to move to, which is what tells the caller the peer
+    // itself is unreachable.
+    ASSERT_EQ(expected != kExpectedOrder.back(), proxy.FailToNextAddress());
+  }
+
+  // With every address failed the preferred one comes back, so the peer becomes reachable
+  // again as soon as it is.
+  ASSERT_EQ(kExpectedOrder.front(), proxy.TEST_HostPort().host());
 }
 
 } // namespace yb::consensus

@@ -2843,11 +2843,14 @@ Status RaftConsensus::ChangeConfig(
             return STATUS(InvalidArgument, "Must have last_known_addr specified.",
                           req.ShortDebugString());
           }
-          HostPort leader_hp;
-          RETURN_NOT_OK(GetHostPortFromConfig(
-              new_config, peer_uuid(), queue_->local_cloud_info(), &leader_hp));
+          // Match the leader the way RemoveFromRaftConfig matches the peer it removes, on any
+          // address the leader registered. Selecting one of them here instead would let a
+          // request naming the leader by another of its addresses past this check and then
+          // remove it.
+          RaftPeerPB leader_peer;
+          RETURN_NOT_OK(GetRaftConfigMember(new_config, peer_uuid(), &leader_peer));
           for (const auto& host_port : server.last_known_private_addr()) {
-            if (leader_hp.port() == host_port.port() && leader_hp.host() == host_port.host()) {
+            if (IsRunningOn(leader_peer, host_port)) {
               return STATUS(InvalidArgument, "Cannot remove live leader using hostport.",
                             req.ShortDebugString());
             }

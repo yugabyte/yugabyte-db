@@ -301,5 +301,36 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
   ASSERT_NO_FATALS(AssertConsensusMergeExpected(*cmeta, remote_state, 2, ""));
 }
 
+TEST_F(ConsensusMetadataTest, TestIsRunningOn) {
+  auto host_port = [](const string& host, uint16_t port) {
+    HostPortPB result;
+    result.set_host(host);
+    result.set_port(port);
+    return result;
+  };
+
+  RaftPeerPB peer;
+  peer.set_permanent_uuid("A");
+  *peer.add_last_known_private_addr() = host_port("private1", 9100);
+  *peer.add_last_known_private_addr() = host_port("private2", 9100);
+  *peer.add_last_known_broadcast_addr() = host_port("broadcast1", 9100);
+
+  // Any address the peer registered names it. A caller that names a peer by address has one
+  // it obtained outside the cluster, so which address a placement here would select for
+  // dialing says nothing about which one it used.
+  EXPECT_TRUE(IsRunningOn(peer, host_port("private1", 9100)));
+  EXPECT_TRUE(IsRunningOn(peer, host_port("private2", 9100)));
+  EXPECT_TRUE(IsRunningOn(peer, host_port("broadcast1", 9100)));
+
+  EXPECT_FALSE(IsRunningOn(peer, host_port("elsewhere", 9100)));
+  // The port is part of the address.
+  EXPECT_FALSE(IsRunningOn(peer, host_port("private1", 9200)));
+
+  // A peer that registered nothing is named by no address.
+  RaftPeerPB unregistered;
+  unregistered.set_permanent_uuid("B");
+  EXPECT_FALSE(IsRunningOn(unregistered, host_port("private1", 9100)));
+}
+
 } // namespace consensus
 } // namespace yb
