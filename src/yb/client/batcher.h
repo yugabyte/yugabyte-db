@@ -38,6 +38,7 @@
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/error_collector.h"
+#include "yb/client/retryable_request_tracker.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
@@ -90,10 +91,10 @@ struct InFlightOpsGroupsWithMetadata {
 };
 
 struct RequestDetails {
-  RetryableRequestId min_running_request_id;
+  RetryableRequestTracker::Registration registration;
 
-  explicit RequestDetails(RetryableRequestId min_running_request_id_) :
-      min_running_request_id(min_running_request_id_) {}
+  explicit RequestDetails(RetryableRequestTracker::Registration registration_)
+      : registration(std::move(registration_)) {}
 };
 
 using BatcherRequestsMap = std::unordered_map<RetryableRequestId, RequestDetails>;
@@ -256,14 +257,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   server::Clock* Clock() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
-
   void RequestsFinished();
 
-  void RegisterRequest(
-      RetryableRequestId id, RetryableRequestId min_running_id) {
-    retryable_requests_.emplace(id, RequestDetails(min_running_id));
-  }
+  const RequestDetails& RegisterRequest();
 
   void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);
 
