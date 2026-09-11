@@ -17,6 +17,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -45,10 +47,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
     return (Params) taskParams;
   }
 
-  @Override
-  public void validateParams(boolean isFirstTry) {
-    super.validateParams(isFirstTry);
-    Universe universe = getUniverse();
+  private NodeDetails getCurrentNode(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
 
     if (currentNode == null) {
@@ -58,6 +57,14 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new PlatformServiceException(Http.Status.BAD_REQUEST, msg);
     }
+    return currentNode;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    NodeDetails currentNode = getCurrentNode(universe);
     currentNode.validateActionOnState(
         taskParams().isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT);
 
@@ -74,6 +81,13 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    NodeDetails currentNode = getCurrentNode(universe);
+    createNodePrecheckTasks(
+        currentNode,
+        currentNode.getAllProcesses(),
+        SubTaskGroupType.PreflightChecks,
+        false,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
   }
 
   @Override
@@ -101,12 +115,12 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
               currentNode, isHardReboot ? NodeState.HardRebooting : NodeState.Rebooting)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
+      Set<ServerType> processesToStop = new LinkedHashSet<>();
       // Stop the tserver.
       if (currentNode.isTserver) {
         boolean tserverAlive = isTserverAliveOnNode(currentNode, universe.getMasterAddresses());
         if (tserverAlive) {
-          createTServerTaskForNode(currentNode, "stop")
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          processesToStop.add(ServerType.TSERVER);
         }
       }
 
@@ -120,15 +134,20 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       if (currentNode.isMaster) {
         boolean masterAlive = isMasterAliveOnNode(currentNode, universe.getMasterAddresses());
         if (masterAlive) {
-          createStopMasterTasks(Collections.singleton(currentNode))
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          if (!skipWaitingForMasterLeader) {
-            createWaitForMasterLeaderTask()
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          }
+          processesToStop.add(ServerType.MASTER);
         }
       }
+      stopProcessesOnNodes(
+          Collections.singletonList(currentNode),
+          processesToStop,
+          false,
+          false, /* deconfigure */
+          false, /* ignoreStopError */
+          SubTaskGroupType.StoppingNodeProcesses);
 
+      if (processesToStop.contains(ServerType.MASTER) && !skipWaitingForMasterLeader) {
+        createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
       // Reboot the node.
       createRebootTasks(Collections.singletonList(currentNode), isHardReboot)
           .setSubTaskGroupType(
@@ -136,26 +155,14 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       createWaitForNodeAgentTasks(Collections.singletonList(currentNode))
           .setSubTaskGroupType(
               isHardReboot ? SubTaskGroupType.HardRebootingNode : SubTaskGroupType.RebootingNode);
-      if (currentNode.isMaster) {
-        // Start the master.
-        createStartMasterProcessTasks(Collections.singleton(currentNode));
 
-        createWaitForServerReady(currentNode, ServerType.MASTER)
-            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-      }
-
-      // Start the tserver.
-      if (currentNode.isTserver) {
-        createTServerTaskForNode(currentNode, "start")
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-        // Wait for the tablet server to be responsive.
-        createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-        createWaitForServerReady(currentNode, ServerType.TSERVER)
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-      }
+      startProcessesOnNode(
+          currentNode,
+          currentNode.getAllProcesses(),
+          SubTaskGroupType.StartingNodeProcesses,
+          false,
+          true,
+          true);
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(Arrays.asList(currentNode))

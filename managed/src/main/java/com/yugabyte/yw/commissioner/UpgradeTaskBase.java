@@ -629,6 +629,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
 
     for (List<NodeDetails> nodeList : split) {
+      Map<String, Boolean> ignoreStopErrorByNodeName =
+          nodeList.stream()
+              .collect(Collectors.toMap(n -> n.nodeName, n -> isIgnoreStopError(context, n)));
+
       // Nodes are grouped by the same set of server types, so it doesn't matter which node to take.
       Set<ServerType> processTypes = processTypesFunction.apply(nodeList.get(0));
 
@@ -661,18 +665,29 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       if (context.runBeforeStopping) {
         rollingUpgradeLambda.run(nodeList, processTypes);
       }
+      if (context.preAction != null) {
+        nodeList.forEach(context.preAction);
+      }
 
       // Stop yb-controller only if master server on node is in active role.
       if (isYbcPresent && activeRole) {
-        createServerControlTasks(nodeList, ServerType.CONTROLLER, "stop")
+        createStopServerTasks(
+                nodeList,
+                ServerType.CONTROLLER,
+                params -> {
+                  params.isIgnoreError =
+                      ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false);
+                })
             .setSubTaskGroupType(subGroupType);
       }
-
       stopProcessesOnNodes(
           nodeList,
           processTypes,
           context.reconfigureMaster && activeRole /* remove master from quorum */,
           false /* deconfigure */,
+          params -> {
+            params.isIgnoreError = ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false);
+          },
           subGroupType);
 
       if (!context.runBeforeStopping) {
@@ -825,6 +840,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     NodeState nodeState = getNodeState();
 
+    Map<String, Boolean> ignoreStopErrorByNodeName =
+        nodes.stream()
+            .collect(Collectors.toMap(n -> n.nodeName, n -> isIgnoreStopError(context, n)));
+
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
 
     if (context.runBeforeStopping) {
@@ -833,10 +852,21 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     // Stop yb-controller only if master server on node is in active role.
     if (isYbcPresent && activeRole) {
-      createServerControlTasks(nodes, ServerType.CONTROLLER, "stop")
+      createStopServerTasks(
+              nodes,
+              ServerType.CONTROLLER,
+              params ->
+                  params.isIgnoreError =
+                      ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false))
           .setSubTaskGroupType(subGroupType);
     }
-    createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
+    createStopServerTasks(
+            nodes,
+            processType,
+            params ->
+                params.isIgnoreError =
+                    ignoreStopErrorByNodeName.getOrDefault(params.nodeName, false))
+        .setSubTaskGroupType(subGroupType);
 
     if (!context.runBeforeStopping) {
       nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
@@ -1285,18 +1315,32 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return className;
   }
 
+  /**
+   * For a retry case, the node could be already stopped by the original task. In that case, the
+   * node agent will be unreachable and AnsibleClusterServerCtl will fail. So we need to ignore stop
+   * errors if upgrade could stop the node.
+   *
+   * @param nodeDetails
+   * @return
+   */
+  protected boolean isIgnoreStopError(UpgradeContext upgradeContext, NodeDetails nodeDetails) {
+    return !isFirstTry() && upgradeContext.nodesAreStopped && nodeDetails.state != NodeState.Live;
+  }
+
   @Value
   @Builder
   public static class UpgradeContext {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    @Builder.Default boolean nodesAreStopped = false; // Whether nodes are phisically stopped.
     @Builder.Default boolean processTServersFirst = false;
     // This is transient universe state to keep track of changes already applied
     // (as actual universe in DB is usually updated at the end of task).
     Universe targetUniverseState;
     @Builder.Default boolean skipStartingProcesses = false;
     String targetSoftwareVersion;
+    Consumer<NodeDetails> preAction;
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
     UUID rootCAUUID;

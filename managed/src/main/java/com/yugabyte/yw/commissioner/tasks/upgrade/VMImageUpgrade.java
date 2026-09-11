@@ -13,26 +13,21 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Universe;
@@ -43,6 +38,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -160,13 +156,92 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          MastersAndTservers nodes = getNodesToBeRestarted();
-          Set<NodeDetails> nodeSet = toOrderedSet(nodes.asPair());
+          MastersAndTservers allNodes = getNodesToBeRestarted();
+          LinkedHashSet<NodeDetails> allNodesSet = toOrderedSet(allNodes.asPair());
+          Map<String, ImageSettings> imageSettingsMap = getImageSettingsForNodes(allNodesSet);
+          LinkedHashSet<NodeDetails> nodeSet =
+              allNodesSet.stream()
+                  .filter(n -> imageSettingsMap.containsKey(n.nodeName))
+                  .filter(n -> !runtimeInfo.replacementCompletedNodes.contains(n.getNodeUuid()))
+                  .collect(Collectors.toCollection(LinkedHashSet::new));
+
+          Universe universe = getUniverse();
 
           String newVersion = taskParams().ybSoftwareVersion;
+          restoreRuntimeInfoAndPrepareVolumes(nodeSet, imageSettingsMap);
 
-          // Create task sequence for VM Image upgrade
-          createVMImageUpgradeTasks(nodeSet);
+          Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
+          boolean reconfigureMaster =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor > 1;
+
+          UpgradeContext context =
+              UpgradeContext.builder()
+                  .runBeforeStopping(false)
+                  .processInactiveMaster(false)
+                  // Since the update is supposed to be quite long-running.
+                  .reconfigureMaster(reconfigureMaster)
+                  .nodesAreStopped(true)
+                  .preAction(
+                      node -> {
+                        if (!runtimeInfo.volumeReplacedNodes.contains(node.getNodeUuid())) {
+                          // Capture /etc/fstab before the root volume is replaced (old root is
+                          // detached after).
+                          if (!runtimeInfo.deviceMappingByNode.containsKey(node.getNodeUuid())) {
+                            createCaptureFstabTask(universe, node)
+                                .setSubTaskGroupType(getTaskSubGroupType());
+                          }
+                        }
+                      })
+                  .postAction(
+                      node -> {
+                        createUpdateUniverseFieldsTask(
+                                u -> {
+                                  NodeDetails nodeDetails = u.getNode(node.nodeName);
+                                  if (nodeDetails != null) {
+                                    nodeDetails.machineImage = node.machineImage;
+                                    nodeDetails.sshUserOverride = node.sshUserOverride;
+                                    nodeDetails.sshPortOverride = node.sshPortOverride;
+                                    nodeDetails.ybPrebuiltAmi = node.ybPrebuiltAmi;
+                                    if (!taskParams().isSoftwareUpdateViaVm) {
+                                      u.updateConfig(
+                                          ImmutableMap.of(
+                                              Universe.USE_CUSTOM_IMAGE,
+                                              Boolean.toString(
+                                                  u.getUniverseDetails().nodeDetailsSet.stream()
+                                                      .allMatch(n -> n.ybPrebuiltAmi))));
+                                    }
+                                  }
+                                })
+                            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse)
+                            .setAfterGroupRunListener(
+                                g ->
+                                    updateRuntimeInfo(
+                                        RuntimeInfo.class,
+                                        info ->
+                                            info.replacementCompletedNodes.add(
+                                                node.getNodeUuid())));
+                      })
+                  .build();
+
+          createRollingNodesUpgradeTaskFlow(
+              (nodes, processTypes) ->
+                  createVMImageUpgradeTasks(
+                      imageSettingsMap, nodes, processTypes, clusterToImageBundleMap),
+              nodeSet,
+              context,
+              taskParams().isYbcInstalled());
+
+          // Update the imageBundleUUID in the cluster -> userIntent
+          if (!clusterToImageBundleMap.isEmpty()) {
+            clusterToImageBundleMap.forEach(
+                (clusterUUID, bundleUUID) -> {
+                  createClusterUserIntentUpdateTask(clusterUUID, bundleUUID)
+                      .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+                });
+          }
+          // Delete after all the disks are replaced.
+          createDeleteRootVolumesTasks(universe, allNodesSet, null /* volume Ids */)
+              .setSubTaskGroupType(getTaskSubGroupType());
 
           if (taskParams().isSoftwareUpdateViaVm) {
             // Promote Auto flags on compatible versions.
@@ -208,8 +283,34 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     }
   }
 
-  private Map<NodeDetails, ImageSettings> getImageSettingsForNodes(Set<NodeDetails> nodes) {
-    Map<NodeDetails, ImageSettings> result = new LinkedHashMap<>();
+  private void restoreRuntimeInfoAndPrepareVolumes(
+      Collection<NodeDetails> nodes, Map<String, ImageSettings> imageSettingsMap) {
+    // Restore mount-path -> UUID mappings from a prior attempt so YNPProvisioning can remount.
+    runtimeInfo.deviceMappingByNode.forEach(
+        (nodeUuid, mapping) ->
+            deviceMappingByNode
+                .computeIfAbsent(nodeUuid, k -> new ConcurrentHashMap<>())
+                .putAll(mapping));
+    if (runtimeInfo.volumesCreated) {
+      replacementRootDevices.putAll(runtimeInfo.replacementRootDevices);
+      replacementRootVolumes.putAll(runtimeInfo.replacementRootVolumes);
+    } else {
+      createRootVolumeCreationTasks(nodes, imageSettingsMap)
+          .setSubTaskGroupType(getTaskSubGroupType())
+          .setAfterGroupRunListener(
+              g ->
+                  updateRuntimeInfo(
+                      RuntimeInfo.class,
+                      info -> {
+                        info.replacementRootDevices = replacementRootDevices;
+                        info.replacementRootVolumes = replacementRootVolumes;
+                        info.volumesCreated = true;
+                      }));
+    }
+  }
+
+  private Map<String, ImageSettings> getImageSettingsForNodes(Set<NodeDetails> nodes) {
+    Map<String, ImageSettings> result = new LinkedHashMap<>();
     UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
@@ -249,84 +350,60 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         continue;
       }
       result.put(
-          node, new ImageSettings(machineImage, sshUserOverride, sshPortOverride, imageBundleUUID));
+          node.nodeName,
+          new ImageSettings(machineImage, sshUserOverride, sshPortOverride, imageBundleUUID));
     }
     return result;
   }
 
-  private void createVMImageUpgradeTasks(Set<NodeDetails> nodes) {
-    Map<NodeDetails, ImageSettings> imageSettingsMap = getImageSettingsForNodes(nodes);
-    // Restore mount-path -> UUID mappings from a prior attempt so YNPProvisioning can remount.
-    runtimeInfo.deviceMappingByNode.forEach(
-        (nodeUuid, mapping) ->
-            deviceMappingByNode
-                .computeIfAbsent(nodeUuid, k -> new ConcurrentHashMap<>())
-                .putAll(mapping));
-    if (runtimeInfo.volumesCreated) {
-      replacementRootDevices.putAll(runtimeInfo.replacementRootDevices);
-      replacementRootVolumes.putAll(runtimeInfo.replacementRootVolumes);
-    } else {
-      createRootVolumeCreationTasks(imageSettingsMap)
-          .setSubTaskGroupType(getTaskSubGroupType())
-          .setAfterGroupRunListener(
-              g ->
-                  updateRuntimeInfo(
-                      RuntimeInfo.class,
-                      info -> {
-                        info.replacementRootDevices = replacementRootDevices;
-                        info.replacementRootVolumes = replacementRootVolumes;
-                        info.volumesCreated = true;
-                      }));
+  private void createVMImageUpgradeTasks(
+      Map<String, ImageSettings> imageSettingsMap,
+      Collection<NodeDetails> nodes,
+      Set<ServerType> processTypes,
+      Map<UUID, UUID> clusterToImageBundleMap) {
+    if (nodes.isEmpty()) {
+      return;
     }
-
-    Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
     Universe universe = getUniverse();
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    for (NodeDetails node : imageSettingsMap.keySet()) {
-      if (runtimeInfo.replacementCompletedNodes.contains(node.getNodeUuid())) {
-        continue;
-      }
-      ImageSettings imageSettings = imageSettingsMap.get(node);
+    NodeDetails anyNode = nodes.iterator().next();
+    Cluster cluster = universe.getCluster(anyNode.placementUuid);
+    boolean isLocal = cluster.userIntent.providerType == CloudType.local;
+
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+
+    Set<NodeDetails> nodesToReplaceRootVolume =
+        nodes.stream()
+            .filter(node -> !runtimeInfo.volumeReplacedNodes.contains(node.getNodeUuid()))
+            .collect(Collectors.toSet());
+    addParallelTasks(
+            nodesToReplaceRootVolume,
+            node -> {
+              return createRootVolumeReplacementTask(node);
+            },
+            "ReplaceRootVolume",
+            getTaskSubGroupType())
+        .setAfterTaskRunHandler(
+            (t, e) -> {
+              String nodeName = t.getTaskParams().get("nodeName").textValue();
+              NodeDetails node = Util.findByName(nodes, nodeName);
+              if (node == null) {
+                throw new IllegalStateException("Failed to find node by name " + nodeName);
+              }
+              if (e == null) {
+                updateRuntimeInfo(
+                    RuntimeInfo.class, info -> info.volumeReplacedNodes.add(node.getNodeUuid()));
+              }
+              return e;
+            });
+
+    // Updating image settings on nodes.
+    for (NodeDetails node : nodes) {
+      ImageSettings imageSettings = imageSettingsMap.get(node.nodeName);
       final UUID imageBundleUUID = imageSettings.imageBundleUUID;
       final String sshUserOverride = imageSettings.sshUserOverride;
       final Integer sshPortOverride = imageSettings.sshPortOverride;
       final String machineImage = imageSettings.machineImage;
-      Set<UniverseTaskBase.ServerType> processTypes = new LinkedHashSet<>();
-      if (node.isMaster) {
-        processTypes.add(ServerType.MASTER);
-      }
-      if (node.isTserver) {
-        processTypes.add(ServerType.TSERVER);
-      }
-      if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
-      createSetNodeStateTask(node, getNodeState());
-
-      createCheckNodesAreSafeToTakeDownTask(
-          Collections.singletonList(MastersAndTservers.from(node, processTypes)),
-          getTargetSoftwareVersion(),
-          false);
-
-      // The node is going to be stopped. Ignore error because of previous error due to
-      // possibly detached root volume.
-      if (!runtimeInfo.volumeReplacedNodes.contains(node.getNodeUuid())) {
-        // Capture /etc/fstab before the root volume is replaced (old root is detached after).
-        if (!runtimeInfo.deviceMappingByNode.containsKey(node.getNodeUuid())) {
-          createCaptureFstabTask(universe, node).setSubTaskGroupType(getTaskSubGroupType());
-        }
-        processTypes.forEach(
-            processType ->
-                createServerControlTask(
-                        node, processType, "stop", params -> params.isIgnoreError = true)
-                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
-        createRootVolumeReplacementTask(node)
-            .setSubTaskGroupType(getTaskSubGroupType())
-            .setAfterGroupRunListener(
-                g ->
-                    updateRuntimeInfo(
-                        RuntimeInfo.class,
-                        info -> info.volumeReplacedNodes.add(node.getNodeUuid())));
-      }
       node.machineImage = machineImage;
       if (StringUtils.isNotBlank(sshUserOverride)) {
         node.sshUserOverride = sshUserOverride;
@@ -337,157 +414,114 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       node.ybPrebuiltAmi =
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
-      List<NodeDetails> nodeList = Collections.singletonList(node);
-      // Must use ansible provisioning for non-systemd universes
-      Customer customer = Customer.get(universe.getCustomerId());
-      boolean useAnsibleProvisioning =
-          confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
-              || !userIntent.useSystemd;
-      createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
-      if (userIntent.providerType != CloudType.local) {
-        createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        if (!useAnsibleProvisioning) {
-          boolean isYbPrebuiltImage =
-              !shouldInstallDbSoftware(
-                  universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
-          createYNPProvisioningTask(
-                  universe,
-                  nodeList,
-                  (n, p) -> {
-                    p.isYbPrebuiltImage = isYbPrebuiltImage;
-                    p.isDataPresent = true;
-                    p.pathToUUIDMapping =
-                        deviceMappingByNode.computeIfAbsent(
-                            n.getNodeUuid(), k -> new ConcurrentHashMap<>());
-                  })
-              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        }
-      }
-      createInstallNodeAgentTasks(universe, nodeList)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
-        createSetupServerTasks(
-                nodeList,
-                p -> {
-                  p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
-                  p.rebootNodeAllowed = true;
-                })
-            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-      } else {
-        createSetNodeStatusTasks(
-                nodeList, NodeStatus.builder().nodeState(NodeState.ServerSetup).build())
-            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      }
-      createHookProvisionTask(nodeList, TriggerType.PostNodeProvision);
-      createLocaleCheckTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      createCheckGlibcTask(
-              new ArrayList<>(universe.getNodes()),
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      createConfigureServerTasks(
-              nodeList, params -> params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
-      // Copy the source root certificate to the node.
-      createTransferXClusterCertsCopyTasks(
-          Collections.singleton(node), universe, SubTaskGroupType.InstallingSoftware);
-
-      processTypes.forEach(
-          processType -> {
-            if (processType.equals(ServerType.CONTROLLER)) {
-              createStartYbcTasks(Arrays.asList(node))
-                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-              // Wait for yb-controller to be responsive on each node.
-              createWaitForYbcServerTask(new HashSet<>(Arrays.asList(node)))
-                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-            } else {
-              // Todo: remove the following subtask.
-              // We have an issue where the tserver gets running once the VM with the new image is
-              // up.
-              createServerControlTask(
-                  node, processType, "stop", params -> params.isIgnoreError = true);
-
-              createGFlagsOverrideTasks(
-                  nodeList,
-                  processType,
-                  false /*isMasterInShellMode*/,
-                  taskParams().vmUpgradeTaskType,
-                  false /*ignoreUseCustomImageConfig*/);
-              createServerControlTask(node, processType, "start")
-                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-              createWaitForServersTasks(new HashSet<>(nodeList), processType);
-              createWaitForServerReady(node, processType)
-                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-              // If there are no universe keys on the universe, it will have no effect.
-              if (processType == ServerType.MASTER
-                  && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
-                createSetActiveUniverseKeysTask()
-                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-              }
-              createSleepAfterStartupTask(
-                  universe.getUniverseUUID(),
-                  Collections.singletonList(processType),
-                  SetNodeState.getStartKey(node.getNodeName(), getNodeState()));
-            }
-          });
-
-      createWaitForKeyInMemoryTask(node);
       if (imageBundleUUID != null) {
-        if (!clusterToImageBundleMap.containsKey(node.placementUuid)) {
-          clusterToImageBundleMap.put(node.placementUuid, imageBundleUUID);
-        }
+        clusterToImageBundleMap.put(node.placementUuid, imageBundleUUID);
       }
-      createSetNodeStateTask(node, NodeState.Live);
+
+      // Persist updated node SSH fields to DB before provisioning subtasks, as subtasks
+      // like SetupYNP and YNPProvisioning reload the node from DB and need the target
+      // image bundle's SSH port/user to connect to the node after root volume replacement.
+      // Note: machineImage is intentionally NOT persisted here -- doing so would cause
+      // getImageSettingsForNodes to skip this node on retry (image already matches target).
       createUpdateUniverseFieldsTask(
               u -> {
                 NodeDetails nodeDetails = u.getNode(node.nodeName);
                 if (nodeDetails != null) {
-                  nodeDetails.machineImage = node.machineImage;
                   nodeDetails.sshUserOverride = node.sshUserOverride;
                   nodeDetails.sshPortOverride = node.sshPortOverride;
                   nodeDetails.ybPrebuiltAmi = node.ybPrebuiltAmi;
-                  if (!taskParams().isSoftwareUpdateViaVm) {
-                    u.updateConfig(
-                        ImmutableMap.of(
-                            Universe.USE_CUSTOM_IMAGE,
-                            Boolean.toString(
-                                u.getUniverseDetails().nodeDetailsSet.stream()
-                                    .allMatch(n -> n.ybPrebuiltAmi))));
-                  }
                 }
               })
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse)
-          .setAfterGroupRunListener(
-              g ->
-                  updateRuntimeInfo(
-                      RuntimeInfo.class,
-                      info -> info.replacementCompletedNodes.add(node.getNodeUuid())));
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
-    // Update the imageBundleUUID in the cluster -> userIntent
-    if (!clusterToImageBundleMap.isEmpty()) {
-      clusterToImageBundleMap.forEach(
-          (clusterUUID, bundleUUID) -> {
-            createClusterUserIntentUpdateTask(clusterUUID, bundleUUID)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          });
+    createHookProvisionTask(nodes, TriggerType.PreNodeProvision);
+    if (!isLocal) {
+      createSetupYNPTask(universe, nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      boolean isYbPrebuiltImage =
+          !shouldInstallDbSoftware(
+              universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
+      createYNPProvisioningTask(
+              universe,
+              nodes,
+              (n, p) -> {
+                p.isYbPrebuiltImage = isYbPrebuiltImage;
+                p.isDataPresent = true;
+                p.pathToUUIDMapping =
+                    deviceMappingByNode.computeIfAbsent(
+                        n.getNodeUuid(), k -> new ConcurrentHashMap<>());
+              })
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      if (universe.getUniverseDetails().fipsEnabled) {
+        // The root volume was replaced, so this is a fresh OS that provisioning has just put
+        // into FIPS mode - which only takes effect on reboot.
+        createRebootTasks(nodes, false /* isHardReboot */)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      }
     }
-    // Delete after all the disks are replaced.
-    createDeleteRootVolumesTasks(universe, nodes, null /* volume Ids */)
-        .setSubTaskGroupType(getTaskSubGroupType());
+    createInstallNodeAgentTasks(universe, nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    createWaitForNodeAgentTasks(nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    if (isLocal) {
+      createSetupServerTasks(
+              nodes,
+              p -> {
+                p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
+                p.rebootNodeAllowed = true;
+              })
+          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    } else {
+      createSetNodeStatusTasks(nodes, NodeStatus.builder().nodeState(NodeState.ServerSetup).build())
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    }
+    createHookProvisionTask(nodes, TriggerType.PostNodeProvision);
+    createLocaleCheckTask(nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    createCheckGlibcTask(
+            new ArrayList<>(universe.getNodes()), primaryCluster.userIntent.ybSoftwareVersion)
+        .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+    createConfigureServerTasks(
+            nodes,
+            params -> {
+              params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
+            })
+        .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
+    // Copy the source root certificate to the node.
+    createTransferXClusterCertsCopyTasks(nodes, universe, SubTaskGroupType.InstallingSoftware);
+
+    processTypes.forEach(
+        processType -> {
+          if (!processType.equals(ServerType.CONTROLLER)) {
+            // Todo: remove the following subtask.
+            // We have an issue where the tserver gets running once the VM with the new image is
+            // up.
+            nodes.forEach(
+                node ->
+                    createServerControlTask(
+                        node, processType, "stop", params -> params.isIgnoreError = true));
+
+            createGFlagsOverrideTasks(
+                nodes,
+                processType,
+                false /*isMasterInShellMode*/,
+                taskParams().vmUpgradeTaskType,
+                false /*ignoreUseCustomImageConfig*/);
+          }
+        });
   }
 
-  private SubTaskGroup createRootVolumeCreationTasks(Map<NodeDetails, ImageSettings> settingsMap) {
+  private SubTaskGroup createRootVolumeCreationTasks(
+      Collection<NodeDetails> nodes, Map<String, ImageSettings> settingsMap) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
-        settingsMap.keySet().stream().collect(Collectors.groupingBy(n -> n.azUuid));
+        nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
     SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes", getTaskSubGroupType());
 
     rootVolumesPerAZ.forEach(
         (key, value) -> {
           NodeDetails node = value.get(0);
-          ImageSettings imageSettings = settingsMap.get(node);
+          ImageSettings imageSettings = settingsMap.get(node.nodeName);
 
           final String machineImage = imageSettings.machineImage;
           int numVolumes = value.size();
@@ -523,8 +557,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     return subTaskGroup;
   }
 
-  private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume", getTaskSubGroupType());
+  private ReplaceRootVolume createRootVolumeReplacementTask(NodeDetails node) {
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
@@ -534,10 +567,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);
-    subTaskGroup.addSubTask(replaceDiskTask);
-
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return replaceDiskTask;
   }
 
   private SubTaskGroup createCaptureFstabTask(Universe universe, NodeDetails node) {

@@ -5,6 +5,7 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -38,8 +39,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -91,6 +96,15 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
 
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
+        new ChangeMasterClusterConfigResponse(1112, "", null);
+    GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
+        new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
+
     YBClient mockClient = mock(YBClient.class);
     try {
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
@@ -98,25 +112,37 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
-    } catch (Exception ignored) {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
+    } catch (Exception e) {
+      fail();
     }
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     setLeaderlessTabletsMock();
+    setUnderReplicatedTabletsMock();
+    setCheckNodesAreSafeToTakeDown(mockClient);
+    setFollowerLagMock();
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private List<TaskType> rebootNodeTaskSequence(boolean isHardReboot) {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
+        TaskType.CheckUnderReplicatedTablets,
+        TaskType.CheckNodesAreSafeToTakeDown,
         TaskType.UpdateConsistencyCheck,
         TaskType.FreezeUniverse,
         TaskType.SetNodeState,
+        TaskType.ModifyBlackList,
+        TaskType.WaitForLeaderBlacklistCompletion,
         TaskType.AnsibleClusterServerCtl,
         isHardReboot ? TaskType.HardRebootServer : TaskType.RebootServer,
         TaskType.AnsibleClusterServerCtl,
         TaskType.WaitForServer,
         TaskType.WaitForServerReady,
+        TaskType.ModifyBlackList,
         TaskType.SetNodeState,
         TaskType.UniverseUpdateSucceeded);
   }
@@ -127,10 +153,15 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("state", state)),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("state", "Live")),
@@ -140,9 +171,13 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<TaskType> rebootNodeWithMaster(boolean isHardReboot) {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
+        TaskType.CheckUnderReplicatedTablets,
+        TaskType.CheckNodesAreSafeToTakeDown,
         TaskType.UpdateConsistencyCheck,
         TaskType.FreezeUniverse,
         TaskType.SetNodeState,
+        TaskType.ModifyBlackList,
+        TaskType.WaitForLeaderBlacklistCompletion,
         TaskType.AnsibleClusterServerCtl,
         TaskType.AnsibleClusterServerCtl,
         TaskType.WaitForMasterLeader,
@@ -153,6 +188,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         TaskType.AnsibleClusterServerCtl,
         TaskType.WaitForServer,
         TaskType.WaitForServerReady,
+        TaskType.ModifyBlackList,
         TaskType.SetNodeState,
         TaskType.UniverseUpdateSucceeded);
   }
@@ -163,7 +199,11 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("state", state)),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
         Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
         Json.toJson(ImmutableMap.of()),
@@ -174,6 +214,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("state", "Live")),
         Json.toJson(ImmutableMap.of()));
   }
@@ -181,6 +222,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<TaskType> rebootNodeWithOnlyMaster(boolean isHardReboot) {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
+        TaskType.CheckNodesAreSafeToTakeDown,
         TaskType.UpdateConsistencyCheck,
         TaskType.FreezeUniverse,
         TaskType.SetNodeState,
@@ -197,6 +239,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<JsonNode> rebootNodeWithOnlyMasterResults(boolean isHardReboot) {
     String state = isHardReboot ? "HardRebooting" : "Rebooting";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
