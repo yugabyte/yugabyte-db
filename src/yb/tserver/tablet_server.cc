@@ -290,18 +290,19 @@ TAG_FLAG(history_retention_pins_persist_interval_sec, advanced);
 DEFINE_validator(history_retention_pins_persist_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
 DECLARE_bool(enable_db_history_retention_pins);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_qos);
-DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(enable_update_local_peer_min_index);
+DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
-DECLARE_string(ysql_pg_conf_csv);
+DECLARE_string(tmp_dir);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_string(ysql_ident_conf_csv);
-DECLARE_string(tmp_dir);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::tserver {
 
@@ -2451,11 +2452,33 @@ Status TabletServer::ClusterConfigHandleMasterHeartbeatResponse(
   return Status::OK();
 }
 
+void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info) {
+  const auto& version = info.xcluster_guarded_info_version();
+  const std::pair<int64_t, uint64_t> term_and_count{version.term(), version.count()};
+  std::lock_guard l(xcluster_guarded_info_version_mutex_);
+  if (term_and_count <= xcluster_guarded_info_version_) {
+    VLOG(2) << "Ignoring xCluster-guarded info with version " << version.ShortDebugString()
+            << "; already at (" << xcluster_guarded_info_version_.first << ", "
+            << xcluster_guarded_info_version_.second << ")";
+    return;
+  }
+  xcluster_guarded_info_version_ = term_and_count;
+
+  xcluster_context_->UpdateXClusterInfoPerNamespace(info.xcluster_info_per_namespace());
+  if (info.has_oid_cache_invalidations_count()) {
+    set_oid_cache_invalidations_count(info.oid_cache_invalidations_count());
+  }
+}
+
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
-  xcluster_context_->UpdateXClusterInfoPerNamespace(
-      resp.xcluster_heartbeat_info().xcluster_info_per_namespace());
+  // A master with auto flag skip_fields_moved_to_xcluster_guarded_info off sends both the
+  // deprecated fields and xcluster_guarded_info; prefer the latter.  See TryHeartbeat.
+  if (!resp.has_xcluster_guarded_info() && !FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+    xcluster_context_->UpdateXClusterInfoPerNamespace(
+        resp.deprecated_xcluster_heartbeat_info().xcluster_info_per_namespace());
+  }
 
   auto* xcluster_consumer = GetXClusterConsumer();
 

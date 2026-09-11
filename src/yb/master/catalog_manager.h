@@ -1123,6 +1123,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // must have updated the config in the meantime.
   Result<SysClusterConfigEntryPB> GetClusterConfig() override;
   Result<int32_t> GetClusterConfigVersion();
+  Result<uint32_t> GetOidCacheInvalidationsCount();
 
   // Validator for placement information with respect to cluster configuration
   Status ValidateReplicationInfo(

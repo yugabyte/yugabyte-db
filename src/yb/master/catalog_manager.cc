@@ -13514,6 +13514,12 @@ Result<int32_t> CatalogManager::GetClusterConfigVersion() {
   return l->pb.version();
 }
 
+Result<uint32_t> CatalogManager::GetOidCacheInvalidationsCount() {
+  auto cluster_config = ClusterConfig();
+  SCHECK_NOTNULL(cluster_config);
+  return cluster_config->LockForRead()->pb.oid_cache_invalidations_count();
+}
+
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   const auto& replication_info = req->replication_info();

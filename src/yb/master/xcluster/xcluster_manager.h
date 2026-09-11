@@ -75,6 +75,9 @@ class XClusterManager : public XClusterManagerIf,
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
+  Status FillXClusterGuardedInfo(int64_t leader_term, XClusterGuardedInfoPB& info) override
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   Status SetXClusterRole(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       XClusterNamespaceInfoPB_XClusterRole role);
@@ -344,6 +347,13 @@ class XClusterManager : public XClusterManagerIf,
   bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
+
+  // Guards the version counter below and serializes copies of the xCluster-guarded information so
+  // that a copy with a higher version never carries older information.  Lock order: this mutex,
+  // then XClusterConfig::mutex_ or the cluster config COW lock.  Never held across RPCs.
+  std::mutex xcluster_guarded_info_version_mutex_;
+  // Number of copies made by this process; see XClusterGuardedInfoVersionPB.
+  uint64_t xcluster_guarded_info_copy_count_ GUARDED_BY(xcluster_guarded_info_version_mutex_) = 0;
 
   CoarseTimePoint time_of_last_clean_tables_task_run_;
 

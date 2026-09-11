@@ -134,11 +134,12 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
     "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
     "a corruption. ");
 
-DECLARE_bool(enable_register_ts_from_raft);
-DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
-DECLARE_int32(heartbeat_rpc_timeout_ms);
-DECLARE_bool(skip_tserver_version_checks);
 DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+DECLARE_bool(enable_register_ts_from_raft);
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
+DECLARE_bool(skip_tserver_version_checks);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
 
 namespace yb::master {
 
@@ -482,6 +483,16 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
     TSDescriptorPtr& ts_desc = *desc_result;
 
+    // This is the right place to put this once we add the lease functionality in the next diff.
+    // Must stay after UpdateAndReturnTSDescriptorOrRespond.
+    // TODO(mlillibridge): adjust this comment after the lease functionality gets added.
+    auto fill_status = catalog_manager_->GetXClusterManager()->FillXClusterGuardedInfo(
+        leader_term, *resp->mutable_xcluster_guarded_info());
+    if (!fill_status.ok()) {
+      rpc.RespondFailure(fill_status.CloneAndPrepend("Failed to fill xCluster-guarded info"));
+      return;
+    }
+
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
     // Set the TServer metrics in TS Descriptor.
@@ -548,7 +559,10 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
     auto cluster_config = server_->catalog_manager()->GetClusterConfig();
     if (cluster_config) {
-      resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+      if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+        resp->set_deprecated_oid_cache_invalidations_count(
+            cluster_config->oid_cache_invalidations_count());
+      }
 
       uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
       if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
@@ -568,7 +582,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         }
       }
     } else {
-      LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+      LOG(WARNING) << "Could not get cluster config for heartbeat response: "
                    << cluster_config.status().ToUserMessage();
     }
 
