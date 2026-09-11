@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.upgrade.VMImageUpgrade.RuntimeInfo;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
@@ -252,6 +251,7 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
                   false /* remove master from quorum */,
                   false /* deconfigure */,
                   false /* flushTablets */,
+                  false /* ignoreStopError */,
                   SubTaskGroupType.StoppingNodeProcesses);
               // Intentionally short-lived: it flips to Reprovisioning right below. Persisting
               // Stopped here is the point at which the node leaves Live, so a retry that fails

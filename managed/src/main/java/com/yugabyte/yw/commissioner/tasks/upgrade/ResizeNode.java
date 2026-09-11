@@ -304,6 +304,7 @@ public class ResizeNode extends UpgradeTaskBase {
                 UpgradeContext.builder()
                     .runBeforeStopping(false)
                     .processInactiveMaster(false)
+                    .nodesAreStopped(true)
                     .postAction(
                         node -> {
                           // Persist the new instance type in the node details.
