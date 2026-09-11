@@ -44,6 +44,7 @@ func TestGenerateProviderPayload(t *testing.T) {
 					YbHomeDir:          "/home/yugabyte",
 					UseClockbound:      false,
 					EnableMultiTenancy: true,
+					YnpManaged:         true,
 				},
 			},
 		},
