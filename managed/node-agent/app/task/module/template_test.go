@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -42,6 +43,85 @@ func TestServerTemplate(t *testing.T) {
 		t.Fatalf("Failed to copy file: %v", err)
 	}
 	t.Logf("Output: %s", output)
+}
+
+func TestCleanCoresTemplate(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	if projectDir == "" {
+		t.Fatal("PROJECT_DIR is not set")
+	}
+	templatePath := filepath.Join(projectDir, "resources/templates/server/clean_cores.sh.j2")
+
+	tests := []struct {
+		name          string
+		values        map[string]any
+		wantLine      string
+		wantErrSubstr string
+	}{
+		{
+			name: "uses provided num_cores_to_keep",
+			values: map[string]any{
+				"num_cores_to_keep": 10,
+				"yb_home_dir":       "/home/yugabyte",
+				"yb_cores_dir":      "/home/yugabyte/cores",
+			},
+			wantLine: "num_cores_to_keep=10",
+		},
+		{
+			name: "defaults num_cores_to_keep to 5",
+			values: map[string]any{
+				"yb_home_dir":  "/home/yugabyte",
+				"yb_cores_dir": "/home/yugabyte/cores",
+			},
+			wantLine: "num_cores_to_keep=5",
+		},
+		{
+			name: "fails when required vars are missing",
+			values: map[string]any{
+				"num_cores_to_keep": 5,
+			},
+			wantErrSubstr: "yb_home_dir",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := ResolveTemplateStrict(
+				context.TODO(),
+				tc.values,
+				templatePath,
+				true, /*strictUndefined*/
+			)
+			if tc.wantErrSubstr != "" {
+				if err == nil {
+					t.Fatalf(
+						"expected error containing %q, got output:\n%s",
+						tc.wantErrSubstr,
+						output,
+					)
+				}
+				if !strings.Contains(err.Error(), tc.wantErrSubstr) {
+					t.Fatalf("expected error containing %q, got: %v", tc.wantErrSubstr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveTemplateStrict failed: %v", err)
+			}
+			if !strings.Contains(output, tc.wantLine) {
+				t.Fatalf("Expected %q in output:\n%s", tc.wantLine, output)
+			}
+			if !strings.Contains(
+				output,
+				`if [[ -z "${num_cores_to_keep}" || ! "${num_cores_to_keep}" =~ ^[0-9]+$ ]]; then`,
+			) {
+				t.Fatalf("Expected num_cores_to_keep validation in output:\n%s", output)
+			}
+			if strings.Contains(output, "yb_num_clean_cores_to_keep") {
+				t.Fatalf("Output still references obsolete template variable")
+			}
+		})
+	}
 }
 
 func TestSplitString(t *testing.T) {
