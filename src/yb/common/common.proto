@@ -47,6 +47,7 @@ import "yb/common/common_types.proto";
 import "yb/common/common_net.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
+import "yb/common/wire_protocol.proto";
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)
 // If types have parameters, they are stored in the params field. Otherwise params is empty.
@@ -320,6 +321,10 @@ message IndexInfoPB {
   // table's IndexInfoPB after backfill completes successfully. Used to reject reads whose
   // snapshot predates when the index became consistent.
   optional fixed64 birth_time = 37;
+
+  // When backfill fails, the status it failed with. Unlike backfill_error_message, this
+  // preserves error codes such as the PostgreSQL error code.
+  optional AppStatusPB backfill_status = 38;
 }
 
 // The possible order modes for clients.

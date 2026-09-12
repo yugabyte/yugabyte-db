@@ -14,6 +14,7 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
@@ -169,6 +170,98 @@ std::string ParamsToString(const testing::TestParamInfo<StorageFormat>& param_in
 } // namespace
 
 INSTANTIATE_TEST_CASE_P(, PgAlterTableTest, testing::ValuesIn(kStorageFormatArray), ParamsToString);
+
+namespace {
+
+// Running DDLs concurrently with the concurrent-DDL feature disabled requires failing catalog
+// writes on catalog version mismatch; auto analyze is off so its DDLs don't trip that flag.
+void DisableConcurrentDDL(ExternalMiniClusterOptions* opts) {
+  // Disable table locks so the ALTER can land mid-backfill instead of queueing behind it.
+  opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+  opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+  AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+  opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+  opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+  opts->extra_tserver_flags.emplace_back(
+      "--yb_fail_catalog_write_on_catalog_version_mismatch=true");
+  opts->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
+}
+
+// One row per BACKFILL statement at 10 rows/sec: 100 rows keep statements pending on the cached
+// backfill connection for ~10 s.
+void ThrottleIndexBackfill(ExternalMiniClusterOptions* opts) {
+  opts->extra_tserver_flags.emplace_back("--backfill_index_write_batch_size=1");
+  opts->extra_tserver_flags.emplace_back("--backfill_index_rate_rows_per_sec=10");
+  // Without this, the first statement's 1024-row read page would backfill everything in one go.
+  opts->extra_tserver_flags.emplace_back("--ysql_yb_fetch_row_limit=1");
+}
+
+}  // namespace
+
+class PgSchemaVersionMismatchBackfillTest : public LibPqTestBase {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    DisableConcurrentDDL(opts);
+    ThrottleIndexBackfill(opts);
+    // No retries: a retried chunk's fresh backfill connection would succeed and hide the error.
+    opts->extra_master_flags.emplace_back("--index_backfill_rpc_max_retries=0");
+  }
+};
+
+// A mismatch hit by BACKFILL INDEX must reach the CREATE INDEX client as 40001, not XX000.
+TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailure) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 100) i"));
+
+  Status create_index_status;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn, &create_index_status] {
+    create_index_status = conn.Execute("CREATE INDEX idx ON t (v1)");
+  });
+
+  // The backfill connection lands on the tablet leader's node, so poll every tserver. Each chunk's
+  // statement embeds a distinct row range: a text change proves the connection has cached the
+  // table and is still mid-backfill.
+  std::vector<PGConn> ts_conns;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ts_conns.push_back(ASSERT_RESULT(
+        ConnectToTsForDB(*cluster_->tablet_server(i), "yugabyte")));
+  }
+  std::string first_seen_query;
+  ASSERT_OK(WaitFor([&ts_conns, &first_seen_query]() -> Result<bool> {
+    for (auto& ts_conn : ts_conns) {
+      auto queries = VERIFY_RESULT(ts_conn.FetchRows<std::string>(
+          "SELECT query FROM pg_stat_activity WHERE query LIKE 'BACKFILL INDEX%'"));
+      for (const auto& query : queries) {
+        if (first_seen_query.empty()) {
+          first_seen_query = query;
+        } else if (query != first_seen_query) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, MonoDelta::FromSeconds(60), "backfill completed a chunk"));
+
+  // Another node, so PG-level locks don't queue the ALTER behind CREATE INDEX.
+  auto ddl_conn = ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(1), "yugabyte"));
+  // Fail the DDL after the DocDB schema change: the rollback leaves the schema version bumped with
+  // no catalog version bump, so the backfill connection never invalidates its now-stale cache.
+  ASSERT_OK(ddl_conn.Execute("SET yb_test_fail_next_ddl = 1"));
+  ASSERT_NOK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN v2 INT"));
+
+  thread_holder.JoinAll();
+  // The backfill may win the race and succeed; a failure must be retryable, never XX000.
+  if (create_index_status.ok()) {
+    return;
+  }
+  LOG(INFO) << "Client-visible error: " << create_index_status;
+  const auto pg_error = PgsqlError::ValueFromStatus(create_index_status);
+  ASSERT_TRUE(pg_error.has_value()) << create_index_status;
+  ASSERT_EQ(*pg_error, YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << create_index_status;
+}
 
 class PgAlterTableConcurrencyTest : public PgAlterTableTest {
  public:

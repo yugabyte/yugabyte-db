@@ -1043,7 +1043,11 @@ Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
   *backfill_in_progress = true;
   if (!index_info->backfill_error_message().empty()) {
     *backfill_in_progress = false;
-    return STATUS(Aborted, index_info->backfill_error_message());
+    // backfill_status preserves the error codes (such as the PostgreSQL error code) but may be
+    // stale after a rollback: an old master clears only backfill_error_message on success.
+    return index_info->backfill_status().ok()
+        ? STATUS(Aborted, index_info->backfill_error_message())
+        : index_info->backfill_status().CloneAndReplaceCode(Status::kAborted);
   } else if (index_info->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL) {
     *backfill_in_progress = false;
   }
