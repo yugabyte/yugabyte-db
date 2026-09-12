@@ -336,6 +336,11 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     std::deque<TabletInfoPtr> pending_tablets;
     size_t in_flight = 0;
     bool terminal = false;  // Current index reached an outcome; late responses are ignored.
+    // Scan accounting for the current index, aggregated from per-tablet responses and logged
+    // with the recorded outcome. Resets when the next index starts.
+    uint64_t dockey_groups_scanned = 0;
+    uint64_t versions_scanned = 0;
+    uint64_t fallback_groups = 0;
   };
   ShadowVerificationState shadow_verification_ GUARDED_BY(mutex_);
   std::atomic_bool using_table_locks_{false};

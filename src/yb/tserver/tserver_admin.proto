@@ -187,7 +187,12 @@ message VerifyUniqueIndexTabletResponsePB {
   optional bytes resume_key = 5;
 
   optional uint64 dockey_groups_scanned = 6;
+  // Physical versions in the scanned groups, counted once per version regardless of which
+  // replay path ran.
   optional uint64 versions_scanned = 7;
+  // Groups that exceeded the buffering bound and took the bounded-memory reverse walk,
+  // which re-reads the group (roughly doubling its scan cost).
+  optional uint64 fallback_groups = 8;
 }
 
 // A create tablet request.

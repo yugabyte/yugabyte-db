@@ -448,4 +448,29 @@ TEST_F(UniqueIndexVerifierTest, OversizedGroupFallsBackToReverseWalk) {
   ExpectOutcome(UniqueIndexVerificationOutcome::kClean, clean_result);
 }
 
+TEST_F(UniqueIndexVerifierTest, FallbackAccountingMatchesBuffered) {
+  // The same physical data verified through both replay paths must report identical
+  // versions_scanned: the forward pass owns the accounting, and the reverse walk's re-visits
+  // are recorded as fallback_groups instead of being re-counted.
+  WriteBackfillInsert(1, "ctid-A");
+  WriteRowTombstone(1, 4000_usec_ht);
+  WriteNonPackedInsert(1, "ctid-B", 5000_usec_ht, /* first_write_id= */ 0);
+  for (int i = 0; i != 8; ++i) {
+    WriteInPlaceIdentityUpdate(1, "ctid-B", HybridTime::FromMicros(6000 + i), /* write_id= */ 0);
+  }
+  WriteBackfillInsert(2, "ctid-C");
+
+  auto buffered = ASSERT_RESULT(Verify());
+  ExpectOutcome(UniqueIndexVerificationOutcome::kClean, buffered);
+  ASSERT_EQ(0, buffered.fallback_groups);
+  ASSERT_GT(buffered.versions_scanned, 0);
+
+  auto fallback = ASSERT_RESULT(Verify(
+      /* max_dockey_groups= */ 0, std::string(), /* max_buffered= */ 4));
+  ExpectOutcome(UniqueIndexVerificationOutcome::kClean, fallback);
+  ASSERT_EQ(1, fallback.fallback_groups);  // Group 1 overflowed the bound; group 2 buffered.
+  ASSERT_EQ(buffered.dockey_groups_scanned, fallback.dockey_groups_scanned);
+  ASSERT_EQ(buffered.versions_scanned, fallback.versions_scanned);
+}
+
 }  // namespace yb::docdb
