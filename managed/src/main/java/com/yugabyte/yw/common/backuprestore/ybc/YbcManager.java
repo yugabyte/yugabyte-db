@@ -1067,7 +1067,7 @@ public class YbcManager {
 
   public static List<String> getPreferenceBasedYBCNodeIPsList(
       Universe universe, Set<String> excludeNodeIPs) {
-    NodeDetails leaderMasterNodeDetails = universe.getMasterLeaderNode();
+    NodeDetails leaderMasterNodeDetails = universe.getMasterLeaderNodeOrThrow();
     List<String> nodesToCheckInPreference = new ArrayList<>();
     String masterLeaderIP = leaderMasterNodeDetails.cloudInfo.private_ip;
     // Add master leader to first preference.

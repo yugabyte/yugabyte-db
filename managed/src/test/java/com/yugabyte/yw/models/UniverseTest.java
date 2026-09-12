@@ -12,8 +12,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -24,6 +26,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
+import com.google.common.net.HostAndPort;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -1038,5 +1041,41 @@ public class UniverseTest extends FakeDBApplication {
     assertEquals(2, universeUuids.size());
     assertTrue(universeUuids.contains(universeOne.getUniverseUUID()));
     assertTrue(universeUuids.contains(universeTwo.getUniverseUUID()));
+  }
+
+  @Test
+  public void testGetMasterLeaderNodeOrThrowReturnsLeader() {
+    Universe u = createUniverse(defaultCustomer.getId());
+    final Universe universe =
+        Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    NodeDetails expectedLeader = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
+    when(mockYBClient.getLeaderMasterHostAndPort())
+        .thenReturn(
+            HostAndPort.fromParts(
+                expectedLeader.cloudInfo.private_ip, expectedLeader.masterRpcPort));
+
+    assertEquals(expectedLeader.nodeName, universe.getMasterLeaderNodeOrThrow().nodeName);
+  }
+
+  @Test
+  public void testGetMasterLeaderNodeOrThrowWithoutLeader() {
+    Universe u = createUniverse(defaultCustomer.getId());
+    final Universe universe =
+        Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
+    when(mockYBClient.getLeaderMasterHostAndPort()).thenReturn(null);
+
+    // The nullable accessor keeps its contract, the strict one fails with an actionable message.
+    assertNull(universe.getMasterLeaderNode());
+    RuntimeException re =
+        assertThrows(RuntimeException.class, () -> universe.getMasterLeaderNodeOrThrow());
+    assertThat(
+        re.getMessage(),
+        allOf(
+            containsString("Could not find the master leader node"),
+            containsString(universe.getUniverseUUID().toString())));
   }
 }
