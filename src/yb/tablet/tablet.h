@@ -748,6 +748,21 @@ class Tablet : public AbstractTablet,
   std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
+  // Aggregate of the regular DB's per-file SST statistics; null unless the collector that produces
+  // them is enabled (--docdb_enable_sst_stats_collector).
+  //
+  // Returns a share of the aggregator rather than a raw pointer: Truncate and snapshot restore
+  // reopen the regular DB on a live tablet and install a new aggregator, and a caller must not be
+  // left reading the old one's mutex after it is freed. Holding the returned pointer keeps that
+  // instance alive; it stops being the tablet's current one, which only costs the caller a stale
+  // reading.
+  std::shared_ptr<docdb::SstStatsAggregator> sst_stats() const EXCLUDES(sst_stats_mutex_);
+
+  // Recomputes the aggregate from the whole live file set, correcting for the file-set changes the
+  // RocksDB listener does not see. Runs on a timer from TSTabletManager; no-op when the collector
+  // is disabled.
+  Status ResyncSstStats();
+
   void ListenNumSSTFilesChanged(std::function<void()> listener);
 
   // Returns the number of memtables in intents and regular db-s.
@@ -1491,6 +1506,13 @@ class Tablet : public AbstractTablet,
   std::mutex num_sst_files_changed_listener_mutex_;
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
+
+  // Created in OpenRegularDB when the SST statistics collector is enabled, and from then on
+  // maintained by RegularRocksDbListener. The aggregator locks internally; the mutex here guards
+  // only the pointer, which OpenRegularDB replaces on a truncate or a snapshot restore while
+  // readers are running.
+  mutable std::mutex sst_stats_mutex_;
+  std::shared_ptr<docdb::SstStatsAggregator> sst_stats_ GUARDED_BY(sst_stats_mutex_);
 
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
