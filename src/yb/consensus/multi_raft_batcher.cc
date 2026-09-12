@@ -21,6 +21,7 @@
 
 #include "yb/rpc/periodic.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 
 using namespace std::literals;
@@ -136,6 +137,8 @@ void MultiRaftHeartbeatBatcher::SendBatchRequest(std::shared_ptr<MultiRaftConsen
   if (!data) {
     return;
   }
+  // TODO(#16670): give consensus its own root trace.
+  auto detach_token = dist_trace::DetachTraceContext();
 
   data->controller.Reset();
   data->controller.set_timeout(MonoDelta::FromMilliseconds(

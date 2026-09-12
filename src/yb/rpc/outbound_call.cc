@@ -278,8 +278,6 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
   if (dist_trace::HasActiveContext()) {
-    trace_parent_ = dist_trace::GetActiveSpanContext();
-
     otel_span_ = dist_trace::StartClientSpan(Format("rpc $0", remote_method_.ToString()));
     if (otel_span_) {
       otel_span_->SetAttribute("rpc.system", "yb_rpc");
@@ -615,8 +613,6 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
   // TODO: consider removing the cycle-based mechanism of reporting slow callbacks below.
 
   int64_t start_cycles = CycleClock::Now();
-  // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not
-  // parentless roots.
   {
     dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
     callback_();

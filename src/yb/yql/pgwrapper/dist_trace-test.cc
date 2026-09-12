@@ -402,6 +402,21 @@ class OtlpHttpCollector {
     return std::nullopt;
   }
 
+  // Collect all spans with exactly the given name.
+  std::vector<Span> FindSpansByName(
+      const std::string& trace_id, std::string_view span_name) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    std::vector<Span> result;
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return result;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name == span_name) {
+        result.push_back(span);
+      }
+    }
+    return result;
+  }
+
   // Collect all spans whose name starts with span_name_prefix.
   std::vector<Span> FindSpansByNamePrefix(
       const std::string& trace_id, std::string_view span_name_prefix) const EXCLUDES(mutex_) {
@@ -568,6 +583,58 @@ class OtlpHttpCollector {
         Format("Remote child span '$0*' on '$1' linked to '$2' in trace '$3'",
                op_prefix, server_service, client_service, trace_id)));
     return server_span;
+  }
+
+  // Waits for three spans in trace_id, each the parent of the next, all with op names starting
+  // with op_prefix:
+  //
+  //   inbound on service A -> outbound on service A -> inbound on downstream_service
+  //
+  // Returns the last one.
+  Result<Span> WaitForLocalHopToRemoteSpan(
+      std::string_view trace_id, std::string_view op_prefix,
+      std::string_view downstream_service) const EXCLUDES(mutex_) {
+    // True if span is an RPC span of the given kind whose op name starts with op_prefix.
+    auto matches = [&op_prefix](const Span& span, int kind) {
+      return span.op_name.starts_with(op_prefix) && span.kind == kind;
+    };
+
+    Span downstream_span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          const auto& spans = it->second.spans;
+          for (const auto& downstream : spans) {
+            if (downstream.service_name != downstream_service ||
+                !matches(downstream, otlp_trace::Span::SPAN_KIND_SERVER) ||
+                downstream.parent_span_id.empty()) {
+              continue;
+            }
+            for (const auto& client : spans) {
+              if (client.span_id != downstream.parent_span_id ||
+                  !matches(client, otlp_trace::Span::SPAN_KIND_CLIENT) ||
+                  client.parent_span_id.empty()) {
+                continue;
+              }
+              for (const auto& server : spans) {
+                if (server.span_id != client.parent_span_id ||
+                    server.service_name != client.service_name ||
+                    !matches(server, otlp_trace::Span::SPAN_KIND_SERVER)) {
+                  continue;
+                }
+                downstream_span = downstream;
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        Format("Chain inbound -> outbound -> '$0' inbound for '$1*' in trace '$2'",
+               downstream_service, op_prefix, trace_id)));
+    return downstream_span;
   }
 
  private:
@@ -962,6 +1029,19 @@ class DistTraceRpcTimeoutTest : public DistTraceRpcTest {
     DistTraceRpcTest::ConfigureDistTraceOptions(options);
     options->extra_tserver_flags.push_back("--ysql_client_read_write_timeout_ms=100");
     options->extra_tserver_flags.push_back("--pg_client_extra_timeout_ms=0");
+  }
+};
+
+class DistTraceTxnHeartbeatTest : public DistTraceTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceTest::ConfigureDistTraceOptions(options);
+    // 50ms heartbeats: a leaked heartbeat sequence emits ~20 UpdateTransaction spans over the
+    // test's 1s window.
+    options->extra_tserver_flags.push_back("--transaction_heartbeat_usec=50000");
+    // Keep ROLLBACK from sending UpdateTransaction(IMMEDIATE_CLEANUP) to participants, so
+    // heartbeats are the only UpdateTransaction the transaction could produce.
+    options->extra_tserver_flags.push_back("--TEST_disable_proactive_txn_cleanup_on_abort=true");
   }
 };
 
@@ -1962,6 +2042,86 @@ TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
       ASSERT_NE(span.status_code, otlp_trace::Status::STATUS_CODE_ERROR) << span.status_message;
     }
   }
+}
+
+// Cross-boundary to master: a DDL fans out from the tserver to the master. A master inbound RPC
+// span should join the query's trace as a child of a tserver outbound span -- proving the trace
+// propagated the full PG -> tserver -> master chain. Any master method suffices, so match on the
+// "rpc " prefix and distinguish the boundary by service_name (TabletServer -> Master).
+TEST_F(DistTraceTest, TestDdlRpcReachesMaster) {
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
+
+  ASSERT_OK(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, "rpc yb.master.",
+      "TabletServer" /* client_service */, "Master" /* server_service */));
+}
+
+// Runs a CREATE TABLE under a known traceparent and asserts the trace contains an
+// UpdateTransaction the tserver sent to the master from a tablet apply thread.
+TEST_F(DistTraceTest, TestApplyTaskCarriesTraceContextToMaster) {
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE apply_task_test (id int PRIMARY KEY, val text)"));
+
+  ASSERT_OK(collector_.WaitForLocalHopToRemoteSpan(
+      tp.trace_id, "rpc yb.tserver.TabletServerService.UpdateTransaction",
+      "Master" /* downstream_service */));
+}
+
+TEST_F(DistTraceTxnHeartbeatTest, TestTxnHeartbeatsNotTraced) {
+  static constexpr auto kTableName = "txn_heartbeat_test";
+  ASSERT_OK(CreateTable(kTableName, 1));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100, 'hb')", kTableName));
+  ASSERT_OK(conn_->Fetch("SELECT pg_sleep(1)"));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+
+  // The abort RPC ends after every heartbeat this transaction sent, so once its span has been
+  // exported, leaked heartbeat spans would have arrived too.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithName(
+            tp.trace_id, "rpc yb.tserver.TabletServerService.AbortTransaction");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "AbortTransaction RPC span to appear in trace"));
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 2ms);
+
+  auto update_txn_spans = collector_.FindSpansByName(
+      tp.trace_id, "rpc yb.tserver.TabletServerService.UpdateTransaction");
+  for (const auto& span : update_txn_spans) {
+    auto chain = span.op_name;
+    std::string root_query;
+    for (auto parent_id = span.parent_span_id; !parent_id.empty();) {
+      auto parent = collector_.FindSpanBySpanId(tp.trace_id, parent_id);
+      if (!parent) {
+        chain += Format(" <- (unexported $0)", parent_id);
+        break;
+      }
+      if (!parent->query_text.empty()) {
+        root_query = parent->query_text;
+      }
+      chain += parent->query_text.empty()
+          ? Format(" <- $0", parent->op_name)
+          : Format(" <- $0 ['$1']", parent->op_name, parent->query_text);
+      parent_id = parent->parent_span_id;
+    }
+    LOG(INFO) << "UpdateTransaction span in trace: service=" << span.service_name
+              << ", chain: " << chain;
+    ASSERT_EQ(root_query, "ROLLBACK") << "UpdateTransaction outside ROLLBACK: " << chain;
+  }
+  // Allow ROLLBACK's one-shot status update (client + server span); more means leaked heartbeats.
+  ASSERT_LE(update_txn_spans.size(), 2) << "heartbeat spans leaked, see chains above";
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
