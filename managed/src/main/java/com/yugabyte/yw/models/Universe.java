@@ -1256,7 +1256,7 @@ public class Universe extends Model {
   public NodeDetails getMasterLeaderNodeOrThrow() {
     NodeDetails masterLeaderNode = getMasterLeaderNode();
     if (masterLeaderNode == null) {
-      throw new RuntimeException(
+      throw new IllegalStateException(
           "Could not find the master leader node in universe " + getUniverseUUID());
     }
     return masterLeaderNode;
