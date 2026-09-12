@@ -60,9 +60,11 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(enable_wait_queues);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int32(rpc_workers_limit);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int64(transaction_abort_check_interval_ms);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_bool(transactions_poll_check_aborted);
+DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(master_auto_run_initdb);
 
@@ -79,7 +81,9 @@ DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_string(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(TEST_slowdown_backfill_by_ms);
+DECLARE_string(TEST_ysql_index_backfill_unique_check_mode);
 DECLARE_int32(backfill_index_rate_rows_per_sec);
+DECLARE_bool(ysql_index_backfill_shadow_verification);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_bool(TEST_export_wait_state_names);
@@ -726,6 +730,17 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
     }
 
+    if (code_to_look_for_ == ash::WaitStateCode::kUniqueIndexVerify_ResolveIntents ||
+        code_to_look_for_ == ash::WaitStateCode::kUniqueIndexVerify_Scan) {
+      // Deferred unique-index verification runs after a SKIP_ALL build; the mode is
+      // production-hardcoded to CHECK_ALL, so drive it through the test override. The
+      // override is read through the gflags registry, so it must go through SET_FLAG, not a
+      // direct FLAGS_ write. Base-table retention keeps the backfill reads valid (#32565).
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_index_backfill_shadow_verification) = true;
+      ASSERT_OK(SET_FLAG(TEST_ysql_index_backfill_unique_check_mode, "skip_all"));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 900;
+    }
+
     if (code_to_look_for_ == ash::WaitStateCode::kRocksDB_Flush ||
         code_to_look_for_ == ash::WaitStateCode::kRocksDB_Compaction) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = 1;
@@ -744,6 +759,17 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
     do_compactions_ = (code_class == ash::Class::kRocksDB);
 
     WaitStateTestCheckMethodCounts::SetUp();
+  }
+
+  void BeforePgProcessStart() override {
+    AshTestWithCompactions::BeforePgProcessStart();
+    if (code_to_look_for_ == ash::WaitStateCode::kUniqueIndexVerify_ResolveIntents ||
+        code_to_look_for_ == ash::WaitStateCode::kUniqueIndexVerify_Scan) {
+      // PgMiniTestBase::SetUp disables YSQL index backfill for speed, and the PG side
+      // latches it at postmaster start; verification only runs on backfilled builds, so
+      // re-enable it in this pre-postmaster hook.
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
+    }
   }
 
   void SetCompactionAndFlushRate(int run_id) override {
@@ -842,6 +868,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
   const bool verify_code_was_pulled_;
 
   void CreateIndexesUntilStopped(std::atomic<bool>& stop);
+  void CreatePgUniqueIndexesUntilStopped(std::atomic<bool>& stop);
   void AddNodesUntilStopped(std::atomic<bool>& stop);
   void DoPgDeferrableReadsUntilStopped(std::atomic<bool>& stop);
   void CreateAndRestoreSnapshot();
@@ -878,6 +905,22 @@ void AshTestVerifyOccurrenceBase::CreateIndexesUntilStopped(std::atomic<bool>& s
     LOG(INFO) << "Created index " << i;
     ++num_indexes_created_;
     SleepFor(10ms);
+  }
+}
+
+void AshTestVerifyOccurrenceBase::CreatePgUniqueIndexesUntilStopped(std::atomic<bool>& stop) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "uniq_verify_ash_test";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 1000) AS i", kTableName));
+  // Every unique-index build runs the deferred verification scan (the fixture selects
+  // SKIP_ALL and enables shadow verification), entering both UniqueIndexVerify states.
+  for (int i = 1; !stop; i++) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX uniq_verify_ash_idx_$0 ON $1 (v)", i, kTableName));
+    ASSERT_OK(conn.ExecuteFormat("DROP INDEX uniq_verify_ash_idx_$0", i));
   }
 }
 
@@ -974,6 +1017,11 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
       thread_holder->AddThreadFunctor(
           [this, &stop = thread_holder->stop_flag()] { DoPgDeferrableReadsUntilStopped(stop); });
       break;
+    case ash::WaitStateCode::kUniqueIndexVerify_ResolveIntents:
+    case ash::WaitStateCode::kUniqueIndexVerify_Scan:
+      thread_holder->AddThreadFunctor(
+          [this, &stop = thread_holder->stop_flag()] { CreatePgUniqueIndexesUntilStopped(stop); });
+      break;
     case ash::WaitStateCode::kSnapshot_WaitingForFlush:
     case ash::WaitStateCode::kSnapshot_RestoreCheckpoint:
     case ash::WaitStateCode::kSnapshot_CleanupSnapshotDir:
@@ -1007,6 +1055,8 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kLockedBatchEntry_Lock,
       ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
       ash::WaitStateCode::kBackfillIndex_WaitToBackfillTablet,
+      ash::WaitStateCode::kUniqueIndexVerify_ResolveIntents,
+      ash::WaitStateCode::kUniqueIndexVerify_Scan,
       ash::WaitStateCode::kCreatingNewTablet,
       ash::WaitStateCode::kSaveRaftGroupMetadataToDisk,
       ash::WaitStateCode::kDumpRunningRpc_WaitOnReactor,
