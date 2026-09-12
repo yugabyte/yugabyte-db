@@ -95,6 +95,14 @@ class TabletTestHarness {
     return tablet_;
   }
 
+  // Releases the harness's reference to the tablet. Tests that shut the peer down and
+  // re-bootstrap the same tablet id must drop every reference to the old Tablet first, or its
+  // still-live MemTracker children collide with the new Tablet's (a live duplicate child is a
+  // DFATAL in MemTracker::InsertChildUnlocked).
+  void ReleaseTablet() {
+    tablet_.reset();
+  }
+
   FsManager* fs_manager() {
     return fs_manager_.get();
   }

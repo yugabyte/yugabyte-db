@@ -108,12 +108,14 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
       const DocVectorIndexesPtr& vector_indexes = nullptr,
       const StorageSet& apply_to_storages = StorageSet::All(),
       TableType table_type = TableType::PGSQL_TABLE_TYPE,
-      std::atomic<bool>* can_advance_intents_flush_op_id = nullptr) {
+      std::atomic<bool>* can_advance_intents_flush_op_id = nullptr,
+      std::optional<IntraTxnWriteId> write_id_override = std::nullopt) {
     ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
-        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id);
+        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id,
+        write_id_override);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);
@@ -190,6 +192,147 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
  protected:
   ThreadSafeArena arena_;
 };
+
+TEST_F(NonTransactionalBatchWriterTest, SeparateBatchesAtSameFixedHybridTime) {
+  const DocKey doc_key(0, MakeKeyEntryValues("row"));
+  const auto encoded_key = doc_key.Encode();
+  const auto kWriteHT = 6000_usec_ht;
+
+  docdb::LWKeyValueWriteBatchPB first_batch(&arena_);
+  auto* first_pair = first_batch.add_write_pairs();
+  first_pair->dup_key(encoded_key.AsSlice());
+  first_pair->dup_value(EncodeValue(QLValue::Primitive("first")));
+  ASSERT_OK(SendWriteBatch(first_batch, kWriteHT, 7000_usec_ht));
+
+  docdb::LWKeyValueWriteBatchPB second_batch(&arena_);
+  auto* second_pair = second_batch.add_write_pairs();
+  second_pair->dup_key(encoded_key.AsSlice());
+  second_pair->dup_value(EncodeValue(QLValue::Primitive("second")));
+  ASSERT_OK(SendWriteBatch(second_batch, kWriteHT, 8000_usec_ht));
+
+  // Each batch starts at write ID zero, so both writes produce the same physical RocksDB key.
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(0x0000, ["row"], []), [HT{ physical: 6000 }]) -> "second"
+    )#");
+}
+
+TEST_F(
+    NonTransactionalBatchWriterTest,
+    SeparateBatchesAtSameFixedHybridTimeWithWriteIdOverride) {
+  const DocKey doc_key(0, MakeKeyEntryValues("row"));
+  const auto encoded_key = doc_key.Encode();
+  const auto kWriteHT = 6000_usec_ht;
+
+  docdb::LWKeyValueWriteBatchPB first_batch(&arena_);
+  auto* first_pair = first_batch.add_write_pairs();
+  first_pair->dup_key(encoded_key.AsSlice());
+  first_pair->dup_value(EncodeValue(QLValue::Primitive("first")));
+  ASSERT_OK(SendWriteBatch(
+      first_batch, kWriteHT, 7000_usec_ht, nullptr, StorageSet::All(),
+      TableType::PGSQL_TABLE_TYPE, /* can_advance_intents_flush_op_id= */ nullptr, 100));
+
+  docdb::LWKeyValueWriteBatchPB second_batch(&arena_);
+  auto* second_pair = second_batch.add_write_pairs();
+  second_pair->dup_key(encoded_key.AsSlice());
+  second_pair->dup_value(EncodeValue(QLValue::Primitive("second")));
+  ASSERT_OK(SendWriteBatch(
+      second_batch, kWriteHT, 8000_usec_ht, nullptr, StorageSet::All(),
+      TableType::PGSQL_TABLE_TYPE, /* can_advance_intents_flush_op_id= */ nullptr, 101));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(0x0000, ["row"], []), [HT{ physical: 6000 w: 101 }]) -> "second"
+SubDocKey(DocKey(0x0000, ["row"], []), [HT{ physical: 6000 w: 100 }]) -> "first"
+    )#");
+
+  // A cutoff strictly before the fixed write time preserves every candidate through compaction.
+  FullyCompactHistoryBefore(kWriteHT.Decremented());
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(0x0000, ["row"], []), [HT{ physical: 6000 w: 101 }]) -> "second"
+SubDocKey(DocKey(0x0000, ["row"], []), [HT{ physical: 6000 w: 100 }]) -> "first"
+    )#");
+
+  // Equality is insufficient: the cutoff uses kMaxWriteId and retains only the newest write ID.
+  FullyCompactHistoryBefore(kWriteHT);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(0x0000, ["row"], []), [HT{ physical: 6000 w: 101 }]) -> "second"
+    )#");
+}
+
+TEST_F(
+    NonTransactionalBatchWriterTest,
+    MarkedAndUnmarkedWritesWithSameHybridTimeAndWriteIdCollide) {
+  const auto kWriteHT = 6000_usec_ht;
+  const auto unmarked_first_key = DocKey(0, MakeKeyEntryValues("unmarked-first")).Encode();
+  const auto marked_first_key = DocKey(0, MakeKeyEntryValues("marked-first")).Encode();
+
+  auto write = [&](const auto& encoded_key, const char* value, HybridTime batch_ht,
+                   std::optional<IntraTxnWriteId> write_id_override) -> Status {
+    docdb::LWKeyValueWriteBatchPB batch(&arena_);
+    auto* write_pair = batch.add_write_pairs();
+    write_pair->dup_key(encoded_key.AsSlice());
+    write_pair->dup_value(EncodeValue(QLValue::Primitive(value)));
+    return SendWriteBatch(
+        batch, kWriteHT, batch_ht, nullptr, StorageSet::All(), TableType::PGSQL_TABLE_TYPE,
+        /* can_advance_intents_flush_op_id= */ nullptr, write_id_override);
+  };
+
+  ASSERT_OK(write(
+      unmarked_first_key, "foreground-first", 7000_usec_ht, /* write_id_override= */ std::nullopt));
+  ASSERT_OK(write(
+      unmarked_first_key, "backfill-last", 8000_usec_ht, /* write_id_override= */ 0));
+  ASSERT_OK(write(
+      marked_first_key, "backfill-first", 9000_usec_ht, /* write_id_override= */ 0));
+  ASSERT_OK(write(
+      marked_first_key, "foreground-last", 10000_usec_ht,
+      /* write_id_override= */ std::nullopt));
+
+  // Both paths use write ID zero, so application order alone determines which value survives.
+  // This is the raw collision the production write-ID floor exists to prevent: marked writes
+  // derive (kBackfillWriteIdFloor | raft_index) at the tablet layer, so they can never share a
+  // write ID with an unmarked write. See FloorSeparatesMarkedAndUnmarkedWriteIdDomains.
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(0x0000, ["marked-first"], []), [HT{ physical: 6000 }]) -> "foreground-last"
+SubDocKey(DocKey(0x0000, ["unmarked-first"], []), [HT{ physical: 6000 }]) -> "backfill-last"
+    )#");
+}
+
+TEST_F(NonTransactionalBatchWriterTest, FloorSeparatesMarkedAndUnmarkedWriteIdDomains) {
+  // With the write-ID floor applied to marked writes (as Tablet::ApplyOperation derives
+  // kBackfillWriteIdFloor | raft_index), a marked and an unmarked write to the same key at the
+  // same fixed hybrid time land as distinct physical versions in either application order --
+  // the collapse demonstrated by MarkedAndUnmarkedWritesWithSameHybridTimeAndWriteIdCollide
+  // cannot occur across domains.
+  const auto kWriteHT = 6000_usec_ht;
+  const auto kMarkedWriteId = kBackfillWriteIdFloor | 2;
+  const auto unmarked_first_key = DocKey(0, MakeKeyEntryValues("unmarked-first")).Encode();
+  const auto marked_first_key = DocKey(0, MakeKeyEntryValues("marked-first")).Encode();
+
+  auto write = [&](const auto& encoded_key, const char* value, HybridTime batch_ht,
+                   std::optional<IntraTxnWriteId> write_id_override) -> Status {
+    docdb::LWKeyValueWriteBatchPB batch(&arena_);
+    auto* write_pair = batch.add_write_pairs();
+    write_pair->dup_key(encoded_key.AsSlice());
+    write_pair->dup_value(EncodeValue(QLValue::Primitive(value)));
+    return SendWriteBatch(
+        batch, kWriteHT, batch_ht, nullptr, StorageSet::All(), TableType::PGSQL_TABLE_TYPE,
+        /* can_advance_intents_flush_op_id= */ nullptr, write_id_override);
+  };
+
+  ASSERT_OK(write(
+      unmarked_first_key, "foreground", 7000_usec_ht, /* write_id_override= */ std::nullopt));
+  ASSERT_OK(write(unmarked_first_key, "backfill", 8000_usec_ht, kMarkedWriteId));
+  ASSERT_OK(write(marked_first_key, "backfill", 9000_usec_ht, kMarkedWriteId));
+  ASSERT_OK(write(
+      marked_first_key, "foreground", 10000_usec_ht, /* write_id_override= */ std::nullopt));
+
+  // Every version survives; the floored (marked) version sorts newer within the key.
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey(0x0000, ["marked-first"], []), [HT{ physical: 6000 w: $0 }]) -> "backfill"
+SubDocKey(DocKey(0x0000, ["marked-first"], []), [HT{ physical: 6000 }]) -> "foreground"
+SubDocKey(DocKey(0x0000, ["unmarked-first"], []), [HT{ physical: 6000 w: $0 }]) -> "backfill"
+SubDocKey(DocKey(0x0000, ["unmarked-first"], []), [HT{ physical: 6000 }]) -> "foreground"
+    )#", kMarkedWriteId));
+}
 
 TEST_F(NonTransactionalBatchWriterTest, ForegroundIntraTxnWriteIdCapRejectsAtLimit) {
   // The always-on foreground cap: a transaction may never write an intent with an

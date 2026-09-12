@@ -1253,6 +1253,78 @@ TEST_P(PgIndexBackfillGinStress, YB_LINUX_RELEASE_ONLY_TEST(GinStress)) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 USING ybgin (a)", kIndexName, kTableName));
 }
 
+// SKIP_ALL job mode end to end: the master-side selection override persists SKIP_ALL, the
+// mode rides the backfill request path, and the write path marks the batches so replicas
+// derive Raft-index write IDs (the production activation shape, minus the hardcoded
+// CHECK_ALL selector).
+class PgIndexBackfillSkipAllRaftOrdering : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_ysql_index_backfill_unique_check_mode=skip_all");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillSkipAllRaftOrdering, ::testing::Bool());
+
+// A clean SKIP_ALL build over multiple source tablets funneling into one index tablet: the
+// index is usable afterwards, index reads return correct results, and foreground uniqueness
+// enforcement still rejects duplicates through the completed index.
+TEST_P(PgIndexBackfillSkipAllRaftOrdering, UniqueIndexBackfillAndForegroundCheck) {
+  constexpr auto kNumRows = 800;
+  constexpr auto kNumSourceTablets = 8;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC)) $1", kTableName,
+      GenerateSplitClause(kNumRows, kNumSourceTablets)));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(
+      kNumRows / 2,
+      ASSERT_RESULT(conn_->FetchRow<int32_t>(
+          Format("SELECT a FROM $0 WHERE b = $1", kTableName, kNumRows / 2))));
+
+  const auto status = conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES ($1, 1)", kTableName, kNumRows + 1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "duplicate key");
+}
+
+class PgIndexBackfillRaftOrderingActivation : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--TEST_log_fixed_hybrid_time_write_id_validation=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillRaftOrderingActivation, ::testing::Bool());
+
+// The marked path is actually exercised, not just tolerated: a SKIP_ALL backfill write must
+// reach WriteOperation::ValidateLeaderOpId with the marker set. Guards against the plumbing
+// silently degrading to unmarked (and therefore unordered) fixed-hybrid-time writes, which
+// index reads alone would not detect.
+TEST_P(PgIndexBackfillRaftOrderingActivation, MarkerReachesRaftIndexValidation) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  LogWaiter log_waiter(
+      tserver_daemons, "TEST: validating fixed-hybrid-time write with Raft OpId");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgIndexBackfillSlow : public PgIndexBackfillTest {
  public:

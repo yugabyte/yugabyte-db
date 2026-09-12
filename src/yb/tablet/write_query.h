@@ -167,6 +167,8 @@ class WriteQuery {
 
   Status DoCompleteExecute();
 
+  Status MaybeMarkRaftIndexWriteIdBatch();
+
   Result<bool> SimplePrepareExecute();
   Result<bool> RedisPrepareExecute();
   Result<bool> CqlRePrepareExecuteIfNecessary();
