@@ -1267,10 +1267,12 @@ Status BackfillTable::LaunchShadowVerificationOrFinish() {
   // this phase runs after MarkAllIndexesAsSuccess. Verification targets the job's unique
   // indexes as built.
   //
-  // Ordering note the tserver metadata validator depends on: index *permissions* stay at
-  // DO_BACKFILL until FinishShadowVerification runs the terminal funnel, and the validator's
-  // generation-release backstop triggers off GetBackfillStatus, which maps from permissions
-  // -- so the backstop cannot release generations while this phase is scanning.
+  // The tserver metadata validator's generation-release backstop cannot fire during this
+  // phase for two independent reasons: index permissions stay at DO_BACKFILL (never a
+  // terminal backfill status) until FinishShadowVerification runs the terminal funnel, and
+  // GetBackfillStatus additionally reports BACKFILL_UNKNOWN outright while this index's
+  // verification state is VERIFY_IN_PROGRESS (the structural guard in
+  // CatalogManager::GetBackfillStatus).
   auto index_tables_result = GetUniqueIndexTables(RestrictToIndexesToBuild::kFalse);
   if (!index_tables_result.ok()) {
     ShadowVerificationPhaseFailed(index_tables_result.status(), "resolve index tables");

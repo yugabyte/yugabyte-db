@@ -104,6 +104,7 @@ DECLARE_uint32(TEST_fixed_hybrid_time_write_id_max);
 DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
 DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace yb::tablet {
 
@@ -886,6 +887,49 @@ TEST_F(TabletPeerTest, CloneRejectedWhileOrderingGenerationActive) {
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "cloning is fenced");
   ASSERT_EQ(committed_before, consensus->GetLastCommittedOpId());
   ASSERT_EQ(committed_before, tablet_peer_->log()->GetLatestEntryOpId());
+}
+
+// The retain-delete-markers SnapshotTooOld bypass is justified by the forward/backward
+// uniqueness checks regenerating conflicts from re-read base rows; a SKIP_ALL build (active
+// ordering generation) removes those checks, so the bypass must not apply there.
+class TabletPeerRetainDeleteMarkersTest : public TabletPeerTest {
+ public:
+  TabletPeerRetainDeleteMarkersTest() : TabletPeerTest(RetainDeleteMarkersSchema()) {}
+
+ private:
+  static Schema RetainDeleteMarkersSchema() {
+    auto schema = GetTestSchema();
+    schema.SetRetainDeleteMarkers(true);
+    return schema;
+  }
+};
+
+TEST_F(TabletPeerRetainDeleteMarkersTest, SnapshotTooOldBypassOffUnderOrderingGeneration) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto* policy = tablet()->RetentionPolicy();
+  // The earliest-allowed read time is the committed history cutoff; advance it directly so a
+  // stale reader is genuinely below it. (Times come from the harness clock -- a logical
+  // clock near zero -- so wall-clock-derived constants would not be below the cutoff.)
+  const auto stale_read_time = tablet()->clock()->Now();
+  const auto committed = policy->UpdateCommittedHistoryCutoff(
+      {.cotables_cutoff_ht = HybridTime::kInvalid,
+       .primary_cutoff_ht = tablet()->clock()->Now()});
+  ASSERT_LT(stale_read_time, committed.primary_cutoff_ht);
+
+  // Without a generation the bypass admits the stale reader (upstream behavior, justified by
+  // the CHECK_ALL uniqueness checks).
+  ASSERT_OK(policy->RegisterReaderTimestamp(stale_read_time));
+  policy->UnregisterReaderTimestamp(stale_read_time);
+
+  // With an active generation the bypass is off.
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(
+      MakeActiveOrderingGeneration(/* base_op_index= */ 0)));
+  const auto status = policy->RegisterReaderTimestamp(stale_read_time);
+  ASSERT_NOK(status);
+  ASSERT_TRUE(status.IsSnapshotTooOld()) << status;
 }
 
 TEST_F(TabletPeerTest, OrderingGenerationChangeMetadataOpSetsBaseFromOwnRaftIndex) {

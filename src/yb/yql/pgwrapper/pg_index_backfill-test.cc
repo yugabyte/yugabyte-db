@@ -1506,8 +1506,10 @@ class PgIndexBackfillVerifier : public PgIndexBackfillSkipAllRaftOrdering {
     PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         "--TEST_block_index_backfill_ordering_generation_release=true");
-    // The pgwrapper base fixture zeroes history retention; verification reads the window's
-    // physical history, whose production retention hold lands with the read-fence part.
+    // The pgwrapper base fixture zeroes history retention. The index tablets' window history
+    // is now held by the generation's retention barrier (the read fence), but the *base*
+    // table's backfill reads still depend on general retention until the source-side pin
+    // (#32565) exists upstream -- keep the override for the base table's sake.
     options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=900");
   }
 
