@@ -355,6 +355,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Runs the deferred uniqueness verification scan over one unique-index tablet (read-only).
+  void VerifyUniqueIndexTablet(
+      const VerifyUniqueIndexTabletRequestPB* req, VerifyUniqueIndexTabletResponsePB* resp,
+      rpc::RpcContext context) override;
+
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(

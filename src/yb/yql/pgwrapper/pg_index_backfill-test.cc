@@ -1497,6 +1497,232 @@ TEST_P(PgIndexBackfillSkipAllBlocked, SplitFencedDuringBackfill) {
   ASSERT_OK(cluster_->CallYbAdmin({"split_tablet", index_tablet_id}));
 }
 
+// End-to-end fixture for the deferred uniqueness verification scan: SKIP_ALL builds with the
+// terminal release held open, so the ordering generation is still active when the test runs
+// the VerifyUniqueIndexTablet RPC against an index built by the real backfill path.
+class PgIndexBackfillVerifier : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_block_index_backfill_ordering_generation_release=true");
+    // The pgwrapper base fixture zeroes history retention; verification reads the window's
+    // physical history, whose production retention hold lands with the read-fence part.
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=900");
+  }
+
+ protected:
+  // Runs the verification scan over the (single-tablet) index through the leader's admin
+  // proxy: window = [birth_time from the master's backfill status, now].
+  Result<tserver::VerifyUniqueIndexTabletResponsePB> VerifyIndexTablet(
+      const std::string& index_name,
+      const std::function<void(tserver::VerifyUniqueIndexTabletRequestPB*)>& mutate_req = {}) {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    const auto index_table_id = VERIFY_RESULT(
+        GetTableIdByTableName(client.get(), kDatabaseName, index_name));
+
+    const auto backfill_status = VERIFY_RESULT(client->GetBackfillStatus({index_table_id}));
+    SCHECK_EQ(backfill_status.index_status_size(), 1, IllegalState, "expected one index status");
+    const auto& index_status = backfill_status.index_status(0);
+    SCHECK(!index_status.has_error(), IllegalState, "backfill status error");
+    SCHECK(index_status.has_birth_time(), IllegalState, "backfill status without birth_time");
+    const HybridTime backfill_read_ht(index_status.birth_time());
+
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(client->GetTabletsFromTableId(index_table_id, 0, &tablets));
+    SCHECK_EQ(tablets.size(), 1, IllegalState, "expected a single index tablet");
+    const auto& locations = tablets.Get(0);
+    std::string leader_uuid;
+    for (const auto& replica : locations.replicas()) {
+      if (replica.role() == PeerRole::LEADER) {
+        leader_uuid = replica.ts_info().permanent_uuid();
+      }
+    }
+    SCHECK(!leader_uuid.empty(), IllegalState, "index tablet has no leader");
+    ExternalTabletServer* leader_ts = nullptr;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      if (cluster_->tablet_server(i)->uuid() == leader_uuid) {
+        leader_ts = cluster_->tablet_server(i);
+      }
+    }
+    SCHECK_NOTNULL(leader_ts);
+
+    tserver::VerifyUniqueIndexTabletRequestPB req;
+    req.set_dest_uuid(leader_uuid);
+    req.set_tablet_id(locations.tablet_id());
+    req.set_backfill_read_ht(backfill_read_ht.ToUint64());
+    const auto now_micros = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    req.set_verify_upper_ht(HybridTime::FromMicros(now_micros).ToUint64());
+    req.set_index_table_id(index_table_id);
+    // No generation_base_op_index by default: tests accept any active generation for this
+    // index table (the coordinator omits it too -- bases are per-tablet).
+    if (mutate_req) {
+      mutate_req(&req);
+    }
+
+    tserver::VerifyUniqueIndexTabletResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(30) * kTimeMultiplier);
+    auto proxy = cluster_->GetProxy<tserver::TabletServerAdminServiceProxy>(leader_ts);
+    RETURN_NOT_OK(proxy.VerifyUniqueIndexTablet(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillVerifier, ::testing::Bool());
+
+// M2 of the verifier-core review: the verifier must run against a tablet built by the real
+// SKIP_ALL backfill plus real foreground DML, not hand-built records. Clean build, then
+// inserts, deletes, and non-key updates through the live index -- all Clean.
+TEST_P(PgIndexBackfillVerifier, CleanBuildWithForegroundDml) {
+  constexpr auto kNumRows = 200;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (a int, b int, c int, PRIMARY KEY (a ASC)) $1", kTableName,
+      GenerateSplitClause(kNumRows, /* num_tablets= */ 4)));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) INCLUDE (c) SPLIT INTO 1 TABLETS", kIndexName,
+      kTableName));
+
+  // Foreground DML through the completed (still generation-held) index: new rows, a delete
+  // plus re-insert of the same indexed value from a different base row, and an
+  // INCLUDE-column-only update.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g, g FROM generate_series($1, $2) g", kTableName, kNumRows + 1,
+      kNumRows + 50));
+  ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE a = 7", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (7000, 7, 7)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET c = c + 1 WHERE a = 8", kTableName));
+
+  const auto resp = ASSERT_RESULT(VerifyIndexTablet(kIndexName));
+  ASSERT_EQ(tserver::VerifyUniqueIndexTabletResponsePB::CLEAN, resp.outcome())
+      << resp.ShortDebugString();
+  ASSERT_GT(resp.dockey_groups_scanned(), 0);
+  ASSERT_FALSE(resp.has_resume_key());
+}
+
+// The named regression from the design document: a live PK update after the backfill read
+// time rewrites ybidxbasectid in place; legal PK updates shall not be reported. Default
+// flags exercise the standalone-column physical shape.
+TEST_P(PgIndexBackfillVerifier, PkUpdateAcrossBackfillBoundaryIsClean) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 50) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  // PK update: the base row's ctid changes while the index key value stays; the index entry's
+  // ybidxbasectid is reassigned in place (no tombstone).
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET a = a + 1000 WHERE b <= 10", kTableName));
+
+  const auto resp = ASSERT_RESULT(VerifyIndexTablet(kIndexName));
+  ASSERT_EQ(tserver::VerifyUniqueIndexTabletResponsePB::CLEAN, resp.outcome())
+      << resp.ShortDebugString();
+}
+
+// The detection case the whole feature exists for: duplicates that pre-existed the SKIP_ALL
+// build (which therefore succeeded) are found by the verification scan.
+TEST_P(PgIndexBackfillVerifier, DetectsPreexistingDuplicates) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 20) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100, 5)", kTableName));  // dup b = 5.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  const auto resp = ASSERT_RESULT(VerifyIndexTablet(kIndexName));
+  ASSERT_EQ(tserver::VerifyUniqueIndexTabletResponsePB::VIOLATION, resp.outcome())
+      << resp.ShortDebugString();
+  ASSERT_FALSE(resp.reason().empty());
+}
+
+// The packed-update physical shape of the PK-update regression (pack_full_row_update + mark:
+// the index entry's reassignment arrives as a packed V2 row with kIsUpdateFlag).
+class PgIndexBackfillVerifierPackedUpdate : public PgIndexBackfillVerifier {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillVerifier::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_pack_full_row_update=true");
+    options->extra_tserver_flags.push_back("--ysql_mark_update_packed_row=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillVerifierPackedUpdate, ::testing::Bool());
+
+TEST_P(PgIndexBackfillVerifierPackedUpdate, PkUpdateAcrossBackfillBoundaryIsClean) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 50) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET a = a + 1000 WHERE b <= 10", kTableName));
+
+  const auto resp = ASSERT_RESULT(VerifyIndexTablet(kIndexName));
+  ASSERT_EQ(tserver::VerifyUniqueIndexTabletResponsePB::CLEAN, resp.outcome())
+      << resp.ShortDebugString();
+}
+
+// Without the release held open, the funnel releases the generation when the build completes;
+// a late verification RPC must fail cleanly rather than scan against nothing.
+class PgIndexBackfillVerifierReleased : public PgIndexBackfillVerifier {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillVerifier::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_block_index_backfill_ordering_generation_release=false");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillVerifierReleased, ::testing::Bool());
+
+TEST_P(PgIndexBackfillVerifierReleased, VerifyAfterReleaseFailsCleanly) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  const auto result = VerifyIndexTablet(kIndexName);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "ordering generation");
+}
+
+// Generation-reference mismatches fail cleanly without scanning.
+TEST_P(PgIndexBackfillVerifier, GenerationMismatchFailsCleanly) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  const auto table_mismatch = VerifyIndexTablet(
+      kIndexName, [](tserver::VerifyUniqueIndexTabletRequestPB* req) {
+        req->set_index_table_id("not-the-generation-owner");
+      });
+  ASSERT_NOK(table_mismatch);
+  ASSERT_STR_CONTAINS(table_mismatch.status().ToString(), "different index table");
+
+  const auto base_mismatch = VerifyIndexTablet(
+      kIndexName, [](tserver::VerifyUniqueIndexTabletRequestPB* req) {
+        req->set_generation_base_op_index(std::numeric_limits<int64_t>::max());
+      });
+  ASSERT_NOK(base_mismatch);
+  ASSERT_STR_CONTAINS(base_mismatch.status().ToString(), "different base");
+}
+
 class PgIndexBackfillBlockIndisready : public PgIndexBackfillTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {

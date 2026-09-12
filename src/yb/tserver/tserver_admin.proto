@@ -134,6 +134,62 @@ message BackfillIndexResponsePB {
   map<string, double> num_rows_backfilled_in_index = 6;
 }
 
+message VerifyUniqueIndexTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  optional bytes tablet_id = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // Inclusive verification window [backfill_read_ht, verify_upper_ht]. The tablet waits for
+  // its safe time to pass verify_upper_ht (committed intents through the upper bound applied)
+  // before scanning, and requires backfill_read_ht to be above the history cutoff (retained
+  // history), failing the RPC otherwise.
+  optional fixed64 backfill_read_ht = 4;
+  optional fixed64 verify_upper_ht = 5;
+
+  // Expected ordering-generation reference. The scan is only meaningful against the
+  // generation the caller activated: the RPC fails (without scanning) if the tablet's
+  // generation is inactive or covers a different index table, or -- when
+  // generation_base_op_index is set -- has a different base. The coordinator always sets the
+  // base; omitting it relaxes the check to "any active generation for this index table"
+  // (test tooling).
+  optional bytes index_table_id = 6;
+  optional int64 generation_base_op_index = 7;
+
+  // DocKey-aligned resume point from a previous response; empty starts from the beginning.
+  optional bytes start_key = 8;
+
+  // Stop with a resume key after this many DocKey groups; 0 = bounded only by the deadline.
+  optional uint64 max_dockey_groups = 9;
+}
+
+message VerifyUniqueIndexTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  enum Outcome {
+    OUTCOME_UNKNOWN = 0;
+    CLEAN = 1;
+    VIOLATION = 2;
+    INCONCLUSIVE = 3;
+  }
+  optional Outcome outcome = 3;
+
+  // Value-free context for VIOLATION / INCONCLUSIVE: encoding classes and counts only, never
+  // key or value bytes.
+  optional string reason = 4;
+
+  // Non-empty when the scan stopped early (group budget or deadline): the encoded DocKey to
+  // resume from. Empty means the tablet was scanned to the end.
+  optional bytes resume_key = 5;
+
+  optional uint64 dockey_groups_scanned = 6;
+  optional uint64 versions_scanned = 7;
+}
+
 // A create tablet request.
 message CreateTabletRequestPB {
   // UUID of server this request is addressed to.
@@ -490,6 +546,13 @@ service TabletServerAdminService {
   // (request carries ChangeMetadataRequestPB.index_backfill_ordering_generation).
   rpc UpdateIndexBackfillOrderingGeneration(tablet.ChangeMetadataRequestPB)
       returns (ChangeMetadataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
+
+  // Runs the deferred uniqueness verification scan over one unique-index tablet (read-only,
+  // paginated). See VerifyUniqueIndexTabletRequestPB.
+  rpc VerifyUniqueIndexTablet(VerifyUniqueIndexTabletRequestPB)
+      returns (VerifyUniqueIndexTabletResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
 

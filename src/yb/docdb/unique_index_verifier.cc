@@ -37,8 +37,14 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/util/fast_varint.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
+
+DEFINE_test_flag(int32, unique_index_verify_delay_per_group_ms, 0,
+    "Sleep this long after each scanned DocKey group, so tests can force deadline-driven "
+    "pagination with small data.");
 
 namespace yb::docdb {
 
@@ -119,6 +125,9 @@ class Verifier {
         return result_;
       }
       ++result_.dockey_groups_scanned;
+      if (PREDICT_FALSE(FLAGS_TEST_unique_index_verify_delay_per_group_ms > 0)) {
+        SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_unique_index_verify_delay_per_group_ms));
+      }
     }
     RETURN_NOT_OK(iter_.status());
     return result_;
