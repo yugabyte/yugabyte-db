@@ -78,6 +78,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tsan_util.h"
 
 // Collect stack traces through (llvm-)libunwind rather than glibc backtrace().
 //
@@ -91,8 +92,15 @@
 // The thread deadlocks and ybthin_client_create never returns (#33916).
 //
 // libunwind keeps its own FDE cache and never takes libgcc's lock, and it is statically linked
-// into this .so. The BOLT concern that motivates the false default applies to YB's release
-// binaries, not to this client library.
+// into this .so.
+//
+// This is a trade-off, not a free win. The false default has two reasons, not one: BOLT-ed release
+// binaries, which a client .so is not, and #32197 -- a still-open SIGSEGV inside libunwind's
+// DwarfInstructions while collecting a trace from a signal handler. That path is reachable here in
+// principle: Messenger::Shutdown -> DisableAndWaitForOps constructs a LongOperationTracker(1s),
+// and a shutdown exceeding it would DumpThreadStack, which collects from a signal handler. So this
+// trades a deadlock seen on roughly 1 in 8 process starts for a crash that needs a slow shutdown
+// to reach at all. Sanitizer builds are excluded below, where libunwind is known to fault.
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
 
 using yb::DataType;
@@ -771,10 +779,17 @@ ybthin_status ybthin_client_create(
     ybthin_client** out) {
   // Must happen before anything creates a thread: Thread::Create warms up the stack trace library
   // on first use, and that warm-up is what trips the libgcc deadlock described above.
-  static std::once_flag unwinder_once;
-  std::call_once(unwinder_once, [] {
+  //
+  // Assigned unconditionally rather than through std::call_once: the write is idempotent, and a
+  // once-flag would make it fire only for the first client in a process -- wrong for any caller
+  // that restores flags between clients, and untestable.
+  //
+  // Sanitizer builds keep their default. There libunwind segfaults in DwarfInstructions when it
+  // unwinds a thread the signal interrupted inside the sanitizer runtime, which is why the default
+  // is off for them; a shim in a sanitized host should not have that forced on.
+  if (!yb::IsSanitizer()) {
     FLAGS_use_libunwind_for_stack_trace_collection = true;
-  });
+  }
 
   if (!tserver_addrs || n_addrs == 0 || !out) {
     return MakeStatus(YBTHIN_INVALID, "tserver_addrs and out are required");
