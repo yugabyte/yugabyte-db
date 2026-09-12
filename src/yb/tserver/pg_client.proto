@@ -1068,6 +1068,9 @@ message PgDeleteDBSequencesResponsePB {
 message PgGetTableDiskSizeRequestPB {
   PgObjectIdPB table_id = 1;
   reserved 2; // ASH metadata is now passed in RequestHeader PB
+  // DocDB table UUID. When set, takes precedence over table_id. Used for
+  // colocation parent tables which have no PG oid mapping.
+  optional string yb_table_id = 3;
 }
 
 message PgGetTableDiskSizeResponsePB {

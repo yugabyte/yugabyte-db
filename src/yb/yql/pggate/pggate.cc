@@ -33,7 +33,9 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -1309,6 +1311,15 @@ Status PgApiImpl::SetTablespaceOid(
 
 Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
   return pg_client_.GetTableDiskSize(table_oid);
+}
+
+Result<client::TableSizeInfo> PgApiImpl::GetTablegroupDiskSize(
+    PgOid database_oid, PgOid tablegroup_oid, bool is_database_colocated) {
+  const auto tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
+  const auto parent_table_id = is_database_colocated
+      ? GetColocationParentTableId(tablegroup_id)
+      : GetTablegroupParentTableId(tablegroup_id);
+  return pg_client_.GetTableDiskSizeByYbTableId(parent_table_id);
 }
 
 //--------------------------------------------------------------------------------------------------
