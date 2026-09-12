@@ -38,6 +38,7 @@
 
 #include "yb/qlexpr/index.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
@@ -607,10 +608,22 @@ void TabletMetadataValidator::Impl::TriggerMetadataUpdate(
         if (index_update.index_table_id != generation.table_id) {
           continue;
         }
+        // The release record must carry the marked-write watermark for the downgrade fence,
+        // which only the running tablet knows; skip this round if it is not available and
+        // heal on a later validator cycle.
+        const auto tablet = (*result)->shared_tablet_maybe_null();
+        if (!tablet) {
+          LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id
+                                << ": deferring ordering-generation release until the tablet "
+                                << "is running (marked-write watermark unavailable)";
+          break;
+        }
         LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id
                               << ": releasing index-backfill ordering generation for "
                               << generation.table_id << " (backfill confirmed complete)";
-        auto release_status = tablet_meta->set_index_backfill_ordering_generation({});
+        tablet::IndexBackfillOrderingGeneration released;
+        released.released_marked_write_watermark = tablet->max_marked_write_op_index();
+        auto release_status = tablet_meta->set_index_backfill_ordering_generation(released);
         LOG_IF_WITH_PREFIX(WARNING, !release_status.ok())
             << "Tablet " << index_tablet_id << " ordering-generation release failed: "
             << release_status;

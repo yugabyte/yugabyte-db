@@ -360,6 +360,12 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const VerifyUniqueIndexTabletRequestPB* req, VerifyUniqueIndexTabletResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Downgrade-fence probe: counts tablets whose marked-write state an old binary could
+  // replay divergently.
+  void CheckIndexBackfillDowngradeSafety(
+      const CheckIndexBackfillDowngradeSafetyRequestPB* req,
+      CheckIndexBackfillDowngradeSafetyResponsePB* resp, rpc::RpcContext context) override;
+
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(

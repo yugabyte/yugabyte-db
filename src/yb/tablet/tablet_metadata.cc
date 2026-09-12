@@ -1301,6 +1301,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
           .base_op_index = generation_pb.base_op_index(),
           .retention_barrier_ht = HybridTime::FromPB(generation_pb.retention_barrier_ht()),
           .write_id_floor_version = generation_pb.write_id_floor_version(),
+          .released_marked_write_watermark = generation_pb.released_marked_write_watermark(),
       };
     } else {
       // LoadFromSuperBlock also runs on existing metadata (e.g. remote-bootstrap superblock
@@ -1488,15 +1489,20 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
   pb.set_cdc_sdk_safe_time(cdc_sdk_safe_time_.ToUint64());
-  if (index_backfill_ordering_generation_.active) {
+  if (index_backfill_ordering_generation_.active ||
+      index_backfill_ordering_generation_.released_marked_write_watermark != 0) {
+    // A released record persists too: the watermark is the downgrade fence's proof that
+    // all marked WAL entries sit below the flushed frontier.
     auto* generation_pb = pb.mutable_index_backfill_ordering_generation();
-    generation_pb->set_active(true);
+    generation_pb->set_active(index_backfill_ordering_generation_.active);
     generation_pb->set_table_id(index_backfill_ordering_generation_.table_id);
     generation_pb->set_base_op_index(index_backfill_ordering_generation_.base_op_index);
     generation_pb->set_retention_barrier_ht(
         index_backfill_ordering_generation_.retention_barrier_ht.ToUint64());
     generation_pb->set_write_id_floor_version(
         index_backfill_ordering_generation_.write_id_floor_version);
+    generation_pb->set_released_marked_write_watermark(
+        index_backfill_ordering_generation_.released_marked_write_watermark);
   }
   pb.set_is_under_xcluster_replication(is_under_xcluster_replication_);
   pb.set_hidden(hidden_);
@@ -1882,16 +1888,22 @@ Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_t
 
 Status RaftGroupMetadata::set_index_backfill_ordering_generation(
     const IndexBackfillOrderingGeneration& generation) {
-  // The durable form of an inactive generation is field absence (ToSuperBlockUnlocked persists
-  // only active generations), so an inactive record with populated fields would diverge from
-  // what a reload produces. Normalize so the in-memory and durable states stay identical; the
-  // contract for callers is "set an active generation or set {}".
-  DCHECK(generation.active || generation == IndexBackfillOrderingGeneration())
+  // The durable form of an inactive generation is field absence -- except for the release
+  // watermark, which by design outlives the generation (the downgrade fence reads it until
+  // the flushed frontier passes it). Normalize inactive records to watermark-only so the
+  // in-memory and durable states stay identical; the contract for callers is "set an active
+  // generation, or a watermark-only (possibly empty) release record".
+  IndexBackfillOrderingGeneration normalized;
+  if (generation.active) {
+    normalized = generation;
+  } else {
+    normalized.released_marked_write_watermark = generation.released_marked_write_watermark;
+  }
+  DCHECK(generation == normalized)
       << "Inactive ordering generation with populated fields: " << generation;
   {
     std::lock_guard lock(data_mutex_);
-    index_backfill_ordering_generation_ =
-        generation.active ? generation : IndexBackfillOrderingGeneration();
+    index_backfill_ordering_generation_ = normalized;
   }
   return Flush();
 }
@@ -2692,7 +2704,8 @@ Status RaftGroupMetadata::OnBackfillDone(
 
 Status RaftGroupMetadata::ApplyIndexBackfillOrderingGenerationOp(
     const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
-    HybridTime retention_barrier_ht, uint32_t write_id_floor_version) {
+    HybridTime retention_barrier_ht, uint32_t write_id_floor_version,
+    int64_t released_marked_write_watermark) {
   std::lock_guard lock(data_mutex_);
   if (activate) {
     // The base is the activation operation's own Raft index: replicas and WAL replay derive it
@@ -2707,7 +2720,13 @@ Status RaftGroupMetadata::ApplyIndexBackfillOrderingGenerationOp(
         .write_id_floor_version = write_id_floor_version,
     };
   } else {
-    index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
+    // Release keeps only the watermark (the highest marked-write index applied so far), so
+    // the downgrade fence can prove "no marked WAL entry above the flushed frontier" from
+    // this field alone. Idempotent release (the funnel is at-least-once) can only move the
+    // watermark up, which stays correct.
+    IndexBackfillOrderingGeneration released;
+    released.released_marked_write_watermark = released_marked_write_watermark;
+    index_backfill_ordering_generation_ = released;
   }
   // Advance the change-metadata replay marker with the flush below (mirrors OnBackfillDone);
   // without it the op would replay on every bootstrap until some later ChangeMetadata flush.

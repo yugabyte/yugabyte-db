@@ -809,10 +809,21 @@ TEST_F(TabletPeerTest, IndexBackfillOrderingGenerationPersistsAcrossReload) {
   ASSERT_EQ(generation.retention_barrier_ht, loaded.retention_barrier_ht);
   ASSERT_EQ(generation.write_id_floor_version, loaded.write_id_floor_version);
 
-  // Releasing the generation persists as an absent superblock field.
-  ASSERT_OK(metadata->set_index_backfill_ordering_generation({}));
+  // A released record keeps its watermark across reload: the downgrade fence proves "no
+  // marked WAL entry above the flushed frontier" from it, so losing the watermark on
+  // restart would reopen the divergent-replay window.
+  IndexBackfillOrderingGeneration released;
+  released.released_marked_write_watermark = 99;
+  ASSERT_OK(metadata->set_index_backfill_ordering_generation(released));
   auto reloaded = ASSERT_RESULT(RaftGroupMetadata::Load(fs_manager, tablet_id));
   ASSERT_FALSE(reloaded->index_backfill_ordering_generation().active);
+  ASSERT_EQ(99, reloaded->index_backfill_ordering_generation().released_marked_write_watermark);
+
+  // A never-released clear persists as an absent superblock field.
+  ASSERT_OK(reloaded->set_index_backfill_ordering_generation({}));
+  reloaded = ASSERT_RESULT(RaftGroupMetadata::Load(fs_manager, tablet_id));
+  ASSERT_FALSE(reloaded->index_backfill_ordering_generation().active);
+  ASSERT_EQ(0, reloaded->index_backfill_ordering_generation().released_marked_write_watermark);
 }
 
 TEST_F(TabletPeerTest, IndexBackfillOrderingGenerationClearedBySuperblockReplacement) {

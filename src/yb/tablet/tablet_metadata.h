@@ -344,6 +344,11 @@ struct IndexBackfillOrderingGeneration {
   HybridTime retention_barrier_ht = HybridTime::kInvalid;
   // Version of kBackfillWriteIdFloor the generation's marked writes were stored with.
   uint32_t write_id_floor_version = 0;
+  // Highest marked-write Raft index the tablet had applied at release (0 = never released
+  // or no marked writes). The downgrade fence's per-tablet condition is "active, or the
+  // regular-DB flushed frontier is below this"; anchoring to the last marked WRITE (not the
+  // release op) lets the release-triggered flush converge it on an otherwise idle tablet.
+  int64_t released_marked_write_watermark = 0;
 
   friend bool operator==(
       const IndexBackfillOrderingGeneration&, const IndexBackfillOrderingGeneration&) = default;
@@ -357,7 +362,7 @@ struct IndexBackfillOrderingGeneration {
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(active, table_id, base_op_index, retention_barrier_ht,
-                               write_id_floor_version);
+                               write_id_floor_version, released_marked_write_watermark);
   }
 
   friend std::ostream& operator<<(
@@ -528,11 +533,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const IndexBackfillOrderingGeneration& generation);
 
   // Applies the ChangeMetadataOperation variant: activates a generation with
-  // base_op_index = op_id.index, or releases any active one. Advances the change-metadata
-  // replay marker; the caller flushes (mirrors OnBackfillDone).
+  // base_op_index = op_id.index, or releases any active one, persisting the caller-supplied
+  // marked-write watermark for the downgrade fence. Advances the change-metadata replay
+  // marker; the caller flushes (mirrors OnBackfillDone).
   Status ApplyIndexBackfillOrderingGenerationOp(
       const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
-      HybridTime retention_barrier_ht, uint32_t write_id_floor_version);
+      HybridTime retention_barrier_ht, uint32_t write_id_floor_version,
+      int64_t released_marked_write_watermark);
 
   IndexBackfillOrderingGeneration index_backfill_ordering_generation() const;
 
