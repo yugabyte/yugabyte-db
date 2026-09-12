@@ -32,6 +32,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/common/common_util.h"
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -1076,12 +1077,144 @@ Status BackfillTable::DoBackfill() {
     VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill();
   }
 
+  if (unique_index_backfill_mode() == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL &&
+      !ordering_generation_activated_.exchange(true)) {
+    // SKIP_ALL writes are marked (Raft-index write IDs), which every index tablet only accepts
+    // under an active ordering generation -- activate before the first chunk. The job continues
+    // into LaunchBackfillTablets through OrderingGenerationUpdateDone once every tablet acks.
+    // On failover resume this re-runs: re-activation is idempotent (the base moves up).
+    return LaunchOrderingGenerationActivation();
+  }
+  return LaunchBackfillTablets();
+}
+
+Status BackfillTable::LaunchBackfillTablets() {
   auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   for (auto& tablet : tablets) {
     auto backfill_tablet = std::make_shared<BackfillTablet>(shared_from_this(), std::move(tablet));
     RETURN_NOT_OK(backfill_tablet->Launch());
+  }
+  return Status::OK();
+}
+
+Result<std::vector<scoped_refptr<TableInfo>>> BackfillTable::GetUniqueIndexTables(
+    RestrictToIndexesToBuild restrict_to_indexes_to_build) const {
+  const auto to_build = indexes_to_build();
+  std::vector<scoped_refptr<TableInfo>> tables;
+  for (const auto& index_info : index_infos_) {
+    if (!index_info.is_unique()) {
+      continue;
+    }
+    if (restrict_to_indexes_to_build && to_build.count(index_info.table_id()) == 0) {
+      continue;
+    }
+    auto res = master_->catalog_manager()->FindTableById(index_info.table_id());
+    if (!res && res.status().IsNotFound()) {
+      // Concurrent DROP INDEX; the job will fail through the missing-IndexInfoPB path.
+      LOG_WITH_PREFIX(WARNING) << "Index " << index_info.table_id() << " was not found; "
+                               << "skipping for ordering-generation update: " << res.status();
+      continue;
+    }
+    tables.push_back(VERIFY_RESULT_PREPEND(
+        std::move(res), Format("Could not find the index table $0", index_info.table_id())));
+  }
+  return tables;
+}
+
+Status BackfillTable::LaunchOrderingGenerationActivation() {
+  if (indexed_table_->GetTableType() != TableType::PGSQL_TABLE_TYPE) {
+    // The SKIP_ALL write path is PGSQL-only (the backfill request mode rides the YSQL chunk
+    // requests; YCQL backfill writes are never marked), so generations would only fence
+    // splits without protecting anything. Reachable today only via the TEST mode override.
+    return LaunchBackfillTablets();
+  }
+  auto index_tables = VERIFY_RESULT(GetUniqueIndexTables(RestrictToIndexesToBuild::kTrue));
+  if (index_tables.empty()) {
+    return LaunchBackfillTablets();
+  }
+
+  // Fence and drain index-table splitting before activating. The tablet-side fences (the
+  // pending-split rejection of CHANGE_METADATA_OP and, once active, the generation split
+  // fence) close the append-time races; this master-side drain removes the split/activation
+  // TOCTOU window entirely under a single master leader, and the persisted fence in the
+  // tablet-split manager (backfill-job state) keeps splits excluded across failover.
+  auto& tablet_split_manager = master_->tablet_split_manager();
+  const CoarseTimePoint deadline =
+      CoarseMonoClock::Now() +
+      FLAGS_index_backfill_tablet_split_completion_timeout_sec * 1s * kTimeMultiplier;
+  for (const auto& index_table : index_tables) {
+    tablet_split_manager.DisableSplittingForBackfillingTable(index_table->id());
+    while (!tablet_split_manager.IsTabletSplittingComplete(
+        *index_table, false /* wait_for_parent_deletion */, deadline)) {
+      if (CoarseMonoClock::Now() > deadline) {
+        return STATUS(
+            TimedOut,
+            "Index-tablet splitting did not complete after being disabled; cannot safely "
+            "activate the ordering generation.");
+      }
+      SleepFor(FLAGS_index_backfill_tablet_split_completion_poll_freq_ms * 1ms * kTimeMultiplier);
+    }
+  }
+
+  std::vector<std::pair<TabletInfoPtr, TableId>> tablets;
+  for (const auto& index_table : index_tables) {
+    for (auto& tablet : VERIFY_RESULT(index_table->GetTablets())) {
+      tablets.emplace_back(std::move(tablet), index_table->id());
+    }
+  }
+  if (tablets.empty()) {
+    return LaunchBackfillTablets();
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Activating index-backfill ordering generation on " << tablets.size()
+                        << " index tablet(s) before launching backfill chunks";
+  activation_tablets_pending_.store(tablets.size(), std::memory_order_release);
+  for (auto& [tablet, index_table_id] : tablets) {
+    auto task = std::make_shared<UpdateOrderingGenerationForTablet>(
+        shared_from_this(), tablet, index_table_id, tablet::ActivateGeneration::kTrue,
+        NotifyBackfillTable::kTrue, epoch_);
+    RETURN_NOT_OK(task->Launch());
+  }
+  return Status::OK();
+}
+
+void BackfillTable::OrderingGenerationUpdateDone(
+    const Status& status, const TabletId& tablet_id) {
+  if (done()) {
+    return;
+  }
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Ordering-generation activation failed for tablet " << tablet_id
+                             << ": " << status << "; aborting backfill";
+    WARN_NOT_OK(Abort(), "Failed to abort backfill after activation failure");
+    return;
+  }
+  if (--activation_tablets_pending_ == 0) {
+    LOG_WITH_PREFIX(INFO) << "Ordering generation active on all index tablets; "
+                          << "launching backfill chunks";
+    Status s = LaunchBackfillTablets();
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to launch backfill after activation: " << s;
+      WARN_NOT_OK(Abort(), "Failed to abort backfill");
+    }
+  }
+}
+
+Status BackfillTable::SendRpcToReleaseOrderingGenerations() {
+  // Release on every unique index of the job, built or not: activation may have partially
+  // succeeded before a failure. Fire-and-forget -- the tserver metadata validator and master
+  // reload reconciliation converge any straggler.
+  auto index_tables = VERIFY_RESULT(GetUniqueIndexTables(RestrictToIndexesToBuild::kFalse));
+  for (const auto& index_table : index_tables) {
+    for (const auto& tablet : VERIFY_RESULT(index_table->GetTablets())) {
+      auto task = std::make_shared<UpdateOrderingGenerationForTablet>(
+          shared_from_this(), tablet, index_table->id(), tablet::ActivateGeneration::kFalse,
+          NotifyBackfillTable::kFalse, epoch_);
+      WARN_NOT_OK(task->Launch(), "Failed to send ordering-generation release");
+    }
+    master_->tablet_split_manager().ReenableSplittingForBackfillingTable(index_table->id());
   }
   return Status::OK();
 }
@@ -1316,6 +1449,13 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
   indexed_table_->ClearIsBackfilling();
   master_->tablet_split_manager().ReenableSplittingForBackfillingTable(indexed_table_->id());
+  if (unique_index_backfill_mode() == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL) {
+    // Terminal funnel: every success/failure/abort path of a SKIP_ALL job passes through here,
+    // so the ordering generations are released (and index-table splitting re-enabled) on all of
+    // them. At-least-once; backstops converge anything this misses (e.g. master death here).
+    WARN_NOT_OK(
+        SendRpcToReleaseOrderingGenerations(), "Failed to release ordering generations");
+  }
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
   RETURN_NOT_OK(master_->catalog_manager_impl()->SendAlterTableRequest(indexed_table_, epoch_));
@@ -1664,6 +1804,115 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
   }
   WARN_NOT_OK(backfill_table_->UpdateSafeTime(status, safe_time),
     "Could not UpdateSafeTime");
+}
+
+UpdateOrderingGenerationForTablet::UpdateOrderingGenerationForTablet(
+    std::shared_ptr<BackfillTable> backfill_table,
+    const TabletInfoPtr& tablet,
+    const TableId& index_table_id,
+    tablet::ActivateGeneration activate,
+    NotifyBackfillTable notify_backfill_table,
+    LeaderEpoch epoch)
+    : RetryingTSRpcTaskWithTable(
+          backfill_table->master(), backfill_table->threadpool(),
+          std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table(),
+          std::move(epoch),
+          /* async_task_throttler */ nullptr),
+      backfill_table_(backfill_table),
+      tablet_(tablet),
+      index_table_id_(index_table_id),
+      activate_(activate),
+      notify_backfill_table_(notify_backfill_table) {
+  deadline_ = MonoTime::Max();  // Single-attempt deadline comes from ComputeDeadline().
+}
+
+Status UpdateOrderingGenerationForTablet::Launch() {
+  tablet_->table()->AddTask(shared_from_this());
+  RETURN_NOT_OK_PREPEND(
+      Run(),
+      Substitute("Failed to send UpdateOrderingGeneration request for $0. ",
+                 tablet_->ToString()));
+  VLOG(3) << "Started UpdateOrderingGenerationForTablet : " << this->description();
+  return Status::OK();
+}
+
+std::string UpdateOrderingGenerationForTablet::description() const {
+  return Format(
+      "$0 ordering generation for index tablet $1 of $2",
+      activate_ ? "Activate" : "Release", tablet_id(), index_table_id_);
+}
+
+TabletId UpdateOrderingGenerationForTablet::tablet_id() const { return tablet_->id(); }
+
+bool UpdateOrderingGenerationForTablet::SendRequest(int attempt) {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  tablet::ChangeMetadataRequestPB req;
+  req.set_dest_uuid(permanent_uuid());
+  req.set_tablet_id(tablet_->tablet_id());
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  auto* generation_op = req.mutable_index_backfill_ordering_generation();
+  generation_op->set_table_id(index_table_id_);
+  generation_op->set_activate(activate_);
+  if (activate_) {
+    // History at and above backfill_read_time.Decremented() must survive until verification;
+    // the record carries the barrier, enforcement lands with the verification read fence.
+    generation_op->set_retention_barrier_ht(
+        backfill_table_->read_time_for_backfill().Decremented().ToUint64());
+    generation_op->set_write_id_floor_version(kIndexBackfillWriteIdFloorVersion);
+  }
+
+  ts_admin_proxy_->UpdateIndexBackfillOrderingGenerationAsync(
+      req, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Send " << description() << " to " << permanent_uuid()
+          << " (attempt " << attempt << "):\n" << req.DebugString();
+  return true;
+}
+
+void UpdateOrderingGenerationForTablet::HandleResponse(int attempt) {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  Status status = Status::OK();
+  if (resp_.has_error()) {
+    status = StatusFromPB(resp_.error().status());
+    switch (resp_.error().code()) {
+      case TabletServerErrorPB::TABLET_NOT_FOUND:
+      case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
+        LOG(WARNING) << "TS " << permanent_uuid() << ": " << description()
+                     << " failed, no further retry: " << status;
+        TransitionToFailedState(MonitoredTaskState::kRunning, status);
+        break;
+      default:
+        LOG(WARNING) << "TS " << permanent_uuid() << ": " << description() << " failed: "
+                     << status << " code " << resp_.error().code();
+        break;
+    }
+  } else {
+    TransitionToCompleteState();
+    VLOG(1) << "TS " << permanent_uuid() << ": " << description() << " complete";
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+}
+
+void UpdateOrderingGenerationForTablet::UnregisterAsyncTaskCallback() {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  if (state() == MonitoredTaskState::kAborted) {
+    // Deliberately no join notification (same shape as GetSafeTimeForTablet): external task
+    // aborts accompany leadership loss or table teardown, where the job object is dying with
+    // us; notifying could double-drive a job that is already unwinding.
+    VLOG(1) << " was aborted";
+    return;
+  }
+  if (!notify_backfill_table_) {
+    return;
+  }
+
+  Status status;
+  if (resp_.has_error()) {
+    status = StatusFromPB(resp_.error().status());
+  } else if (state() != MonitoredTaskState::kComplete) {
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
+  }
+  backfill_table_->OrderingGenerationUpdateDone(status, tablet_->tablet_id());
 }
 
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,

@@ -2690,6 +2690,31 @@ Status RaftGroupMetadata::OnBackfillDone(
   return Status::OK();
 }
 
+Status RaftGroupMetadata::ApplyIndexBackfillOrderingGenerationOp(
+    const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
+    HybridTime retention_barrier_ht, uint32_t write_id_floor_version) {
+  std::lock_guard lock(data_mutex_);
+  if (activate) {
+    // The base is the activation operation's own Raft index: replicas and WAL replay derive it
+    // identically, and every marked write appended after this op necessarily carries a higher
+    // index. Re-activation (e.g. a backfill job resumed after master failover) is idempotent --
+    // the base moves to the newer op's index, which only tightens the constraint.
+    index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration {
+        .active = true,
+        .table_id = table_id,
+        .base_op_index = op_id.index,
+        .retention_barrier_ht = retention_barrier_ht,
+        .write_id_floor_version = write_id_floor_version,
+    };
+  } else {
+    index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
+  }
+  // Advance the change-metadata replay marker with the flush below (mirrors OnBackfillDone);
+  // without it the op would replay on every bootstrap until some later ChangeMetadata flush.
+  OnChangeMetadataOperationAppliedUnlocked(op_id);
+  return Status::OK();
+}
+
 Status RaftGroupMetadata::OnBackfillDoneUnlocked(
     const TableId& table_id, uint64_t birth_time) {
   if (FLAGS_TEST_skip_metadata_backfill_done) {

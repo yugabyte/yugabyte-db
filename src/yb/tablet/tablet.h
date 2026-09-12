@@ -530,6 +530,13 @@ class Tablet : public AbstractTablet,
   Status MarkBackfillDone(
       const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
+  // Applies the index-backfill ordering-generation ChangeMetadataOperation variant: activates
+  // a generation whose base_op_index is the operation's own Raft index, or releases any active
+  // one. Idempotent; see IndexBackfillOrderingGenerationOpPB.
+  Status UpdateIndexBackfillOrderingGeneration(
+      const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
+      HybridTime retention_barrier_ht, uint32_t write_id_floor_version);
+
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
