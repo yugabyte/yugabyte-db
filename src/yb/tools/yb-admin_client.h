@@ -64,6 +64,7 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/tools/table_hash.h"
+#include "yb/tools/xcluster_verify.h"
 #include "yb/tools/yb-admin_cli.h"
 #include "yb/rpc/rpc_fwd.h"
 
@@ -556,6 +557,10 @@ class ClusterAdminClient {
   Result<TableHashTotals> ComputeTableXorHash(
       const TableId& table_id, uint64_t read_ht, Slice start_key = Slice(),
       Slice end_key = Slice(), std::ostream* verbose = nullptr, uint64_t max_rows = 0);
+
+  // Fingerprint of the table's current catalog schema. This only talks to the master, so verify can
+  // afford to call it both before and after hashing a slice.
+  Result<SchemaFingerprint> GetSchemaFingerprint(const TableId& table_id);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
