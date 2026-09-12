@@ -146,6 +146,50 @@ SELECT yb_index_check('part_2_b_c_d_idx'::regclass::oid);
 SELECT yb_index_check('part_20_40_b_c_d_idx'::regclass::oid);
 SELECT yb_index_check('part_40_60_b_c_d_idx'::regclass::oid);
 
+-- Index of a partitioned table whose DEFAULT partition is itself partitioned.
+-- A subpartitioned DEFAULT partition is still RELKIND_PARTITIONED_TABLE and
+-- holds no rows of its own, so its index is RELKIND_PARTITIONED_INDEX with no
+-- storage. yb_index_check must descend past it to the leaves.
+CREATE TABLE part_def(a int PRIMARY KEY, b int, c int) PARTITION BY RANGE(a);
+CREATE INDEX ON part_def(b) INCLUDE (c);
+CREATE TABLE part_def_low PARTITION OF part_def FOR VALUES FROM(1) TO (10);
+CREATE TABLE part_def_rest PARTITION OF part_def DEFAULT PARTITION BY RANGE(a);
+CREATE TABLE part_def_rest_20_30 PARTITION OF part_def_rest FOR VALUES FROM(20) TO (30);
+CREATE TABLE part_def_rest_30_40 PARTITION OF part_def_rest FOR VALUES FROM(30) TO (40);
+INSERT INTO part_def SELECT i, i, i FROM generate_series(1, 9) i;
+INSERT INTO part_def SELECT i, i, i FROM generate_series(20, 38) i;
+
+SELECT t.relid::regclass AS relation, c.relkind, t.level, t.isleaf,
+       pg_get_expr(c.relpartbound, c.oid) AS bound
+FROM pg_partition_tree('part_def') t JOIN pg_class c ON c.oid = t.relid
+ORDER BY t.level, relation;
+SELECT t.relid::regclass AS index_name, c.relkind, t.level, t.isleaf
+FROM pg_partition_tree('part_def_b_c_idx') t JOIN pg_class c ON c.oid = t.relid
+ORDER BY t.level, index_name;
+SELECT tableoid::regclass AS stored_in, count(*) FROM part_def GROUP BY 1 ORDER BY 1;
+SELECT count(*) AS rows_in_default_partition_itself FROM ONLY part_def_rest;
+
+SELECT yb_index_check('part_def_b_c_idx'::regclass::oid);
+SELECT yb_index_check('part_def_low_b_c_idx'::regclass::oid);
+SELECT yb_index_check('part_def_rest_b_c_idx'::regclass::oid);
+SELECT yb_index_check('part_def_rest_20_30_b_c_idx'::regclass::oid);
+SELECT yb_index_check('part_def_rest_30_40_b_c_idx'::regclass::oid);
+
+-- Corrupting one leaf must be reported when checking the storage-less indexes
+-- above it, confirming the subtree is scanned rather than skipped.
+UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'part_def_rest_30_40_b_c_idx'::regclass;
+:force_cache_refresh
+DELETE FROM part_def WHERE a = 38;
+UPDATE pg_index SET indisready = TRUE, indisvalid = TRUE, indislive = TRUE WHERE indexrelid = 'part_def_rest_30_40_b_c_idx'::regclass;
+:force_cache_refresh
+SELECT yb_index_check('part_def_rest_30_40_b_c_idx'::regclass::oid);
+SELECT yb_index_check('part_def_rest_b_c_idx'::regclass::oid);
+SELECT yb_index_check('part_def_b_c_idx'::regclass::oid);
+SELECT yb_index_check('part_def_rest_20_30_b_c_idx'::regclass::oid);
+
+INSERT INTO part_def VALUES (38, 38, 38); -- Reset
+SELECT yb_index_check('part_def_b_c_idx'::regclass::oid);
+
 -- Index of materialized view
 CREATE MATERIALIZED VIEW matview AS SELECT * FROM abcd;
 CREATE INDEX matview_b_idx ON matview (b);
@@ -225,3 +269,130 @@ INSERT INTO abcd2 SELECT i, i, i, i FROM generate_series(1, 1000) i;
 
 SELECT yb_index_check('abcd1_b_c_d_idx'::regclass::oid);
 SELECT yb_index_check('abcd2_b_c_d_idx'::regclass::oid);
+
+-- RLS guardrail for yb_index_check(): a caller subject to RLS must be rejected
+-- (in both single- and multi-snapshot mode)
+-- Only callers who bypass RLS (superuser, BYPASSRLS, exempt owner) may run it.
+\c yugabyte
+-- Mirroring admin user creation in YBM
+CREATE USER rls_admin INHERIT CREATEROLE CREATEDB BYPASSRLS LOGIN;
+CREATE USER rls_owner LOGIN;
+CREATE USER rls_exec LOGIN;
+CREATE USER rls_noexec LOGIN;
+GRANT CREATE ON SCHEMA public TO rls_owner;
+-- The table is created by the non-superuser owner.
+SET ROLE rls_owner;
+CREATE TABLE rls_tbl (id int PRIMARY KEY, tenant text, body text);
+CREATE INDEX rls_tbl_body_idx ON rls_tbl (body);
+INSERT INTO rls_tbl VALUES (1, 'rls_owner', 'a'), (2, 'other', 'b');
+CREATE POLICY rls_tbl_isolation ON rls_tbl USING (tenant = current_user);
+GRANT SELECT ON rls_tbl TO rls_admin, rls_exec, rls_noexec;
+RESET ROLE;
+REVOKE EXECUTE ON FUNCTION yb_index_check(oid, boolean, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION yb_index_check(oid, boolean, integer)
+  TO rls_admin, rls_owner, rls_exec;
+
+-- Control: RLS disabled. Every caller with EXECUTE passes; the caller without
+-- EXECUTE is rejected by the function ACL. Single-snapshot mode only.
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- superuser
+SET ROLE rls_admin;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- BYPASSRLS
+RESET ROLE;
+SET ROLE rls_owner;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- owner
+RESET ROLE;
+SET ROLE rls_exec;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- non-owner + EXECUTE
+RESET ROLE;
+SET ROLE rls_noexec;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- non-owner, no EXECUTE
+RESET ROLE;
+
+-- RLS enabled, FORCE disabled: the owner is not subject to RLS, so only the
+-- non-owner with EXECUTE is rejected by the guardrail (both modes).
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- superuser
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+SET ROLE rls_admin;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- BYPASSRLS
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+SET ROLE rls_owner;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- owner (exempt)
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+SET ROLE rls_exec;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- rejected
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+SET ROLE rls_noexec;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- ACL error
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+
+-- RLS enabled, FORCE enabled: the owner is now subject to RLS too, so the owner
+-- and the non-owner with EXECUTE are both rejected. Superuser and BYPASSRLS
+-- users still bypass RLS and pass.
+ALTER TABLE rls_tbl FORCE ROW LEVEL SECURITY;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- superuser
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+SET ROLE rls_admin;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- BYPASSRLS
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+SET ROLE rls_owner;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- owner rejected (FORCE)
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+SET ROLE rls_exec;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- rejected
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+SET ROLE rls_noexec;
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, true); -- ACL error
+SELECT yb_index_check('rls_tbl_body_idx'::regclass::oid, false);
+RESET ROLE;
+
+-- Cleanup. Restore the default PUBLIC EXECUTE on the function and drop roles.
+DROP TABLE rls_tbl;
+GRANT EXECUTE ON FUNCTION yb_index_check(oid, boolean, integer) TO PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM rls_owner;
+REVOKE EXECUTE ON FUNCTION yb_index_check(oid, boolean, integer)
+  FROM rls_admin, rls_owner, rls_exec;
+DROP USER rls_admin, rls_owner, rls_exec, rls_noexec;
+
+-- RLS guardrail on a partitioned index. The privilege is verified for every
+-- partition up front. RLS on a leaf partition rejects the whole check
+-- RLS on the root partitioned table does not
+-- (a leaf without its own policy is fully readable regardless of the parent's).
+CREATE TABLE rls_part (id int, tenant text, body text) PARTITION BY RANGE (id);
+CREATE TABLE rls_part_1 PARTITION OF rls_part FOR VALUES FROM (1) TO (100);
+CREATE TABLE rls_part_2 PARTITION OF rls_part FOR VALUES FROM (100) TO (200);
+CREATE INDEX rls_part_body_idx ON rls_part (body);
+INSERT INTO rls_part SELECT i, 'alice', 'b' || i FROM generate_series(1, 150) i;
+CREATE ROLE rls_part_user;
+GRANT ALL ON rls_part, rls_part_1, rls_part_2 TO rls_part_user;
+-- RLS on the ROOT only: leaves have no policy, so a plain user may run the
+-- check on the partitioned index and on each leaf.
+ALTER TABLE rls_part ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rls_part FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_part_isolation ON rls_part USING (tenant = current_user);
+SET ROLE rls_part_user;
+SELECT yb_index_check('rls_part_body_idx'::regclass::oid, true);
+SELECT yb_index_check('rls_part_1_body_idx'::regclass::oid, true);
+RESET ROLE;
+-- RLS on a leaf partition: the up-front check rejects the partitioned-index
+ALTER TABLE rls_part_1 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rls_part_1 FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_part_1_isolation ON rls_part_1 USING (tenant = current_user);
+SET ROLE rls_part_user;
+SELECT yb_index_check('rls_part_body_idx'::regclass::oid, true);
+SELECT yb_index_check('rls_part_body_idx'::regclass::oid, false);
+-- The leaf without RLS is still checkable directly; the leaf with RLS is not.
+SELECT yb_index_check('rls_part_2_body_idx'::regclass::oid, true);
+SELECT yb_index_check('rls_part_1_body_idx'::regclass::oid, true);
+RESET ROLE;
+-- Superuser bypasses RLS everywhere.
+SELECT yb_index_check('rls_part_body_idx'::regclass::oid, true);
+DROP TABLE rls_part;
+DROP ROLE rls_part_user;
