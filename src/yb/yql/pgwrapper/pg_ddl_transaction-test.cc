@@ -26,6 +26,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -40,6 +41,7 @@ DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
 DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
+DECLARE_double(TEST_ysql_ddl_rollback_failure_probability);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 namespace yb::pgwrapper {
@@ -371,6 +373,80 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigge
     },
     MonoDelta::FromSeconds(60),
     "DDL verification task should have been re-triggered"));
+}
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedNotClobberedByConcurrentCallback) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  ASSERT_OK(conn.Execute("CREATE TABLE ddl_pp_failed_clobber (id INT PRIMARY KEY)"));
+
+  // Two callbacks can run for the same DDL transaction. The master's schema verification task
+  // delivers one and the tserver's ReportYsqlDdlTxnStatus delivers the other. Hold the report
+  // until the verification task's rollback work has failed and recorded
+  // kDdlPostProcessingFailed. The report's callback then sees a table that has no transaction
+  // id but still waits for a schema version, and must not leave the transaction in
+  // kDdlPostProcessing, a state no re-trigger path acts on.
+  SyncPoint::GetInstance()->LoadDependency({
+    {
+      "CatalogManager::YsqlDdlTxnCompleteCallback:PostProcessingFailed",
+      "PgClientSession::DdlAtomicityFinishTransaction:BeforeReportYsqlDdlTxnStatus"
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+  // Disable sync points even when an assert fails before the explicit disable below. A loaded
+  // dependency would otherwise park a later report RPC and hang teardown or the next test.
+  auto disable_sync_points = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+  });
+
+  // Fail the rollback after it clears the table's transaction state but before it sends the
+  // ALTER TABLE request. The table is then waiting for a schema version bump that has not
+  // been sent.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_rollback_failure_probability) = 1.0;
+  // Keep report_ysql_ddl_txn_status_to_master enabled. The report is the concurrent callback
+  // this test exercises. Turn off waiting for verification so that ROLLBACK returns while the
+  // rollback work is still incomplete.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE ddl_pp_failed_clobber ADD COLUMN c INT"));
+
+  const auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, "ddl_pp_failed_clobber"));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  SyncPoint::GetInstance()->DisableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_rollback_failure_probability) = 0.0;
+
+  // The report's callback completed before ROLLBACK returned. The transaction must still be
+  // in kDdlPostProcessingFailed so that a re-trigger can finish the rollback.
+  const auto state = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+  ASSERT_TRUE(state.has_value()) << "DDL verification entry disappeared";
+  ASSERT_EQ(*state, master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+
+  // Re-enable the periodic re-trigger and wait for it to finish the rollback and clean up.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+  ASSERT_OK(WaitFor(
+      [&] {
+        const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+        return Result<bool>(!st.has_value());
+      },
+      MonoDelta::FromSeconds(60),
+      "DDL verification should complete and clean up"));
+
+  // The table is usable again end to end.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = true;
+  ASSERT_OK(conn.Execute("ALTER TABLE ddl_pp_failed_clobber ADD COLUMN d INT"));
 }
 
 TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedDueToFailedStatusPoll) {
