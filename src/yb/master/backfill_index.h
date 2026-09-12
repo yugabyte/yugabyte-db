@@ -16,6 +16,8 @@
 #include <float.h>
 
 #include <chrono>
+#include <deque>
+#include <functional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -200,6 +202,12 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   // the last success launches the backfill chunks.
   void OrderingGenerationUpdateDone(const Status& status, const TabletId& tablet_id);
 
+  // Join point for shadow verification: called by VerifyUniqueIndexForTablet once per
+  // completed RPC (a paginated tablet may complete through several calls).
+  void ShadowVerificationTabletDone(
+      const TabletInfoPtr& tablet, const Status& status,
+      const tserver::VerifyUniqueIndexTabletResponsePB& resp) EXCLUDES(mutex_);
+
  private:
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
@@ -224,6 +232,31 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   // tablet; runs in the terminal funnel. Stragglers converge via the tserver metadata
   // validator and master reload reconciliation.
   Status SendRpcToReleaseOrderingGenerations();
+
+  // Observational (never publication-gating) verification phase, run after a successful
+  // SKIP_ALL backfill while the ordering generations are still active, and gated behind
+  // FLAGS_ysql_index_backfill_shadow_verification. Verifies one unique index at a time with
+  // bounded per-tablet concurrency, short-circuits on the first non-clean outcome, persists
+  // durable progress in BackfillJobPB.unique_index_verification, and always continues into
+  // UpdateIndexPermissionsForIndexes.
+  Status LaunchShadowVerificationOrFinish() EXCLUDES(mutex_);
+  Status StartShadowVerificationForNextIndex() EXCLUDES(mutex_);
+  Status LaunchShadowVerificationTablet(
+      const TabletInfoPtr& tablet, const std::string& start_key) EXCLUDES(mutex_);
+  Status RecordShadowVerificationOutcome(
+      UniqueIndexVerificationStatePB::State state, const std::string& reason) EXCLUDES(mutex_);
+  Status FinishShadowVerification();
+
+  // Degrades any shadow-phase coordinator failure to VERIFY_INCONCLUSIVE and continues into
+  // publication: the phase is on the CREATE INDEX critical path and must never strand it.
+  void ShadowVerificationPhaseFailed(const Status& status, const char* while_doing)
+      EXCLUDES(mutex_);
+
+  // Reads (or initializes and persists) the verification state of the given index in the
+  // job's BackfillJobPB, applying `mutator` under the indexed table's write lock.
+  Status MutateVerificationState(
+      const TableId& index_table_id,
+      const std::function<void(UniqueIndexVerificationStatePB*)>& mutator);
 
   Status MarkAllIndexesAsFailed();
   Status MarkAllIndexesAsSuccess();
@@ -278,6 +311,17 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   std::atomic<size_t> num_tablets_;
   std::atomic<size_t> activation_tablets_pending_{0};
   std::atomic_bool ordering_generation_activated_{false};
+
+  // Shadow verification progress; guarded by mutex_. One index is verified at a time.
+  struct ShadowVerificationState {
+    std::vector<scoped_refptr<TableInfo>> remaining_indexes;
+    scoped_refptr<TableInfo> current_index;
+    HybridTime verify_upper_ht;
+    std::deque<TabletInfoPtr> pending_tablets;
+    size_t in_flight = 0;
+    bool terminal = false;  // Current index reached an outcome; late responses are ignored.
+  };
+  ShadowVerificationState shadow_verification_ GUARDED_BY(mutex_);
   std::atomic_bool using_table_locks_{false};
   std::shared_ptr<BackfillTableJob> backfill_job_;
   mutable simple_spinlock mutex_;
@@ -477,6 +521,50 @@ class UpdateOrderingGenerationForTablet : public RetryingTSRpcTaskWithTable {
   const TableId index_table_id_;
   const tablet::ActivateGeneration activate_;
   const NotifyBackfillTable notify_backfill_table_;
+};
+
+// Runs one deferred-uniqueness-verification RPC against one index tablet on behalf of the
+// shadow verification phase; completion (including per-page completion when the tablet is
+// paginated) joins back into BackfillTable::ShadowVerificationTabletDone.
+class VerifyUniqueIndexForTablet : public RetryingTSRpcTaskWithTable {
+ public:
+  VerifyUniqueIndexForTablet(
+      std::shared_ptr<BackfillTable> backfill_table,
+      const TabletInfoPtr& tablet,
+      const TableId& index_table_id,
+      HybridTime backfill_read_ht,
+      HybridTime verify_upper_ht,
+      std::string start_key,
+      LeaderEpoch epoch);
+
+  Status Launch();
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kVerifyUniqueIndexTablet;
+  }
+
+  std::string type_name() const override { return "Verify unique index tablet"; }
+
+  std::string description() const override;
+
+  MonoTime ComputeDeadline() const override;
+
+ private:
+  TabletId tablet_id() const override;
+
+  void HandleResponse(int attempt) override;
+
+  bool SendRequest(int attempt) override;
+
+  void UnregisterAsyncTaskCallback() override;
+
+  tserver::VerifyUniqueIndexTabletResponsePB resp_;
+  const std::shared_ptr<BackfillTable> backfill_table_;
+  const TabletInfoPtr tablet_;
+  const TableId index_table_id_;
+  const HybridTime backfill_read_ht_;
+  const HybridTime verify_upper_ht_;
+  const std::string start_key_;
 };
 
 // A background task which is responsible for backfilling rows in the partitions
