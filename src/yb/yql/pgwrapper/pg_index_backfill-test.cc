@@ -1703,6 +1703,64 @@ TEST_P(PgIndexBackfillVerifierReleased, VerifyAfterReleaseFailsCleanly) {
   ASSERT_STR_CONTAINS(result.status().ToString(), "ordering generation");
 }
 
+// Retention-barrier gauges under the production lifecycle: held while the generation is
+// active.
+// Precise age semantics are pinned by the fixed-hybrid-time itest; this checks the
+// end-to-end wiring from the real activation path.
+TEST_P(PgIndexBackfillVerifier, RetentionBarrierMetricsReflectHeldGeneration) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  // Release is blocked, so every replica of the index tablet keeps its generation: each
+  // tserver must report the held tablet, with a positive barrier age (the barrier derives
+  // from the backfill read time, which is necessarily in the past by build completion).
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto* ts = cluster_->tablet_server(i);
+    ASSERT_OK(WaitFor(
+        [ts]() -> Result<bool> {
+          return VERIFY_RESULT(ts->GetMetric<int64>(
+              "server", "yb.tabletserver", "ts_index_backfill_retention_barrier_tablets",
+              "value")) >= 1;
+        },
+        MonoDelta::FromSeconds(15) * kTimeMultiplier,
+        Format("tserver $0 to report a barrier-held tablet", i)));
+    ASSERT_GT(
+        ASSERT_RESULT(ts->GetMetric<int64>(
+            "server", "yb.tabletserver", "ts_index_backfill_oldest_retention_barrier_age_ms",
+            "value")),
+        0);
+  }
+}
+
+TEST_P(PgIndexBackfillVerifierReleased, RetentionBarrierMetricsClearOnRelease) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto* ts = cluster_->tablet_server(i);
+    ASSERT_OK(WaitFor(
+        [ts]() -> Result<bool> {
+          return VERIFY_RESULT(ts->GetMetric<int64>(
+              "server", "yb.tabletserver", "ts_index_backfill_retention_barrier_tablets",
+              "value")) == 0;
+        },
+        MonoDelta::FromSeconds(15) * kTimeMultiplier,
+        Format("tserver $0 barrier-tablet gauge to clear", i)));
+  }
+}
+
 // Generation-reference mismatches fail cleanly without scanning.
 TEST_P(PgIndexBackfillVerifier, GenerationMismatchFailsCleanly) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));

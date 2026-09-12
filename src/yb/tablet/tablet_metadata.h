@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -346,6 +347,13 @@ struct IndexBackfillOrderingGeneration {
 
   friend bool operator==(
       const IndexBackfillOrderingGeneration&, const IndexBackfillOrderingGeneration&) = default;
+
+  // Age of the retention barrier relative to `now`, clamped at zero: the barrier derives
+  // from a master-chosen read time, which clock skew can put slightly ahead of this
+  // server's clock right after activation. Requires a valid retention_barrier_ht.
+  int64_t RetentionBarrierAgeMs(HybridTime now) const {
+    return std::max<int64_t>(now.PhysicalDiff(retention_barrier_ht).ToMilliseconds(), 0);
+  }
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(active, table_id, base_op_index, retention_barrier_ht,
