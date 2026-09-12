@@ -836,6 +836,12 @@ void
 PushVariable(JsonbParseState *state, char *guc_name)
 {
 	char *value = GetConfigOptionByName(guc_name, NULL, false);
+
+	/* A major version upgrade forces in-place materialized view refresh. */
+	if (strcmp(guc_name, "yb_refresh_matview_in_place") == 0 &&
+		YbRefreshMatviewInPlace())
+		value = "on";
+
 	if (!value)
 		return;
 
