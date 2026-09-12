@@ -127,6 +127,31 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     return Status::OK();
   }
 
+  // Runs a foreground transactional intent batch through TransactionalWriter with a seeded
+  // intra-transaction write ID counter, exactly like Tablet::WriteTransactionalBatch seeds it
+  // from the participant's next_write_id. Applies through a no-op handler rather than a real
+  // RocksDB write: a DirectWriter failure inside a DB write is cached as a background error
+  // that fails the fixture's DB destructor at teardown.
+  Status ApplyTransactionalBatch(
+      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
+      const TransactionId& txn_id, IntraTxnWriteId start_write_id) {
+    class NoopDirectWriteHandler : public rocksdb::DirectWriteHandler {
+     public:
+      std::pair<Slice, Slice> Put(
+          const rocksdb::SliceParts& /* key */, const rocksdb::SliceParts& /* value */) override {
+        return {};
+      }
+      void SingleDelete(const Slice& /* key */) override {}
+    };
+
+    TransactionalWriter writer(
+        put_batch, hybrid_time, txn_id, IsolationLevel::SNAPSHOT_ISOLATION,
+        dockv::PartialRangeKeyIntents::kTrue, /* replicated_batches_state= */ Slice(),
+        start_write_id, /* applier= */ nullptr);
+    NoopDirectWriteHandler handler;
+    return writer.Apply(handler);
+  }
+
   std::string GetEncodedHashPartitionKey(uint16_t hash) {
     dockv::KeyBytes encoded_key;
     dockv::DocKeyEncoderAfterTableIdStep(&encoded_key).Hash(
@@ -165,6 +190,32 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
  protected:
   ThreadSafeArena arena_;
 };
+
+TEST_F(NonTransactionalBatchWriterTest, ForegroundIntraTxnWriteIdCapRejectsAtLimit) {
+  // The always-on foreground cap: a transaction may never write an intent with an
+  // intra-transaction write ID at or above kIntraTxnWriteIdLimit -- that range is reserved.
+  // Without the cap the counter would cross into the reserved domain (and previously wrapped
+  // silently at 2^32).
+  const auto kWriteHT = 6000_usec_ht;
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
+
+  docdb::LWKeyValueWriteBatchPB batch(&arena_);
+  for (const auto* key : {"row1", "row2"}) {
+    auto* write_pair = batch.add_write_pairs();
+    write_pair->dup_key(DocKey(0, MakeKeyEntryValues(key)).Encode().AsSlice());
+    write_pair->dup_value(EncodeValue(QLValue::Primitive("value")));
+  }
+
+  // Seeded fully below the limit, the batch is accepted.
+  ASSERT_OK(ApplyTransactionalBatch(batch, kWriteHT, txn_id, /* start_write_id= */ 0));
+
+  // The first pair consumes the last legal foreground write ID; the second must be rejected
+  // instead of entering the reserved marked domain.
+  const auto status = ApplyTransactionalBatch(
+      batch, kWriteHT, txn_id, /* start_write_id= */ kIntraTxnWriteIdLimit - 1);
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "intra-transaction write ID limit");
+}
 
 TEST_F(NonTransactionalBatchWriterTest, SimpleTransaction) {
   // Simple test where we write two batches of external intents, then apply them.
