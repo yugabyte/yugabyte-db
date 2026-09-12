@@ -1256,11 +1256,9 @@ SELECT * FROM numeric_table;
 (2 rows)
 
 -- Casting from NaN to NaN should not cause a change in representation.
--- Similarly, note that NaN is not supported for NUMERIC types in Yugabyte (GH-711) does not support NaN prior to PG 14.
--- This should error out
 INSERT INTO numeric_table VALUES (3, 'nan', 'NaN', 'naN', 'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO numeric_table VALUES (3, 'nan', 0, 0, 'NaN');
+ERROR:  duplicate key value violates unique constraint "numeric_table_pkey"
 -- ('inf'::real - 'inf'::real) produces a different representation of NaN than 'NaN'::real in some
 -- compilers/optimization levels. So the query below updates the index in some cases, but not in others.
 -- Commenting it out to avoid test failures.
@@ -1287,7 +1285,7 @@ SELECT * FROM numeric_table;
 ---+---------+-------+--------+---------
  1 | 1.23457 | 12.34 | 1.2347 | 1.23457
  2 |     NaN |  0.00 | 0.0000 |     NaN
- 3 |     NaN |  0.00 | 0.0000 |     NaN
+ 3 |     NaN |   NaN |    NaN |     NaN
 (3 rows)
 
 -- Test for casting between data types
