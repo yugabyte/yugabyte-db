@@ -151,13 +151,11 @@ bool FinishedState(RpcCallState state) {
   return false;
 }
 
-void SetSpanStatus(opentelemetry::trace::Span& span, RpcCallState state) {
+void SetSpanStatus(opentelemetry::trace::Span& span, RpcCallState state, const Status& status) {
   switch (state) {
     case TIMED_OUT:
-      span.SetStatus(opentelemetry::trace::StatusCode::kError, "Call TimedOut");
-      return;
     case FINISHED_ERROR:
-      span.SetStatus(opentelemetry::trace::StatusCode::kError, "Call ErroredOut");
+      span.SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
       return;
     case FINISHED_SUCCESS:
       span.SetStatus(opentelemetry::trace::StatusCode::kOk);
@@ -280,8 +278,13 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
   if (dist_trace::HasActiveContext()) {
-    otel_span_ = dist_trace::StartSpan(
-        Format("rpc $0", remote_method_.ToString()), dist_trace::GetPendingRpcAttrPairs());
+    trace_parent_ = dist_trace::GetActiveSpanContext();
+
+    otel_span_ = dist_trace::StartClientSpan(Format("rpc $0", remote_method_.ToString()));
+    if (otel_span_) {
+      otel_span_->SetAttribute("rpc.system", "yb_rpc");
+      otel_span_->SetAttribute("rpc.call_id", call_id_);
+    }
   }
 }
 
@@ -472,7 +475,7 @@ OutboundCall::State OutboundCall::state() const {
   return state_.load(std::memory_order_acquire);
 }
 
-bool OutboundCall::SetState(State new_state) {
+bool OutboundCall::SetState(State new_state, const Status& status) {
   auto old_state = state();
   // Sanity check state transitions.
   DVLOG(3) << "OutboundCall " << this << " (" << ToString() << ") switching from "
@@ -487,7 +490,7 @@ bool OutboundCall::SetState(State new_state) {
     }
     if (state_.compare_exchange_weak(old_state, new_state, std::memory_order_acq_rel)) {
       if (otel_span_ && FinishedState(new_state)) {
-        SetSpanStatus(*otel_span_, new_state);
+        SetSpanStatus(*otel_span_, new_state, status);
         otel_span_->End();
       }
       return true;
@@ -557,7 +560,12 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
   // TODO: consider removing the cycle-based mechanism of reporting slow callbacks below.
 
   int64_t start_cycles = CycleClock::Now();
-  callback_();
+  // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not
+  // parentless roots.
+  {
+    dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
+    callback_();
+  }
   // Clear the callback, since it may be holding onto reference counts
   // via bound parameters. We do this inside the timer because it's possible
   // the user has naughty destructors that block, and we want to account for that
@@ -692,7 +700,7 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
   bool invoke_callback;
   {
     std::lock_guard l(mtx_);
-    invoke_callback = SetState(RpcCallState::FINISHED_ERROR);
+    invoke_callback = SetState(RpcCallState::FINISHED_ERROR, status);
     if (invoke_callback) {
       status_ = status;
       if (status_.IsRemoteError()) {
@@ -731,7 +739,7 @@ void OutboundCall::SetTimedOut() {
         call_id_);
     std::lock_guard l(mtx_);
     status_ = std::move(status);
-    invoke_callback = SetState(RpcCallState::TIMED_OUT);
+    invoke_callback = SetState(RpcCallState::TIMED_OUT, status_);
   }
   if (invoke_callback) {
     InvokeCallback();
