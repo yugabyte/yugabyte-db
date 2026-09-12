@@ -1831,6 +1831,117 @@ TEST_P(PgIndexBackfillShadowVerificationFailover, ResumesWithPersistedWindowAcro
   ASSERT_OK(CheckIndexConsistency(kIndexName));
 }
 
+// Fail-closed verification: the outcome decides publication. CLEAN publishes; anything else
+// fails CREATE INDEX through the existing backfill failure path -- the index is never
+// READ_WRITE_AND_DELETE and never indisvalid.
+class PgIndexBackfillFailClosedVerification : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--ysql_index_backfill_fail_closed_verification=true");
+    // Base-table retention (see the verifier fixture comment; #32565).
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=900");
+  }
+
+ protected:
+  Result<bool> IndexIsValid() {
+    return conn_->FetchRow<bool>(Format(
+        "SELECT indisvalid FROM pg_index WHERE indexrelid = '$0'::regclass", kIndexName));
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFailClosedVerification, ::testing::Bool());
+
+TEST_P(PgIndexBackfillFailClosedVerification, CleanBuildPublishes) {
+  auto clean_waiter = cluster_->GetMasterLogWaiter(": VERIFY_CLEAN");
+  constexpr auto kNumRows = 200;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC)) $1", kTableName,
+      GenerateSplitClause(kNumRows, /* num_tablets= */ 4)));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(clean_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+  ASSERT_TRUE(ASSERT_RESULT(IndexIsValid()));
+}
+
+TEST_P(PgIndexBackfillFailClosedVerification, ViolationFailsCreateIndex) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 20) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100, 5)", kTableName));  // dup b = 5.
+
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "verification");
+
+  // Never published: the index exists but is invalid; the base table is unaffected and the
+  // invalid index is droppable.
+  ASSERT_FALSE(ASSERT_RESULT(IndexIsValid()));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (200, 200)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+}
+
+// An unresolvable INCONCLUSIVE outcome must fail the build the same way: fail-closed means
+// "not proven clean", not "proven violated".
+class PgIndexBackfillFailClosedInconclusive : public PgIndexBackfillFailClosedVerification {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillFailClosedVerification::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--TEST_force_verify_unique_index_inconclusive=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFailClosedInconclusive, ::testing::Bool());
+
+TEST_P(PgIndexBackfillFailClosedInconclusive, InconclusiveFailsCreateIndex) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 20) g", kTableName));
+
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "verification");
+  ASSERT_FALSE(ASSERT_RESULT(IndexIsValid()));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+}
+
+// A coordinator failure (not a per-tablet outcome) must equally fail the build in gating
+// mode: unique indexes the phase never selected are unverified and may not publish.
+class PgIndexBackfillFailClosedPhaseFailure : public PgIndexBackfillFailClosedVerification {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillFailClosedVerification::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_fail_unique_index_verification_resolution=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFailClosedPhaseFailure, ::testing::Bool());
+
+TEST_P(PgIndexBackfillFailClosedPhaseFailure, CoordinatorFailureFailsCreateIndex) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 20) g", kTableName));
+
+  // The data is clean: only the injected coordinator failure can fail this build, and the
+  // asserted message is produced only by the phase-failure path (never a tablet outcome).
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "verification could not complete");
+
+  ASSERT_FALSE(ASSERT_RESULT(IndexIsValid()));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (200, 200)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+}
+
 TEST_P(PgIndexBackfillShadowVerificationPaginated, CleanAcrossManyRpcs) {
   auto clean_waiter = cluster_->GetMasterLogWaiter(": VERIFY_CLEAN");
 
