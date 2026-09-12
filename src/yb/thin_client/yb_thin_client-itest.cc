@@ -51,6 +51,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
+DECLARE_bool(use_libunwind_for_stack_trace_collection);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(allow_insecure_connections);
@@ -1281,6 +1282,35 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
 
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// ybthin_client_create must switch stack trace collection to libunwind.
+//
+// The default is glibc backtrace(), which unwinds through the host process's libgcc. This .so
+// registers ~1.3 MB of .eh_frame with that libgcc, and libgcc sorts a registered object's FDEs
+// lazily inside a malloc made while holding its object_mutex -- so a host whose allocator unwinds
+// from inside malloc (jemalloc heap profiling, a leak checker) deadlocks against itself and
+// ybthin_client_create never returns (#33916). libunwind keeps its own FDE cache and never takes
+// that lock.
+//
+// The deadlock itself needs such a host to reproduce, so this asserts the condition that prevents
+// it rather than the absence of the hang.
+TEST_F(PgThinClientTest, ClientCreateSelectsLibunwindForStackTraces) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_libunwind_for_stack_trace_collection) = false;
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  auto st = ybthin_client_create(
+      addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+      /* num_reactors= */ 0, &client);
+  ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+
+  ASSERT_TRUE(FLAGS_use_libunwind_for_stack_trace_collection)
+      << "ybthin_client_create must force libunwind before any thread is created; leaving glibc "
+      << "backtrace() in place deadlocks a host that unwinds from inside malloc (#33916)";
+
   ybthin_client_destroy(client);
 }
 

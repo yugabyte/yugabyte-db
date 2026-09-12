@@ -79,6 +79,22 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
+// Collect stack traces through (llvm-)libunwind rather than glibc backtrace().
+//
+// The default is false outside TSAN builds (see use_libunwind_for_stack_trace_collection in
+// util/stack_trace.cc), which routes collection through the system libgcc unwinder. That is not
+// safe for a shared library embedded in a foreign process: our ~1.3 MB .eh_frame is registered
+// with the HOST's libgcc via __register_frame_info, and libgcc sorts a registered object's FDEs
+// lazily on first lookup -- a ~260 KiB malloc made while holding its object_mutex. If the host's
+// allocator unwinds from inside malloc (jemalloc with heap profiling, a leak checker), that
+// nested unwind re-enters _Unwind_Find_FDE and blocks on the mutex the same thread already holds.
+// The thread deadlocks and ybthin_client_create never returns (#33916).
+//
+// libunwind keeps its own FDE cache and never takes libgcc's lock, and it is statically linked
+// into this .so. The BOLT concern that motivates the false default applies to YB's release
+// binaries, not to this client library.
+DECLARE_bool(use_libunwind_for_stack_trace_collection);
+
 using yb::DataType;
 using yb::faststring;
 using yb::HostPort;
@@ -753,6 +769,13 @@ ybthin_status ybthin_client_create(
     const char* const* tserver_addrs, size_t n_addrs, const ybthin_tls_opts* tls,
     const ybthin_pool_opts* pool, uint32_t rpc_timeout_ms, uint32_t num_reactors,
     ybthin_client** out) {
+  // Must happen before anything creates a thread: Thread::Create warms up the stack trace library
+  // on first use, and that warm-up is what trips the libgcc deadlock described above.
+  static std::once_flag unwinder_once;
+  std::call_once(unwinder_once, [] {
+    FLAGS_use_libunwind_for_stack_trace_collection = true;
+  });
+
   if (!tserver_addrs || n_addrs == 0 || !out) {
     return MakeStatus(YBTHIN_INVALID, "tserver_addrs and out are required");
   }
