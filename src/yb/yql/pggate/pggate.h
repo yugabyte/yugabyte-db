@@ -577,6 +577,9 @@ class PgApiImpl {
 
   Status InsertStmtSetIsBackfill(PgStatement *handle, const bool is_backfill);
 
+  Status InsertStmtSetUniqueIndexBackfillMode(
+      PgStatement *handle, YbcPgUniqueIndexBackfillMode mode);
+
   //------------------------------------------------------------------------------------------------
   // Update.
   Status NewUpdate(const PgObjectId& table_id,

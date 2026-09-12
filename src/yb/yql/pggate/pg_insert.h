@@ -32,6 +32,14 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
     write_req_->set_is_backfill(is_backfill);
   }
 
+  void SetUniqueIndexBackfillMode(YbcPgUniqueIndexBackfillMode mode) {
+    // Fail closed: any value other than the explicit SKIP_ALL keeps the fully checked path.
+    write_req_->set_unique_index_backfill_mode(
+        mode == YB_UNIQUE_INDEX_BACKFILL_SKIP_ALL
+            ? UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL
+            : UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL);
+  }
+
   static Result<std::unique_ptr<PgInsert>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,

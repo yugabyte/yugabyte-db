@@ -477,6 +477,13 @@ typedef enum {
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YbcPgBoundType;
 
+// Must be kept in sync with UniqueIndexBackfillMode in common.proto.
+// Uniqueness-check behavior for the writes of a unique-index backfill job.
+typedef enum {
+  YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL = 0,
+  YB_UNIQUE_INDEX_BACKFILL_SKIP_ALL = 1,
+} YbcPgUniqueIndexBackfillMode;
+
 // Must be kept in sync with PgVectorDistanceType in common.proto
 typedef enum {
   YB_VEC_DIST_INVALID,

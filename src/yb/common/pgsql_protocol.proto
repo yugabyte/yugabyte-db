@@ -294,6 +294,14 @@ message PgsqlWriteRequestPB {
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];
 
+  // Uniqueness-check mode for a unique-index backfill write (only meaningful when is_backfill
+  // is true and stmt_type is PGSQL_INSERT). Carried from the job's persisted mode; missing
+  // means UNIQUE_INDEX_BACKFILL_CHECK_ALL, so unaware or older writers keep the fully checked
+  // path. Foreground writes never set this and their uniqueness enforcement is unaffected.
+  // Tag 33: 31/32 were taken upstream (read_at_in_txn_limit / ignore_after_hybrid_time) while
+  // this field was unreleased, so it was renumbered rather than colliding.
+  optional UniqueIndexBackfillMode unique_index_backfill_mode = 33;
+
   // For DELETE requests, do they need to be persisted in regular rocksdb?
   //
   // This is currently only used for DELETEs to the index when the index is getting created with
@@ -427,6 +435,11 @@ message PgsqlBackfillSpecPB {
   //   - postgres <--page-- tserver: next_row_key = QUX; PgsqlPagingStatePB.next_row_key = QUX
   // - tserver <--batch-- postgres: next_row_key = QUX
   optional bytes next_row_key = 3;
+
+  // [batch] Uniqueness-check mode for the backfill writes of this batch, from the job's
+  // persisted mode. Stays constant for each batch and all of its pages. Missing means
+  // UNIQUE_INDEX_BACKFILL_CHECK_ALL.
+  optional UniqueIndexBackfillMode unique_index_backfill_mode = 4;
 }
 
 // Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
