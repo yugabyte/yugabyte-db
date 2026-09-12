@@ -104,7 +104,7 @@ bool IsTombstoneValue(Slice value) {
 // tombstone-time cache is invalidated (watermark/generation advanced, cache cleared).
 void MaybeNotifyTableTombstoneWritten(
     SchemaPackingProvider& provider, Slice key, Slice value, HybridTime write_ht) {
-  // Guard kMax as well as invalid: AdvanceTombstoneCacheWatermark DCHECKs against kMax, and a
+  // Guard kMax as well as invalid: OnTableTombstoneWritten DCHECKs against kMax, and a
   // malformed HT must not crash debug builds from the apply path.
   if (!write_ht.is_valid() || write_ht == HybridTime::kMax || write_ht < HybridTime::kInitial ||
       !IsTableTombstoneKey(key) || !IsTombstoneValue(value)) {
@@ -932,9 +932,9 @@ Result<bool> ApplyIntentsContext::Entry(
     // Local transactional apply (YSQL legacy colocated TRUNCATE / DROP table tombstones): every
     // replica applies intents here, and followers never run ApplyTruncateColocated. Keep this
     // outside ApplyToRegularDB(): bootstrap can skip the regular-DB Put when that storage already
-    // has the write, while ADD_TABLE / change-metadata may re-arm the context at an older HT; this
-    // notify is then what raises the watermark back above the tombstone. Notifying before the
-    // RocksDB write is intentional (see OnTableTombstoneWritten).
+    // has the write, and this notify is then the only thing that tells a context warmed earlier in
+    // the same bootstrap about the tombstone. Notifying before the RocksDB write is intentional
+    // (see OnTableTombstoneWritten).
     MaybeNotifyTableTombstoneWritten(
         schema_packing_provider(), intent.doc_path, decoded_value.body, commit_ht_);
 

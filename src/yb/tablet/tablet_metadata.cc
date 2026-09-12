@@ -2287,24 +2287,15 @@ void RaftGroupMetadata::NotifyTableTombstoneWritten(const Uuid& cotable_id, Hybr
   }
 }
 
-// Turn on colocated tombstone-time caches at serve-ready SafeTime (watermark was kMax / off).
-// Walks every colocated TableInfo on this tablet, so an ALTER of one table also re-arms (and
-// bumps generation on) the others - a known cost in multi-table colocated databases.
-//
-// Fresh contexts start unarmed; skipping this only disables the cache (fail-closed). That claim
-// does not cover RestoreCheckpoint, which can swap the regular DB under an already-armed context
-// that still holds a warm value: there the gap is a content change with no invalidation (tracked
-// follow-up), not a missing arm.
-void RaftGroupMetadata::ArmColocatedTombstoneCaches(HybridTime safe_time) {
-  // kMin.is_valid() is true and would make every read eligible; require a real HT so unarmed
-  // stays fail-closed by construction (last_replicated_ defaults to kMin on an empty tablet).
-  if (!safe_time.is_valid() || safe_time == HybridTime::kMax ||
-      safe_time < HybridTime::kInitial) {
-    return;
-  }
+// Drop every colocated tombstone-time cache back to unarmed, so the next read re-derives it from
+// whatever data the tablet now holds. For callers that swap the tablet's storage underneath live
+// DocReadContexts: a cached answer then describes data that no longer exists, in both directions
+// (a cached tombstone over a pre-truncate snapshot reads the table as empty, a cached absence over
+// a post-truncate one resurrects the rows), and no watermark arithmetic can repair it.
+void RaftGroupMetadata::ResetColocatedTombstoneCaches() {
   for (const auto& table_info : GetColocatedTableInfos()) {
     if (table_info->doc_read_context && table_info->schema().has_colocation_id()) {
-      table_info->doc_read_context->AdvanceTombstoneCacheWatermark(safe_time);
+      table_info->doc_read_context->ResetTombstoneCache();
     }
   }
 }

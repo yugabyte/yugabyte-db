@@ -161,6 +161,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   Result<DocHybridTime> GetTableTombstoneTime(Slice root_doc_key) const;
 
+  Result<DocHybridTime> ProbeAndArmTableTombstoneCache(
+      Slice root_doc_key, HybridTime read_ht) const;
+
   // Increments statistics for total keys found, obsolete keys (past cutoff or no) if applicable.
   //
   // Obsolete keys include keys that are tombstoned, TTL expired, and read-time filtered.
