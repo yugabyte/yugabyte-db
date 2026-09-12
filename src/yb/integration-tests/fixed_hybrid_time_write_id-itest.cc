@@ -31,6 +31,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value.h"
 
 #include "yb/gutil/casts.h"
@@ -41,10 +42,12 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.messages.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -60,6 +63,7 @@
 
 using namespace std::chrono_literals;
 
+DECLARE_bool(TEST_bypass_index_backfill_ordering_generation_split_fence);
 DECLARE_bool(enable_load_balancing);
 
 namespace yb {
@@ -235,6 +239,38 @@ class FixedHybridTimeWriteIdITest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
+  // Sends one marked write batch whose keys are spread across the hash space, so the tablet has
+  // valid split points (unlike the hash-0 keys used for dump-literal comparisons).
+  Result<OpId> SendMarkedWriteSpreadHashes(
+      const TabletId& tablet_id, HybridTime write_ht, int num_keys) {
+    std::vector<MarkedWriteEntry> entries;
+    entries.reserve(num_keys);
+    for (int i = 0; i != num_keys; ++i) {
+      entries.emplace_back(
+          narrow_cast<uint16_t>((i * 65536) / num_keys), Format("key-$0", i),
+          Format("value-$0", i));
+    }
+    return SendMarkedWriteEntries(tablet_id, write_ht, entries);
+  }
+
+  // Sets (or clears) the ordering generation on every replica of the tablet.
+  Status SetOrderingGenerationOnAllReplicas(
+      const TabletId& tablet_id, const tablet::IndexBackfillOrderingGeneration& generation) {
+    auto peers = VERIFY_RESULT(ListTabletPeers(cluster_.get(), tablet_id));
+    SCHECK_EQ(peers.size(), 3U, IllegalState, "Expected all three replicas to be running");
+    for (const auto& peer : peers) {
+      RETURN_NOT_OK(peer->tablet_metadata()->set_index_backfill_ordering_generation(generation));
+    }
+    return Status::OK();
+  }
+
+  static tablet::IndexBackfillOrderingGeneration MakeActiveOrderingGeneration() {
+    tablet::IndexBackfillOrderingGeneration generation;
+    generation.active = true;
+    generation.base_op_index = 0;
+    return generation;
+  }
+
   // Fixed (arbitrary, past) hybrid time shared by every marked write in the test.
   static constexpr HybridTime kWriteHT = 1000_usec_ht;
 
@@ -299,6 +335,203 @@ TEST_F(FixedHybridTimeWriteIdITest, LeaderChangePreservesDistinctWriteIds) {
       ExpectedEntry("dup", w1_op_id.index, "first"),
       ExpectedEntry("stable", w1_op_id.index, "before")};
   ASSERT_NO_FATALS(AssertAllReplicasDumpTo(tablet_id, expected_after_w2));
+}
+
+TEST_F(FixedHybridTimeWriteIdITest, MasterSplitRefusedWhileOrderingGenerationActive) {
+  auto leaders = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_.table()->id(), /* num_active_leaders= */ 1));
+  const auto tablet_id = leaders.front()->tablet_id();
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s * kTimeMultiplier,
+      RequireLeaderIsReady::kTrue));
+
+  // Give the tablet hash-spread data and SSTs so it is a viable split candidate.
+  const auto op_id = ASSERT_RESULT(
+      SendMarkedWriteSpreadHashes(tablet_id, kWriteHT, /* num_keys= */ 256));
+  ASSERT_OK(WaitAllReplicasApplied(tablet_id, op_id));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForAnySstFiles(cluster_.get(), tablet_id));
+
+  const auto table_id = table_.table()->id();
+  ASSERT_EQ(ListActiveTabletIdsForTable(cluster_.get(), table_id).size(), 1);
+
+  // With the generation active on every replica, the master accepts the split request but the
+  // tablet-side fence rejects the split operation before it is appended to Raft.
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
+  ASSERT_OK(InvokeSplitTabletRpc(
+      cluster_.get(), tablet_id, MonoDelta::FromSeconds(30) * kTimeMultiplier));
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
+  ASSERT_EQ(ListActiveTabletIdsForTable(cluster_.get(), table_id).size(), 1)
+      << "The split must not proceed while the ordering generation is active";
+
+  // Releasing the generation lifts the fence: the split -- retried by the master or re-invoked
+  // here -- completes and produces two active tablets. This doubles as the positive control
+  // proving the tablet was genuinely splittable and only the fence blocked it.
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, tablet::IndexBackfillOrderingGeneration()));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        if (ListActiveTabletIdsForTable(cluster_.get(), table_id).size() >= 2) {
+          return true;
+        }
+        WARN_NOT_OK(
+            InvokeSplitTabletRpc(
+                cluster_.get(), tablet_id, MonoDelta::FromSeconds(10) * kTimeMultiplier),
+            "Split retry after ordering generation release");
+        return false;
+      },
+      MonoDelta::FromSeconds(120) * kTimeMultiplier,
+      "tablet to split after the ordering generation was released"));
+}
+
+TEST_F(FixedHybridTimeWriteIdITest, OrderingGenerationSurvivesRemoteBootstrap) {
+  auto leaders = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_.table()->id(), /* num_active_leaders= */ 1));
+  const auto tablet_id = leaders.front()->tablet_id();
+  const auto leader_uuid = leaders.front()->permanent_uuid();
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s * kTimeMultiplier,
+      RequireLeaderIsReady::kTrue));
+
+  const auto op_id = ASSERT_RESULT(SendMarkedWrite(tablet_id, kWriteHT, {{"row", "value"}}));
+  ASSERT_OK(WaitAllReplicasApplied(tablet_id, op_id));
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
+
+  // Tombstone one follower; it stays in the Raft config, so the leader remote-bootstraps it
+  // back. The recovered replica's superblock comes from the leader and must carry the
+  // generation -- a bootstrapped replica that lost it would stop enforcing the write-ID base
+  // and the split fence.
+  auto peers = ASSERT_RESULT(ListTabletPeers(cluster_.get(), tablet_id));
+  ASSERT_EQ(peers.size(), 3U);
+  tserver::MiniTabletServer* follower_ts = nullptr;
+  std::string follower_uuid;
+  for (const auto& peer : peers) {
+    if (peer->permanent_uuid() != leader_uuid) {
+      follower_uuid = peer->permanent_uuid();
+      break;
+    }
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    if (cluster_->mini_tablet_server(i)->server()->permanent_uuid() == follower_uuid) {
+      follower_ts = cluster_->mini_tablet_server(i);
+      break;
+    }
+  }
+  ASSERT_NE(follower_ts, nullptr);
+
+  std::optional<tserver::TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(follower_ts->server()->tablet_manager()->DeleteTablet(
+      tablet_id, tablet::TABLET_DATA_TOMBSTONED,
+      tablet::ShouldAbortActiveTransactions::kTrue,
+      /* cas_config_opid_index_less_or_equal= */ std::nullopt,
+      /* hide_only= */ false, /* keep_data= */ false, &error_code));
+
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto peer_result = follower_ts->server()->tablet_manager()->GetTablet(tablet_id);
+        if (!peer_result.ok()) {
+          return false;
+        }
+        const auto& peer = *peer_result;
+        if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
+          return false;
+        }
+        return peer->tablet_metadata()->index_backfill_ordering_generation().active;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "tombstoned follower to be remote-bootstrapped with the generation intact"));
+
+  const auto generation =
+      ASSERT_RESULT(follower_ts->server()->tablet_manager()->GetTablet(tablet_id))
+          ->tablet_metadata()
+          ->index_backfill_ordering_generation();
+  ASSERT_TRUE(generation.active);
+  ASSERT_EQ(0, generation.base_op_index);
+}
+
+// Forces the tablet-side split fence open and proves the storage-level property the fence is
+// *not* needed for -- per-key write-ID uniqueness. The fence exists for verification-scan
+// stability and lifecycle tracking, not for key correctness: split children inherit the parent's
+// marked entries and continue drawing write IDs from their own (monotonically continuing) Raft
+// indexes, so a marked rewrite of an inherited key lands as a second, distinct physical version.
+TEST_F(FixedHybridTimeWriteIdITest, SplitWithFenceBypassedPreservesPerKeyWriteIdUniqueness) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_bypass_index_backfill_ordering_generation_split_fence) =
+      true;
+
+  auto leaders = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_.table()->id(), /* num_active_leaders= */ 1));
+  const auto tablet_id = leaders.front()->tablet_id();
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s * kTimeMultiplier,
+      RequireLeaderIsReady::kTrue));
+
+  const auto op_id = ASSERT_RESULT(
+      SendMarkedWriteSpreadHashes(tablet_id, kWriteHT, /* num_keys= */ 256));
+  ASSERT_OK(WaitAllReplicasApplied(tablet_id, op_id));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForAnySstFiles(cluster_.get(), tablet_id));
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
+
+  const auto table_id = table_.table()->id();
+  ASSERT_OK(InvokeSplitTabletRpc(
+      cluster_.get(), tablet_id, MonoDelta::FromSeconds(30) * kTimeMultiplier));
+  // The parent stays in the active list until it is deactivated after the children are running,
+  // so wait for the post-split steady state, not merely for the children to appear.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        const auto active = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+        return active.size() == 2 && active.count(tablet_id) == 0;
+      },
+      MonoDelta::FromSeconds(120) * kTimeMultiplier, "tablet to split with the fence bypassed"));
+
+  const auto child_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(child_ids.size(), 2U);
+  for (const auto& child_id : child_ids) {
+    ASSERT_OK(WaitUntilTabletHasLeader(
+        cluster_.get(), child_id, CoarseMonoClock::Now() + 30s * kTimeMultiplier,
+        RequireLeaderIsReady::kTrue));
+    auto child_leader = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), child_id));
+
+    // Children inherit the active generation with the rest of the superblock.
+    ASSERT_TRUE(child_leader->tablet_metadata()->index_backfill_ordering_generation().active);
+
+    // A marked rewrite of a key the child inherited from the parent, at the same fixed hybrid
+    // time. Its write ID derives from the child's own Raft index, distinct from the inherited
+    // version's parent-index-derived ID.
+    const auto& partition = *child_leader->tablet_metadata()->partition();
+    const uint16_t child_hash = partition.partition_key_start().empty()
+        ? 0
+        : dockv::PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_start());
+    const int inherited_key_number = child_hash == 0
+        ? 0
+        : (child_hash * 256 + 65535) / 65536;  // First spread key at or above the child's start.
+    const auto inherited_key = Format("key-$0", inherited_key_number);
+    const auto rewrite_hash = narrow_cast<uint16_t>((inherited_key_number * 65536) / 256);
+    const auto child_op_id = ASSERT_RESULT(SendMarkedWriteEntries(
+        child_id, kWriteHT, {{rewrite_hash, inherited_key, "rewritten"}}));
+
+    // Per-key uniqueness: every (key, hybrid time, write ID) coordinate in the child is unique,
+    // and the rewritten key holds two distinct physical versions.
+    auto child_tablet = ASSERT_RESULT(child_leader->shared_tablet());
+    std::vector<std::string> entries;
+    child_tablet->TEST_DocDBDumpToContainer(entries, docdb::IncludeIntents::kFalse);
+    std::unordered_set<std::string> coordinates;
+    size_t rewritten_key_versions = 0;
+    for (const auto& entry : entries) {
+      const auto arrow_pos = entry.find(") -> ");
+      ASSERT_NE(arrow_pos, std::string::npos) << entry;
+      const auto coordinate = entry.substr(0, arrow_pos + 1);
+      ASSERT_TRUE(coordinates.insert(coordinate).second)
+          << "Duplicate (key, HT, write ID) coordinate in child " << child_id << ": "
+          << coordinate;
+      if (coordinate.find(Format("\"$0\"", inherited_key)) != std::string::npos) {
+        ++rewritten_key_versions;
+      }
+    }
+    ASSERT_EQ(rewritten_key_versions, 2U)
+        << "Expected the inherited version and the post-split marked rewrite of "
+        << inherited_key << " in child " << child_id << " (child write " << child_op_id << ")";
+  }
 }
 
 }  // namespace yb

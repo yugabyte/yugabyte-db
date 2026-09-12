@@ -62,6 +62,7 @@
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
 
+#include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -711,6 +712,168 @@ TEST_F(TabletPeerTest, FixedHybridTimeWriteIdOverflowRejectedBeforeRaftAppend) {
   ASSERT_OK(write("reused"));
   ASSERT_EQ(last_committed_op_id.index + 1, consensus->GetLastCommittedOpId().index);
   ASSERT_EQ(consensus->GetLastCommittedOpId(), tablet_peer_->log()->GetLatestEntryOpId());
+}
+
+namespace {
+
+IndexBackfillOrderingGeneration MakeActiveOrderingGeneration(int64_t base_op_index) {
+  IndexBackfillOrderingGeneration generation;
+  generation.active = true;
+  generation.base_op_index = base_op_index;
+  return generation;
+}
+
+}  // namespace
+
+TEST_F(TabletPeerTest, FixedHybridTimeWriteRejectedAtOrBelowGenerationBase) {
+  ConsensusBootstrapInfo info;
+  // The base arithmetic below is relative to the committed index, so the leader-election no-op
+  // must be committed first or the next write's index is off by one.
+  auto consensus = ASSERT_RESULT(StartPeerAndWaitForLeaderNoOpCommit(info));
+  const auto kWriteHT = 6000_usec_ht;
+
+  auto write = [&](const std::string& value) {
+    WriteRequestPB request;
+    request.set_tablet_id(tablet()->tablet_id());
+    request.set_external_hybrid_time(kWriteHT.ToUint64());
+    auto* write_batch = request.mutable_write_batch();
+    write_batch->set_use_raft_index_for_write_id(true);
+    auto* write_pair = write_batch->add_write_pairs();
+    const dockv::DocKey doc_key(0, dockv::MakeKeyEntryValues("row"));
+    write_pair->set_key(doc_key.Encode().AsSlice().ToBuffer());
+    std::string encoded_value;
+    dockv::AppendEncodedValue(QLValue::Primitive(value), &encoded_value);
+    write_pair->set_value(encoded_value);
+    return ExecuteWriteAndReturnStatus(tablet_peer_.get(), request);
+  };
+
+  // A base at or above the next Raft index rejects the marked write before WAL append.
+  const auto committed_op_id = consensus->GetLastCommittedOpId();
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(
+      MakeActiveOrderingGeneration(committed_op_id.index + 1)));
+  const auto status = write("rejected");
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "ordering generation base");
+  ASSERT_EQ(committed_op_id, consensus->GetLastCommittedOpId());
+
+  // A base at the last committed index admits the next write (index = base + 1).
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(
+      MakeActiveOrderingGeneration(committed_op_id.index)));
+  ASSERT_OK(write("accepted"));
+  ASSERT_EQ(committed_op_id.index + 1, consensus->GetLastCommittedOpId().index);
+
+  // A released generation does not constrain marked writes; rejecting marked writes with no
+  // active generation arrives with the master activation flow. (Inactive-with-populated-fields
+  // is not a representable state: the setter normalizes it to the default, matching the durable
+  // form of field absence.)
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(
+      IndexBackfillOrderingGeneration()));
+  ASSERT_OK(write("unconstrained"));
+}
+
+TEST_F(TabletPeerTest, IndexBackfillOrderingGenerationPersistsAcrossReload) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+
+  const IndexBackfillOrderingGeneration generation = {
+      .active = true,
+      .table_id = "index-table-id",
+      .base_op_index = 42,
+      .retention_barrier_ht = 5000_usec_ht,
+      .write_id_floor_version = 1,
+  };
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(generation));
+  const auto tablet_id = tablet()->tablet_id();
+  auto* fs_manager = tablet()->metadata()->fs_manager();
+  ASSERT_OK(tablet_peer_->TEST_Shutdown(
+      ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kTrue));
+
+  auto metadata = ASSERT_RESULT(RaftGroupMetadata::Load(fs_manager, tablet_id));
+  const auto loaded = metadata->index_backfill_ordering_generation();
+  ASSERT_TRUE(loaded.active);
+  ASSERT_EQ(generation.table_id, loaded.table_id);
+  ASSERT_EQ(generation.base_op_index, loaded.base_op_index);
+  ASSERT_EQ(generation.retention_barrier_ht, loaded.retention_barrier_ht);
+  ASSERT_EQ(generation.write_id_floor_version, loaded.write_id_floor_version);
+
+  // Releasing the generation persists as an absent superblock field.
+  ASSERT_OK(metadata->set_index_backfill_ordering_generation({}));
+  auto reloaded = ASSERT_RESULT(RaftGroupMetadata::Load(fs_manager, tablet_id));
+  ASSERT_FALSE(reloaded->index_backfill_ordering_generation().active);
+}
+
+TEST_F(TabletPeerTest, IndexBackfillOrderingGenerationClearedBySuperblockReplacement) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+
+  // Remote bootstrap replaces the local superblock with the leader's. A source superblock
+  // without a generation must clear any stale local one, or a released generation would
+  // resurrect on the bootstrapped replica and fence its splits forever.
+  RaftGroupReplicaSuperBlockPB superblock_without_generation;
+  tablet()->metadata()->ToSuperBlock(&superblock_without_generation);
+  ASSERT_FALSE(superblock_without_generation.has_index_backfill_ordering_generation());
+
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(
+      MakeActiveOrderingGeneration(/* base_op_index= */ 7)));
+  ASSERT_TRUE(tablet()->metadata()->index_backfill_ordering_generation().active);
+
+  ASSERT_OK(tablet()->metadata()->ReplaceSuperBlock(superblock_without_generation));
+  ASSERT_FALSE(tablet()->metadata()->index_backfill_ordering_generation().active);
+}
+
+TEST_F(TabletPeerTest, SplitRejectedWhileOrderingGenerationActive) {
+  ConsensusBootstrapInfo info;
+  // Wait out the leader-election no-op so the committed/logged OpId comparison below cannot race
+  // with its commit.
+  auto consensus = ASSERT_RESULT(StartPeerAndWaitForLeaderNoOpCommit(info));
+
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(
+      MakeActiveOrderingGeneration(/* base_op_index= */ 0)));
+  const auto committed_before = consensus->GetLastCommittedOpId();
+
+  FakeTabletSplitter fake_splitter;
+  // Mirror the production leader path (TabletServiceAdminImpl::SplitTablet): construct without a
+  // request and fill the operation-owned one, which NewReplicateMsg requires.
+  auto operation = std::make_unique<SplitOperation>(
+      ASSERT_RESULT(tablet_peer_->shared_tablet()), &fake_splitter);
+  operation->AllocateRequest()->dup_tablet_id(tablet()->tablet_id());
+  auto synchronizer = std::make_shared<Synchronizer>();
+  operation->set_completion_callback(
+      MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
+  tablet_peer_->Submit(std::move(operation), /* term= */ 1);
+  const auto status = synchronizer->Wait();
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "splitting is fenced");
+  // The rejection happened before WAL append: nothing was committed or logged.
+  ASSERT_EQ(committed_before, consensus->GetLastCommittedOpId());
+  ASSERT_EQ(committed_before, tablet_peer_->log()->GetLatestEntryOpId());
+
+  // With the generation released, the fence no longer rejects the split operation. (It would
+  // proceed into the split machinery, which this harness does not provide, so only the fence
+  // path is exercised here; end-to-end split behavior is covered by the mini-cluster test.)
+}
+
+TEST_F(TabletPeerTest, CloneRejectedWhileOrderingGenerationActive) {
+  ConsensusBootstrapInfo info;
+  auto consensus = ASSERT_RESULT(StartPeerAndWaitForLeaderNoOpCommit(info));
+
+  ASSERT_OK(tablet()->metadata()->set_index_backfill_ordering_generation(
+      MakeActiveOrderingGeneration(/* base_op_index= */ 0)));
+  const auto committed_before = consensus->GetLastCommittedOpId();
+
+  FakeTabletSplitter fake_splitter;
+  auto operation = std::make_unique<CloneOperation>(
+      ASSERT_RESULT(tablet_peer_->shared_tablet()), &fake_splitter);
+  operation->AllocateRequest()->dup_tablet_id(tablet()->tablet_id());
+  auto synchronizer = std::make_shared<Synchronizer>();
+  operation->set_completion_callback(
+      MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
+  tablet_peer_->Submit(std::move(operation), /* term= */ 1);
+  const auto status = synchronizer->Wait();
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "cloning is fenced");
+  ASSERT_EQ(committed_before, consensus->GetLastCommittedOpId());
+  ASSERT_EQ(committed_before, tablet_peer_->log()->GetLatestEntryOpId());
 }
 
 // Ensure that Log::GC() doesn't delete logs with anchors.

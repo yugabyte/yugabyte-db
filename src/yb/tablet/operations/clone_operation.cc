@@ -22,6 +22,7 @@
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
@@ -45,6 +46,22 @@ LWCloneTabletRequestPB* RequestTraits<LWCloneTabletRequestPB>::MutableRequest(
 
 Status CloneOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
+  return Status::OK();
+}
+
+Status CloneOperation::ValidateLeaderOpId(const OpId& op_id) const {
+  // Cloning is rejected while an index-backfill write-ID ordering generation is active. The
+  // clone's data comes from hard-linked snapshot files containing generation-scoped marked
+  // write IDs, but its metadata is built fresh (RaftGroupMetadata::CreateNew, not a superblock
+  // copy), so the clone would carry marked versions with no generation record describing them
+  // and no backfill job tracking their lifecycle. Backfill is expected to be short-lived
+  // relative to clone scheduling, so callers retry after the generation is released.
+  const auto generation =
+      VERIFY_RESULT(tablet_safe())->metadata()->index_backfill_ordering_generation();
+  SCHECK(
+      !generation.active, IllegalState,
+      "Tablet cloning is fenced while an index-backfill write-ID ordering generation is "
+      "active");
   return Status::OK();
 }
 
