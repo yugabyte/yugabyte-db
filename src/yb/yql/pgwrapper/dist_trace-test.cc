@@ -545,6 +545,36 @@ class OtlpHttpCollector {
         Format("Child spans of '$0' in trace '$1'", parent_op_name, trace_id));
   }
 
+  // Waits for a span in trace_id matching child_matches whose parent in the same trace matches
+  // parent_matches. Returns the child span.
+  template <class ChildMatcher, class ParentMatcher>
+  Result<Span> WaitForParentedSpan(
+      std::string_view trace_id, const ChildMatcher& child_matches,
+      const ParentMatcher& parent_matches, const std::string& description) const EXCLUDES(mutex_) {
+    Span child_span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          const auto& spans = it->second.spans;
+          for (const auto& child : spans) {
+            if (child.parent_span_id.empty() || !child_matches(child)) {
+              continue;
+            }
+            for (const auto& parent : spans) {
+              if (parent.span_id == child.parent_span_id && parent_matches(parent)) {
+                child_span = child;
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms, description));
+    return child_span;
+  }
+
   // Waits for a cross-boundary pairing in trace_id: a server-kind span (service_name ==
   // server_service, op name starting with op_prefix) whose parent_span_id is the span_id of a
   // client-kind span (service_name == client_service, same op_prefix). This proves the query's
@@ -552,37 +582,20 @@ class OtlpHttpCollector {
   Result<Span> WaitForRemoteChildSpan(
       std::string_view trace_id, std::string_view op_prefix,
       std::string_view client_service, std::string_view server_service) const EXCLUDES(mutex_) {
-    Span server_span;
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          std::lock_guard lock(mutex_);
-          auto it = traces_.find(std::string(trace_id));
-          if (it == traces_.end()) return false;
-          const auto& spans = it->second.spans;
-          for (const auto& server : spans) {
-            if (server.service_name != server_service ||
-                server.kind != otlp_trace::Span::SPAN_KIND_SERVER ||
-                !server.op_name.starts_with(op_prefix) ||
-                server.parent_span_id.empty()) {
-              continue;
-            }
-            // The server span's parent must be a client span in the same trace.
-            for (const auto& client : spans) {
-              if (client.service_name == client_service &&
-                  client.kind == otlp_trace::Span::SPAN_KIND_CLIENT &&
-                  client.op_name.starts_with(op_prefix) &&
-                  client.span_id == server.parent_span_id) {
-                server_span = server;
-                return true;
-              }
-            }
-          }
-          return false;
+    return WaitForParentedSpan(
+        trace_id,
+        [&](const Span& server) {
+          return server.service_name == server_service &&
+                 server.kind == otlp_trace::Span::SPAN_KIND_SERVER &&
+                 server.op_name.starts_with(op_prefix);
         },
-        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        [&](const Span& client) {
+          return client.service_name == client_service &&
+                 client.kind == otlp_trace::Span::SPAN_KIND_CLIENT &&
+                 client.op_name.starts_with(op_prefix);
+        },
         Format("Remote child span '$0*' on '$1' linked to '$2' in trace '$3'",
-               op_prefix, server_service, client_service, trace_id)));
-    return server_span;
+               op_prefix, server_service, client_service, trace_id));
   }
 
   // Waits for three spans in trace_id, each the parent of the next, all with op names starting
@@ -635,6 +648,27 @@ class OtlpHttpCollector {
         Format("Chain inbound -> outbound -> '$0' inbound for '$1*' in trace '$2'",
                downstream_service, op_prefix, trace_id)));
     return downstream_span;
+  }
+
+  // Waits for a span from child_service in trace_id whose query text starts with
+  // child_query_prefix and whose parent is a span from parent_service with an op name starting
+  // with parent_op_prefix. Returns the child span.
+  Result<Span> WaitForCrossServiceChildSpan(
+      std::string_view trace_id, std::string_view parent_service,
+      std::string_view parent_op_prefix, std::string_view child_service,
+      std::string_view child_query_prefix) const EXCLUDES(mutex_) {
+    return WaitForParentedSpan(
+        trace_id,
+        [&](const Span& child) {
+          return child.service_name == child_service &&
+                 child.query_text.starts_with(child_query_prefix);
+        },
+        [&](const Span& parent) {
+          return parent.service_name == parent_service &&
+                 parent.op_name.starts_with(parent_op_prefix);
+        },
+        Format("Span on '$0' for '$1*' parented by a '$2' span '$3*' in trace '$4'",
+               child_service, child_query_prefix, parent_service, parent_op_prefix, trace_id));
   }
 
  private:
@@ -1042,6 +1076,24 @@ class DistTraceTxnHeartbeatTest : public DistTraceTest {
     // Keep ROLLBACK from sending UpdateTransaction(IMMEDIATE_CLEANUP) to participants, so
     // heartbeats are the only UpdateTransaction the transaction could produce.
     options->extra_tserver_flags.push_back("--TEST_disable_proactive_txn_cleanup_on_abort=true");
+  }
+};
+
+class DistTraceConnMgrTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->replication_factor = 1;
+    options->enable_ysql_conn_mgr = true;
+    // Any non-empty endpoint enables tracing, which yb_dist_tracecontext requires; no
+    // collector needs to listen.
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "otel_collector_traces_endpoint");
+    options->extra_tserver_flags.push_back(
+        "--otel_collector_traces_endpoint=http://127.0.0.1:1");
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
   }
 };
 
@@ -2124,6 +2176,26 @@ TEST_F(DistTraceTxnHeartbeatTest, TestTxnHeartbeatsNotTraced) {
   ASSERT_LE(update_txn_spans.size(), 2) << "heartbeat spans leaked, see chains above";
 }
 
+// Runs a CREATE INDEX under a known traceparent and asserts the trace contains the BACKFILL INDEX
+// statement run by the internal PG connection the tserver opens for the backfill, parented under
+// the tserver's BackfillIndex span.
+TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
+  ASSERT_OK(CreateTable("backfill_trace_test", 10));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute("CREATE INDEX backfill_trace_test_idx ON backfill_trace_test (val)"));
+
+  auto backend_span = ASSERT_RESULT(collector_.WaitForCrossServiceChildSpan(
+      tp.trace_id, "TabletServer" /* parent_service */,
+      "rpc yb.tserver.TabletServerAdminService.BackfillIndex" /* parent_op_prefix */,
+      "ysql" /* child_service */, "BACKFILL INDEX " /* child_query_prefix */));
+
+  ASSERT_EQ(backend_span.trace_id, tp.trace_id);
+  ASSERT_EQ(backend_span.op_name, "query");
+}
+
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
   google::FlagSaver flag_saver;
   TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
@@ -2550,6 +2622,34 @@ TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterPkRewriteOnPublishedTable) {
   ASSERT_EQ(
       ASSERT_RESULT(conn_->FetchRow<std::string>(
           "SELECT count(*)::text FROM pk_rewrite_test")), "2");
+}
+
+TEST_F(DistTraceConnMgrTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TraceparentStartupParamViaConnMgr)) {
+  const auto tp = GenerateTraceparent();
+
+  // Connection string with an explicit yb_dist_traceparent startup param; PGConnBuilder
+  // no longer takes one (it propagates the active trace instead), so build it directly.
+  auto conn_str = [&](uint16_t port) {
+    return Format(
+        "host=$0 port=$1 user=$2 yb_dist_traceparent='$3'",
+        pg_ts->bind_host(), port, PGConnSettings::kDefaultUser, tp.full);
+  };
+
+  // Direct backend connection: the startup param populates yb_dist_tracecontext.
+  auto direct_conn_str = conn_str(pg_ts->pgsql_rpc_port());
+  auto direct_conn = ASSERT_RESULT(PGConn::Connect(
+      direct_conn_str, false /* simple_query_protocol */, direct_conn_str));
+  ASSERT_EQ(
+      ASSERT_RESULT(direct_conn.FetchRow<std::string>("SHOW yb_dist_tracecontext")),
+      Format("traceparent='$0'", tp.full));
+
+  // Conn mgr replays the startup packet under auth passthrough; the param must be discarded.
+  auto conn_mgr_conn_str = conn_str(pg_ts->ysql_port());
+  auto conn_mgr_conn = ASSERT_RESULT(PGConn::Connect(
+      conn_mgr_conn_str, false /* simple_query_protocol */, conn_mgr_conn_str));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_mgr_conn.FetchRow<std::string>("SHOW yb_dist_tracecontext")), "");
 }
 
 }  // namespace yb::pgwrapper
