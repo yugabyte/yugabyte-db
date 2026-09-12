@@ -2461,6 +2461,7 @@ StartTransaction(void)
 /*
  * Recreates the state required to restart the write that received a transaction
  * conflict.
+ * Callers must invoke this function only after yb_clear_portal_before_restart.
  */
 void
 YBCRestartWriteTransaction()
@@ -2476,6 +2477,11 @@ YBCRestartWriteTransaction()
 	 */
 	while (CurrentTransactionState->parent != NULL)
 		RollbackAndReleaseCurrentSubTransaction();
+
+	/* YB: After the loop above we must be at the top transaction only. */
+	TransactionState s = CurrentTransactionState;
+	Assert(s->parent == NULL);
+	Assert(s->nestingLevel == 1);
 
 	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
@@ -2495,6 +2501,27 @@ YBCRestartWriteTransaction()
 		ResourceOwnerRelease(TopTransactionResourceOwner,
 							 RESOURCE_RELEASE_AFTER_LOCKS,
 							 false, true);
+
+		/*
+		 * When ResourceOwnerRelease() is invoked, a ResourceOwner is marked as
+		 * 'releasing' and further use is rejected. Vanilla postgres expects the
+		 * owners themselves to be deleted soon after. To support query layer
+		 * retries, delete (the now empty) and recreate
+		 * TopTransactionResourceOwner so that it can acquire resources during
+		 * the retry. Marking globals as NULL guards against stale pointer
+		 * accesses if resource owner recreation fails for any reason.
+		 */
+		Assert(s->curTransactionOwner == TopTransactionResourceOwner);
+		CurrentResourceOwner = NULL;
+		ResourceOwnerDelete(TopTransactionResourceOwner);
+		s->curTransactionOwner = NULL;
+		TopTransactionResourceOwner = NULL;
+		CurTransactionResourceOwner = NULL;
+
+		s->curTransactionOwner = ResourceOwnerCreate(NULL, "TopTransaction");
+		TopTransactionResourceOwner = s->curTransactionOwner;
+		CurTransactionResourceOwner = s->curTransactionOwner;
+		CurrentResourceOwner = s->curTransactionOwner;
 	}
 	AtEOXact_SPI(false /* isCommit */ );
 	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
