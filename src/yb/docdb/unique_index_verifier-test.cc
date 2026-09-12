@@ -418,6 +418,8 @@ TEST_F(UniqueIndexVerifierTest, PaginationIsDocKeyAligned) {
   ExpectOutcome(UniqueIndexVerificationOutcome::kClean, first_page);
   ASSERT_EQ(1, first_page.dockey_groups_scanned);
   ASSERT_FALSE(first_page.resume_from_dockey.empty());
+  // The resume key is raw index key bytes; ToString renders only its size.
+  ASSERT_STR_NOT_CONTAINS(first_page.ToString(), first_page.resume_from_dockey);
 
   auto second_page = ASSERT_RESULT(
       Verify(/* max_dockey_groups= */ 0, first_page.resume_from_dockey));
@@ -446,6 +448,18 @@ TEST_F(UniqueIndexVerifierTest, OversizedGroupFallsBackToReverseWalk) {
   auto clean_result = ASSERT_RESULT(Verify(
       /* max_dockey_groups= */ 1, std::string(), /* max_buffered= */ 4));
   ExpectOutcome(UniqueIndexVerificationOutcome::kClean, clean_result);
+}
+
+TEST_F(UniqueIndexVerifierTest, ViolationExposesGroupPrefixInMemoryOnly) {
+  WriteBackfillInsert(1, "ctid-A", kBackfillWriteId);
+  WriteBackfillInsert(1, "ctid-B", kBackfillWriteId + 1);
+  auto result = ASSERT_RESULT(Verify());
+  ExpectOutcome(UniqueIndexVerificationOutcome::kViolation, result);
+  // The violating group's raw encoded DocKey is exposed for the caller's keyed fingerprint --
+  // in memory only: ToString must exclude it (raw index key bytes must not reach logs).
+  ASSERT_FALSE(result.violating_group_prefix.empty());
+  ASSERT_STR_NOT_CONTAINS(result.ToString(), "violating_group_prefix");
+  ASSERT_STR_NOT_CONTAINS(result.ToString(), result.violating_group_prefix);
 }
 
 TEST_F(UniqueIndexVerifierTest, FallbackAccountingMatchesBuffered) {

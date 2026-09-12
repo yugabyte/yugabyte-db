@@ -68,6 +68,11 @@ message BackfillJobPB {
   // immutable for the job's lifetime, across master failover, retries, and runtime flag
   // changes. Missing means observational (shadow) semantics.
   optional bool verification_gates_publication = 8;
+
+  // Per-job secret for keyed violation fingerprints. Generated with the job and deleted with
+  // it: fingerprints correlate across the job's retries and failover, and are unconfirmable
+  // once the job is gone.
+  optional bytes verification_fingerprint_key = 9;
 }
 
 message UniqueIndexVerificationStatePB {
@@ -89,8 +94,13 @@ message UniqueIndexVerificationStatePB {
   repeated bytes clean_tablet_ids = 3;
 
   // Value-free context for VERIFY_VIOLATION / VERIFY_INCONCLUSIVE: encoding classes and
-  // counts only, never key or value bytes.
+  // counts, plus an appended keyed fingerprint token when the job carries a key (see
+  // violation_fingerprint) -- never key or value bytes.
   optional string reason = 4;
+
+  // Keyed, scope-limited correlation token for the violating index key (see the tserver
+  // response field of the same name); never the key or value bytes.
+  optional string violation_fingerprint = 5;
 }
 
   message YsqlDdlTxnVerifierStatePB {

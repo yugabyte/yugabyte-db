@@ -122,6 +122,9 @@ class Verifier {
 
       RETURN_NOT_OK(VerifyGroup(group_prefix));
       if (result_.outcome != UniqueIndexVerificationOutcome::kClean) {
+        if (result_.outcome == UniqueIndexVerificationOutcome::kViolation) {
+          result_.violating_group_prefix = group_prefix_str;
+        }
         return result_;
       }
       ++result_.dockey_groups_scanned;
@@ -596,8 +599,11 @@ class Verifier {
 }  // namespace
 
 std::string UniqueIndexVerificationResult::ToString() const {
+  // resume_from_dockey is raw index key bytes -- the same contract as violating_group_prefix:
+  // never in logs. Its size still tells whether (and roughly where) the scan stopped early.
+  const auto resume_from_dockey_size = resume_from_dockey.size();
   return YB_STRUCT_TO_STRING(outcome, reason, dockey_groups_scanned, versions_scanned,
-                             fallback_groups, resume_from_dockey);
+                             fallback_groups, resume_from_dockey_size);
 }
 
 Result<UniqueIndexVerificationResult> VerifyUniqueIndexTablet(
