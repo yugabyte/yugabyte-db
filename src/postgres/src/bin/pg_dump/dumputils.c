@@ -494,27 +494,10 @@ YBWwrapInRoleChecks(PGconn *conn,
 		appendPQExpBufferStr(result, ") AS role_exists \\gset\n"
 							 "\\if :role_exists\n");
 		ybAppendRestrict(result, yb_restrict_key);
-
-		/* Replace "<str>EOL" by "<indent><str>EOL". */
-		const char *str = sql->data;
-
-		for (char *ptr = NULL; (ptr = strchr(str, '\n')) != NULL; str = ptr + 1)
-		{
-			(*ptr) = '\0';
-			appendPQExpBuffer(result, "    %s\n", str);
-			(*ptr) = '\n';
-		}
-
-		/*
-		 * Print tail after the last EOL if it's available. Usually it's
-		 * empty.
-		 */
-		if (*str != '\0')
-			appendPQExpBuffer(result, "    %s\n", str);
-
+		appendPQExpBufferStr(result, sql->data);
 		ybAppendUnrestrict(result, yb_restrict_key);
 		appendPQExpBuffer(result, "\\else\n"
-						  "    \\echo 'Skipping %s due to missing role:' ",
+						  "\\echo 'Skipping %s due to missing role:' ",
 						  op_name);
 		ybAppendPsqlMetaLiteral(result, role1);
 		if (role2)

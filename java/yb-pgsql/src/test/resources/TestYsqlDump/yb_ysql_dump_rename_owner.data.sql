@@ -55,10 +55,10 @@ CREATE DATABASE rename_owner_src_db WITH TEMPLATE = template0 ENCODING = 'UTF8' 
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER DATABASE rename_owner_src_db OWNER TO rename_owner_tgt_role;
+ALTER DATABASE rename_owner_src_db OWNER TO rename_owner_tgt_role;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
+\echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
 \endif
 \endif
 \restrict test
@@ -109,10 +109,10 @@ CREATE FUNCTION public.fn_other() RETURNS integer
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_other_role') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER FUNCTION public.fn_other() OWNER TO rename_owner_other_role;
+ALTER FUNCTION public.fn_other() OWNER TO rename_owner_other_role;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'rename_owner_other_role'
+\echo 'Skipping owner privilege due to missing role:' 'rename_owner_other_role'
 \endif
 \endif
 \restrict test
@@ -131,10 +131,10 @@ CREATE FUNCTION public.fn_src() RETURNS integer
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER FUNCTION public.fn_src() OWNER TO rename_owner_tgt_role;
+ALTER FUNCTION public.fn_src() OWNER TO rename_owner_tgt_role;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
+\echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
 \endif
 \endif
 \restrict test
@@ -161,10 +161,10 @@ CREATE SEQUENCE public.seq_other
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_other_role') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLE public.seq_other OWNER TO rename_owner_other_role;
+ALTER TABLE public.seq_other OWNER TO rename_owner_other_role;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'rename_owner_other_role'
+\echo 'Skipping owner privilege due to missing role:' 'rename_owner_other_role'
 \endif
 \endif
 \restrict test
@@ -191,10 +191,10 @@ CREATE SEQUENCE public.seq_src
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLE public.seq_src OWNER TO rename_owner_tgt_role;
+ALTER TABLE public.seq_src OWNER TO rename_owner_tgt_role;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
+\echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
 \endif
 \endif
 \restrict test
@@ -243,10 +243,10 @@ SPLIT INTO 3 TABLETS;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_other_role') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLE public.t_other OWNER TO rename_owner_other_role;
+ALTER TABLE public.t_other OWNER TO rename_owner_other_role;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'rename_owner_other_role'
+\echo 'Skipping owner privilege due to missing role:' 'rename_owner_other_role'
 \endif
 \endif
 \restrict test
@@ -285,10 +285,10 @@ SPLIT INTO 3 TABLETS;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLE public.t_src OWNER TO rename_owner_tgt_role;
+ALTER TABLE public.t_src OWNER TO rename_owner_tgt_role;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
+\echo 'Skipping owner privilege due to missing role:' 'rename_owner_tgt_role'
 \endif
 \endif
 \restrict test
