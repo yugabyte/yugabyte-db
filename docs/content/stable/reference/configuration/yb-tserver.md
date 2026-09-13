@@ -621,7 +621,7 @@ This parameter can only be configured during cluster startup, and adjusting this
 Default: `0`
 {{% /tags/wrap %}}
 
-Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
+Enables [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
 
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
