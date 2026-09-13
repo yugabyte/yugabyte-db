@@ -23,7 +23,6 @@ REFRESH MATERIALIZED VIEW product_inventory;
 INSERT INTO products VALUES (1, 'a', 1.0);
 SET yb_refresh_matview_in_place = true;
 REFRESH MATERIALIZED VIEW product_inventory;
-
 -- An explicit off is recorded the same way as the default.
 SET yb_refresh_matview_in_place = false;
 REFRESH MATERIALIZED VIEW product_inventory;
