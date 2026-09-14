@@ -157,6 +157,12 @@ Do not dump the contents of unlogged tables. This option has no effect on whethe
 
 Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from the ysql_dumpall version, or when the output is intended to be loaded into a server of a different major version. By default, ysql_dumpall quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using `--quote-all-identifiers` prevents such issues, at the price of a harder-to-read dump script.
 
+#### --restrict-key=*restrict_key*
+
+Use the given string as the key for the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict-key) and [`\unrestrict`](../../api/ysqlsh-meta-commands/#unrestrict-restrict-key) meta-commands that bracket the dump, instead of generating a random one. The key must be non-empty and contain only letters and digits.
+
+Each run otherwise generates a fresh random key, so two dumps of the same database are never byte-identical. Use this option when a workflow compares or checksums dump files.
+
 #### --use-set-session-authorization
 
 Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWNER` statements to determine object ownership. This makes the dump more standards compatible, but depending on the history of the objects in the dump, might not restore properly.
@@ -229,6 +235,7 @@ This utility also uses the environment variables supported by `libpq`.
 - The [`-c|--clean`](#c-clean) option can be helpful even when your intention is to restore the dump script into a fresh cluster. Use of `-c|--clean` authorizes the script to drop and recreate the built-in `yugabyte`, `postgres`, and `template1` databases, ensuring that those databases will retain the same properties (for instance, locale and encoding) that they had in the source cluster. Without the option, those databases will retain their existing database-level properties, as well as any pre-existing contents.
 - Once restored, it is recommended to run `ANALYZE` on each database so the optimizer has helpful statistics. You can also run `vacuumdb -a -z` to analyze all databases.
 - The dump script should not be expected to run completely without errors. In particular, because the script will issue `CREATE ROLE` statements for every role existing in the source cluster, it is certain to get a `role already exists` error for the bootstrap superuser, unless the destination cluster was initialized with a different bootstrap superuser name. This error is harmless and should be ignored. Use of the [`-c|--clean`](#c-clean) option is likely to produce additional harmless error messages about non-existent objects, although you can minimize those by adding [`--if-exists`](#if-exists).
+- Restoring a dump also depends on the version of ysqlsh used to replay it, separately from the server version. Dumps taken with ysql_dumpall 2025.2.7.0, 2026.1.2.0, or later begin with the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict-key) meta-command, which earlier versions of ysqlsh do not recognize. Replay such a dump with ysqlsh from the same or a later version. For the effect of `ON_ERROR_STOP` with an earlier ysqlsh, see [ysql_dump Notes](../ysql-dump/#notes).
 
 ## Examples
 
