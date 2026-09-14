@@ -457,6 +457,10 @@ YbcStatus YBCPgCreateIndexAddColumn(YbcPgStatement handle, const char *attr_name
 
 YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_tablets);
 
+// Prototype: mark this index to follow its base table's split mapping and placement
+// (SPLIT FOLLOWING TABLE).
+YbcStatus YBCPgCreateIndexSetFollowTable(YbcPgStatement handle);
+
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
 YbcStatus YBCPgCreateIndexSetHnswOptions(

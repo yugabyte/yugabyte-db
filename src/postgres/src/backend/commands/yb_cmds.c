@@ -23,6 +23,7 @@
 
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/nbtree.h"
@@ -553,6 +554,18 @@ CreateTableHandleSplitOptions(YbcPgStatement handle, TupleDesc desc,
 				YBTransformPartitionSplitPoints(handle, split_options->split_points, attrs, attr_count);
 				break;
 			}
+
+		case FOLLOW_TABLE:
+			/*
+			 * YB: The SPLIT clause grammar is shared between CREATE TABLE and
+			 * CREATE INDEX, so SPLIT FOLLOWING TABLE parses here too. There is
+			 * no table for a table to follow, though: the clause only means
+			 * something for a secondary index.
+			 */
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("SPLIT FOLLOWING TABLE is only valid for a secondary index")));
+			break;
 
 		default:
 			ereport(ERROR,
@@ -1132,9 +1145,86 @@ YbUnsafeTruncate(Relation rel)
 	list_free(indexlist);
 }
 
+/*
+ * YB: Check that a SPLIT FOLLOWING TABLE index hashes the same way as the
+ * table it follows.
+ *
+ * DocDB assigns a row to a tablet by hashing the encoded values of the
+ * relation's leading HASH key columns, so an index row only lands in the
+ * partition range that holds its base row when the index's HASH key is the
+ * base table's HASH key -- same columns, same order.  An index that hashes on
+ * anything else would still inherit the base table's partition boundaries but
+ * would scatter its rows across them arbitrarily, quietly delivering none of
+ * the co-location the clause asks for.  Reject that up front instead.
+ *
+ * The master cannot make this check on YSQL's behalf.  For a YSQL index it
+ * receives only the base table's id, not the index's column mapping (see
+ * IndexInfoBuilder::ApplyColumnMapping, which the PGSQL path skips), so its
+ * own eligibility check degrades to comparing HASH column counts.
+ *
+ * A YB table's HASH key is the leading HASH portion of its primary key; a
+ * table without a primary key is distributed on an internal row identifier
+ * that no secondary index can reproduce.
+ */
+static void
+YbValidateFollowTableHashKey(Relation rel, IndexInfo *indexInfo,
+							 int16 *coloptions, int numIndexKeyAttrs)
+{
+	Oid			pkIndexOid = RelationGetPrimaryKeyIndex(rel);
+	Relation	pkRel;
+	int			numIndexHashAttrs;
+	int			numBaseHashAttrs;
+	bool		matches;
+
+	if (!OidIsValid(pkIndexOid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("cannot use SPLIT FOLLOWING TABLE on an index of table \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail("Table \"%s\" has no primary key, so its rows are distributed by an internal identifier that an index cannot reproduce.",
+						   RelationGetRelationName(rel))));
+
+	/* Count the leading HASH key columns of the new index. */
+	numIndexHashAttrs = 0;
+	while (numIndexHashAttrs < numIndexKeyAttrs &&
+		   (coloptions[numIndexHashAttrs] & INDOPTION_HASH))
+		numIndexHashAttrs++;
+
+	pkRel = index_open(pkIndexOid, AccessShareLock);
+
+	/* Count the leading HASH key columns of the base table's primary key. */
+	numBaseHashAttrs = 0;
+	while (numBaseHashAttrs < IndexRelationGetNumberOfKeyAttributes(pkRel) &&
+		   (pkRel->rd_indoption[numBaseHashAttrs] & INDOPTION_HASH))
+		numBaseHashAttrs++;
+
+	matches = (numIndexHashAttrs == numBaseHashAttrs);
+	for (int i = 0; matches && i < numBaseHashAttrs; i++)
+	{
+		AttrNumber	indexAttno = indexInfo->ii_IndexAttrNumbers[i];
+
+		/* An expression column (attnum 0) can never match a base column. */
+		if (indexAttno == InvalidAttrNumber ||
+			indexAttno != pkRel->rd_index->indkey.values[i])
+			matches = false;
+	}
+
+	index_close(pkRel, AccessShareLock);
+
+	if (!matches)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("SPLIT FOLLOWING TABLE requires the index HASH key to match the HASH key of table \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail("The index must be hashed on the same columns, in the same order, as the leading HASH columns of the table's primary key."),
+				 errhint("Reorder the index columns so that the table's HASH key comes first, or omit SPLIT FOLLOWING TABLE.")));
+}
+
 /* Utility function to handle split points */
 static void
 CreateIndexHandleSplitOptions(YbcPgStatement handle,
+							  Relation rel,
+							  IndexInfo *indexInfo,
 							  TupleDesc desc,
 							  YbOptSplit *split_options,
 							  int16 *coloptions,
@@ -1168,6 +1258,25 @@ CreateIndexHandleSplitOptions(YbcPgStatement handle,
 				YBTransformPartitionSplitPoints(handle, split_options->split_points, attrs, attr_count);
 				break;
 			}
+
+		case FOLLOW_TABLE:
+			/*
+			 * YB: SPLIT FOLLOWING TABLE. The index derives its partitioning and
+			 * placement from the base table at the master. Require HASH columns
+			 * (following is only meaningful for a hash-partitioned index) and
+			 * that they be the base table's HASH key, then mark the create
+			 * request as a follow-table request.
+			 */
+			if (!(coloptions[0] & INDOPTION_HASH))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("HASH columns must be present to follow the base table's split")));
+
+			YbValidateFollowTableHashKey(rel, indexInfo, coloptions,
+										 numIndexKeyAttrs);
+
+			HandleYBStatus(YBCPgCreateIndexSetFollowTable(handle));
+			break;
 
 		default:
 			ereport(ERROR, (errmsg("illegal memory state for SPLIT options")));
@@ -1288,7 +1397,8 @@ YBCCreateIndex(const char *indexName,
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
-		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
+		CreateIndexHandleSplitOptions(handle, rel, indexInfo, indexTupleDesc,
+									  split_options, coloptions,
 									  indexInfo->ii_NumIndexKeyAttrs);
 
 	/* Create the index. */

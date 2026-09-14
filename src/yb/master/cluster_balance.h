@@ -261,6 +261,21 @@ class ClusterLoadBalancer {
   // Returns std::nullopt otherwise. If error is found, returns Status.
   Result<std::optional<LeaderMoveDetails>> GetLeaderToMoveWithinAffinitizedPriorities();
 
+  // Prototype (follow-table index): step an index tablet's leader onto the tserver that already
+  // hosts the leader of its base tablet, so the index lookup and the base-row read it feeds stay
+  // on one host. Runs only after the load-driven leader passes have declined to move anything.
+  //
+  // A move is only taken when the destination has strictly fewer leaders than the source, both
+  // for this table and cluster-wide. That makes it impossible for the load-driven passes to have
+  // a reason to move the leader back, so the two can never trade a leader back and forth. The
+  // price is that this pass is inert once leader load is exactly even: co-placement then requires
+  // swapping two leaders, which the one-move-at-a-time interface here cannot express. So this
+  // steers leader moves toward co-placement while the cluster is converging (after index
+  // creation, a split, or a tserver restart) rather than guaranteeing co-placement at rest.
+  //
+  // Returns the move if one was found, std::nullopt otherwise.
+  Result<std::optional<LeaderMoveDetails>> GetLeaderToMoveForFollowTable();
+
   // Go through sorted_load_ and figure out which tablet to rebalance and from which TS that is
   // serving it to which other TS.
   //

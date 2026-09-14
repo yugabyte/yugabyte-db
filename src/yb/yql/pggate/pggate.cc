@@ -1353,6 +1353,10 @@ Status PgApiImpl::CreateIndexSetNumTablets(PgStatement* handle, int32_t num_tabl
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetNumTablets(num_tablets);
 }
 
+Status PgApiImpl::CreateIndexSetFollowTable(PgStatement* handle) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetFollowTable();
+}
+
 Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorIdxOptions* options) {
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
