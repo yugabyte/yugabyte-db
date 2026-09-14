@@ -51,6 +51,14 @@ namespace {
 
 static const char* const kAdminToolName = "yb-admin";
 
+// Normalize heartbeat lag values to a fixed placeholder for deterministic comparison.
+// Replaces values like "123ms" or "0ms" at end of lines with "<lag>", and preserves "N/A".
+// Follows the NormalizeLogLine() pattern from conflict_resolve_keys_verification-itest.cc.
+std::string NormalizeLagValues(const std::string& output) {
+  std::regex lag_pattern(R"(\d+ms)");
+  return std::regex_replace(output, lag_pattern, "<lag>");
+}
+
 } // namespace
 
 class YBAdminMultiMasterTest : public ExternalMiniClusterITestBase {
@@ -79,7 +87,8 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
       admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "list_all_masters"), &output2));
   LOG(INFO) << "full master_addresses: list_all_masters: " << output2;
-  ASSERT_EQ(output1, output2);
+  // Normalize heartbeat lag values since they are non-deterministic.
+  ASSERT_EQ(NormalizeLagValues(output1), NormalizeLagValues(output2));
 
   output1.clear();
   output2.clear();
@@ -334,6 +343,41 @@ TEST_F(YBAdminMultiMasterTest, TestMasterLeaderStepdown) {
     return new_leader_id !=
       VERIFY_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+LEADER)"));
   }, 5s, "Master leader stepdown"));
+}
+
+TEST_F(YBAdminMultiMasterTest, ListAllMastersShowsHeartbeatLag) {
+  const int kNumMasters = 3;
+  const auto admin_path = GetToolPath(kAdminToolName);
+  ASSERT_NO_FATALS(StartCluster({}, {}, 1 /* num tservers */, kNumMasters));
+
+  std::string output;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
+      "list_all_masters"), &output));
+  LOG(INFO) << "list_all_masters:\n" << output;
+
+  auto lines = StringSplit(output, '\n');
+  // Header + 3 masters.
+  ASSERT_GE(lines.size(), kNumMasters + 1);
+
+  // Verify header contains "Heartbeat Lag".
+  ASSERT_NE(lines[0].find("Heartbeat Lag"), std::string::npos)
+      << "Header missing 'Heartbeat Lag': " << lines[0];
+
+  // Verify each master row has a lag value: leader should show 0ms, followers should show Nms.
+  bool found_leader = false;
+  for (size_t i = 1; i <= static_cast<size_t>(kNumMasters); ++i) {
+    const auto& line = lines[i];
+    if (line.find("LEADER") != std::string::npos) {
+      found_leader = true;
+      ASSERT_NE(line.find("0ms"), std::string::npos)
+          << "Leader should show 0ms lag: " << line;
+    } else if (line.find("FOLLOWER") != std::string::npos) {
+      ASSERT_NE(line.find("ms"), std::string::npos)
+          << "Follower should show lag in ms: " << line;
+    }
+  }
+  ASSERT_TRUE(found_leader) << "Expected to find a LEADER in output";
 }
 
 }  // namespace tools
