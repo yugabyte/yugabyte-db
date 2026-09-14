@@ -503,8 +503,12 @@ class Version {
   // On success, *props will be populated with all SSTables' table properties.
   // The keys of `props` are the sst file name, the values of `props` are the
   // tables' propertis, represented as shared_ptr.
-  Status GetPropertiesOfAllTables(TablePropertiesCollection* props);
-  Status GetPropertiesOfAllTables(TablePropertiesCollection* props, int level);
+  Status GetPropertiesOfAllTables(
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail);
+  Status GetPropertiesOfAllTables(
+      TablePropertiesCollection* props, int level,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail);
   Status GetPropertiesOfTablesInRange(const Range* range, std::size_t n,
                                       TablePropertiesCollection* props) const;
 

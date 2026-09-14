@@ -295,15 +295,16 @@ void DumpSstStats(const tablet::TabletPeerPtr& peer, std::stringstream* output) 
   }
   row("Files measured", Format("$0 of $1", stats.covered_files,
                                stats.covered_files + stats.uncovered_files));
-  row("Raw bytes measured", Format("$0 of $1", stats.covered_raw_bytes,
-                                   stats.covered_raw_bytes + stats.uncovered_raw_bytes));
+  row("Raw bytes measured",
+      Format("$0 ($1 known in unmeasured files)", stats.covered_raw_bytes,
+             stats.uncovered_raw_bytes));
   if (stats.partial_files > 0) {
     row("Files with partial chain statistics", std::to_string(stats.partial_files));
   }
   if (stats.unsubtracted_files > 0) {
     row("Compacted-away files still counted", std::to_string(stats.unsubtracted_files));
   }
-  row("Entries", Format("$0 ($1 in unmeasured files)", stats.total_entries,
+  row("Entries", Format("$0 ($1 known in unmeasured files)", stats.total_entries,
                         stats.uncovered_entries));
   row("Tombstone entries", std::to_string(stats.tombstone_entries));
   row("Packed row entries", std::to_string(stats.packed_row_entries));
