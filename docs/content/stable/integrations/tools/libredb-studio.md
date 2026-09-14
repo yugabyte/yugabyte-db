@@ -19,7 +19,7 @@ type: docs
 
 Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
-A table that has not yet been analyzed, such as a small or rarely-written lookup table, shows 0 rows in the schema browser until autovacuum catches up or you run `ANALYZE` on it manually; larger, actively-written tables are unaffected. Per-index size and the overall database size always read as 0 bytes, even after `ANALYZE`, because YugabyteDB stores that data in DocDB rather than local heap files, and the PostgreSQL catalog functions behind those two fields (`pg_relation_size`, `pg_database_size`) do not see it there.
+A table that has not yet been analyzed, such as a small or rarely-written lookup table, shows 0 rows in the schema browser until YugabyteDB's [Auto Analyze service](https://docs.yugabyte.com/stable/additional-features/auto-analyze/) catches up or you run `ANALYZE` on it manually; larger, actively-written tables are unaffected. Per-index size and the overall database size always read as 0 bytes, even after `ANALYZE`, because YugabyteDB stores that data in DocDB rather than local heap files, and the PostgreSQL catalog functions behind those two fields (`pg_relation_size`, `pg_database_size`) do not see it there.
 
 ## Install LibreDB Studio
 
