@@ -274,6 +274,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleUiV2Enabled =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.ui_v2_enabled",
+          ScopeType.GLOBAL,
+          "Enable Support Bundle V2 API in UI",
+          "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table)."
+              + " When false, the UI continues to use the v1 support bundle API. V1 and v2"
+              + " bundles are stored separately; toggling this flag switches which bundles"
+              + " appear in the UI list.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
       new ConfKeyInfo<>(
           "yb.support_bundle.extra_yb_admin_commands",

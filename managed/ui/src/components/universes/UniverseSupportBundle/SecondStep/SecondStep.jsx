@@ -403,7 +403,8 @@ export const SecondStep = ({
   isK8sUniverse,
   universeStatus,
   payload,
-  universeUUID
+  universeUUID,
+  useV2Api = false
 }) => {
   const [selectedFilterType, setSelectedFilterType] = useState(filterTypes[0]);
   const [selectedFilterTypePromDump, setSelectedFilterTypePromDump] = useState(
@@ -467,7 +468,7 @@ export const SecondStep = ({
 
   const estimateSupportBundleSizeQuery = useQuery(
     'estimatedSupportBundleSize',
-    () => fetchEstimatedSupportBundleSize(universeUUID, estimatePayloadRef.current),
+    () => fetchEstimatedSupportBundleSize(universeUUID, estimatePayloadRef.current, useV2Api),
     {
       // We set enabled to false so the only time this query fires is when we
       // explicitly call estimatedSupportBundleSizeQuery.refetch().
