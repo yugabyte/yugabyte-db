@@ -15,7 +15,7 @@ type: docs
 YugabyteDB is resilient to a single-domain failure in a deployment with a replication factor (RF) of 3. To survive zone failures, you deploy across multiple zones. Let's see how YugabyteDB survives a zone failure.
 
 {{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](/stable/contribute/docs/docs-layout/#legend-for-illustrations)
+All illustrations adhere to the legend outlined in [Legend for illustrations](/stable/contribute/docs/docs-layout/#legend-for-illustrations).
 {{</note>}}
 
 ## Setup

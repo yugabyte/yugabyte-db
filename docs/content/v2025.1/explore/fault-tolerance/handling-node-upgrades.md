@@ -17,7 +17,7 @@ There are many scenarios where you have to do planned maintenance on your cluste
 Let's see how YugabyteDB is resilient during planned maintenance, continuing without any service interruption.
 
 {{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations).
 {{</note>}}
 
 ## Setup
