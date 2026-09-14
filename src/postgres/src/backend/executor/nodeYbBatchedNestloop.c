@@ -157,7 +157,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 	max_size = GetMaxBatchSize(batchnl);
 	bnlstate->batch_size = max_size;
 
-	if (!pstate->state->yb_exec_params.limit_use_default)
+	if (pstate->state->yb_exec_params.plan_limit > 0)
 	{
 		uint64_t	first_size = batchnl->first_batch_size;
 
@@ -167,9 +167,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 		 * needs, as if each outer row produced one output row.
 		 */
 		if (first_size == 0)
-			first_size = Min(pstate->state->yb_exec_params.limit_count +
-							 pstate->state->yb_exec_params.limit_offset,
-							 max_size);
+			first_size = Min(pstate->state->yb_exec_params.plan_limit, max_size);
 		if (first_size > 0 && first_size < max_size)
 		{
 			if (!bnlstate->is_first_batch_done)
@@ -178,8 +176,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 				bnlstate->first_batch_size = first_size;
 			}
 
-			pstate->state->yb_exec_params.limit_count =
-				GetCurrentBatchSize(bnlstate);
+			pstate->state->yb_exec_params.plan_limit = GetCurrentBatchSize(bnlstate);
 		}
 	}
 

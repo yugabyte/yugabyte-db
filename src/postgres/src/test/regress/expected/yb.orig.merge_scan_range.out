@@ -225,7 +225,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 9
                Storage Table Rows Scanned: 1579
 (18 rows)
 
@@ -282,7 +282,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 9
                Storage Table Rows Scanned: 1860
 (18 rows)
 
@@ -339,7 +339,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 9
                Storage Table Rows Scanned: 1860
 (18 rows)
 
@@ -491,7 +491,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: r1, n, r2, r3
                Index Cond: (r5n.r2 = ANY ('{0,1,2}'::bigint[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
+               Storage Table Read Ops: 4
                Storage Table Rows Scanned: 291
 (14 rows)
 
@@ -563,7 +563,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 3
                Merge Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 6
+               Storage Table Read Ops: 7
                Storage Table Rows Scanned: 1085
 (18 rows)
 
@@ -655,7 +655,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: r1, r2, r3, r4, r5, n
                Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 = 2))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 116
 (13 rows)
 
@@ -1443,7 +1443,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: r1, r2, r4, n, r3
                Index Cond: ((r5n.r1 = 2) AND (r5n.r3 = ANY ('{0,1,2,3,4,5}'::integer[])))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 70
 (13 rows)
 
@@ -1639,7 +1639,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.r3)
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
+               Storage Table Read Ops: 4
                Storage Table Rows Scanned: 198
 (14 rows)
 
@@ -1698,7 +1698,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.r3)
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
+               Storage Table Read Ops: 4
                Storage Table Rows Scanned: 198
 (14 rows)
 
@@ -3863,7 +3863,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
                Heap Fetches: 0
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
+               Storage Index Read Ops: 3
                Storage Index Rows Scanned: 487
 (14 rows)
 
@@ -4046,7 +4046,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 421
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 5
                Storage Index Rows Scanned: 432
 (20 rows)
 
@@ -4108,7 +4108,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 421
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 5
                Storage Index Rows Scanned: 432
 (20 rows)
 
@@ -4245,7 +4245,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 236
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 8
+               Storage Index Read Ops: 9
                Storage Index Rows Scanned: 1709
 (21 rows)
 
@@ -4343,7 +4343,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Read Ops: 8
                Storage Table Rows Scanned: 693
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 5
                Storage Index Rows Scanned: 850
 (20 rows)
 
@@ -4402,7 +4402,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Read Ops: 9
                Storage Table Rows Scanned: 214
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 5
                Storage Index Rows Scanned: 592
 (20 rows)
 
@@ -4461,7 +4461,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Read Ops: 9
                Storage Table Rows Scanned: 214
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 5
                Storage Index Rows Scanned: 592
 (20 rows)
 

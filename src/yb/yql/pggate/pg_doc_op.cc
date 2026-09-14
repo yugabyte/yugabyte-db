@@ -284,7 +284,7 @@ Status PgDocOp::FetchMoreResults() {
   }
 
   // Send request now in case prefetching was suppressed.
-  if (suppress_next_result_prefetching_ && !response_.Valid()) {
+  if (!response_.Valid()) {
     RETURN_NOT_OK(SendRequest());
   }
 
@@ -295,13 +295,14 @@ Status PgDocOp::FetchMoreResults() {
   // In case ProcessResponse doesn't fail with an error
   // it should return non empty rows, copy paging info from the responses into requests
   // and set end_of_data_.
-  // Prefetch next portion of data if needed.
-  if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-    AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
-    RETURN_NOT_OK(SendRequest());
+  if (end_of_data_ || suppress_next_result_prefetching_) {
+    suppress_next_result_prefetching_ = false;
+    return Status::OK();
   }
 
-  return Status::OK();
+  // Prefetch next portion of data if needed.
+  AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
+  return SendRequest();
 }
 
 PgDocOpFetchStream& PgDocOp::ResultStream() {
@@ -1301,7 +1302,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
     // Save the backfill_spec if tablet server wants to return it.
     if (res.is_backfill_batch_done()) {
       out_param_backfill_spec_ = res.backfill_spec().ToBuffer();
-    } else if (VERIFY_RESULT(PrepareNextRequest(*table_, &read_op))) {
+    } else if (read_op.PrepareNextRequest(exec_params_.yb_fetch_row_limit)) {
       has_more_arg = true;
     }
 
@@ -1336,70 +1337,34 @@ Status PgDocReadOp::CompleteProcessResponse() {
 }
 
 Status PgDocReadOp::SetRequestPrefetchLimit() {
-  // Predict the maximum prefetch-limit using the associated gflags.
   auto& req = read_op_->read_request();
 
   // Limits: 0 means 'unlimited'.
-  uint64_t predicted_row_limit = exec_params_.yb_fetch_row_limit;
-  uint64_t predicted_size_limit = exec_params_.yb_fetch_size_limit;
+  uint64_t default_row_limit = exec_params_.yb_fetch_row_limit;
+  uint64_t size_limit = exec_params_.yb_fetch_size_limit;
+  uint64_t row_limit = default_row_limit;
+  suppress_next_result_prefetching_ = false;
 
-  // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
-  auto row_limit = exec_params_.limit_count + exec_params_.limit_offset;
-  suppress_next_result_prefetching_ = true;
-
-  // If in any of these cases we determine that the default row/size based batch size is lower
-  // than the actual requested LIMIT, we enable prefetching. If else, we try
-  // to only get the required data in one RPC without prefetching.
-  if (exec_params_.limit_use_default) {
-    row_limit = predicted_row_limit;
-    suppress_next_result_prefetching_ = false;
-  } else if (predicted_row_limit > 0 && predicted_row_limit < row_limit) {
-    row_limit = predicted_row_limit;
-    suppress_next_result_prefetching_ = false;
-  } else if (predicted_size_limit > 0) {
-    // Try to estimate the total data size of a LIMIT'd query
-    // Inaccurate in the presence of varlen targets but not possible to fix that without PG stats;
-    size_t row_width = 0;
-    for (const LWPgsqlExpressionPB& target : req.targets()) {
-      // If target is a system column, we it's probably variable size
-      // and we don't have the means to estimate its length.
-      if (target.has_column_id()) {
-        auto column_id = target.column_id();
-        if (column_id < 0) {
-            // System columns are usually variable length which we are
-            // estimating with the size of a Binary DataType for now.
-            row_width += GetTypeInfo(DataType::BINARY)->size;
-            continue;
-        }
-        const ColumnSchema &col_schema =
-          VERIFY_RESULT(table_->schema().column_by_id(ColumnId(column_id)));
-
-        // This size is usually the computed sizeof() of the serialized datatype.
-        // Its computation can be found in yb/common/types.h
-        auto size = col_schema.type_info()->size;
-        row_width += size;
-      }
-    }
-
-    // Prefetch if we expect size limit to occur first, so there will
-    // be multiple RPCs until row_limit is reached
-    if (row_width > 0 && (predicted_size_limit / row_width) < row_limit) {
-      suppress_next_result_prefetching_ = false;
-    }
+  // If plan limit is defined and lower than the default optimistically attempt to fetch exact
+  // amount of data that the plan needs. Hence we apply the plan limit to the request and disable
+  // prefetching to avoid sending second request.
+  if (exec_params_.plan_limit > 0 &&
+      (default_row_limit == 0 || exec_params_.plan_limit < default_row_limit)) {
+    row_limit = exec_params_.plan_limit;
+    suppress_next_result_prefetching_ = true;
   }
 
   req.set_limit(row_limit);
-  req.set_size_limit(predicted_size_limit);
+  req.set_size_limit(size_limit);
 
   VLOG(3) << __func__
-          << " exec_params_.limit_count=" << exec_params_.limit_count
-          << " exec_params_.limit_offset=" << exec_params_.limit_offset
-          << " exec_params_.limit_use_default=" << exec_params_.limit_use_default
-          << " predicted_row_limit=" << predicted_row_limit
+          << " exec_params_.plan_limit=" << exec_params_.plan_limit
+          << " exec_params_.yb_fetch_row_limit=" << exec_params_.yb_fetch_row_limit
+          << " exec_params_.yb_fetch_size_limit=" << exec_params_.yb_fetch_size_limit
           << " row_limit=" << row_limit
-          << (row_limit == 0 ? " (Unlimited)" : "")
-          << " size_limit=" << predicted_size_limit
-          << (predicted_size_limit == 0 ? " (Unlimited)" : "");
+          << " size_limit=" << size_limit
+          << " suppress_next_result_prefetching_="
+          << (suppress_next_result_prefetching_ ? "true" : "false");
   return Status::OK();
 }
 

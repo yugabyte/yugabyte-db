@@ -539,7 +539,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 3030
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 9
                Storage Index Rows Scanned: 3087
 (20 rows)
 
@@ -630,7 +630,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 8
                Storage Table Rows Scanned: 1000
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 9
                Storage Index Rows Scanned: 2383
 (20 rows)
 
@@ -692,7 +692,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 635
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 6
                Storage Index Rows Scanned: 1354
 (20 rows)
 
@@ -754,7 +754,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 635
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 6
                Storage Index Rows Scanned: 1354
 (20 rows)
 
@@ -793,7 +793,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 8
                Storage Table Rows Scanned: 1029
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
+               Storage Index Read Ops: 3
                Storage Index Rows Scanned: 1029
 (16 rows)
 
@@ -905,7 +905,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 10
                Storage Table Rows Scanned: 636
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 7
                Storage Index Rows Scanned: 1165
 (20 rows)
 
@@ -1115,7 +1115,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 211
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 782
                ->  Index Scan using child1b_expr_r2_r3_idx on public.child1b parent_3 (actual rows=6 loops=1)
                      Output: parent_3.r2, parent_3.r3, parent_3.n
@@ -1128,7 +1128,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 117
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 485
                ->  Index Scan using child2_expr_r2_r3_idx on public.child2 parent_4 (actual rows=22 loops=1)
                      Output: parent_4.r2, parent_4.r3, parent_4.n
@@ -1141,7 +1141,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 373
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 1348
                ->  Index Scan using child3_expr_r2_r3_idx on public.child3 parent_5 (actual rows=12 loops=1)
                      Output: parent_5.r2, parent_5.r3, parent_5.n
@@ -1154,7 +1154,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 234
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 907
 (61 rows)
 
@@ -1220,7 +1220,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 211
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 782
                ->  Index Scan using child1b_expr_r2_r3_idx on public.child1b child1_2 (actual rows=6 loops=1)
                      Output: child1_2.r2, child1_2.r3, child1_2.n
@@ -1233,7 +1233,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 117
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 485
 (35 rows)
 
@@ -1291,7 +1291,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 117
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 7
                Storage Index Rows Scanned: 485
 (20 rows)
 
@@ -1404,7 +1404,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      ->  Seq Scan on public.child1a parent_2 (actual rows=42 loops=1)
                            Output: parent_2.r3, parent_2.n
                            Storage Table Read Requests: 2
-                           Storage Table Read Ops: 2
+                           Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 1029
                      ->  Seq Scan on public.child1b parent_3 (never executed)
                            Output: parent_3.r3, parent_3.n

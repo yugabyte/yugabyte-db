@@ -453,7 +453,7 @@ class Loader {
                        op_info.index ? op_info.index->relfilenode_id() : PgObjectId(),
                        &op_info.index_targets,
                        std::move(sidecar));
-            return !VERIFY_RESULT(PrepareNextRequest(*op_info.table, op_info.operation.get()));
+            return !op_info.operation->PrepareNextRequest();
           }, true /* bad_status_value */);
       std::erase_if(op_info_, remove_predicate);
       RETURN_NOT_OK(remove_predicate_status);
