@@ -67,6 +67,26 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
 
+  protected static final Map<String, String> NO_WARMUP_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+      }});
+
+  protected static final Map<String, String> ROUND_ROBIN_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "round_robin");
+        put("ysql_conn_mgr_enable_multi_route_pool", "true");
+        put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+      }});
+
+  protected static final Map<String, String> SINGLE_BACKEND_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        put("ysql_conn_mgr_max_conns_per_db", "1");
+        put("ysql_conn_mgr_enable_multi_route_pool", "false");
+      }});
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
@@ -102,6 +122,10 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected ConnectionBuilder getConnectionBuilder() {
     return new ConnectionBuilder(miniCluster).withUser(DEFAULT_PG_USER);
+  }
+
+  protected WireConn.Builder rawConnBuilder() {
+    return WireConn.builder(miniCluster);
   }
 
   protected void disableWarmupRandomMode(MiniYBClusterBuilder builder) {
