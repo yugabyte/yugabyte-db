@@ -153,34 +153,25 @@ In this example, ANALYZE has run twice. The first run recorded a cooldown of 10 
 
 ### pg_stat_user_tables
 
-PostgreSQL's [`pg_stat_user_tables`](https://www.postgresql.org/docs/15/monitoring-stats.html#MONITORING-PG-STAT-ALL-TABLES-VIEW) and `pg_stat_all_tables` views also record ANALYZE activity. Auto Analyze updates `last_autoanalyze` and `autoanalyze_count`. A session `ANALYZE` updates `last_analyze` and `analyze_count` instead.
+For PostgreSQL compatibility, Auto Analyze also updates [`pg_stat_user_tables`](https://www.postgresql.org/docs/15/monitoring-stats.html#MONITORING-PG-STAT-ALL-TABLES-VIEW) (`last_autoanalyze`, `autoanalyze_count`). Prefer [`yb_stat_auto_analyze()`](#observability) for Auto Analyze observability.
 
-Those counters live in the postgres that ran ANALYZE. `gv$pg_stat_user_tables` is the same view federated across tservers (one row per table per node, plus `server_uuid`). Enable it with `SET yb_enable_global_views = on` (superuser; or `ysql_pg_conf_csv=yb_enable_global_views=true`).
+To query that PostgreSQL view across tservers, enable `yb_enable_global_views` and use `gv$pg_stat_user_tables`.
 
 ```sql
-SELECT server_uuid, relname,
-       last_analyze IS NOT NULL AS has_last_analyze,
-       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+SET yb_enable_global_views = on;
+
+SELECT server_uuid, relname, last_analyze, last_autoanalyze,
        analyze_count, autoanalyze_count
   FROM gv$pg_stat_user_tables
- WHERE relname = 'test' AND last_autoanalyze IS NOT NULL;
+ WHERE relname = 'test';
 ```
 
 ```output
-             server_uuid              | relname | has_last_analyze | has_last_autoanalyze | analyze_count | autoanalyze_count
---------------------------------------+---------+------------------+----------------------+---------------+-------------------
- 00000000-0000-0000-0000-000000000001 | test    | f                | t                    |             0 |                 2
+             server_uuid              | relname | last_analyze |         last_autoanalyze         | analyze_count | autoanalyze_count
+--------------------------------------+---------+--------------+----------------------------------+---------------+-------------------
+ 00000000-0000-0000-0000-000000000001 | test    |              | 2026-09-11 18:48:54.123456+00    |             0 |                 2
 (1 row)
 ```
-
-Use these views together with `yb_stat_auto_analyze()`; they answer different questions.
-
-| Question | Use |
-| :--- | :--- |
-| How many mutations has the service accumulated, and when is the next ANALYZE allowed? | `yb_stat_auto_analyze()` (`mutations`, `last_analyze_info` cooldown history). Cluster-wide. |
-| Did ANALYZE come from Auto Analyze or from a session `ANALYZE`, and on which node? | `gv$pg_stat_user_tables` (`last_autoanalyze` / `autoanalyze_count` vs `last_analyze` / `analyze_count`, `server_uuid`). Local `pg_stat_user_tables` if you already know the node. |
-
-`n_mod_since_analyze` in the PostgreSQL views is not the Auto Analyze mutation counter. Use the `mutations` column of `yb_stat_auto_analyze()` for that.
 
 ## Limitations
 
