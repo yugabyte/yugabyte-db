@@ -198,7 +198,7 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
       DataOutputStream out = new DataOutputStream(socket.getOutputStream());
       DataInputStream in = new DataInputStream(socket.getInputStream());
 
-      out.write(buildStartupMessage(user, "yugabyte"));
+      out.write(buildStartupMessage(user, "yugabyte", new HashMap<>()));
       out.flush();
 
       // Read until AuthenticationOk (authType 0). Deliberately do NOT drain to

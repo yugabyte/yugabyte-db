@@ -13,23 +13,13 @@
 
 package org.yb.ysqlconnmgr;
 
-import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
-import static org.yb.ysqlconnmgr.PgWireProtocol.BE_ERROR_RESPONSE;
-import static org.yb.ysqlconnmgr.PgWireProtocol.buildStartupMessage;
-import static org.yb.ysqlconnmgr.PgWireProtocol.readMessage;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.Test;
@@ -116,26 +106,8 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
    */
   @Test
   public void testRejectsRawConnectionManagerStartupParameters() throws Exception {
-    InetSocketAddress address = miniCluster.getYsqlConnMgrContactPoints().get(0);
-
     for (String[] parameter : RESERVED_PARAMETERS) {
-      try (Socket socket = new Socket()) {
-        socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-        socket.connect(address);
-
-        DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-        DataInputStream input = new DataInputStream(socket.getInputStream());
-        output.write(buildStartupMessage(
-            "yugabyte", "yugabyte", parameter[0], parameter[1]));
-        output.flush();
-
-        PgWireProtocol.PgMessage response = readMessage(input);
-        String error = new String(response.body, StandardCharsets.UTF_8);
-        assertEquals("Expected reserved startup parameter to be rejected",
-            BE_ERROR_RESPONSE, response.type);
-        assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
-            error.contains("startup parameter \"" + parameter[0] + "\" is reserved"));
-      }
+      assertReservedParameterRejected(parameter[0], parameter[1]);
     }
   }
 
@@ -143,25 +115,16 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
   // parameter for forwarding conn type in client startup message.
   @Test
   public void testCannotOverrideLogicalConnectionType() throws Exception {
-    InetSocketAddress address = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    assertReservedParameterRejected("yb_ycm_internal_logical_conn_type", "E");
+  }
 
-    String[] parameter = {"yb_ycm_internal_logical_conn_type", "E"};
-      try (Socket socket = new Socket()) {
-        socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-        socket.connect(address);
-
-        DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-        DataInputStream input = new DataInputStream(socket.getInputStream());
-        output.write(buildStartupMessage(
-            "yugabyte", "yugabyte", parameter[0], parameter[1]));
-        output.flush();
-
-        PgWireProtocol.PgMessage response = readMessage(input);
-        String error = new String(response.body, StandardCharsets.UTF_8);
-        assertEquals("Expected reserved startup parameter to be rejected",
-            BE_ERROR_RESPONSE, response.type);
-        assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
-            error.contains("startup parameter \"" + parameter[0] + "\" is reserved"));
-      }
-    }
+  private void assertReservedParameterRejected(String name, String value) throws Exception {
+    ErrorResponse error = rawConnBuilder()
+        .socketTimeoutMs(SOCKET_TIMEOUT_MS)
+        .startupParam(name, value)
+        .connectExpectingError();
+    assertTrue("Unexpected error for startup parameter " + name + ": " + error,
+        error.toString().contains(
+            "startup parameter \"" + name + "\" is reserved"));
+  }
 }

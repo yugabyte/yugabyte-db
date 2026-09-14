@@ -19,18 +19,9 @@ import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
-import static org.yb.ysqlconnmgr.PgWireProtocol.*;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Properties;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -44,6 +35,7 @@ import org.yb.pgsql.ConnectionEndpoint;
 public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
 
   private static final int IDLE_TIME = 1;
+  private static final int SOCKET_TIMEOUT_MS = 10000;
   private static final String QUERY_ALL_PREP_STMTS =
     "SELECT name, statement FROM pg_prepared_statements";
   private static final String CREATE_TABLE_QUERY =
@@ -529,159 +521,44 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   // Bind in pipeline 3 must find s1 still live on the backend.
   @Test
   public void testCloseThenReparseSameStmt() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
-    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), NO_WARMUP_FLAGS);
 
-    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
-    LOG.info("Connecting raw socket to Odyssey at " + addr);
-
-    final int SOCKET_TIMEOUT_MS = 10000;
-
-    try (Socket socket = new Socket()) {
-      socket.setTcpNoDelay(true);
-      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-      socket.connect(addr);
-
-      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-      DataInputStream in = new DataInputStream(socket.getInputStream());
-
-      out.write(buildStartupMessage("yugabyte", "yugabyte"));
-      out.flush();
-      readUntilReady(in);
-      LOG.info("Startup complete, connection is ready");
-
+    try (WireConn c = rawConnBuilder().socketTimeoutMs(SOCKET_TIMEOUT_MS).connect()) {
       // Pipeline 1: prime s1 on the backend.
-      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
-      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
-      pipeline.write(buildBind("s1", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 1: P(s1)+B(s1)+E+Sync");
-
-      char[] expected = {
-          BE_PARSE_COMPLETE,
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 1 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 1: " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 1 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 1",
-          0, in.available());
+      c.createPipeline()
+       .parse("s1", "SELECT 1").bind("s1").execute().row("1")
+       .sync()
+       .run();
 
       // Invalidate s1's cached plan via a search_path change, so the
       // ForceParse in pipeline 2 exercises its drop-if-invalid path.
-      out.write(buildQuery("SET search_path TO pg_catalog, public"));
-      out.flush();
-      LOG.info("Sent: SET search_path TO pg_catalog, public");
-      for (;;) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("SET response: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error setting search_path: " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        if (msg.type == BE_READY_FOR_QUERY)
-          break;
-      }
-      assertEquals("Unexpected trailing bytes after SET",
-          0, in.available());
+      c.createPipeline()
+       .query("SET search_path TO pg_catalog, public")
+       .run();
 
       // Pipeline 2: Close(s1) + re-Parse(s1) + Bind(s1) + Execute + Sync.
       // Close is a no-op returning CloseComplete. The re-Parse is forwarded
       // as a ForceParse: the backend drops the invalidated plan and recreates
       // the statement, then acks with YbParseComplete which re-records it in
       // the server hashmap.
-      pipeline.reset();
-      pipeline.write(buildClosePreparedStatement("s1"));
-      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
-      pipeline.write(buildBind("s1", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 2: Close(s1)+P(s1)+B(s1)+E+Sync");
-
-      expected = new char[] {
-          BE_CLOSE_COMPLETE,
-          BE_PARSE_COMPLETE,
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 2 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 2: " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 2 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 2",
-          0, in.available());
+      c.createPipeline()
+       .closeStmt("s1")
+       .parse("s1", "SELECT 1").bind("s1").execute().row("1")
+       .sync()
+       .run();
 
       // Pipeline 3: Bind(s1) + Execute + Sync.
       // s1 must still be live on the backend: the Close in pipeline 2 was a
       // no-op and the re-Parse's ack re-recorded it in the server hashmap.
-      pipeline.reset();
-      pipeline.write(buildBind("s1", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 3: B(s1)+E+Sync");
-
-      expected = new char[] {
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 3 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 3 (s1 not live after no-op "
-              + "Close): " + new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 3 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 3",
-          0, in.available());
+      c.createPipeline()
+       .bind("s1").execute().row("1")
+       .sync()
+       .run();
 
       // Invalidate s1's cached plan again before pipeline 4.
-      out.write(buildQuery("SET search_path TO public, pg_catalog"));
-      out.flush();
-      LOG.info("Sent: SET search_path TO public, pg_catalog (pre-pipeline 4)");
-      for (;;) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("SET response (pre-p4): " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error setting search_path before pipeline 4: " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        if (msg.type == BE_READY_FOR_QUERY)
-          break;
-      }
-      assertEquals("Unexpected trailing bytes after SET (pre-pipeline 4)",
-          0, in.available());
+      c.createPipeline()
+       .query("SET search_path TO public, pg_catalog")
+       .run();
 
       // Pipeline 4: Close(s1) + Parse(bad SQL) + Parse(s1) + Sync.
       // Close(s1): no-op, backend sends CloseComplete.
@@ -689,67 +566,18 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       //                   are discarded by the backend until Sync. The discarded
       //                   Parse(s1) never acks, so the server hashmap needs no
       //                   reconciliation.
-      // Expected wire responses: CloseComplete, ErrorResponse, ReadyForQuery.
-      pipeline.reset();
-      pipeline.write(buildClosePreparedStatement("s1"));
-      pipeline.write(buildParse("bad_stmt", "THIS IS NOT VALID SQL $$$$", new int[0]));
-      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 4: Close(s1)+P(bad)+P(s1)+Sync");
-
-      expected = new char[] {
-          BE_CLOSE_COMPLETE,
-          BE_ERROR_RESPONSE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 4 [" + i + "]: " + msg);
-        if (i != 1 && msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 4 at position " + i + ": " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 4 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 4",
-          0, in.available());
+      c.createPipeline()
+       .closeStmt("s1")
+       .parse("bad_stmt", "THIS IS NOT VALID SQL $$$$").expectError("syntax error")
+       .parse("s1", "SELECT 1")
+       .sync()
+       .run();
 
       // Pipeline 5: Parse(s1) + Bind(s1) + Execute + Sync.
-      pipeline.reset();
-      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
-      pipeline.write(buildBind("s1", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 5: P(s1)+B(s1)+E+Sync");
-
-      expected = new char[] {
-          BE_PARSE_COMPLETE,
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 5 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 5 (s1 was not re-parsed after "
-              + "the failed pipeline): " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 5 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 5",
-          0, in.available());
-
-      out.write(buildTerminate());
-      out.flush();
+      c.createPipeline()
+       .parse("s1", "SELECT 1").bind("s1").execute().row("1")
+       .sync()
+       .run();
     }
   }
 
@@ -765,149 +593,37 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   //   Pipeline 3 : Bind(s1) + Execute + Sync
   @Test
   public void testDeallocateAllThenReparseSameStmt() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
-    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), NO_WARMUP_FLAGS);
 
-    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
-    LOG.info("Connecting raw socket to Odyssey at " + addr);
-
-    final int SOCKET_TIMEOUT_MS = 10000;
-
-    try (Socket socket = new Socket()) {
-      socket.setTcpNoDelay(true);
-      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-      socket.connect(addr);
-
-      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-      DataInputStream in = new DataInputStream(socket.getInputStream());
-
-      out.write(buildStartupMessage("yugabyte", "yugabyte"));
-      out.flush();
-      readUntilReady(in);
-      LOG.info("Startup complete, connection is ready");
-
+    try (WireConn c = rawConnBuilder().socketTimeoutMs(SOCKET_TIMEOUT_MS).connect()) {
       // Pipeline 1: prime s1 on the backend.
-      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
-      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
-      pipeline.write(buildBind("s1", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 1: P(s1)+B(s1)+E+Sync");
-
-      char[] expected = {
-          BE_PARSE_COMPLETE,
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 1 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 1: " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 1 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 1",
-          0, in.available());
+      c.createPipeline()
+       .parse("s1", "SELECT 1").bind("s1").execute().row("1")
+       .sync()
+       .run();
 
       // Invalidate s1's cached plan so that the re-Parse in pipeline 2
       // exercises ForceParse's drop-if-invalid path (DEALLOCATE ALL itself
       // retains the statement).
-      out.write(buildQuery("SET search_path TO pg_catalog, public"));
-      out.flush();
-      LOG.info("Sent: SET search_path TO pg_catalog, public");
-      for (;;) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("SET response: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error setting search_path: " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        if (msg.type == BE_READY_FOR_QUERY)
-          break;
-      }
-      assertEquals("Unexpected trailing bytes after SET",
-          0, in.available());
+      c.createPipeline()
+       .query("SET search_path TO pg_catalog, public")
+       .run();
 
       // Pipeline 2: DEALLOCATE ALL (via extended protocol) followed immediately
       // by a re-Parse and re-Bind+Execute of s1 in the same pipeline.
-      pipeline.reset();
-      pipeline.write(buildParse("d", "DEALLOCATE ALL", new int[0]));
-      pipeline.write(buildBind("d", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
-      pipeline.write(buildBind("s1", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 2: P(d)+B(d)+E+P(s1)+B(s1)+E+Sync");
-
-      expected = new char[] {
-          BE_PARSE_COMPLETE,
-          BE_BIND_COMPLETE,
-          BE_COMMAND_COMPLETE,
-          BE_PARSE_COMPLETE,
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 2 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 2 (re-parse of s1 after "
-              + "DEALLOCATE ALL failed): " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 2 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 2",
-          0, in.available());
+      c.createPipeline()
+       .parse("d", "DEALLOCATE ALL").bind("d").execute().rowCount(0)
+       .parse("s1", "SELECT 1").bind("s1").execute().row("1")
+       .sync()
+       .run();
 
       // Pipeline 3: Bind(s1) + Execute + Sync.
       // s1 was re-created in pipeline 2, so a bare Bind must succeed without
       // any prior Parse in this pipeline.
-      pipeline.reset();
-      pipeline.write(buildBind("s1", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 3: B(s1)+E+Sync");
-
-      expected = new char[] {
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        PgMessage msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 3 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 3 (s1 not live after "
-              + "DEALLOCATE ALL + re-parse): " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 3 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 3",
-          0, in.available());
-
-      out.write(buildTerminate());
-      out.flush();
+      c.createPipeline()
+       .bind("s1").execute().row("1")
+       .sync()
+       .run();
     }
   }
 
@@ -981,105 +697,28 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   //   Pipeline 3: Parse(s2, "SELECT 1") + Bind(s2) + Execute + Sync
   @Test
   public void testBindAfterFailedParse() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
-    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), NO_WARMUP_FLAGS);
 
-    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
-    LOG.info("Connecting raw socket to Odyssey at " + addr);
-
-    final int SOCKET_TIMEOUT_MS = 10000;
-
-    try (Socket socket = new Socket()) {
-      socket.setTcpNoDelay(true);
-      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-      socket.connect(addr);
-
-      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-      DataInputStream in = new DataInputStream(socket.getInputStream());
-
-      out.write(buildStartupMessage("yugabyte", "yugabyte"));
-      out.flush();
-      readUntilReady(in);
-      LOG.info("Startup complete, connection is ready");
-
+    try (WireConn c = rawConnBuilder().socketTimeoutMs(SOCKET_TIMEOUT_MS).connect()) {
       // Pipeline 1: the only Parse of s2 fails.
-      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
-      pipeline.write(buildParse("s2", "THIS IS NOT VALID SQL $$$$", new int[0]));
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 1: P(s2, bad SQL)+Sync");
-
-      PgMessage msg = readMessageSkipNotice(in);
-      LOG.info("pipeline 1 [0]: " + msg);
-      assertEquals("Expected an error for the bad Parse",
-          BE_ERROR_RESPONSE, msg.type);
-      String errorBody = new String(msg.body, StandardCharsets.UTF_8);
-      assertTrue("Expected a syntax error, got: " + errorBody,
-          errorBody.contains("syntax error"));
-      msg = readMessageSkipNotice(in);
-      LOG.info("pipeline 1 [1]: " + msg);
-      assertEquals(BE_READY_FOR_QUERY, msg.type);
-      assertEquals("Unexpected trailing bytes after pipeline 1",
-          0, in.available());
+      c.createPipeline()
+       .parse("s2", "THIS IS NOT VALID SQL $$$$").expectError("syntax error")
+       .sync()
+       .run();
 
       // Pipeline 2: bare Bind of s2. Conn mgr redeploys the (bad) statement
       // and the resulting parse error is surfaced to the client.
-      pipeline.reset();
-      pipeline.write(buildBind("s2", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 2: B(s2)+E+Sync");
-
-      msg = readMessageSkipNotice(in);
-      LOG.info("pipeline 2 [0]: " + msg);
-      assertEquals("Expected an error for the Bind of a failed Parse",
-          BE_ERROR_RESPONSE, msg.type);
-      errorBody = new String(msg.body, StandardCharsets.UTF_8);
-      assertTrue("Expected the redeploy to surface the syntax error, got: " +
-          errorBody, errorBody.contains("syntax error"));
-      msg = readMessageSkipNotice(in);
-      LOG.info("pipeline 2 [1]: " + msg);
-      assertEquals(BE_READY_FOR_QUERY, msg.type);
-      assertEquals("Unexpected trailing bytes after pipeline 2",
-          0, in.available());
+      c.createPipeline()
+       .bind("s2").expectError("syntax error")
+       .execute()
+       .sync()
+       .run();
 
       // Pipeline 3: the name is reusable with a valid query.
-      pipeline.reset();
-      pipeline.write(buildParse("s2", "SELECT 1", new int[0]));
-      pipeline.write(buildBind("s2", new String[0]));
-      pipeline.write(buildExecute());
-      pipeline.write(buildSync());
-      out.write(pipeline.toByteArray());
-      out.flush();
-      LOG.info("Sent pipeline 3: P(s2)+B(s2)+E+Sync");
-
-      char[] expected = {
-          BE_PARSE_COMPLETE,
-          BE_BIND_COMPLETE,
-          BE_DATA_ROW,
-          BE_COMMAND_COMPLETE,
-          BE_READY_FOR_QUERY,
-      };
-      for (int i = 0; i < expected.length; i++) {
-        msg = readMessageSkipNotice(in);
-        LOG.info("pipeline 3 [" + i + "]: " + msg);
-        if (msg.type == BE_ERROR_RESPONSE) {
-          fail("Unexpected error in pipeline 3: " +
-              new String(msg.body, StandardCharsets.UTF_8));
-        }
-        assertEquals("pipeline 3 type mismatch at " + i,
-            expected[i], msg.type);
-      }
-      assertEquals("Unexpected trailing bytes after pipeline 3",
-          0, in.available());
-
-      out.write(buildTerminate());
-      out.flush();
+      c.createPipeline()
+       .parse("s2", "SELECT 1").bind("s2").execute().row("1")
+       .sync()
+       .run();
     }
   }
 }
