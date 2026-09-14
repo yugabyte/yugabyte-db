@@ -170,6 +170,7 @@ DEFINE_test_flag(bool, pause_get_lock_status, false,
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_int32(db_history_retention_pin_min_txn_age_sec);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
@@ -441,7 +442,10 @@ class LockablePgClientSession {
   Status StartExchange(const std::string& instance_id, YBThreadPool& thread_pool) {
     shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
         instance_id, id(), Create::kTrue));
-    session_.SetupSharedObjectLocking(shared_mem_manager_.object_locking_data());
+    session_.SetupSharedData({
+        .object_lock = shared_mem_manager_.object_locking_data(),
+        .oldest_read_point_serial_no = *shared_mem_manager_.OldestReadPointSerialNoPtr(),
+    });
     exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
         shared_mem_manager_.exchange(), shared_mem_manager_.session_id(),
         [this](size_t size) {
@@ -504,6 +508,26 @@ class LockablePgClientSession {
 
   CoarseTimePoint expiration() const {
     return expiration_.load(std::memory_order_acquire);
+  }
+
+  // Returns the read-time pin this session holds, used by GetDatabasePins.
+  //
+  // First performs an atomic check if there is a non zero serial number published by PG's snapshot
+  // manager. If not, immediately reset the pins and return an invalid pin to prevent idle
+  // transactions from holding off compaction.
+  // Otherwise, attempt to (best-effort) refresh the pin from the PG serial number published in
+  // SHMEM. Since GetDatabasePins is called from the heartbeat, we cannot afford to busy wait for
+  // the session lock.
+  // The perform RPC guarantees to refresh the pin from the PG serial number, so the pin will be
+  // updated within a reasonable window as long as the transaction is active.
+  PgClientSessionDbHistoryRetentionPin GetDbHistoryRetentionPin() {
+    if (!session_.ClearNonPublishedOldestReadPointSerial()) {
+      std::unique_lock lock(mutex_, std::try_to_lock);
+      if (lock.owns_lock()) {
+        session_.RefreshHistoryRetentionPinFromSharedMemory();
+      }
+    }
+    return session_.GetDbHistoryRetentionPin();
   }
 
   void SetExpiration(CoarseTimePoint value) {
@@ -942,6 +966,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 #ifdef __linux__
             .cgroup_manager = tablet_server_.cgroup_manager(),
 #endif
+            .TEST_mock_service = nullptr,
         },
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
@@ -1026,7 +1051,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, messenger_, client(),
         session_context_, session_id, req.pid(), lease_epoch(),
-        tablet_server_.ts_local_lock_manager());
+        tablet_server_.ts_local_lock_manager(), tablet_server_.AllocateObjectLockSharedState());
     resp->set_session_id(session_id);
     if (const auto v = tablet_server_.cluster_config_version(); req.cluster_config_version() < v) {
       auto &cluster_config_pb = *resp->mutable_cluster_config();
@@ -3111,8 +3136,38 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return sessions_.size();
   }
 
+  std::unordered_map<PgOid, HybridTime> GetDatabasePins() {
+    const uint64_t min_txn_age_micros =
+        static_cast<uint64_t>(FLAGS_db_history_retention_pin_min_txn_age_sec) * 1000000;
+    const auto now_micros = static_cast<uint64_t>(GetCurrentTimeMicros());
+
+    std::unordered_map<PgOid, HybridTime> result;
+    // Per-session pin HT is an atomic; we best-effort refresh it from the PG-published SHMEM
+    // serial under a session try_lock. The snapshot may be slightly stale if a session is busy.
+    SharedLock lock(mutex_);
+    for (const auto& session_info : sessions_) {
+      const auto pin = session_info->session().GetDbHistoryRetentionPin();
+      if (!pin.read_time.is_valid() || pin.db_oid == kPgInvalidOid) {
+        continue;
+      }
+      const uint64_t pin_micros = pin.read_time.GetPhysicalValueMicros();
+      if (now_micros <= pin_micros || now_micros - pin_micros < min_txn_age_micros) {
+        continue;
+      }
+      auto [it, inserted] = result.emplace(pin.db_oid, pin.read_time);
+      if (!inserted) {
+        it->second.MakeAtMost(pin.read_time);
+      }
+    }
+    return result;
+  }
+
   size_t TEST_ExchangeThreadPoolWorkersCreated() {
     return exchange_thread_pool_ ? exchange_thread_pool_->TEST_NumWorkersCreated() : 0;
+  }
+
+  void TEST_SetMockService(PgClientServiceMockImpl* mock) {
+    session_context_.TEST_mock_service = mock;
   }
 
  private:
@@ -3389,10 +3444,18 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
 }
 
+std::unordered_map<PgOid, HybridTime> PgClientServiceImpl::GetDatabasePins() {
+  return impl_->GetDatabasePins();
+}
+
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
 
 size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
   return impl_->TEST_ExchangeThreadPoolWorkersCreated();
+}
+
+void PgClientServiceImpl::TEST_SetMockService(PgClientServiceMockImpl* mock) {
+  impl_->TEST_SetMockService(mock);
 }
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
@@ -3426,6 +3489,15 @@ BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, BOOST_PP_NIL, YB_PG_CLIE
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, (LW), YB_PG_CLIENT_ASYNC_LW_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DEFINE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
+CoarseTimePoint PgClientMockCallContext::GetClientDeadline() const {
+  return rpc ? rpc->GetClientDeadline() : deadline;
+}
+
+void PgClientMockCallContext::CloseConnection() {
+  CHECK(rpc) << "CloseConnection is only supported for network RPCs";
+  rpc->CloseConnection();
+}
+
 PgClientServiceMockImpl::PgClientServiceMockImpl(
     const scoped_refptr<MetricEntity>& entity, PgClientServiceIf* impl)
     : PgClientServiceIf(entity), impl_(impl) {}
@@ -3453,7 +3525,7 @@ void PgClientServiceMockImpl::UnsetMock(const std::string& method) {
 }
 
 Result<bool> PgClientServiceMockImpl::DispatchMock(
-    const std::string& method, const void* req, void* resp, rpc::RpcContext* context) {
+    const std::string& method, const void* req, void* resp, PgClientMockCallContext* context) {
   SharedFunctor mock;
   {
     SharedLock lock(mutex_);
@@ -3463,9 +3535,10 @@ Result<bool> PgClientServiceMockImpl::DispatchMock(
     }
   }
 
-  if (!mock) {
+  if (PREDICT_TRUE((!mock))) {
     return false;
   }
+
   RETURN_NOT_OK((*mock)(req, resp, context));
   return true;
 }
@@ -3474,7 +3547,17 @@ Result<bool> PgClientServiceMockImpl::DispatchMock(
   void PgClientServiceMockImpl::method( \
       const YB_PG_CLIENT_METHOD_ARG(data, method, Request)* req, \
       YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, rpc::RpcContext context) { \
-    auto result = DispatchMock(BOOST_PP_STRINGIZE(method), req, resp, &context); \
+    PgClientMockCallContext mock_ctx{ \
+        .deadline = context.GetClientDeadline(), \
+        .rpc = &context, \
+    }; \
+    auto before_result = DispatchMock( \
+        BOOST_PP_STRINGIZE(BOOST_PP_CAT(method, Before)), req, resp, &mock_ctx); \
+    if (!before_result.ok()) { \
+      Respond(ResultToStatus(before_result), resp, &context); \
+      return; \
+    } \
+    auto result = DispatchMock(BOOST_PP_STRINGIZE(method), req, resp, &mock_ctx); \
     if (!result.ok() || *result) { \
       Respond(ResultToStatus(result), resp, &context); \
       return; \
@@ -3483,9 +3566,10 @@ Result<bool> PgClientServiceMockImpl::DispatchMock(
   }
 
 template <class Req, class Resp>
-auto MakeSharedFunctor(const std::function<Status(const Req*, Resp*, rpc::RpcContext*)>& func) {
+auto MakeSharedFunctor(
+    const std::function<Status(const Req*, Resp*, PgClientMockCallContext*)>& func) {
   return std::make_shared<PgClientServiceMockImpl::Functor>(
-      [func](const void* req, void* resp, rpc::RpcContext* context) {
+      [func](const void* req, void* resp, PgClientMockCallContext* context) {
         return func(pointer_cast<const Req*>(req), pointer_cast<Resp*>(resp), context);
       });
 }
@@ -3495,7 +3579,7 @@ auto MakeSharedFunctor(const std::function<Status(const Req*, Resp*, rpc::RpcCon
       const std::function<Status( \
           const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
           YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, \
-          rpc::RpcContext*)>& mock) { \
+          PgClientMockCallContext*)>& mock) { \
     return SetMock(BOOST_PP_STRINGIZE(method), MakeSharedFunctor(mock)); \
   }
 
@@ -3505,5 +3589,33 @@ BOOST_PP_SEQ_FOR_EACH(
     YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
 BOOST_PP_SEQ_FOR_EACH(
     YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
+
+#define YB_PG_CLIENT_MOCK_BEFORE_SETTER_DEFINE(r, data, method) \
+  PgClientServiceMockImpl::Handle BOOST_PP_CAT(BOOST_PP_CAT( \
+      PgClientServiceMockImpl::Mock, method), Before)( \
+      const std::function<Status( \
+          const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
+          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, PgClientMockCallContext*)>& before) { \
+    return SetMock( \
+        BOOST_PP_STRINGIZE(BOOST_PP_CAT(method, Before)), MakeSharedFunctor(before)); \
+  }
+
+BOOST_PP_SEQ_FOR_EACH(
+    YB_PG_CLIENT_MOCK_BEFORE_SETTER_DEFINE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
+BOOST_PP_SEQ_FOR_EACH(
+    YB_PG_CLIENT_MOCK_BEFORE_SETTER_DEFINE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
+
+#define YB_PG_CLIENT_MOCK_AFTER_SETTER_DEFINE(r, data, method) \
+  PgClientServiceMockImpl::Handle BOOST_PP_CAT(BOOST_PP_CAT( \
+      PgClientServiceMockImpl::Mock, method), After)( \
+      const std::function<Status( \
+          const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
+          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, PgClientMockCallContext*)>& after) { \
+    return SetMock( \
+        BOOST_PP_STRINGIZE(BOOST_PP_CAT(method, After)), MakeSharedFunctor(after)); \
+  }
+
+BOOST_PP_SEQ_FOR_EACH(
+    YB_PG_CLIENT_MOCK_AFTER_SETTER_DEFINE, (LW), YB_PG_CLIENT_AFTER_MOCKABLE_LW_METHODS);
 
 }  // namespace yb::tserver

@@ -58,6 +58,11 @@ class OciCreateInstancesMethod(CreateInstancesMethod):
             "--memory_in_gbs", type=float, default=None,
             help="Memory in GBs for Flex shapes."
         )
+        self.parser.add_argument(
+            "--instance_template",
+            default=None,
+            help="OCI Instance Configuration OCID for launched instances."
+        )
 
     def run_create_instance(self, args):
         if args.ssh_user is not None:

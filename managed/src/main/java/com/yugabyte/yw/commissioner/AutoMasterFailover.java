@@ -44,7 +44,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
 import play.libs.Json;
 
@@ -189,7 +189,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     }
     // Before performing any advanced checks, ensure that the YBA view of masters is the same as the
     // of the db to be conservative.
-    try (YBClient ybClient = ybService.getUniverseClient(universe)) {
+    try (YBClientApi ybClient = ybService.getUniverseClient(universe)) {
       checkClusterConsistency(universe, ybClient);
       Map<String, Long> maybeFailedMasters = getMaybeFailedMastersForUniverse(universe, ybClient);
       if (MapUtils.isEmpty(maybeFailedMasters)) {
@@ -232,7 +232,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     }
   }
 
-  private void checkClusterConsistency(Universe universe, YBClient ybClient) {
+  private void checkClusterConsistency(Universe universe, YBClientApi ybClient) {
     try {
       List<String> errors =
           CheckClusterConsistency.checkCurrentServers(
@@ -271,7 +271,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
    * @return map of node name to current time lag for the soft check that has failed.
    */
   @VisibleForTesting
-  Map<String, Long> getMaybeFailedMastersForUniverse(Universe universe, YBClient ybClient) {
+  Map<String, Long> getMaybeFailedMastersForUniverse(Universe universe, YBClientApi ybClient) {
     Long followerLagSoftThreshold =
         confGetter
             .getConfForScope(universe, UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold)
@@ -591,7 +591,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
    * @param ybClient the yb client to the DB.
    * @return map of master uuid to heartbeat delay, excluding the master leader leader.
    */
-  private Map<String, Long> getMasterHeartbeatDelays(YBClient ybClient) {
+  private Map<String, Long> getMasterHeartbeatDelays(YBClientApi ybClient) {
     try {
       GetMasterHeartbeatDelaysResponse response = ybClient.getMasterHeartbeatDelays();
       if (response.hasError()) {
@@ -609,7 +609,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     }
   }
 
-  private List<PeerInfo> getMasters(YBClient ybClient) {
+  private List<PeerInfo> getMasters(YBClientApi ybClient) {
     try {
       return ybClient.listMasterRaftPeers().getPeersList().stream()
           .filter(p -> p.getMemberType() == PeerInfo.MemberType.VOTER)

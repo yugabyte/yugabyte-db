@@ -46,6 +46,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/abort_source.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -527,6 +528,11 @@ Status DocRowwiseIterator::InitIterator(
 
   DCHECK(!db_iter_) << "InitIterator should be called only once";
 
+  IntentAwareIteratorFlags flags;
+  flags.Set(IntentAwareIteratorFlag::kFastBackwardScan, use_fast_backward_scan_);
+  flags.Set(
+      IntentAwareIteratorFlag::kAvoidUselessNextInsteadOfSeek,
+      avoid_useless_next_instead_of_seek.get());
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       bloom_filter,
@@ -535,8 +541,7 @@ Status DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
-      FastBackwardScan{use_fast_backward_scan_},
-      avoid_useless_next_instead_of_seek);
+      flags);
   InitResult();
 
   const auto scan_choices_has_upperbound =
@@ -697,7 +702,9 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     prev_doc_found_ = DocReaderResult::kNotFound;
   }
 
-  RETURN_NOT_OK(pending_op_ref_.GetAbortedStatus());
+  if (doc_db_.abort_source) {
+    RETURN_NOT_OK(doc_db_.abort_source->AbortStatus());
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
     const auto column_names = schema().column_names();

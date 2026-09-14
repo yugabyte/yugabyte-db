@@ -354,3 +354,70 @@ CREATE MATERIALIZED VIEW mv_empty AS SELECT * FROM base_empty;
 CREATE UNIQUE INDEX ON mv_empty(t);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empty;
 SELECT * FROM mv_empty;
+
+-- Concurrent refresh with a json column (no equality operator).  Deletes must
+-- be matched by unique-index keys, not whole-row equality.
+DROP MATERIALIZED VIEW IF EXISTS mv_json;
+DROP TABLE IF EXISTS t_json;
+
+CREATE TABLE t_json (
+  id text PRIMARY KEY,
+  name text,
+  info json,
+  age int
+);
+INSERT INTO t_json (id, name, info, age) VALUES
+  ('user-1', 'a', '{"x": 1}', 10),
+  ('user-2', 'b', '{"x": 2}', 20),
+  ('user-3', 'c', '{"x": 3}', 30);
+
+CREATE MATERIALIZED VIEW mv_json AS
+  SELECT * FROM t_json
+  WITH DATA;
+
+CREATE UNIQUE INDEX uidx_mv_json_id ON mv_json (id);
+
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_json;
+
+DELETE FROM t_json WHERE id = 'user-2';
+
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_json;
+SELECT id, name, info::text, age FROM mv_json ORDER BY id;
+DROP TABLE t_json CASCADE;
+
+-- Concurrent refresh with nullable unique-index keys.  Non-NULL keys use the
+-- fast IN path; NULL keys need a separate NULL-safe delete.
+DROP MATERIALIZED VIEW IF EXISTS mv_nullkey;
+DROP TABLE IF EXISTS t_nullkey;
+
+CREATE TABLE t_nullkey (id int, val text);
+INSERT INTO t_nullkey VALUES (1, 'a'), (NULL, 'b'), (2, 'c');
+CREATE MATERIALIZED VIEW mv_nullkey AS SELECT * FROM t_nullkey WITH DATA;
+CREATE UNIQUE INDEX uidx_mv_nullkey_id ON mv_nullkey (id);
+
+UPDATE t_nullkey SET val = 'b2' WHERE id IS NULL;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_nullkey;
+SELECT id, val FROM mv_nullkey ORDER BY id NULLS LAST, val;
+
+DELETE FROM t_nullkey WHERE id IS NULL;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_nullkey;
+SELECT id, val FROM mv_nullkey ORDER BY id NULLS LAST, val;
+DROP TABLE t_nullkey CASCADE;
+
+-- Several rows with NULL in *every* unique-index key column but not null
+-- values in the remaining.
+DROP MATERIALIZED VIEW IF EXISTS mv_nullkeys_dup;
+DROP TABLE IF EXISTS t_nullkeys_dup;
+
+CREATE TABLE t_nullkeys_dup (col1 int, col2 int, col3 int, col4 int);
+INSERT INTO t_nullkeys_dup VALUES (NULL, NULL, 1, 2), (NULL, NULL, 1, 3);
+CREATE MATERIALIZED VIEW mv_nullkeys_dup AS SELECT * FROM t_nullkeys_dup WITH DATA;
+CREATE UNIQUE INDEX uidx_mv_nullkeys_dup ON mv_nullkeys_dup (col1, col2);
+SELECT col1, col2, col3, col4 FROM mv_nullkeys_dup
+  ORDER BY col1 NULLS FIRST, col2 NULLS FIRST, col3, col4;
+
+DELETE FROM t_nullkeys_dup WHERE col4 = 2;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_nullkeys_dup;
+SELECT col1, col2, col3, col4 FROM mv_nullkeys_dup
+  ORDER BY col1 NULLS FIRST, col2 NULLS FIRST, col3, col4;
+DROP TABLE t_nullkeys_dup CASCADE;

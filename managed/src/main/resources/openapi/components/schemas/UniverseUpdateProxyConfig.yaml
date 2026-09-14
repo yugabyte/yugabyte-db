@@ -15,7 +15,6 @@ properties:
       type: object
       required:
         - uuid
-        - networking_spec
       properties:
         uuid:
           description: The system generated cluster uuid to update. This can be fetched from ClusterInfo.
@@ -23,5 +22,12 @@ properties:
           format: uuid
           example: 19ebde21-d537-47dc-8fab-3edc243c6f68
         networking_spec:
+          description: 'Deprecated: use provider_proxy_specs for multicloud clusters. Proxy settings for a single-provider cluster.'
           $ref: "./UpdateProxyConfigSpec.yaml"
+          deprecated: true
+        provider_proxy_specs:
+          description: Proxy settings per provider for multicloud clusters.
+          type: array
+          items:
+            $ref: "./PerProviderUpdateProxyConfigSpec.yaml"
     minItems: 1

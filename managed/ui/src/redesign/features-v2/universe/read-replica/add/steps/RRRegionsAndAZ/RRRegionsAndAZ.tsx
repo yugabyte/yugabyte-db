@@ -4,12 +4,14 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import { useForm, FormProvider, useFieldArray, useWatch } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation, Trans } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { isEqual, omit } from 'lodash';
 import { IconButton } from '@material-ui/core';
 import CloseRounded from '@app/redesign/assets/close-large.svg';
 import {
@@ -48,12 +50,13 @@ import { RRRegionCard } from './RRRegionCard';
 import { NodeInstanceDetails } from '@app/redesign/features-v2/universe/geo-partition/add/NodeInstanceDetails';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 import { useSubmitReadReplica } from '../../useSubmitReadReplica';
+import { useYBToast } from '@app/redesign/features-v2/universe/create-universe/helpers/ToastUtils';
 
 const { Box, styled, Typography } = mui;
 
 const StyledOuterPanel = styled('div')(({ theme }) => ({
-  width: '100%',
-  maxWidth: '720px',
+  width: '718px',
+  maxWidth: '718px',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[200]}`,
   overflow: 'hidden',
@@ -63,9 +66,7 @@ const StyledOuterPanel = styled('div')(({ theme }) => ({
 const StyledPanelHeader = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
-  height: '64px',
-  padding: `${theme.spacing(1.25)} ${theme.spacing(3)}`,
-  borderBottom: `1px solid ${theme.palette.grey[200]}`,
+  padding: theme.spacing(3),
   backgroundColor: theme.palette.common.white
 }));
 
@@ -87,7 +88,7 @@ const StyledBanner = styled(Box)(({ theme }) => ({
 
 type MapPin = { key: string; lat: number; lng: number; name: string };
 
-function getPrimaryMapPins(
+export function getPrimaryMapPins(
   universeData: UniverseRespResponse | undefined,
   providerRegions: Region[]
 ): MapPin[] {
@@ -228,6 +229,9 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
   const { t: tc } = useTranslation('translation', { keyPrefix: 'common' });
 
   const [bannerVisible, setBannerVisible] = useState(true);
+  const toast = useYBToast();
+  // Baseline is spliced on region remove; keep the open-time snapshot for change detection.
+  const initialPlacementRef = useRef(regionsAndAZBaseline);
 
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
@@ -283,13 +287,22 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     () => ({
       onNext: () => {
         return handleSubmit((data) => {
+          if (
+            isEditPlacementOnly &&
+            isEqual(
+              data.regions.map((r) => omit(r, 'isNew')),
+              initialPlacementRef.current?.regions.map((r) => omit(r, 'isNew'))
+            )
+          ) {
+            toast.warn(t('toast.noPlacementChanges'));
+            return;
+          }
           saveRegionsAndAZSettings(data);
           if (isEditPlacementOnly) {
             // Placement-only edit: submit from this page using fresh form data (context update is async).
             return submit({ ...rrContext, regionsAndAZ: data }, regionsList as Region[]);
           }
           moveToNextPage();
-          return undefined;
         })();
       },
       onPrev: () => {
@@ -304,7 +317,9 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
       isEditPlacementOnly,
       submit,
       rrContext,
-      regionsList
+      regionsList,
+      toast,
+      t
     ]
   );
 
@@ -345,8 +360,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '24px',
-                pt: 1,
+                gap: '16px',
+                pt: 0,
                 px: 3,
                 pb: 3
               }}
@@ -426,7 +441,13 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                   disabled={
                     !regionsList.length || regionFields.length >= (regionsList as Region[]).length
                   }
-                  onClick={() => appendRegion(getEmptyRRPlacementRegion({ isNew: true }))}
+                  onClick={() =>
+                    appendRegion(
+                      getEmptyRRPlacementRegion(
+                        isEditPlacementOnly ? { isNew: true } : undefined
+                      )
+                    )
+                  }
                   dataTestId="rr-add-region"
                 >
                   {t('addRegion')}

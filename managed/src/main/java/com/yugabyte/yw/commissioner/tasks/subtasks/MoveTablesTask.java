@@ -31,7 +31,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 /**
@@ -200,7 +200,7 @@ public class MoveTablesTask extends BaseTablespacesTask {
   }
 
   private void waitForLoadBalance(Universe universe) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       if (!client.waitForLoadBalance(Integer.MAX_VALUE, 0)) {
         throw new IllegalStateException("Failed to wait for load balance");
       }

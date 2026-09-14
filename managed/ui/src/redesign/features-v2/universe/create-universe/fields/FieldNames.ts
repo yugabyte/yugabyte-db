@@ -70,3 +70,4 @@ export const AZ_OVERRIDES_FIELD = 'azOverrides';
 export const K8S_AZ_OVERRIDES_FIELD = 'k8sAzOverrides';
 
 export const USER_TAGS_FIELD = 'instanceTags';
+export const AWS_ARN_STRING_FIELD = 'awsArnString';

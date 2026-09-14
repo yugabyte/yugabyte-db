@@ -29,7 +29,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.PromoteAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.MasterErrorPB.Code;
@@ -38,7 +38,7 @@ import org.yb.master.MasterTypes.MasterErrorPB.Code;
 public class PromoteAutoFlagsTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private NodeDetails node;
 
   @Before
@@ -53,7 +53,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     details.nodeDetailsSet.add(node);
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     try {
       // TODO: set non-zero sleep time by mocking parent task.
       factory.globalRuntimeConf().setValue("yb.upgrade.auto_flag_update_sleep_time_ms", "0");

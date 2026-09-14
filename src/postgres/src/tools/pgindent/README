@@ -5,32 +5,47 @@ Yugabyte makes use of pgindent, but due to differences, the workflow is
 different.
 
 - Yugabyte does not have a buildfarm that generates typedefs.list.  Therefore,
-  the types have to be added somewhat manually.
+  the types have to be added somewhat manually.  Failing to do this could
+  result in yb_pgindent misformatting declarations of types.
   - Add Yugabyte-added type names to yb_typedefs.list.  These should have "yb"
-    (case insensitive) present in the name.  Here is one way to collect these
-    items (assuming ~/code/postgres has upstream postgres code checked out at
-    the corresponding commit):
+    (case insensitive) present in the name.  Here is one way to find entries to
+    add or remove, run from src/postgres.  It needs a clone of upstream
+    postgres at ~/code/postgres but does not care what that clone has checked
+    out, as long as it contains the commit recorded in
+    upstream_repositories.csv:
+
+        pin=$(awk -F, '$1 == "src/postgres" {print $4}' ../lint/upstream_repositories.csv)
+        upstream=$(mktemp -d)
+        git -C ~/code/postgres archive "$pin" | tar -x -C "$upstream"
 
         diff \
-          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout | awk '{print$1}' | uniq) \
-          <(cd ~/code/postgres; git ls-files | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout | awk ' {print$1}' | uniq) \
-          | grep '<' \
-          | sed 's/< //'
+          <(diff \
+              <(git ls-files ':(exclude)third-party-extensions' . '../yb/yql/pggate/*ybc_*.h' \
+                  | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
+                  | awk '{print $1}' | LC_ALL=C sort -u) \
+              <(find "$upstream" -type f \
+                  | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
+                  | awk '{print $1}' | LC_ALL=C sort -u) \
+            | sed -n 's/^< //p') \
+          <(LC_ALL=C sort -u src/tools/pgindent/yb_typedefs.list)
 
-    ctags can find most type names.  The command above compares the ctags
-    output between Yugabyte code and upstream postgres code and reports the
-    types that are defined in Yugabyte only.  All these should have "yb" (case
-    insensitive) present in them, and it should not be the case that upstream
-    postgres has type names that Yugabyte does not (though this may show up in
-    case there are future upstream PG commit point imports).  See the test plan
-    of commit 6a56ce7bcdeb0478c791efaa322b58c61007fd39 that should serve as a
-    sanity check before proceeding to use pgindent.
+    The inner diff reports the types that YB defines and upstream does not.
+    The outer diff compares those against the list.  Lines marked "<" are types
+    to add, except that a "<" line whose name has no YB marker is a naming
+    defect, so rename the type rather than adding it as is.  Lines marked ">"
+    are entries that ctags cannot see, which should only be the macro-defined
+    cases described below.  Anything else marked ">" names a type that no
+    longer exists.
+
+    Note: the pathspecs are quoted so that git, not the shell, interprets them.
 
     In addition to the types found by the above command, here are a few more
     items that should be added manually:
     - Any Form_foo should be accompanied by FormData_foo.
-    - Any types defined using YB_DEFINE_HANDLE_TYPE should have a corresponding
-      entry.
+    - Any type minted by a handle type macro in ybc_pg_typedefs.h should have a
+      corresponding entry.  There is more than one such macro, so find them
+      with grep -F 'Ybc##name' src/yb/yql/pggate/ybc_pg_typedefs.h and then
+      look for invocations of each.
   - Add further third-party typedefs to yb_thirdparty_typedefs.list.  For
     example, types in hdrhistogram or the standard library.
 - Yugabyte has other files which might have to be exempt from modification by

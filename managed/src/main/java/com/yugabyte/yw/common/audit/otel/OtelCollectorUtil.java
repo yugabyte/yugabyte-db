@@ -10,10 +10,15 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.SimpleServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.apache.commons.collections4.CollectionUtils;
@@ -129,6 +134,73 @@ public class OtelCollectorUtil {
     return config != null && config.isExportActive();
   }
 
+  /**
+   * Whether the OTEL collector sidecar runs in the yb-master pods of a K8s universe. Metrics are
+   * scraped pod-locally and yb-master glog lives in the yb-master pod, so the chart injects the
+   * sidecar there only when metrics export or master log export is active.
+   */
+  public static boolean isOtelSidecarNeededOnK8sMasterPods(TelemetryConfig tc) {
+    if (tc == null) {
+      return false;
+    }
+    return isMetricsExportEnabledInUniverse(tc.getMetricsExportConfig())
+        || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig());
+  }
+
+  /** Enablement check shared by the internal-only diagnostic server-log configs. */
+  public static boolean isSimpleServerLogExportEnabledInUniverse(SimpleServerLogConfig config) {
+    return config != null && config.isExportActive();
+  }
+
+  /**
+   * Whether the given export type is actively exporting in this config. The one place that maps an
+   * {@link ExportType} to its per-type enablement check, so callers (e.g. the K8s-support gate in
+   * ExportTelemetryConfigParams) can reason over export types generically.
+   */
+  public static boolean isExportTypeActive(TelemetryConfig tc, ExportType type) {
+    if (tc == null) {
+      return false;
+    }
+    switch (type) {
+      case AUDIT_LOGS:
+        return isAuditLogExportEnabledInUniverse(tc.getAuditLogConfig());
+      case QUERY_LOGS:
+        return isQueryLogExportEnabledInUniverse(tc.getQueryLogConfig());
+      case METRICS:
+        return isMetricsExportEnabledInUniverse(tc.getMetricsExportConfig());
+      case MASTER_LOGS:
+        return isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig());
+      case TSERVER_LOGS:
+        return isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig());
+      case YSQL_CONN_MGR_LOGS:
+        return isSimpleServerLogExportEnabledInUniverse(tc.getYsqlConnMgrLogConfig());
+      case NODE_AGENT_LOGS:
+        return isSimpleServerLogExportEnabledInUniverse(tc.getNodeAgentLogConfig());
+      case YNP_LOGS:
+        return isSimpleServerLogExportEnabledInUniverse(tc.getYnpLogConfig());
+      case CONTROLLER_LOGS:
+        return isSimpleServerLogExportEnabledInUniverse(tc.getControllerLogConfig());
+      default:
+        throw new IllegalArgumentException("Unhandled export type: " + type);
+    }
+  }
+
+  /**
+   * The internal-only diagnostic server-log sections (conn-mgr, node-agent, ynp, controller). Kept
+   * in one place so the aggregate helpers below stay unchanged as new simple sections are added.
+   * May contain nulls (disabled sections).
+   */
+  public static List<SimpleServerLogConfig> simpleServerLogConfigs(TelemetryConfig tc) {
+    if (tc == null) {
+      return Collections.emptyList();
+    }
+    return Arrays.asList(
+        tc.getYsqlConnMgrLogConfig(),
+        tc.getNodeAgentLogConfig(),
+        tc.getYnpLogConfig(),
+        tc.getControllerLogConfig());
+  }
+
   // --- Aggregate helpers over the whole TelemetryConfig. Adding a new export type updates only
   // these (and the per-type isXEnabledInUniverse helpers), not every call site. ---
 
@@ -141,7 +213,9 @@ public class OtelCollectorUtil {
             || isQueryLogEnabledInUniverse(tc.getQueryLogConfig())
             || isMetricsExportEnabledInUniverse(tc.getMetricsExportConfig())
             || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig())
-            || isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig()));
+            || isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig())
+            || simpleServerLogConfigs(tc).stream()
+                .anyMatch(OtelCollectorUtil::isSimpleServerLogExportEnabledInUniverse));
   }
 
   /** True if any telemetry section is actively exporting (export active and exporters present). */
@@ -151,7 +225,9 @@ public class OtelCollectorUtil {
             || isQueryLogExportEnabledInUniverse(tc.getQueryLogConfig())
             || isMetricsExportEnabledInUniverse(tc.getMetricsExportConfig())
             || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig())
-            || isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig()));
+            || isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig())
+            || simpleServerLogConfigs(tc).stream()
+                .anyMatch(OtelCollectorUtil::isSimpleServerLogExportEnabledInUniverse));
   }
 
   /**
@@ -166,7 +242,8 @@ public class OtelCollectorUtil {
         && (tc.getAuditLogConfig() != null
             || tc.getQueryLogConfig() != null
             || tc.getMasterLogConfig() != null
-            || tc.getTserverLogConfig() != null);
+            || tc.getTserverLogConfig() != null
+            || simpleServerLogConfigs(tc).stream().anyMatch(Objects::nonNull));
   }
 
   /** Collects the exporter UUIDs of all actively-exporting telemetry sections. */
@@ -200,6 +277,10 @@ public class OtelCollectorUtil {
           .getUniverseLogsExporterConfig()
           .forEach(c -> uuids.add(c.getExporterUuid()));
     }
+    simpleServerLogConfigs(tc).stream()
+        .filter(OtelCollectorUtil::isSimpleServerLogExportEnabledInUniverse)
+        .forEach(
+            c -> c.getUniverseLogsExporterConfig().forEach(e -> uuids.add(e.getExporterUuid())));
     return uuids;
   }
 
@@ -236,6 +317,10 @@ public class OtelCollectorUtil {
                 : userIntent.metricsExportConfig)
         .masterLogConfig(fromTable.getMasterLogConfig())
         .tserverLogConfig(fromTable.getTserverLogConfig())
+        .ysqlConnMgrLogConfig(fromTable.getYsqlConnMgrLogConfig())
+        .nodeAgentLogConfig(fromTable.getNodeAgentLogConfig())
+        .ynpLogConfig(fromTable.getYnpLogConfig())
+        .controllerLogConfig(fromTable.getControllerLogConfig())
         .build();
   }
 

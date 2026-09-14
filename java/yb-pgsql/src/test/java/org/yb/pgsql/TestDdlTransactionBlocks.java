@@ -38,6 +38,20 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("TEST_hide_details_for_pg_regress", "false");
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    if (!org.yb.util.BuildTypeUtil.isRelease()) {
+      appendToYsqlPgConf(flagMap, "default_transaction_isolation='repeatable read'");
+    }
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    if (!org.yb.util.BuildTypeUtil.isRelease()) {
+      appendToYsqlPgConf(flagMap, "default_transaction_isolation='repeatable read'");
+    }
     return flagMap;
   }
 

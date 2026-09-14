@@ -93,6 +93,11 @@ struct CBTabletMetadata {
   // the cluster.
   std::set<TabletServerId> wrong_placement_tablet_servers;
 
+  // Set of tablet server ids with a remove of this tablet's replica still in flight. They are
+  // dropped from the load state by RemoveReplica but still host the replica until the remove task
+  // completes, so they must not be picked as a destination for this tablet.
+  std::set<TabletServerId> removal_pending_tablet_servers;
+
   // Set of tablet server ids that have been blacklisted and as such, should not get any more load
   // assigned to them and should be prioritized for removing load.
   std::set<TabletServerId> blacklisted_tablet_servers;

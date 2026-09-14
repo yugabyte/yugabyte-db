@@ -150,6 +150,10 @@ message FullCompactionStatusPB {
   optional fixed64 last_full_compaction_time = 3;
 }
 
+message YsqlDbOldestPinnedReadTime {
+  optional fixed64 db_level_oldest_read_time = 1;
+}
+
 message ReportedTabletUpdatesPB {
   required bytes tablet_id = 1;
   optional string state_msg = 2;
@@ -256,6 +260,10 @@ message TSHeartbeatRequestPB {
 
   repeated XClusterConsumerReplicationStatusPB
       xcluster_consumer_replication_status = 23;
+
+  // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
+  // map[db_oid] -> earliest local live transaction registered for that db.
+  map<uint32, YsqlDbOldestPinnedReadTime> ts_ysql_db_oldest_pinned_read_times = 24;
 }
 
 message TSHeartbeatResponsePB {
@@ -347,6 +355,10 @@ message TSHeartbeatResponsePB {
   // as per master's view. Tservers use this to proactively mark replicas hosted by
   // these tservers as followers in their meta-cache.
   repeated string leader_blacklisted_tservers_with_no_leaders = 32;
+
+  // Cluster-wide oldest read HybridTime pinned by live PG transactions, aggregated across
+  // all live tservers. map[db_oid] -> earliest live transaction registered for that db.
+  map<uint32, YsqlDbOldestPinnedReadTime> cluster_ysql_db_oldest_pinned_read_times = 33;
 }
 
 service MasterHeartbeat {

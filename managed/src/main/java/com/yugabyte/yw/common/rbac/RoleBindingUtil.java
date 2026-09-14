@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -597,7 +598,7 @@ public class RoleBindingUtil {
     log.info(
         "Created user '{}', email '{}', default role bindings '{}'.",
         user.getUuid(),
-        user.getEmail(),
+        RedactingService.SECRET_REPLACEMENT,
         createdRoleBindings.toString());
   }
 

@@ -155,8 +155,13 @@ void DocReadContext::UpdateKeyPrefix() {
   }
 }
 
-Result<bool> DocReadContext::HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const {
-  return dockv::HashedOrFirstRangeComponentsEqual(lhs, rhs);
+Result<std::optional<Slice>> DocReadContext::UserKeyForFixedBloomFilter(
+    Slice lower, Slice upper) const {
+  if (lower.empty() ||
+      !VERIFY_RESULT(dockv::HashedOrFirstRangeComponentsExistAndEqual(lower, upper))) {
+    return std::nullopt;
+  }
+  return lower;
 }
 
 size_t DocReadContext::NumColumnsUsedByBloomFilterKey() const {

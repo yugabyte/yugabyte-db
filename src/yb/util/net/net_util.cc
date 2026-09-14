@@ -582,7 +582,10 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
     const uint16_t random_port = RandomUniformInt(kMinPort, kMaxPort);
     VLOG(1) << "Trying to bind to port " << random_port;
 
-    Endpoint sock_addr(boost::asio::ip::address_v4::loopback(), random_port);
+    // Bind to the wildcard address, not to 127.0.0.1: test daemons bind to 127.0.0.2, 127.0.0.3,
+    // etc, and a port that is already taken there is still free on 127.0.0.1. Without SO_REUSEADDR
+    // the wildcard bind conflicts with a bind on any local address, so it rejects such ports.
+    Endpoint sock_addr(boost::asio::ip::address_v4::any(), random_port);
     Socket sock;
     s = sock.Init(0);
     if (!s.ok()) {

@@ -69,7 +69,7 @@ import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import org.yb.util.PeerInfo;
 import org.yb.util.ServerInfo;
@@ -107,7 +107,7 @@ public class ImportUniverseTest extends CommissionerBaseTest {
   public void setUp() {
     setupInfra();
     try {
-      YBClient mockClient = mock(YBClient.class);
+      YBClientApi mockClient = mock(YBClientApi.class);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
 
       GetMasterClusterConfigResponse mockClusterConfigResponse =

@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -38,6 +39,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   @Mock public Config mockGlobalRuntimeConfig;
 
   private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+  private final SimpleDateFormat dateTimeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
   private final String testRegexPattern = "application-log-\\d{4}-\\d{2}-\\d{2}(\\.gz)?";
   private final String testSdfPattern = "'application-log-'yyyy-MM-dd";
 
@@ -96,9 +98,11 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     applicationLogsComponent.downloadComponentBetweenDates(
         null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
-    // Files expected to be present in the bundle after filtering
+    // Files expected to be present in the bundle after filtering.
+    // "application-log-2022-03-05.gz" is the single overlap file collected before the start date.
     List<String> expectedFilesList =
         Arrays.asList(
+            "application-log-2022-03-05.gz",
             "application-log-2022-03-06.gz",
             "application-log-2022-03-07.gz",
             "application-log-2022-03-08.gz",
@@ -124,9 +128,13 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     applicationLogsComponent.downloadComponentBetweenDates(
         null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
-    // Files expected to be present in the bundle after filtering
+    // Files expected to be present in the bundle after filtering.
+    // "application-log-2022-03-05.gz" is the single overlap file collected before the start date.
     List<String> expectedFilesList =
-        Arrays.asList("application-log-2022-03-06.gz", "application-log-2022-03-07.gz");
+        Arrays.asList(
+            "application-log-2022-03-05.gz",
+            "application-log-2022-03-06.gz",
+            "application-log-2022-03-07.gz");
 
     // Checking if the filtered list is same as expected list of files
     File[] files = new File(fakeBundlePath + "/application_logs/").listFiles();
@@ -150,6 +158,102 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList = Arrays.asList("application-log-2022-03-05.gz");
+
+    // Checking if the filtered list is same as expected list of files
+    File[] files = new File(fakeBundlePath + "/application_logs/").listFiles();
+    assertEquals(files.length, expectedFilesList.size());
+    for (int i = 0; i < files.length; i++) {
+      assertTrue(expectedFilesList.contains(files[i].getName()));
+    }
+  }
+
+  @Test
+  public void testDownloadComponentBetweenDatesMidDayStart() throws Exception {
+    // Start in the middle of a day, the log file of that same day holds logs after the start time
+    Date startDate = dateTimeFormat.parse("2022-03-06 14:00");
+    Date endDate = dateTimeFormat.parse("2022-03-07 18:00");
+
+    // Calling the download function
+    ApplicationLogsComponent applicationLogsComponent =
+        new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
+    applicationLogsComponent.downloadComponentBetweenDates(
+        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
+
+    // Files expected to be present in the bundle after filtering
+    List<String> expectedFilesList =
+        Arrays.asList("application-log-2022-03-06.gz", "application-log-2022-03-07.gz");
+
+    // Checking if the filtered list is same as expected list of files
+    File[] files = new File(fakeBundlePath + "/application_logs/").listFiles();
+    assertEquals(files.length, expectedFilesList.size());
+    for (int i = 0; i < files.length; i++) {
+      assertTrue(expectedFilesList.contains(files[i].getName()));
+    }
+  }
+
+  @Test
+  public void testDownloadComponentBetweenDatesWithinSingleDay() throws Exception {
+    // Entire window falls within a single past day, only that day's log file holds those logs
+    Date startDate = dateTimeFormat.parse("2022-03-06 10:00");
+    Date endDate = dateTimeFormat.parse("2022-03-06 18:00");
+
+    // Calling the download function
+    ApplicationLogsComponent applicationLogsComponent =
+        new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
+    applicationLogsComponent.downloadComponentBetweenDates(
+        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
+
+    // Files expected to be present in the bundle after filtering
+    List<String> expectedFilesList = Arrays.asList("application-log-2022-03-06.gz");
+
+    // Checking if the filtered list is same as expected list of files
+    File[] files = new File(fakeBundlePath + "/application_logs/").listFiles();
+    assertEquals(files.length, expectedFilesList.size());
+    for (int i = 0; i < files.length; i++) {
+      assertTrue(expectedFilesList.contains(files[i].getName()));
+    }
+  }
+
+  @Test
+  public void testDownloadComponentBetweenDatesIncludesOnlyOnePreStartFile() throws Exception {
+    // Define start and end dates to filter
+    Date startDate = dateFormat.parse("2022-03-08");
+    Date endDate = dateFormat.parse("2022-03-08");
+
+    // Calling the download function
+    ApplicationLogsComponent applicationLogsComponent =
+        new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
+    applicationLogsComponent.downloadComponentBetweenDates(
+        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
+
+    // Only the newest log file before the start date is expected, not all the older ones
+    List<String> expectedFilesList =
+        Arrays.asList("application-log-2022-03-07.gz", "application-log-2022-03-08.gz");
+
+    // Checking if the filtered list is same as expected list of files
+    File[] files = new File(fakeBundlePath + "/application_logs/").listFiles();
+    assertEquals(files.length, expectedFilesList.size());
+    for (int i = 0; i < files.length; i++) {
+      assertTrue(expectedFilesList.contains(files[i].getName()));
+    }
+  }
+
+  @Test
+  public void testDownloadComponentBetweenDatesIntraDayIncludesCurrentLog() throws Exception {
+    // Window entirely within the current day, before any rollover has happened for it
+    Date today = mockSupportBundleUtil.getTodaysDate();
+    Date startDate = DateUtils.addHours(today, 9);
+    Date endDate = DateUtils.addHours(today, 17);
+
+    // Calling the download function
+    ApplicationLogsComponent applicationLogsComponent =
+        new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
+    applicationLogsComponent.downloadComponentBetweenDates(
+        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
+
+    // The currently updated log file holds the requested window, plus the single overlap file
+    List<String> expectedFilesList =
+        Arrays.asList("application-log-2022-03-08.gz", "application.log");
 
     // Checking if the filtered list is same as expected list of files
     File[] files = new File(fakeBundlePath + "/application_logs/").listFiles();

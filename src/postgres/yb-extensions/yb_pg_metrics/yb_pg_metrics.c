@@ -28,6 +28,7 @@
 #include "datatype/timestamp.h"
 #include "executor/instrument.h"
 #include "funcapi.h"
+#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -228,6 +229,21 @@ bool
 isTopLevelStatement(void)
 {
 	return statement_nesting_level == 0;
+}
+
+/*
+ * True for connections the tserver opens to its own postgres (index backfill,
+ * WaitForBackendsCatalogVersion polling, auto-analyze, ...). Those statements
+ * are internal bookkeeping, not client SQL: counting them inflates the
+ * SQLProcessor metrics at times unrelated to any client statement. Connection
+ * manager server connections also authenticate with yb-tserver-key, but they do
+ * carry client SQL.
+ */
+static bool
+ybpgm_IsTserverInternalConn(void)
+{
+	return IsYugaByteEnabled() && MyProcPort != NULL &&
+		MyProcPort->yb_is_tserver_auth_method && !YbIsClientYsqlConnMgr();
 }
 
 static void
@@ -1073,7 +1089,8 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	 *   very flawed, so we use this not-null check for now.
 	 */
 	/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists. */
-	if (isTopLevelStatement()) /* && queryDesc->totaltime */
+	if (isTopLevelStatement() && /* queryDesc->totaltime && */
+		!ybpgm_IsTserverInternalConn())
 	{
 #if 0
 		InstrEndLoop(queryDesc->totaltime);
@@ -1234,7 +1251,8 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	if (isTopLevelBlock() &&
 		!IsA(pstmt->utilityStmt, ExecuteStmt) &&
 		!IsA(pstmt->utilityStmt, PrepareStmt) &&
-		!IsA(pstmt->utilityStmt, DeallocateStmt))
+		!IsA(pstmt->utilityStmt, DeallocateStmt) &&
+		!ybpgm_IsTserverInternalConn())
 	{
 		instr_time	start;
 		instr_time	end;

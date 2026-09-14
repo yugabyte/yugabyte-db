@@ -32,14 +32,14 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
 import org.yb.util.TabletServerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CheckClusterConsistencyTest extends FakeDBApplication {
   @Mock private BaseTaskDependencies mockBaseTaskDependencies;
-  @Mock private YBClient mockYbClient;
+  @Mock private YBClientApi mockYbClient;
   @Mock private RuntimeConfGetter mockRuntimeConfGetter;
   @Mock private YBClientService mockYbClientService;
   @Mock private TaskExecutor mockTaskExecutor;

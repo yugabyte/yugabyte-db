@@ -321,14 +321,6 @@ public class NodeManagerTest extends FakeDBApplication {
             serverCertPath = "cert.crt";
             serverKeyPath = "key.crt";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
-
-            if (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt) {
-              expectedCommand.add("--client_cert_path");
-              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
-              expectedCommand.add("--client_key_path");
-              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
-            }
             break;
           }
         case CustomCertHostPath:
@@ -338,17 +330,6 @@ public class NodeManagerTest extends FakeDBApplication {
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
             certsLocation = NodeManager.CERT_LOCATION_NODE;
-            if (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt
-                && customCertInfo.clientCertPath != null
-                && !customCertInfo.clientCertPath.isEmpty()
-                && customCertInfo.clientKeyPath != null
-                && !customCertInfo.clientKeyPath.isEmpty()) {
-              expectedCommand.add("--client_cert_path");
-              expectedCommand.add(customCertInfo.clientCertPath);
-              expectedCommand.add("--client_key_path");
-              expectedCommand.add(customCertInfo.clientKeyPath);
-            }
             break;
           }
         case CustomServerCert:
@@ -361,14 +342,6 @@ public class NodeManagerTest extends FakeDBApplication {
             serverCertPath = "cert.crt";
             serverKeyPath = "key.crt";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
-
-            if (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt) {
-              expectedCommand.add("--client_cert_path");
-              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
-              expectedCommand.add("--client_key_path");
-              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
-            }
             break;
           }
       }

@@ -488,9 +488,14 @@ class PgSession::RunHelper {
       // write operations. Since the writes and catalog reads belong to different session types (as
       // per PgClientSession), we can't send them to the local tserver proxy in 1 rpc, so we flush
       // the buffer before performing catalog reads.
+      //
+      // For the same reason, a read that already carries its own read time (a paging continuation
+      // inherits the first page's read time) can't share an RPC with buffered writes: the read time
+      // is a Perform-wide option, so it would also be imposed on the writes. Non-transactional
+      // writes in particular must let the storage layer pick their read time.
       auto dbg_ctx = PgFlushDebugContext::ConflictingRead(
           table.pg_table_id().object_oid, table.table_name().table_name());
-      if ((IsTransactional() && in_txn_limit_) || IsLegacyCatalog()) {
+      if ((IsTransactional() && in_txn_limit_) || IsLegacyCatalog() || op->read_time()) {
         RETURN_NOT_OK(buffer.Flush(dbg_ctx));
       } else {
         ops_info_.ops = VERIFY_RESULT(buffer.Take(IsTransactional(), dbg_ctx));
@@ -862,6 +867,7 @@ Result<FlushFuture> PgSession::FlushOperations(
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
   return NonTransactionalWrites(
       pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL &&
+      !pg_txn_manager_->IsDdlMode() &&
       std::ranges::any_of(operations, [](const auto& op) { return !IsReadOnly(*op); }));
 }
 
@@ -921,15 +927,25 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     auto& read_time_options = *options.mutable_read_time_options();
     VLOG(2) << "Perform - catalog_read_time: " << catalog_read_time_
             << " read_time: " << read_time_options.read_time().ShortDebugString();
-    // catalog_read_time_ is empty => pick a fresh read time.
-    if (!read_time_options.has_read_time() && catalog_read_time_) {
-      catalog_read_time_.ToPB(read_time_options.mutable_read_time());
+    if (!read_time_options.has_read_time()) {
+      if (catalog_read_time_) {
+        catalog_read_time_.ToPB(read_time_options.mutable_read_time());
+      } else {
+        // catalog_read_time_ is empty => a fresh catalog snapshot is required. It must be picked
+        // from the local clock instead of by the storage layer, which uses the sys catalog tablet's
+        // safe time: concurrent in-flight sys catalog writes hold that safe time back below the
+        // commit time of a DDL this session has just committed, hiding the session's own catalog
+        // changes. Catalog reads also force global_limit == read, so no read restart would correct
+        // it.
+        read_time_options.set_clamp_uncertainty_window(true);
+      }
     }
     options.set_use_legacy_catalog_session(true);
   } else {
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
-        ops_options.read_time_action));
+        ops_options.read_time_action, SkipReadTimeOptions::kFalse,
+        IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -1088,7 +1104,16 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
-  return SetupPerformOptions(*options, NonTransactionalWrites::kFalse);
+  return SetupPerformOptions(
+      *options, NonTransactionalWrites::kFalse, /* read_time_action= */ std::nullopt,
+      SkipReadTimeOptions::kTrue);
+}
+
+void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(
+    tserver::PgPerformOptionsPB* options) const {
+  if (pg_txn_manager_->ShouldDeferReadPoint()) {
+    options->mutable_read_time_options()->set_defer_read_point(true);
+  }
 }
 
 void PgSession::SetTransactionHasWrites() {
@@ -1166,28 +1191,10 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
       << " for txn no " << original_read_point.txn;
   RSTATUS_DCHECK(
       catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
+  // Changing snapshots. Buffered writes are on the current snapshot. Flush them before the switch.
+  RETURN_NOT_OK(FlushBufferedEntities(
+      PgFlushDebugContext::SwitchToCatalogSnapshot(catalog_read_time_serial_no)));
   RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
-  // Clamp the uncertainty window for catalog reads.
-  //
-  // User table reads need an uncertainty window to guarantee read-after-commit-visibility because
-  // clock skew can cause a write's commit timestamp to exceed the reader's chosen read time.
-  //
-  // Catalog reads do not need this. Catalog operations use object locks (shared for reads,
-  // exclusive for writes) instead of relying solely on MVCC. A concurrent DDL writer must hold
-  // an exclusive lock, and the catalog reader can only acquire its shared lock after that
-  // exclusive lock is released. The lock release happens strictly after the DDL transaction
-  // commits, so it propagates the commit hybrid time. By the time the reader picks its catalog
-  // snapshot read time, that time is guaranteed to be >= the commit time of any concurrent DDL.
-  //
-  // The guarantee is also maintained when postgres uses AcceptInvalidationMessages instead of
-  // share locks: the exclusive lock release still propagates the commit time before invalidation
-  // messages are applied and a new catalog read time is chosen. The object lock release
-  // happens before postgres acknowledges the catalog write, maintaining the same guarantee.
-  //
-  // Without clamping, the uncertainty window causes spurious read restart errors on catalog
-  // tables that are unnecessary given the object-lock / invalidation-messages protocol.
-  pg_txn_manager_->SetClampUncertaintyWindow(true);
-  pg_txn_manager_->ResetFollowerReadTime();
   return original_read_point;
 }
 
@@ -1273,6 +1280,8 @@ Result<PerformFuture> PgSession::DoRunAsync(
         << "Restoring original read time serial no to "
         << read_point_before_catalog_ops->read_time_serial_no
         << " for txn no " << read_point_before_catalog_ops->txn;
+    RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::ChangeTxnSnapshot(
+        read_point_before_catalog_ops->read_time_serial_no)));
     RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(*read_point_before_catalog_ops));
   }
   return result;

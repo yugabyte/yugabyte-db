@@ -74,6 +74,12 @@ void UniverseKeyClient::ProcessGetUniverseKeyRegistryResponse(
     YB_LOG_EVERY_N(WARNING, 100) << Format(
         "Rpc status: $0, resp: $1", rpc->status(), resp->ShortDebugString());
 
+    // The callback is invoked inline on the reactor thread when the callback thread pool rejects
+    // it, i.e. during shutdown. Retrying there would block the reactor forever.
+    if (!rpc->thread_pool_failure().ok()) {
+      return;
+    }
+
     // Always retry the request on failure.
     backoff_waiter.Wait();
     SendAsyncRequest(host_port, backoff_waiter);

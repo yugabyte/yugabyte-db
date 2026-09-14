@@ -129,7 +129,7 @@ public class PersistResizeNode extends UniverseTaskBase {
                 userIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize;
                 userIntent.deviceInfo.diskIops = newUserIntent.deviceInfo.diskIops;
                 userIntent.deviceInfo.throughput = newUserIntent.deviceInfo.throughput;
-                if (newUserIntent.masterDeviceInfo != null || userIntent.masterDeviceInfo != null) {
+                if (newUserIntent.masterDeviceInfo != null && userIntent.masterDeviceInfo != null) {
                   userIntent.masterDeviceInfo.volumeSize =
                       newUserIntent.masterDeviceInfo.volumeSize;
                   userIntent.masterDeviceInfo.diskIops = newUserIntent.masterDeviceInfo.diskIops;

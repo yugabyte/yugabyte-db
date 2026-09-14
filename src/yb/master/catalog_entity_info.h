@@ -51,6 +51,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_ysql_lease.fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
 
@@ -769,6 +770,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add a tablet to this table.
   Status AddTablet(const TabletInfoPtr& tablet);
 
+  Status AddTablet(const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state);
+
   // Finds a tablet whose partition can be shrunk.
   // This is only used for transaction status tables.
   Result<TabletWithSplitPartitions> FindSplittableHashPartitionForStatusTable() const;
@@ -999,7 +1002,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  Status AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES(lock_);
+  Status AddTabletUnlocked(
+      const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state) REQUIRES(lock_);
   Result<bool> RemoveTabletUnlocked(
       const TableId& tablet_id,
       DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);
@@ -1743,3 +1747,41 @@ void SetupTabletInfo(
     SysTabletsEntryPB::State state);
 
 } // namespace yb::master
+
+namespace yb {
+
+// CowObject hooks specialized for the table/tablet COW objects to enforce the table<->tablet
+// commit-order rule (#10304); see cow_object.h. The tablet maintains the per-thread
+// held-tablet-write-lock count; the table asserts none are held when it commits.
+template <>
+inline void CowObject<master::PersistentTabletInfo>::PostStartMutation() {
+  if (!exclude_from_held_tablet_count_) {
+    ++MutableHeldTabletWriteLockCount();
+  }
+}
+template <>
+inline void CowObject<master::PersistentTabletInfo>::PostAbortMutation() {
+  if (!exclude_from_held_tablet_count_) {
+    --MutableHeldTabletWriteLockCount();
+  }
+}
+template <>
+inline void CowObject<master::PersistentTabletInfo>::PostCommitMutation() {
+  if (!exclude_from_held_tablet_count_) {
+    --MutableHeldTabletWriteLockCount();
+  }
+}
+template <>
+inline void CowObject<master::PersistentTableInfo>::PreCommitMutation() {
+  bool holding_tablet_write_locks = MutableHeldTabletWriteLockCount() != 0;
+  bool assert_suppressed = MutableTableCommitAssertSuppressionDepth() != 0;
+  if (holding_tablet_write_locks && !assert_suppressed) {
+    LOG(DFATAL)
+        << "Committing a table COW object while holding "
+        << MutableHeldTabletWriteLockCount()
+        << " tablet write lock(s): potential ProcessTabletReportBatch deadlock (#10304). "
+        << "Commit/release all tablet write locks before committing the table.";
+  }
+}
+
+}  // namespace yb

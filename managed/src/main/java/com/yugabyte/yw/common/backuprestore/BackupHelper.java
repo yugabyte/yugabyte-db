@@ -94,7 +94,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -805,7 +805,7 @@ public class BackupHelper {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");
     }
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       return client.getTablesList().getTableInfoList();
     } catch (Exception e) {
       log.warn(e.toString());

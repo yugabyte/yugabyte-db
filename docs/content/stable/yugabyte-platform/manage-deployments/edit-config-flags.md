@@ -46,7 +46,7 @@ You can add and edit configuration flags by navigating to the universe and click
 
 To customize flags of the read replica of a universe that has a read replica cluster, deselect the **Apply the same Flags to primary cluster and Read Replica** option. (This option is only available for universes with a read replica.) This displays the **Read Replica** tab. [Add](#add-flags) and [modify](#edit-flags) flags as you would for the primary cluster. Note that read replicas only have YB-TServers.
 
-Depending on the flag, the universe may need to be restarted to apply the changes. You can apply changes as follows:
+Depending on the flag, the universe may need to be restarted to apply the changes. Flags that require a restart display a **Requires restart** tag in the flag details; changes to these flags take effect only after the universe is restarted. You can apply changes as follows:
 
 - Immediately using a rolling restart, or [rolling restart in batches](#batched-rolling-restart).
 - Immediately using a concurrent restart.
@@ -66,7 +66,7 @@ The batch size is also applied to read replica nodes. Before running the operati
 
 Click **Add Flags > Add to Master** to open the **Add to Master** dialog, then select the flag you want to add to YB-Master and set its value, as per the following illustration:
 
-![Add flags to Master](/images/ee/add-master-1.png)
+![Add flags to Master](/images/ee/add-master-2.png)
 
 Click **Add Flags > Add to T-Server** to open the **Add to T-Server** dialog, then select the flag you want to add to YB-TServer and set its value.
 

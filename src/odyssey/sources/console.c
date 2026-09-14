@@ -1986,7 +1986,7 @@ int od_console_query(od_client_t *client, machine_msg_t *stream,
 	}
 
 	if (instance->config.log_query)
-		od_debug(&instance->logger, "console", client, NULL, "%.*s",
+		yb_od_query(&instance->logger, "console", client, NULL, "%.*s",
 			 query_len, query);
 
 	od_parser_t parser;

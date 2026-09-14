@@ -16,7 +16,8 @@ import {
   convertGFlagApiRespToFormValues,
   getClusterByType,
   useEditUniverseContext,
-  useIsUniverseReady
+  useIsUniverseReady,
+  withUniverseResource
 } from '../EditUniverseUtils';
 
 import { EditGflagsModal } from '@app/redesign/features/universe/universe-actions/edit-gflags/EditGflags';
@@ -178,7 +179,7 @@ export const DatabaseTab = () => {
               </YBButton>
             }
           >
-            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
               <MenuItem
                 data-test-id="edit-ysql-settings"
                 data-testid="edit-ysql-settings"
@@ -193,7 +194,7 @@ export const DatabaseTab = () => {
                 {t('editYSQLSettings')}
               </MenuItem>
             </RbacValidator>
-            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL, universeUUID)} isControl>
               <MenuItem
                 data-test-id="edit-ycql-settings"
                 data-testid="edit-ycql-settings"
@@ -262,7 +263,7 @@ export const DatabaseTab = () => {
               </YBButton>
             }
           >
-            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
               <MenuItem
                 data-test-id="edit-pooling-settings"
                 data-testid="edit-pooling-settings"
@@ -277,7 +278,7 @@ export const DatabaseTab = () => {
                 {t('editConnectionPooling')}
               </MenuItem>
             </RbacValidator>
-            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
               <MenuItem
                 data-test-id="edit-postgres-compatibility-settings"
                 data-testid="edit-postgres-compatibility-settings"
@@ -319,7 +320,7 @@ export const DatabaseTab = () => {
         <StyledCardHeader sx={{ padding: !hasAnyGflags ? '24px' : '26px 24px' }}>
           {t('advancedConfigFlags')}
           {hasAnyGflags && (
-            <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
               <YBButton
                 dataTestId="edit-gflags-button"
                 variant="ghost"
@@ -377,7 +378,7 @@ export const DatabaseTab = () => {
               }}
             >
               {t('noGflagsAdded')} <br />
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
                 <YBButton
                   variant="secondary"
                   dataTestId="add-gflags-button"

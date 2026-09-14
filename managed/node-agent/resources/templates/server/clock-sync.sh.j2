@@ -13,9 +13,12 @@ mount_wait_time_s=1  # How long to wait between checks for mount points
 
 {% raw %}
 
+# The mount point wait below must run even when the clock skew wait is turned
+# off, so record the setting here instead of exiting early.
+skip_clock_skew_check=false
 if [[ "$is_acceptable_clock_skew_wait_enabled" != true && "$is_acceptable_clock_skew_wait_enabled" != "True" ]]; then
-  echo "Wait for clock skew to go below the acceptable threshold is disabled. Returning success."
-  exit 0
+  echo "Wait for clock skew to go below the acceptable threshold is disabled."
+  skip_clock_skew_check=true
 fi
 
 command_exists() {
@@ -103,17 +106,74 @@ systemd_loaded() {
   return 1
 }
 
-is_mount_point_mounted() {
+# Set by classify_mount_point to explain the returned state.
+mount_point_state=""
+# Set by pending_mount on every call: the path whose mount is still outstanding,
+# or empty when nothing on the path is outstanding.
+pending_mount_path=""
+
+# --mountpoint matches the target exactly and canonicalizes symlinks and
+# trailing slashes, unlike a substring match against /proc/mounts.
+is_mounted() {
+  findmnt --noheadings --mountpoint "$1" >/dev/null 2>&1
+}
+
+# Returns 0 if /etc/fstab declares a mount for the given path, whether or not it
+# is mounted right now. fstab is what provisioning writes when it attaches a
+# drive, so it is the declaration of intent this check trusts. A volume mounted
+# by some other mechanism that leaves no fstab entry is indistinguishable from a
+# path that was never meant to be a mount, and is treated as the latter.
+mount_is_declared() {
+  local options
+  options=$(findmnt --fstab --noheadings -o OPTIONS --mountpoint "$1" 2>/dev/null)
+  [[ -n "$options" ]] && [[ ",$options," != *",noauto,"* ]]
+}
+
+# Returns 0 if a declared mount has not appeared yet, at the given path or at
+# any ancestor of it. The configured path is often a subdirectory of the mount
+# rather than the mount itself, e.g. /mnt/d0/m1 under an entry for /mnt/d0, and
+# such a path does not exist at all until its parent mount lands.
+pending_mount() {
+  local path="${1%/}"
+  [[ -n "$path" ]] || path="/"
+  pending_mount_path=""
+
+  while true; do
+    if mount_is_declared "$path" && ! is_mounted "$path"; then
+      pending_mount_path="$path"
+      return 0
+    fi
+    [[ "$path" != "/" ]] || return 1
+    path=$(dirname "$path")
+  done
+}
+
+# Returns 0 if nothing needs to be waited for, 1 if a mount is still pending,
+# and 2 if no amount of waiting can succeed.
+classify_mount_point() {
   local mount_point="$1"
-  if [[ ! -d "$mount_point" ]]; then
+
+  # Checked before the ancestor walk so that a path which is itself mounted is
+  # never held up by a pending mount declared for one of its ancestors.
+  if is_mounted "$mount_point"; then
+    mount_point_state="mounted"
+    return 0
+  fi
+
+  if pending_mount "$mount_point"; then
+    mount_point_state="waiting on $pending_mount_path, which is declared but not mounted"
     return 1
   fi
-  root_mount=$(df --output=target "$mount_point" 2>/dev/null | awk 'NR==2 {print $1}')
-  if [ -z "$root_mount" ]; then
-     root_mount="$mount_point"
+
+  if [[ ! -d "$mount_point" ]]; then
+    mount_point_state="directory does not exist and no declared mount would create it"
+    return 2
   fi
-  grep -q " $root_mount " /proc/mounts 2>/dev/null
-  return $?
+
+  # On-prem providers may configure a path that is a plain directory inside an
+  # already-mounted filesystem, e.g. /data on a node where only / is mounted.
+  mount_point_state="no separate mount expected; directory on an already-mounted filesystem"
+  return 0
 }
 
 wait_for_mount_points() {
@@ -128,23 +188,46 @@ wait_for_mount_points() {
     return 0
   fi
 
+  if ! command_exists findmnt; then
+    echo "WARNING: findmnt is not available, cannot verify mount points." \
+         "Skipping the mount point wait."
+    return 0
+  fi
+
   echo "Waiting for mount points to be mounted: ${mount_points_array[*]}"
   local mount_iter=0
   while true; do
-    local all_mounted=true
-    local unmounted_points=()
+    local all_ready=true
+    local pending_points=()
+    local ready_report=()
     for mount_point in "${mount_points_array[@]}"; do
-      if ! is_mount_point_mounted "$mount_point"; then
-        all_mounted=false
-        unmounted_points+=("$mount_point")
-        if [[ $mount_iter -eq 0 ]] || [[ $((mount_iter % 10)) -eq 0 ]]; then
-          echo "Mount point $mount_point is not yet mounted, waiting..."
-        fi
-      fi
+      classify_mount_point "$mount_point"
+      case $? in
+        0)
+          ready_report+=("$mount_point is ready: $mount_point_state")
+          ;;
+        1)
+          all_ready=false
+          pending_points+=("$mount_point")
+          if [[ $mount_iter -eq 0 ]] || [[ $((mount_iter % 10)) -eq 0 ]]; then
+            echo "Mount point $mount_point is $mount_point_state, waiting..."
+          fi
+          ;;
+        2)
+          echo "ERROR: Mount point $mount_point is misconfigured:" \
+               "$mount_point_state."
+          echo "Waiting cannot resolve this. Check the mount paths configured" \
+               "for this node."
+          echo "Exiting with error."
+          exit 1
+          ;;
+      esac
     done
 
-    if [[ "$all_mounted" == true ]]; then
-      echo "All mount points are mounted."
+    if [[ "$all_ready" == true ]]; then
+      for report_line in "${ready_report[@]}"; do
+        echo "Mount point $report_line."
+      done
       return 0
     fi
 
@@ -153,7 +236,7 @@ wait_for_mount_points() {
       echo "ERROR: Failed to mount required mount points after" \
            "$mount_wait_max_tries attempts."
       echo "The following mount points failed to mount:"
-      for mount_point in "${unmounted_points[@]}"; do
+      for mount_point in "${pending_points[@]}"; do
         echo "  - $mount_point"
       done
       echo "Exiting with error."
@@ -165,6 +248,11 @@ wait_for_mount_points() {
 
 # Wait for mount points to be mounted before starting clock sync check
 wait_for_mount_points
+
+if [[ "$skip_clock_skew_check" == true ]]; then
+  echo "Skipping clock skew check. Returning success."
+  exit 0
+fi
 
 iter=0
 while true; do

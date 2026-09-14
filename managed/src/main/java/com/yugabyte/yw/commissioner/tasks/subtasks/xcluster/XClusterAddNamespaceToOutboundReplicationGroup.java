@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.client.XClusterAddNamespaceToOutboundReplicationGroupResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterOutboundReplicationGroupInfoResponsePB.NamespaceInfoPB;
 
 @Slf4j
@@ -59,7 +59,7 @@ public class XClusterAddNamespaceToOutboundReplicationGroup extends CreateOutbou
     }
     String dbId = taskParams().getDbToAdd();
 
-    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(sourceUniverse)) {
       log.info(
           "Checkpointing databases for XClusterConfig({}): source db ids: {}",
           xClusterConfig.getUuid(),
