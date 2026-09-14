@@ -3397,14 +3397,14 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
                  << libpq_error_msg;
     const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
     // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
-    // the PostgreSQL error code it failed with, rather than XX000.
+    // the PostgreSQL error code it failed with.
     const auto keep_pg_error_code = [&pg_error_code](Status status) {
       return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
     };
     // The 2 spaces after ERROR: is necessary to match the error message.
     constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
     if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
-      return keep_pg_error_code(STATUS(TryAgain, libpq_error_msg));
+      return STATUS(TryAgain, libpq_error_msg, result.status().ErrorCodesSlice(), size_t(0));
     }
     // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
     // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
