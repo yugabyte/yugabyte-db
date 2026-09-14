@@ -204,9 +204,6 @@ YB_NODE_YSQL_CGROUP_USAGE = MetricDefinition(
 YB_NODE_IS_MASTER_LEADER = MetricDefinition(
     "yb_node_is_master_leader",
     "Master leadership status")
-YB_NODE_YSQL_CONNECTIONS_COUNT = MetricDefinition(
-    "yb_node_ysql_connections_count",
-    "YSQL connections count")
 YB_NODE_YSQL_CONNECT = MetricDefinition(
     "yb_node_ysql_connect",
     "Status of test ysql connection")
@@ -1300,34 +1297,6 @@ class NodeChecker():
         except Exception as ex:
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
-
-    def check_ysql_connections_count(self):
-        logging.info("Checking ysql connections count on node {}".format(self.node))
-        e = self._new_metric_entry("YSQL connections")
-        ysql_http_endpoint = 'http://{}:{}/rpcz'.format(self.node, self.ysql_server_http_port)
-        response = self.http_request(ysql_http_endpoint)
-        if not response:
-            return e.fill_and_return_entry(['TServer HTTP endpoint is not running'],
-                                           has_error=False)
-        client_backends = 0
-        try:
-            response_json = json.loads(response)
-            if "connections" not in response_json:
-                return e.fill_and_return_entry(['Unexpected response received from TServer'],
-                                               has_error=True)
-            for connection in response_json["connections"]:
-                if (
-                    connection["backend_type"] == "client backend"
-                    or connection["backend_type"].startswith("yb-conn-mgr")
-                ):
-                        client_backends += 1
-        except Exception as ex:
-            message = str(ex)
-            return e.fill_and_return_entry([message], has_error=True)
-
-        metric = Metric.from_definition(YB_NODE_YSQL_CONNECTIONS_COUNT)\
-            .add_value(client_backends)
-        return e.fill_and_return_entry([int(client_backends)], has_error=False, metrics=[metric])
 
     def check_tablets(self, entry, endpoint, tablets_field, count_metric):
         # Only run this check on master leader
@@ -3158,7 +3127,6 @@ def main():
             coordinator.add_check(checker, "check_postgres_worker_count")
             coordinator.add_check(checker, "check_postmaster_rss")
             coordinator.add_check(checker, "check_postgres_workers_rss")
-            coordinator.add_check(checker, "check_ysql_connections_count")
             coordinator.add_check(checker, "check_ysql_cgroup_memory_limit")
             coordinator.add_check(checker, "check_ysql_cgroup_memory_usage")
         if n.is_ybc_enabled:
