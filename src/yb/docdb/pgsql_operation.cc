@@ -1062,8 +1062,6 @@ class PgsqlVectorFilter {
     return true;
   }
 
-  // TODO(vector_index): payload stores the ybctid attached to the vector, use it to filter
-  // without reading the reverse mapping in a follow up to #33353.
   bool operator()(const vector_index::VectorId& vector_id, Slice payload) {
     if (!row_) {
       return true;
@@ -1073,23 +1071,45 @@ class PgsqlVectorFilter {
     }
     ++num_checked_entries_;
 
-    auto ybctid = reverse_mapping_reader_->FetchYbctid(vector_id);
-    if (!ybctid.ok()) {
-      status_ = std::move(ybctid.status());
-      return false;
+    Slice ybctid;
+    if (!payload.empty()) {
+      auto extracted_ybctid = dockv::DocVectorIndexPayloadYbctid(payload);
+      if (!extracted_ybctid.ok()) {
+        status_ = std::move(extracted_ybctid.status());
+        return false;
+      }
+      ybctid = *extracted_ybctid;
     }
-    if (ybctid->empty()) {
-      ++num_removed_;
-      return false;
+    // Resolving the ybctid via the reverse mapping also proves the row exists and still
+    // references this vector, since the entry is tombstoned when the row is deleted or its
+    // vector is replaced. A ybctid from the vector payload proves neither: such vectors have no
+    // reverse mapping entries, so the row has to be fetched to detect deleted rows and vectors
+    // left behind by an update. An index which stores ybctids writes no tombstones, so this does
+    // not hold for the vectors without payload it could still have, see #33912.
+    bool resolved_via_reverse_mapping = false;
+    if (ybctid.empty()) {
+      // The vector does not store its ybctid, resolve it via the reverse mapping. Missing entry
+      // or tombstone means the vector was removed.
+      auto fetched_ybctid = reverse_mapping_reader_->FetchYbctid(vector_id);
+      if (!fetched_ybctid.ok()) {
+        status_ = std::move(fetched_ybctid.status());
+        return false;
+      }
+      if (fetched_ybctid->empty()) {
+        ++num_removed_;
+        return false;
+      }
+      ybctid = *fetched_ybctid;
+      resolved_via_reverse_mapping = true;
     }
-    if (!iter_.has_filter()) {
+    if (resolved_via_reverse_mapping && !iter_.has_filter()) {
       ++num_accepted_entries_;
       return true;
     }
     if (need_refresh_) {
       iter_.Refresh();
     }
-    auto fetch_result = iter_.FetchTuple(*ybctid, &*row_);
+    auto fetch_result = iter_.FetchTuple(ybctid, &*row_);
     if (!fetch_result.ok()) {
       status_ = std::move(fetch_result.status());
       return false;
@@ -1100,6 +1120,10 @@ class PgsqlVectorFilter {
 
     need_refresh_ = *fetch_result == FetchResult::NotFound;
     if (*fetch_result != FetchResult::Found) {
+      if (*fetch_result == FetchResult::NotFound) {
+        // The row is gone, so the vector belongs to a deleted row.
+        ++num_removed_;
+      }
       return false;
     }
     ++num_found_entries_;
@@ -1109,9 +1133,13 @@ class PgsqlVectorFilter {
     }
     auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
     if (vector_id.AsSlice() != encoded_value.id) {
-      LOG(DFATAL)
+      // The row no longer references this vector, i.e. the vector was replaced by an update.
+      // Such a vector is filtered out above when the reverse mapping is used, so a mismatch
+      // here means the reverse mapping and the row disagree.
+      LOG_IF(DFATAL, resolved_via_reverse_mapping)
           << "Referenced row with wrong vector id: " << encoded_value.DecodeId()
           << ", expected: " << vector_id;
+      ++num_removed_;
       return false;
     }
     ++num_accepted_entries_;

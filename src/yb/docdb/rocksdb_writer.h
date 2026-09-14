@@ -284,6 +284,13 @@ class VectorIndexesUpdater {
   Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
   Status Complete();
 
+  // Whether reverse mapping tombstones should be written for deleted vectors. They are not
+  // needed when all vector indexes store ybctids: such a vector has no reverse mapping entry,
+  // and a deleted row is detected by fetching it by the ybctid from the vector payload.
+  bool NeedReverseMappingTombstones() const {
+    return !all_indexes_store_ybctid_;
+  }
+
  private:
   template <class Decoder>
   Status FeedPackedRow(
@@ -313,6 +320,11 @@ class VectorIndexesUpdater {
   const HybridTime commit_ht_;
   const IntraTxnWriteId& write_id_;
   const bool xcluster_target_;
+
+  // Whether all vector indexes store ybctids in their chunks, so no reverse mapping entries are
+  // needed at all. Based on the per-index decision fixed at index open, so it is consistent with
+  // the contents of the chunks the entries go to.
+  const bool all_indexes_store_ybctid_;
   // TODO(#30819 vector_index) Optimize memory management
   std::vector<DocVectorIndexInsertEntries> batches_;
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;

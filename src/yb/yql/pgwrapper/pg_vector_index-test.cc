@@ -71,6 +71,7 @@ DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
+DECLARE_bool(vector_index_store_ybctid);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_concurrent_ddl);
@@ -4097,6 +4098,114 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
           ybctid_4_vector_2 -> ybctid_4
       )#",
       output);
+}
+
+// With vector_index_store_ybctid enabled the vector index writes no reverse mapping entries at
+// all, neither on insert nor on delete.
+TEST_F(PgVectorIndexUtilTest, SstDumpStoredYbctid) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
+
+  // Neither the deleted vector of row 2 nor the vector replaced by the update of row 4 add a
+  // reverse mapping entry.
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  // Search resolves rows from the ybctids stored in the vector index and skips both the deleted
+  // row and the vector left behind by the update, because it fetches the row they point to.
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  std::ranges::sort(rows);
+  ASSERT_EQ(AsString(rows), "[1, 3, 4, 5]");
+}
+
+// Chunks written before ybctids were stored (the index was opened with vector_index_store_ybctid
+// disabled) get the ybctids attached during vector index compaction, restored from the reverse
+// mapping via the merge filter.
+TEST_F(PgVectorIndexUtilTest, CompactionAttachesYbctidToOldChunks) {
+  constexpr size_t kNumRows = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = false;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows / 2));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+  {
+    auto vector_indexes = ListVectorIndexes(cluster_.get());
+    ASSERT_EQ(vector_indexes.size(), 1);
+    ASSERT_OK(vector_indexes.front()->Flush());
+    ASSERT_OK(vector_indexes.front()->WaitForFlush());
+  }
+
+  // Reopen the index with ybctid storing enabled, as it happens when the autoflag is promoted
+  // and the node restarts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = true;
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(InsertRows(conn, kNumRows / 2 + 1, kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  auto vector_indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(vector_indexes.size(), 1);
+  auto& index = *vector_indexes.front();
+  ASSERT_OK(index.Flush());
+  ASSERT_OK(index.WaitForFlush());
+  // The compacted chunk stores ybctids, the merge filter restores them for the vectors from the
+  // chunk written before the restart.
+  ASSERT_OK(index.Compact());
+  ASSERT_OK(index.WaitForCompaction());
+  ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
+
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  std::ranges::sort(rows);
+  ASSERT_EQ(AsString(rows), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]");
+}
+
+// With vector_index_store_ybctid enabled there are no reverse mapping entries, so compaction
+// cannot detect deleted vectors and keeps them in the index. Search skips them anyway, because
+// the rows their stored ybctids point to are gone.
+TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = true;
+  // The range DELETE below is planned as a seq scan.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr size_t kNumRows = 10;
+  constexpr size_t kNumDeletedRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  auto vector_indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(vector_indexes.size(), 1);
+  auto& index = *vector_indexes.front();
+  ASSERT_OK(index.Flush());
+  ASSERT_OK(index.WaitForFlush());
+
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id <= $0", kNumDeletedRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // TODO(vector_index): the deleted vectors are expected to be removed by compaction once
+  // deletions are delivered to the vector index, see VectorMergeFilter::Filter.
+  ASSERT_OK(index.Compact());
+  ASSERT_OK(index.WaitForCompaction());
+  ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
+
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  std::ranges::sort(rows);
+  ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
 
 // Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).

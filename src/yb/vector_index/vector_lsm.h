@@ -86,6 +86,11 @@ class VectorLSMMergeFilter {
 
   // payload is attached to the vector, empty when the vector has no payload.
   virtual storage::FilterDecision Filter(VectorId vector_id, Slice payload) = 0;
+
+  // Returns the payload for a vector kept by Filter when its chunk was written without payloads
+  // while the compacted chunk stores them. The vector is discarded when the returned payload is
+  // empty.
+  virtual Result<ValueBuffer> RestorePayload(VectorId vector_id) = 0;
 };
 using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
 

@@ -109,6 +109,8 @@ Result<std::vector<vector_index::VectorLSMChunkPB>> LoadAliveManifestChunks(
 using vector_index::TEST_GetCompactionChunkMaxMemStoreBytes;
 using vector_index::VectorId;
 
+std::string PayloadForVector(const VectorId& vector_id);
+
 using FloatVectorLSM = vector_index::VectorLSM<std::vector<float>, float>;
 using InsertEntries = typename FloatVectorLSM::InsertEntries;
 using MergeFilter = vector_index::VectorLSMMergeFilter;
@@ -278,7 +280,7 @@ class VectorLSMTest
   Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
 
   vector_index::StoreVectorPayload store_vector_payload() const {
-    return StorePayload(GetParam());
+    return store_vector_payload_override_.value_or(StorePayload(GetParam()));
   }
 
   void TestBootstrap(bool flush);
@@ -328,6 +330,9 @@ class VectorLSMTest
     storage::FilterDecision Filter(VectorId vector_id, Slice payload) override {
       return filter(vector_id, payload);
     }
+    Result<ValueBuffer> RestorePayload(VectorId vector_id) override {
+      return ValueBuffer(PayloadForVector(vector_id));
+    }
   };
 
   static MergeFilterPtr CreateDummyMergeFilter(storage::FilterDecision decision) {
@@ -342,6 +347,8 @@ class VectorLSMTest
   PriorityThreadPool priority_thread_pool_;
   SimpleVectorLSMKeyValueStorage key_value_storage_;
   InsertEntries inserted_entries_;
+  // Overrides the payload mode from the test param, see store_vector_payload().
+  std::optional<vector_index::StoreVectorPayload> store_vector_payload_override_;
   simple_spinlock merge_filter_mutex_;
   MergeFilterPtr merge_filter_;
 
@@ -814,6 +821,38 @@ void VectorLSMTest::TestMultipleChunksSimpleCompaction(
   ++compacted_idx;
   files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
+}
+
+// Compaction of chunks written without payloads (e.g. by a version that does not support them)
+// into an LSM that stores payloads restores the payloads via the merge filter.
+TEST_P(VectorLSMTest, CompactionRestoresPayload) {
+  constexpr size_t kDimensions = 6;
+
+  if (!store_vector_payload()) {
+    GTEST_SKIP() << "Meaningful only when the LSM stores payloads";
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  std::string storage_dir;
+  {
+    // Write chunks without payloads.
+    store_vector_payload_override_ = vector_index::StoreVectorPayload::kFalse;
+    FloatVectorLSM lsm;
+    ASSERT_OK(InitVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+    ASSERT_OK(lsm.Flush(true));
+    storage_dir = lsm.StorageDir();
+  }
+  store_vector_payload_override_.reset();
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
+      /* mem_tracker = */ {}, storage_dir));
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+
+  // CheckQueryVector verifies every result carries PayloadForVector, see
+  // FilterProxy::RestorePayload.
+  VerifyVectorLSM(lsm, kDimensions);
 }
 
 TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {

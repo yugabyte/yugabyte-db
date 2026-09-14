@@ -51,6 +51,11 @@ using EncodedDistance = uint64_t;
 
 struct DocVectorIndexInsertEntry {
   ValueBuffer value;
+
+  // ybctid of the row that contains the vector. Attached to the vector in the chunk when the
+  // index stores ybctids, so search can resolve rows without reading the reverse mapping, see
+  // DocVectorIndex::StoresYbctid.
+  KeyBuffer ybctid;
 };
 
 struct DocVectorIndexSearchResultEntry {
@@ -86,6 +91,7 @@ class DocVectorIndexReverseMappingReader {
   // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
   // no ybctid is found or kTombstone corresponds to the specified vector_id.
   Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
+
 };
 
 using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;
@@ -95,6 +101,12 @@ class DocVectorIndexContext {
   virtual ~DocVectorIndexContext() = default;
   virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
       const ReadHybridTime& read_ht, DocDBStatistics* statistics) const = 0;
+
+  // Creates a reader at the tablet's current history cutoff. A tombstone visible to this reader
+  // cannot be observed as a live vector by any allowed read time, so the merge filter may
+  // discard the corresponding vector.
+  virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReaderAtHistoryCutoff()
+      const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
@@ -134,6 +146,11 @@ class DocVectorIndex {
   virtual uint64_t split_generation() const = 0;
   virtual const DocVectorIndexContext& context() const = 0;
   virtual const DocVectorIndexMetrics& metrics() const = 0;
+
+  // Whether ybctids are stored in the vector index chunks as vector payloads, so search resolves
+  // rows without reading the reverse mapping and insert-time reverse mapping entries are not
+  // needed. Fixed for the lifetime of the index.
+  virtual bool StoresYbctid() const = 0;
 
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) = 0;

@@ -38,6 +38,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/operation_counter.h"
@@ -124,6 +125,17 @@ class IndexContext : public docdb::DocVectorIndexContext {
     auto reader = std::make_unique<IndexReverseMappingReader>();
     RETURN_NOT_OK(reader->Init(tablet_, read_ht, statistics));
     return reader;
+  }
+
+  Result<docdb::DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReaderAtHistoryCutoff()
+      const override {
+    // The same cutoff regular compactions use, see HistoryCutoff for the fields description.
+    auto cutoff =
+        tablet_.RetentionPolicy()->GetRetentionDirective().history_cutoff.primary_cutoff_ht;
+    if (!cutoff.is_valid()) {
+      cutoff = HybridTime::kMin;
+    }
+    return CreateReverseMappingReader(ReadHybridTime::SingleTime(cutoff), nullptr);
   }
 
   Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(
@@ -397,13 +409,15 @@ using ReverseMappingBackfillerPtr = std::unique_ptr<ReverseMappingBackfiller>;
 
 class VectorIndexBackfillContext {
  public:
-  explicit VectorIndexBackfillContext(HybridTime backfill_ht) : backfill_ht_(backfill_ht) {
+  VectorIndexBackfillContext(HybridTime backfill_ht, bool store_ybctid)
+      : backfill_ht_(backfill_ht), store_ybctid_(store_ybctid) {
   }
 
   void Add(Slice ybctid, Slice value) {
     ybctids_.push_back(arena_.DupSlice(ybctid));
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
+      .ybctid = store_ybctid_ ? KeyBuffer(ybctid) : KeyBuffer(),
     });
   }
 
@@ -427,6 +441,7 @@ class VectorIndexBackfillContext {
 
  private:
   const HybridTime backfill_ht_;
+  const bool store_ybctid_;
   docdb::DocVectorIndexInsertEntries entries_;
   std::vector<Slice> ybctids_;
   Arena arena_;
@@ -434,9 +449,10 @@ class VectorIndexBackfillContext {
 
 class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
  public:
-  explicit VectorIndexBackfillHelper(
-      HybridTime backfill_ht, ReverseMappingBackfillerPtr reverse_mapping_backfiller)
-      : VectorIndexBackfillContext(backfill_ht),
+  VectorIndexBackfillHelper(
+      HybridTime backfill_ht, bool store_ybctid,
+      ReverseMappingBackfillerPtr reverse_mapping_backfiller)
+      : VectorIndexBackfillContext(backfill_ht, store_ybctid),
         reverse_mapping_backfiller_(std::move(reverse_mapping_backfiller)) {
   }
 
@@ -541,16 +557,21 @@ Status TabletVectorIndexes::Backfill(
   IndexedTableReader reader(*vector_index);
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
+  // The per-index decision keeps storing ybctid in the entries, skipping the reverse mapping
+  // backfill and the payload mode of the index chunks consistent with each other.
+  const bool store_ybctid = vector_index->StoresYbctid();
   ReverseMappingBackfillerPtr reverse_mapping_backfiller;
   const bool skip_reverse_mapping_backfill =
       TEST_vector_index_skip_reverse_mapping_backfill.value_or(
+          store_ybctid ||
           indexed_table.schema().table_properties().owns_vector_reverse_mapping());
   if (!skip_reverse_mapping_backfill) {
     reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
   }
 
   // Expecting one row at most.
-  VectorIndexBackfillHelper helper(backfill_ht, std::move(reverse_mapping_backfiller));
+  VectorIndexBackfillHelper helper(
+      backfill_ht, store_ybctid, std::move(reverse_mapping_backfiller));
 
   // Convert the byte budget into a vector count using the index implementation's own per-vector
   // memory layout. The same number of vectors with different numbers of dimensions can consume

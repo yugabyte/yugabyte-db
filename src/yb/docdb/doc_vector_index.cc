@@ -46,6 +46,14 @@
 DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
     "Number of vector in initial vector index chunk");
 
+DEFINE_RUNTIME_bool(vector_index_store_ybctid, false,
+    "Whether to store ybctid in the vector index chunks together with the vectors. "
+    "When stored, search resolves ybctids directly from the chunk and no reverse mapping "
+    "entries are written for the vector index at all, neither on insert nor on delete. "
+    "Disabled by default, because deleted vectors are not removed from the index yet, see #33912. "
+    "Turning the flag off back is not supported either: compaction would drop the stored ybctids, "
+    "while such vectors have no reverse mapping entries to be resolved through.");
+
 METRIC_DEFINE_event_stats(table, vector_index_convert_us,
     "Time to convert list of vector ids to ybctids", yb::MetricUnit::kMicroseconds,
     "Time (microseconds) that operations spent converting list of vector ids to ybctids.");
@@ -169,17 +177,18 @@ Result<Vector> VectorFromYSQL(Slice slice) {
 
 template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
-    const DocVectorIndexInsertEntry& entry) {
+    const DocVectorIndexInsertEntry& entry, bool store_ybctid) {
 
   RSTATUS_DCHECK(!entry.value.empty(), InvalidArgument, "Vector value is not specified");
+  RSTATUS_DCHECK(
+      !store_ybctid || !entry.ybctid.empty(), InvalidArgument, "Vector ybctid is not specified");
 
   auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value.AsSlice());
   return vector_index::VectorLSMInsertEntry<Vector> {
     .vector_id = VERIFY_RESULT(encoded.DecodeId()),
     .vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data)),
-    // TODO(vector_index): attach ybctid of the row that contains the vector in a follow up
-    // to #33353.
-    .payload = ValueBuffer(),
+    .payload =
+        store_ybctid ? dockv::DocVectorIndexPayload(entry.ybctid.AsSlice()) : ValueBuffer(),
   };
 }
 
@@ -195,8 +204,10 @@ EncodedDistance EncodeDistance(float distance) {
 class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
  public:
   VectorMergeFilter(
-      const std::string& log_prefix, DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
-      : log_prefix_(log_prefix), reverse_mapping_reader_(std::move(reverse_mapping_reader)) {
+      const std::string& log_prefix, DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader,
+      DocVectorIndexReverseMappingReaderPtr history_cutoff_reader)
+      : log_prefix_(log_prefix), reverse_mapping_reader_(std::move(reverse_mapping_reader)),
+        history_cutoff_reader_(std::move(history_cutoff_reader)) {
   }
 
   const std::string& LogPrefix() const {
@@ -210,6 +221,17 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
 
     // Let's not filter the vector in case of error.
     auto decision = rocksdb::FilterDecision::kKeep;
+
+    if (!payload.empty()) {
+      // The vector stores its ybctid, so it has no reverse mapping entry to check against and
+      // compaction cannot tell whether the row it points to still exists.
+      // TODO(vector_index): remove deleted vectors from the index, see #33912. The vectors of
+      // the sibling tablet are not removed after a split either, the check below does it for
+      // vectors without payload, because the reverse mapping entries outside the tablet key
+      // bounds are dropped by regular compaction.
+      VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
+      return decision;
+    }
 
     // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
     // exists. Decoding is unnecessary, and FetchYbctid would treat tombstones as missing
@@ -228,9 +250,29 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
     return decision;
   }
 
+  Result<ValueBuffer> RestorePayload(vector_index::VectorId vector_id) override {
+    // The vector comes from a chunk written before ybctids were stored, so it has an insert-time
+    // reverse mapping entry. FetchYbctid returns empty when the entry is tombstoned by a fresh
+    // delete/update; the pre-delete ybctid is then visible at the history cutoff. When both reads
+    // return empty (the vector was inserted and deleted above the cutoff, or the history cutoff
+    // is not known yet), the vector is discarded: a chunk which stores payloads has a payload for
+    // every vector, so a vector with an unknown ybctid cannot be kept. It is a correct outcome
+    // for a deleted or replaced vector, but it loses time travel reads between the insert and
+    // the delete.
+    auto ybctid = VERIFY_RESULT(reverse_mapping_reader_->FetchYbctid(vector_id));
+    if (ybctid.empty()) {
+      ybctid = VERIFY_RESULT(history_cutoff_reader_->FetchYbctid(vector_id));
+    }
+    if (ybctid.empty()) {
+      return ValueBuffer();
+    }
+    return dockv::DocVectorIndexPayload(ybctid);
+  }
+
  private:
   const std::string& log_prefix_;
   DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
+  DocVectorIndexReverseMappingReaderPtr history_cutoff_reader_;
 };
 
 template<vector_index::IndexableVectorType Vector,
@@ -256,6 +298,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const TableId& table_id() const override {
     return table_id_;
+  }
+
+  bool StoresYbctid() const override {
+    return stores_ybctid_;
   }
 
   Slice indexed_table_key_prefix() const override {
@@ -297,7 +343,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
       auto reader =
           VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
-      return std::make_unique<VectorMergeFilter>(lsm_.LogPrefix(), std::move(reader));
+      auto history_cutoff_reader =
+          VERIFY_RESULT(context_->CreateReverseMappingReaderAtHistoryCutoff());
+      return std::make_unique<VectorMergeFilter>(
+          lsm_.LogPrefix(), std::move(reader), std::move(history_cutoff_reader));
     };
 
     name_ = RemoveLogPrefixColon(log_prefix);
@@ -316,8 +365,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
       .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
-      // TODO(vector_index): store ybctid as the vector payload in a follow up to #33353.
-      .store_vector_payload = vector_index::StoreVectorPayload::kFalse,
+      // The decision is fixed for the lifetime of the index: it drives whether the chunks store
+      // payloads and whether insert-time reverse mapping entries are needed, and those must stay
+      // consistent with each other. A flag flip takes effect when the index is reopened.
+      .store_vector_payload = vector_index::StoreVectorPayload(stores_ybctid_),
     };
     RETURN_NOT_OK(lsm_.Open(std::move(lsm_options)));
 
@@ -334,7 +385,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {
-      lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry)));
+      lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry, stores_ybctid_)));
     }
     vector_index::VectorLSMInsertContext context {
       .frontiers = insert_options.frontiers,
@@ -362,7 +413,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     TEST_SYNC_POINT("DocVectorIndexImpl::Search:AfterFilter");
     TEST_SYNC_POINT("DocVectorIndexImpl::Search:BeforeResolve");
 
-    // Resolve ybctids with the caller's reader -- the same one the filter used -- so both see one
+    // Entries from chunks with stored ybctid resolve directly from the chunk. Other entries are
+    // resolved with the caller's reader -- the same one the filter used -- so both see one
     // snapshot. Otherwise a DELETE whose reverse-mapping tombstone lands between the two reads lets
     // the filter accept an entry that resolves empty here; such a row is still dropped when its
     // ybctid is fetched (the row delete is intent-tracked, unlike the physical-only reverse map).
@@ -374,15 +426,25 @@ class DocVectorIndexImpl : public DocVectorIndex {
         could_have_missing_entries && entries.size() >= options.max_num_results;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader.FetchYbctid(entry.vector_id));
-      VLOG_WITH_FUNC(4)
-          << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString();
-      if (ybctid.empty()) {
-        if (could_have_missing_entries) {
-          continue;
-        }
-        return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
+      Slice ybctid;
+      if (!entry.payload.empty()) {
+        ybctid = VERIFY_RESULT(dockv::DocVectorIndexPayloadYbctid(entry.payload.AsSlice()));
       }
+      const auto ybctid_from_payload = !ybctid.empty();
+      if (ybctid.empty()) {
+        // The chunk this entry comes from was written without stored ybctid, resolve it via the
+        // reverse mapping.
+        ybctid = VERIFY_RESULT(reverse_mapping_reader.FetchYbctid(entry.vector_id));
+        if (ybctid.empty()) {
+          if (could_have_missing_entries) {
+            continue;
+          }
+          return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
+        }
+      }
+      VLOG_WITH_FUNC(4)
+          << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString()
+          << ", source: " << (ybctid_from_payload ? "payload" : "reverse mapping");
 
       result.entries.push_back(DocVectorIndexSearchResultEntry {
         .encoded_distance = EncodeDistance(entry.distance),
@@ -583,6 +645,9 @@ class DocVectorIndexImpl : public DocVectorIndex {
   uint64_t split_min_chunk_serial_no_ = 0;
 
   std::string name_;
+  // Whether ybctids are stored in the vector index chunks as vector payloads. Snapshot of
+  // vector_index_store_ybctid, fixed for the lifetime of the index, see Open.
+  const bool stores_ybctid_ = FLAGS_vector_index_store_ybctid;
   LSM lsm_;
 };
 

@@ -63,7 +63,6 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
 
-
 namespace yb::docdb {
 
 using dockv::KeyBytes;
@@ -966,9 +965,13 @@ Status ApplyIntentsContext::Complete(
 Status ApplyIntentsContext::DeleteVectorIds(
     Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
   // TODO(vector_index): do we need check ApplyToRegularDB() here?
-  RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-      handler, ids, DocHybridTime(commit_ht_, write_id_)));
+  if (!vector_indexes_updater_ || vector_indexes_updater_->NeedReverseMappingTombstones()) {
+    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+        handler, ids, DocHybridTime(commit_ht_, write_id_)));
+  }
 
+  // Set even when no tombstone is written: it keeps the search filter enabled, so deleted
+  // vectors are detected by fetching the row by the ybctid from the vector payload.
   frontiers_.Largest().SetHasVectorDeletion();
   return Status::OK();
 }
@@ -1282,9 +1285,11 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
   // xCluster consumer. Tombstone each old vector ID's reverse mapping.
   // TODO(vector_index): do we need check ApplyToRegularDB() here?
   if (!input_value.empty()) {
-    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-        regular_write_handler, input_value,
-        DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
+    if (!vector_indexes_updater || vector_indexes_updater->NeedReverseMappingTombstones()) {
+      RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+          regular_write_handler, input_value,
+          DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
+    }
     frontiers_.Largest().SetHasVectorDeletion();
   }
 
@@ -1432,9 +1437,11 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   }
 
   if (put_batch_.has_delete_vector_ids()) {
-    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-        handler, Slice(put_batch_.delete_vector_ids()),
-        DocHybridTime(write_hybrid_time_, write_id)));
+    if (!vector_indexes_updater || vector_indexes_updater->NeedReverseMappingTombstones()) {
+      RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+          handler, Slice(put_batch_.delete_vector_ids()),
+          DocHybridTime(write_hybrid_time_, write_id)));
+    }
     frontiers_.Largest().SetHasVectorDeletion();
   }
 
@@ -1513,7 +1520,10 @@ VectorIndexesUpdater::VectorIndexesUpdater(
     : indexes_(std::move(indexes)), schema_packing_provider_(schema_packing_provider),
       frontiers_(frontiers),
       apply_to_storages_(apply_to_storages), commit_ht_(commit_ht), write_id_(write_id),
-      xcluster_target_(xcluster_target) {
+      xcluster_target_(xcluster_target),
+      all_indexes_store_ybctid_(
+          indexes_ && !indexes_->empty() &&
+          std::ranges::all_of(*indexes_, [](const auto& index) { return index->StoresYbctid(); })) {
   if (indexes_) {
     batches_.resize(indexes_->size());
   }
@@ -1556,7 +1566,8 @@ Status VectorIndexesUpdater::Feed(
 
       // The value entry can start with kVector only when table owns vector reverse mapping.
       const bool apply_reverse_entry = value.starts_with(ValueEntryTypeAsChar::kVector);
-      bool need_reverse_entry = apply_to_storages_.TestRegularDB();
+      // When ybctid is stored in the vector index, the reverse mapping entry is not needed.
+      bool need_reverse_entry = apply_to_storages_.TestRegularDB() && !all_indexes_store_ybctid_;
       if (need_reverse_entry && apply_reverse_entry) {
         column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
         auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(sizes.prefix_size);
@@ -1578,13 +1589,16 @@ Status VectorIndexesUpdater::Feed(
           auto table_key_prefix = vector_index.indexed_table_key_prefix();
           if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
               IntentApplyShouldUpdateVectorIndex(vector_index)) {
+            // The vector index knows its table key prefix and column id, so the payload stores
+            // the ybctid alone.
+            auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
             if (ApplyToVectorIndex(i)) {
               batches_[i].push_back(DocVectorIndexInsertEntry {
                 .value = ValueBuffer(value.WithoutPrefix(1)),
+                .ybctid = KeyBuffer(ybctid),
               });
             }
             if (need_reverse_entry) {
-              auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
               DocVectorIndex::ApplyReverseEntry(
                   handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
               need_reverse_entry = false; // Apply only once, not for every vector index.
@@ -1680,7 +1694,8 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
       continue;
     }
 
-    if (apply_to_storages_.TestRegularDB()) {
+    // When ybctid is stored in the vector index, the reverse mapping entry is not needed.
+    if (apply_to_storages_.TestRegularDB() && !all_indexes_store_ybctid_) {
       DocVectorIndex::ApplyReverseEntry(
           handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_),
           column_id, table_key_prefix);
@@ -1698,6 +1713,7 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
           ApplyToVectorIndex(index_idx)) {
         batches_[index_idx].push_back(DocVectorIndexInsertEntry {
           .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
+          .ybctid = KeyBuffer(ybctid),
         });
       }
     }
@@ -1737,10 +1753,12 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
     if (ApplyToVectorIndex(i)) {
       batches_[i].push_back(DocVectorIndexInsertEntry {
         .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
+        .ybctid = KeyBuffer(ybctid),
       });
     }
 
-    if (apply_to_storages_.TestRegularDB()) {
+    // When ybctid is stored in the vector index, the reverse mapping entry is not needed.
+    if (apply_to_storages_.TestRegularDB() && !all_indexes_store_ybctid_) {
       size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
       columns_added_to_vector_index.resize(
           std::max(columns_added_to_vector_index.size(), column_index + 1));

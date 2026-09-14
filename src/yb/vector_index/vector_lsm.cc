@@ -2504,8 +2504,11 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
   using Iterator = typename ImmutableChunkPtrs::const_iterator;
   using ValueType = typename VectorIndex::IteratorValue;
 
-  MergingIterator(const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter)
-      : chunks_(chunks), filter_(filter), outer_it_(chunks_.begin()) {
+  MergingIterator(
+      const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter,
+      StoreVectorPayload store_payload)
+      : chunks_(chunks), filter_(filter), store_payload_(store_payload),
+        outer_it_(chunks_.begin()) {
     // Seed frontiers from the first chunk so the first Merger::ResetFrontiers() call
     // returns them as part of the first output chunk's frontiers.
     ResetFrontiers();
@@ -2609,8 +2612,8 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
     ValueType current_value;
     while (inner_it_ != inner_end_) {
       current_value = *inner_it_;
-      if (filter_.Filter(current_value.vector_id, current_value.payload) ==
-              storage::FilterDecision::kKeep) {
+      auto decision = filter_.Filter(current_value.vector_id, current_value.payload);
+      if (decision == storage::FilterDecision::kKeep && RestorePayloadIfMissing(current_value)) {
         value_ = std::move(current_value);
         return true;
       }
@@ -2618,6 +2621,27 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
     }
 
     return false;
+  }
+
+  // The entry comes from a chunk written without payloads (e.g. by a version that does not
+  // support them), while the compacted chunk stores payloads. Restore the payload via the merge
+  // filter. Returns false to discard the entry when the payload cannot be restored.
+  bool RestorePayloadIfMissing(ValueType& entry) {
+    if (!store_payload_ || !entry.payload.empty()) {
+      return true;
+    }
+    auto payload = filter_.RestorePayload(entry.vector_id);
+    if (!payload.ok()) {
+      LOG(DFATAL) << "Failed to restore payload for " << entry.vector_id << ": "
+                  << payload.status();
+      return false;
+    }
+    if (payload->empty()) {
+      return false;
+    }
+    restored_payload_ = std::move(*payload);
+    entry.payload = restored_payload_.AsSlice();
+    return true;
   }
 
   // The caller must guarantee that the current outer iterator is valid.
@@ -2635,6 +2659,10 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
 
   const ImmutableChunkPtrs& chunks_;
   VectorLSMMergeFilter& filter_;
+  const StoreVectorPayload store_payload_;
+  // Backing storage for the payload restored for the current value_, valid until the next
+  // InnerNext call, matching the lifetime of the slices in value_.
+  ValueBuffer restored_payload_;
   Iterator outer_it_;
   InnerIterator inner_it_ { nullptr };
   InnerIterator inner_end_ { nullptr };
@@ -2857,7 +2885,7 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
       IllegalState, "Vector merge filter factory must be specified");
   auto merge_filter = VERIFY_RESULT(options_.vector_merge_filter_factory());
 
-  MergingIterator merge_iterator(input_chunks, *merge_filter);
+  MergingIterator merge_iterator(input_chunks, *merge_filter, options_.store_vector_payload);
 
   Merger merger(*this, *this->merge_registry_, suspender);
   auto merged_chunks = VERIFY_RESULT(merger.Merge(merge_iterator, max_vectors_per_output_chunk));

@@ -52,6 +52,10 @@ class CountingVectorIndex : public DocVectorIndex {
   }
   size_t inserted_entries() const { return inserted_entries_; }
 
+  // Checked on every VectorIndexesUpdater construction; false keeps the reverse mapping writes
+  // these tests expect.
+  bool StoresYbctid() const override { return false; }
+
   // Unused on the external-apply vector-feed path.
   const TableId& table_id() const override { LOG(FATAL) << "Unexpected call"; }
   const PgVectorIdxOptionsPB& options() const override { LOG(FATAL) << "Unexpected call"; }
