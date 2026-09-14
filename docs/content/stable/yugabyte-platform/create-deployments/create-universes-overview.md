@@ -23,7 +23,7 @@ The following best practices are recommended for production universes.
 
 | Feature | Recommendation |
 | :--- | :--- |
-| [Provider and region](#provider-and-region) | Deploy using a [provider configuration](../../configure-yugabyte-platform/) in the same cloud and regions as your application. YugabyteDB Anywhere supports AWS, Azure, GCP, on-premises, and Kubernetes. |
+| [Provider and region](#provider-and-region) | Deploy using a [provider configuration](../../configure-yugabyte-platform/) in the same cloud and regions as your application. YugabyteDB Anywhere supports AWS, Azure, GCP, OCI, on-premises, and Kubernetes. |
 | [Placement](#placement) | Region or Availability zone resilience, with a minimum of three nodes across multiple regions or AZs.<br>Use **Guided** mode for most topologies. |
 | [Hardware](#hardware) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node. |
 | [YugabyteDB version](#yugabytedb-version) | Use a stable [LTS release](../../../releases/versioning/#stable-release-support-policy). |
@@ -67,16 +67,16 @@ For more details, refer to [Multi-region deployments](../../../explore/multi-reg
 
 #### Provider
 
-YugabyteDB Anywhere deploys universes using a [provider configuration](../../configure-yugabyte-platform/) that describes your environment — regions, availability zones, images, networking, and (for public clouds) the credentials YBA uses to create nodes.
+YugabyteDB Anywhere deploys universes using a [provider configuration](../../configure-yugabyte-platform/) that describes your environment — regions, availability zones, images, networking, and (for public clouds) the credentials YugabyteDB Anywhere uses to create nodes.
 
-Your choice of provider depends primarily on where your applications run and how much automation you want YBA to have.
+Your choice of provider depends primarily on where your applications run and how much automation you want YugabyteDB Anywhere to have.
 
-| | On-premises | Cloud<br>(AWS, Azure, GCP) | Kubernetes |
+| | On-premises | Cloud<br>(AWS, Azure, GCP, OCI) | Kubernetes |
 | :--- | :--- | :--- | :--- |
 | Advantages | Maximum flexibility | Maximum automation | Native to Kubernetes |
-| Platforms | Private cloud, bare metal, or public cloud VMs you manage | AWS, Azure, GCP | Kubernetes (including Tanzu and OpenShift) |
-| Node provisioning | You create VMs; YBA takes nodes from a free pool | YBA creates and provisions VMs | Via Helm |
-| Permissions for YBA | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
+| Platforms | Private cloud, bare metal, or public cloud VMs you manage | AWS, Azure, GCP, OCI | Kubernetes (including Tanzu and OpenShift) |
+| Node provisioning | You create VMs; YugabyteDB Anywhere takes nodes from a free pool | YugabyteDB Anywhere creates and provisions VMs | Via Helm |
+| Permissions for YugabyteDB Anywhere | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
 
 Not sure which provider to use? Refer to [Provider configurations](../../yba-overview/#provider-configurations).
 
@@ -95,7 +95,7 @@ For on-premises providers, ensure the free pool has enough nodes in the regions 
 
 #### Instance types
 
-When you create a universe, you choose an instance type from those available in the provider and selected regions. YBA uses the same instance type for all TServer nodes in the cluster.
+When you create a universe, you choose an instance type from those available in the provider and selected regions. YugabyteDB Anywhere uses the same instance type for all TServer nodes in the cluster.
 
 For public clouds, instance availability varies by region. For on-premises, instance type is informational — you provision the VMs. For Kubernetes, you set cores, memory, and volume size instead of a cloud instance type.
 
@@ -117,9 +117,11 @@ When creating or modifying universe placement, you choose **Regular Cluster** (p
 | You start with | Resilience (region, zone, node, or none) and how many of those outages to tolerate | Regions, then [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) |
 | Replication factor | Applied automatically from the resilience you choose (RF 3, 5, or 7; or RF 1 for None) | You set RF to 1, 3, 5, or 7 |
 | Node counts | The same in every availability zone | Can differ per availability zone |
-| Resilience | You choose the outage domain; YBA constrains regions, zones, and nodes to match | Inferred from your regions, zones, nodes, and RF |
+| Resilience | You choose the outage domain; YugabyteDB Anywhere constrains regions, zones, and nodes to match | Inferred from your regions, zones, nodes, and RF |
 
 **Guided** is recommended for most users. Use **Expert** when you need different node counts per zone, a region and zone layout that **Guided** does not allow, or to set replication factor directly.
+
+**Single-Node Cluster** is a separate option on the Placement page (not a **Guided** resilience type). It also deploys a single node with RF 1 and skips **Guided** and **Expert** mode.
 
 {{< note title="Classic UI" >}}
 
@@ -129,7 +131,7 @@ The Classic UI does not have **Guided** or **Expert** mode. You set regions, rep
 
 #### Guided mode
 
-In **Guided** mode, start by selecting the cluster's resilience and the number of outages (1, 2, or 3) you want the cluster to tolerate without downtime. YBA then requires a matching number of regions, availability zones, and nodes, and applies replication factor automatically (`RF = 2 × outages + 1`).
+In **Guided** mode, start by selecting the cluster's resilience and the number of outages (1, 2, or 3) you want the cluster to tolerate without downtime. YugabyteDB Anywhere then requires a matching number of regions, availability zones, and nodes, and applies replication factor automatically (`RF = 2 × outages + 1`).
 
 | Resilience | Resilient to | Minimum placement | RF |
 | :--- | :--- | :---: | :---: |
@@ -173,11 +175,9 @@ Because cloud providers typically provide only 3–4 availability zones per regi
 - Operations that require a restart result in downtime (no rolling restart is possible).
 - For development and testing only.
 
-**Single-Node Cluster** is a separate option on the Placement page (not a **Guided** resilience type). It also deploys a single node with RF 1 and skips **Guided** and **Expert** mode.
-
 #### Expert mode
 
-In **Expert** mode, start by selecting one or more regions, then set the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) and place nodes in availability zones. YBA infers resilience from the combination of regions, zones, nodes, and RF (for example, RF 3 across 3 regions is region-level; RF 3 across 3 zones in one region is zone-level; RF 3 in a single zone is node-level).
+In **Expert** mode, start by selecting one or more regions, then set the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) and place nodes in availability zones. YugabyteDB Anywhere infers resilience from the combination of regions, zones, nodes, and RF (for example, RF 3 across 3 regions is region-level; RF 3 across 3 zones in one region is zone-level; RF 3 in a single zone is node-level).
 
 **Expert** mode gives you more control, with the following rules:
 
@@ -191,7 +191,7 @@ In **Expert** mode, start by selecting one or more regions, then set the [replic
 
 Use **Expert** when **Guided** cannot represent the topology you need. For example, different node counts per zone, two regions with zones distributed in a way **Guided** does not allow, or setting RF independently of a **Guided** resilience preset.
 
-If you switch from **Expert** to **Guided** and the current placement is not a **Guided**-supported topology (for example, uneven node counts per zone), YBA warns you and **resets** the placement configuration.
+If you switch from **Expert** to **Guided** and the current placement is not a **Guided**-supported topology (for example, uneven node counts per zone), YugabyteDB Anywhere warns you and **resets** the placement configuration.
 
 #### Preferred region
 
@@ -213,7 +213,7 @@ In cases where the cluster has [read replicas](#multiple-region) and a client co
 
 For universes with many databases or very large table counts, place YB-Master processes on dedicated nodes. The number of master nodes is equal to the replication factor.
 
-Dedicated master placement is available for AWS, GCP, Azure, and on-premises; it is not supported on Kubernetes. Refer to [Dedicated YB-Masters](../dedicated-master/).
+Dedicated master placement is available for AWS, GCP, Azure, OCI, and on-premises; it is not supported on Kubernetes. Refer to [Dedicated YB-Masters](../dedicated-master/).
 
 #### Changing placement
 
@@ -238,7 +238,7 @@ If your configuration doesn't match your performance requirements, you can [scal
 
 YugabyteDB recommends vertical scaling until nodes have 16 vCPUs, and horizontal scaling once nodes have 16 vCPUs. For example, for a 3-node universe with 4 vCPUs per node, scale up to 8 vCPUs rather than adding a fourth node. For a 3-node universe with 16 vCPUs per node, scale out by adding a 4th node.
 
-When creating the universe, you also choose CPU architecture (x86 or ARM) and, for cloud providers, the Linux version from the provider configuration's catalog. For airgapped installations, use a custom image; you cannot use YBA-managed Linux versions. Refer to [Create universes](../create-universes-wizard/#hardware).
+When creating the universe, you also choose CPU architecture (x86 or ARM) and, for cloud providers, the Linux version from the provider configuration's catalog. For airgapped installations, use a custom image; you cannot use YugabyteDB Anywhere-managed Linux versions. Refer to [Create universes](../create-universes-wizard/#hardware).
 
 For Kubernetes, set cores, memory, and volume size for TServer and Master separately rather than selecting a cloud instance type.
 
@@ -250,7 +250,7 @@ Use a version from the [stable release series](../../../releases/versioning/#sta
 
 If the version you want is not listed, import it into YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
 
-You manage upgrades. For multi-node universes, YBA performs a [rolling upgrade](../../manage-deployments/upgrade-software/) without downtime. For production universes, validate upgrades on a [staging universe](#staging-universe) first.
+You manage upgrades. For multi-node universes, YugabyteDB Anywhere performs a [rolling upgrade](../../manage-deployments/upgrade-software/) without downtime. For production universes, validate upgrades on a [staging universe](#staging-universe) first.
 
 ### Staging universe
 
@@ -277,13 +277,13 @@ For region-level disaster recovery, use [xCluster Disaster Recovery](../../back-
 
 ### Security
 
-YugabyteDB Anywhere universes are not automatically exposed to the public internet. Restrict access so that only YBA, application servers, and database administrators can reach universe nodes. Refer to [Networking](../../prepare/networking/).
+YugabyteDB Anywhere universes are not automatically exposed to the public internet. Restrict access so that only YugabyteDB Anywhere, application servers, and database administrators can reach universe nodes. Refer to [Networking](../../prepare/networking/).
 
 When you create a universe, configure the following:
 
-- **Network access**. Optionally assign public IPs (AWS, GCP, or Azure). For Kubernetes, you can enable IPv6.
-- **Encryption in transit**. Encrypt node-to-node and client-to-node traffic using a YBA-generated or customer-managed certificate. Client-to-node encryption requires node-to-node encryption. Refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
-- **Encryption at rest**. Encrypt universe data using a [KMS configuration](../../security/create-kms-config/aws-kms/) (AWS, GCP, Azure, or Hashicorp Vault). Refer to [Encryption at rest](../../security/enable-encryption-at-rest/).
+- **Network access**. Optionally assign public IPs (AWS, GCP, Azure, OCI). For Kubernetes, you can enable IPv6.
+- **Encryption in transit**. Encrypt node-to-node and client-to-node traffic using a YugabyteDB Anywhere-generated or customer-managed certificate. Client-to-node encryption requires node-to-node encryption. Refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
+- **Encryption at rest**. Encrypt universe data using a [KMS configuration](../../security/create-kms-config/aws-kms/). Refer to [Encryption at rest](../../security/enable-encryption-at-rest/).
 - **Database authentication**. Enable YSQL and YCQL authentication and set the admin password. Save the password; it is not stored in YugabyteDB Anywhere.
 
     After the universe is provisioned, [add users](../../security/authorization-platform/) and restrict their access. Refer to [Database authorization](../../security/authorization-platform/).
