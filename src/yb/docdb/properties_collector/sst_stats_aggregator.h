@@ -68,10 +68,11 @@ struct SstStatsAggregate {
   // garbage and no denominator either.
   uint64_t covered_files = 0;
   uint64_t covered_raw_bytes = 0;
-  // Live files carrying no statistics: written before the collector was enabled, or with
-  // properties that could not be read. Their num_entries and raw key+value bytes come from the
-  // built-in properties, which every file has, and are the missing part of any denominator
-  // (total_entries and covered_raw_bytes being the measured part).
+  // Live files carrying no statistics: written before the collector was enabled, or with a
+  // properties block that could not be read. A readable block without collector statistics still
+  // contributes its built-in num_entries and raw key+value bytes to the missing denominators; a
+  // wholly unreadable block contributes only to uncovered_files because its entries and bytes are
+  // unknown.
   uint64_t uncovered_files = 0;
   uint64_t uncovered_entries = 0;
   uint64_t uncovered_raw_bytes = 0;
@@ -85,10 +86,18 @@ struct SstStatsAggregate {
   uint64_t unsubtracted_files = 0;
 
   // Identities over the chain-tracked population, valid only while partial_files is zero. See
-  // SstStats for what each measures.
-  uint64_t shadowed_entries() const { return chain_entries - num_subdoc_keys; }
-  uint64_t repackable_entries() const { return num_subdoc_keys - num_rows; }
-  uint64_t collapsible_entries() const { return chain_entries - num_rows; }
+  // SstStats for what each measures. Saturating subtraction also covers a mismatched removal
+  // contribution: every stored counter saturates independently, so their usual ordering can be
+  // lost even when partial_files is zero.
+  uint64_t shadowed_entries() const {
+    return chain_entries > num_subdoc_keys ? chain_entries - num_subdoc_keys : 0;
+  }
+  uint64_t repackable_entries() const {
+    return num_subdoc_keys > num_rows ? num_subdoc_keys - num_rows : 0;
+  }
+  uint64_t collapsible_entries() const {
+    return chain_entries > num_rows ? chain_entries - num_rows : 0;
+  }
 
   SstStatsAggregate& operator+=(const SstStatsAggregate& other);
   // Saturating, and deliberately without an assertion: a counter can underflow with the file set

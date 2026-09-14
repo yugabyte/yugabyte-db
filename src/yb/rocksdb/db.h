@@ -114,6 +114,13 @@ struct Range {
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
+enum class TablePropertiesErrorHandling {
+  kFail,
+  // Omit a file whose properties cannot be read. The caller must compare the result with the live
+  // file set if it needs to account for the missing file.
+  kSkip,
+};
+
 using UserFrontierRange = yb::storage::UserFrontierRange;
 
 // A DB is a persistent ordered map from keys to values.
@@ -946,10 +953,13 @@ class DB {
   // Returns default column family handle
   virtual ColumnFamilyHandle* DefaultColumnFamily() const = 0;
 
-  virtual Status GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
-                                          TablePropertiesCollection* props) = 0;
-  virtual Status GetPropertiesOfAllTables(TablePropertiesCollection* props) {
-    return GetPropertiesOfAllTables(DefaultColumnFamily(), props);
+  virtual Status GetPropertiesOfAllTables(
+      ColumnFamilyHandle* column_family, TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) = 0;
+  virtual Status GetPropertiesOfAllTables(
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) {
+    return GetPropertiesOfAllTables(DefaultColumnFamily(), props, error_handling);
   }
   virtual Status GetPropertiesOfTablesInRange(
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
