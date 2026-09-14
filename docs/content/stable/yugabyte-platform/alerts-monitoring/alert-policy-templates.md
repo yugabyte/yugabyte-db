@@ -683,7 +683,7 @@ count by (universe_uuid) (yb_node_ysql_connect{universe_uuid="__universeUuid__"}
 Number of YSQL connections for universe `'$universe_name'` is above `$threshold`. Current value is `$value`.
 
 ```promql
-max by (universe_uuid) (max_over_time(yb_node_ysql_connections_count{universe_uuid="__universeUuid__"}[5m])) {{ query_condition }} {{ query_threshold }}
+max by (universe_uuid) (max_over_time(yb_ysqlserver_connection_total{universe_uuid="__universeUuid__",export_type="ysql_export"}[5m])) {{ query_condition }} {{ query_threshold }}
 ```
 
 #### YSQL average latency is high
