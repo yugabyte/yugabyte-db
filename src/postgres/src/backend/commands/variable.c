@@ -700,6 +700,10 @@ is_staleness_acceptable(int32_t staleness_ms)
 bool
 check_follower_reads(bool *newval, void **extra, GucSource source)
 {
+	/* Just accept the value when restoring state in a parallel worker */
+	if (InitializingParallelWorker)
+		return true;
+
 	if (YBFollowerReadsBehaviorBefore20482())
 	{
 		if (*newval == false)
@@ -751,6 +755,10 @@ assign_follower_reads(bool newval, void *extra)
 bool
 check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source)
 {
+	/* Just accept the value when restoring state in a parallel worker */
+	if (InitializingParallelWorker)
+		return true;
+
 	if (YBFollowerReadsBehaviorBefore20482())
 	{
 		if (!YBReadFromFollowersEnabled())

@@ -46,6 +46,7 @@
 #include "access/heaptoast.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
+#include "access/parallel.h"
 #include "access/relation.h"
 #include "access/sysattr.h"
 #include "access/table.h"
@@ -7057,6 +7058,10 @@ parse_yb_read_time(const char *value, unsigned long long *result, bool *is_ht_un
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
+	/* Just accept the value when restoring state in a parallel worker */
+	if (InitializingParallelWorker)
+		return true;
+
 	/*
 	 * Disallow setting yb_read_time as a persistent default via
 	 * ALTER DATABASE SET, ALTER ROLE SET, or CREATE FUNCTION SET.

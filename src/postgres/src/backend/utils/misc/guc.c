@@ -54,6 +54,7 @@
 
 /* YB includes */
 #include "access/heaptoast.h"
+#include "access/parallel.h"
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
@@ -8477,6 +8478,10 @@ yb_check_toast_catcache_threshold(int *newVal, void **extra, GucSource source)
 bool
 yb_check_no_txn(int *newVal, void **extra, GucSource source)
 {
+	/* Just accept the value when restoring state in a parallel worker */
+	if (InitializingParallelWorker)
+		return true;
+
 	if (IsTransactionBlock())
 	{
 		GUC_check_errdetail("Cannot be set within a txn block.");
@@ -8990,6 +8995,10 @@ assign_yb_conn_mgr_client_port(int newval, void *extra)
 static bool
 check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
 {
+	/* Just accept the value when restoring state in a parallel worker */
+	if (InitializingParallelWorker)
+		return true;
+
 	if (IsTransactionBlock() || FirstSnapshotSet)
 	{
 		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
