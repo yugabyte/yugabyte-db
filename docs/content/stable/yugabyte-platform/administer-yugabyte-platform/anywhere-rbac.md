@@ -96,7 +96,9 @@ To modify a user, do the following:
 
 To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
 
-Admin users cannot delete Super Admin users. Super Admin users cannot delete their own account from the UI.
+{{<note title="Deleting Super Admin users">}}
+You can't delete Super Admin users from the UI, including yourself and users who received SuperAdmin through LDAP or OIDC group mapping. Admin users also can't delete Super Admin users via the API. For LDAP or OIDC users, remove SuperAdmin access by updating the group mapping or group membership rather than deleting the user in YugabyteDB Anywhere.
+{{</note>}}
 
 ### Manage custom roles
 

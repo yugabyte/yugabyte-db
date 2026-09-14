@@ -49,12 +49,12 @@ Sign in to YugabyteDB Anywhere using your new credentials.
 If all local users are removed and LDAP or OIDC is unavailable, YugabyteDB Anywhere can become inaccessible. To restore access, create a local Super Admin directly in the YugabyteDB Anywhere Postgres database using `add_superadmin_user.py`.
 
 1. Log in to the YugabyteDB Anywhere host and go to `yb_devops_home`.
-1. Run the script with `py_wrapper.sh`, providing an email, password, and install type. For example:
+1. Run the script with `py_wrapper`, providing an email, password, and install type. For example:
 
     Standalone Postgres:
 
     ```sh
-    ./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
+    ./bin/py_wrapper ./bin/add_superadmin_user.py \
       --email admin@example.com --password 'password123' -t standalone
     ```
 
@@ -66,21 +66,21 @@ If all local users are removed and LDAP or OIDC is unavailable, YugabyteDB Anywh
     export POSTGRES_DB=yugaware
     export POSTGRES_HOST=localhost
     export POSTGRES_PORT=5432
-    ./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
+    ./bin/py_wrapper ./bin/add_superadmin_user.py \
       --email admin@example.com --password 'password123' -t docker
     ```
 
     Kubernetes:
 
     ```sh
-    ./bin/py_wrapper.sh ./bin/add_superadmin_user.py \
+    ./bin/py_wrapper ./bin/add_superadmin_user.py \
       -t kubernetes -e admin@example.com -p 'password123' \
       -n yb-platform -f /path/to/kubeconfig
     ```
 
 1. Sign in to YugabyteDB Anywhere with the new local Super Admin user.
 
-If your installation has more than one account and the script can't determine which one to use, or if the default path to `application.conf` does not apply, see the script help for additional options: `./bin/py_wrapper.sh ./bin/add_superadmin_user.py --help`.
+If your installation has more than one account and the script can't determine which one to use, or if the default path to `application.conf` does not apply, see the script help for additional options: `./bin/py_wrapper ./bin/add_superadmin_user.py --help`.
 
 ## Change your account information
 
