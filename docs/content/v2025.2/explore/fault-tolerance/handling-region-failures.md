@@ -19,7 +19,7 @@ Although you could use an RF 3 cluster, an RF 5 cluster provides quicker failove
 {{</tip>}}
 
 {{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations)
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout/#legend-for-illustrations).
 {{</note>}}
 
 ## Setup
