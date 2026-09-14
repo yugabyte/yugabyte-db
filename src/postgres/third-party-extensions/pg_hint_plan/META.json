@@ -1,0 +1,45 @@
+{
+  "name": "pg_hint_plan19",
+  "abstract": "Query hints in SQL comments",
+  "description": "This library adds support for query hints in SQL comments in PostgreSQL 19.",
+  "version": "1.9.0",
+  "maintainer": [
+    "Michael Paquier <michael@paquier.xyz>"
+  ],
+  "license": "bsd",
+  "prereqs": {
+    "runtime": {
+      "requires": {
+        "PostgreSQL": ">= 19.0.0, < 20.0.0"
+      }
+    }
+  },
+  "provides": {
+     "pg_hint_plan": {
+      "abstract": "Query hints in SQL comments",
+      "file": "pg_hint_plan--1.3.0.sql",
+      "docfile": "README.md",
+      "version": "1.9.0"
+     }
+  },
+  "resources": {
+    "bugtracker": {
+      "web": "https://github.com/ossc-db/pg_hint_plan/issues"
+    },
+    "repository": {
+      "url":  "https://github.com/ossc-db/pg_hint_plan.git",
+      "web":  "https://github.com/ossc-db/pg_hint_plan/",
+      "type": "git"
+    }
+  },
+  "meta-spec": {
+    "version": "1.0.0",
+    "url": "https://pgxn.org/meta/spec.txt"
+  },
+  "tags": [
+    "sql",
+    "plan",
+    "performance",
+    "hint"
+  ]
+}

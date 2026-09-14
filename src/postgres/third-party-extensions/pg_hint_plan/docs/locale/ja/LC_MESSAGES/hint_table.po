@@ -1,283 +1,273 @@
 # LANGUAGE message translation file for pg_hint_plan hint table.
-# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (C) 2012-2026, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 # This file is distributed under the same license as the pg_hint_plan
 # package.
 # Julien Rouhaud <rjuju123@gmail.com>, 2023.
+# Tatsuro Yamada <yamatattsu@gmail.com>, 2023.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_hint_plan \n"
+"Project-Id-Version: pg_hint_plan\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-03-14 16:08+0800\n"
-"PO-Revision-Date: 2023-03-14 16:08+0800\n"
-"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"POT-Creation-Date: 2023-11-09 10:50+0900\n"
+"PO-Revision-Date: 2023-11-10 08:24+0900\n"
+"Last-Translator: Tatsuro Yamada <yamatattsu@gmail.com>\n"
+"Language-Team: \n"
 "Language: ja\n"
-"Language-Team: ja <LL@li.org>\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 "Generated-By: Babel 2.12.1\n"
+"X-Generator: Poedit 3.2.2\n"
 
-#: ../../hint_table.md:1 e9bd87ccaaad4c87b89cb91f33eafe74
+#: ../../hint_table.md:1 f67cbaf723be46bb8f7a0f7fd7a8079e
 msgid "The hint table"
-msgstr ""
+msgstr "ヒントテーブル"
 
-#: ../../hint_table.md:3 56cb505493fa4d2eb87596f757bdbd0e
+#: ../../hint_table.md:3 32621de851304428a1f227c2692a72c7
 msgid ""
-"Hints are described in a comment in a special form in the above section. "
-"This is inconvenient in the case where queries cannot be edited. In the "
-"case hints can be placed in a special table named `\"hint_plan.hints\"`. "
-"The table consists of the following columns."
+"Hints can be specified in a comment, still this can be inconvenient in the case where queries cannot be edited.  In the case, hints can be placed in a special "
+"table named `\"hint_plan.hints\"`.  The table consists of the following columns:"
 msgstr ""
+"ヒントは特別な形式のコメント内に記載されていますがクエリを編集できない場合には不便です。このような場合には `\"hint_plan.hints\"` という名前の特別なテーブルにヒ"
+"ントを置くことができます。このテーブルは以下のカラムで構成されています。"
 
-#: ../../hint_table.md 47f5314c61ca4ccfb18e063348d8ca0b
+#: ../../hint_table.md ca09095a2eb747beacb5c3b9ca2d4228
 msgid "column"
-msgstr ""
+msgstr "列名"
 
-#: ../../hint_table.md c523ff6c6a464274ad8ba1ad73cb71db
+#: ../../hint_table.md 49581c288ab34cca94190af63ca3eeb0
 msgid "description"
-msgstr ""
+msgstr "説明"
 
-#: ../../hint_table.md 8a87ad5169c94db39779764ab52c4cc4
+#: ../../hint_table.md 22b179cbf8a1406e81c47a7671b3ba65
 msgid "`id`"
-msgstr ""
+msgstr "`id`"
 
-#: ../../hint_table.md bb5e21f7db3c443aa4392bd1ce755725
-msgid ""
-"Unique number to identify a row for a hint. This column is filled "
-"automatically by sequence."
-msgstr ""
+#: ../../hint_table.md 03519b5619134fedb8f2b610baeb50ee
+msgid "Unique number to identify a row for a hint.  <br>This column is filled automatically by sequence."
+msgstr "ユーザがヒントの行を識別するためのユニークな番号です。 <br>この列はシーケンスによって自動的に埋められます。"
 
-#: ../../hint_table.md 356c35b65500411585ff6bbf6761708d
+#: ../../hint_table.md 3d7e591abdf04eed953b0027296e0104
 msgid "`norm_query_string`"
-msgstr ""
+msgstr "`norm_query_string`"
 
-#: ../../hint_table.md 32023fbb62a24a5caf031d27be37fb2a
-msgid ""
-"A pattern matches to the query to be hinted. Constants in the query have "
-"to be replace with '?' as in the following example. White space is "
-"significant in the pattern."
-msgstr ""
+#: ../../hint_table.md d16b18fd0f634ebfbe7c58271923d74d
+msgid "A pattern matching with the query to be hinted. <br>Constants in the query are replaced by '?' as in the following example."
+msgstr "実行計画を制御したいクエリを指定します。<br>クエリ内の定数は下記の例のように'?'に置き換えます。"
 
-#: ../../hint_table.md ecbe40b673a241e09aea289c6383fe30
+#: ../../hint_table.md 333285c08e7846ad961b99b14bfcd979
 msgid "`application_name`"
-msgstr ""
+msgstr "`application_name`"
 
-#: ../../hint_table.md 4f3be23ae974454a916efe819ab57da4
+#: ../../hint_table.md 760fd24060c0437d8b474ac5d3a6f786
 msgid ""
-"The value of `application_name` of sessions to apply the hint. The hint "
-"in the example below applies to sessions connected from psql. An empty "
-"string means sessions of any `application_name`."
+"The value of `application_name` where sessions can apply a hint. <br>The hint in the example below applies to sessions connected from psql. <br>An empty "
+"string implies that all sessions will apply the hint."
 msgstr ""
+"ヒントの適用対象のアプリケーション名を指定します。<br>下記の例ではpsqlから実行されたクエリのみがヒントの適用対象となります。<br>全てのアプリケーションにヒント"
+"を適用したいときは、空文字列を登録します。"
 
-#: ../../hint_table.md cc54ed51ebcc4b0996ca248bb8a52d63
+#: ../../hint_table.md c171ad26a5bb4ae78100ecc091bc6e13
 msgid "`hints`"
-msgstr ""
+msgstr "`hints`"
 
-#: ../../hint_table.md 69352180897747fb832c66f9b5c72db4
-msgid ""
-"Hint phrase. This must be a series of hints excluding surrounding comment"
-" marks."
-msgstr ""
+#: ../../hint_table.md 96055c136dbf4d1aa3b851b205088b40
+msgid "Hint phrase.  <br>This must be a series of hints excluding surrounding comment marks."
+msgstr "ヒント句を指定します。<br>コメントの記号を除いたヒントのみを登録します。"
 
-#: ../../hint_table.md:15 3f0c3aa5d52d459d8d133a050fdf6bc0
+#: ../../hint_table.md:14 923fb84f5fe348dcabe5b8aad4a334b8
 msgid "The following example shows how to operate with the hint table."
-msgstr ""
+msgstr "以下の例はヒントテーブルの操作方法を示しています。"
 
-#: ../../hint_table.md:35 af859f74cba346fe81a01734bb743c24
+#: ../../hint_table.md:31 dc2810bd37aa46ec9dbacf93447b8b79
 msgid ""
-"The hint table is owned by the creator user and having the default "
-"privileges at the time of creation. during `CREATE EXTENSION`. Table "
-"hints are prioritized over comment hits."
+"The hint table is owned by the extension owner and has the same default privileges as of the time of its creation, during `CREATE EXTENSION`. Hints in the "
+"hint table are prioritized over hints in comments."
 msgstr ""
+"ヒントテーブルは拡張機能の所有者が所有し、拡張機能作成時におけるデフォルトの権限を持ちます。ヒントテーブル内のヒントはコメント内のヒントよりも優先されます。"
 
-#: ../../hint_table.md:39 ed44da575203402090eb71f66adada8a
-msgid "The types of hints"
-msgstr ""
+#: ../../hint_table.md:35 db26de13734041f7ad7b024e92b581ed
+msgid "Types of hints"
+msgstr "ヒントの種類"
 
-#: ../../hint_table.md:41 5ff0cd9946d74498bd09c77da259a4f4
+#: ../../hint_table.md:37 fd001d1b4af9467cbb2c4306455e4b8a
 msgid ""
-"Hinting phrases are classified into six types based on what kind of "
-"object and how they can affect planning. Scanning methods, join methods, "
-"joining order, row number correction, parallel query, and GUC setting. "
-"You will see the lists of hint phrases of each type in [Hint list"
-"](#hint-list)."
+"Hinting phrases are classified in multiple types based on what kind of object and how they can affect the planner.  See [Hint list](#hint-list) for more "
+"details."
 msgstr ""
 
-#: ../../hint_table.md:46 abe60e6b179e4a5c9da16bd602e3aa48
-msgid "Hints for scan methods"
-msgstr ""
+#: ../../hint_table.md:41 fcf889fb655f490e91639fe51d6c64a2
+msgid "Hints for Scan methods"
+msgstr "スキャン方法"
 
-#: ../../hint_table.md:48 3f21359dd85647739f4e17eb538d7ae3
+#: ../../hint_table.md:43 7fcc906d0b5c4700b165a9f5c955fe14
 msgid ""
-"Scan method hints enforce specific scanning method on the target table. "
-"`pg_hint_plan` recognizes the target table by alias names if any. They "
-"are `SeqScan`, `IndexScan` and so on in this kind of hint."
+"Scan method hints enforce specific scanning methods on the target table. `pg_hint_plan` recognizes the target table by alias names if any.  These are for "
+"example `SeqScan` or `IndexScan`."
 msgstr ""
+"スキャン方法のヒントは、対象のテーブルに対して特定のスキャン方法を強制するものです。`pg_hint_plan`は対象のテーブルに別名が存在する場合、別名で認識します。この"
+"種類の例は`SeqScan`や`IndexScan`などです。"
 
-#: ../../hint_table.md:52 c5fd1ba9148a4ccba3b791820f993afb
+#: ../../hint_table.md:47 3ae34bdea12d4a8e8ea2c7ec5446eebe
 msgid ""
-"Scan hints are effective on ordinary tables, inheritance tables, UNLOGGED"
-" tables, temporary tables and system catalogs. External (foreign) tables,"
-" table functions, VALUES clause, CTEs, views and subquiries are not "
-"affected."
+"Scan hints work on ordinary tables, inheritance tables, UNLOGGED tables, temporary tables and system catalogs. External (foreign) tables, table functions, "
+"VALUES clause, CTEs, views and subqueries are not affected."
 msgstr ""
+"スキャン方法のヒントは、通常のテーブル・継承テーブル・UNLOGGEDテーブル・一時テーブル・システムカタログに効果があります。外部テーブル・テーブル関数・VALUES句・"
+"CTE・ビュー・副問い合わせには影響を与えません。"
 
-#: ../../hint_table.md:64 81fb62fcc55a48aab1cb64347f120c40
-msgid "Hints for join methods"
-msgstr ""
+#: ../../hint_table.md:59 3088543edf274b16999ab0fdb8f6b7d7
+msgid "Hints for Join methods"
+msgstr "結合方法"
 
-#: ../../hint_table.md:66 dceb8dbc1572443d8d34091a85b4e2d8
+#: ../../hint_table.md:61 ea1c9b0735be427787403b05e87fb302
+msgid "Join method hints enforce the join methods of the joins involving the specified tables."
+msgstr "結合方法のヒントは、指定したテーブルを含む結合の結合方法を強制するものです。"
+
+#: ../../hint_table.md:64 4929b52aab0a436782c74c93d2d759de
 msgid ""
-"Join method hints enforce the join methods of the joins involving "
-"specified tables."
+"This can affect joins only on ordinary tables.  Inheritance tables, UNLOGGED tables, temporary tables, external (foreign) tables, system catalogs, table "
+"functions, VALUES command results and CTEs are allowed to be in the parameter list.  Joins on views and subqueries are not affected."
 msgstr ""
+"これは、通常のテーブル・継承テーブル・UNLOGGEDテーブル・一時テーブル・外部テーブル・システムカタログ・テーブル関数・VALUESコマンド結果、およびパラメータリスト"
+"に含めることが許可されているCTEの結合にのみ影響を与えます。しかし、ビュー・副問い合わせの結合には影響を与えません。"
 
-#: ../../hint_table.md:69 9636a051eed744caa81b88bf2ca21a00
+#: ../../hint_table.md:69 885c9cba398e450da95b1a83679dcf35
+msgid "Hints for Joining order"
+msgstr "結合順"
+
+#: ../../hint_table.md:71 705f15a4b07e4fd38ebb4bbffffeb730
 msgid ""
-"This can affect on joins only on ordinary tables, inheritance tables, "
-"UNLOGGED tables, temporary tables, external (foreign) tables, system "
-"catalogs, table functions, VALUES command results and CTEs are allowed to"
-" be in the parameter list. But joins on views and sub query are not "
-"affected."
+"This hint, named \"Leading\", enforces the order of join on two or more tables. There are two methods of enforcing it.  The first method enforces a specific "
+"order of joining but does not restrict the direction at each join level. The second method enforces the join direction additionally.  See [hint list](#hint-"
+"list) for more details.  For example:"
 msgstr ""
+"`Leading`ヒントは、2つ以上のテーブルの結合順を強制するものです。強制には2つの方法があります。1つは特定の結合順を強制し各結合レベルでは方向を制限しない方法で"
+"す。もう1つは結合の方向を追加で指定するものです。詳細は[ヒント一覧](#hint-list)で確認してください。以下は例です。"
 
-#: ../../hint_table.md:74 91099794452543b8a51479957fd9b03a
-msgid "Hint for joining order"
-msgstr ""
+#: ../../hint_table.md:88 45d67ea2eed144fe90f94d5f333bd463
+msgid "Hints for Row number corrections"
+msgstr "行数補正"
 
-#: ../../hint_table.md:76 f4d41890bc4a4ef7a0e80271ef7feda1
+#: ../../hint_table.md:90 eefdbaa1b6694fe7befcc442e4277d12
+msgid "This hint, named \"Rows\", changes the row number estimation of joins that comes from restrictions in the planner.  For example:"
+msgstr "`Rows`ヒントは、プランナの制限に起因する結合の見積り行数誤りを修正します。以下は例です。"
+
+#: ../../hint_table.md:100 65fdbb9e0e504d81b3e76b81653ee213
+msgid "Hints for parallel plans"
+msgstr "パラレルプラン"
+
+#: ../../hint_table.md:102 76ac76f5f3df418aa80fba2605557453
 msgid ""
-"This hint \"Leading\" enforces the order of join on two or more tables. "
-"There are two ways of enforcing. One is enforcing specific order of "
-"joining but not restricting direction at each join level. Another enfoces"
-" join direction additionaly. Details are seen in the [hint list](#hint-"
-"list) table."
+"This hint, named `Parallel`, enforces parallel execution configuration on scans.  The third parameter specifies the strength of the enforcement. `soft` means "
+"that `pg_hint_plan` only changes `max_parallel_worker_per_gather` and leaves all the others to the planner to set.  `hard` changes other planner parameters so "
+"as to forcibly apply the update.  This can affect ordinary tables, inheritance parents, unlogged tables and system catalogs. External tables, table functions, "
+"`VALUES` clauses, CTEs, views and subqueries are not affected.  Internal tables of a view can be specified by its real name or its alias as the target "
+"object.  The following example shows that the query is enforced differently on each table:"
 msgstr ""
+"`Parallel`ヒント は、スキャンの並列実行の設定を強制するものです。第3パラメータは強制の強さを指定します。`soft` は `pg_hint_plan` が "
+"`max_parallel_worker_per_gather` を変更するだけで、その他のすべてはプランナに任せることを意味します。`hard`はプランナのパラメータを変更し、強制的にその数値を適"
+"用するようにします。\n"
+"このヒントは通常のテーブル・継承の親テーブル・UNLOGGEDテーブル・システムカタログに影響を与えることができます。外部テーブル・テーブル関数・VALUE句・CTE・"
+"ビュー・サブクエリには影響を与えません。\n"
+"ビューの内部テーブルについては、対象オブジェクトとして実名/別名を用いて指定できます。次の例のクエリは、各テーブルで異なる設定を強制しています。"
 
-#: ../../hint_table.md:92 ffefc340864e46b59172414ec6d6abf2
-msgid "Hint for row number correction"
-msgstr ""
+#: ../../hint_table.md:138 02fb713ed8864bc58e4c6af77fb9cc21
+msgid "GUC parameters set during planning"
+msgstr "プランニング中のGUCパラメータの設定"
 
-#: ../../hint_table.md:94 3a0dc69c2edb43cd93c4b79836a12331
+#: ../../hint_table.md:140 c8915576c86a451bb8c22caffb0739e5
 msgid ""
-"This hint \"Rows\" corrects row number misestimation of joins that comes "
-"from restrictions of the planner."
+"`Set` hints change GUC parameters just while planning.  GUC parameter shown in [Query Planning](http://www.postgresql.org/docs/current/static/runtime-config-"
+"query.html) can have the expected effects on planning unless an other hint conflicts with the planner method configuration parameters.  When multiple hints "
+"change the same GUC, the last hint takes effect. [GUC parameters for `pg_hint_plan`](#guc-parameters-for-pg_hint_plan) are also settable by this hint but it "
+"may not work as expected. See [Functional limitations](#functional-limitations) for details."
 msgstr ""
+"`Set`ヒントはプランニング中のみGUCパラメータを変更します。 [Query Planning](http://www.postgresql.org/docs/current/static/runtime-config-query.html) で示した"
+"GUCパラメータは、他のヒントがプランナの設定パラメータと競合しない限り、期待される効果を発揮することができます。同じGUCパラメータに関するヒントのうち、最後のも"
+"のが効果を発揮します。[pg_hint_planのGUCパラメータ](#guc-parameters-for-pg_hint_plan) もこのヒントで設定可能ですが期待通りには動作しません。詳しくは[機能的な制"
+"限事項](functional_limitations)を参照してください。"
 
-#: ../../hint_table.md:104 ddb7afa218c74266876ec6b14ad9eef8
-msgid "Hint for parallel plan"
-msgstr ""
-
-#: ../../hint_table.md:106 ee9a2c67237941b6ad65f47b96aef86a
-msgid ""
-"This hint `Parallel` enforces parallel execution configuration on scans. "
-"The third parameter specifies the strength of enfocement. `soft` means "
-"that `pg_hint_plan` only changes `max_parallel_worker_per_gather` and "
-"leave all others to planner. `hard` changes other planner parameters so "
-"as to forcibly apply the number. This can affect on ordinary tables, "
-"inheritnce parents, unlogged tables and system catalogues. External "
-"tables, table functions, values clause, CTEs, views and subqueries are "
-"not affected. Internal tables of a view can be specified by its real "
-"name/alias as the target object. The following example shows that the "
-"query is enforced differently on each table."
-msgstr ""
-
-#: ../../hint_table.md:141 9f74aa63834c4770bf33ea36cfe90913
-msgid "GUC parameters temporarily setting"
-msgstr ""
-
-#: ../../hint_table.md:143 edf0d063835e40829b73f4d803fc19f7
-msgid ""
-"`Set` hint changes GUC parameters just while planning. GUC parameter "
-"shown in [Query Planning](http://www.postgresql.org/docs/current/static"
-"/runtime-config-query.html) can have the expected effects on planning "
-"unless any other hint conflicts with the planner method configuration "
-"parameters. The last one among hints on the same GUC parameter makes "
-"effect. [GUC parameters for `pg_hint_plan`](#guc-parameters-for-"
-"pg_hint_plan) are also settable by this hint but it won't work as your "
-"expectation. See [Restrictions](#restrictions) for details."
-msgstr ""
-
-#: ../../hint_table.md:159 ebab310c13b04f8db2235606bec55356
+#: ../../hint_table.md:156 da73baff64f04c07ab673ecae83330bc
 msgid "GUC parameters for `pg_hint_plan`"
-msgstr ""
+msgstr "pg_hint_planのGUCパラメータ"
 
-#: ../../hint_table.md:161 71beae94ac3143d69730522153c55052
-msgid "GUC parameters below affect the behavior of `pg_hint_plan`."
-msgstr ""
+#: ../../hint_table.md:158 74677aeddbf34e859a8ec765fef33c7d
+msgid "The following GUC parameters affect the behavior of `pg_hint_plan`:"
+msgstr "以下のGUCパラメータは`pg_hint_plan`の動作を制御します。"
 
-#: ../../hint_table.md 32504cf638474ba6a4911316916503b7
+#: ../../hint_table.md 56e1e159fad54f27958655225400031f
 msgid "Parameter name"
-msgstr ""
+msgstr "パラメータ名"
 
-#: ../../hint_table.md 531fff3cdb394dc2a32e0f3d69a7eab6
+#: ../../hint_table.md 1eb1991b81d94c6289004fad098cdced
 msgid "Description"
-msgstr ""
+msgstr "説明"
 
-#: ../../hint_table.md 3d85242e7ccc4758b43deddf4a7917cf
+#: ../../hint_table.md 6a9158ac4c504563998ea54063cbe622
 msgid "Default"
-msgstr ""
+msgstr "デフォルト値"
 
-#: ../../hint_table.md 95581f5ced9c4e46b955f864c3c760fa
+#: ../../hint_table.md 32fef9a8c49f4dfd89602fe7dab1b09d
 msgid "`pg_hint_plan.enable_hint`"
-msgstr ""
+msgstr "`pg_hint_plan.enable_hint`"
 
-#: ../../hint_table.md 557a8961c3dc4edfbb7299105b5347b7
-msgid "True enbles `pg_hint_plan`."
-msgstr ""
+#: ../../hint_table.md 6221aa8a27f24ce2a5e90358cbccc16f
+msgid "True enables `pg_hint_plan`."
+msgstr "Trueはpg_hint_planを有効にします。"
 
-#: ../../hint_table.md f978b8e14e0540d499e128c266630325
+#: ../../hint_table.md f3b980fcf00d47168d2aa5a2162391e1
 msgid "`on`"
-msgstr ""
+msgstr "`on`"
 
-#: ../../hint_table.md 96d2840461e34a999bad91b650fcad6a
+#: ../../hint_table.md 310d50f8e0724d70a4295a2342f87094
 msgid "`pg_hint_plan.enable_hint_table`"
-msgstr ""
+msgstr "`pg_hint_plan.enable_hint_table`"
 
-#: ../../hint_table.md e6ad001870b3430486807c718a5c410b
-msgid "True enbles hinting by table. `true` or `false`."
-msgstr ""
+#: ../../hint_table.md 25dbdbcdaab544ee86a967920b690836
+msgid "True enables hinting by table."
+msgstr "Trueはテーブルによってヒントを指定する機能を有効にします。"
 
-#: ../../hint_table.md 9b57791704014207a7de2671ff1d7418
-#: 9d74d152556a4f40bdcae19ee6ac99f3
+#: ../../hint_table.md 679148d306b34e2d9956c21361b760c2 b97fab529ba6473f81a05d48725bba64
 msgid "`off`"
-msgstr ""
+msgstr "`off`"
 
-#: ../../hint_table.md 9784cb20c5104ccb9e8b8453b6157b3a
+#: ../../hint_table.md d9b4dfe654c24b49861ceb5a994575ba
 msgid "`pg_hint_plan.parse_messages`"
-msgstr ""
+msgstr "`pg_hint_plan.parse_messages`"
 
-#: ../../hint_table.md 2c98fb732746480b81b42cb9ca7da343
-msgid ""
-"Specifies the log level of hint parse error. Valid values are `error`, "
-"`warning`, `notice`, `info`, `log`, `debug`."
-msgstr ""
+#: ../../hint_table.md 294d65b227f04073b023232548232b4a
+msgid "Specifies the log level of hint parse error.  Valid values are `error`, `warning`, `notice`, `info`, `log`, `debug`."
+msgstr "指定したヒントを構文解析できなかった場合のログメッセージのレベルを指定します。指定可能な値は、`error`、`warning`、`notice`、`info`、`log`、`debug`です。"
 
-#: ../../hint_table.md a1e054d2398b4fabbe2625b3bb9f5e94
-#: ff7833376b5f47fa95cfcae582458e3a
+#: ../../hint_table.md 5e4d1e6b44a1413983e4191c2dc55900 64383f13cb2d49c89a2d730c9bad4f83
 msgid "`INFO`"
-msgstr ""
+msgstr "`INFO`"
 
-#: ../../hint_table.md 36111eaf8aa64a5a8b37ed88e4291755
+#: ../../hint_table.md afdb6a0bf4b44ee98fdbf547bc8aa20f
 msgid "`pg_hint_plan.debug_print`"
-msgstr ""
+msgstr "`pg_hint_plan.debug_print`"
 
-#: ../../hint_table.md 4f46578227454c79ad13597355c4a2c2
-msgid ""
-"Controls debug print and verbosity. Valid vaiues are `off`, `on`, "
-"`detailed` and `verbose`."
-msgstr ""
+#: ../../hint_table.md 967c06b80b7e44908bdeb41cdea10df6
+msgid "Controls debug print and verbosity. Valid values are `off`, `on`, `detailed` and `verbose`."
+msgstr "動作状況を示すログメッセージの出力を制御します。指定可能な値は `off`、`on`、`detailed`、`verbose`です。"
 
-#: ../../hint_table.md c30b38250761426caf7d34a034162c0c
+#: ../../hint_table.md e950028fedfd47478a88207c4d684714
 msgid "`pg_hint_plan.message_level`"
-msgstr ""
+msgstr "`pg_hint_plan.message_level`"
 
-#: ../../hint_table.md 03ab1b72d9174039befc26b46313aaf3
-msgid ""
-"Specifies message level of debug print. Valid values are `error`, "
-"`warning`, `notice`, `info`, `log`, `debug`."
-msgstr ""
+#: ../../hint_table.md 9589d482e9ed4f4c98b3c302e34fbce9
+msgid "Specifies message level of debug print. Valid values are `error`, `warning`, `notice`, `info`, `log`, `debug`."
+msgstr "動作ログメッセージのログレベルを指定します。指定可能な値は、`error`、`warning`、`notice`、`info`、`log`、`debug`です。"
 
+#~ msgid ""
+#~ "Hinting phrases are classified into six types based on what kind of object and how they can affect planning. Scanning methods, join methods, joining order, "
+#~ "row number correction, parallel query, and GUC setting. You will see the lists of hint phrases of each type in [Hint list](#hint-list)."
+#~ msgstr ""
+#~ "ヒント句はどの対象にどのような影響をプランニングに与えるかに基づいて６種類に分類されます。種類はスキャン方法・結合方法・結合順序・見積り行数補正・並列実行の"
+#~ "設定・GUCパラメータです。具体的なヒント句は、[ヒント一覧](#hint_list)を参照してください。"
+
+#~ msgid "GUC parameters temporarily setting"
+#~ msgstr "GUCパラメータ"

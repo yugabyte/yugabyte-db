@@ -7,7 +7,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'pg_hint_plan'
-copyright = '2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION'
+copyright = '2012-2026, NIPPON TELEGRAPH AND TELEPHONE CORPORATION'
 author = 'NIPPON TELEGRAPH AND TELEPHONE CORPORATION'
 
 # -- General configuration ---------------------------------------------------

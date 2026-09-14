@@ -44,8 +44,6 @@ Set(enable_tidscan off)Set(enable_nestloop off)
 */
 EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 
-RESET client_min_messages;
-
 ----
 ---- No. G-2-1 GUC parameter
 ----

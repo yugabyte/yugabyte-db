@@ -3519,7 +3519,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		foreach(values, build_path_tlist(root, (Path *) projection_path))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
-			AttrNumber	varattno = InvalidAttrNumber;
 
 			/* Ignore junk columns. */
 			if (IsA(tle->expr, Var))
@@ -3533,8 +3532,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				{
 					continue;
 				}
-
-				varattno = var->varattno;
 			}
 
 			/*
@@ -3587,31 +3584,24 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				return false;
 			}
 
-			/* The column is set to itself (SET col = col). */
-			if (varattno == resno)
-			{
-				/*
-				 * If the column has a NOT NULL constraint, avoid the single row
-				 * path. NOT NULL constraint checks happen in the postgres
-				 * executor and require the value of the column to be populated.
-				 * Since the single row path skips fetching the target tuple,
-				 * the check cannot correctly distinguish between missing values
-				 * and NULL values.
-				 * TODO(kramanathan): Optimizing this path requires code
-				 * refactor.
-				 */
-				if (TupleDescAttr(tupDesc, resno - 1)->attnotnull)
-				{
-					RelationClose(relation);
-					return false;
-				}
+			/*
+			 * A non-key column that is set to itself (SET col = col) must not
+			 * be skipped here.  The single-row (no fetch) path builds the
+			 * Result node's target list from subpath_tlist and fills any column
+			 * that is missing from it with a NULL dummy (see the loop that
+			 * constructs result_tlist below).  Since such a column is still a
+			 * member of the query's updated-columns set, that NULL would be
+			 * written back, silently nulling the column (e.g. the CASE in
+			 * yb_increment_db_catalog_version_with_inval_messages() folds to a
+			 * bare "last_breaking_version" Var when is_breaking_change is
+			 * false).  Instead, let the bare Var flow through as a normal
+			 * pushable expression so DocDB reads the old value and writes it
+			 * back unchanged.
+			 *
+			 * Primary key self-assignments are handled by the check above,
+			 * which forces the distributed (fetch) path.
+			 */
 
-				/*
-				 * In all other cases, the column has no impact on the single
-				 * row computation.
-				 */
-				continue;
-			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
 			update_attrs = bms_add_member(update_attrs, resno - attr_offset);

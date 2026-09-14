@@ -473,3 +473,28 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET k = k + 10;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = k + 90 + 2 WHERE k < 30;
 
 SELECT * FROM gin_table ORDER BY k;
+
+--
+-- Self-assignment of a non-key column in a single-row UPDATE must retain the
+-- column's existing value rather than nulling it out. The single-row (no fetch)
+-- path builds the write from the projected target list; a self-assigned
+-- (SET col = col) non-key column must not be dropped, otherwise it would be
+-- written back as NULL. This also covers expressions that fold to a bare column
+-- reference, e.g. CASE WHEN <false> THEN ... ELSE col END.
+--
+CREATE TABLE self_assign (k INT PRIMARY KEY, v1 BIGINT, v2 BIGINT);
+INSERT INTO self_assign VALUES (1, 5, 7);
+
+-- Multi-column single-row update with a non-key self-assignment.
+UPDATE self_assign SET v1 = v1 + 1, v2 = v2 WHERE k = 1;
+SELECT * FROM self_assign WHERE k = 1;
+
+-- Single-column self-assignment.
+UPDATE self_assign SET v2 = v2 WHERE k = 1;
+SELECT * FROM self_assign WHERE k = 1;
+
+-- Expression that folds to a bare column reference for a non-key column.
+UPDATE self_assign SET v1 = v1 + 1, v2 = CASE WHEN false THEN v1 ELSE v2 END WHERE k = 1;
+SELECT * FROM self_assign WHERE k = 1;
+
+DROP TABLE self_assign;

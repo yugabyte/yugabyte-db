@@ -1,0 +1,357 @@
+-- Tests for disable index hints
+LOAD 'pg_hint_plan';
+SET search_path TO public;
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
+SET pg_hint_plan.enable_hint TO on;
+CREATE SCHEMA disable_index;
+-- Single table
+CREATE TABLE disable_index.t1 (c1 int, c2 int, PRIMARY KEY (c1));
+CREATE INDEX t1_i1 ON disable_index.t1(c1);
+INSERT INTO disable_index.t1 SELECT i, i % 10
+  FROM (SELECT generate_series(0, 300) i) t;
+-- Tables with inheritance with indexes
+CREATE TABLE disable_index.p3 (c1 int, c2 int, c3 int, c4 int, PRIMARY KEY (c1));
+CREATE TABLE disable_index.p3_1_100 (CHECK (c4 >= 1 AND c4 < 101))
+  INHERITS (disable_index.p3);
+CREATE TABLE disable_index.p3_100_200 (CHECK (c4 >= 101 AND c4 < 201))
+  INHERITS (disable_index.p3);
+CREATE TABLE disable_index.p3_200_300 (CHECK (c4 >= 201 AND c4 < 301))
+  INHERITS (disable_index.p3);
+INSERT INTO disable_index.p3 SELECT i, i, i % 10, i
+  FROM (SELECT generate_series(0, 300) i) t;
+CREATE INDEX p3_c1_idx ON disable_index.p3(c1);
+CREATE INDEX p3_1_100_c1_c2_idx ON disable_index.p3_1_100(c1, c2);
+CREATE INDEX p3_1_100_c1_idx ON disable_index.p3_1_100(c1);
+CREATE INDEX p3_100_200_c1_idx ON disable_index.p3_100_200(c1);
+CREATE INDEX p3_200_300_c1_idx ON disable_index.p3_200_300(c1);
+-- Partitioned tables and partitions
+CREATE TABLE disable_index.pt2 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1, c2))
+  PARTITION BY RANGE(c1);
+CREATE TABLE disable_index.pt2_0_1 PARTITION OF disable_index.pt2
+  FOR VALUES FROM (MINVALUE) TO (101) PARTITION BY RANGE (c2);
+CREATE TABLE disable_index.pt2_0_2 PARTITION OF disable_index.pt2
+  FOR VALUES FROM (101) TO (201) PARTITION BY RANGE (c2);
+CREATE TABLE disable_index.pt2_0_3 PARTITION OF disable_index.pt2
+  FOR VALUES FROM (201) TO (MAXVALUE) PARTITION BY RANGE (c2);
+CREATE TABLE disable_index.pt2_1_1 PARTITION OF disable_index.pt2_0_1
+  FOR VALUES FROM (MINVALUE) TO (151);
+CREATE TABLE disable_index.pt2_1_2 PARTITION OF disable_index.pt2_0_1
+  FOR VALUES FROM (151) TO (MAXVALUE);
+CREATE TABLE disable_index.pt2_1_3 PARTITION OF disable_index.pt2_0_2
+  FOR VALUES FROM (MINVALUE) TO (151);
+CREATE TABLE disable_index.pt2_1_4 PARTITION OF disable_index.pt2_0_2
+  FOR VALUES FROM (151) TO (MAXVALUE);
+CREATE TABLE disable_index.pt2_1_5 PARTITION OF disable_index.pt2_0_3
+  FOR VALUES FROM (MINVALUE) TO (151);
+CREATE TABLE disable_index.pt2_1_6 PARTITION OF disable_index.pt2_0_3
+  FOR VALUES FROM (151) TO (MAXVALUE);
+INSERT INTO disable_index.pt2 SELECT i, i, i % 10, i
+  FROM (SELECT generate_series(0, 300) i) t;
+-- Extra index, created on all partitions.
+CREATE INDEX pt2_c1_idx ON disable_index.pt2 (c1, c2);
+-- Hint conflicts
+/*+ DisableIndex(t1) */
+EXPLAIN (COSTS false) SELECT * FROM disable_index.t1 WHERE c1 = 1;
+INFO:  pg_hint_plan: hint syntax error at or near " "
+DETAIL:  DisableIndex hint requires a relation and at least one index.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+DisableIndex()
+
+          QUERY PLAN          
+------------------------------
+ Index Scan using t1_i1 on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+DisableIndex(t1 t1_pkey)DisableIndex(t1 t1_i1)*/
+EXPLAIN (COSTS false) SELECT * FROM disable_index.t1 WHERE c1 = 1;
+INFO:  pg_hint_plan: hint syntax error at or near "DisableIndex(t1 t1_pkey)DisableIndex(t1 t1_i1)"
+DETAIL:  Conflict disableindex hint.
+LOG:  indexes disabled for DisableIndex(t1): t1_i1
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(t1 t1_i1)
+not used hint:
+duplication hint:
+DisableIndex(t1 t1_pkey)
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- non-existent index
+/*+ DisableIndex(pt2 non_existent) */
+EXPLAIN (COSTS OFF) SELECT * FROM disable_index.pt2 WHERE c1 IN (1, 101, 201);
+LOG:  indexes disabled for DisableIndex(pt2_1_1):
+LOG:  indexes disabled for DisableIndex(pt2_1_2):
+LOG:  indexes disabled for DisableIndex(pt2_1_3):
+LOG:  indexes disabled for DisableIndex(pt2_1_4):
+LOG:  indexes disabled for DisableIndex(pt2_1_5):
+LOG:  indexes disabled for DisableIndex(pt2_1_6):
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+DisableIndex(pt2 non_existent)
+duplication hint:
+error hint:
+
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Append
+   ->  Seq Scan on pt2_1_1 pt2_1
+         Filter: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Bitmap Heap Scan on pt2_1_2 pt2_2
+         Recheck Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+         ->  Bitmap Index Scan on pt2_1_2_c1_c2_idx
+               Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Seq Scan on pt2_1_3 pt2_3
+         Filter: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Seq Scan on pt2_1_4 pt2_4
+         Filter: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Bitmap Heap Scan on pt2_1_5 pt2_5
+         Recheck Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+         ->  Bitmap Index Scan on pt2_1_5_c1_c2_idx
+               Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Seq Scan on pt2_1_6 pt2_6
+         Filter: (c1 = ANY ('{1,101,201}'::integer[]))
+(17 rows)
+
+-- DisableIndex + Scan method hint
+/*+
+DisableIndex(t1 t1_i1)
+IndexScan(t1 t1_i1)
+*/
+EXPLAIN (COSTS false) SELECT * FROM disable_index.t1 WHERE c1 = 1;
+LOG:  indexes disabled for DisableIndex(t1): t1_i1
+LOG:  available indexes for IndexScan(t1):
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(t1 t1_i1)
+not used hint:
+IndexScan(t1 t1_i1)
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+
+DisableIndex(t1 t1_pkey)
+NoIndexScan(t1)
+*/
+EXPLAIN (COSTS false) SELECT * FROM disable_index.t1 WHERE c1 = 1;
+LOG:  indexes disabled for DisableIndex(t1): t1_pkey
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+DisableIndex(t1 t1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN            
+----------------------------------
+ Bitmap Heap Scan on t1
+   Recheck Cond: (c1 = 1)
+   ->  Bitmap Index Scan on t1_i1
+         Index Cond: (c1 = 1)
+(4 rows)
+
+-- Regular tables
+/*+ DisableIndex(t1 t1_i1) */
+EXPLAIN (COSTS false) SELECT * FROM disable_index.t1 WHERE c1 = 1;
+LOG:  indexes disabled for DisableIndex(t1): t1_i1
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(t1 t1_i1)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+ DisableIndex(t1 t1_pkey) */
+EXPLAIN (COSTS false) SELECT * FROM disable_index.t1 WHERE c1 = 1;
+LOG:  indexes disabled for DisableIndex(t1): t1_pkey
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(t1 t1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN            
+----------------------------------
+ Bitmap Heap Scan on t1
+   Recheck Cond: (c1 = 1)
+   ->  Bitmap Index Scan on t1_i1
+         Index Cond: (c1 = 1)
+(4 rows)
+
+/*+ DisableIndex(t1 t1_pkey t1_i1) */
+EXPLAIN (COSTS false) SELECT * FROM disable_index.t1 WHERE c1 = 1;
+LOG:  indexes disabled for DisableIndex(t1): t1_i1 t1_pkey
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(t1 t1_pkey t1_i1)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t1
+   Filter: (c1 = 1)
+(2 rows)
+
+-- Partitioning
+SET enable_bitmapscan = OFF;
+SET enable_seqscan = OFF;
+-- Disable parallelism.
+SET max_parallel_workers_per_gather = 0;
+-- Push down the parent hint
+/*+ DisableIndex(pt2 pt2_c1_idx) */
+EXPLAIN (COSTS OFF) SELECT * FROM disable_index.pt2 WHERE c1 IN (1, 101, 201);
+LOG:  indexes disabled for DisableIndex(pt2_1_1): pt2_1_1_c1_c2_idx
+LOG:  indexes disabled for DisableIndex(pt2_1_2): pt2_1_2_c1_c2_idx
+LOG:  indexes disabled for DisableIndex(pt2_1_3): pt2_1_3_c1_c2_idx
+LOG:  indexes disabled for DisableIndex(pt2_1_4): pt2_1_4_c1_c2_idx
+LOG:  indexes disabled for DisableIndex(pt2_1_5): pt2_1_5_c1_c2_idx
+LOG:  indexes disabled for DisableIndex(pt2_1_6): pt2_1_6_c1_c2_idx
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(pt2 pt2_c1_idx)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Append
+   ->  Index Scan using pt2_1_1_pkey on pt2_1_1 pt2_1
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_2_pkey on pt2_1_2 pt2_2
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_3_pkey on pt2_1_3 pt2_3
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_4_pkey on pt2_1_4 pt2_4
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_5_pkey on pt2_1_5 pt2_5
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_6_pkey on pt2_1_6 pt2_6
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+(13 rows)
+
+/*+ DisableIndex(p3 p3_c1_idx) */
+EXPLAIN (COSTS OFF) SELECT * FROM disable_index.p3 WHERE c1 IN (1, 101, 201);
+LOG:  indexes disabled for DisableIndex(p3): p3_c1_idx
+LOG:  indexes disabled for DisableIndex(p3_1_100): p3_1_100_c1_idx
+LOG:  indexes disabled for DisableIndex(p3_100_200): p3_100_200_c1_idx
+LOG:  indexes disabled for DisableIndex(p3_200_300): p3_200_300_c1_idx
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(p3 p3_c1_idx)
+not used hint:
+duplication hint:
+error hint:
+
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Append
+   ->  Index Scan using p3_pkey on p3 p3_1
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using p3_1_100_c1_c2_idx on p3_1_100 p3_2
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Seq Scan on p3_100_200 p3_3
+         Disabled: true
+         Filter: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Seq Scan on p3_200_300 p3_4
+         Disabled: true
+         Filter: (c1 = ANY ('{1,101,201}'::integer[]))
+(11 rows)
+
+-- Specific partition
+/*+
+DisableIndex(pt2_1_1 pt2_1_1_c1_c2_idx)
+DisableIndex(pt2_1_6 pt2_1_6_c1_c2_idx)
+*/
+EXPLAIN (COSTS OFF) SELECT * FROM disable_index.pt2 WHERE c1 IN (1, 101, 201);
+LOG:  indexes disabled for DisableIndex(pt2_1_1): pt2_1_1_c1_c2_idx
+LOG:  indexes disabled for DisableIndex(pt2_1_6): pt2_1_6_c1_c2_idx
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(pt2_1_1 pt2_1_1_c1_c2_idx)
+DisableIndex(pt2_1_6 pt2_1_6_c1_c2_idx)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Append
+   ->  Index Scan using pt2_1_1_pkey on pt2_1_1 pt2_1
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_2_c1_c2_idx on pt2_1_2 pt2_2
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_3_c1_c2_idx on pt2_1_3 pt2_3
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_4_c1_c2_idx on pt2_1_4 pt2_4
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_5_c1_c2_idx on pt2_1_5 pt2_5
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using pt2_1_6_pkey on pt2_1_6 pt2_6
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+(13 rows)
+
+/*+
+DisableIndex(p3_1_100 p3_1_100_c1_c2_idx)
+*/
+EXPLAIN (COSTS OFF) SELECT * FROM disable_index.p3 WHERE c1 IN (1, 101, 201);
+LOG:  indexes disabled for DisableIndex(p3_1_100): p3_1_100_c1_c2_idx
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(p3_1_100 p3_1_100_c1_c2_idx)
+not used hint:
+duplication hint:
+error hint:
+
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Append
+   ->  Index Scan using p3_c1_idx on p3 p3_1
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using p3_1_100_c1_idx on p3_1_100 p3_2
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using p3_100_200_c1_idx on p3_100_200 p3_3
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+   ->  Index Scan using p3_200_300_c1_idx on p3_200_300 p3_4
+         Index Cond: (c1 = ANY ('{1,101,201}'::integer[]))
+(9 rows)
+
+RESET enable_bitmapscan;
+RESET enable_seqscan;
+RESET max_parallel_workers_per_gather;
+-- Cleanup
+DROP SCHEMA disable_index CASCADE;
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table disable_index.t1
+drop cascades to table disable_index.p3
+drop cascades to table disable_index.p3_1_100
+drop cascades to table disable_index.p3_100_200
+drop cascades to table disable_index.p3_200_300
+drop cascades to table disable_index.pt2

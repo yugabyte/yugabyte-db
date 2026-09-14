@@ -1,3 +1,7 @@
+-- YB_TODO_PG19MERGE: Expression pushdown is not yet functional on the PG19 merge
+-- branch, so this test's plans show "Filter" instead of the expected "Storage
+-- Filter" and the golden currently fails. Revisit and regenerate this expected
+-- output once expression pushdown is restored.
 SET search_path TO public;
 
 -- query type 1

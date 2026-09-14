@@ -1,12 +1,11 @@
--- This test is derived from the pg_hint_plan test in
--- <https://github.com/ossc-db/pg_hint_plan/>.
+-- YB_TODO_PG19MERGE: Expression pushdown is not yet functional on the PG19 merge
+-- branch, so this test's plans show "Filter" instead of the expected "Storage
+-- Filter" and the golden currently fails. Revisit and regenerate this expected
+-- output once expression pushdown is restored.
 SET search_path TO public;
 SET client_min_messages TO log;
-SET yb_enable_bitmapscan = true;
 \set SHOW_CONTEXT always
 
--- In general, for postgres since t1.id and t2.id is sorted, merge joins should be optimal.
--- However, since YB does not support merge join nested loop joins will be used.
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
@@ -22,16 +21,16 @@ SET pg_hint_plan.enable_hint_table to on;	-- error
 SET compute_query_id to on;
 SET pg_hint_plan.enable_hint_table to on;
 SET compute_query_id to off;
-SELECT 1;									-- gets warining
-SELECT 1;									-- gets warning with conn mgr
+SELECT 1;									-- gets warning
+SELECT 1;									-- not
 SET compute_query_id to on;
 SELECT 1;									-- reactivated
 SET compute_query_id to off;
-SELECT 1;									-- gets warining
+SELECT 1;									-- gets warning
 SET pg_hint_plan.enable_hint_table to off;
 SET compute_query_id to on;
 SET pg_hint_plan.enable_hint_table to on;
-SELECT 1;									-- no warining
+SELECT 1;									-- no warning
 
 RESET compute_query_id;
 RESET pg_hint_plan.enable_hint_table;
@@ -39,7 +38,6 @@ RESET pg_hint_plan.enable_hint_table;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
--- pg_hint_plan when enabled recognizes Test as an unknown keyword
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 SET pg_hint_plan.enable_hint TO off;
@@ -47,18 +45,14 @@ SET pg_hint_plan.enable_hint TO off;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 SET pg_hint_plan.enable_hint TO on;
 
--- Planner Method Configuration parameters can be controlled as a part of pg_hint_plan comments.
--- pg_hint_plan comment formatting wrong
 /*Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
--- pg_hint_plan comment formatting wrong
 --+Set(enable_indexscan off)
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+Set(enable_indexscan off) /* nest comment */ */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
--- pg_hint_plan_comments can be used in between queries
 EXPLAIN (COSTS false) /*+Set(enable_indexscan off)*/
  SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+ Set(enable_indexscan off) Set(enable_hashjoin off) */
@@ -66,17 +60,15 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+ 	 Set 	 ( 	 enable_indexscan 	 off 	 ) 	 */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-/*+
-	 	Set
-	 	(
-	 	enable_indexscan
-	 	off
-	 	)
-	 	*/
+/*+ 	 
+	 	Set 	 
+	 	( 	 
+	 	enable_indexscan 	 
+	 	off 	 
+	 	) 	 
+	 	*/	 	
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
--- YB_COMMENT
--- Output of this query is different from postgres. Will change once YB optimizes planner
-/*+ Set(enable_indexscan off)Set(enable_nestloop off)Set(enable_mergejoin off)
+/*+ Set(enable_indexscan off)Set(enable_nestloop off)Set(enable_mergejoin off)	 	
 	 	Set(enable_seqscan off)
 	 	*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -88,8 +80,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+SeqScan() */ SELECT 1;
--- SeqScan takes only 1 argument. Hence it appears in error hint and not in used hint in
--- the description.
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+SeqScan(t1)*/
@@ -105,12 +95,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+NoBitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
--- YB_COMMENT
--- Tid scan not supported by YB
--- /*+TidScan(t4)*/
--- EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
--- /*+NoTidScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+/*+TidScan(t4)*/
+EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+/*+NoTidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
 
 /*+ NestLoop() */ SELECT 1;
 /*+ NestLoop(x) */ SELECT 1;
@@ -118,14 +106,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-
--- YB_COMMENT
--- Because the plan defaults to a BNL in Yugabyte, add a NoYbBatchedNL test
-SET yb_prefer_bnl to off;
-/*+NoYbBatchedNL(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-SET yb_prefer_bnl to on;
-
 /*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
@@ -138,26 +118,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 
 /*+MergeJoin(t4 t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
--- YB_COMMENT
--- If Merge joins were present, the inner two tables will utilize merge joins as id is a sorted
--- column. Since YB does not support merge join, the inner tables are joined using Nested Loop.
--- Output after Merge join support will look like this.
---                        QUERY PLAN
--- --------------------------------------------------------
---  Hash Join
---    Hash Cond: (t3.id = t1.id)
---    ->  Seq Scan on t3
---    ->  Hash
---          ->  Merge Join
---                Merge Cond: (t1.id = t4.id)
---                ->  Merge Join
---                      Merge Cond: (t1.id = t2.id)
---                      ->  Index Scan using t1_pkey on t1
---                      ->  Index Scan using t2_pkey on t2
---                ->  Sort
---                      Sort Key: t4.id
---                      ->  Seq Scan on t4
--- (13 rows)
 /*+HashJoin(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 /*+NestLoop(t2 t3 t4 t1) IndexScan(t3)*/
@@ -192,12 +152,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
 
 -- single table scan hint test
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
-
--- YB_COMMENT
--- The following index is necessary to allow bitmap scans on these tables, since
--- Postgres has an ASC pkey by default.
-CREATE INDEX t1_bitmap_index ON t1(id ASC);
-
 /*+BitmapScan(v_1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 /*+BitmapScan(v_2)*/
@@ -213,333 +167,325 @@ EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM
 /*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 
--- YB_COMMENT
--- Drop the index created for the bitmap tests so that we don't introduce more
--- than necessary.
-DROP INDEX t1_bitmap_index;
-
---
--- YB_COMMENT
--- CTID based scans and searches not supported in Yugabyte
 -- full scan hint pattern test
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+SeqScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+IndexScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+BitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+TidScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+NoSeqScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+NoIndexScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+NoBitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
--- /*+NoTidScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
---
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+SeqScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- /*+IndexScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+IndexScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- /*+BitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+BitmapScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- /*+TidScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+TidScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- /*+NoSeqScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoSeqScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- /*+NoIndexScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoIndexScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- /*+NoBitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoBitmapScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- /*+NoTidScan(t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) SeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) IndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) TidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) NoSeqScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) NoIndexScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) NoBitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
--- /*+NoTidScan(t1) NoTidScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
---
--- -- additional test
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
--- /*+BitmapScan(t1) BitmapScan(t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
---
--- -- outer join test
--- EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
--- /*+MergeJoin(t1 t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
--- -- Cannot work
--- /*+NestLoop(t1 t2)*/
--- EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
---
--- -- inheritance tables test
--- SET constraint_exclusion TO off;
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- SET constraint_exclusion TO on;
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- SET constraint_exclusion TO off;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- SET constraint_exclusion TO on;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
---
--- SET constraint_exclusion TO off;
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- SET constraint_exclusion TO on;
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- SET constraint_exclusion TO off;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+NestLoop(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+MergeJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+HashJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- SET constraint_exclusion TO on;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+NestLoop(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+MergeJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+HashJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
---
--- SET constraint_exclusion TO off;
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- SET constraint_exclusion TO on;
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- SET constraint_exclusion TO off;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+NestLoop(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+MergeJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+HashJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- SET constraint_exclusion TO on;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
--- /*+NestLoop(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+MergeJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+HashJoin(p1 t1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
---
--- SET constraint_exclusion TO off;
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- SET constraint_exclusion TO on;
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- SET constraint_exclusion TO off;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- SET constraint_exclusion TO on;
--- /*+SeqScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+IndexScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+BitmapScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
--- /*+TidScan(p1)*/
--- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/*+IndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/*+TidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/*+NoSeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/*+NoIndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/*+NoBitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/*+NoTidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+SeqScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+/*+IndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+IndexScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+BitmapScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+/*+TidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+TidScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+/*+NoSeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoSeqScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+/*+NoIndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoIndexScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+/*+NoBitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoBitmapScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+/*+NoTidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+/*+NoTidScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+
+-- additional test
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
+/*+BitmapScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
+
+-- outer join test
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+/*+MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+-- Cannot work
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+
+-- inheritance tables test
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
 
 -- IndexScan is safe for unordered indexes
 CREATE TABLE ischk (a text, b tsvector) PARTITION BY LIST(a);
@@ -555,10 +501,8 @@ DROP TABLE ischk;
 EXPLAIN (COSTS false) SELECT * FROM t1 """t1 )	", t2 "t	2 """, t3 "T3" WHERE """t1 )	".id = "t	2 """.id AND """t1 )	".id = "T3".id;
 
 -- duplicate hint test
--- YB_COMMENT
--- Removed TidScan because CTID based scans and searches not supported in Yugabyte
-/*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
-EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
 
 -- sub query Leading hint test
 SET from_collapse_limit TO 100;
@@ -572,7 +516,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)*/
 EXPLAIN (COSTS false)
@@ -584,7 +528,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
 EXPLAIN (COSTS false)
@@ -596,7 +540,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
 EXPLAIN (COSTS false)
@@ -608,7 +552,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(t3_5 t2_5 t1_5)Leading(t3_2 t2_2 t1_2)Leading(t3_4 t2_4 t1_4)Leading(c1_1 t3_3 t2_3 t1_3 t3_1 t2_1 t1_1)*/
 EXPLAIN (COSTS false)
@@ -620,7 +564,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 
 SET from_collapse_limit TO 1;
@@ -633,7 +577,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)*/
 EXPLAIN (COSTS false)
@@ -645,7 +589,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
 EXPLAIN (COSTS false)
@@ -657,7 +601,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
 EXPLAIN (COSTS false)
@@ -669,7 +613,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(t3_5 t2_5 t1_5)Leading(t3_2 t2_2 t1_2)Leading(t3_4 t2_4 t1_4)Leading(c1_1 t3_3 t2_3 t1_3 t3_1 t2_1 t1_1)*/
 EXPLAIN (COSTS false)
@@ -681,7 +625,7 @@ SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t
 ) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
 SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
-SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
 
 -- ambiguous error
@@ -815,54 +759,52 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t
 /*+Leading((((t5 t4)t3)(t2 t1)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
 
--- YB_COMMENT
--- Inheritance not supported by Yugabyte
--- Inherited table test to specify the index's name
+-- inherite table test to specify the index's name
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_pkey)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_id_val_idx)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_val_id_idx)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
---
--- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
---
+/*+IndexScan(p2 p2_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_id_val_idx)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_val_id_idx)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+
+EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
+
 -- Inhibit parallel exection to avoid interfaring the hint
 set max_parallel_workers_per_gather to 0;
--- /*+ IndexScan(p2 p2_val)*/
--- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_pkey)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_id2_val)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_val2_id)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
---
--- /*+IndexScan(p2 p2_pkey)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_c1_id_val_idx)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 no_exist)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_pkey p2_c1_id_val_idx)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_pkey no_exist)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_c1_id_val_idx no_exist)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_pkey p2_c1_id_val_idx no_exist)*/
--- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
---
--- /*+IndexScan(p2 p2_val_idx)*/
--- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_expr)*/
--- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_val_idx6)*/
--- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
--- /*+IndexScan(p2 p2_val_idx p2_val_idx6)*/
--- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
---
+/*+ IndexScan(p2 p2_val)*/
+EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_id2_val)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_val2_id)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+
+/*+IndexScan(p2 p2_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_c1_id_val_idx)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 no_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_pkey p2_c1_id_val_idx)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_pkey no_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_c1_id_val_idx no_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_pkey p2_c1_id_val_idx no_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+
+/*+IndexScan(p2 p2_val_idx)*/
+EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_expr)*/
+EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_val_idx6)*/
+EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
+/*+IndexScan(p2 p2_val_idx p2_val_idx6)*/
+EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
+
 -- regular expression
 -- ordinary table
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
@@ -886,9 +828,6 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 /*+ IndexOnlyScan(t5 t5_id[0-9].*)*/
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
-
--- YB_COMMENT
--- Yugabyte does not support bitmap scan
 /*+ BitmapScanRegexp(t5 t5_[^i].*)*/
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 /*+ BitmapScanRegexp(t5 t5_id[0-9].*)*/
@@ -900,39 +839,40 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 /*+ BitmapScan(t5 t5_id[0-9].*)*/
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 
--- YB_COMMENT
 -- Inheritance
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexScanRegexp(p1 p1_.*[^0-9]$)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexScanRegexp(p1 p1_.*val2.*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexScanRegexp(p1 p1[^_].*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexScan(p1 p1_.*val2.*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexOnlyScanRegexp(p1 p1_.*[^0-9]$)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexOnlyScanRegexp(p1 p1_.*val2.*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexOnlyScanRegexp(p1 p1[^_].*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ IndexOnlyScan(p1 p1_.*val2.*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ BitmapScanRegexp(p1 p1_.*[^0-9]$)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ BitmapScanRegexp(p1 p1_.*val2.*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ BitmapScanRegexp(p1 p1[^_].*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
--- /*+ BitmapScan(p1 p1_.*val2.*)*/
--- EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
---
--- search from hint table
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;', '', 'SeqScan(t1)');
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = ?;', '', 'IndexScan(t1)');
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('EXPLAIN SELECT * FROM t1 WHERE t1.id = ?;', '', 'BitmapScan(t1)');
-SELECT * FROM hint_plan.hints ORDER BY id;
+/*+ IndexScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+
+-- Search from hint table
+SELECT get_query_id('SELECT * FROM t1 WHERE t1.id = 1') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+  VALUES (:'query_id', '', 'SeqScan(t1)');
+SELECT get_query_id('SELECT id FROM t1 WHERE t1.id = 1') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+  VALUES (:'query_id', '', 'IndexScan(t1)');
 SET pg_hint_plan.enable_hint_table = on;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 SET pg_hint_plan.enable_hint_table = off;
@@ -1048,188 +988,207 @@ SELECT * FROM testfunc() LIMIT 1;
 DROP FUNCTION testfunc();
 DROP EXTENSION pg_hint_plan;
 
-CREATE FUNCTION reset_stats_and_wait() RETURNS void AS $$
-DECLARE
-  rows int;
+-- Dynamic query in pl/pgsql
+CREATE OR REPLACE FUNCTION dynsql1(x int) RETURNS int AS $$
+DECLARE c int;
 BEGIN
-  rows = 1;
-  while rows > 0 LOOP
-   PERFORM pg_stat_reset();
-   PERFORM pg_sleep(0.5);
-   SELECT sum(seq_scan + idx_scan) from pg_stat_user_tables into rows;
+  EXECUTE '/*+ IndexScan(t1) */ SELECT count(*) FROM t1 WHERE id < $1'
+  	INTO c USING x;
+  RETURN c;
+END;
+$$ VOLATILE LANGUAGE plpgsql;
+VACUUM ANALYZE t1;
+-- Check generated statistics in function *without* the hint.
+-- Only a sequential scan should be counted.
+-- Save counters before running the function.
+SET pg_hint_plan.enable_hint = false;
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 't1' \gset t1_before_
+SELECT dynsql1(9000);
+-- Save counters after running the function.
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 't1' \gset t1_after_
+-- seqscan should increment, not idxscan.
+SELECT :t1_before_seq_scan < :t1_after_seq_scan AS t1_seq_compare,
+       :t1_before_idx_scan < :t1_after_idx_scan AS t1_idx_compare;
+-- Check generated statistics in function *with* the hint.
+-- Only an index scan should be counted.
+-- Save counters before running the function.
+SET pg_hint_plan.enable_hint = true;
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 't1' \gset t1_before_
+SELECT dynsql1(9000);
+-- Save counters after running the function.
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 't1' \gset t1_after_
+-- idxscan should increment, not seqscan.
+SELECT :t1_before_seq_scan < :t1_after_seq_scan AS t1_seq_compare,
+       :t1_before_idx_scan < :t1_after_idx_scan AS t1_idx_compare;
+
+-- Looped dynamic query in pl/pgsql
+CREATE OR REPLACE FUNCTION dynsql2(x int, OUT r int) AS $$
+DECLARE
+  c text;
+  s int;
+BEGIN
+  r := 0;
+  FOR c IN SELECT f.f FROM (VALUES ('p1_c1'), ('p1_c2')) f(f) LOOP
+    FOR s IN EXECUTE '/*+ IndexScan(' || c || ' ' || c || '_pkey) */ SELECT sum(val) FROM ' || c || ' WHERE id < ' || x LOOP
+      r := r + s;
+    END LOOP;
   END LOOP;
 END;
-$$ LANGUAGE plpgsql;
+$$ VOLATILE LANGUAGE plpgsql;
+-- Check generated statistics in function *without* the hint.
+SET pg_hint_plan.enable_hint = false;
+-- Save counters before running the function.
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c1' \gset c1_before_
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c2' \gset c2_before_
+SELECT dynsql2(9000);
+-- Save counters after running the function.
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c1' \gset c1_after_
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c2' \gset c2_after_
+SELECT :c1_after_seq_scan - :c1_before_seq_scan AS c1_seq_compare,
+       :c1_after_idx_scan - :c1_before_idx_scan AS c1_idx_compare,
+       :c2_after_seq_scan - :c2_before_seq_scan AS c2_seq_compare,
+       :c2_after_idx_scan - :c2_before_idx_scan AS c2_idx_compare;
+-- Check generated statistics in function *with* the hint.
+SET pg_hint_plan.enable_hint = true;
+-- Save counters before running the function.
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c1' \gset c1_before_
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c2' \gset c2_before_
+SELECT dynsql2(9000);
+-- Save counters after running the function.
+SELECT pg_stat_force_next_flush();
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c1' \gset c1_after_
+SELECT seq_scan, idx_scan FROM pg_stat_user_tables
+  WHERE schemaname = 'public' AND relname = 'p1_c2' \gset c2_after_
+SELECT :c1_after_seq_scan - :c1_before_seq_scan AS c1_seq_compare,
+       :c1_after_idx_scan - :c1_before_idx_scan AS c1_idx_compare,
+       :c2_after_seq_scan - :c2_before_seq_scan AS c2_seq_compare,
+       :c2_after_idx_scan - :c2_before_idx_scan AS c2_idx_compare;
 
--- YB_COMMENT
--- pg_stat_user_tables not supportd by YB
--- Dynamic query in pl/pgsql
--- CREATE OR REPLACE FUNCTION dynsql1(x int) RETURNS int AS $$
--- DECLARE c int;
--- BEGIN
---   EXECUTE '/*+ IndexScan(t1) */ SELECT count(*) FROM t1 WHERE id < $1'
---   	INTO c USING x;
---   RETURN c;
--- END;
--- $$ VOLATILE LANGUAGE plpgsql;
--- vacuum analyze t1;
--- SET pg_hint_plan.enable_hint = false;
--- SELECT pg_sleep(1);
--- SELECT reset_stats_and_wait();
--- SELECT dynsql1(9000);
--- SELECT pg_sleep(1);
--- SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
--- SET pg_hint_plan.enable_hint = true;
--- SELECT pg_sleep(1);
--- SELECT reset_stats_and_wait();
--- SELECT dynsql1(9000);
--- SELECT pg_sleep(1);
--- SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
---
--- Dependent on inheritance
--- -- Looped dynamic query in pl/pgsql
--- CREATE OR REPLACE FUNCTION dynsql2(x int, OUT r int) AS $$
--- DECLARE
---   c text;
---   s int;
--- BEGIN
---   r := 0;
---   FOR c IN SELECT f.f FROM (VALUES ('p1_c1'), ('p1_c2')) f(f) LOOP
---     FOR s IN EXECUTE '/*+ IndexScan(' || c || ' ' || c || '_pkey) */ SELECT sum(val) FROM ' || c || ' WHERE id < ' || x LOOP
---       r := r + s;
---     END LOOP;
---   END LOOP;
--- END;
--- $$ VOLATILE LANGUAGE plpgsql;
--- SET pg_hint_plan.enable_hint = false;
--- SELECT reset_stats_and_wait();
--- SELECT dynsql2(9000);
--- SELECT pg_sleep(1);
--- -- one of the index scans happened while planning.
--- SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
--- SET pg_hint_plan.enable_hint = true;
--- SELECT reset_stats_and_wait();
--- SELECT dynsql2(9000);
--- SELECT pg_sleep(1);
--- -- the index scan happened while planning.
--- SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
---
--- -- Subqueries on inheritance tables under UNION
--- EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
--- UNION ALL
--- SELECT val::int FROM p2 WHERE id < 1000;
---
--- /*+ IndexScan(p1 p1_val2) */
--- EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
--- UNION ALL
--- SELECT val::int FROM p2 WHERE id < 1000;
---
--- /*+ IndexScan(p1 p1_val2) IndexScan(p2 p2_id_val_idx) */
--- EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
--- UNION ALL
--- SELECT val::int FROM p2 WHERE id < 1000;
---
--- -- union all case
--- EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
--- UNION
--- SELECT val::int FROM p2 WHERE id < 1000;
---
--- /*+ IndexScan(p2 p2_id_val_idx) */
--- EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
--- UNION
--- SELECT val::int FROM p2 WHERE id < 1000;
---
--- /*+ IndexScan(p1 p1_val2) IndexScan(p2 p2_id_val_idx) */
--- EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
--- UNION
--- SELECT val::int FROM p2 WHERE id < 1000;
---
+-- Subqueries on inheritance tables under UNION
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION ALL
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p1 p1_val2) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION ALL
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p1 p1_val2) IndexScan(p2 p2_id_val_idx) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION ALL
+SELECT val::int FROM p2 WHERE id < 1000;
+
+-- union all case
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p2 p2_id_val_idx) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p1 p1_val2) IndexScan(p2 p2_id_val_idx) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION
+SELECT val::int FROM p2 WHERE id < 1000;
+
 --
 -- Rows hint tests
 --
 -- Explain result includes "Planning time" if COSTS is enabled, but
 -- this test needs it enabled for get rows count. So do tests via psql
 -- and grep -v the mutable line.
---
--- -- Parse error check
--- /*+ Rows() */ SELECT 1;
--- /*+ Rows(x) */ SELECT 1;
---
--- -- value types
--- \o results/pg_hint_plan.tmpout
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 #99) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 +99) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 -99) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 *99) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 *0.01) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 #aa) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 /99) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- -- round up to 1
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 -99999) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- -- complex join tree
--- \o results/pg_hint_plan.tmpout
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t2 #22) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
--- \o
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
---
--- \o results/pg_hint_plan.tmpout
--- /*+ Rows(t1 t3 *10) */
--- EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
--- \o
--- set max_parallel_workers_per_gather to DEFAULT;
--- \! sql/maskout.sh results/pg_hint_plan.tmpout
--- \! rm results/pg_hint_plan.tmpout
---
+
+-- Parse error check
+/*+ Rows() */ SELECT 1;
+/*+ Rows(x) */ SELECT 1;
+
+-- value types
+SELECT explain_filter('
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 #99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 +99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 -99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 *99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 *0.01) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 #aa) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 /99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
+');
+
+-- round up to 1
+SELECT explain_filter('
+/*+ Rows(t1 t2 -99999) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+');
+
+-- complex join tree
+SELECT explain_filter('
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t2 #22) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+');
+
+SELECT explain_filter('
+/*+ Rows(t1 t3 *10) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+');
+
+-- Query with join RTE and outer-join relids
+/*+Leading(ft_1 ft_2 t1)*/
+SELECT relname, seq_scan >= 0 AS seq_scan, idx_scan >= 0 AS idx_scan
+  FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
+
 -- hint error level
 set client_min_messages to 'DEBUG1';
 /*+ SeqScan( */ SELECT 1;
@@ -1246,3 +1205,16 @@ set pg_hint_plan.parse_messages to 'NOTICE';
 -- all hint types together
 /*+ SeqScan(t1) MergeJoin(t1 t2) Leading(t1 t2) Rows(t1 t2 +10) Parallel(t1 8 hard) Set(random_page_cost 2.0)*/
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+
+-- Check state of hint stack across with ERROR level due to debug_print.
+-- The first query generates an error while a hint is included.  The second
+-- query should work, with a clean hint on the stack.  The error is triggered
+-- due to a combination of debug_print and message_level making the debug_print
+-- fail.
+SET pg_hint_plan.message_level TO error;
+SET pg_hint_plan.debug_print TO on;
+/*+ NoNestLoop(t1 t2) */
+EXPLAIN (COSTS OFF) SELECT count(*) FROM (SELECT count(*) FROM t1 GROUP BY id) AS q1;
+SELECT 1;
+RESET pg_hint_plan.message_level;
+RESET pg_hint_plan.debug_print;
