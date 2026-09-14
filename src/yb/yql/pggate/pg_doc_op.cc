@@ -804,7 +804,9 @@ bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
     // Executed in parallel on PgClient
     return false;
   }
-  // At this time ordered scan requires tablet scan order, so they have to be done sequentially
+  // At this time ordered scan requires tablet scan order, so they have to be done sequentially.
+  // An unset direction means row order does not matter (NoMovementScanDirection on the PG side,
+  // see create_index_path in pathnode.c).
   return !req.has_is_forward_scan();
 }
 

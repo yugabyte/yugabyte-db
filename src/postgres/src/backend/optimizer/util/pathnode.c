@@ -1577,6 +1577,15 @@ create_index_path(PlannerInfo *root,
 	pathnode->yb_bitmap_idx_pushdowns = yb_bitmap_idx_pushdowns;
 	pathnode->indexorderbys = indexorderbys;
 	pathnode->indexorderbycols = indexorderbycols;
+
+	/*
+	 * YB: NoMovementScanDirection means "row order does not matter".  For
+	 * it, yb_scan_core.c does not call YBCPgSetForwardScan, and an unset
+	 * direction lets pggate read tablets in parallel
+	 * (CouldBeExecutedInParallel) and skip preserving ybctid order on
+	 * secondary index scans.  Forward and Backward both forfeit those
+	 * optimizations.
+	 */
 	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
 		NoMovementScanDirection : indexscandir;
 

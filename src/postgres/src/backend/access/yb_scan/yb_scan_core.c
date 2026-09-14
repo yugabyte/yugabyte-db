@@ -444,7 +444,7 @@ ybcFetchNextHeapTuple(YbOpaque ybScan, ScanDirection dir)
 				return NULL;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(dir))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(dir))
@@ -561,7 +561,7 @@ ybcFetchNextIndexTuple(YbOpaque ybScan, ScanDirection dir)
 				return NULL;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(dir))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(dir))
@@ -4229,7 +4229,7 @@ ybc_heap_getnextslot(TableScanDesc tsdesc, ScanDirection direction,
 				return false;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(direction))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(direction))
