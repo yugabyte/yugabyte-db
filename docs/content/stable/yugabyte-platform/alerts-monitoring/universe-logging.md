@@ -20,7 +20,7 @@ Note that YugabyteDB v2025.1 and later are based on PostgreSQL 15 and use pgaudi
 
 ## Prerequisites
 
-- To configure metrics export on Kubernetes, ensure the OpenTelemetry Operator is installed. Refer to [OpenTelemetry Operator for Kubernetes](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) in the OpenTelemetry documentation.
+- To export logs from Kubernetes universes, install the [OpenTelemetry Operator](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started).
 
 - Create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Manage export configurations](../anywhere-export-configuration).
 

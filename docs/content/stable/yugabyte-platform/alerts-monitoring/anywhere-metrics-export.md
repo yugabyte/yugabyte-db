@@ -20,7 +20,9 @@ You can export [universe metrics](../anywhere-metrics/) to third-party tools for
 
 ## Limitations
 
-Metrics export is not available for Kubernetes universes.
+On Kubernetes universes, metrics export requires YugabyteDB v2026.1.2.0 (or preview v2.31.0.0) or later, and the [OpenTelemetry Operator](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) on the cluster.
+
+You can export metrics from YB-Master, YB-TServer, YSQL, YCQL, and the OpenTelemetry Collector. Node and Node agent metrics cannot be exported on Kubernetes; those sources are not present in the database pods.
 
 ## Export universe metrics
 
