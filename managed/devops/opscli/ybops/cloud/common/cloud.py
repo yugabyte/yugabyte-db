@@ -529,14 +529,23 @@ class AbstractCloud(AbstractCommandParser):
                 raise YBOpsRuntimeError(
                     f"RSA key size in server cert at {server_key_path} is less than 2048 bits.")
 
-            # Verify key signs the certificate
-            cert_md5 = remote_shell.run_command_raw(
-                "openssl x509 -noout -modulus -in {} | openssl md5".format(server_crt_path)).stdout
-            key_md5 = remote_shell.run_command_raw(
-                "openssl rsa -noout -modulus -in {} | openssl md5".format(
-                    server_key_path)
-                ).stdout
-            if cert_md5 != key_md5:
+            # Verify key signs the certificate. This only compares the two moduli, so the digest
+            # is interchangeable - it is sha256 rather than md5 because a node in FIPS mode has no
+            # md5 in its OpenSSL and the command would fail outright.
+            cert_result = remote_shell.run_command_raw(
+                "openssl x509 -noout -modulus -in {} | openssl sha256".format(
+                    server_crt_path))
+            key_result = remote_shell.run_command_raw(
+                "openssl rsa -noout -modulus -in {} | openssl sha256".format(
+                    server_key_path))
+            # Checked before comparing: run_command_raw does not raise, and a failed command
+            # leaves stdout empty on both sides, so an unchecked comparison would read as a match
+            # and pass a cert/key pair nothing had actually verified.
+            for path, result in ((server_crt_path, cert_result), (server_key_path, key_result)):
+                if result.exited != 0:
+                    raise YBOpsRuntimeError(
+                        "Could not read the modulus of {}: {}".format(path, result.stderr))
+            if not cert_result.stdout.strip() or cert_result.stdout != key_result.stdout:
                 raise YBOpsRuntimeError(
                     "Server certificate and server key do not match.")
 

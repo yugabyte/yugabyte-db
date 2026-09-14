@@ -294,6 +294,9 @@ public class YNPConfigGenerator {
     ynpNode.put(
         "is_configure_clockbound",
         universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
+    // Drives the ConfigureFips module, which puts the node's kernel and crypto policy into FIPS
+    // mode. Same flag that turns on openssl_require_fips for the database itself.
+    ynpNode.put("is_fips_enabled", universe.getUniverseDetails().fipsEnabled);
     Customer customer = Customer.getOrBadRequest(params.getProvider().getCustomerUUID());
     boolean enableEarlyoomFeature =
         confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);

@@ -79,6 +79,11 @@ type SessionInfo struct {
 	UserId     string `json:"UserUUID,omitempty"`
 }
 
+// YBAInfo is the subset of YBA's instance info that provisioning cares about.
+type YBAInfo struct {
+	FipsEnabled bool `json:"fips_enabled"`
+}
+
 type DisplayInterface interface {
 	Id() string
 	String() string

@@ -1182,18 +1182,39 @@ public class GFlagsUtil {
   }
 
   /**
-   * Make sure FIPS related GFlags are not overridden + check provider type - as only K8S is
-   * currently supported.
+   * Provider types a FIPS enabled universe can run on.
+   *
+   * <p>On Kubernetes the database runs from a container image that carries the validated module, so
+   * there is no host to prepare. On the rest, the node's OS is put into FIPS mode by the
+   * ConfigureFips provisioning module, which fails provisioning rather than leaving a node that
+   * only looks FIPS enabled - so the guarantee is that the node was verified in FIPS mode, not that
+   * it came from a particular provider. The types left out (docker, local, other) have no node
+   * provisioning to hook into.
+   */
+  private static final Set<CloudType> FIPS_SUPPORTED_PROVIDERS =
+      ImmutableSet.of(
+          CloudType.kubernetes,
+          CloudType.aws,
+          CloudType.gcp,
+          CloudType.azu,
+          CloudType.oci,
+          CloudType.onprem);
+
+  /**
+   * Make sure FIPS related GFlags are not overridden, and that the provider is one whose nodes can
+   * be put into FIPS mode.
    *
    * @param fipsEnabled
    */
   public static void validateFipsCompliancy(
       UniverseDefinitionTaskParams.UserIntent userIntent, boolean fipsEnabled) {
     if (fipsEnabled) {
-      if (userIntent.providerType != CloudType.kubernetes) {
+      if (!FIPS_SUPPORTED_PROVIDERS.contains(userIntent.providerType)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
-            "Currently only Kubernetes provider is supported for FIPS compliant universe");
+            String.format(
+                "FIPS compliant universes are not supported on the %s provider",
+                userIntent.providerType));
       }
       // This is for new universes only, so don't consider old form of GFLags
       if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {

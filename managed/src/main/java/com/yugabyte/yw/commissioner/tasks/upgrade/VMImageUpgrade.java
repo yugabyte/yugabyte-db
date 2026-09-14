@@ -434,6 +434,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                           n.getNodeUuid(), k -> new ConcurrentHashMap<>());
                 })
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        if (universe.getUniverseDetails().fipsEnabled) {
+          // The root volume was replaced, so this is a fresh OS that provisioning has just put
+          // into FIPS mode - which only takes effect on reboot.
+          createRebootTasks(nodeList, false /* isHardReboot */)
+              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        }
       }
       createInstallNodeAgentTasks(universe, nodeList)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);

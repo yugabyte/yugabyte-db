@@ -203,6 +203,11 @@ func PlatformGetSessionInfoEndpoint() string {
 	return "/api/session_info"
 }
 
+// Returns the platform endpoint for fetching YBA instance info.
+func PlatformGetYBAInfoEndpoint() string {
+	return "/api/v2/yba-info"
+}
+
 // Returns the platform endpoint for fetching instance types.
 func PlatformGetInstanceTypesEndpoint(cuuid string, puuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers/%s/instance_types", cuuid, puuid)

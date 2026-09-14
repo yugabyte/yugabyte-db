@@ -107,6 +107,10 @@ func (dp *MockDataProvider) GetCertificateName(ctx context.Context) (string, err
 	return dp.certificateName, nil
 }
 
+func (dp *MockDataProvider) GetYBAInfo(ctx context.Context) (*model.YBAInfo, error) {
+	return &model.YBAInfo{FipsEnabled: false}, nil
+}
+
 func TestGenerateConfig(t *testing.T) {
 	ynpBasePath := filepath.Join(os.Getenv("PROJECT_DIR"), "resources/ynp")
 	args := &Args{

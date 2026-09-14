@@ -2608,6 +2608,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 createYNPProvisioningTask(
                         universe, filteredNodes, (n, p) -> p.isYbPrebuiltImage = isYbPrebuiltImage)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                if (universe.getUniverseDetails().fipsEnabled) {
+                  // Provisioning has put the node's kernel and crypto policy into FIPS mode, which
+                  // only takes effect on reboot. Inside this block so a retry that already moved
+                  // the node past Provisioned does not reboot it a second time.
+                  createRebootTasks(new ArrayList<>(filteredNodes), false /* isHardReboot */)
+                      .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                }
               }
               createInstallNodeAgentTasks(universe, filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
