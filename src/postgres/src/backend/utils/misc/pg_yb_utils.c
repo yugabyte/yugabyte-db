@@ -2178,12 +2178,7 @@ YbWholeRowAttrRequired(Relation relation, Relation root_relation,
 
 bool		yb_enable_create_with_table_oid = false;
 int			yb_index_state_flags_update_delay = 0;
-/*
- * YB_TODO_PG19MERGE: forced false until YbGate's expression evaluator is brought
- * up to date with PG19. The corresponding GUC entry is in the #if 0'd
- * ConfigureNamesBool block so the AutoFlag doesn't override this initializer.
- */
-bool		yb_enable_expression_pushdown = false;
+bool		yb_enable_expression_pushdown = true;
 bool		yb_enable_distinct_pushdown = true;
 bool		yb_enable_index_aggregate_pushdown = true;
 bool		yb_enable_primary_key_decode_from_index = false;
