@@ -50,7 +50,7 @@ You can stop one of the nodes to simulate the loss of a zone, as follows:
 
 1. Navigate to **Universes** and select your universe.
 
-1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Stop Processes**.
+1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Enter Maintenance Mode**.
 
 ## Observe workload remains available
 
@@ -69,5 +69,3 @@ Alternatively, you can navigate to the [YB Workload Simulator application UI](ht
 With the loss of the node, which also represents the loss of an entire fault domain, the universe is now in an under-replicated state.
 
 Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
-
-{{% explore-cleanup-local %}}
