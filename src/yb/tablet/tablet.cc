@@ -1937,6 +1937,13 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
       db_uniq_ptr->reset();
     }
   }
+  {
+    std::lock_guard lock(sst_stats_mutex_);
+    // The file numbers tracked by this instance belong to the regular DB just destroyed. Existing
+    // readers keep it alive through their shared_ptr; new readers see no aggregate until
+    // OpenRegularDB installs one for the replacement DB.
+    sst_stats_.reset();
+  }
 
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
@@ -4915,7 +4922,11 @@ Status Tablet::ResyncSstStats() {
         RETURN_NOT_OK(scoped_operation);
         SCHECK(regular_db_, IllegalState, "No regular DB to read SST statistics from");
         regular_db_->GetLiveFilesMetaData(live_files);
-        return regular_db_->GetPropertiesOfAllTables(properties);
+        // Keep the files whose properties cannot be read absent from the map. Resync compares this
+        // with live_files and counts each absence as uncovered instead of letting one bad
+        // properties block prevent this tablet from ever completing its first resync.
+        return regular_db_->GetPropertiesOfAllTables(
+            properties, rocksdb::TablePropertiesErrorHandling::kSkip);
       });
 }
 

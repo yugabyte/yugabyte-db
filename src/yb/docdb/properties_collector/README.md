@@ -190,8 +190,9 @@ shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per
 This component produces the per-file record and the per-tablet sum of it. The rest is separate: the
 `docdb_sst_*` Prometheus gauges for humans (additive scalars only; this metrics system exports no
 bucket vectors), and a full-compaction trigger clause that reads the aggregate directly. Every
-consumer must account for **coverage**: files that predate the collector carry no statistics, and a
-ratio over them silently reads near zero.
+consumer must account for **coverage**: files that predate the collector or whose properties cannot
+be read carry no statistics, and a ratio over them silently reads near zero. The latter contribute
+to the uncovered file count, but their entry and raw-byte counts are unknown.
 
 Nothing here changes what a compaction removes; the compaction feed decides. Non-full compactions
 already remove shadowed versions whose overwriter is in the same compaction; tombstones and dead-row

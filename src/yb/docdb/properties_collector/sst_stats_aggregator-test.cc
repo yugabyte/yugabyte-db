@@ -181,6 +181,19 @@ TEST_F(SstStatsAggregatorTest, AddAndSubtract) {
   EXPECT_EQ(sum.covered_files, 0);
 }
 
+TEST_F(SstStatsAggregatorTest, DerivedCountsSaturate) {
+  SstStatsAggregate aggregate;
+  // Independent saturation during removal can break Ec >= K >= R even when every source file
+  // obeyed it. The derived counts must not expose that as values near 2^64.
+  aggregate.chain_entries = 10;
+  aggregate.num_subdoc_keys = 20;
+  aggregate.num_rows = 30;
+
+  EXPECT_EQ(aggregate.shadowed_entries(), 0);
+  EXPECT_EQ(aggregate.repackable_entries(), 0);
+  EXPECT_EQ(aggregate.collapsible_entries(), 0);
+}
+
 TEST_F(SstStatsAggregatorTest, FlushAndCompaction) {
   SstStatsAggregator aggregator;
   const auto first = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);

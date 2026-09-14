@@ -657,10 +657,11 @@ Status Version::GetTableProperties(std::shared_ptr<const TableProperties>* tp,
   return s;
 }
 
-Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props) {
+Status Version::GetPropertiesOfAllTables(
+    TablePropertiesCollection* props, TablePropertiesErrorHandling error_handling) {
   Status s;
   for (int level = 0; level < storage_info_.num_levels_; level++) {
-    s = GetPropertiesOfAllTables(props, level);
+    s = GetPropertiesOfAllTables(props, level, error_handling);
     if (!s.ok()) {
       return s;
     }
@@ -669,8 +670,9 @@ Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props) {
   return Status::OK();
 }
 
-Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props,
-                                         int level) {
+Status Version::GetPropertiesOfAllTables(
+    TablePropertiesCollection* props, int level,
+    TablePropertiesErrorHandling error_handling) {
   for (const auto& file_meta : storage_info_.files_[level]) {
     auto fname =
         TableFileName(vset_->db_options_->db_paths, file_meta->fd.GetNumber(),
@@ -681,7 +683,7 @@ Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props,
     Status s = GetTableProperties(&table_properties, file_meta, &fname);
     if (s.ok()) {
       props->insert({fname, table_properties});
-    } else {
+    } else if (error_handling == TablePropertiesErrorHandling::kFail) {
       return s;
     }
   }
