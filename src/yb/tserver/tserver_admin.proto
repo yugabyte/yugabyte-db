@@ -395,6 +395,14 @@ message UpdateTransactionTablesVersionResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message ApplyXClusterGuardedInfoIfNewerRequestPB {
+  required XClusterGuardedInfoPB xcluster_guarded_info = 1;
+}
+
+message ApplyXClusterGuardedInfoIfNewerResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message CloneTabletResponsePB {
   optional TabletServerErrorPB error = 1;
   optional fixed64 propagated_hybrid_time = 2;
@@ -503,6 +511,12 @@ service TabletServerAdminService {
 
   rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
       returns (UpdateTransactionTablesVersionResponsePB);
+
+  // Applies the xCluster-guarded information unless the TServer already holds a copy with an equal
+  // or newer version; succeeds either way.  Master uses this to push information to TServers
+  // without waiting for their next heartbeat.
+  rpc ApplyXClusterGuardedInfoIfNewer(ApplyXClusterGuardedInfoIfNewerRequestPB)
+      returns (ApplyXClusterGuardedInfoIfNewerResponsePB);
 
   rpc CloneTablet(tablet.CloneTabletRequestPB) returns (CloneTabletResponsePB);
 

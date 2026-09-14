@@ -2920,6 +2920,9 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
   UNUSED_TS_ADMIN_METHOD(UpdateTransactionTablesVersion,
                          tserver::UpdateTransactionTablesVersionRequestPB,
                          tserver::UpdateTransactionTablesVersionResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ApplyXClusterGuardedInfoIfNewer,
+                         tserver::ApplyXClusterGuardedInfoIfNewerRequestPB,
+                         tserver::ApplyXClusterGuardedInfoIfNewerResponsePB)
   UNUSED_TS_ADMIN_METHOD(CloneTablet, tablet::CloneTabletRequestPB,
                          tserver::CloneTabletResponsePB)
   UNUSED_TS_ADMIN_METHOD(ClonePgSchema, tserver::ClonePgSchemaRequestPB,

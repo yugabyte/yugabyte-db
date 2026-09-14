@@ -604,7 +604,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
 
   // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
-  // PropagateXClusterGuardedInfo RPCs, and guards the version below.
+  // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.
   std::mutex xcluster_guarded_info_version_mutex_;
   // (term, count) of the most recently applied copy; (0, 0) is below any real version.
   std::pair<int64_t, uint64_t> xcluster_guarded_info_version_

@@ -1382,6 +1382,44 @@ void AsyncUpdateTransactionTablesVersion::Finished(const Status& status) {
 }
 
 // ============================================================================
+//  Class AsyncApplyXClusterGuardedInfoIfNewer.
+// ============================================================================
+AsyncApplyXClusterGuardedInfoIfNewer::AsyncApplyXClusterGuardedInfoIfNewer(
+    Master* master, ThreadPool* callback_pool, const TabletServerId& ts_uuid,
+    std::shared_ptr<const XClusterGuardedInfoPB> info, MonoTime deadline,
+    StdStatusCallback callback)
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /*async_task_throttler=*/nullptr),
+      info_(std::move(info)),
+      callback_(std::move(callback)) {
+  deadline_ = deadline;
+}
+
+std::string AsyncApplyXClusterGuardedInfoIfNewer::description() const {
+  return Format(
+      "Apply xCluster-guarded info (version $0) if newer on TServer $1",
+      info_->xcluster_guarded_info_version().ShortDebugString(), permanent_uuid_);
+}
+
+void AsyncApplyXClusterGuardedInfoIfNewer::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    // Leave the task running so the framework retries until the deadline.
+    LOG(WARNING) << description() << " failed: " << StatusFromPB(resp_.error().status());
+    return;
+  }
+  TransitionToCompleteState();
+}
+
+bool AsyncApplyXClusterGuardedInfoIfNewer::SendRequest(int attempt) {
+  tserver::ApplyXClusterGuardedInfoIfNewerRequestPB req;
+  *req.mutable_xcluster_guarded_info() = *info_;
+  ts_admin_proxy_->ApplyXClusterGuardedInfoIfNewerAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent " << description();
+  return true;
+}
+
+void AsyncApplyXClusterGuardedInfoIfNewer::Finished(const Status& status) { callback_(status); }
+
+// ============================================================================
 //  Class AsyncTsTestRetry.
 // ============================================================================
 AsyncTsTestRetry::AsyncTsTestRetry(

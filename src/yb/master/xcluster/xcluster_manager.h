@@ -78,6 +78,17 @@ class XClusterManager : public XClusterManagerIf,
   Status FillXClusterGuardedInfo(int64_t leader_term, XClusterGuardedInfoPB& info) override
       EXCLUDES(xcluster_guarded_info_version_mutex_);
 
+  // Ensures that on successful return no TServer will ever give out xCluster-guarded information
+  // less recent than master had when this was called.  For example, after SetXClusterRole followed
+  // by a successful call to this method, no TServer will ever again give out the previous role.
+  //
+  // TServers that have not heartbeated for longer than the xCluster lease duration do not slow this
+  // down; those unresponsive for less than that can make it fail by timing out.  This method may
+  // also fail if master leadership changes during the call; callers wanting to survive that should
+  // retry.  Safe to call concurrently.
+  Status PropagateXClusterGuardedInfo(MonoTime deadline)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   Status SetXClusterRole(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       XClusterNamespaceInfoPB_XClusterRole role);
@@ -339,6 +350,7 @@ class XClusterManager : public XClusterManagerIf,
  private:
   void ProcessCleanupTablesPeriodically();
 
+  Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
 

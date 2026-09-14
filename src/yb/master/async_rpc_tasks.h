@@ -766,4 +766,32 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
   tserver::UpdateTransactionTablesVersionResponsePB resp_;
 };
 
+// Pushes a copy of the xCluster-guarded information to one TServer.
+class AsyncApplyXClusterGuardedInfoIfNewer : public RetrySpecificTSRpcTask {
+ public:
+  AsyncApplyXClusterGuardedInfoIfNewer(
+      Master* master, ThreadPool* callback_pool, const TabletServerId& ts_uuid,
+      std::shared_ptr<const XClusterGuardedInfoPB> info, MonoTime deadline,
+      StdStatusCallback callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kApplyXClusterGuardedInfoIfNewer;
+  }
+
+  std::string type_name() const override { return "Apply xCluster-Guarded Info If Newer"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return {}; }
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
+
+  const std::shared_ptr<const XClusterGuardedInfoPB> info_;
+  StdStatusCallback callback_;
+  tserver::ApplyXClusterGuardedInfoIfNewerResponsePB resp_;
+};
+
 } // namespace yb::master
