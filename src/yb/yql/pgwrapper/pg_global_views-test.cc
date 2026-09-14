@@ -1033,42 +1033,34 @@ TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatUserTablesLastAutoanalyze) {
   const auto ts1_uuid = ASSERT_RESULT(conn_ts1.FetchRow<Uuid>(
       "SELECT yb_get_local_tserver_uuid()"));
   ASSERT_OK(conn_ts1.Execute("SET yb_use_internal_auto_analyze_service_conn = true"));
+
+  const auto fetch_ts1_stats = [&]() {
+    return conn_->FetchRow<std::optional<MonoDelta>, std::optional<MonoDelta>, PGUint64>(Format(
+        "SELECT last_analyze, last_autoanalyze, autoanalyze_count "
+        "FROM gv$$pg_stat_user_tables WHERE relname = '$0' AND server_uuid = '$1'",
+        kTable, ts1_uuid.ToString()));
+  };
+
   ASSERT_OK(conn_ts1.ExecuteFormat("ANALYZE $0", kTable));
 
-  auto [local_has_last_analyze, local_has_last_autoanalyze, local_analyze_count,
-        local_autoanalyze_count] =
-      ASSERT_RESULT((conn_->FetchRow<bool, bool, PGUint64, PGUint64>(Format(
-          "SELECT last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
-          "analyze_count, autoanalyze_count "
-          "FROM pg_stat_user_tables WHERE relname = '$0'",
-          kTable))));
-  ASSERT_FALSE(local_has_last_analyze);
-  ASSERT_FALSE(local_has_last_autoanalyze);
-  ASSERT_EQ(0, local_analyze_count);
-  ASSERT_EQ(0, local_autoanalyze_count);
-
-  auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid, bool, bool, PGUint64, PGUint64>(Format(
-      "SELECT server_uuid, last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
-      "analyze_count, autoanalyze_count "
-      "FROM gv$$pg_stat_user_tables WHERE relname = '$0'",
+  auto local_last_autoanalyze = ASSERT_RESULT((conn_->FetchRow<std::optional<MonoDelta>>(Format(
+      "SELECT last_autoanalyze FROM pg_stat_user_tables WHERE relname = '$0'",
       kTable))));
-  bool found_ts1 = false;
-  for (const auto& [server_uuid, has_last_analyze, has_last_autoanalyze, analyze_count,
-                    autoanalyze_count] : rows) {
-    if (server_uuid == ts1_uuid) {
-      found_ts1 = true;
-      ASSERT_FALSE(has_last_analyze);
-      ASSERT_TRUE(has_last_autoanalyze);
-      ASSERT_EQ(0, analyze_count);
-      ASSERT_GE(autoanalyze_count, 1);
-    } else {
-      ASSERT_FALSE(has_last_analyze);
-      ASSERT_FALSE(has_last_autoanalyze);
-      ASSERT_EQ(0, analyze_count);
-      ASSERT_EQ(0, autoanalyze_count);
-    }
-  }
-  ASSERT_TRUE(found_ts1);
+  ASSERT_FALSE(local_last_autoanalyze.has_value());
+
+  auto [last_analyze1, last_autoanalyze1, count1] = ASSERT_RESULT(fetch_ts1_stats());
+  ASSERT_FALSE(last_analyze1.has_value());
+  ASSERT_TRUE(last_autoanalyze1.has_value());
+  ASSERT_EQ(count1, 1);
+
+  SleepFor(100ms);
+  ASSERT_OK(conn_ts1.ExecuteFormat("ANALYZE $0", kTable));
+
+  auto [last_analyze2, last_autoanalyze2, count2] = ASSERT_RESULT(fetch_ts1_stats());
+  ASSERT_FALSE(last_analyze2.has_value());
+  ASSERT_TRUE(last_autoanalyze2.has_value());
+  ASSERT_GT(*last_autoanalyze2, *last_autoanalyze1);
+  ASSERT_EQ(count2, 2);
 }
 
 TEST_F(PgBuiltinGlobalViewsTest, TestGvYbTerminatedQueries) {

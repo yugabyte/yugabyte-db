@@ -125,12 +125,6 @@ extern YbInternalConnKind YbLookupInternalConnKindByBackendType(BackendType type
  */
 extern bool YbIsInternalConnBackendType(BackendType backendType);
 
-/*
- * True when this backend is running ANALYZE for YB auto-analyze.
- * PG attributes auto-analyze to autovacuum workers; YB auto-analyze is a
- * regular or internal backend identified by
- * yb_use_internal_auto_analyze_service_conn or YB_AUTO_ANALYZE_BACKEND.
- */
 extern bool YbIsAutoAnalyzeProcess(void);
 
 #endif							/* YB_INTERNAL_CONN_H */
