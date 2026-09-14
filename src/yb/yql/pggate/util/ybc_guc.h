@@ -241,8 +241,6 @@ extern bool yb_read_time_skip_catalog;
  */
 extern int yb_fetch_row_limit;
 extern int yb_fetch_size_limit;
-extern int yb_parallel_fetch_row_limit;
-extern int yb_parallel_fetch_size_limit;
 
 /*
  * GUC flag: Minimum transaction age, in ms, to report when using yb_lock_status().

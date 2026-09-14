@@ -6242,7 +6242,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_parallel_fetch_row_limit", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Maximum number of rows to fetch per parallel scan. 0 = No limit"),
+			gettext_noop("Maximum number of rows to fetch per parallel range. 0 = No limit"),
 			NULL,
 			GUC_EXPLAIN
 		},

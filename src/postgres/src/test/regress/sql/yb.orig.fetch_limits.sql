@@ -94,22 +94,6 @@ set yb_fetch_size_limit = '1kB';
 explain (analyze, costs off, timing off, summary off) select * from test_correct where a < 20 and b % 5 = 0;
 select a, b, substring(c, 0, 10) from test_correct where a < 20 and b % 5 = 0 order by a;
 
---
--- #33454: A scan driven by a colocated index reads the index and the table in one request.  A
--- response that reaches the size limit drops its last row, which the request that follows reads
--- again along with the index row that produced it, and both are counted once.  Rows are sized so
--- that one fits under the size limit and two do not, since a row wider than the limit truncates
--- nothing.
---
-CREATE DATABASE colo WITH colocation = true;
-\c colo
-CREATE TABLE t_colo(k int PRIMARY KEY, a int, v varchar(600));
-INSERT INTO t_colo SELECT g, 1, REPEAT('x', 600) FROM generate_series(1, 200) g;
-CREATE INDEX ON t_colo(a ASC, k ASC);
-SET enable_seqscan = off;
-SET yb_fetch_size_limit = '1kB';
-EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_colo WHERE a = 1;
-
 -- #### parallel fetch limits ####
 ANALYZE t_large, t_medium, t_small;
 set yb_enable_cbo = on;
@@ -167,3 +151,19 @@ reset max_parallel_workers;
 reset yb_fetch_row_limit;
 reset yb_parallel_fetch_row_limit;
 reset yb_parallel_fetch_size_limit;
+
+--
+-- #33454: A scan driven by a colocated index reads the index and the table in one request.  A
+-- response that reaches the size limit drops its last row, which the request that follows reads
+-- again along with the index row that produced it, and both are counted once.  Rows are sized so
+-- that one fits under the size limit and two do not, since a row wider than the limit truncates
+-- nothing.
+--
+CREATE DATABASE colo WITH colocation = true;
+\c colo
+CREATE TABLE t_colo(k int PRIMARY KEY, a int, v varchar(600));
+INSERT INTO t_colo SELECT g, 1, REPEAT('x', 600) FROM generate_series(1, 200) g;
+CREATE INDEX ON t_colo(a ASC, k ASC);
+SET enable_seqscan = off;
+SET yb_fetch_size_limit = '1kB';
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_colo WHERE a = 1;

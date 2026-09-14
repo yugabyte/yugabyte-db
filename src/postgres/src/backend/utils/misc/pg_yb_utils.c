@@ -2454,6 +2454,9 @@ bool		yb_enable_pg_stat_statements_docdb_metrics = true;
 
 bool		yb_enable_global_views = false;
 
+int			yb_parallel_fetch_row_limit = 0;
+int			yb_parallel_fetch_size_limit = 0;
+
 bool
 yb_is_federated_yb_foreign_table(Oid relid)
 {
@@ -11253,20 +11256,4 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
 		return InvalidOid;
 
 	return get_relname_relid(table_name, namespace_oid);
-}
-
-void
-YbSetParallelFetchLimits(YbcPgExecParameters *exec_params)
-{
-	/*
-	 * Use different limits for parallel scan fetch.
-	 * Regular limits are relatively low to keep the queries that consume just
-	 * a few rows from the scan fast.
-	 * Parallel scan isn't fast anyway, and already limited by the scan range
-	 * size, so limit here is mostly a safeguard to be used in exceptional
-	 * cases and, if not unlimited, are expected to me much higher than regular.
-	 */
-	exec_params->limit_use_default = true;
-	exec_params->yb_fetch_row_limit = yb_parallel_fetch_row_limit;
-	exec_params->yb_fetch_size_limit = yb_parallel_fetch_size_limit;
 }

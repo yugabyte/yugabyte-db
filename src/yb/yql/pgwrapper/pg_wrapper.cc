@@ -308,7 +308,7 @@ DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_size_limit, 0,
     "Maximum size of a fetch response.");
 
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_parallel_fetch_row_limit, 0,
-    "Maximum number of rows to fetch per parallel scan.");
+    "Maximum number of rows to fetch per parallel range.");
 
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_parallel_fetch_size_limit, 0,
     "Maximum size of a parallel fetch response.");
