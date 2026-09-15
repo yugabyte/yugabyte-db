@@ -68,8 +68,15 @@ class FileBlockCache {
     return size_;
   }
 
-  Result<const std::byte*> Take(size_t index);
+  // Takes a reference on a block. When was_hit is non-null it is set to whether the block was
+  // already resident, so the caller can account the cache_query/cache_hit counters itself. The
+  // search path uses this to batch those counters once per search rather than once per block --
+  // see SearchCache::Data. A caller that passes nullptr must account them another way: the
+  // counters have no other update site.
+  Result<const std::byte*> Take(size_t index, bool* was_hit = nullptr);
   void Release(size_t index);
+
+  BlockCacheMetrics& metrics() const;
 
  private:
   void AllocateBlocks(size_t size);
