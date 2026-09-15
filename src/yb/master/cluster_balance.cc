@@ -279,6 +279,7 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
     // Wildcard placement matches all tservers.
     state_->placement_.add_placement_blocks()->CopyFrom(PlacementBlockPB());
   }
+  state_->CachePlacementBlockMaxReplicas();
 
   bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
   state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
@@ -973,6 +974,11 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
 Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   for (const auto& tablet_id : state_->tablets_over_max_placements_) {
+    // Skip tablets this run has already added a replica to (CanAddTabletToTabletServer would
+    // reject every destination anyway), so the destination scan below is not repeated for them.
+    if (state_->tablets_added_.contains(tablet_id)) {
+      continue;
+    }
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
     VLOG(3) << "Tablet " << tablet_id << " has a placement above its maximum"
             << ", attempting to find a tserver in another placement to move a replica to.";
@@ -989,18 +995,22 @@ Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
       if (!VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts, "" /* from_ts */))) {
         continue;
       }
-      // Pick a replica in an offending placement as the logged source of the move.
+      // Pick one of the tablet's replicas in an offending placement as the logged source of the
+      // move.
       TabletServerId from_ts;
       CloudInfoPB from_placement;
-      for (const auto& [ts_uuid, ts_meta] : state_->per_ts_meta_) {
-        if (!ts_meta.running_tablets.contains(tablet_id)) {
-          continue;
-        }
-        const auto placement = state_->GetValidPlacement(ts_uuid);
-        if (placement && tablet_meta.over_max_placements.contains(*placement)) {
-          from_ts = ts_uuid;
-          from_placement = *placement;
-          break;
+      if (const auto tablet_opt = GetTabletInfo(tablet_id)) {
+        for (const auto& [ts_uuid, _] : *tablet_opt->get()->GetReplicaLocations()) {
+          // Replicas the analysis skipped (e.g. of the other replica type) have no ts meta.
+          if (!state_->per_ts_meta_.contains(ts_uuid)) {
+            continue;
+          }
+          const auto placement = state_->GetValidPlacement(ts_uuid);
+          if (placement && tablet_meta.over_max_placements.contains(*placement)) {
+            from_ts = ts_uuid;
+            from_placement = *placement;
+            break;
+          }
         }
       }
       *out_tablet_id = tablet_id;
