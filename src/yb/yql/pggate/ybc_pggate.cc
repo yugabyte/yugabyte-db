@@ -32,6 +32,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -41,6 +42,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/numbers.h"
 
 #include "yb/gutil/walltime.h"
@@ -1655,6 +1657,29 @@ YbcStatus YBCPgInsertStmtSetWriteTime(YbcPgStatement handle, const uint64_t writ
 
 YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_backfill) {
   return ToYBCStatus(pgapi->InsertStmtSetIsBackfill(handle, is_backfill));
+}
+
+YbcStatus YBCPgInsertStmtSetUniqueIndexBackfillMode(
+    YbcPgStatement handle, YbcPgUniqueIndexBackfillMode mode) {
+  return ToYBCStatus(pgapi->InsertStmtSetUniqueIndexBackfillMode(handle, mode));
+}
+
+YbcStatus YBCPgGetUniqueIndexBackfillMode(
+    const char* bfinstr, YbcPgUniqueIndexBackfillMode* mode) {
+  // Fail closed: anything unexpected resolves to the fully checked path.
+  *mode = YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+  if (bfinstr == nullptr) {
+    return YBCStatusOK();
+  }
+  PgsqlBackfillSpecPB spec;
+  if (!spec.ParseFromString(strings::a2b_hex(std::string_view(bfinstr)))) {
+    return ToYBCStatus(STATUS(InvalidArgument, "Failed to parse backfill spec"));
+  }
+  if (spec.unique_index_backfill_mode() ==
+      UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL) {
+    *mode = YB_UNIQUE_INDEX_BACKFILL_SKIP_ALL;
+  }
+  return YBCStatusOK();
 }
 
 // UPDATE Operations -------------------------------------------------------------------------------
