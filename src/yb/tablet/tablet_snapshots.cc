@@ -707,6 +707,14 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   std::lock_guard lock(create_checkpoint_lock());
 
+  // The regular DB is about to be replaced under DocReadContexts that outlive the swap, so any
+  // colocated tombstone-time cache they hold now describes data that is going away. Reads are
+  // paused for the rest of this function, and the contexts SetSchema rebuilds below are born
+  // unarmed, so the first read after the restore re-derives every watermark from the restored
+  // data. Note the restore only rebuilds contexts for tables named in the restore metadata; the
+  // rest of the tablet's colocated tables are reachable only through this walk.
+  tablet().metadata()->ResetColocatedTombstoneCaches();
+
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
 

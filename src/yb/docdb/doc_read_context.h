@@ -110,17 +110,37 @@ struct DocReadContext {
 
   // HybridTime below which the tombstone cache must not be consumed or populated.
   // Default kMax = unarmed (cache fully disabled / fail-closed).
-  // See AdvanceTombstoneCacheWatermark.
   HybridTime tombstone_cache_watermark() const;
 
-  // Global cache epoch; bumped when Advance actually raises the watermark.
+  // Global cache epoch; bumped whenever an existing entry must stop being trusted.
   uint64_t tombstone_cache_generation() const;
 
-  // Monotone watermark advance. kMax is an "unarmed" sentinel (not a numeric max): the first
-  // advance replaces it with ht; later advances take max(current, ht). Used to arm at SafeTime
-  // and to bump on table-tombstone apply. Bumps tombstone_cache_generation_ so any previously
-  // stored cache entry is treated as a miss. Does not clear the cache slot by itself.
-  void AdvanceTombstoneCacheWatermark(HybridTime ht) const;
+  // False until a read has probed the tablet's data and armed the cache. The read path must not
+  // consume or populate before that: an unarmed context knows nothing about tombstones that
+  // predate it.
+  bool IsTombstoneCacheArmed() const;
+
+  // Arm the cache from a cold-path probe of the tablet's data, and store what the probe found,
+  // both under one lock.
+  //
+  // The watermark has to be an upper bound on every table tombstone already in the tablet's data,
+  // otherwise a read above such a tombstone can cache "no tombstone" and resurrect rows. Deriving
+  // it from the data is what makes that hold unconditionally. A clock reading does not: SafeTime
+  // bounds only tombstones written by this tablet's own raft ops, not ones applied at a producer's
+  // hybrid time on an xCluster target, nor ones that arrived inside a restored snapshot (#33607).
+  //
+  // gen_before must be the generation read before the probe started. A mismatch means a tombstone
+  // applied while the probe was in flight, so its result may already be stale: nothing is stored
+  // and the next read probes again. Deliberately does not bump the generation - it invalidates
+  // nothing, and the entry stored here must stay valid under the generation the caller checked.
+  bool ArmTombstoneCacheFromProbe(
+      HybridTime watermark, DocHybridTime probed_tombstone, uint64_t gen_before) const;
+
+  // Return to the unarmed state (watermark kMax, slot empty, generation bumped so an in-flight
+  // populate cannot land afterwards). For callers that replace the tablet's data underneath a live
+  // context, where the cached answer describes data that no longer exists and no watermark
+  // arithmetic can repair it - see TabletSnapshots::RestoreCheckpoint.
+  void ResetTombstoneCache() const;
 
   // Called when a table tombstone is applied to this replica. Always bumps the generation and
   // clears the cache slot; raises the watermark when write_ht is higher. Safe to call more than
@@ -253,12 +273,14 @@ struct DocReadContext {
   // window (watermark alone cannot reject a "no tombstone" stamp).
   mutable uint64_t tombstone_cache_entry_generation_ = 0;
 
-  // Global epoch bumped when Advance actually raises the watermark, and on every
-  // OnTableTombstoneWritten (including same-ht re-notify).
+  // Global epoch bumped on every OnTableTombstoneWritten (including a same-ht re-notify) and on
+  // ResetTombstoneCache.
   mutable uint64_t tombstone_cache_generation_ = 0;
 
   // Default kMax = unarmed: both gates reject, so an unarmed context is cache-off (correct
-  // cold-path behavior). Forgotten construction sites therefore fail closed (perf only).
+  // cold-path behavior). Every context is born here and stays here until a read probes the data
+  // and arms it, so a path that builds contexts without knowing about this cache costs the
+  // optimization and never correctness.
   mutable HybridTime tombstone_cache_watermark_ = HybridTime::kMax;
 };
 
