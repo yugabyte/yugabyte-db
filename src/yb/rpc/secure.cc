@@ -117,17 +117,27 @@ Result<std::unique_ptr<SecureContext>> SetupInternalSecureContext(
       root_dir, host_ports[0].host(), SecureContextType::kInternal, messenger_builder);
 }
 
+namespace {
+
+void AddCompressedStream(
+    MessengerBuilder* builder, Encrypted encrypted, StreamFactoryPtr lower_layer_factory) {
+  auto parent_mem_tracker = builder->last_used_parent_mem_tracker();
+  auto buffer_tracker = MemTracker::FindOrCreateTracker(
+      -1, "Compressed Read Buffer", parent_mem_tracker);
+  auto* protocol = CompressedStreamProtocol(encrypted);
+  builder->AddStreamFactory(
+      protocol,
+      CompressedStreamFactory(std::move(lower_layer_factory), buffer_tracker, protocol));
+}
+
+}  // namespace
+
 void ApplyCompressedStream(MessengerBuilder* builder, const StreamFactoryPtr lower_layer_factory) {
   if (!FLAGS_enable_stream_compression) {
     return;
   }
-  builder->SetListenProtocol(CompressedStreamProtocol());
-  auto parent_mem_tracker = builder->last_used_parent_mem_tracker();
-  auto buffer_tracker = MemTracker::FindOrCreateTracker(
-      -1, "Compressed Read Buffer", parent_mem_tracker);
-  builder->AddStreamFactory(
-      CompressedStreamProtocol(),
-      CompressedStreamFactory(std::move(lower_layer_factory), buffer_tracker));
+  builder->SetListenProtocol(CompressedStreamProtocol(Encrypted::kFalse));
+  AddCompressedStream(builder, Encrypted::kFalse, std::move(lower_layer_factory));
 }
 
 Result<std::unique_ptr<SecureContext>> SetupSecureContext(
@@ -218,7 +228,14 @@ void ApplySecureContext(const SecureContext* context, MessengerBuilder* builder)
   builder->SetListenProtocol(SecureStreamProtocol());
   builder->SetUncompressedProtocol(SecureStreamProtocol());
   builder->AddStreamFactory(SecureStreamProtocol(), secure_stream_factory);
-  ApplyCompressedStream(builder, secure_stream_factory);
+
+  if (FLAGS_enable_stream_compression) {
+    // A compressed variant of each lower layer, so that a caller naming (Compressed, Encrypted)
+    // reaches the stack it asked for rather than whichever one this messenger was built with.
+    AddCompressedStream(builder, Encrypted::kFalse, TcpStream::Factory());
+    AddCompressedStream(builder, Encrypted::kTrue, secure_stream_factory);
+    builder->SetListenProtocol(CompressedStreamProtocol(Encrypted::kTrue));
+  }
 }
 
 }  // namespace rpc

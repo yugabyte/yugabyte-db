@@ -1376,10 +1376,11 @@ class TestRpcCompression : public RpcTestBase, public testing::WithParamInterfac
   std::unique_ptr<Messenger> CreateCompressedMessenger(
       const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
     auto builder = CreateMessengerBuilder(name, options);
-    builder.SetListenProtocol(CompressedStreamProtocol());
+    auto* protocol = CompressedStreamProtocol(Encrypted::kFalse);
+    builder.SetListenProtocol(protocol);
     builder.AddStreamFactory(
-        CompressedStreamProtocol(),
-        CompressedStreamFactory(TcpStream::Factory(), MemTracker::GetRootTracker()));
+        protocol,
+        CompressedStreamFactory(TcpStream::Factory(), MemTracker::GetRootTracker(), protocol));
     return EXPECT_RESULT(builder.Build());
   }
 
@@ -1488,11 +1489,13 @@ class TestRpcSecureCompression : public TestRpcSecure {
   std::unique_ptr<Messenger> CreateSecureCompressedMessenger(
       const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
     auto builder = CreateMessengerBuilder(name, options);
-    builder.SetListenProtocol(CompressedStreamProtocol());
+    auto* protocol = CompressedStreamProtocol(Encrypted::kTrue);
+    builder.SetListenProtocol(protocol);
     builder.SetUncompressedProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(
-        CompressedStreamProtocol(),
-        CompressedStreamFactory(CreateSecureStreamFactory(), MemTracker::GetRootTracker()));
+        protocol,
+        CompressedStreamFactory(
+            CreateSecureStreamFactory(), MemTracker::GetRootTracker(), protocol));
     return EXPECT_RESULT(builder.Build());
   }
 

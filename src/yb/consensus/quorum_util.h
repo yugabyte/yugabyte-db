@@ -60,11 +60,6 @@ Status GetRaftConfigMember(const RaftConfigPB& config,
                            const std::string& uuid,
                            RaftPeerPB* peer_pb);
 
-// Return an host/port for the uuid in the given config. Error out if not found.
-Status GetHostPortFromConfig(const RaftConfigPB& config,
-                             const std::string& uuid,
-                             const CloudInfoPB& from,
-                             HostPort* hp);
 
 Status GetMutableRaftConfigMember(RaftConfigPB* config,
                                   const std::string& uuid,

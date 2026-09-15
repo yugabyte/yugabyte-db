@@ -13,6 +13,8 @@
 
 #include "yb/master/async_rpc_tasks_base.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
 
@@ -22,6 +24,8 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
 
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -519,6 +523,13 @@ void RetryingMasterRpcTask::DoRpcCallback() {
   if (!rpc_.status().ok()) {
     LOG_WITH_PREFIX(WARNING) << "Master RPC " << type_name() << " failed: "
                              << rpc_.status().ToString();
+    // A master that registered several addresses is only unreachable once every one of them
+    // has failed, so the next attempt tries the next address. ResetProxies runs on each
+    // attempt and reads the record. Only a network error says anything about the address;
+    // every other failure came back over a connection that worked.
+    if (rpc_.status().IsNetworkError() && master_cluster_proxy_) {
+      failed_addresses_.MarkFailed(master_cluster_proxy_->proxy().remote());
+    }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
   }
@@ -534,9 +545,16 @@ void RetryingMasterRpcTask::DoRpcCallback() {
 }
 
 Status RetryingMasterRpcTask::ResetProxies() {
-  HostPort hostport = HostPortFromPB(DesiredHostPort(peer_, master_->MakeCloudInfoPB()));
-  master_test_proxy_ = std::make_unique<MasterTestProxy>(&master_->proxy_cache(), hostport);
-  master_cluster_proxy_ = std::make_unique<MasterClusterProxy>(&master_->proxy_cache(), hostport);
+  const auto connect_from = master_->MakeCloudInfoPB();
+  auto selected = FirstUsable(CandidateHostPorts(peer_, connect_from), failed_addresses_);
+  HostPort hostport = HostPortFromPB(selected.host_port);
+  auto* protocol = &master_->proxy_cache().GetContext()->ProtocolFor(
+      rpc::Encrypted(
+          UseEncryption(selected.used_broadcast, peer_.cloud_info(), connect_from)));
+  master_test_proxy_ =
+      std::make_unique<MasterTestProxy>(&master_->proxy_cache(), hostport, protocol);
+  master_cluster_proxy_ =
+      std::make_unique<MasterClusterProxy>(&master_->proxy_cache(), hostport, protocol);
   return Status::OK();
 }
 
@@ -581,6 +599,16 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc() << ": " << type_name()
                              << " RPC failed for tablet " << tablet_id() << ": "
                              << rpc_.status().ToString();
+    // A server that registered several addresses is only unreachable once every one of them
+    // has failed, so the next attempt tries the next address before anything treats the
+    // server as down. Only a network error says anything about the address; every other
+    // failure came back over a connection that worked. Every proxy of this task was built
+    // against the same address, so any of them names the one that failed.
+    if (rpc_.status().IsNetworkError() && target_ts && ts_proxy_ &&
+        target_ts->FailToNextAddress(ts_proxy_->proxy().remote())) {
+      LOG_WITH_PREFIX(INFO) << "Retrying " << target_ts->id()
+                            << " on another registered address";
+    }
     if (!RetryTaskAfterRPCFailure(rpc_.status())) {
       TransitionToCompleteState();
     }
