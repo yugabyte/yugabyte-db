@@ -1037,7 +1037,7 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     }
 
     context->ListenConnectionShutdown([this, session_id, pid = req.pid()] {
-      constexpr auto kCheckTimeout = 1000ms;
+      constexpr auto kCheckTimeout = 1000ms * kTimeMultiplier;
       ScheduleCheckSessionShutdown(pid, session_id, CoarseMonoClock::Now() + kCheckTimeout);
     });
 
