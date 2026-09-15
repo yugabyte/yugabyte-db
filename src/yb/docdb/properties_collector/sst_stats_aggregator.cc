@@ -13,9 +13,9 @@
 
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 
-#include "yb/docdb/properties_collector/sst_stats_collector.h"
-
 #include <algorithm>
+
+#include "yb/docdb/properties_collector/sst_stats_collector.h"
 
 #include "yb/gutil/walltime.h"
 
@@ -169,40 +169,67 @@ void SstStatsAggregator::OnCompactionCompleted(const rocksdb::CompactionJobInfo&
   }
 }
 
-Status SstStatsAggregator::Resync(const SnapshotFn& snapshot) {
-  uint64_t seqno_before;
-  {
+Status SstStatsAggregator::Resync(const SnapshotSource& source) {
+  constexpr auto kMaxAttempts = 2;
+  for (int attempt = 0; attempt != kMaxAttempts; ++attempt) {
+    uint64_t seqno_before;
+    {
+      std::lock_guard lock(mutex_);
+      seqno_before = event_seqno_;
+    }
+
+    std::vector<rocksdb::LiveFileMetaData> live_files;
+    RETURN_NOT_OK(source.live_files(&live_files));
+
+    std::unordered_set<uint64_t> counted_files;
+    counted_files.reserve(live_files.size());
+    for (const auto& file : live_files) {
+      counted_files.insert(file.name_id);
+    }
+
+    {
+      std::lock_guard lock(mutex_);
+      if (event_seqno_ != seqno_before) {
+        continue;
+      }
+      // SST contributions are immutable. After one full resync has established coverage, an equal
+      // file set with no omitted properties or failed subtraction proves the aggregate is exact.
+      if (last_resync_micros_ != 0 && !properties_incomplete_ &&
+          aggregate_.unsubtracted_files == 0 && counted_files_ == counted_files) {
+        last_resync_micros_ = GetCurrentTimeMicros();
+        return Status::OK();
+      }
+    }
+
+    rocksdb::TablePropertiesCollection properties;
+    RETURN_NOT_OK(source.properties(&properties));
+
+    SstStatsAggregate aggregate;
+    bool properties_incomplete = false;
+    for (const auto& file : live_files) {
+      const auto* file_properties = Lookup(properties, file.BaseFilePath());
+      if (file_properties == nullptr) {
+        // Properties that could not be read at all: still count the file, so that a consumer sees
+        // the tablet is not fully measured. Its entries and bytes are simply unknown.
+        ++aggregate.uncovered_files;
+        properties_incomplete = true;
+        continue;
+      }
+      aggregate += SstFileContribution(*file_properties);
+    }
+
     std::lock_guard lock(mutex_);
-    seqno_before = event_seqno_;
-  }
-
-  std::vector<rocksdb::LiveFileMetaData> live_files;
-  rocksdb::TablePropertiesCollection properties;
-  RETURN_NOT_OK(snapshot(&live_files, &properties));
-
-  SstStatsAggregate aggregate;
-  std::unordered_set<uint64_t> counted_files;
-  counted_files.reserve(live_files.size());
-  for (const auto& file : live_files) {
-    counted_files.insert(file.name_id);
-    const auto* file_properties = Lookup(properties, file.BaseFilePath());
-    if (file_properties == nullptr) {
-      // Properties that could not be read at all: still count the file, so that a consumer sees
-      // the tablet is not fully measured. Its entries and bytes are simply unknown.
-      ++aggregate.uncovered_files;
+    if (event_seqno_ != seqno_before) {
       continue;
     }
-    aggregate += SstFileContribution(*file_properties);
-  }
-
-  std::lock_guard lock(mutex_);
-  if (event_seqno_ != seqno_before) {
-    VLOG(1) << "Dropping SST statistics resync overtaken by a flush or compaction";
+    aggregate_ = aggregate;
+    counted_files_ = std::move(counted_files);
+    properties_incomplete_ = properties_incomplete;
+    last_resync_micros_ = GetCurrentTimeMicros();
     return Status::OK();
   }
-  aggregate_ = aggregate;
-  counted_files_ = std::move(counted_files);
-  last_resync_micros_ = GetCurrentTimeMicros();
+
+  VLOG(1) << "Dropping SST statistics resync overtaken twice by a flush or compaction";
   return Status::OK();
 }
 

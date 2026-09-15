@@ -4905,21 +4905,26 @@ Status Tablet::ResyncSstStats() {
   if (!sst_stats) {
     return Status::OK();
   }
-  return sst_stats->Resync(
-      [this](std::vector<rocksdb::LiveFileMetaData>* live_files,
-             rocksdb::TablePropertiesCollection* properties) -> Status {
-        // Reading a properties block can hit disk, so this must not hold component_lock_ or block
-        // the start of a RocksDB shutdown.
-        auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
-        RETURN_NOT_OK(scoped_operation);
-        SCHECK(regular_db_, IllegalState, "No regular DB to read SST statistics from");
+
+  // Held across both snapshot phases and an optional retry so a truncate or snapshot restore
+  // cannot replace regular_db_ between the live-file and properties reads. This flavor does not
+  // prevent RocksDB shutdown from starting; that shutdown can make either callback fail.
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  SCHECK(regular_db_, IllegalState, "No regular DB to read SST statistics from");
+  return sst_stats->Resync({
+      .live_files = [this](std::vector<rocksdb::LiveFileMetaData>* live_files) {
         regular_db_->GetLiveFilesMetaData(live_files);
-        // Keep the files whose properties cannot be read absent from the map. Resync compares this
-        // with live_files and counts each absence as uncovered instead of letting one bad
+        return Status::OK();
+      },
+      .properties = [this](rocksdb::TablePropertiesCollection* properties) {
+        // Keep files whose properties cannot be read absent from the map. Resync compares this
+        // with the live-file list and counts each absence as uncovered instead of letting one bad
         // properties block prevent this tablet from ever completing its first resync.
         return regular_db_->GetPropertiesOfAllTables(
             properties, rocksdb::TablePropertiesErrorHandling::kSkip);
-      });
+      },
+  });
 }
 
 std::pair<int, int> Tablet::GetNumMemtables() const {
