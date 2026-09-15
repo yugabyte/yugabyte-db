@@ -1323,18 +1323,26 @@ void TabletServiceImpl::VerifyTableRowRange(
 
   const CoarseTimePoint& deadline = context.GetClientDeadline();
 
-  // Wait for SafeTime to get past read_at;
-  const HybridTime read_at(req->read_time());
+  // Wait for SafeTime to get past read_at. Without a caller supplied read time verify as of
+  // MaxGlobalNow() rather than at the replica's current safe time, which only advances as the
+  // leader propagates it and thus may name a snapshot from before writes the caller expects to
+  // verify - e.g. a just completed index backfill, whose rows would then all be reported as
+  // missing. MaxGlobalNow() rather than Now() because this replica's clock may lag the cluster by
+  // up to the max clock skew, and the request is served by any peer, not just the leader.
+  const HybridTime read_at =
+      req->has_read_time() ? HybridTime(req->read_time()) : server_->Clock()->MaxGlobalNow();
   DVLOG(1) << "Waiting for safe time to be past " << read_at;
   const auto safe_time = tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
   DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
-    LOG(DFATAL) << "Could not get a good enough safe time " << safe_time.ToString();
+    // A lagging replica that never reaches read_at before the deadline is an expected outcome, not
+    // an invariant violation.
+    LOG(WARNING) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
     return;
   }
 
-  auto valid_read_at = req->has_read_time() ? read_at : *safe_time;
+  auto valid_read_at = read_at;
   std::string verified_until = "";
   std::unordered_map<TableId, uint64> consistency_stats;
 
