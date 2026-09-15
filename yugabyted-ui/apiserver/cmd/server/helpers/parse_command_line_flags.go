@@ -46,7 +46,7 @@ func init() {
         "username for connecting to ycql.")
     flag.StringVar(&DbYsqlPassword, "ysql_password", "yugabyte",
         "password for connecting to the ysql database.")
-    flag.StringVar(&DbYcqlPassword, "ycql_password", "yugabyte",
+    flag.StringVar(&DbYcqlPassword, "ycql_password", "cassandra",
         "password for connecting to the ycql database.")
     flag.StringVar(&SslMode, "ssl_mode", "require",
         "ssl mode for connecting to the database.")
