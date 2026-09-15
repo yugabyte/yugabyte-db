@@ -198,13 +198,12 @@ docdb tablet metrics; table-level visibility additionally needs the name to matc
 deployments.
 
 Additive scalars only: this metrics system exports no bucket vectors, so the distributions stay in
-the SST properties and on the tablet status page. Two cases report zero rather than a number that
-would read as real -- every gauge before the first resync, when the aggregate holds only the files
-the listener happened to see, and the two derived gauges while any covered file is partial, when
-their chain identities do not hold.
+the SST properties and on the tablet status page. Two cases deliberately report zero -- every gauge
+before the first resync, when the aggregate holds only the files the listener happened to see, and
+the two derived gauges while any covered file is partial, when their chain identities do not hold.
 
-These are for fleet visibility, alerting, and threshold tuning. Nothing inside the server reads
-them; the trigger reads the aggregate directly.
+Nothing inside the server reads these. They exist for operators: dashboards, alerting, and tuning
+thresholds before the trigger ships.
 
 ## Boundaries
 

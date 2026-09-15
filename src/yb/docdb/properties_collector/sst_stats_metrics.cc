@@ -19,11 +19,8 @@
 
 #include "yb/util/metrics.h"
 
-// Definitions of the quantities below are in properties_collector/README.md, "Vocabulary". All of
-// these take the default kSum aggregation, which is what makes the table- and server-level
-// rollups add up the way the other docdb tablet metrics do. Appearing at table level additionally
-// requires the metric name to match the scrape's priority_regex (see prometheus_metric_filter.cc);
-// the default is ".*", but a deployment that narrows it has to add docdb_sst_.* to keep these.
+// Definitions: properties_collector/README.md, "Vocabulary". The default kSum aggregation provides
+// table- and server-level rollups. Table-level visibility also depends on priority_regex.
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_total_entries,
     "DocDB SST Total Entries", yb::MetricUnit::kEntries,
     "Number of entries measured in the tablet's live SST files, counting every version of every "
@@ -132,16 +129,11 @@ SstStatsMetrics::~SstStatsMetrics() {
 }
 
 uint64_t SstStatsMetrics::CalculateMetric(const MetricInfo& metric) const {
-  // Each gauge takes its own snapshot, so values scraped together can straddle a flush. They are
-  // read by humans and the skew is one event wide, which is not worth holding one snapshot across
-  // a scrape for.
+  // Values scraped together can straddle one listener event because each gauge snapshots alone.
   const auto snapshot = aggregator_->Get();
 
-  // Before the first resync the aggregate holds only the files the listener reported since open,
-  // which on a tablet that inherited files is an arbitrary subset. Reporting that subset would
-  // feed a plausible-looking undercount into the kSum rollups, and files_without_stats would read
-  // zero while saying nothing about the files it never saw. All-zeros is at least legible as
-  // "not measured yet".
+  // Before the first resync, listener events may cover an arbitrary subset of inherited files.
+  // Publishing it would undercount while files_without_stats could misleadingly remain zero.
   if (snapshot.last_resync_micros == 0) {
     return 0;
   }

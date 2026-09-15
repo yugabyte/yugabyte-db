@@ -190,8 +190,7 @@ TEST_F(SstStatsMetricsTest, PartialFileSuppressesDerivedGauges) {
   SstStatsMetrics metrics(entity_, aggregator);
 
   auto partial = FileStats(/* entries = */ 640);
-  // A key that did not parse: the chain counters are a lower bound, so the identities over the sum
-  // no longer hold and their subtraction could wrap.
+  // A parse failure makes the chain identities unavailable.
   partial.chain_valid = false;
   partial.chain_entries = 0;
   ASSERT_OK(aggregator->Resync(SnapshotOf({&partial})));
