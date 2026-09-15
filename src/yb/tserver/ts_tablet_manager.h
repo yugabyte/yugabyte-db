@@ -454,6 +454,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Background task that emits metrics.
   void EmitMetrics();
 
+  // Updates the index-backfill retention-barrier gauges (held-tablet count, oldest
+  // barrier age) from the current tablet metadata; called from EmitMetrics.
+  void EmitIndexBackfillRetentionMetrics();
+
   // Background task that Retires old metrics.
   void CleanupOldMetrics();
 
@@ -899,6 +903,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Gauge tracking number of peers on this tserver actively undergoing RBS.
   scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
+
+  // Gauges for tablets held by an active index-backfill ordering generation's retention
+  // barrier (deferred unique-index verification): held-peer count and the oldest barrier's
+  // age.
+  scoped_refptr<yb::AtomicGauge<uint32_t>> index_backfill_retention_barrier_tablets_metric_;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> index_backfill_oldest_barrier_age_ms_metric_;
 
   struct SnapshotScheduleInfo {
     HybridTime last_snapshot_ht;
