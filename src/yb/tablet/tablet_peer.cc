@@ -49,6 +49,8 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -188,7 +190,8 @@ TabletPeer::TabletPeer(
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
       tablet_splitter_(tablet_splitter),
-      client_future_(client_future) {}
+      client_future_(client_future),
+      data_disk_space_checker_(meta->fs_manager()->env(), meta->data_root_dir()) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard lock(lock_);
@@ -1899,10 +1902,10 @@ void TabletPeer::MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht) {
 Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
 
 bool TabletPeer::HasSufficientDiskSpaceForWrite() {
-  if (log_) {
-    return log_->HasSufficientDiskSpaceForWrite();
+  if (log_ && !log_->HasSufficientDiskSpaceForWrite()) {
+    return false;
   }
-  return true;
+  return data_disk_space_checker_.HasSufficientDiskSpace();
 }
 
 bool TabletPeer::IsRunning() const {

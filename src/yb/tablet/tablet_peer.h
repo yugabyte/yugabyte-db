@@ -59,6 +59,7 @@
 #include "yb/tablet/write_query_context.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/disk_space_checker.h"
 
 using yb::consensus::StateChangeContext;
 
@@ -653,6 +654,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // and other files in those directories. This can be stale as it is only updated every
   // FLAGS_data_size_metric_updater_interval_sec seconds.
   std::atomic<size_t> total_on_disk_size_{0};
+
+  // Tracks the free space on the data directory. The WAL directory, which can be on a different
+  // disk, is tracked by the Log.
+  DiskSpaceChecker data_disk_space_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

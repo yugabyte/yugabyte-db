@@ -279,16 +279,6 @@ DEFINE_test_flag(
 DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
     "Used in tests to pause FlushTablet RPC for the specified number of milliseconds");
 
-#if defined ADDRESS_SANITIZER
-// ASAN tests run on machines with limited disk space, so disable disk full checks.
-constexpr bool kRejectWritesWhenDiskFullDefault = false;
-#else
-constexpr bool kRejectWritesWhenDiskFullDefault = true;
-#endif
-
-DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
-    "Reject incoming writes to the tablet if we are running out of disk space.");
-
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
@@ -2386,12 +2376,10 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
-  if (FLAGS_reject_writes_when_disk_full) {
-    SCHECK(
-        tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
-        "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
-        tablet.peer->tablet_metadata()->fs_manager()->uuid());
-  }
+  SCHECK(
+      tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
+      "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
+      tablet.peer->tablet_metadata()->fs_manager()->uuid());
 
   // For postgres requests check that the syscatalog version matches.
   if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {

@@ -147,6 +147,7 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  disk_space_checker.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -351,6 +352,7 @@ ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(disk_space_checker-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
