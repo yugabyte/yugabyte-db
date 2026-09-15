@@ -663,15 +663,19 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   return true;
 }
 
-size_t PerTableLoadState::PlacementBlockMaxReplicas(const CloudInfoPB& cloud_info) const {
+void PerTableLoadState::CachePlacementBlockMaxReplicas() {
+  placement_block_max_replicas_.clear();
   for (const auto& pb : placement_.placement_blocks()) {
-    if (cloud_equal_to()(pb.cloud_info(), cloud_info)) {
-      return GetEffectiveMaxNumReplicas(pb, placement_.num_replicas());
-    }
+    placement_block_max_replicas_[pb.cloud_info()] =
+        GetEffectiveMaxNumReplicas(pb, placement_.num_replicas());
   }
+}
+
+size_t PerTableLoadState::PlacementBlockMaxReplicas(const CloudInfoPB& cloud_info) const {
   // No matching block (e.g. no placement policy, where GetValidPlacement returns the tserver's
   // own cloud info): only the replication factor bounds the placement.
-  return placement_.num_replicas();
+  return FindWithDefault(
+      placement_block_max_replicas_, cloud_info, implicit_cast<size_t>(placement_.num_replicas()));
 }
 
 std::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(const TabletServerId& ts_uuid) {

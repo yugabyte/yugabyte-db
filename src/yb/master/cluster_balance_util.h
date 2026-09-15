@@ -419,6 +419,10 @@ class PerTableLoadState {
   Result<bool> CanAddTabletToTabletServer(
       const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts);
 
+  // Caches the per-block effective maximums from placement_. Must be called once placement_ is
+  // final for the run (see ClusterLoadBalancer::PopulateReplicationInfo).
+  void CachePlacementBlockMaxReplicas();
+
   // Effective maximum number of replicas for the placement block matching cloud_info (as returned
   // by GetValidPlacement). Blocks without an explicit maximum are bounded by num_replicas.
   size_t PlacementBlockMaxReplicas(const CloudInfoPB& cloud_info) const;
@@ -529,6 +533,11 @@ class PerTableLoadState {
   // track of the placement block policies between cluster and table level.
   PlacementInfoPB placement_;
 
+  // Effective maximum replicas per placement block of placement_, see
+  // CachePlacementBlockMaxReplicas.
+  std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to>
+      placement_block_max_replicas_;
+
   // Total number of running tablet replicas in the cluster.
   int total_running_ = 0;
 
@@ -549,10 +558,11 @@ class PerTableLoadState {
   // expected.
   std::set<TabletId> tablets_over_replicated_;
 
-  // Tablets with a placement block above its maximum that are neither missing replicas nor
-  // over-replicated, so the maximum violation is repaired by an add-before-remove move
-  // (HandleAddIfOverMaxPlacement). Missing replicas and over-replication are handled first by
+  // Tablets with a placement block above its maximum that, at analysis time, are neither missing
+  // replicas nor over-replicated, so the maximum violation is repaired by an add-before-remove
+  // move (HandleAddIfOverMaxPlacement). Missing replicas and over-replication are handled first by
   // their own paths, and the removal path steers over-replicated removals to the offending block.
+  // Membership is not updated as adds happen within a run; tablets_added_ guards re-handling.
   std::set<TabletId> tablets_over_max_placements_;
 
   // Set of tablet ids that have been determined to have replicas in incorrect placements.
