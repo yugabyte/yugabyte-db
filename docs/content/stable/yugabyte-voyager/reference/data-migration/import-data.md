@@ -233,11 +233,13 @@ import-data:
   cdc-partition-key-overrides:
 ```
 
-| Per-table CDC partition-key overrides as `schema.table:strategy` pairs, separated by ';'. `strategy` is one of: `pk`, `table`, or a custom key column list wrapped in parentheses `(col1,col2)`.
-<ul><li><code>pk</code>: Partition CDC events by primary key.</li>
-<li><code>table</code>: Partition CDC events by table (all events for a table share one channel).</li>
-<li><code>(col1,col2)</code>: Partition CDC events by the given column values (immutable columns).</li></ul>
-Example: `public.orders:table;sales.events:pk;public.payments:(customer_id,region)`. Unlisted tables keep the global `--cdc-partition-key`. |
+| Per-table CDC partition-key overrides in the form `schema.table:strategy`, separated by ';'. Strategy is one of the following:
+
+- `pk`: Partition CDC events by primary key. Example: `sales.events:pk`
+- `table`: Partition CDC events by table (all events for a table share one channel). Example: `public.orders:table`
+- `(col1,col2)`: Partition CDC events by the given column values (immutable columns), in the form `(col1,col2)`. Example: `public.payments:(customer_id,region)`
+
+Unlisted tables keep the global `--cdc-partition-key`. |
 
 | -e, --export-dir |
 

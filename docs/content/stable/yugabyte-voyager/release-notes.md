@@ -33,8 +33,10 @@ Contact {{% support-general %}} to discuss alternative tools and migration appro
 
 ### New features
 
-- Added support for a custom partition key in the CDC phase of [import data](../reference/data-migration/import-data/) using `--cdc-partition-key-overrides`, so change events for a table can be routed on a chosen list of columns instead of its primary key during live migration. For example, `--cdc-partition-key-overrides 'sales.orders:(customer_id)'`.
-- Added `--log-max-size-mb` and `--log-max-backups` to control yb-voyager log rotation. Available as CLI flags or [configuration file](../reference/configuration-file/) keys, either globally or per command. `--log-max-backups -1` retains all rotated files.
+- Added support for a custom partition key in the CDC phase of [import data](../reference/data-migration/import-data/) using `--cdc-partition-key-overrides`, so change events for a table can be routed on a chosen list of columns instead of its primary key during live migration, thereby improving CDC import throughput by avoiding conflicts.
+
+  Example: `--cdc-partition-key-overrides 'public.orders:table;sales.events:pk;public.payments:(customer_id,region)'`.
+- Added `--log-max-size-mb` and `--log-max-backups` to control yb-voyager log rotation. Available as CLI flags or [configuration file](../reference/configuration-file/) global keys. `--log-max-backups -1` retains all rotated files.
 
 ### Enhancements
 
