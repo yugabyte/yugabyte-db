@@ -144,6 +144,8 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
 
     if suite_uuid:
         # Update attributes of existing suite
+        # new value, same key on rerun -> RP dedupes key+value, not key -> drop old entry first.
+        suite_attrib = [a for a in suite_attrib if a.get('key') != method]
         suite_attrib.append({'key': method, 'value': planned})
         if reps > 1:
             suite_attrib.append({'key': 'repetitions', 'value': reps})

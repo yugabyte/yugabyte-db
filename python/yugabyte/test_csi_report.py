@@ -19,7 +19,8 @@ CSI_SERVER/CSI_TOKEN are not. Every entry point must then no-op rather than buil
 aborted a whole test run.
 """
 
-from typing import Any, List
+import json
+from typing import Any, Dict, List
 
 import pytest
 
@@ -73,6 +74,77 @@ def test_create_test_is_a_no_op() -> None:
 
 def test_upload_log_is_a_no_op() -> None:
     assert csi_report.upload_log('some-suite-uuid', 0.0, ['/nonexistent/log']) == 0
+
+
+# ---------------------------------------------------------------------------------------------
+# create_suite: the update branch must replace a same-key count attribute (All/RegEx/Requested),
+# not append beside it. RP's /item/update replaces the whole attribute set but dedupes only on
+# (key, value), not key, so appending left two entries with the same key and different values
+# whenever a rerun changed the planned count (DEVOPS-3595).
+#
+# These bypass the no_csi fixture's requests trap the same way the get_with_retries tests below
+# do - CSI must look configured for create_suite to get past its guards.
+# ---------------------------------------------------------------------------------------------
+
+class FakeJsonResponse:
+    def __init__(self, status_code: int, payload: Any = None) -> None:
+        self.status_code = status_code
+        self.text = f"body for {status_code}"
+        self._payload = payload
+
+    def json(self) -> Any:
+        return self._payload
+
+
+@pytest.fixture
+def csi_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Undo no_csi's env wipe - these tests need CSI to look configured."""
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'proj')
+
+
+def existing_suite_response(attributes: List[Dict[str, Any]]) -> FakeJsonResponse:
+    """The GET /item response create_suite sees for a suite that already exists."""
+    return FakeJsonResponse(200, {'content': [
+        {'id': 42, 'uuid': 'suite-item-uuid', 'attributes': attributes}]})
+
+
+@pytest.mark.parametrize('existing,method,planned,expected_attributes', [
+    # Same-method rerun with a changed count: the old value must not survive alongside the new
+    # one - this is the bug itself.
+    ([{'key': 'All', 'value': '500'}], 'All', 497,
+     [{'key': 'All', 'value': 497}]),
+    ([{'key': 'Requested', 'value': '12'}], 'Requested', 5,
+     [{'key': 'Requested', 'value': 5}]),
+    # A method switch (full run -> targeted rerun) must leave the other count key alone: 'All'
+    # is the suite-wide planned-total baseline that rerun_list()/check_tests_all_ran compare
+    # execution totals against, so it must survive a run that used a different method.
+    ([{'key': 'All', 'value': '500'}], 'Requested', 12,
+     [{'key': 'All', 'value': '500'}, {'key': 'Requested', 'value': 12}]),
+    # Attributes for anything other than the count key being written must survive untouched.
+    ([{'key': 'All', 'value': '500'}, {'key': 'tag', 'value': 'nightly'}], 'All', 497,
+     [{'key': 'tag', 'value': 'nightly'}, {'key': 'All', 'value': 497}]),
+])
+def test_update_replaces_only_the_current_method_key(
+        monkeypatch: pytest.MonkeyPatch, csi_configured: None,
+        existing: List[Dict[str, Any]], method: str, planned: int,
+        expected_attributes: List[Dict[str, Any]]) -> None:
+    monkeypatch.setattr(
+        csi_report.requests, 'get', lambda *a, **k: existing_suite_response(existing))
+    put_bodies: List[Dict[str, Any]] = []
+
+    def fake_put(url: str, headers: Any = None, data: Any = None) -> Any:
+        put_bodies.append(json.loads(data))
+        return FakeJsonResponse(200)
+
+    monkeypatch.setattr(csi_report.requests, 'put', fake_put)
+
+    csi_report.create_suite(qid='1', suite_name='C++', parent='', method=method,
+                            planned=planned, reps=1, time_sec=0.0)
+
+    assert len(put_bodies) == 1
+    assert put_bodies[0]['attributes'] == expected_attributes
 
 
 # ---------------------------------------------------------------------------------------------
