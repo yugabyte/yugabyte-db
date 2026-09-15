@@ -39,8 +39,8 @@ The following additional CRDs support day 2 operations.
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
 | [PitrConfig](#configure-pitr) | Configure point-in-time recovery (PITR) for a universe. |
-| [PitrRestore](#restore-from-pitr) | {{<tags/feature/ea idea="2460">}}Restore a universe to a point in time using a PITR configuration. |
-| [DrConfig](#configure-xcluster-dr) | {{<tags/feature/ea idea="2460">}}Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
+| [PitrRestore](#restore-from-pitr) | Restore a universe to a point in time using a PITR configuration. |
+| [DrConfig](#configure-xcluster-dr) | Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
 
 For details of each CRD, run `kubectl explain` on the CR.
@@ -104,7 +104,7 @@ FIELDS:
  kubernetesOverrides  <Object>
   Kubernetes overrides for the universe. Please refer to yugabyteDB
   documentation for more details.
-  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides
+  https://docs.yugabyte.com/stable/yugabyte-platform/scale-deployments/edit-helm-overrides/
 
  masterDeviceInfo   <Object>
   Device information for the masters in universe to refer to storage
@@ -336,7 +336,7 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 
 ### Operator High Availability
 
-{{<tags/feature/ea idea="2460">}}If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
+If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
 
 For details, see [Operator High Availability](../../administer-yugabyte-platform/operator-high-availability/).
 
@@ -475,7 +475,7 @@ operator-universe-demo   Ready   {{< yb-version version="stable" format="build">
 
 To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
 
-To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/#operator-universes).
+To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
 ### Create a universe with placement information
 
@@ -535,7 +535,7 @@ spec:
 
 #### Create a universe with read replicas
 
-{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
+Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
 
 ```sh
 kubectl apply universe-read-replica.yaml -n yb-platform
@@ -980,7 +980,7 @@ spec:
 
 #### Restore from PITR
 
-{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a universe to a state back in time when PITR is enabled for a database.
+Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a universe to a state back in time when PITR is enabled for a database.
 
 1. Create a universe:
 
@@ -1063,7 +1063,7 @@ spec:
 
 ### Configure xCluster DR
 
-{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, use the DrConfig CRD to create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. Both declarative operations (create, update the database list, delete) and imperative operations (switchover, failover, pause/resume, restart, replace replica) are supported.
+Starting from YugabyteDB Anywhere v2026.1, use the DrConfig CRD to create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. Both declarative operations (create, update the database list, delete) and imperative operations (switchover, failover, pause/resume, restart, replace replica) are supported.
 
 Before you create a DrConfig CR, ensure that the source and target universes and the storage configuration referenced in the CR exist. The following sections describe the DrConfig CR changes for each supported operation.
 
@@ -1281,7 +1281,7 @@ spec:
 
 Available in YugabyteDB Anywhere v2025.2.2 and later.
 
-Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/#operator-universes).
+Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
 Currently, universes with any of the following configurations are not supported for import:
 

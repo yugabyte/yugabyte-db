@@ -44,7 +44,7 @@ This deployment provides the following advantages:
 
 ## Create a synchronized multi-region universe
 
-Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-region/), you need to [install](../../../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configure](../../../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
+Before you can create a multi-region universe in YugabyteDB Anywhere, you need to [install](../../../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configure](../../../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS. For region-level placement, refer to [Plan your universe](../../../yugabyte-platform/create-deployments/create-universes-overview/#placement). Then [create the universe](../../../yugabyte-platform/create-deployments/create-universes-wizard/).
 
 ## Start a workload
 
@@ -72,11 +72,7 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 Latency in a multi-region universe depends on the distance and network packet transfer times between the nodes of the universe as well as between the universe and the client. Because the [tablet leader](../../../architecture/key-concepts/#tablet-leader) [replicates write operations](../../../architecture/docdb-replication/raft/#replication-of-the-write-operation) across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
-For best performance and lower data transfer costs, you want to minimize transfers between providers and between provider regions. You do this by placing your universe as close to your applications as possible, as follows:
-
-- Use the same cloud provider as your application.
-- Place your universe in the same region as your application.
-- Peer your universe with the Virtual Private Cloud (VPC) hosting your application.
+For best performance and lower data transfer costs, locate your universe as close to your applications as possible. Refer to [Provider and region](../../../yugabyte-platform/create-deployments/create-universes-overview/#provider-and-region).
 
 ### Follower reads
 
@@ -86,26 +82,12 @@ For more information, see [Follower reads examples](../../going-beyond-sql/follo
 
 ### Preferred region
 
-If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the tablet leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
+If application reads and writes originate primarily from a single region, designate it as preferred so tablet leaders pin to that region. Refer to [Preferred region](../../../yugabyte-platform/create-deployments/create-universes-overview/#preferred-region).
 
-For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
+To set or change preferred regions after the universe exists, refer to [Scale universes](../../../yugabyte-platform/scale-deployments/edit-universe/).
 
-Set a particular zone in the region to which you are connected as preferred, as follows:
+To verify that the load is moving to the preferred region, select **Nodes**. When complete, the load is handled exclusively by the preferred region.
 
-1. Navigate to your universes's **Overview** and click **Actions > Edit Universe**.
-
-1. Under **Availability Zones**, find the zone and select its corresponding **Preferred**.
-
-1. Click **Save**.
-
-To verify that the load is moving to the preferred zone in the region, select **Nodes**. <!-- , as per the following illustration: -->
-
-<!-- ![Read and write operations with preferred region](/images/ce/multisync-managed-nodes-preferred.png) -->
-
-When complete, the load is handled exclusively by the preferred region. <!-- , as per the following illustration: -->
-
-<!-- ![Performance charts with preferred region](/images/ce/multisync-managed-charts-preferred.png) -->
-
-With the tablet leaders now all located in the region to which the application is connected, latencies decrease and throughput increases.
+With the tablet leaders located in the region to which the application is connected, latencies decrease and throughput increases.
 
 Note that cross-region latencies are unavoidable in the write path, given the need to ensure region-level automatic failover and repair.
