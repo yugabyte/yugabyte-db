@@ -100,8 +100,7 @@ bool CBTabletMetadata::CanAddTSToMissingPlacements(
 std::string CBTabletMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       running, starting, is_under_replicated, under_replicated_placements,
-      is_over_replicated, over_replicated_tablet_servers,
-      is_over_max_placements, over_max_placement_tablet_servers,
+      is_over_replicated, over_replicated_tablet_servers, over_max_placements,
       wrong_placement_tablet_servers, removal_pending_tablet_servers, blacklisted_tablet_servers,
       leader_blacklisted_tablet_servers, leader_uuid, leader_stepdown_failures, size);
 }
@@ -375,16 +374,12 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         CloudInfoPB, vector<std::pair<TabletServerId, const TabletReplica*>>, cloud_hash,
         cloud_equal_to>
         placement_to_replicas;
-    // Maps each placement block to its {min, effective max} replica counts.
-    std::unordered_map<CloudInfoPB, std::pair<size_t, size_t>, cloud_hash, cloud_equal_to>
-        placement_to_min_max_replicas;
-    // Preset the min/max limits, so we know if we're missing replicas somewhere as well.
+    std::unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
+    // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
     for (const auto& pb : placement_.placement_blocks()) {
       // Default empty vector.
       placement_to_replicas[pb.cloud_info()];
-      placement_to_min_max_replicas[pb.cloud_info()] = {
-          pb.min_num_replicas(),
-          GetEffectiveMaxNumReplicas(pb, placement_.num_replicas())};
+      placement_to_min_replicas[pb.cloud_info()] = pb.min_num_replicas();
     }
     // Now actually fill the structures with matching TSs.
     for (const auto& [ts_uuid, replica] : *replica_map) {
@@ -417,59 +412,47 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         }
         out << "}";
       }
-      out << "Dumping placement to min/max replica map for tablet " << tablet_id;
-      for (const auto& [cloud_info, min_max] : placement_to_min_max_replicas) {
-        out << cloud_info.ShortDebugString() << ": {" << min_max.first << ", "
-            << min_max.second << "}";
+      out << "Dumping placement to min replica map for tablet " << tablet_id;
+      for (const auto& p_to_minr : placement_to_min_replicas) {
+        out << p_to_minr.first.ShortDebugString() << ": " << p_to_minr.second;
       }
       VLOG(3) << out.str();
     }
 
-    // Under-replication, over-replication, and placement blocks exceeding their maximum are
-    // three independent conditions, tracked separately:
-    // - under_replicated_placements drives adds and takes priority over everything else;
-    // - over_replicated_tablet_servers drives removes, and is only populated when the tablet
-    //   actually has more than num_replicas replicas;
-    // - over_max_placement_tablet_servers drives add-before-remove moves out of blocks that
-    //   exceed their maximum (HandleAddIfOverMaxPlacement); the move's add makes the tablet
-    //   over-replicated, and the subsequent remove is steered to the offending block below.
-    std::set<TabletServerId> generic_removal_candidates;
-    // Loop over the data and populate extra replica as well as missing replica information.
+    // Loop over the data and populate missing replica and maximum-violation information.
     for (const auto& [cloud_info, replicas] : placement_to_replicas) {
-      const auto [min_num_replicas, max_num_replicas] =
-          placement_to_min_max_replicas[cloud_info];
+      const size_t min_num_replicas = placement_to_min_replicas[cloud_info];
       if (min_num_replicas > replicas.size()) {
         VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " is under-replicated by"
                 << " " << min_num_replicas - replicas.size() << " count";
         // Placements that are under-replicated should be handled ASAP.
         tablet_meta.under_replicated_placements.insert(cloud_info);
-      }
-      if (replicas.size() > max_num_replicas) {
+      } else if (const size_t max_num_replicas = PlacementBlockMaxReplicas(cloud_info);
+                 replicas.size() > max_num_replicas) {
         VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " exceeds its maximum by "
                 << replicas.size() - max_num_replicas << " replicas";
-        for (const auto& [ts_uuid, _] : replicas) {
-          tablet_meta.over_max_placement_tablet_servers.insert(ts_uuid);
-        }
-      } else if (min_num_replicas < replicas.size()) {
-        // Placements with more than the minimum number of replicas are candidates for removing a
-        // replica, should the tablet be over-replicated (we can remove one and still respect the
-        // minimum).
-        VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " has "
-                << replicas.size() - min_num_replicas << " replicas more than its minimum";
-        for (const auto& [ts_uuid, _] : replicas) {
-          generic_removal_candidates.insert(ts_uuid);
-        }
+        tablet_meta.over_max_placements.insert(cloud_info);
       }
     }
-    tablet_meta.is_over_max_placements =
-        !tablet_meta.over_max_placement_tablet_servers.empty();
+
+    // If this tablet is over-replicated, choose the removal candidates. If any placement exceeds
+    // its maximum, only its replicas are candidates, so the remove fixes the maximum violation.
+    // Otherwise, consider all the placements that have more than the minimum number of replicas
+    // (as that means there is at least one of them we can remove, and still respect the minimum).
     if (tablet_meta.is_over_replicated) {
-      // If a placement block exceeds its maximum, restrict removal candidates to the offending
-      // block(s) so the remove fixes the maximum violation first. Otherwise, any placement above
-      // its minimum is a valid removal candidate.
-      tablet_meta.over_replicated_tablet_servers = tablet_meta.is_over_max_placements
-          ? tablet_meta.over_max_placement_tablet_servers
-          : std::move(generic_removal_candidates);
+      for (const auto& [cloud_info, replicas] : placement_to_replicas) {
+        const bool is_candidate = tablet_meta.has_over_max_placements()
+            ? tablet_meta.over_max_placements.contains(cloud_info)
+            : replicas.size() > implicit_cast<size_t>(placement_to_min_replicas[cloud_info]);
+        if (!is_candidate) {
+          continue;
+        }
+        VLOG(3) << "Placement " << cloud_info.ShortDebugString()
+                << " is a removal candidate for over-replicated tablet";
+        for (const auto& [ts_uuid, _] : replicas) {
+          tablet_meta.over_replicated_tablet_servers.insert(ts_uuid);
+        }
+      }
     }
   }
   tablet->GetLeaderStepDownFailureTimes(
@@ -483,7 +466,11 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   if (tablet_meta.is_over_replicated) {
     tablets_over_replicated_.insert(tablet_id);
   }
-  if (tablet_meta.is_over_max_placements) {
+  // A maximum violation is only repaired by an add-before-remove move if nothing else owns the
+  // tablet: missing replicas are added first (ProcessUnderReplicatedTablets), and an
+  // over-replicated tablet has its removal steered to the offending block instead.
+  if (tablet_meta.has_over_max_placements() && !tablet_meta.is_over_replicated &&
+      !tablet_meta.is_missing_replicas()) {
     tablets_over_max_placements_.insert(tablet_id);
   }
   if (tablet_meta.has_wrong_placements()) {
@@ -635,14 +622,7 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
         --projected_count;
       }
     }
-    const auto placement_block = std::find_if(
-        placement_.placement_blocks().begin(), placement_.placement_blocks().end(),
-        [&to_placement](const auto& block) {
-          return cloud_equal_to()(block.cloud_info(), *to_placement);
-        });
-    DCHECK(placement_block != placement_.placement_blocks().end());
-    if (projected_count >= implicit_cast<size_t>(
-            GetEffectiveMaxNumReplicas(*placement_block, placement_.num_replicas()))) {
+    if (projected_count >= PlacementBlockMaxReplicas(*to_placement)) {
       VLOG(4) << "Placement " << to_placement->ShortDebugString()
               << " is at its maximum for tablet " << tablet_id;
       return false;
@@ -681,6 +661,17 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If all checks pass, return true.
   return true;
+}
+
+size_t PerTableLoadState::PlacementBlockMaxReplicas(const CloudInfoPB& cloud_info) const {
+  for (const auto& pb : placement_.placement_blocks()) {
+    if (cloud_equal_to()(pb.cloud_info(), cloud_info)) {
+      return GetEffectiveMaxNumReplicas(pb, placement_.num_replicas());
+    }
+  }
+  // No matching block (e.g. no placement policy, where GetValidPlacement returns the tserver's
+  // own cloud info): only the replication factor bounds the placement.
+  return placement_.num_replicas();
 }
 
 std::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(const TabletServerId& ts_uuid) {
@@ -837,10 +828,6 @@ Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletS
   // It's possible that the tablet is over-replicated multiple times, but we won't remove multiple
   // replicas in one run anyways because we only iterate over the over-replicated tablets once.
   tablets_over_replicated_.erase(tablet_id_key);
-  // A tablet can be both over-replicated and above a placement block maximum (the removal is then
-  // steered to the offending block); erase it from the over-max set as well so it is not handled
-  // twice in one run.
-  tablets_over_max_placements_.erase(tablet_id_key);
   per_tablet_meta_[tablet_id].is_over_replicated = false;
   tablets_wrong_placement_.erase(tablet_id_key);
   SortLoad();

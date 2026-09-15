@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 
 #include <gtest/gtest.h>
 
@@ -312,6 +313,16 @@ class LoadBalancerMockedBase : public YBTest {
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
     ASSERT_TRUE(replicas->erase(ts_desc->permanent_uuid()));
     tablet->SetReplicaLocations(replicas);
+  }
+
+  // Removes every replica of the tablet except those on the given tservers, so a test can
+  // declare a tablet's layout by tserver uuid after PrepareTestState placed a replica everywhere.
+  void KeepOnlyReplicasOn(TabletInfo* tablet, const std::set<TabletServerId>& keep_ts_uuids) {
+    for (const auto& ts_desc : ts_descs_) {
+      if (!keep_ts_uuids.contains(ts_desc->permanent_uuid())) {
+        RemoveReplica(tablet, ts_desc);
+      }
+    }
   }
 
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {

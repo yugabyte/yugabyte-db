@@ -58,6 +58,8 @@ struct CBTabletMetadata {
     return !leader_blacklisted_tablet_servers.empty();
   }
 
+  bool has_over_max_placements() { return !over_max_placements.empty(); }
+
   // Can the TS be added to any of the placements that lack a replica for this tablet.
   bool CanAddTSToMissingPlacements(const std::shared_ptr<TSDescriptor> ts_descriptor) const;
 
@@ -75,16 +77,13 @@ struct CBTabletMetadata {
   // Set of placement ids that have less replicas available than the configured minimums.
   std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to> under_replicated_placements;
 
+  // Set of placement ids that have more replicas than the configured maximums. This is
+  // independent of over-replication: a tablet with exactly num_replicas replicas can still have a
+  // placement block above its maximum (e.g. after the placement policy is changed).
+  std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to> over_max_placements;
+
   // Current running and starting replica counts per placement block.
   std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> placement_replica_counts;
-
-  // If any placement block hosts more replicas of this tablet than its configured maximum. This
-  // is independent of over-replication: a tablet with exactly num_replicas replicas can still
-  // have a placement block above its maximum (e.g. after the placement policy is changed).
-  bool is_over_max_placements = false;
-
-  // Replicas in placement blocks that exceed their configured maximum.
-  std::set<TabletServerId> over_max_placement_tablet_servers;
 
   // If this tablet has more replicas than the configured number in the PlacementInfoPB.
   bool is_over_replicated;
@@ -420,6 +419,10 @@ class PerTableLoadState {
   Result<bool> CanAddTabletToTabletServer(
       const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts);
 
+  // Effective maximum number of replicas for the placement block matching cloud_info (as returned
+  // by GetValidPlacement). Blocks without an explicit maximum are bounded by num_replicas.
+  size_t PlacementBlockMaxReplicas(const CloudInfoPB& cloud_info) const;
+
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist
   // any, it returns std::nullopt. On the other hand if there is a placement block
@@ -546,7 +549,10 @@ class PerTableLoadState {
   // expected.
   std::set<TabletId> tablets_over_replicated_;
 
-  // Tablets whose total RF is correct but at least one placement block exceeds its maximum.
+  // Tablets with a placement block above its maximum that are neither missing replicas nor
+  // over-replicated, so the maximum violation is repaired by an add-before-remove move
+  // (HandleAddIfOverMaxPlacement). Missing replicas and over-replication are handled first by
+  // their own paths, and the removal path steers over-replicated removals to the offending block.
   std::set<TabletId> tablets_over_max_placements_;
 
   // Set of tablet ids that have been determined to have replicas in incorrect placements.

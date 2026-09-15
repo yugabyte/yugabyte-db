@@ -221,11 +221,12 @@ class ClusterLoadBalancer {
   Result<bool> HandleAddIfWrongPlacement(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
-  // Moves a replica from a placement block above its maximum to one with remaining capacity.
-  // Like HandleAddIfWrongPlacement, this adds the destination replica first, temporarily
-  // over-replicating the tablet; the remove path then drops a replica from the offending block.
-  // Runs after HandleAddIfWrongPlacement (draining blacklisted or wrongly-placed servers unblocks
-  // node decommissioning) and before normal load balancing.
+  // Moves a replica from a placement block above its maximum to one with remaining capacity, for
+  // tablets that are neither missing replicas nor over-replicated (those are owned by their own
+  // paths; see tablets_over_max_placements_). Like HandleAddIfWrongPlacement, this adds the
+  // destination replica first, temporarily over-replicating the tablet; the remove path then drops
+  // a replica from the offending block. Runs after HandleAddIfWrongPlacement (draining blacklisted
+  // or wrongly-placed servers unblocks node decommissioning) and before normal load balancing.
   Result<bool> HandleAddIfOverMaxPlacement(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 

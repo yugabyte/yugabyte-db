@@ -12,10 +12,10 @@
 //
 
 #include <numeric>
+#include <set>
 
 #include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
-#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/consensus/metadata.pb.h"
@@ -927,9 +927,8 @@ TEST_F(LoadBalancerRF5MaxReplicasMockedTest, RepairPlacementAboveMaximum) {
     block.set_max_num_replicas(2);
   }
 
-  RemoveReplica(tablets_[0].get(), tservers[3]);
-  RemoveReplica(tablets_[0].get(), tservers[5]);
-  RemoveReplica(tablets_[0].get(), tservers[7]);
+  // Shape the tablet to a(3), b(1), c(1): at its replication factor, but above the maximum in a.
+  KeepOnlyReplicasOn(tablets_[0].get(), {"a000", "a001", "a002", "b000", "c000"});
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   std::string tablet_id, from_ts, to_ts;
@@ -976,13 +975,13 @@ TEST_F(LoadBalancerRF5MaxReplicasMockedTest, UnderReplicationPrioritizedOverMaxP
 
   // Shape the tablet to a(3), b(1), c(0): 4 replicas, under-replicated in c and above the
   // maximum in a.
-  RemoveReplica(tablets_[0].get(), tservers[4]);
-  RemoveReplica(tablets_[0].get(), tservers[5]);
+  KeepOnlyReplicasOn(tablets_[0].get(), {"a000", "a001", "a002", "b000"});
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
-  // The first action must be an add into the under-replicated placement c, not the over-max
-  // move out of a.
+  // The over-max repair path (part of HandleAddReplicas) must not act on a tablet that is
+  // missing replicas: the first action is the add into the under-replicated placement c.
   std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
   ASSERT_TRUE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(tablet_id, to_ts)));
   ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
   ASSERT_TRUE(to_ts == "c000" || to_ts == "c001");
@@ -1027,8 +1026,8 @@ TEST_F(LoadBalancerMaxReplicasBlacklistMockedTest, BlacklistedMoveAllowedAtMaxPl
     block.set_max_num_replicas(1);
   }
   // Shape the tablet to a000, b000, c000 and blacklist a000.
-  RemoveReplica(tablets_[0].get(), tservers[1]);
-  blacklist_.add_hosts()->set_host(tservers[0]->permanent_uuid());
+  KeepOnlyReplicasOn(tablets_[0].get(), {"a000", "b000", "c000"});
+  blacklist_.add_hosts()->set_host("a000");
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   // A regular add to a001 is rejected: placement a is at its maximum.
@@ -1073,15 +1072,14 @@ TEST_F(LoadBalancerRF5MaxReplicasManyTabletsMockedTest, BalancedLoadStillRepairs
   //   t1: a003, a004, a005, b000, c000
   //   t2: a000, a001, a002, b001, c001
   //   t3: a003, a004, a005, b001, c001
-  const std::vector<std::vector<size_t>> keep_indexes = {
-      {0, 1, 2, 6, 8}, {3, 4, 5, 6, 8}, {0, 1, 2, 7, 9}, {3, 4, 5, 7, 9}};
-  for (size_t i = 0; i < tablets_.size(); ++i) {
-    for (size_t j = 0; j < tservers.size(); ++j) {
-      if (std::find(keep_indexes[i].begin(), keep_indexes[i].end(), j) ==
-          keep_indexes[i].end()) {
-        RemoveReplica(tablets_[i].get(), tservers[j]);
-      }
-    }
+  const std::vector<std::set<TabletServerId>> layouts = {
+      {"a000", "a001", "a002", "b000", "c000"},
+      {"a003", "a004", "a005", "b000", "c000"},
+      {"a000", "a001", "a002", "b001", "c001"},
+      {"a003", "a004", "a005", "b001", "c001"}};
+  ASSERT_EQ(layouts.size(), tablets_.size());
+  for (size_t i = 0; i < layouts.size(); ++i) {
+    KeepOnlyReplicasOn(tablets_[i].get(), layouts[i]);
   }
 
   // Without explicit maximums the load balancer considers this layout final: per-tserver load is

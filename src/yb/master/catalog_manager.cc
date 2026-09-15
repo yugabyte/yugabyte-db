@@ -12406,8 +12406,9 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     // in any of the allowed areas.
     // Loop through placements and assign to respective available TSs.
     size_t min_replica_count_sum = 0;
-    std::vector<size_t> selected_per_block;
-    selected_per_block.reserve(placement_info.placement_blocks_size());
+    // Remaining replicas each placement block can accept, after the minimums below, before it
+    // reaches its effective maximum.
+    std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> remaining_block_capacity;
     for (const auto& pb : placement_info.placement_blocks()) {
       // This works because currently we don't allow placement blocks to overlap.
       auto available_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
@@ -12418,22 +12419,18 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       min_replica_count_sum += min_num_replicas;
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
                      per_table_state, global_state);
-      selected_per_block.push_back(num_replicas);
+      remaining_block_capacity[pb.cloud_info()] =
+          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)) - num_replicas;
     }
 
-    // Distribute the remaining replicas across the tservers left, walking them from least to
-    // most loaded (the same order SelectReplica would use) and skipping any tserver whose
-    // placement block has already reached its effective maximum. Each tserver hosts at most one
-    // replica of a tablet, so per-block counts increase by at most one per selected tserver and
-    // the maximums are hard caps: if the caps prevent placing every remaining replica, the
-    // tablet starts under-replicated rather than violating a maximum.
+    // Distribute the remaining replicas across the least loaded tservers left, skipping any
+    // tserver whose placement block has already reached its effective maximum. The maximums are
+    // hard caps: if they prevent placing every remaining replica, the tablet starts
+    // under-replicated rather than violating a maximum.
     size_t replicas_left = nreplicas - min_replica_count_sum;
-    // Copy the sorted load order, as selecting a replica below re-sorts it. Selections only
-    // change the load of tservers that cannot be selected again for this tablet, so the copied
-    // order remains correct.
-    const auto sorted_load_order = per_table_state->sorted_replica_load_;
-    for (const auto& ts_uuid : sorted_load_order) {
-      if (replicas_left == 0) {
+    TSDescriptorVector candidates;
+    for (const auto& ts_uuid : per_table_state->sorted_replica_load_) {
+      if (candidates.size() == replicas_left) {
         break;
       }
       if (already_selected_ts.contains(ts_uuid)) {
@@ -12447,26 +12444,23 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       }
       // Find the (unique) placement block this tserver belongs to; placement blocks cannot
       // overlap.
-      size_t block_idx = 0;
-      for (const auto& pb : placement_info.placement_blocks()) {
-        if ((*ts_it)->MatchesCloudInfo(pb.cloud_info())) {
-          break;
-        }
-        ++block_idx;
-      }
-      if (block_idx == implicit_cast<size_t>(placement_info.placement_blocks_size())) {
+      const auto pb = std::find_if(
+          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
+          [&ts_it](const auto& block) { return (*ts_it)->MatchesCloudInfo(block.cloud_info()); });
+      if (pb == placement_info.placement_blocks().end()) {
         continue;
       }
-      const auto& pb = placement_info.placement_blocks(narrow_cast<int>(block_idx));
-      if (selected_per_block[block_idx] >=
-          implicit_cast<size_t>(GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)))) {
+      auto& capacity = remaining_block_capacity[pb->cloud_info()];
+      if (capacity == 0) {
         continue;
       }
-      SelectReplicas(
-          {*ts_it}, 1, config, &already_selected_ts, member_type, per_table_state, global_state);
-      ++selected_per_block[block_idx];
-      --replicas_left;
+      --capacity;
+      candidates.push_back(*ts_it);
     }
+    // Every candidate is selected, so the selection order among them does not matter and the
+    // per-block caps hold by construction.
+    SelectReplicas(candidates, candidates.size(), config, &already_selected_ts, member_type,
+                   per_table_state, global_state);
   }
   return Status::OK();
 }
