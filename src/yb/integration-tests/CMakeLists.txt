@@ -36,7 +36,8 @@ set(YB_PCH_DEP_LIBS boost_regex)
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs
   WORKING_DIRECTORY ${YB_BUILD_ROOT}
-  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs)
+  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs
+  DEPENDS ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh)
 
 add_custom_target(generate_test_certs DEPENDS ${CMAKE_BINARY_DIR}/test_certs)
 

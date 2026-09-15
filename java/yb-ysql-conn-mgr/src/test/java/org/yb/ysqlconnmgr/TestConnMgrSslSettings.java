@@ -50,7 +50,8 @@ import com.yugabyte.ssl.WrappedFactory;
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
+import org.junit.runners.Parameterized;
+import org.yb.YBParameterizedTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
@@ -60,6 +61,11 @@ import org.yb.util.RequiresLinux;
  * Tests that the SSL settings YSQL Connection Manager reads out of ysql_pg.conf are actually
  * applied to its TLS listener.
  *
+ * Every test runs twice, once against conn mgr and once against PostgreSQL directly. The
+ * PostgreSQL run is the reference: a setting conn mgr has to honor is one PostgreSQL already
+ * honors, so a test that passes against one endpoint and fails against the other localizes the
+ * defect to the pooler.
+ *
  * The client connects through JDBC with {@link TlsProbeFactory} as its sslfactory, which is what
  * lets a test choose which protocols and cipher suites the client offers and then read back what
  * the handshake settled on. Asking the server (pg_stat_ssl, ssl_version()) would not work here,
@@ -67,15 +73,9 @@ import org.yb.util.RequiresLinux;
  * one.
  */
 @RequiresLinux
-@RunWith(value = YBTestRunner.class)
+@RunWith(value = YBParameterizedTestRunner.class)
 public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
 
-  /*
-   * An sslfactory for the JDBC driver that restricts what the client offers during the TLS
-   * handshake and remembers what the handshake settled on. The driver exposes no connection
-   * property for either, and it instantiates this class reflectively, so what the client offers
-   * travels through static state and the tests below must not run concurrently.
-   */
   /**
    * A client key manager that never presents a certificate, but records whether the server asked
    * for one and which certificate authorities it named in its CertificateRequest.
@@ -110,6 +110,12 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
     public PrivateKey getPrivateKey(String alias) { return null; }
   }
 
+  /*
+   * An sslfactory for the JDBC driver that restricts what the client offers during the TLS
+   * handshake and remembers what the handshake settled on. The driver exposes no connection
+   * property for either, and it instantiates this class reflectively, so what the client offers
+   * travels through static state and the tests below must not run concurrently.
+   */
   public static class TlsProbeFactory extends WrappedFactory {
     private static String[] offeredProtocols;
     private static String[] offeredCipherSuites;
@@ -189,10 +195,22 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
   private static final String OPENSSL_AES_256 = "ECDHE-RSA-AES256-GCM-SHA384";
   private static final String JSSE_AES_128 = "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256";
   private static final String JSSE_AES_256 = "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384";
+  // Client certificates from test_certs, issued by the same CA and differing only in that
+  // ysql_revoked is listed in that CA's ca.crl.
+  private static final String VALID_CLIENT_CERT = "ysql";
+  private static final String REVOKED_CLIENT_CERT = "ysql_revoked";
 
-  public TestConnMgrSslSettings() {
+  private final ConnectionEndpoint connectionEndpoint;
+
+  public TestConnMgrSslSettings(ConnectionEndpoint connectionEndpoint) {
+    this.connectionEndpoint = connectionEndpoint;
     // Certificates in test_certs are issued for IP addresses, not hostnames.
     useIpWithCertificate = true;
+  }
+
+  @Parameterized.Parameters
+  public static List<ConnectionEndpoint> connectionEndpoints() {
+    return Arrays.asList(ConnectionEndpoint.POSTGRES, ConnectionEndpoint.YSQL_CONN_MGR);
   }
 
   private static String certsDir() {
@@ -222,23 +240,61 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
     restartClusterWithAdditionalFlags(new HashMap<>(), tserverFlags);
   }
 
-  /** Connects to conn mgr over TLS, offering only the given protocols. */
+  /** Connects to the endpoint under test over TLS, offering only the given protocols. */
   private Connection connectOffering(String... protocols) throws Exception {
     return connectOffering(protocols, null);
   }
 
   /**
-   * Connects to conn mgr over TLS, offering only the given protocols and cipher suites, in the
-   * order given.
+   * Connects to the endpoint under test over TLS, offering only the given protocols and cipher
+   * suites, in the order given.
    */
   private Connection connectOffering(String[] protocols, String[] cipherSuites) throws Exception {
     TlsProbeFactory.offer(protocols, cipherSuites);
     Properties props = new Properties();
     props.setProperty("sslfactory", TlsProbeFactory.class.getName());
     return getConnectionBuilder()
-        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withConnectionEndpoint(connectionEndpoint)
         .withSslMode("require")
         .connect(props);
+  }
+
+  /**
+   * Connects to the endpoint under test over TLS, presenting the named client certificate from
+   * test_certs.
+   */
+  private Connection connectWithClientCert(String certPrefix) throws Exception {
+    // pgjdbc requires the key in PKCS#8 DER form, which is why test_certs ships a .key.der.
+    return getConnectionBuilder()
+        .withConnectionEndpoint(connectionEndpoint)
+        .withSslMode("require")
+        .withSslCert(String.format("%s/%s.crt", certsDir(), certPrefix))
+        .withSslKey(String.format("%s/%s.key.der", certsDir(), certPrefix))
+        .withSslRootCert(String.format("%s/ca.crt", certsDir()))
+        .connect();
+  }
+
+  private void assertClientCertAccepted(String certPrefix) throws Exception {
+    try (Connection conn = connectWithClientCert(certPrefix);
+         Statement stmt = conn.createStatement()) {
+      assertTrue(stmt.executeQuery("SELECT 1").next());
+    }
+  }
+
+  /*
+   * The reason cannot be asserted on: the server closes the connection as it sends the alert, so
+   * the client may report "SSL error: Broken pipe" or a generic "connection attempt failed". What
+   * pins the rejection to revocation is the company this assertion keeps in each test below.
+   */
+  private void assertClientCertRejected(String certPrefix) throws Exception {
+    try (Connection ignored = connectWithClientCert(certPrefix)) {
+      fail("Expected " + connectionEndpoint + " to reject client certificate " + certPrefix);
+    } catch (SQLException e) {
+      LOG.info("Handshake rejected as expected: {}", e.getMessage());
+      assertThat(e.getMessage(), CoreMatchers.anyOf(
+          CoreMatchers.containsString("SSL error"),
+          CoreMatchers.containsString("connection attempt failed")));
+    }
   }
 
   /**
@@ -268,11 +324,12 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
    * The base class probes for readiness with a connection that offers whatever TLS versions the
    * JDK enables by default, which on JDK 8 is TLSv1.2 alone even though TLSv1.3 is supported.
    * That probe cannot reach a pooler running under ssl_min_protocol_version='TLSv1.3', so the
-   * restart times out before any assertion in this class runs. Offer both versions explicitly.
+   * restart times out before any assertion in this class runs. Offer both versions explicitly,
+   * against whichever endpoint the run is exercising.
    */
   @Override
   public void verifyClusterAcceptsConnMgrConnections() throws Exception {
-    LOG.info("Waiting for the cluster to accept conn mgr connections over TLS");
+    LOG.info("Waiting for {} to accept connections over TLS", connectionEndpoint);
     final String[] protocols = probeProtocols();
     TestUtils.waitFor(() -> {
         try {
@@ -293,7 +350,7 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
     restartWithSslGucs("ssl_min_protocol_version='TLSv1.3'");
 
     try (Connection ignored = connectOffering(TLS_1_2)) {
-      fail("Expected conn mgr to refuse a " + TLS_1_2 + " client");
+      fail("Expected " + connectionEndpoint + " to refuse a " + TLS_1_2 + " client");
     } catch (SQLException e) {
       LOG.info("Handshake rejected as expected: {}", e.getMessage());
       assertThat(e.getMessage(), CoreMatchers.containsString("SSL error"));
@@ -308,7 +365,7 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
     restartWithSslGucs("ssl_min_protocol_version='TLSv1.2',ssl_max_protocol_version='TLSv1.2'");
 
     try (Connection ignored = connectOffering(TLS_1_3)) {
-      fail("Expected conn mgr to refuse a " + TLS_1_3 + " client");
+      fail("Expected " + connectionEndpoint + " to refuse a " + TLS_1_3 + " client");
     } catch (SQLException e) {
       LOG.info("Handshake rejected as expected: {}", e.getMessage());
       assertThat(e.getMessage(), CoreMatchers.containsString("SSL error"));
@@ -427,7 +484,8 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
 
     try (Connection ignored =
         connectOffering(new String[] {TLS_1_2}, new String[] {JSSE_AES_256})) {
-      fail("Expected conn mgr to refuse a " + TLS_1_2 + " client offering " + JSSE_AES_256);
+      fail("Expected " + connectionEndpoint + " to refuse a " + TLS_1_2 + " client offering "
+          + JSSE_AES_256);
     } catch (SQLException e) {
       LOG.info("Handshake rejected as expected: {}", e.getMessage());
       assertThat(e.getMessage(), CoreMatchers.containsString("SSL error"));
@@ -443,7 +501,8 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
           TlsProbeFactory.negotiatedCipherSuite());
     }
 
-    assertTrue("conn mgr should have requested a client certificate", RecordingKeyManager.asked);
+    assertTrue(connectionEndpoint + " should have requested a client certificate",
+        RecordingKeyManager.asked);
     Principal[] issuers = RecordingKeyManager.issuers;
     LOG.info("CertificateRequest named issuers: {}", Arrays.toString(issuers));
     assertTrue("CertificateRequest should have named the configured root CA; "
@@ -495,5 +554,36 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
       assertEquals("'of' should mean off, so client order should decide", JSSE_AES_256,
           TlsProbeFactory.negotiatedCipherSuite());
     }
+  }
+
+  /*
+   * Validates ssl_crl_file. The server solicits a client certificate even though cert
+   * authentication is not offered, and verifies whatever is presented, so a revoked certificate is
+   * turned away once the CRL is loaded. Three connections make the case that the CRL is what
+   * turned it away: the revoked certificate is refused, the valid one from the same CA is not, and
+   * the revoked one is fine again with no CRL configured.
+   */
+  @Test
+  public void testSslCrlFile() throws Exception {
+    restartWithSslGucs("ssl_crl_file='" + certsDir() + "/ca.crl'");
+
+    assertClientCertRejected(REVOKED_CLIENT_CERT);
+    assertClientCertAccepted(VALID_CLIENT_CERT);
+
+    restartWithSslGucs("");
+
+    assertClientCertAccepted(REVOKED_CLIENT_CERT);
+  }
+
+  /*
+   * Validates ssl_crl_dir, which holds the same CRL as ssl_crl_file above under the hashed name
+   * OpenSSL looks a directory up by.
+   */
+  @Test
+  public void testSslCrlDir() throws Exception {
+    restartWithSslGucs(String.format("ssl_crl_dir='%s/crl'", certsDir()));
+
+    assertClientCertRejected(REVOKED_CLIENT_CERT);
+    assertClientCertAccepted(VALID_CLIENT_CERT);
   }
 }
