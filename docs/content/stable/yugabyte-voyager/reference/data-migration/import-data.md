@@ -224,8 +224,8 @@ import-data:
 | Global strategy for all tables on how CDC events are partitioned across parallel channels. Strategy is one of the following:
 
 - `auto` (default): Automatically pick `pk` or `table` per table (for example, expression unique-index tables use `table`).
-- `pk` : Partition CDC events by primary key.
-- `table` : Partition CDC events by table (all events for a table share one channel). |
+- `pk`: Partition CDC events by primary key.
+- `table`: Partition CDC events by table (all events for a table share one channel). |
 
 | --cdc-partition-key-overrides |
 
