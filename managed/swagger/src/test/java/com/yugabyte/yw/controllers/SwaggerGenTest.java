@@ -365,7 +365,8 @@ public class SwaggerGenTest extends FakeDBApplication {
     }
     SwaggerGenTest swaggerGenTest = new SwaggerGenTest();
     try {
-      swaggerGenTest.startServer();
+      swaggerGenTest.app = swaggerGenTest.provideApplication();
+      Helpers.start(swaggerGenTest.app);
       String expectedFlags = swaggerGenTest.expectedFlags();
       String actualFlags = swaggerGenTest.currentFlags();
       if (!actualFlags.equals(expectedFlags)) {
@@ -393,7 +394,9 @@ public class SwaggerGenTest extends FakeDBApplication {
         System.out.println("Swagger spec generated");
       }
     } finally {
-      swaggerGenTest.stopServer();
+      if (swaggerGenTest.app != null) {
+        Helpers.stop(swaggerGenTest.app);
+      }
     }
   }
 

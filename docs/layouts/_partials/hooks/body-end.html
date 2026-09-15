@@ -40,6 +40,7 @@ if (typeof detectExternalLink === 'function') {
 {{- $questions := replaceRE " +" " " (trim (replaceRE "\n\t\r" " " $questions) " \n\t\r") -}}
 <script defer src="https://widget.kapa.ai/kapa-widget.bundle.js"
   data-website-id="7669d105-58f8-41b7-b3f1-4799ac938657"
+  data-bot-protection-mechanism="hcaptcha"
   data-project-name="Yugabyte"
   data-project-color="rgb(120, 121, 241)"
   data-project-logo="/icons/yugabyte.svg"

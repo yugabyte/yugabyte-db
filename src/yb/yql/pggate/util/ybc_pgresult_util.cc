@@ -145,17 +145,11 @@ PGresult* PgResultFromPB(const PgResultPB& result_pb) {
 
 extern "C" {
 
-struct pg_result* YBCPgResultFromPB(const uint8_t* buf, size_t size) {
-  if (!buf || size == 0) {
+struct pg_result* YBCPgResultFromPB(YbcPgResultPB pb) {
+  if (!pb) {
     return nullptr;
   }
-
-  yb::PgResultPB pb;
-  if (!pb.ParseFromArray(buf, static_cast<int>(size))) {
-    LOG(WARNING) << "Failed to parse PgResultPB from buffer";
-    return nullptr;
-  }
-  return yb::pggate::PgResultFromPB(pb);
+  return yb::pggate::PgResultFromPB(*pb);
 }
 
 }  // extern "C"

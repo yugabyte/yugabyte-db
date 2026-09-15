@@ -274,20 +274,32 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
     void run(Statement adminStatement) throws Exception;
   }
 
-  // Restarts the cluster with tserver response cache enabled for auth, then
-  // runs the supplied action with a direct-to-PG admin connection.
+  // Runs the supplied action with a direct-to-PG admin connection against a cluster that has the
+  // tserver response cache enabled for auth, once per authentication mode.
+  //
+  // The response cache for auth was introduced for auth backend mode, where a fresh backend
+  // authenticates every logical connection, and was later extended to auth passthrough, where a
+  // pooled control backend does it. Both can answer from state that is only refreshed when the
+  // node's shared memory catalog version advances -- the cached prefetch is keyed on that version,
+  // and a pooled backend's catalog caches are invalidated by it -- so a privilege DDL has to reach
+  // it before returning. The modes are covered here rather than in the class flags because
+  // ysql_conn_mgr_use_auth_backend is not runtime settable.
   private void withAuthCacheCluster(AdminAction action) throws Exception {
-    Map<String, String> flags = new HashMap<>();
-    flags.put("ysql_enable_read_request_cache_for_connection_auth", "true");
-    restartClusterWithAdditionalFlags(Collections.EMPTY_MAP, flags);
+    for (boolean useAuthBackend : new boolean[] {false, true}) {
+      LOG.info("Running with ysql_conn_mgr_use_auth_backend={}", useAuthBackend);
+      Map<String, String> flags = new HashMap<>();
+      flags.put("ysql_enable_read_request_cache_for_connection_auth", "true");
+      flags.put("ysql_conn_mgr_use_auth_backend", Boolean.toString(useAuthBackend));
+      restartClusterWithAdditionalFlags(Collections.EMPTY_MAP, flags);
 
-    try (Connection adminConn = getConnectionBuilder()
-             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
-             .withUser(ADMIN_USERNAME)
-             .withPassword(ADMIN_PASSWORD)
-             .connect();
-         Statement adminStmt = adminConn.createStatement()) {
-      action.run(adminStmt);
+      try (Connection adminConn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+               .withUser(ADMIN_USERNAME)
+               .withPassword(ADMIN_PASSWORD)
+               .connect();
+           Statement adminStmt = adminConn.createStatement()) {
+        action.run(adminStmt);
+      }
     }
   }
 

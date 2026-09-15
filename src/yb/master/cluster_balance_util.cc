@@ -98,8 +98,8 @@ std::string CBTabletMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       running, starting, is_under_replicated, under_replicated_placements,
       is_over_replicated, over_replicated_tablet_servers,
-      wrong_placement_tablet_servers, blacklisted_tablet_servers, leader_blacklisted_tablet_servers,
-      leader_uuid, leader_stepdown_failures, size);
+      wrong_placement_tablet_servers, removal_pending_tablet_servers, blacklisted_tablet_servers,
+      leader_blacklisted_tablet_servers, leader_uuid, leader_stepdown_failures, size);
 }
 
 PerRunState::PerRunState(const TabletInfoMap& tablet_map) : tablet_map_(tablet_map) {}
@@ -567,6 +567,12 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     return false;
   }
 
+  if (per_tablet_meta_.at(tablet_id).removal_pending_tablet_servers.count(to_ts)) {
+    VLOG(4) << "TS " << to_ts << " has a pending remove of tablet " << tablet_id
+            << ", so cannot add a replica back to it";
+    return false;
+  }
+
   // If we ask to use placement information, check against it.
   if (placement_.placement_blocks_size() > 0 && !GetValidPlacement(to_ts).has_value()) {
     YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 4) << "tablet server " << to_ts << " has placement info "
@@ -750,6 +756,7 @@ Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletS
     LOG(DFATAL) << "Invalid request: remove starting tablet " << tablet_id
                 << " from ts " << from_ts;
   }
+  per_tablet_meta_[tablet_id].removal_pending_tablet_servers.insert(from_ts);
   if (per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
     RETURN_NOT_OK(MoveLeader(tablet_id, from_ts));
   }

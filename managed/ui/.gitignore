@@ -1,0 +1,3 @@
+# Local env files (Vite): personal, machine-specific overrides. Never commit these.
+.env.local
+.env.*.local

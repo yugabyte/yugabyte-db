@@ -93,6 +93,11 @@ export function useEditUniverseContext() {
   return context;
 }
 
+/** Bind a universe UUID so RBAC checks match universe-scoped UPDATE permissions. */
+export function withUniverseResource<T extends object>(permission: T, universeUUID?: string) {
+  return { ...permission, onResource: universeUUID };
+}
+
 export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec | undefined) => {
   let totalRegions = 0;
   let totalAzs = 0;
@@ -191,11 +196,9 @@ export const getDedicatedCountsForPlacementRegion = (
 };
 
 /** Master nodes in a single AZ from universe node details. */
-export const countMasterNodesInAz = (universeData: Universe, azUuid: string | undefined) => {
+export const countNodesInAzByType = (universeData: Universe, azUuid: string | undefined, nodeType: NodeDetailsDedicatedTo) => {
   if (!azUuid) return 0;
-  return filter(universeData?.info?.node_details_set, { az_uuid: azUuid }).filter(
-    (node) => node.dedicated_to === NodeDetailsDedicatedTo.MASTER
-  ).length;
+  return filter(universeData?.info?.node_details_set, { az_uuid: azUuid, dedicated_to: nodeType }).length;
 };
 
 export const getResilientType = (
@@ -411,10 +414,11 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   });
 };
 
-const getPlacementSpecFromCluster = (
-  cluster: ClusterSpec | ClusterPartitionSpec
-): ClusterPlacementSpec | null => {
-  if ('placement_spec' in cluster && cluster.placement_spec) {
+export const getPlacementSpecFromCluster = (cluster: ClusterSpec | ClusterPartitionSpec): ClusterPlacementSpec | null => {
+  if('partitions_spec' in cluster && cluster.partitions_spec) {
+    return cluster.partitions_spec.find((partition) => partition.default_partition)?.placement ?? null;
+  }
+  if('placement_spec' in cluster && cluster.placement_spec) {
     return cluster.placement_spec;
   }
   if ('placement' in cluster && cluster.placement) {

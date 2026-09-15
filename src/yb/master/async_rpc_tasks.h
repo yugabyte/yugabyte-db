@@ -327,8 +327,11 @@ class AsyncBackfillDone : public AsyncAlterTable {
                     ThreadPool* callback_pool,
                     const TabletInfoPtr& tablet,
                     const std::string& table_id,
-                    LeaderEpoch epoch)
-    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)), table_id_(table_id) {}
+                    LeaderEpoch epoch,
+                    uint64_t birth_time = 0)
+    : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)),
+      table_id_(table_id),
+      birth_time_(birth_time) {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kBackfillDone;
@@ -340,6 +343,7 @@ class AsyncBackfillDone : public AsyncAlterTable {
   bool SendRequest(int attempt) override;
 
   const std::string table_id_;
+  const uint64_t birth_time_;
 };
 
 class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {

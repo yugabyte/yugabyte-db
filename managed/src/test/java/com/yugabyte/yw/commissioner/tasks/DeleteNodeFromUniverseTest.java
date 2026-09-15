@@ -39,14 +39,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final List<TaskType> DELETE_NODE_TASK_SEQUENCE_WITH_INSTANCE =
       ImmutableList.of(
@@ -89,7 +89,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
               }
             }));
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
     when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());

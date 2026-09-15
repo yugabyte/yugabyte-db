@@ -7,8 +7,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -23,6 +22,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,7 +30,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.slf4j.LoggerFactory;
-import play.test.Helpers;
 
 public class TestHelper {
   public static String TMP_PATH = "/tmp/yugaware_tests";
@@ -75,10 +74,42 @@ public class TestHelper {
   }
 
   public static Map<String, Object> testDatabase() {
-    return Maps.newHashMap(
-        // Needed because we're using 'value' as column name. This makes H2 be happy with that./
-        // PostgreSQL works fine with 'value' column as is.
-        Helpers.inMemoryDatabase("default", ImmutableMap.of("NON_KEYWORDS", "VALUE")));
+    // Point the "default" datasource at the shared, per-JVM embedded Postgres. The schema is
+    // migrated only once (by the first Play application build in the JVM); every subsequent build
+    // disables flyway. State is reset between tests via TestPostgres.resetDatabase() instead of
+    // re-migrating.
+    //
+    // The "perf_advisor" datasource is pointed at the same embedded Postgres. Previously (on H2)
+    // both datasources shared the single in-memory "jdbc:h2:mem:play-test" database, so keeping
+    // them
+    // on the same physical database preserves that behavior. Tests that need an isolated,
+    // independently-migrated perf_advisor database (see FakePerfAdvisorDBTest) override these keys;
+    // because FakeDBApplication applies testDatabase() before caller overrides, those win.
+    TestPostgres.ensureStarted();
+    // NOTE: we intentionally do NOT reset the database here. Resetting on every application build
+    // would truncate data that a test just created whenever it builds a *second* application in the
+    // same method (e.g. PlatformTest starts a remote YBA app after creating its HA config). The
+    // per-method reset is done once, before the application is built, by
+    // PlatformGuiceApplicationBaseTest#platformBaseSetUp. The few standalone tests that build their
+    // own application without extending that base class (e.g. SessionControllerTest) call
+    // TestPostgres.resetDatabase() themselves before building.
+    Map<String, Object> config = new HashMap<>();
+    config.put("db.default.driver", "org.postgresql.Driver");
+    config.put("db.default.url", TestPostgres.getJdbcUrl());
+    config.put("db.default.username", TestPostgres.getUsername());
+    config.put("db.default.password", TestPostgres.getPassword());
+    config.put("db.default.migration.locations", ImmutableList.of("common", "postgres"));
+    // Apply migrations only on the very first application build in this JVM (when the flyway
+    // history
+    // table does not yet exist); every subsequent build reuses the already-migrated schema.
+    config.put("db.default.migration.auto", !TestPostgres.isSchemaMigrated());
+    // Point perf_advisor at the same embedded Postgres so its HikariCP pool has a loadable driver
+    // and a reachable URL (it is not migrated or queried by non-PA tests). See comment above.
+    config.put("db.perf_advisor.driver", "org.postgresql.Driver");
+    config.put("db.perf_advisor.url", TestPostgres.getJdbcUrl());
+    config.put("db.perf_advisor.username", TestPostgres.getUsername());
+    config.put("db.perf_advisor.password", TestPostgres.getPassword());
+    return config;
   }
 
   public static void shutdownDatabase() {

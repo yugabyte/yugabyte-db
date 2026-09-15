@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetLoadBalancerStateResponse;
 import org.yb.client.IsLoadBalancerIdleResponse;
 import org.yb.client.MasterErrorException;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterTypes.MasterErrorPB;
 
 @Slf4j
@@ -42,7 +42,7 @@ public class MetaMasterHandler {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     MasterLBStateResponse resp = new MasterLBStateResponse();
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
 
       // Check if the tablet load balancer is actually enabled
       GetLoadBalancerStateResponse masterLBState = client.getLoadBalancerState();

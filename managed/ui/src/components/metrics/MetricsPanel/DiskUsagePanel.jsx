@@ -29,10 +29,15 @@ export default class DiskUsagePanel extends Component {
       used: undefined,
       size: undefined
     };
+    // Match series names case-insensitively: the k8s container_volume_stats graph now aliases its
+    // series "Used" (was "used" before the metrics line-name rename), while the non-k8s disk_usage
+    // graph still uses lowercase "free"/"size".
+    const findSeries = (data, name) =>
+      data.find((item) => item.name?.toLowerCase() === name);
     if (isNonEmptyArray(metric.data)) {
-      const diskUsedObj = metric.data.find((item) => item.name === 'used');
-      const diskFreeObj = metric.data.find((item) => item.name === 'free');
-      const diskSizeObj = metric.data.find((item) => item.name === 'size');
+      const diskUsedObj = findSeries(metric.data, 'used');
+      const diskFreeObj = findSeries(metric.data, 'free');
+      const diskSizeObj = findSeries(metric.data, 'size');
       const getLastElement = (arr) => arr?.length && arr[arr.length - 1];
 
       // If at least two out of three objects are defined we can figure out the rest
@@ -56,9 +61,9 @@ export default class DiskUsagePanel extends Component {
     }
 
     if (masterMetric && isNonEmptyArray(masterMetric.data)) {
-      const diskUsedObj = masterMetric.data.find((item) => item.name === 'used');
-      const diskFreeObj = masterMetric.data.find((item) => item.name === 'free');
-      const diskSizeObj = masterMetric.data.find((item) => item.name === 'size');
+      const diskUsedObj = findSeries(masterMetric.data, 'used');
+      const diskFreeObj = findSeries(masterMetric.data, 'free');
+      const diskSizeObj = findSeries(masterMetric.data, 'size');
       const getLastElement = (arr) => arr && arr.length && arr[arr.length - 1];
 
       // If at least two out of three objects are defined we can figure out the rest

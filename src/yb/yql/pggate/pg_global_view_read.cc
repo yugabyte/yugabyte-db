@@ -24,34 +24,42 @@ void PgGlobalViewRead::SetParams(std::span<const char*> values) {
   }
 }
 
-YbcRemotePgExecResult PgGlobalViewRead::ExecScan(
+void PgGlobalViewRead::ClearScanState() {
+  decltype(result_pb_)().Swap(&result_pb_);
+  decltype(last_error_)().swap(last_error_);
+  // Safe today because SetParams re-populates params_ before the next
+  // ExecScan (on both the first scan and every rescan). Revisit if pagination
+  // (#30843) makes a later fetch reuse params_ without a fresh SetParams.
+  decltype(params_)().swap(params_);
+}
+
+YbcPgResultPB PgGlobalViewRead::ExecScan(
     PgClient& client, std::string_view database_name, std::string_view query,
     std::string_view tserver_uuid) {
   auto res = client.RemoteExec(
       query, database_name, tserver_uuid, params_);
   if (!res.ok()) {
     last_error_ = res.status().ToString();
-    return {nullptr, 0, last_error_.c_str()};
+    return nullptr;
   }
 
   auto& pb = *res->mutable_pg_result();
 
   if (!pb.error_message().empty()) {
     last_error_ = std::move(*pb.mutable_error_message());
-    return {nullptr, 0, last_error_.c_str()};
+    return nullptr;
   }
 
   if (pb.rows_size() == 0) {
-    return {nullptr, 0, nullptr};
+    return nullptr;
   }
 
-  const auto pb_size = pb.ByteSizeLong();
-  DCHECK_GT(pb_size, 0) << "Received protobuf size should be positive, got " << pb_size;
+  result_pb_.Swap(&pb);
+  return &result_pb_;
+}
 
-  serialized_result_.resize(pb_size);
-  auto* buf = serialized_result_.data();
-  pb.SerializeWithCachedSizesToArray(buf);
-  return {buf, serialized_result_.size(), nullptr};
+const char* PgGlobalViewRead::GetError() const {
+  return last_error_.empty() ? nullptr : last_error_.c_str();
 }
 
 }  // namespace yb::pggate

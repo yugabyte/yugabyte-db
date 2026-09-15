@@ -22,12 +22,16 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 import urllib.request
 
 from typing import Union, List, Optional, IO
 
 from yugabyte.common_util import shlex_join
 from yugabyte.file_util import mkdir_p
+
+MAX_DOWNLOAD_ATTEMPTS = 5
+DOWNLOAD_RETRY_DELAY_SEC = 5
 
 
 class ProgramResult:
@@ -143,7 +147,17 @@ def copy_deep(src: str, dst: str, create_dst_dir: bool = False) -> None:
         logging.debug("Pulling {} to {} from the web".format(src, dst))
         opener = urllib.request.URLopener()
         opener.addheader('User-Agent', 'yugabyte')  # type: ignore[arg-type]
-        opener.retrieve(src, dst)
+        for attempt in range(1, MAX_DOWNLOAD_ATTEMPTS + 1):
+            try:
+                opener.retrieve(src, dst)
+                break
+            except OSError as ex:
+                if attempt == MAX_DOWNLOAD_ATTEMPTS:
+                    raise
+                logging.warning(
+                    "Failed to download %s (attempt %d/%d): %s, retrying in %ds",
+                    src, attempt, MAX_DOWNLOAD_ATTEMPTS, ex, DOWNLOAD_RETRY_DELAY_SEC)
+                time.sleep(DOWNLOAD_RETRY_DELAY_SEC)
     elif os.path.isdir(src) and not src_is_link:
         logging.debug("Copying directory {} to {}".format(src, dst))
         mkdir_p(dst)

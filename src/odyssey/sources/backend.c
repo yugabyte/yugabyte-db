@@ -314,24 +314,14 @@ void yb_backend_register_close_prep_stmt(od_server_t *server, char *context,
 }
 
 void yb_backend_unregister_close_prep_stmt(od_server_t *server, char *context,
-					   char *data, uint32_t size)
+					   char *stmt_name)
 {
 	od_instance_t *instance = server->global->instance;
 
 	if (server->yb_close_prep_stmts == NULL)
 		return;
 
-	char *keyhash_str;
-	uint32_t keyhash_str_len;
-	int rc = kiwi_fe_read_yb_server_keyhash(data, size, &keyhash_str,
-						&keyhash_str_len);
-	if (rc == -1) {
-		od_error(&instance->logger, context, NULL, server,
-			 "failed to parse force parse complete message from server");
-		return;
-	}
-
-	yb_od_hash_64_t stmt_hash = strtoull(keyhash_str, NULL, 16);
+	yb_od_hash_64_t stmt_hash = strtoull(stmt_name, NULL, 16);
 	yb_od_hash_64_t keyhash = yb_od_murmur_hash_64(&stmt_hash,
 						       sizeof(stmt_hash));
 
@@ -363,6 +353,53 @@ void yb_backend_unregister_close_prep_stmt(od_server_t *server, char *context,
 			 "no deferred close pending for %016" PRIx64,
 			 stmt_hash);
 	}
+}
+
+int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
+				uint32_t size, YbParseType *yb_parse_type)
+{
+	od_instance_t *instance = server->global->instance;
+
+	char *stmt_name;
+	char *description;
+	uint32_t description_len;
+	char *orig_name;
+	uint32_t orig_name_len;
+	char wire_parse_type;
+
+	int rc = kiwi_fe_read_yb_parse_complete(data, size, &wire_parse_type,
+						&stmt_name, &description,
+						&description_len, &orig_name,
+						&orig_name_len);
+	if (rc == -1) {
+		od_error(&instance->logger, context, server->client, server,
+			 "failed to read yb parse complete packet");
+		return -1;
+	}
+
+	*yb_parse_type = (YbParseType)wire_parse_type;
+
+	switch (*yb_parse_type) {
+	case YB_PARSE_NORMAL:
+	case YB_PARSE_REDEPLOY:
+		if (yb_od_parse_queue_dequeue(&server->parse_queue) != 0) {
+			od_error(&instance->logger, context, server->client,
+				 server, "failed to dequeue parse queue");
+			return -1;
+		}
+		break;
+	case YB_PARSE_FORCE:
+		if (instance->config.yb_enable_dealloc_reconciliation)
+			yb_backend_unregister_close_prep_stmt(server, context,
+							      stmt_name);
+		break;
+	default:
+		od_error(&instance->logger, context, server->client, server,
+			 "unexpected YbParse type %d in parse-ack",
+			 *yb_parse_type);
+		return -1;
+	}
+	return 0;
 }
 
 typedef struct yb_backend_close_drain_arg {
@@ -1155,14 +1192,14 @@ static inline int od_backend_connect_to(od_server_t *server, char *context,
 	/* log server connection */
 	if (instance->config.log_session) {
 		if (host) {
-			od_log(&instance->logger, context, server->client,
+			yb_od_session(&instance->logger, context, server->client,
 			       server,
 			       "new server connection %s:%d (connect time: %d usec, "
 			       "resolve time: %d usec)",
 			       host, port, (int)time_connect,
 			       (int)time_resolve);
 		} else {
-			od_log(&instance->logger, context, server->client,
+			yb_od_session(&instance->logger, context, server->client,
 			       server,
 			       "new server connection %s (connect time: %d usec, resolve "
 			       "time: %d usec)",
@@ -1537,21 +1574,19 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 					machine_msg_data(msg), machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
-		} else if (type == YB_BE_FORCE_PARSE_COMPLETE) {
-			if (instance->config.yb_enable_dealloc_reconciliation)
-				yb_backend_unregister_close_prep_stmt(server, context,
-					machine_msg_data(msg), machine_msg_size(msg));
+		} else if (type == YB_BE_YB_PARSE_COMPLETE) {
+			YbParseType yb_parse_type;
+			int rc = yb_backend_update_prep_stmt(
+				server, context, machine_msg_data(msg),
+				machine_msg_size(msg), &yb_parse_type);
 			machine_msg_free(msg);
-			continue;
-		} else if (type == YB_BE_PARSE_NO_PARSE_COMPLETE ||
-				   type == KIWI_BE_PARSE_COMPLETE) {
-			int res = yb_od_parse_queue_dequeue(&server->parse_queue);
-			machine_msg_free(msg);
-			if (res != 0) {
-				od_error(&instance->logger, context, server->client, server,
-					 "failed to dequeue parse queue");
+			if (rc == -1)
 				return -1;
-			}
+			continue;
+		} else if (type == KIWI_BE_PARSE_COMPLETE) {
+			od_error(&instance->logger, context, server->client, server,
+				 "unexpected ParseComplete packet from server");
+			machine_msg_free(msg);
 			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
@@ -1561,8 +1596,7 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				machine_msg_free(msg);
 				return 0;
 			}
-		}
-		else if (type == YB_BE_SYNC_ACK) {
+		} else if (type == YB_BE_SYNC_ACK) {
 			/*
 			 * If SYNC present at head of parse queue means all parses in this
 			 * SYNC boundary were acknowledged (success path). Otherwise, some

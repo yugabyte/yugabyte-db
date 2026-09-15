@@ -102,7 +102,8 @@ class YbHnswIndex :
   }
 
   Status Reserve(
-      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
+      rocksdb::Cache::ReservationMode reservation_mode) override {
     return Status::OK();
   }
 

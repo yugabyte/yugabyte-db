@@ -378,6 +378,10 @@ message IndexStatusPB {
   // Backfill status for the specified index table on base of index permissions. Value absence means
   // either error field is specified, or backfill_status is not present in BackfillStatus enum.
   optional BackfillStatus backfill_status = 3;
+
+  // Index inception / birth hybrid time, used to reject reads from older backends with
+  // read time < birth time that might hit the index.
+  optional fixed64 birth_time = 4;
 }
 
 message GetBackfillStatusResponsePB {
@@ -891,38 +895,6 @@ message GetObjectLockStatusResponsePB {
   repeated ObjectLockInfoPB object_lock_infos = 2;
 }
 
-message RefreshYsqlLeaseRequestPB {
-  optional NodeInstancePB instance = 1;
-  // The current lease epoch of the tserver making this request.
-  // Unset if the tserver doesn't think it has a live lease.
-  optional uint64 current_lease_epoch = 2;
-  optional uint64 local_request_send_time_ms = 3;
-}
-
-message RefreshYsqlLeaseInfoPB {
-  optional bool new_lease = 1;
-  optional uint64 lease_epoch = 2;
-  // TODO: If this ends up being too big, consider adding a way to break this up
-  // into multiple messages.
-  optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
-  optional uint64 lease_expiry_time_ms = 4;
-}
-
-message RefreshYsqlLeaseResponsePB {
-  oneof refresh_ysql_lease_payload {
-    MasterErrorPB error = 1;
-    RefreshYsqlLeaseInfoPB info = 2;
-  }
-}
-
-message RelinquishYsqlLeaseRequestPB {
-  optional NodeInstancePB instance = 1;
-}
-
-message RelinquishYsqlLeaseResponsePB {
-  optional MasterErrorPB error = 1;
-}
-
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -993,10 +965,6 @@ service MasterDdl {
       returns (ReleaseObjectLocksGlobalResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
-  rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
-      returns (RefreshYsqlLeaseResponsePB);
-  rpc RelinquishYsqlLease(RelinquishYsqlLeaseRequestPB)
-      returns (RelinquishYsqlLeaseResponsePB);
   rpc WaitForLockersMultipleGlobal(WaitForLockersMultipleGlobalRequestPB)
       returns (WaitForLockersMultipleGlobalResponsePB) {
     option (yb.rpc.send_metadata) = true;

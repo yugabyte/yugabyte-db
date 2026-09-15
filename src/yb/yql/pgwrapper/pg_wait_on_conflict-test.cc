@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <future>
+#include <mutex>
 #include <shared_mutex>
 #include <thread>
 
@@ -109,13 +111,29 @@ class PgWaitQueuesTest : public PgMiniTestBase {
 
   Result<std::future<Status>> ExpectBlockedAsync(
       pgwrapper::PGConn* conn, const std::string& query) {
-    auto status = std::async(std::launch::async, [&conn, query]() {
+    // libpq's PGconn is not thread safe, so conn belongs to the async thread alone once it is
+    // handed over. Submission is observed on a separate connection instead.
+    const auto pid = VERIFY_RESULT(conn->FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    auto observer = VERIFY_RESULT(Connect());
+    const auto is_active = Format(
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND state = 'active'", pid);
+    // Warm up the observer's catalog caches, so that the first poll below is not slow enough to
+    // miss a query that the query layer rejects right away.
+    RETURN_NOT_OK(observer.FetchRow<int64_t>(is_active));
+
+    auto status = std::async(std::launch::async, [conn, query]() {
       return conn->Execute(query);
     });
 
-    RETURN_NOT_OK(WaitFor([&conn] () {
-      return conn->IsBusy();
-    }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+    // A finished future also proves the query reached the query layer. Some callers expect it to be
+    // rejected right away, e.g. by the deadlock detector, so it need not still be running.
+    RETURN_NOT_OK(WaitFor([&observer, &status, &is_active] {
+      if (status.wait_for(0s) == std::future_status::ready) {
+        return true;
+      }
+      auto active = observer.FetchRow<int64_t>(is_active);
+      return active.ok() && *active == 1;
+    }, 10s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
     return status;
   }
 
@@ -1051,6 +1069,115 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }
 
+// The poller reads this flag at tserver startup, so it has to be lowered before the cluster comes
+// up. At its 60s default the first forwarded probe can be a minute out.
+class PgWaitQueuesProbeForwardingTest : public PgWaitQueuesTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_wait_for_report_interval_ms) = 100;
+    PgWaitQueuesTest::SetUp();
+  }
+};
+
+// Regression test for AddBlocker pushing Rpcs::Prepare()'s result into handles_ before checking it
+// against InvalidHandle(), leaving Send() to dereference calls_.end().
+TEST_F(PgWaitQueuesProbeForwardingTest, ForwardProbeDuringDetectorShutdown) {
+  constexpr auto kBeforeAddBlockers = "DeadlockDetector::GetProbesToForward:BeforeAddBlockers";
+  constexpr auto kShutdownDone =
+      "PgWaitQueuesProbeForwardingTest::ForwardProbeDuringDetectorShutdown:ShutdownDone";
+
+  // Park the probe handler at kBeforeAddBlockers until the test fires kShutdownDone.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({{kShutdownDone, kBeforeAddBlockers}});
+  sync_point->ClearTrace();
+  sync_point->DisableProcessing();
+
+  std::promise<TabletId> status_tablet_promise;
+  auto status_tablet_future = status_tablet_promise.get_future();
+  std::once_flag published;
+  sync_point->SetCallBack(kBeforeAddBlockers, [&](void* arg) {
+    // Runs once per forwarded probe; only the first arrival picks the tablet to shut down.
+    std::call_once(published, [&] {
+      status_tablet_promise.set_value(*static_cast<TabletId*>(arg));
+    });
+  });
+
+  // Declared after the state the callback captures, so the callback is unregistered before that
+  // state dies. DisableProcessing also releases any still-parked handler.
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 5), 0"));
+
+  // Build a wait-for chain conn1 -> conn2 -> conn3. GetProbesToForward reaches the AddBlocker loop
+  // because the probed blocker, conn2, is itself blocked.
+  auto conn3 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn3.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn3.Fetch("SELECT * FROM foo WHERE k=3 FOR UPDATE"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM foo WHERE k=2 FOR UPDATE"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+
+  sync_point->EnableProcessing();
+
+  // Killing a status tablet can leave a waiter blocked forever on an unresolvable transaction, and
+  // ExpectBlockedAsync's std::async future joins in its destructor. Bound it so the test fails.
+  for (auto* conn : {&conn1, &conn2, &conn3}) {
+    ASSERT_OK(conn->ExecuteFormat("SET statement_timeout=$0", 60000 * kTimeMultiplier));
+  }
+
+  auto future_2 = ASSERT_RESULT(ExpectBlockedAsync(&conn2, "UPDATE foo SET v=v+1 WHERE k=3"));
+  auto future_1 = ASSERT_RESULT(ExpectBlockedAsync(&conn1, "UPDATE foo SET v=v+1 WHERE k=2"));
+
+  // Require that a probe actually reached the sync point.
+  ASSERT_EQ(status_tablet_future.wait_for(60s * kTimeMultiplier), std::future_status::ready);
+  const auto status_tablet_id = status_tablet_future.get();
+  LOG(INFO) << "Probe handler parked at detector for status tablet " << status_tablet_id;
+
+  tablet::TabletPeerPtr victim;
+  for (const auto& peer :
+       ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders, UserTabletsOnly::kFalse)) {
+    if (peer->tablet_id() == status_tablet_id) {
+      victim = peer;
+      break;
+    }
+  }
+  ASSERT_NE(victim, nullptr);
+
+  // Own thread, so the test thread stays free to release the handler CompleteShutdown may drain on.
+  auto shutdown_future = std::async(std::launch::async, [&victim] {
+    return victim->TEST_Shutdown(
+        tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse);
+  });
+
+  // Either outcome means StartShutdown ran, so Prepare() now returns InvalidHandle.
+  shutdown_future.wait_for(5s * kTimeMultiplier);
+  TEST_SYNC_POINT(kShutdownDone);
+  ASSERT_EQ(shutdown_future.wait_for(60s * kTimeMultiplier), std::future_status::ready);
+  ASSERT_OK(shutdown_future.get());
+
+  // Unwind the transactions and log their outcomes, which vary with a status tablet destroyed
+  // underneath them. The pre-fix signal is the tserver dying in Send() just above.
+  LOG(INFO) << "conn3 commit: " << conn3.CommitTransaction();
+  LOG(INFO) << "conn2 blocked statement: " << future_2.get();
+  LOG(INFO) << "conn2 commit: " << conn2.CommitTransaction();
+  LOG(INFO) << "conn1 blocked statement: " << future_1.get();
+  LOG(INFO) << "conn1 commit: " << conn1.CommitTransaction();
+
+  // Safe to fail out now that both futures are joined. Checks the survivors still serve queries.
+  auto check_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM foo")), 6);
+}
+
 class PgWaitQueuesDisableRowLocking : public PgWaitQueuesTest {
  protected:
   void SetUp() override {
@@ -1211,7 +1338,20 @@ void PgWaitQueuesTest::TestParallelUpdatesDetectDeadlock() const {
   }
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock)) {
+// A status tablet leader move discards the deadlock detector's in-memory wait-for edges, and the
+// tservers only re-report them on the next full update (send_wait_for_report_interval_ms, 60s by
+// default). Load balancing right after cluster startup moves those leaders while the first
+// iteration is already waiting, delaying detection past the deadline asserted below.
+class PgWaitQueuesNoLoadBalancingTest : public PgWaitQueuesTest {
+ protected:
+  void InitFlags() override {
+    PgWaitQueuesTest::InitFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  }
+};
+
+TEST_F_EX(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock),
+          PgWaitQueuesNoLoadBalancingTest) {
   TestParallelUpdatesDetectDeadlock();
 }
 

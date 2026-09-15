@@ -84,9 +84,10 @@ RpcServer::RpcServer(const std::string& name, RpcServerOptions opts,
         LOG(INFO) << "yb::server::RpcServer created at " << this;
       }
 
-RpcServer::~RpcServer() {
-  Shutdown();
-}
+// The RPC server does not own the messenger and all of its state lives in the messenger, so there
+// is nothing to clean up here. RpcServerBase shuts the messenger down before destroying it, which
+// also destroys the messenger before this object, so touching it here would be a use after free.
+RpcServer::~RpcServer() = default;
 
 string RpcServer::ToString() const {
   // TODO: include port numbers, etc.
@@ -178,14 +179,6 @@ Status RpcServer::Start() {
   LOG(INFO) << "RPC server started. Bound to: " << bound_addrs_str;
 
   return Status::OK();
-}
-
-void RpcServer::Shutdown() {
-  if (messenger_) {
-    messenger_->ShutdownThreadPools();
-    messenger_->ShutdownAcceptor();
-    messenger_->UnregisterAllServices();
-  }
 }
 
 const rpc::ServicePool* RpcServer::TEST_service_pool(const string& service_name) const {

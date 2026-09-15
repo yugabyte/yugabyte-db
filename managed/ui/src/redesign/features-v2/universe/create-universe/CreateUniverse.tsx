@@ -17,7 +17,6 @@ import { CreateUniverseBreadCrumb } from './CreateUniverseBreadCrumb';
 import AuthenticatedArea from '@app/pages/AuthenticatedArea';
 import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
-import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import {
   CreateUniverseContext,
   createUniverseFormMethods,
@@ -27,6 +26,12 @@ import {
 } from './CreateUniverseContext';
 import { ResilienceType } from './steps/resilence-regions/dtos';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import {
+  CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
+  CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
+  fetchCreateUniverseDbVersions,
+  fetchCreateUniverseProviders
+} from './helpers/generalSettingsDefaults';
 //style imports
 import './styles/override.css';
 
@@ -74,8 +79,12 @@ export function CreateUniverse() {
   ]);
   const currentStepRef = useRef<StepsRef>(null);
 
-  //To speed up the interaction
-  const { isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
+  // Prefetch providers + DB versions in parallel so step 1 reuses the same cache.
+  const { isLoading } = useQuery(
+    CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
+    fetchCreateUniverseProviders
+  );
+  useQuery(CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY, fetchCreateUniverseDbVersions);
 
   const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
     if (resType === ResilienceType.SINGLE_NODE) {

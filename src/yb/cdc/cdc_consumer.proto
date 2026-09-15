@@ -73,6 +73,9 @@ message StreamEntryPB {
   map<uint32, SchemaVersionsPB> colocated_schema_versions = 7;
 
   bool is_ddl_queue_table = 8;
+
+  // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
+  bool xcluster_use_target_applied_filter = 9;
 }
 
 message ProducerEntryPB {

@@ -249,8 +249,6 @@ class Messenger : public ProxyContext {
 
   void UnregisterAllServices();
 
-  void ShutdownThreadPools();
-
   // Queue a call for transmission. This will pick the appropriate reactor, and enqueue a task on
   // that reactor to assign and send the call.
   void QueueOutboundCall(OutboundCallPtr call) override;
@@ -378,6 +376,8 @@ class Messenger : public ProxyContext {
 
   Reactor* RemoteToReactor(const Endpoint& remote, uint32_t idx = 0);
   Status Init(const MessengerBuilder &bld);
+
+  void ShutdownThreadPools();
 
   void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
   void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);

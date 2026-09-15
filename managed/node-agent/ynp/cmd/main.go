@@ -222,17 +222,18 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	if err != nil {
 		return fmt.Errorf("Error in creating schema handler: %v", err)
 	}
-	if pArgs.extraVars == "" {
+	if pArgs.extraVars != "" {
+		exVars, err = loadJSONOrFile(pArgs.extraVars)
+		if err != nil {
+			return fmt.Errorf("Error loading extra_vars: %v", err)
+		}
+	}
+	if len(exVars) == 0 {
 		// Onprem manual case. YAML should be fully populated.
 		// TODO: Enable for CSPs once the types are fixed in Java code and AMI builders.
 		err = schemaHandler.ValidateYnpConfig(ynpConfig)
 		if err != nil {
 			return err
-		}
-	} else {
-		exVars, err = loadJSONOrFile(pArgs.extraVars)
-		if err != nil {
-			return fmt.Errorf("Error loading extra_vars: %v", err)
 		}
 	}
 	if pArgs.PreflightCheckOutFile != "" {

@@ -91,6 +91,8 @@ public class MockUpgrade extends UpgradeTaskBase {
   protected UpgradeTaskParams taskParams() {
     UpgradeTaskParams params = new UpgradeTaskParams();
     params.setUniverseUUID(universe.getUniverseUUID());
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
     return params;
   }
 

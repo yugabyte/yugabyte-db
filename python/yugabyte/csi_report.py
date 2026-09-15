@@ -3,7 +3,8 @@
 import json
 import logging
 import os
-from typing import List, Tuple, Any, Dict
+import time
+from typing import List, Optional, Tuple, Any, Dict
 from yugabyte.test_descriptor import TestDescriptor, SimpleTestDescriptor
 
 # Non-standard module. Needed in builddir venv for code-checks and in system modules for spark job
@@ -25,6 +26,38 @@ import requests
 # Returned by create_suite(), but put into environment by caller:
 # YB_CSI_C++    - Suite ID for test, by language
 # YB_CSI_Java
+
+
+def configured() -> bool:
+    return bool(os.getenv('CSI_SERVER', '') and os.getenv('CSI_TOKEN', ''))
+
+
+# Attempts for a GET, matching the retry(3) that csi/lib.groovy wraps every request in: CSI returns
+# the occasional transient 5xx, and a query that gives up on the first one is worse than a slow one.
+GET_ATTEMPTS = 3
+
+# Waited before a retry, multiplied by the attempt just made, so a busy server gets a longer pause
+# each time round.
+GET_RETRY_DELAY_SEC = 1
+
+
+# A GET that survives a transient CSI failure, returning None once the attempts are spent. Only for
+# queries - the reporting calls below are not idempotent, and retrying them is a separate question.
+def get_with_retries(url: str, headers: Dict[str, str],
+                     params: Dict[str, str]) -> Optional[Any]:
+    for attempt in range(1, GET_ATTEMPTS + 1):
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                return response
+            logging.warning("CSI GET %s returned %d (attempt %d/%d): %s",
+                            url, response.status_code, attempt, GET_ATTEMPTS, response.text)
+        except requests.RequestException as ex:
+            logging.warning("CSI GET %s failed (attempt %d/%d): %s",
+                            url, attempt, GET_ATTEMPTS, ex)
+        if attempt < GET_ATTEMPTS:
+            time.sleep(GET_RETRY_DELAY_SEC * attempt)
+    return None
 
 
 # API & Token should be set via jenkins jobs,
@@ -62,14 +95,15 @@ def mst(time_sec: float) -> int:
 # Find the physical ID from the UUID. Required for querying prior test data.
 def launch_qid() -> str:
     csi = csi_env()
-    if not csi['launch']:
+    if not csi['launch'] or not configured():
         return ''
     q_id = ''
-    response = requests.get(csi['url_sync'] + '/launch/' + csi['launch'], headers=csi['headers'])
-    if response.status_code == 200:
+    response = get_with_retries(csi['url_sync'] + '/launch/' + csi['launch'],
+                                headers=csi['headers'], params={})
+    if response is not None:
         q_id = response.json()['id']
     else:
-        logging.error(f"CSI Error: Launch {csi['launch']} not found. {response.text}")
+        logging.error(f"CSI Error: Launch {csi['launch']} not found.")
 
     logging.info(f"CSI Launch Query ID: {q_id}")
     return str(q_id)
@@ -86,7 +120,7 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
                  time_sec: float) -> Tuple[str, str]:
     csi = csi_env()
     varname = 'YB_CSI_' + suite_name
-    if not csi['launch']:
+    if not csi['launch'] or not configured():
         return (varname, '')
     suite_uuid = ''
 
@@ -98,10 +132,10 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
             'filter.eq.type': 'SUITE',
             'page.size': '1'
         }
-        response = requests.get(csi['url_sync'] + '/item',
-                                headers=csi['headers'],
-                                params=query)
-        if response.status_code == 200:
+        response = get_with_retries(csi['url_sync'] + '/item',
+                                    headers=csi['headers'],
+                                    params=query)
+        if response is not None:
             results = response.json()['content']
             if len(results) > 0:
                 suite_id = str(results[0]['id'])
@@ -187,7 +221,7 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
     csi = csi_env()
     parent = os.getenv('YB_CSI_' + test.language, '')
 
-    if not csi['launch'] or not parent:
+    if not csi['launch'] or not parent or not configured():
         return ''
 
     full_name = test.descriptor_str_without_attempt_index
@@ -269,7 +303,7 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
 # finish test/suite
 def close_item(item: str, time_sec: float, status: str, tags: List[str]) -> str:
     csi = csi_env()
-    if not csi['launch'] or not item:
+    if not csi['launch'] or not item or not configured():
         return ''
     req_data = {
         'launchUuid': csi['launch'],
@@ -294,7 +328,7 @@ def close_item(item: str, time_sec: float, status: str, tags: List[str]) -> str:
 
 def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
     csi = csi_env()
-    if not csi['launch']:
+    if not csi['launch'] or not configured():
         return 0
     msg_limit = int(os.getenv('YB_CSI_MAX_LOGMSG', '50000'))  # 50K
     file_limit = int(os.getenv('YB_CSI_MAX_FILE', '67108864'))  # 64MB
@@ -353,7 +387,7 @@ def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
 
 def upload_attachment(item: str, time_sec: float, message: str, path: str) -> int:
     csi = csi_env('form')
-    if not csi['launch'] or not item:
+    if not csi['launch'] or not item or not configured():
         return 0
     file_limit = int(os.getenv('YB_CSI_MAX_FILE', '67108864'))  # 64MB
     file_size = os.path.getsize(path)

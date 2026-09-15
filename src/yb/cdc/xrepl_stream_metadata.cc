@@ -139,13 +139,15 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<uint32_t> db_oid_to_get_sequences_for;
   std::optional<bool> detect_publication_changes_implicitly;
   bool is_notification_slot = false;
+  std::optional<bool> xcluster_use_target_applied_filter;
 
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
       &consistent_snapshot_option, &stream_creation_time, &replica_identity_map,
       &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type,
       &replication_slot_ordering_mode, &detect_publication_changes_implicitly,
-      &replication_slot_plugin_name, &is_notification_slot));
+      &replication_slot_plugin_name, &is_notification_slot,
+      &xcluster_use_target_applied_filter));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -214,6 +216,15 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   replication_slot_ordering_mode_ = replication_slot_ordering_mode;
   detect_publication_changes_implicitly_ = detect_publication_changes_implicitly;
   is_notification_slot_ = is_notification_slot;
+  // xcluster_use_target_applied_filter is immutable per stream.
+  const bool use_target_applied_filter = xcluster_use_target_applied_filter.value_or(false);
+  if (is_refresh) {
+    SCHECK_EQ(
+        use_target_applied_filter_.load(std::memory_order_acquire), use_target_applied_filter,
+        IllegalState, "Unexpected change to stream metadata xcluster_use_target_applied_filter");
+  } else {
+    use_target_applied_filter_.store(use_target_applied_filter, std::memory_order_release);
+  }
 
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);

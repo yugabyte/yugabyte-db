@@ -14,6 +14,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -43,6 +44,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -84,15 +86,11 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     addRelease(PG_11_DB_VERSION, PG_11_DB_VERSION_URL);
     addRelease(PG_15_DB_VERSION, PG_15_DB_VERSION_URL);
     localNodeManager.addVersionBinPath(
-        OLD_VERSION_WITH_ROLLBACK,
-        baseDir + "/yugabyte/yugabyte-" + OLD_VERSION_WITH_ROLLBACK + "/bin");
-    localNodeManager.addVersionBinPath(
-        OLD_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + OLD_DB_VERSION + "/bin");
+        OLD_VERSION_WITH_ROLLBACK, deriveYBBinPath(OLD_VERSION_WITH_ROLLBACK));
+    localNodeManager.addVersionBinPath(OLD_DB_VERSION, deriveYBBinPath(OLD_DB_VERSION));
 
-    localNodeManager.addVersionBinPath(
-        PG_15_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + PG_15_DB_VERSION + "/bin");
-    localNodeManager.addVersionBinPath(
-        PG_11_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + PG_11_DB_VERSION + "/bin");
+    localNodeManager.addVersionBinPath(PG_15_DB_VERSION, deriveYBBinPath(PG_15_DB_VERSION));
+    localNodeManager.addVersionBinPath(PG_11_DB_VERSION, deriveYBBinPath(PG_11_DB_VERSION));
 
     runtimeConfService.setKey(
         customer.getUuid(),
@@ -307,6 +305,66 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Ready, universe.getUniverseDetails().softwareUpgradeState);
     assertFalse(universe.getUniverseDetails().isSoftwareRollbackAllowed);
+  }
+
+  /**
+   * YCQL-only + TLS finalize across the PG11 to PG15 boundary. Dedicated nodes are required on
+   * local provider so {@code isSuperUserRequiredForCatalogUpgrade} matches the Kubernetes path that
+   * used to schedule {@code ManageCatalogUpgradeSuperUser} and fail talking to port 5433.
+   */
+  @Test
+  public void testPG15SoftwareUpgradeFinalizeYcqlOnlyWithTls() throws InterruptedException {
+    updateProviderDetailsForCreateUniverse(PG_11_DB_VERSION);
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybSoftwareVersion = PG_11_DB_VERSION;
+    userIntent.enableYSQL = false;
+    userIntent.enableYCQL = true;
+    userIntent.enableYCQLAuth = true;
+    userIntent.ycqlPassword = "Pass@123";
+    ApiUtils.configureDedicatedMasterFields(userIntent);
+    Universe universe = createUniverse(userIntent);
+    initYCQL(universe, true, "Pass@123");
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
+        "false",
+        true);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.allowDowngrades.getKey(),
+        "true",
+        true);
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
+    params.ybSoftwareVersion = PG_15_DB_VERSION;
+    params.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo =
+        waitForTask(
+            upgradeUniverseHandler.upgradeDBVersion(
+                params, customer, Universe.getOrBadRequest(universe.getUniverseUUID())));
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(universe.getUniverseDetails().isSoftwareRollbackAllowed);
+    FinalizeUpgradeParams finalizeUpgradeParams = new FinalizeUpgradeParams();
+    finalizeUpgradeParams.setUniverseUUID(universe.getUniverseUUID());
+    finalizeUpgradeParams.expectedUniverseVersion = -1;
+    taskInfo =
+        waitForTask(
+            upgradeUniverseHandler.finalizeUpgrade(
+                finalizeUpgradeParams,
+                customer,
+                Universe.getOrBadRequest(universe.getUniverseUUID())));
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertTrue(
+        "ManageCatalogUpgradeSuperUser should not run when YSQL is disabled",
+        taskInfo.getSubTasks().stream()
+            .noneMatch(s -> s.getTaskType() == TaskType.ManageCatalogUpgradeSuperUser));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Ready, universe.getUniverseDetails().softwareUpgradeState);
+    assertFalse(universe.getUniverseDetails().isSoftwareRollbackAllowed);
+    verifyYCQL(universe, true, "Pass@123");
   }
 
   @Test

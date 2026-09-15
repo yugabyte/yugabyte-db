@@ -167,6 +167,7 @@ export const DbUpgradePrecheckTaskBanner = ({
       {isDbUpgradeModalOpen && (
         <DbUpgradeModal
           universeUuid={universeUuid}
+          initialTargetDbVersion={targetDbVersion || undefined}
           modalProps={{
             open: isDbUpgradeModalOpen,
             onClose: () => setIsDbUpgradeModalOpen(false)

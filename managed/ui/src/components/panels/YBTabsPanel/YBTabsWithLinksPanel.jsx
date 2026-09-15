@@ -17,15 +17,24 @@ class YBTabsWithLinksPanel extends Component {
   };
 
   tabSelect = (selectedKey) => {
-    if(!selectedKey) return;
-    const currentLocation = this.props.location;
-    if (this.props.routePrefix) {
-      currentLocation.pathname = this.props.routePrefix + selectedKey;
+    if (!selectedKey) return;
+    const { children, location, routePrefix, router } = this.props;
+    const childTabs = (Array.isArray(children) ? children : [children]).filter((child) => child);
+    const selectedTab = childTabs.find((item) => item?.props?.eventKey === selectedKey);
+    if (selectedTab?.props?.onBeforeSelect) {
+      const allowSelect = selectedTab.props.onBeforeSelect(selectedKey);
+      if (allowSelect === false) {
+        return;
+      }
+    }
+    const currentLocation = location;
+    if (routePrefix) {
+      currentLocation.pathname = routePrefix + selectedKey;
     } else {
       currentLocation.query = currentLocation.query || {};
       currentLocation.query.tab = selectedKey;
     }
-    this.props.router.push(currentLocation);
+    router.push(currentLocation);
   };
 
   queryTabHandler = () => {

@@ -31,6 +31,7 @@ DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
 DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 DECLARE_bool(ysql_conn_mgr_superuser_sticky);
+DECLARE_bool(ysql_conn_mgr_use_auth_backend);
 DECLARE_bool(ysql_conn_mgr_version_matching);
 DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
 DECLARE_int32(ysql_conn_mgr_max_query_size);
@@ -93,14 +94,6 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
     "log settings present in this string will be enabled. Omitted settings will remain disabled.");
-
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
-    "Enable the use of the auth-backend for authentication of logical connections. "
-    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
-    "spawning a fresh PG backend to perform authentication for each incoming auth request."
-    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
-    "and thus is faster as it skips needing to spawn a new backend process each time."
-    );
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
     "Maximum time (in milliseconds) to wait for each startup & auth message from client. "

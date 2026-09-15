@@ -9,6 +9,7 @@
  */
 package com.yugabyte.yw.common.config.impl;
 
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.models.Customer;
@@ -74,7 +75,7 @@ public class UseNewRbacAuthzListener implements RuntimeConfigChangeListener {
               "Created system role binding for user '{}' (email '{}') of customer '{}', "
                   + "with role '{}' (name '{}'), and default role binding '{}'.",
               user.getUuid(),
-              user.getEmail(),
+              RedactingService.SECRET_REPLACEMENT,
               customer.getUuid(),
               newRbacRole.getRoleUUID(),
               newRbacRole.getName(),

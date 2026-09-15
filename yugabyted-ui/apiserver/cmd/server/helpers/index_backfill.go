@@ -6,7 +6,7 @@ import (
     "net/url"
     "regexp"
 
-    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/jackc/pgx/v5/pgxpool"
 )
 
 const QUERY_INDEX_BACKFILL_PROGRESS_INFO = "SELECT * FROM pg_stat_progress_create_index;"

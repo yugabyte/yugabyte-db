@@ -85,6 +85,7 @@ public class BackupGarbageCollector {
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
+  private static final String OCI = Util.OCI;
   private static final String NFS = Util.NFS;
   private static final int BACKUP_DELETION_MAX_RETRIES_COUNT = 3;
 
@@ -395,10 +396,11 @@ public class BackupGarbageCollector {
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
         switch (customerConfig.getName()) {
-            // for cases S3, AZ, GCS, we get Util from CloudUtil class
+            // for cases S3, AZ, GCS, OCI we get Util from CloudUtil class
           case S3:
           case GCS:
           case AZ:
+          case OCI:
             CloudUtil cloudUtil = storageUtilFactory.getCloudUtil(customerConfig.getName());
             backupLocationsMap = BackupUtil.getBackupLocations(backup);
             int numRetries = 0;
