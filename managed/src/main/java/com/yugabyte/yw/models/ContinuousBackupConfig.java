@@ -112,6 +112,10 @@ public class ContinuousBackupConfig extends Model {
   }
 
   public void validate() {
+    if (this.getFrequencyTimeUnit().ordinal() < TimeUnit.SECONDS.ordinal()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Frequency time unit must be seconds or larger");
+    }
     long frequencyInMilliseconds = this.getFrequencyInMilliseconds();
     if (frequencyInMilliseconds
         > MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE * MINUTES_IN_HOUR * HOURS_IN_DAY) {
