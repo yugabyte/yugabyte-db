@@ -246,6 +246,9 @@ class Messenger : public ProxyContext {
 
   // Register a new RpcService to handle inbound requests.
   Status RegisterService(const std::string& service_name, const RpcServicePtr& service);
+  Status RegisterService(
+      const std::string& service_name, const RpcServicePtr& service,
+      ServicePriority priority);
 
   void UnregisterAllServices();
 
@@ -473,6 +476,10 @@ class Messenger : public ProxyContext {
   int num_connections_to_server_;
 
   std::unique_ptr<ReactorMonitor> reactor_monitor_ GUARDED_BY(lock_);
+
+  // Watchdog that dumps thread stacks to the log when the queue of a registered RPC service
+  // stays at or above a configured threshold. See service_queue_monitor.h.
+  std::unique_ptr<ServiceQueueMonitor> service_queue_monitor_ GUARDED_BY(lock_);
 
   std::unique_ptr<CallStateListenerFactory> call_state_listener_factory_;
   std::unique_ptr<MetadataSerializerFactory> metadata_serializer_factory_;
