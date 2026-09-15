@@ -55,6 +55,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -257,6 +258,8 @@ void Peer::DumpToHtml(std::ostream& out) const {
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
+  // TODO(#16670): give consensus its own root trace.
+  auto detach_token = dist_trace::DetachTraceContext();
   auto retain_self = shared_from_this();
   DCHECK(performing_update_mutex_.is_locked()) << "Cannot send request";
 

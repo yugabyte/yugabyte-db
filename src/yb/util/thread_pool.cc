@@ -23,7 +23,6 @@
 #include <boost/intrusive/list.hpp>
 
 #include "yb/util/cgroups.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -213,6 +212,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
       }
 #endif
       auto start = MonoTime::NowIf(has_run_metrics);
+      dist_trace::ScopedAdoptSpan parent_scope(task->trace_parent());
       if (!task->run_token()) {
         task->Run();
         task->Done(Status::OK());
@@ -648,6 +648,7 @@ YBThreadPool::~YBThreadPool() {
 }
 
 bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
+  task->set_trace_parent(dist_trace::GetActiveSpanContext());
   return impl_->Enqueue(task);
 }
 
