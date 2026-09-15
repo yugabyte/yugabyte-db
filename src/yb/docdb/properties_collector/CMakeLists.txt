@@ -20,7 +20,9 @@ set(YB_PCH_PATH ../)
 set(DOCDB_PROPERTIES_COLLECTOR_SRCS
     chain_tracker.cc
     exponential_histogram.cc
+    sst_stats_aggregator.cc
     sst_stats_collector.cc
+    sst_stats_metrics.cc
     )
 
 set(DOCDB_PROPERTIES_COLLECTOR_DEPS
@@ -38,4 +40,6 @@ set(YB_TEST_LINK_LIBS yb_docdb_properties_collector ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(chain_tracker-test)
 ADD_YB_TEST(exponential_histogram-test)
+ADD_YB_TEST(sst_stats_aggregator-test)
 ADD_YB_TEST(sst_stats_collector-test)
+ADD_YB_TEST(sst_stats_metrics-test)

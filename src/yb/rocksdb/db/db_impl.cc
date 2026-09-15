@@ -5821,8 +5821,9 @@ Status DBImpl::SwitchMemtable(
   return s;
 }
 
-Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
-                                        TablePropertiesCollection* props) {
+Status DBImpl::GetPropertiesOfAllTables(
+    ColumnFamilyHandle* column_family, TablePropertiesCollection* props,
+    TablePropertiesErrorHandling error_handling) {
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
@@ -5832,7 +5833,7 @@ Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
   version->Ref();
   mutex_.Unlock();
 
-  auto s = version->GetPropertiesOfAllTables(props);
+  auto s = version->GetPropertiesOfAllTables(props, error_handling);
 
   // Decrement the ref count
   mutex_.Lock();
