@@ -37,7 +37,7 @@
 #include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb::qlexpr {
 
@@ -114,6 +114,12 @@ class IndexInfo {
     return backfill_error_message_;
   }
 
+  // Non-OK only when backfill failed. Unlike backfill_error_message, preserves the error codes
+  // of the status backfill failed with.
+  const Status& backfill_status() const {
+    return backfill_status_;
+  }
+
   uint64_t num_rows_read_from_table_for_backfill() const {
     return num_rows_read_from_table_for_backfill_;
   }
@@ -164,6 +170,7 @@ class IndexInfo {
   const std::vector<ColumnId> indexed_range_column_ids_; // Range column ids in the indexed table.
   const IndexPermissions index_permissions_ = INDEX_PERM_READ_WRITE_AND_DELETE;
   const std::string backfill_error_message_;
+  const Status backfill_status_;
   const uint64_t num_rows_read_from_table_for_backfill_ = 0;
   const double num_rows_backfilled_in_index_ = 0;
   const uint64_t birth_time_ = 0;

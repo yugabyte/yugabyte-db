@@ -10373,10 +10373,20 @@ YBCMakeStatusErrorData(YbcStatus status)
 	switch (pg_err_code)
 	{
 		case ERRCODE_UNIQUE_VIOLATION:
-			*msg = (YbStatusErrorDataFormatText) {"duplicate key value violates unique constraint \"%s\"",
-												   1, (const char **) palloc(sizeof(const char *))};
-			(msg->args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(status));
-			break;
+			{
+				const Oid	relation_oid = YBCStatusRelationOid(status);
+
+				/*
+				 * A status without a relation OID (e.g. an index backfill
+				 * failure) already carries a full PG error message.
+				 */
+				if (!OidIsValid(relation_oid))
+					break;
+				*msg = (YbStatusErrorDataFormatText) {"duplicate key value violates unique constraint \"%s\"",
+													   1, (const char **) palloc(sizeof(const char *))};
+				(msg->args)[0] = FetchUniqueConstraintName(relation_oid);
+				break;
+			}
 		case ERRCODE_YB_TXN_ABORTED:
 			*detail = *msg;
 			*msg = (YbStatusErrorDataFormatText) {"current transaction is expired or aborted"};
