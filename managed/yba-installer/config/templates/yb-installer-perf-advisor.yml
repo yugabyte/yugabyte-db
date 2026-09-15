@@ -51,6 +51,11 @@ services:
 
       # Perf Advisor Web Port
       server.port={{ yamlPath "perfAdvisor.port" }}
+      # Loopback only. The platform reverse-proxies the Perf Advisor UI and API behind its own
+      # authentication and runs on this same host, so nothing off the host has any business
+      # reaching Perf Advisor directly - and what it serves is not behind YugabyteDB Anywhere
+      # login. Keep in step with yb.pa.url in the platform configuration.
+      server.address=localhost
 
       # Perf Advisor TLS/SSL Configuration
       {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}

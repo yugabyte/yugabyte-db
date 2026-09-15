@@ -87,12 +87,14 @@ services:
       yb {
         platform.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "platform.port" }}"
         {{if eq (yamlPath "perfAdvisor.enabled") "true" }}
+        # localhost, not host: Perf Advisor binds the loopback interface (server.address in its
+        # own configuration), so this is the only address it answers on. Under TLS the certificate
+        # is the platform's, issued for host rather than localhost, which does not matter here
+        # because yb.pa.ws.ssl.loose.acceptAnyCertificate is already set for this client.
         {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}
-        pa.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:
-        {{- yamlPath "perfAdvisor.port" }}"
+        pa.url = "https://localhost:{{ yamlPath "perfAdvisor.port" }}"
         {{ else }}
-        pa.url = "http://{{ index (splitInput (yamlPath "host")) 0 }}:
-        {{- yamlPath "perfAdvisor.port" }}"
+        pa.url = "http://localhost:{{ yamlPath "perfAdvisor.port" }}"
         {{ end }}
         pa.api_token = "{{ yamlPath "perfAdvisor.paSecret" }}"
         {{ end }}
