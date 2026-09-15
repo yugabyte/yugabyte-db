@@ -28,7 +28,7 @@ rightNav:
 
 </ul>
 
-When installing YugabyteDB Anywhere on-premises or on a public cloud (AWS, GCP, and Azure), you install YugabyteDB Anywhere onto a virtual machine server with a Linux operating system (OS).
+When installing YugabyteDB Anywhere on-premises or on a public cloud (AWS, GCP, Azure, and OCI), you install YugabyteDB Anywhere onto a virtual machine server with a Linux operating system (OS).
 
 To meet the hardware and software prerequisites for YugabyteDB Anywhere, create a VM that satisfies the following requirements.
 
