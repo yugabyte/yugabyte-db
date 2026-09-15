@@ -49,6 +49,13 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
   </li>
 
   <li>
+    <a href="libredb-studio/">
+      <img src="/images/develop/tools/libredb-studio/libredb-studio-icon.png">
+      LibreDB Studio
+    </a>
+  </li>
+
+  <li>
     <a href="metabase/">
       <img src="/images/section_icons/develop/ecosystem/metabase.png">
       Metabase
