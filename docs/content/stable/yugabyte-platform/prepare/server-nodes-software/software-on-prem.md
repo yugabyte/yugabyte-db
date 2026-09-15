@@ -41,6 +41,8 @@ These steps prepare the node for use by YugabyteDB Anywhere, including setting u
 
 Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/stable/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
+To re-apply provisioning on nodes already in a universe (v2026.1.2.0 and later), see [Reprovision universe nodes](../../../manage-deployments/reprovision-nodes/).
+
 ### Download the package
 
 To begin, download the YugabyteDB Anywhere node agent package to the node you want to provision.
