@@ -395,7 +395,7 @@ macro(yb_find_third_party_dependencies)
 
   ## Hdr Histogram
   find_package(HdrHistogram REQUIRED)
-  include_directories(SYSTEM ${LIBHDR__HISTOGRAM_INCLUDE_DIR})
+  include_directories(SYSTEM ${LIBHDR_HISTOGRAM_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(hdr_histogram STATIC_LIB "${LIBHDR_HISTOGRAM_STATIC_LIB}")
 
   ## AWS clockbound
