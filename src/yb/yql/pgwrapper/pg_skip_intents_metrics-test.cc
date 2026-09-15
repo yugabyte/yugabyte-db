@@ -1083,6 +1083,10 @@ class SkipIntentsSafetyTest : public SkipIntentsMetricTest {
         "--ysql_yb_enable_ddl_savepoint_support=true");
     AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
                        "ysql_yb_enable_ddl_savepoint_support");
+    options->extra_master_flags.emplace_back(
+        "--ysql_yb_enable_ddl_savepoint_support=true");
+    AppendCsvFlagValue(options->extra_master_flags, "allowed_preview_flags_csv",
+                       "ysql_yb_enable_ddl_savepoint_support");
   }
 };
 
