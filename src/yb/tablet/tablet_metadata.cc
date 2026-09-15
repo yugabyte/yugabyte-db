@@ -1046,7 +1046,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
-  docdb::InitRocksDBOptions(
+  docdb::InitRocksDBOptionsWithoutTableFactory(
       &rocksdb_options, log_prefix_, raft_group_id_, nullptr /* statistics */, tablet_options);
 
   // Tiered storage: the regular DB may have SSTs spread across several disks (tier_paths). Mirror

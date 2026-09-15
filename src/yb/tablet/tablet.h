@@ -894,7 +894,11 @@ class Tablet : public AbstractTablet,
 
   void InitRocksDBBaseOptions(rocksdb::Options* options);
 
-  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
+  // See docdb::InitRocksDBOptionsWithoutTableFactory vs docdb::InitRocksDBOptions.
+  void InitRocksDBOptionsWithoutTableFactory(
+      rocksdb::Options* options, const std::string& log_prefix);
+  void InitRocksDBOptions(
+      rocksdb::Options* options, const std::string& log_prefix, docdb::StorageDbType db_type);
 
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();
@@ -1189,7 +1193,7 @@ class Tablet : public AbstractTablet,
       const rocksdb::CompactRangeOptions& intents_options);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
-  Status OpenDbAndCheckIntegrity(const std::string& db_dir);
+  Status OpenDbAndCheckIntegrity(const std::string& db_dir, docdb::StorageDbType db_type);
 
   // Add or remove restoring operation filter if necessary.
   // If reset_split is true, also reset split state.

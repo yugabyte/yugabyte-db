@@ -3065,7 +3065,8 @@ Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb
   // Restore master snapshot and load it to RocksDB.
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(snapshot_id, restore_at));
   rocksdb::Options rocksdb_options;
-  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  tablet->InitRocksDBOptions(
+      &rocksdb_options, log_prefix + " [TMP]: ", docdb::StorageDbType::kRegular);
 
   return rocksdb::DB::Open(rocksdb_options, dir);
 }
@@ -3187,7 +3188,8 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
     tablet->CompleteShutdownStorages(op_pauses);
 
     rocksdb::Options rocksdb_opts;
-    tablet->InitRocksDBOptions(&rocksdb_opts, tablet->LogPrefix());
+    tablet->InitRocksDBOptions(
+        &rocksdb_opts, tablet->LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(tablet->metadata()->rocksdb_dir(), rocksdb_opts);
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(restoration->db_oid, restoration->restore_at));

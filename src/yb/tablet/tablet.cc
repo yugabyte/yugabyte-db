@@ -1260,8 +1260,9 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
           VERIFY_RESULT(GetConfiguredKeyValueEncodingFormat(table_type_));
     }
     table_options.use_delta_encoding = UseDeltaEncoding(table_type_);
-    docdb::InitRocksDBOptionsTableFactory(
-        &regular_rocksdb_options, tablet_options_, std::move(table_options));
+    regular_rocksdb_options.table_factory = docdb::CreateRocksDBTableFactory(
+        tablet_options_, docdb::StorageDbType::kRegular, regular_rocksdb_options.info_log.get(),
+        std::move(table_options));
   }
 
   if (FLAGS_docdb_enable_sst_stats_collector) {
@@ -1376,8 +1377,9 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
   {
     rocksdb::BlockBasedTableOptions table_options;
     table_options.use_delta_encoding = UseDeltaEncoding(table_type_);
-    docdb::InitRocksDBOptionsTableFactory(
-        &intents_rocksdb_options, tablet_options_, std::move(table_options));
+    intents_rocksdb_options.table_factory = docdb::CreateRocksDBTableFactory(
+        tablet_options_, docdb::StorageDbType::kIntents, intents_rocksdb_options.info_log.get(),
+        std::move(table_options));
   }
 
   intents_rocksdb_options.compaction_context_factory = {};
@@ -1934,7 +1936,7 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
 
 Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
-  InitRocksDBOptions(&rocksdb_options, LogPrefix());
+  InitRocksDBOptionsWithoutTableFactory(&rocksdb_options, LogPrefix());
 
   // Tiered storage: hand DestroyDB the regular DB's tier disks so its cleanup removes SST files
   // spread across all tiers.
@@ -4279,7 +4281,8 @@ Status Tablet::ModifyFlushedFrontier(
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, LogPrefix(), tablet_id(), /* statistics = */ nullptr, tablet_options_,
-        rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
+        docdb::StorageDbType::kRegular, rocksdb::BlockBasedTableOptions(),
+        hash_for_data_root_dir(metadata_->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     LOG_WITH_PREFIX(INFO) << "Opening the test RocksDB at " << checkpoint_dir_for_test
         << ", expecting to see flushed frontier of " << frontier.ToString();
@@ -5091,8 +5094,9 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSplitChildTablet(
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, db_info.db_type),
-        tablet_id, /* statistics = */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
-        hash_for_data_root_dir(metadata->data_root_dir()));
+        tablet_id, /* statistics = */ nullptr, tablet_options_,
+        db_info.db_type,
+        rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     // Disable background compactions, we only need to update flushed frontier.
     rocksdb_options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleNone;
@@ -5170,10 +5174,19 @@ void Tablet::InitRocksDBBaseOptions(rocksdb::Options* options) {
       hash_for_data_root_dir(metadata_->data_root_dir()));
 }
 
-void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix) {
+void Tablet::InitRocksDBOptionsWithoutTableFactory(
+    rocksdb::Options* options, const std::string& log_prefix) {
+  docdb::InitRocksDBOptionsWithoutTableFactory(
+      options, log_prefix, tablet_id(), /* statistics = */ nullptr, tablet_options_,
+      hash_for_data_root_dir(metadata_->data_root_dir()));
+}
+
+void Tablet::InitRocksDBOptions(
+    rocksdb::Options* options, const std::string& log_prefix, docdb::StorageDbType db_type) {
   docdb::InitRocksDBOptions(
       options, log_prefix, tablet_id(), /* statistics = */ nullptr, tablet_options_,
-      rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
+      db_type, rocksdb::BlockBasedTableOptions(),
+      hash_for_data_root_dir(metadata_->data_root_dir()));
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {
@@ -5603,24 +5616,24 @@ Status Tablet::VerifyDataIntegrity() {
 
   // Verify regular db.
   if (regular_db_) {
-    const auto& db_dir = metadata()->rocksdb_dir();
-    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+    RETURN_NOT_OK(
+        OpenDbAndCheckIntegrity(metadata()->rocksdb_dir(), docdb::StorageDbType::kRegular));
   }
 
   // Verify intents db.
   if (intents_db_) {
-    const auto& db_dir = metadata()->intents_rocksdb_dir();
-    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+    RETURN_NOT_OK(
+        OpenDbAndCheckIntegrity(metadata()->intents_rocksdb_dir(), docdb::StorageDbType::kIntents));
   }
 
   return Status::OK();
 }
 
-Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
+Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir, docdb::StorageDbType db_type) {
   // Similar to ldb's CheckConsistency, we open db as read-only with paranoid checks on.
   // If any corruption is detected then the open will fail with a Corruption status.
   rocksdb::Options db_opts;
-  InitRocksDBOptions(&db_opts, LogPrefix());
+  InitRocksDBOptions(&db_opts, LogPrefix(), db_type);
   db_opts.paranoid_checks = true;
 
   std::unique_ptr<rocksdb::DB> db;
