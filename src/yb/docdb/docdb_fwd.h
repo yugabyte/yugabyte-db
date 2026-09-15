@@ -54,6 +54,7 @@ class RedisWriteOperation;
 class ScanChoices;
 class SchemaPackingProvider;
 class SharedLockManager;
+class SstStatsAggregator;
 class StorageSet;
 class TableInfoProvider;
 class TransactionStatusCache;

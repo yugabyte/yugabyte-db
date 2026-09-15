@@ -348,8 +348,9 @@ class StackableDB : public DB {
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(
       ColumnFamilyHandle* column_family,
-      TablePropertiesCollection* props) override {
-    return db_->GetPropertiesOfAllTables(column_family, props);
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override {
+    return db_->GetPropertiesOfAllTables(column_family, props, error_handling);
   }
 
   using DB::GetPropertiesOfTablesInRange;
