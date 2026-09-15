@@ -1832,16 +1832,22 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    options->extra_master_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    options->extra_master_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(
         options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "ysql_enable_concurrent_ddl");
 
     // The test is specifically written for cases when txn ddl is disabled.
     // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
     // DDL savepoint requires transactional DDL, so keep the two flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
@@ -2046,9 +2052,11 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
 class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // The base class appends --ysql_yb_ddl_transaction_block_enabled=false, and gflags takes the
+    // last occurrence, so these must come after it to win.
+    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
     options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
   }
 };
 
