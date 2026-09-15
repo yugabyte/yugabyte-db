@@ -2051,13 +2051,8 @@ class NodeChecker():
                     ["OpenTelemetry health check failed: {}".format(output)], has_error=True
                 )
 
-            # Parse timestamp, ignoring nanoseconds
-            TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
-            boot_time_in_epoch = int(
-                datetime.strptime(up_since[:26], TIMESTAMP_FORMAT)
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
-            )
+            # Genuinely UTC: the collector renders RFC 3339 and says so with the trailing Z.
+            boot_time_in_epoch = parse_rfc3339_utc(up_since)
 
             hc_metric = Metric.from_definition(
                 HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC
@@ -2405,6 +2400,36 @@ def seconds_to_human_readable_time(seconds):
     h, m = divmod(m, 60)
     d, h = divmod(h, 24)
     return ['{} days {:d}:{:02d}:{:02d}'.format(d, h, m, s)]
+
+
+def parse_rfc3339_utc(value):
+    """Parse an RFC 3339 UTC timestamp into Unix epoch seconds.
+
+    Written for the OpenTelemetry collector's upSince, which Go renders with RFC3339Nano. That
+    format trims trailing zeros from the fractional second and omits it entirely when it is zero,
+    so the field is anywhere from nine digits to absent:
+
+        2025-03-26T16:54:47.936558866Z
+        2025-03-26T16:54:47.9Z
+        2025-03-26T16:54:47Z
+
+    A fixed-width slice therefore cuts in the wrong place on the shorter forms, which used to
+    raise and be reported as a failed health check on a collector that was running perfectly
+    well. strptime's %f wants one to six digits, so the fraction is padded and truncated to six.
+
+    Raises ValueError if the value is not a timestamp at all, which the caller reports.
+    """
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1]
+    head, dot, fraction = text.partition(".")
+    if dot:
+        # Microseconds, whatever precision arrived.
+        text = "{}.{}".format(head, (fraction + "000000")[:6])
+        fmt = "%Y-%m-%dT%H:%M:%S.%f"
+    else:
+        fmt = "%Y-%m-%dT%H:%M:%S"
+    return int(datetime.strptime(text, fmt).replace(tzinfo=timezone.utc).timestamp())
 
 
 def local_time():
