@@ -131,7 +131,11 @@ void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
   }
 }
 
-using yb::PosixFileLock;
+class PosixFileLock : public FileLock {
+ public:
+  int fd_;
+  std::string filename;
+};
 
 class PosixEnv : public Env {
  public:
@@ -697,7 +701,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
         // disable mmap writes
         EnvOptions no_mmap_writes_options = options;
         no_mmap_writes_options.use_mmap_writes = false;
-        *result = std::make_unique<yb::PosixWritableFile>(fname, fd, no_mmap_writes_options);
+        *result = std::make_unique<PosixWritableFile>(fname, fd, no_mmap_writes_options);
       }
     }
     return s;
@@ -741,7 +745,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
         EnvOptions no_mmap_writes_options = options;
         no_mmap_writes_options.use_mmap_writes = false;
 
-        *result = std::make_unique<yb::PosixWritableFile>(fname, fd, no_mmap_writes_options);
+        *result = std::make_unique<PosixWritableFile>(fname, fd, no_mmap_writes_options);
       }
     }
     return s;

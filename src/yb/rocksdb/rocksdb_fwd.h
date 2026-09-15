@@ -20,13 +20,7 @@
 #include "yb/util/clone_ptr.h"
 #include "yb/util/enums.h"
 
-namespace yb {
-class WritableFile;
-}
-
 namespace rocksdb {
-
-using yb::WritableFile;
 
 class Arena;
 class Cache;
@@ -45,6 +39,7 @@ class IteratorFilter;
 class TableReader;
 class UserFrontier;
 class UserFrontiers;
+class WritableFile;
 class WriteBatch;
 
 struct BlockBasedTableOptions;
