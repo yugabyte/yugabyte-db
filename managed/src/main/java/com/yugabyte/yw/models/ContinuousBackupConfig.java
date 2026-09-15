@@ -33,6 +33,15 @@ public class ContinuousBackupConfig extends Model {
   private static final Finder<UUID, ContinuousBackupConfig> find =
       new Finder<>(ContinuousBackupConfig.class) {};
 
+  private static final long NANOSECONDS_IN_MICROSECOND = 1000L;
+  private static final long MICROSECONDS_IN_MILLISECOND = 1000L;
+  private static final long MILLISECONDS_IN_SECOND = 1000L;
+  private static final long SECONDS_IN_MINUTE = 60L;
+  private static final long MINUTES_IN_HOUR = 60L;
+  private static final long HOURS_IN_DAY = 24L;
+  private static final long DAYS_IN_MONTH = 30L;
+  private static final long DAYS_IN_YEAR = 365L;
+
   @Id
   @ApiModelProperty(value = "Continuous backup config UUID")
   private UUID uuid;
@@ -104,10 +113,11 @@ public class ContinuousBackupConfig extends Model {
 
   public void validate() {
     long frequencyInMilliseconds = this.getFrequencyInMilliseconds();
-    if (frequencyInMilliseconds > 1000 * 60 * 60 * 24) {
+    if (frequencyInMilliseconds
+        > MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE * MINUTES_IN_HOUR * HOURS_IN_DAY) {
       throw new PlatformServiceException(BAD_REQUEST, "Frequency must be less than 1 day");
     }
-    if (frequencyInMilliseconds < 1000 * 60 * 2) {
+    if (frequencyInMilliseconds < MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE * 2) {
       throw new PlatformServiceException(BAD_REQUEST, "Frequency must be at least 2 minutes");
     }
   }
@@ -115,23 +125,37 @@ public class ContinuousBackupConfig extends Model {
   public long getFrequencyInMilliseconds() {
     switch (this.getFrequencyTimeUnit()) {
       case NANOSECONDS:
-        return this.getFrequency() / 100000;
+        return this.getFrequency() / (NANOSECONDS_IN_MICROSECOND * MICROSECONDS_IN_MILLISECOND);
       case MICROSECONDS:
-        return this.getFrequency() / 1000;
+        return this.getFrequency() / MICROSECONDS_IN_MILLISECOND;
       case MILLISECONDS:
         return this.getFrequency();
       case SECONDS:
-        return this.getFrequency() * 1000;
+        return this.getFrequency() * MILLISECONDS_IN_SECOND;
       case MINUTES:
-        return this.getFrequency() * 1000 * 60;
+        return this.getFrequency() * MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE;
       case HOURS:
-        return this.getFrequency() * 1000 * 60 * 60;
+        return this.getFrequency() * MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE * MINUTES_IN_HOUR;
       case DAYS:
-        return this.getFrequency() * 1000 * 60 * 60 * 24;
+        return this.getFrequency()
+            * MILLISECONDS_IN_SECOND
+            * SECONDS_IN_MINUTE
+            * MINUTES_IN_HOUR
+            * HOURS_IN_DAY;
       case MONTHS:
-        return this.getFrequency() * 1000 * 60 * 60 * 24 * 30;
+        return this.getFrequency()
+            * MILLISECONDS_IN_SECOND
+            * SECONDS_IN_MINUTE
+            * MINUTES_IN_HOUR
+            * HOURS_IN_DAY
+            * DAYS_IN_MONTH;
       case YEARS:
-        return this.getFrequency() * 1000 * 60 * 60 * 24 * 365;
+        return this.getFrequency()
+            * MILLISECONDS_IN_SECOND
+            * SECONDS_IN_MINUTE
+            * MINUTES_IN_HOUR
+            * HOURS_IN_DAY
+            * DAYS_IN_YEAR;
     }
     return this.getFrequency();
   }
