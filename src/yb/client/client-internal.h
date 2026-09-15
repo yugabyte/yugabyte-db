@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/client/request_id_allocator.h"
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
@@ -642,15 +643,9 @@ class YBClient::Data {
   const ClientId id_;
   const std::string log_prefix_;
 
-  // Used to track requests that were sent to a particular tablet, so it could track different
-  // RPCs related to the same write operation and reject duplicates.
-  struct TabletRequests {
-    RetryableRequestId request_id_seq = 0;
-    std::set<RetryableRequestId> running_requests;
-  };
-
-  simple_spinlock tablet_requests_mutex_;
-  TabletRequests requests_;
+  // Allocates ids for retryable write requests, so the server can track different RPCs related
+  // to the same write operation and reject duplicates.
+  internal::RequestIdAllocator request_id_allocator_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 
