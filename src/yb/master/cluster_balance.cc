@@ -974,30 +974,44 @@ Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   for (const auto& tablet_id : state_->tablets_over_max_placements_) {
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
-    if (tablet_meta.is_over_replicated) {
-      continue;
-    }
-    for (const auto& from_ts : tablet_meta.over_max_placement_tablet_servers) {
-      const auto from_placement = state_->GetValidPlacement(from_ts);
-      for (const auto& to_ts : state_->sorted_load_) {
-        const auto to_placement = state_->GetValidPlacement(to_ts);
-        if (!from_placement || !to_placement ||
-            cloud_equal_to()(*from_placement, *to_placement)) {
-          continue;
-        }
-        if (!VERIFY_RESULT(
-                state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts))) {
-          continue;
-        }
-        *out_tablet_id = tablet_id;
-        *out_from_ts = from_ts;
-        *out_to_ts = to_ts;
-        RETURN_NOT_OK(AddOrMoveReplica(
-            tablet_id, from_ts, to_ts,
-            Format("Placement $0 exceeds max_num_replicas",
-                   from_placement->ShortDebugString())));
-        return true;
+    VLOG(3) << "Tablet " << tablet_id << " has a placement above its maximum"
+            << ", attempting to find a tserver in another placement to move a replica to.";
+    // Loop through TSs by load to find a destination outside the offending placement(s). The
+    // remove from the offending placement happens on the removal path once this add makes the
+    // tablet over-replicated.
+    for (const auto& to_ts : state_->sorted_load_) {
+      const auto to_placement = state_->GetValidPlacement(to_ts);
+      if (!to_placement || tablet_meta.over_max_placements.contains(*to_placement)) {
+        continue;
       }
+      // No source tserver is passed: the destination is in a different placement, so the
+      // same-placement move exemption does not apply and the maximum is enforced strictly.
+      if (!VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts, "" /* from_ts */))) {
+        continue;
+      }
+      // Pick a replica in an offending placement as the logged source of the move.
+      TabletServerId from_ts;
+      CloudInfoPB from_placement;
+      for (const auto& [ts_uuid, ts_meta] : state_->per_ts_meta_) {
+        if (!ts_meta.running_tablets.contains(tablet_id)) {
+          continue;
+        }
+        const auto placement = state_->GetValidPlacement(ts_uuid);
+        if (placement && tablet_meta.over_max_placements.contains(*placement)) {
+          from_ts = ts_uuid;
+          from_placement = *placement;
+          break;
+        }
+      }
+      *out_tablet_id = tablet_id;
+      *out_from_ts = from_ts;
+      *out_to_ts = to_ts;
+      VLOG(3) << "Found destination server " << to_ts << " to move tablet replica " << tablet_id
+              << " from " << from_ts;
+      RETURN_NOT_OK(AddOrMoveReplica(
+          tablet_id, from_ts, to_ts,
+          Format("Placement $0 exceeds its max_num_replicas", from_placement.ShortDebugString())));
+      return true;
     }
   }
   return false;
