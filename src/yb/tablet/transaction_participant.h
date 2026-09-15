@@ -146,6 +146,13 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 
+  // The transaction's next intra-transaction write ID as of its last replicated batch.
+  // Returns kMinWriteId for an unknown transaction (its first batch starts there). The value
+  // only advances at Raft apply (BatchReplicated), so with batches in flight it lags the value
+  // the next apply will see -- callers using it to enforce kIntraTxnWriteIdLimit must keep a
+  // margin (see WriteQuery::DoCompleteExecute).
+  Result<IntraTxnWriteId> NextIntraTxnWriteIdHint(const TransactionId& id);
+
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
   std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
