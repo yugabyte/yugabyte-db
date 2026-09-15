@@ -19,6 +19,8 @@
 #include "yb/common/constants.h"
 #include "yb/common/schema.h"
 
+#include "yb/consensus/metadata.pb.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 
@@ -547,6 +549,14 @@ std::unordered_set<TabletServerId> GetReplicasWithOutstandingCompaction(
     const TabletReplicaMap& replicas) {
   std::unordered_set<TabletServerId> tservers_with_outstanding_compaction;
   for (const auto& [ts_uuid, replica] : replicas) {
+    // Don't count split child RBSing peers towards outstanding post-split compaction,
+    // because Cluster Balancer ideally schedules move on a split child only after the peer
+    // resets should_disable_lb_move as part of the tablet report (GH#12362).
+    //
+    // TODO(#33766): Prevent RBSing split child with pending post-split compaction.
+    if (replica.member_type != consensus::VOTER && replica.member_type != consensus::OBSERVER) {
+      continue;
+    }
     if (replica.drive_info.may_have_orphaned_post_split_data) {
       tservers_with_outstanding_compaction.insert(ts_uuid);
     }

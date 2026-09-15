@@ -2199,6 +2199,72 @@ TEST_F(AutomaticTabletSplitITest, OutstandingTabletSplitsMetric) {
   }, 30s * kTimeMultiplier, "Wait for outstanding splits metric == kTabletSplitLimit"));
 }
 
+// GH#12362: After post-split compaction, a remote bootstrap of the split child must not keep
+// the parent counted as an outstanding compacting split. The new replica's
+// may_have_orphaned_post_split_data defaults to true until it can report drive info.
+TEST_F(AutomaticTabletSplitITest, RemoteBootstrapAfterPostSplitDoesNotHoldOutstandingSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // High enough that automatic splitting will not schedule new splits of the children.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1LL << 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 1;
+
+  constexpr auto kNumRows = kDefaultNumRows;
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2));
+  ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(15s * kTimeMultiplier));
+
+  auto metric =
+      cluster_->mini_master()->master()->metric_entity_cluster()->FindOrNull<AtomicGauge<uint64_t>>(
+          METRIC_outstanding_tablet_splits);
+  ASSERT_NE(metric, nullptr);
+  SleepForBgTaskIters(4);
+  ASSERT_EQ(metric->value(), 0);
+
+  auto child_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_FALSE(child_peers.empty());
+  const auto child_id = child_peers[0]->tablet_id();
+  const auto child_info = ASSERT_RESULT(catalog_mgr->GetTabletInfo(child_id));
+
+  size_t leader_idx = 0;
+  CHECK_NOTNULL(GetLeaderForTablet(cluster_.get(), child_id, &leader_idx));
+  const auto leader_id = cluster_->mini_tablet_server(leader_idx)->server()->permanent_uuid();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
+  const auto new_ts = cluster_->num_tablet_servers();
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(new_ts + 1));
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  const auto new_ts_id = cluster_->mini_tablet_server(new_ts)->server()->permanent_uuid();
+
+  ASSERT_OK(itest::AddServer(
+      ts_map[leader_id].get(), child_id, ts_map[new_ts_id].get(),
+      consensus::PeerMemberType::PRE_VOTER, std::nullopt, kRpcTimeout));
+  ASSERT_OK(itest::WaitForTabletConfigChange(child_info, new_ts_id, consensus::ADD_SERVER));
+  ASSERT_OK(itest::WaitUntilTabletInState(child_info, new_ts_id, tablet::NOT_STARTED));
+  // GH#33874: The heartbeat from the RBSing tserver sets the member type to UNKNOWN_MEMBER_TYPE.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (const auto& [ts_uuid, replica] : *child_info->GetReplicaLocations()) {
+      if (ts_uuid == new_ts_id &&
+          replica.member_type == consensus::PeerMemberType::UNKNOWN_MEMBER_TYPE) {
+        return true;
+      }
+    }
+    return false;
+  }, 20s * kTimeMultiplier, "Waiting for RBSing peer to report UNKNOWN_MEMBER_TYPE."));
+
+  SleepForBgTaskIters(4);
+  ASSERT_EQ(metric->value(), 0)
+      << "PRE_VOTER remote bootstrap after post-split compaction should not hold an outstanding "
+         "split slot";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+}
+
 // Similar to the FailedSplitIsRestarted test, but crash instead.
 TEST_F(AutomaticTabletSplitExternalMiniClusterITest, CrashedSplitIsRestarted) {
   constexpr int kNumRows = 1000;
