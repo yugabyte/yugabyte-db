@@ -90,7 +90,8 @@ PeerRole UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
 
 } // anonymous namespace
 
-Result<std::unique_ptr<ConsensusMetadata>> ConsensusMetadata::Create(FsManager* fs_manager,
+std::unique_ptr<ConsensusMetadata> ConsensusMetadata::CreateUnflushedInternal(
+                                 FsManager* fs_manager,
                                  const string& tablet_id,
                                  const std::string& peer_uuid,
                                  const RaftConfigPB& config,
@@ -98,6 +99,22 @@ Result<std::unique_ptr<ConsensusMetadata>> ConsensusMetadata::Create(FsManager* 
   std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager, tablet_id, peer_uuid));
   cmeta->set_committed_config(config);
   cmeta->set_current_term(current_term);
+  return cmeta;
+}
+
+std::unique_ptr<ConsensusMetadata> ConsensusMetadata::CreateUnflushed(FsManager* fs_manager,
+                                 const std::string& peer_uuid,
+                                 const RaftConfigPB& config,
+                                 int64_t current_term) {
+  return CreateUnflushedInternal(fs_manager, {}, peer_uuid, config, current_term);
+}
+
+Result<std::unique_ptr<ConsensusMetadata>> ConsensusMetadata::Create(FsManager* fs_manager,
+                                 const string& tablet_id,
+                                 const std::string& peer_uuid,
+                                 const RaftConfigPB& config,
+                                 int64_t current_term) {
+  auto cmeta = CreateUnflushedInternal(fs_manager, tablet_id, peer_uuid, config, current_term);
   RETURN_NOT_OK(cmeta->Flush());
   return cmeta;
 }
@@ -329,6 +346,8 @@ void ConsensusMetadata::MergeCommittedConsensusStatePB(const ConsensusStatePB& c
 }
 
 Status ConsensusMetadata::Flush() {
+  SCHECK(!tablet_id_.empty(), IllegalState,
+         "Cannot flush consensus metadata with no tablet id, peer $0", peer_uuid_);
   MAYBE_FAULT(FLAGS_TEST_fault_crash_before_cmeta_flush);
   if (PREDICT_FALSE(FLAGS_TEST_error_before_flushing_consensus_metadata)) {
     return STATUS(
@@ -365,7 +384,8 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
 }
 
 std::string ConsensusMetadata::LogPrefix() const {
-  return MakeTabletLogPrefix(tablet_id_, peer_uuid_);
+  return tablet_id_.empty() ? Format("P $0: ", peer_uuid_)
+                            : MakeTabletLogPrefix(tablet_id_, peer_uuid_);
 }
 
 void ConsensusMetadata::UpdateActiveRole() {
