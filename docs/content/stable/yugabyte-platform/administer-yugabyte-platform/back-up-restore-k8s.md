@@ -18,8 +18,8 @@ type: docs
       Automated
     </a>
   </li>
-  <li class="active">
-    <a href="../back-up-restore-installer/" class="nav-link">
+  <li>
+    <a href="../back-up-restore-installer/" class="nav-link active">
       Manual
     </a>
   </li>
@@ -68,31 +68,31 @@ You can back up the YugabyteDB Anywhere server as follows:
 
 1. Verify that the computer performing the backup operation can access the YugabyteDB Anywhere Kubernetes pod instance by executing the following command:
 
-  ```sh
-  kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
-  ```
+    ```sh
+    kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
+    ```
 
-  *k8s_namespace* specifies the Kubernetes namespace where the YugabyteDB Anywhere pod is running.
+    *k8s_namespace* specifies the Kubernetes namespace where the YugabyteDB Anywhere pod is running.
 
-  *k8s_pod* specifies the name of the YugabyteDB Anywhere Kubernetes pod.
+    *k8s_pod* specifies the name of the YugabyteDB Anywhere Kubernetes pod.
 
 1. Run the `yb_platform_backup.sh` script using the `create` command, as follows:
 
-  ```sh
-  ./yb_platform_backup.sh create --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
-  ```
+    ```sh
+    ./yb_platform_backup.sh create --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
+    ```
 
-  *backup* is the command to run the backup of the YugabyteDB Anywhere server.
+    *backup* is the command to run the backup of the YugabyteDB Anywhere server.
 
-  *output_path* specifies the location for the output backup archive.
+    *output_path* specifies the location for the output backup archive.
 
-  *k8s_namespace* specifies the Kubernetes namespace in which the YugabyteDB Anywhere pod is running.
+    *k8s_namespace* specifies the Kubernetes namespace in which the YugabyteDB Anywhere pod is running.
 
-  *k8s_pod* specifies the name of the YugabyteDB Anywhere Kubernetes pod.
+    *k8s_pod* specifies the name of the YugabyteDB Anywhere Kubernetes pod.
 
-  *exclude_releases* excludes YugabyteDB releases from the backup archive.
+    *exclude_releases* excludes YugabyteDB releases from the backup archive.
 
-  *verbose* prints debug output.
+    *verbose* prints debug output.
 
 1. Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
 

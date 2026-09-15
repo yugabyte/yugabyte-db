@@ -18,8 +18,8 @@ type: docs
       Automated
     </a>
   </li>
-  <li class="active">
-    <a href="../back-up-restore-installer/" class="nav-link">
+  <li>
+    <a href="../back-up-restore-installer/" class="nav-link active">
       Manual
     </a>
   </li>

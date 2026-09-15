@@ -15,8 +15,8 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li class="active">
-    <a href="../back-up-restore-yba/" class="nav-link">
+  <li>
+    <a href="../back-up-restore-yba/" class="nav-link active">
       Automated
     </a>
   </li>
@@ -36,7 +36,7 @@ You can also perform backups on demand.
 ## Limitations
 
 - Automatic backups are not compatible with [high availability](../high-availability/).
-- Automatic backups do not include universe Prometheus data; they do include locally stored YugabyteDB releases.
+- Automatic backups do not include universe Prometheus data or locally stored YugabyteDB releases.
 
 ## Prerequisites
 
