@@ -132,7 +132,16 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
   if (!dist_trace::HasActiveContext() || ops.empty()) {
     return;
   }
-  dist_trace::ClearPendingRpcAttrs();
+
+  // Publish the details of the Perform RPC.
+  size_t reads = 0;
+  size_t writes = 0;
+  for (const auto& op : ops) {
+    (op->is_read() ? reads : writes)++;
+  }
+  dist_trace::AddPendingRpcStringAttr("rpc.read_ops", std::to_string(reads));
+  dist_trace::AddPendingRpcStringAttr("rpc.write_ops", std::to_string(writes));
+
   std::string joined_names;
   joined_names.reserve(128);
   std::set<std::string_view> processed;
