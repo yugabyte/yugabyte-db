@@ -1,6 +1,8 @@
 import { Suspense, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseEditActionDisabled } from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 import { toast } from 'react-toastify';
 import { MasterServerNodeAllocationModal } from '../master-server/MasterServerNodeAllocationModal';
@@ -58,7 +60,7 @@ export const GeoPartitionPlacementView = () => {
   const spec = universeData?.spec as Record<string, unknown> | undefined;
   const rawName = String(spec?.name ?? spec?.universeName ?? spec?.universe_name ?? '').trim();
   const universeDisplayName = rawName || universeUuid;
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
 
   const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
 
@@ -159,7 +161,7 @@ export const GeoPartitionPlacementView = () => {
           window.location.href = getAddReadReplicaRoute(universeUuid);
         },
         startIcon: <EditIcon />,
-        disabled: !isUniverseReady
+        disabled: isEditActionDisabled
       },
       {
         id: 'delete-read-replica',
@@ -170,7 +172,7 @@ export const GeoPartitionPlacementView = () => {
         onClick: () =>
           setModalParams((prev) => ({ ...prev, showDeleteReadReplicaModal: true })),
         startIcon: <DeleteOutlineIcon />,
-        disabled: !isUniverseReady
+        disabled: isEditActionDisabled
       }
     ];
   }, [readReplicaClusters?.uuid, t, universeUuid]);
@@ -181,17 +183,17 @@ export const GeoPartitionPlacementView = () => {
           {t('geoParitionPlacementView.title')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          <YBButton
+          <K8OperatorEditBlockedTooltip><YBButton
             startIcon={<AddIcon />}
             variant="secondary"
             dataTestId="addGeoPartition"
             onClick={() => {
               window.location.href = getAddGeoPartitionRoute(universeUuid);
             }}
-            disabled={!isUniverseReady}
+            disabled={isEditActionDisabled}
           >
             {t('geoParitionPlacementView.addGeoPartition')}
-          </YBButton>
+          </YBButton></K8OperatorEditBlockedTooltip>
           <PlacementActionsMenu universeUuid={universeUuid} triggerLabelKey="actions" />
         </Box>
       </Box>

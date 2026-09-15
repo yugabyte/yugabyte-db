@@ -2,6 +2,7 @@ import { CloudType, Region } from '@app/redesign/helpers/dtos';
 import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { filter, isEmpty, keys, some } from 'lodash';
 import { useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TFunction } from 'i18next';
 import {
   ClusterGFlags,
@@ -566,4 +567,19 @@ export function getDedicatedClusterDisplayNodeTotal(
 export function useIsUniverseReady() {
   const { universeData } = useEditUniverseContext();
   return !universeData?.info?.update_in_progress && !universeData?.info?.universe_paused;
+}
+
+/** Disable mutate CTAs when the universe is busy/paused or owned by the K8s operator. */
+export function useIsUniverseEditActionDisabled() {
+  const isUniverseReady = useIsUniverseReady();
+  const { isK8OperatorEditBlocked = false } = useEditUniverseContext();
+  return !isUniverseReady || isK8OperatorEditBlocked;
+}
+
+export function useK8OperatorEditBlockedTooltip(): string {
+  const { isK8OperatorEditBlocked = false } = useEditUniverseContext();
+  const { t } = useTranslation();
+  return isK8OperatorEditBlocked
+    ? t('blockedByKubernetesOperator', { keyPrefix: 'universeActions' })
+    : '';
 }
