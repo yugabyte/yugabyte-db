@@ -52,6 +52,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/tcp_stream.h"
 
@@ -190,6 +191,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& met
 Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     rpc::ProxyCache* proxy_cache,
                                     const HostPort& bootstrap_peer_addr,
+                                    rpc::Encrypted encrypted,
                                     const ServerRegistrationPB& tablet_leader_conn_info,
                                     const OpId& pending_config_op_id_from_rbs,
                                     RaftGroupMetadataPtr* meta,
@@ -201,9 +203,16 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   // Set up RPC proxies for the RemoteBootstrapService. The uncompressed proxy is used to download
   // SST files (which are already Snappy compressed). The other files use the compressed proxy.
-  proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, bootstrap_peer_addr));
+  // Both carry the encryption the caller decided from the address it selected, so bootstrap
+  // traffic sits inside node_to_node_encryption_scope like every other connection between two
+  // nodes; it is the bulk of that traffic.
+  auto* context = proxy_cache->GetContext();
+  auto clamped = context->ClampEncryption(encrypted);
+  proxy_.reset(new RemoteBootstrapServiceProxy(
+      proxy_cache, bootstrap_peer_addr, &context->ProtocolFor(clamped)));
   uncompressed_proxy_.reset(new RemoteBootstrapServiceProxy(
-      proxy_cache, bootstrap_peer_addr, &proxy_cache->GetContext()->UncompressedProtocol()));
+      proxy_cache, bootstrap_peer_addr,
+      &context->ProtocolFor(rpc::Compressed::kFalse, clamped)));
 
   auto rbs_source_role = "LEADER";
   BeginRemoteBootstrapSessionRequestPB req;

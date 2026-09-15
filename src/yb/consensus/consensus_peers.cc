@@ -49,6 +49,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/periodic.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet_error.h"
@@ -723,8 +724,13 @@ RpcPeerProxyFactory::RpcPeerProxyFactory(
     : messenger_(messenger), proxy_cache_(proxy_cache), from_(std::move(from)) {}
 
 PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
-  auto hostport = HostPortFromPB(DesiredHostPort(peer_pb, from_));
-  auto proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_, hostport);
+  auto selected = SelectHostPort(peer_pb, from_);
+  auto hostport = HostPortFromPB(selected.host_port);
+  auto proxy = std::make_unique<ConsensusServiceProxy>(
+      proxy_cache_, hostport,
+      &proxy_cache_->GetContext()->ProtocolFor(
+          rpc::Encrypted(
+              UseEncryption(selected.used_broadcast, peer_pb.cloud_info(), from_))));
   return std::make_unique<RpcPeerProxy>(std::move(hostport), std::move(proxy));
 }
 

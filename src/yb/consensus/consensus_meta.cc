@@ -395,9 +395,13 @@ std::pair<PeerRole, int64_t> ConsensusMetadata::GetRoleAndTerm() const {
   return std::make_pair(UnpackRole(packed_role_and_term), UnpackTerm(packed_role_and_term));
 }
 
-const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& from) {
-  return DesiredHostPort(
+SelectedHostPort SelectHostPort(const RaftPeerPB& peer, const CloudInfoPB& from) {
+  return SelectHostPort(
       peer.last_known_broadcast_addr(), peer.last_known_private_addr(), peer.cloud_info(), from);
+}
+
+const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& from) {
+  return SelectHostPort(peer, from).host_port;
 }
 
 void TakeRegistration(ServerRegistrationPB* source, RaftPeerPB* dest) {
