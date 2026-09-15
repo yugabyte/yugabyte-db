@@ -1332,6 +1332,9 @@ Status BackfillTable::StartShadowVerificationForNextIndex() {
       sv.pending_tablets.clear();
       sv.in_flight = 0;
       sv.terminal = false;
+      sv.dockey_groups_scanned = 0;
+      sv.versions_scanned = 0;
+      sv.fallback_groups = 0;
     }
   }
   if (!index_table) {
@@ -1432,6 +1435,13 @@ void BackfillTable::ShadowVerificationTabletDone(
   const bool clean = status.ok() &&
                      resp.outcome() == tserver::VerifyUniqueIndexTabletResponsePB::CLEAN;
 
+  if (status.ok()) {
+    // Cluster-wide scan accounting counts every completed scan segment's work, including
+    // late responses dropped by the single-winner guard below -- the scan happened.
+    master_->catalog_manager_impl()->RecordUniqueIndexVerificationScan(
+        resp.versions_scanned(), resp.fallback_groups());
+  }
+
   // Single-winner protocol: the terminal check and the launch-next / index-done decision are
   // one critical section, so a CLEAN callback racing a short-circuiting VIOLATION can neither
   // overwrite the recorded outcome nor double-advance to the next index. Exactly one callback
@@ -1447,6 +1457,11 @@ void BackfillTable::ShadowVerificationTabletDone(
       return;  // A winner already recorded this index's outcome; late responses are ignored.
     }
     index_table_id = sv.current_index->id();
+    if (status.ok()) {
+      sv.dockey_groups_scanned += resp.dockey_groups_scanned();
+      sv.versions_scanned += resp.versions_scanned();
+      sv.fallback_groups += resp.fallback_groups();
+    }
     if (clean && resp.has_resume_key()) {
       action = Action::kResume;  // Pagination: same tablet continues; join counts untouched.
     } else if (clean) {
@@ -1559,7 +1574,9 @@ void BackfillTable::ShadowVerificationPhaseFailed(
     // marked when the chunks completed), so whatever is still IN_PROGRESS is exactly the
     // unverified set: the in-flight index if Record's marking failed, indexes the phase never
     // reached, and indexes never selected because resolution itself failed. All are equally
-    // unverified; fail them rather than publish.
+    // unverified; fail them rather than publish. (Never-reached indexes get no per-index
+    // outcome counter -- only Record increments those -- so outcome_inconclusive undercounts
+    // in multi-index jobs; YSQL backfill jobs are single-index.)
     const auto unverified = indexes_to_build();
     if (!unverified.empty()) {
       WARN_NOT_OK(
@@ -1573,6 +1590,9 @@ void BackfillTable::ShadowVerificationPhaseFailed(
 Status BackfillTable::RecordShadowVerificationOutcome(
     UniqueIndexVerificationStatePB::State state, const std::string& reason) {
   TableId index_table_id;
+  uint64_t dockey_groups_scanned = 0;
+  uint64_t versions_scanned = 0;
+  uint64_t fallback_groups = 0;
   {
     std::lock_guard l(mutex_);
     if (!shadow_verification_.current_index) {
@@ -1581,6 +1601,9 @@ Status BackfillTable::RecordShadowVerificationOutcome(
       return Status::OK();
     }
     index_table_id = shadow_verification_.current_index->id();
+    dockey_groups_scanned = shadow_verification_.dockey_groups_scanned;
+    versions_scanned = shadow_verification_.versions_scanned;
+    fallback_groups = shadow_verification_.fallback_groups;
   }
   RETURN_NOT_OK(MutateVerificationState(
       index_table_id, [state, &reason](UniqueIndexVerificationStatePB* state_pb) {
@@ -1589,6 +1612,7 @@ Status BackfillTable::RecordShadowVerificationOutcome(
           state_pb->set_reason(reason);
         }
       }));
+  master_->catalog_manager_impl()->RecordUniqueIndexVerificationOutcome(state);
   const bool gating = verification_gates_publication();
   const auto severity_prefix =
       state == UniqueIndexVerificationStatePB::VERIFY_CLEAN ? "" : "NOT CLEAN: ";
@@ -1596,7 +1620,10 @@ Status BackfillTable::RecordShadowVerificationOutcome(
                         << ": " << severity_prefix
                         << UniqueIndexVerificationStatePB::State_Name(state)
                         << (reason.empty() ? "" : Format(" ($0)", reason))
-                        << (gating ? " [gating]" : " [observational]");
+                        << (gating ? " [gating]" : " [observational]")
+                        << Format(
+                               " (dockey_groups=$0, versions=$1, fallback_groups=$2)",
+                               dockey_groups_scanned, versions_scanned, fallback_groups);
   if (!gating) {
     // Observational: the outcome is recorded and logged, never enforced.
     return Status::OK();
