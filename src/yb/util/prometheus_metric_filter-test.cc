@@ -33,6 +33,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <gtest/gtest.h>
 
@@ -291,6 +292,66 @@ TEST_F(PrometheusMetricFilterTest, TestV2ServerLevel) {
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTableMetricName]);
   ASSERT_EQ(kNoLevel, names_to_levels[kServerMetricName]);
+}
+
+TEST_F(PrometheusMetricFilterTest, TestActiveTableIds) {
+  auto GetOutput = [this](const MetricPrometheusOptions& opts) -> Result<std::string> {
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    RETURN_NOT_OK(registry_.WriteForPrometheus(&writer, opts));
+    return output.str();
+  };
+
+  static const auto kTableIdLabel1 = R"#(table_id="table_id_1")#";
+  static const auto kTableIdLabel2 = R"#(table_id="table_id_2")#";
+
+  for (const auto& version : {kFilterVersionOne, kFilterVersionTwo}) {
+    SCOPED_TRACE(version);
+    MetricPrometheusOptions opts;
+    opts.version = version;
+
+    // Without an active-table list, every table is exported.
+    auto output = ASSERT_RESULT(GetOutput(opts));
+    ASSERT_STR_CONTAINS(output, kTableIdLabel1);
+    ASSERT_STR_CONTAINS(output, kTableIdLabel2);
+    ASSERT_STR_CONTAINS(output, kServerMetricName);
+
+    // A list drops the table level series of every table outside of it.
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+        std::initializer_list<std::string>{"table_id_1"});
+    output = ASSERT_RESULT(GetOutput(opts));
+    ASSERT_STR_CONTAINS(output, kTableIdLabel1);
+    ASSERT_STR_NOT_CONTAINS(output, kTableIdLabel2);
+    ASSERT_STR_CONTAINS(output, kServerMetricName);
+
+    // An empty list drops all of them, while metrics without a table id are untouched.
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+    output = ASSERT_RESULT(GetOutput(opts));
+    ASSERT_STR_NOT_CONTAINS(output, "table_id=");
+    ASSERT_STR_CONTAINS(output, kServerMetricName);
+  }
+}
+
+TEST_F(PrometheusMetricFilterTest, TestActiveTableIdsWithMaxMetricEntries) {
+  MetricPrometheusOptions opts;
+  opts.version = kFilterVersionTwo;
+  opts.table_allowlist_string = kTableMetricName;
+  opts.server_allowlist_string = kServerMetricName;
+  // Only table_id_1 and the server metric are left to export, so the two entries fit into the
+  // budget and nothing is reported as cut off.
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+      std::initializer_list<std::string>{"table_id_1"});
+  opts.max_metric_entries = 2;
+
+  NMSWriter::EntityMetricsMap table_metrics;
+  NMSWriter::MetricsMap server_metrics;
+  NMSWriter writer(&table_metrics, &server_metrics, opts);
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+
+  ASSERT_EQ(1, table_metrics.size());
+  ASSERT_TRUE(table_metrics.contains("table_id_1"));
+  ASSERT_EQ(1, server_metrics.size());
+  ASSERT_EQ(0, writer.TEST_GetNumberOfEntriesCutOff());
 }
 
 TEST_F(PrometheusMetricFilterTest, TestLimitMaxMetricEntries) {
