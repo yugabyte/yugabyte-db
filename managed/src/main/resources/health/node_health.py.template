@@ -2185,13 +2185,10 @@ class NodeChecker():
                     ["OpenTelemetry health check failed: {}".format(output)], has_error=True
                 )
 
-            # Parse timestamp, ignoring nanoseconds
-            TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
-            boot_time_in_epoch = int(
-                datetime.strptime(up_since[:26], TIMESTAMP_FORMAT)
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
-            )
+            # This one is genuinely UTC - the collector renders RFC 3339 and says so with the
+            # trailing Z - unlike the systemd timestamps parsed further down, which come out in
+            # the host's zone.
+            boot_time_in_epoch = parse_rfc3339_utc(up_since)
 
             hc_metric = Metric.from_definition(
                 HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC
@@ -2620,7 +2617,13 @@ class NodeChecker():
 
             # Query the relevant fields in one call against the discovered scope.
             scope_flag = "--user " if user_scope else ""
-            cmd = ("systemctl {scope}show {unit} --no-pager "
+            # TZ=UTC because systemd renders timestamps in the host's timezone, and
+            # parse_systemctl_timestamp cannot resolve an arbitrary zone abbreviation - "PDT" is
+            # not a thing Python can turn into an offset, and %Z silently matches the host's own
+            # abbreviation without attaching one. Forcing the zone is the only fix that works for
+            # every host. LC_ALL=C pins the day name, which strftime renders per LC_TIME; the
+            # parser drops that token, so it is only belt and braces.
+            cmd = ("TZ=UTC LC_ALL=C systemctl {scope}show {unit} --no-pager "
                    "--property=LoadState,Result,ExecMainExitTimestamp,"
                    "ActiveState,SubState 2>&1").format(scope=scope_flag, unit=unit)
             output = self._check_output(cmd)
@@ -2675,12 +2678,49 @@ def seconds_to_human_readable_time(seconds):
     return ['{} days {:d}:{:02d}:{:02d}'.format(d, h, m, s)]
 
 
+def parse_rfc3339_utc(value):
+    """Parse an RFC 3339 UTC timestamp into Unix epoch seconds.
+
+    Written for the OpenTelemetry collector's upSince, which Go renders with RFC3339Nano. That
+    format trims trailing zeros from the fractional second and omits it entirely when it is zero,
+    so the field is anywhere from nine digits to absent:
+
+        2025-03-26T16:54:47.936558866Z
+        2025-03-26T16:54:47.9Z
+        2025-03-26T16:54:47Z
+
+    A fixed-width slice therefore cuts in the wrong place on the shorter forms, which used to
+    raise and be reported as a failed health check on a collector that was running perfectly
+    well. strptime's %f wants one to six digits, so the fraction is padded and truncated to six.
+
+    Raises ValueError if the value is not a timestamp at all, which the caller reports.
+    """
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1]
+    head, dot, fraction = text.partition(".")
+    if dot:
+        # Microseconds, whatever precision arrived.
+        text = "{}.{}".format(head, (fraction + "000000")[:6])
+        fmt = "%Y-%m-%dT%H:%M:%S.%f"
+    else:
+        fmt = "%Y-%m-%dT%H:%M:%S"
+    return int(datetime.strptime(text, fmt).replace(tzinfo=timezone.utc).timestamp())
+
+
 def parse_systemctl_timestamp(value):
     """Parse a `systemctl show` timestamp into Unix epoch seconds.
 
-    systemd reports timestamps in the form 'Mon 2026-04-14 10:11:12 UTC'.
-    Returns 0 if the value is empty or unparseable (which also covers the
-    'never executed' case where systemd reports an empty string).
+    The caller must run systemctl under TZ=UTC. systemd renders timestamps in the host's
+    timezone, and this cannot recover one: %Z resolves only "UTC", "GMT" and whatever the host
+    itself is called, and even when it matches it attaches no offset. A host in PDT would
+    otherwise have its local time read as UTC - seven hours in the past, which reads as a
+    service that has not run - and a value from any other zone would not parse at all. No
+    parser change fixes that, because a zone abbreviation is ambiguous across zones.
+
+    Returns 0 for an empty value, which is what systemd reports for a unit that has never run.
+    An unparseable value also returns 0, and is logged, because the caller cannot tell the two
+    apart from the return value alone.
     """
     if not value:
         return 0
@@ -2689,16 +2729,18 @@ def parse_systemctl_timestamp(value):
     parts = value.split(None, 1)
     if len(parts) == 2:
         value = parts[1]
-    # Try a few common formats: with timezone abbreviation and without.
+    # With the zone as UTC, or without one at all.
     for fmt in ("%Y-%m-%d %H:%M:%S %Z", "%Y-%m-%d %H:%M:%S"):
         try:
             dt = datetime.strptime(value, fmt)
-            # systemd emits UTC by default; treat naive timestamps as UTC.
+            # %Z matches a name without attaching an offset, so the caller's TZ=UTC is what
+            # makes this correct rather than the format string.
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return int(dt.timestamp())
         except ValueError:
             continue
+    logging.warning("Could not parse systemctl timestamp %r; reporting it as never run", value)
     return 0
 
 
