@@ -5739,7 +5739,9 @@ static void
 yb_clear_portal_before_restart(Portal portal)
 {
 	Assert(PointerIsValid(portal));
-	Assert(portal->status == PORTAL_FAILED);
+	Assert(!portal->portalPinned);
+	Assert(portal->status != PORTAL_ACTIVE);
+
 	if (yb_debug_log_internal_restarts)
 		elog(LOG, "Restarting portal %s for retry", portal->name);
 
