@@ -642,7 +642,14 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	if (enable_partitionwise_join)
 		glob->default_pgs_mask |= PGS_CONSIDER_PARTITIONWISE;
 
-	if (yb_enable_batchednl)
+	/*
+	 * YB: yb_prefer_bnl keeps a BNL considered wherever a plain nestloop is
+	 * allowed, even when yb_enable_batchednl is off (legacy behavior; see the
+	 * yb_prefer_bnl comment in add_path).  Resolving that here keeps
+	 * initial_cost_nestloop purely mask-driven, so extensions that override
+	 * the mask retain full control of the BNL.
+	 */
+	if (yb_enable_batchednl || (yb_prefer_bnl && enable_nestloop))
 		glob->default_pgs_mask |= YB_PGS_BATCHEDNL;
 
 	/* Allow plugins to take control after we've initialized "glob" */

@@ -3713,15 +3713,6 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	{
 		enable_mask &= ~((uint64) PGS_NESTLOOP_PLAIN);
 
-		/*
-		 * YB: For backward compatibility, don't treat the BNL as disabled when
-		 * yb_prefer_bnl is set and plain nestloops are allowed for this join,
-		 * even if yb_enable_batchednl is off.
-		 * See #21129 and YB comment about yb_prefer_bnl in `add_path`.
-		 */
-		if (yb_prefer_bnl && enable_nestloop)
-			enable_mask &= ~((uint64) YB_PGS_BATCHEDNL);
-
 		if (yb_enable_base_scans_cost_model || yb_legacy_bnl_cost)
 			yb_batch_size = yb_bnl_batch_size;
 	}
@@ -3846,26 +3837,6 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		path->jpath.path.rows =
 			clamp_row_est(path->jpath.path.rows / parallel_divisor);
 	}
-
-	/*
-	 * YB_TODO_PG19MERGE: upstream PG commit e22253467942fdb100087787c3e1e3a8620c54b2
-	 * removed the disable node cost penalty below. Check for any YB changes required.
-	 */
-#if 0
-	/*
-	 * We could include disable_cost in the preliminary estimate, but that
-	 * would amount to optimizing for the case where the join method is
-	 * disabled, which doesn't seem like the way to bet.
-	 */
-	/*
-	 * YB: If yb_prefer_bnl is on and normal nestloops are allowed for this join
-	 * we do not add the disable cost penalty. See #21129 for more information.
-	 */
-	if ((!yb_is_batched && !enable_nestloop) ||
-		(yb_is_batched && !yb_enable_batchednl &&
-		 !(yb_prefer_bnl && enable_nestloop)))
-		startup_cost += disable_cost;
-#endif
 
 	/* cost of inner-relation source data (we already dealt with outer rel) */
 

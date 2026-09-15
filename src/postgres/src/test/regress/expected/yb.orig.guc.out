@@ -219,6 +219,76 @@ SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
  Seq Scan  | t
 (1 row)
 
+-- Check yb_enable_batchednl, yb_prefer_bnl and enable_nestloop for YB joins.
+-- A batched nested loop is available when yb_enable_batchednl is on, or when
+-- yb_prefer_bnl is on and plain nestloops are allowed. enable_nestloop governs
+-- the plain nestloop only.
+CREATE TABLE test_join_outer (a int, b int);
+CREATE TABLE test_join_inner (a int PRIMARY KEY, b int);
+INSERT INTO test_join_outer SELECT i, i FROM generate_series(1, 100) i;
+INSERT INTO test_join_inner SELECT i, i FROM generate_series(1, 100) i;
+ANALYZE test_join_outer, test_join_inner;
+set enable_seqscan = on;
+set enable_indexscan = on;
+set enable_indexonlyscan = on;
+set enable_bitmapscan = off;
+set enable_mergejoin = off;
+set enable_material = off;
+set enable_memoize = off;
+-- Only the nestloop family is left, so the top node names the chosen variant.
+set enable_hashjoin = off;
+set enable_nestloop = on;
+set yb_enable_batchednl = on;
+set yb_prefer_bnl = on;
+SELECT * FROM get_plan_details('SELECT * FROM test_join_outer o, test_join_inner i WHERE o.a = i.a;');
+ scan_type  | disabled 
+------------+----------
+ YB Batched | f
+(1 row)
+
+-- yb_prefer_bnl keeps the batched nested loop available on its own.
+set yb_enable_batchednl = off;
+SELECT * FROM get_plan_details('SELECT * FROM test_join_outer o, test_join_inner i WHERE o.a = i.a;');
+ scan_type  | disabled 
+------------+----------
+ YB Batched | f
+(1 row)
+
+-- Neither GUC allows it now, so the plain nestloop is used.
+set yb_prefer_bnl = off;
+SELECT * FROM get_plan_details('SELECT * FROM test_join_outer o, test_join_inner i WHERE o.a = i.a;');
+  scan_type  | disabled 
+-------------+----------
+ Nested Loop | f
+(1 row)
+
+-- yb_enable_batchednl is independent of enable_nestloop.
+set yb_enable_batchednl = on;
+set enable_nestloop = off;
+SELECT * FROM get_plan_details('SELECT * FROM test_join_outer o, test_join_inner i WHERE o.a = i.a;');
+ scan_type  | disabled 
+------------+----------
+ YB Batched | f
+(1 row)
+
+-- yb_prefer_bnl does not apply when plain nestloops are disabled, so the join
+-- falls back to the hash join.
+set enable_hashjoin = on;
+set yb_enable_batchednl = off;
+set yb_prefer_bnl = on;
+SELECT * FROM get_plan_details('SELECT * FROM test_join_outer o, test_join_inner i WHERE o.a = i.a;');
+ scan_type | disabled 
+-----------+----------
+ Hash Join | f
+(1 row)
+
+reset enable_hashjoin;
+reset enable_mergejoin;
+reset enable_nestloop;
+reset enable_material;
+reset enable_memoize;
+reset yb_enable_batchednl;
+reset yb_prefer_bnl;
 DROP FUNCTION get_plan_details;
 -- Show transaction priority. As it is not possible to have a deterministic
 -- yb_transaction_priority, we set yb_transaction_priority_lower_bound and
