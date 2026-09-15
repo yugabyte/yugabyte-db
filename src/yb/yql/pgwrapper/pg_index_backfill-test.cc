@@ -20,6 +20,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
@@ -1325,6 +1326,61 @@ TEST_P(PgIndexBackfillRaftOrderingActivation, MarkerReachesRaftIndexValidation) 
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
 }
 
+// The master activates the ordering generation on the index tablets before launching backfill
+// chunks and releases it in the terminal funnel -- both observable as replicated
+// ChangeMetadataOperations applying on the tservers.
+TEST_P(PgIndexBackfillSkipAllRaftOrdering, OrderingGenerationActivatedAndReleased) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  // An ExternalDaemon holds a single log listener, so the two waiters must watch different
+  // daemons: the master logs the activation fan-out, the tservers log the release applying.
+  auto activation_waiter =
+      cluster_->GetMasterLogWaiter("Activating index-backfill ordering generation on");
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 100) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  ASSERT_OK(activation_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+  // The release is fire-and-forget from the terminal funnel, so it may land shortly after
+  // CREATE INDEX returns.
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+}
+
+class PgIndexBackfillSkipAllActivationFailure : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--TEST_fail_index_backfill_ordering_generation_update=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillSkipAllActivationFailure, ::testing::Bool());
+
+// Partial activation fails the job before any backfill write: CREATE INDEX errors cleanly
+// (no hang, no crash) and the base table remains fully usable.
+TEST_P(PgIndexBackfillSkipAllActivationFailure, ActivationFailureFailsCreateIndexCleanly) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+
+  // The base table is unaffected; the failed (invalid) index can be dropped.
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 2)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3, 3)", kTableName));
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgIndexBackfillSlow : public PgIndexBackfillTest {
  public:
@@ -1375,6 +1431,71 @@ class PgIndexBackfillBlockDoBackfill : public PgIndexBackfillTest {
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillBlockDoBackfill, ::testing::Bool());
+
+class PgIndexBackfillSkipAllBlocked : public PgIndexBackfillBlockDoBackfill {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillBlockDoBackfill::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_ysql_index_backfill_unique_check_mode=skip_all");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillSkipAllBlocked, ::testing::Bool());
+
+// The master-side split fence reads the indexed table's durable backfill-job state: while a
+// SKIP_ALL job exists, a manual split of an index tablet is refused; after the job completes,
+// the same split is accepted.
+TEST_P(PgIndexBackfillSkipAllBlocked, SplitFencedDuringBackfill) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 100) g", kTableName));
+
+  thread_holder_.AddThreadFunctor([this] {
+    auto create_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  });
+
+  // Safe time persisted implies the backfill job (and its SKIP_ALL mode) is durable in the
+  // sys catalog; DoBackfill is spinning on TEST_block_do_backfill.
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto index_table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseName, kIndexName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(index_table_id, 0, &tablets));
+  ASSERT_GT(tablets.size(), 0);
+  const auto index_tablet_id = tablets.Get(0).tablet_id();
+
+  // The refusal must come from the durable-state fence: at this point activation has not run
+  // (DoBackfill is blocked before it), so neither in-memory suppression covers the index table
+  // -- only the backfill-job check can reject. Assert the fence's Status text through the
+  // master RPC directly: the dedicated log line is rate-limited (YB_LOG_EVERY_N_SECS), and
+  // the background split-manager scan racing through the same validation can consume the
+  // window, so a LogWaiter on it is timing-dependent (and yb-admin's Status drops stderr).
+  {
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+    master::SplitTabletRequestPB req;
+    req.set_tablet_id(index_tablet_id);
+    master::SplitTabletResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(30) * kTimeMultiplier);
+    ASSERT_OK(proxy.SplitTablet(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    const auto split_status = StatusFromPB(resp.error().status());
+    ASSERT_STR_CONTAINS(
+        split_status.ToString(), "Unique-index backfill with deferred verification in progress");
+  }
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.JoinAll();
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+
+  // With the job gone the fence is lifted: the same split is now accepted.
+  ASSERT_OK(cluster_->CallYbAdmin({"split_tablet", index_tablet_id}));
+}
 
 class PgIndexBackfillBlockIndisready : public PgIndexBackfillTest {
  public:

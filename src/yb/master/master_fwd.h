@@ -132,7 +132,9 @@ using TabletInfos = std::vector<TabletInfoPtr>;
 struct SnapshotScheduleRestoration;
 using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;
 
+YB_STRONGLY_TYPED_BOOL(NotifyBackfillTable);
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
+YB_STRONGLY_TYPED_BOOL(RestrictToIndexesToBuild);
 
 // Used to indicate whether inactive tablets should be included in Rpcs such as GetTableLocations.
 // Inactive tablets are parents of split children, that may no longer be allowed to

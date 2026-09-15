@@ -175,6 +175,24 @@ message ChangeMetadataRequestPB {
 
   // Index inception / birth hybrid time, sent as part of the BackfillDone RPC.
   optional fixed64 birth_time = 23;
+
+  // Activates or releases the tablet's index-backfill write-ID ordering generation
+  // (IndexBackfillOrderingGenerationPB in the superblock). On activation, the generation's
+  // base_op_index is this operation's own Raft index, so every replica -- including WAL replay
+  // -- derives the same base without consulting runtime state.
+  optional IndexBackfillOrderingGenerationOpPB index_backfill_ordering_generation = 24;
+}
+
+message IndexBackfillOrderingGenerationOpPB {
+  // The index table the generation covers.
+  optional bytes table_id = 1;
+
+  // True activates a generation; false releases any active one (idempotent both ways).
+  optional bool activate = 2;
+
+  // Copied into the persisted record on activation; see IndexBackfillOrderingGenerationPB.
+  optional fixed64 retention_barrier_ht = 3;
+  optional uint32 write_id_floor_version = 4;
 }
 
 message SplitTabletRequestPB {
