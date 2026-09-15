@@ -206,6 +206,23 @@ message VerifyUniqueIndexTabletResponsePB {
   optional string violation_fingerprint = 9;
 }
 
+message CheckIndexBackfillDowngradeSafetyRequestPB {
+  optional bytes dest_uuid = 1;
+}
+
+message CheckIndexBackfillDowngradeSafetyResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // Tablet peers with an active index-backfill ordering generation: marked writes may still
+  // be appended to their WALs.
+  optional uint32 active_generation_tablets = 2;
+
+  // Tablet peers whose generation was released but whose regular-DB flushed frontier has not
+  // yet passed released_marked_write_watermark: their WALs may still replay marked writes. Includes
+  // peers that cannot currently report a frontier (fail closed).
+  optional uint32 unflushed_marked_wal_tablets = 3;
+}
+
 // A create tablet request.
 message CreateTabletRequestPB {
   // UUID of server this request is addressed to.
@@ -569,6 +586,14 @@ service TabletServerAdminService {
   // paginated). See VerifyUniqueIndexTabletRequestPB.
   rpc VerifyUniqueIndexTablet(VerifyUniqueIndexTabletRequestPB)
       returns (VerifyUniqueIndexTabletResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
+
+  // Downgrade-fence probe: reports whether any tablet on this server still has marked-write
+  // state an old binary could replay divergently (active ordering generation, or released
+  // one whose marked WAL entries are not yet below the flushed frontier).
+  rpc CheckIndexBackfillDowngradeSafety(CheckIndexBackfillDowngradeSafetyRequestPB)
+      returns (CheckIndexBackfillDowngradeSafetyResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
 

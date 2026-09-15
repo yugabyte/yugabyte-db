@@ -28,6 +28,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_error.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -1734,6 +1735,132 @@ TEST_P(PgIndexBackfillVerifier, RetentionBarrierMetricsReflectHeldGeneration) {
             "value")),
         0);
   }
+}
+
+namespace {
+
+// Attempts to demote the deferred-verification capability AutoFlag for yb-tserver. Fence
+// refusals surface as the response error; returns OK once demotion goes through.
+Status TryDemoteVerificationCapabilityFlag(ExternalMiniCluster* cluster) {
+  auto proxy = cluster->GetLeaderMasterProxy<master::MasterClusterProxy>();
+  master::DemoteSingleAutoFlagRequestPB req;
+  req.set_process_name("yb-tserver");
+  req.set_auto_flag_name("ysql_enable_deferred_unique_index_verification");
+  master::DemoteSingleAutoFlagResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(30) * kTimeMultiplier);
+  RETURN_NOT_OK(proxy.DemoteSingleAutoFlag(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+// Downgrade fence: the capability flag cannot be demoted while any tablet still holds an
+// active ordering generation -- its marked WAL entries would replay divergently on an old
+// binary the demotion would re-admit.
+TEST_P(PgIndexBackfillVerifier, DowngradeFenceBlocksWhileGenerationsHeld) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  // The fixture blocks the funnel's release: generations are held on every replica.
+  const auto status = TryDemoteVerificationCapabilityFlag(cluster_.get());
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "active index-backfill ordering generation");
+}
+
+// After the terminal funnel releases the generations and the release-triggered flush pushes
+// the marked writes below the flushed frontier, demotion goes through.
+TEST_P(PgIndexBackfillVerifierReleased, DowngradeFenceClearsAfterRelease) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  // Job deletion and the release flush converge within seconds; the fence rechecks both.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        const auto status = TryDemoteVerificationCapabilityFlag(cluster_.get());
+        if (status.ok()) {
+          return true;
+        }
+        LOG(INFO) << "Demotion still fenced: " << status;
+        return false;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, "downgrade fence to clear"));
+}
+
+// The unflushed-marked-WAL arm, deterministically: with the release-triggered flush
+// disabled, released tablets keep their marked writes above the flushed frontier and the
+// fence must refuse with the not-yet-flushed message.
+class PgIndexBackfillVerifierReleasedNoFlush : public PgIndexBackfillVerifierReleased {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillVerifierReleased::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--TEST_skip_index_backfill_generation_release_flush=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillVerifierReleasedNoFlush, ::testing::Bool());
+
+TEST_P(PgIndexBackfillVerifierReleasedNoFlush, DowngradeFenceBlocksWhileMarkedWalUnflushed) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  const auto status = TryDemoteVerificationCapabilityFlag(cluster_.get());
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "marked WAL entries not yet flushed");
+}
+
+// The fence also refuses while a SKIP_ALL job is active on the master -- before probing any
+// tserver: the job's chunks may still be appending marked writes.
+TEST_P(PgIndexBackfillSkipAllRaftOrdering, DowngradeFenceBlocksWhileJobActive) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+
+  thread_holder_.AddThreadFunctor([this] {
+    auto create_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName));
+  });
+  {
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
+        client.get(), kYBTableName.namespace_name(), kYBTableName.table_name()));
+    ASSERT_OK(WaitForBackfillSafeTimeOn(
+        cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>(), table_id));
+  }
+
+  const auto status = TryDemoteVerificationCapabilityFlag(cluster_.get());
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "SKIP_ALL index-backfill jobs");
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.JoinAll();
 }
 
 TEST_P(PgIndexBackfillVerifierReleased, RetentionBarrierMetricsClearOnRelease) {

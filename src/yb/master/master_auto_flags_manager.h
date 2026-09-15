@@ -110,6 +110,11 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
   Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
       const ProcessName& process_name, const std::string& flag_name);
 
+  // Downgrade fence for deferred unique-index verification (#33444): refuses to demote its
+  // capability flag while active SKIP_ALL backfill jobs exist or any live tserver still
+  // holds marked-write state an older binary would replay divergently.
+  Status ValidateDeferredUniqueIndexVerificationDemotion();
+
   Master& master_;
   CatalogManager* catalog_manager_;
   UniqueLock<std::shared_mutex> update_lock_;
