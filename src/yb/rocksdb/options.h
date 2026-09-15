@@ -846,6 +846,7 @@ struct ColumnFamilyOptions {
   void Dump(Logger* log) const;
 };
 
+// False defers a memtable; an error fails the flush without persisting any selected memtables.
 using MemTableFilter = std::function<yb::Result<bool>(const MemTable&, bool)>;
 
 using IteratorReplacer =

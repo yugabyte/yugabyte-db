@@ -743,6 +743,13 @@ class DB {
     return WaitForFlush(DefaultColumnFamily());
   }
 
+  // Wait for queued/running flush jobs, including error cleanup, to retire. Unlike WaitForFlush,
+  // this does not return early on a background error. It does not request another memtable flush
+  // or report durability; callers must retain the Flush/WaitForFlush status separately.
+  // May also wait for concurrently scheduled flushes. The caller must prevent DB shutdown until
+  // this returns: shutdown can abandon unscheduled work rather than drain it.
+  virtual void WaitForFlushJobs() = 0;
+
   // Sync the wal. Note that Write() followed by SyncWAL() is not exactly the
   // same as Write() with sync=true: in the latter case the changes won't be
   // visible until the sync is done.

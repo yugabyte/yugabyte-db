@@ -105,6 +105,7 @@
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
+#include "yb/tserver/tablet_flusher.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -1912,169 +1913,9 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
 
 namespace {
 
-class TabletsFlusherBase {
- public:
-  explicit TabletsFlusherBase(
-      const TabletServiceAdminImpl& service,
-      const TSTabletManager::TabletPtrs& tablets,
-      FlushTabletsResponsePB& resp)
-    : service_(service), tablets_(tablets), resp_(resp)
-  {}
-
-  virtual ~TabletsFlusherBase() = default;
-
-  Status Run();
-
-  auto LogPrefix() const {
-    return service_.LogPrefix();
-  }
-
- private:
-  virtual Status Flush(const tablet::TabletPtr& tablet) = 0;
-  virtual Status WaitForFlush(const tablet::TabletPtr& tablet) = 0;
-
-  const TabletServiceAdminImpl& service_;
-  const TSTabletManager::TabletPtrs& tablets_;
-  FlushTabletsResponsePB& resp_;
-};
-
-Status TabletsFlusherBase::Run() {
-  for (const auto& tablet : tablets_) {
-    resp_.set_failed_tablet_id(tablet->tablet_id());
-    RETURN_NOT_OK(Flush(tablet));
-
-    // Refer to https://github.com/yugabyte/yugabyte-db/issues/16116.
-    if (!FLAGS_TEST_skip_force_superblock_flush) {
-      RETURN_NOT_OK(tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue));
-    }
-    resp_.clear_failed_tablet_id();
-  }
-
-  // Wait for end of all flush operations.
-  for (const auto& tablet : tablets_) {
-    resp_.set_failed_tablet_id(tablet->tablet_id());
-    RETURN_NOT_OK(WaitForFlush(tablet));
-    resp_.clear_failed_tablet_id();
-  }
-
-  return Status::OK();
-}
-
-class TabletsFlusher final : public TabletsFlusherBase {
- public:
-  explicit TabletsFlusher(
-    const TabletServiceAdminImpl& service,
-      const TSTabletManager::TabletPtrs& tablets,
-      const tablet::FlushFlags flush_flags,
-      FlushTabletsResponsePB& resp)
-      : TabletsFlusherBase(service, tablets, resp),
-        flush_flags_(flush_flags) {
-    VLOG_WITH_PREFIX(1) << "TabletsFlusher: flush_flags: " << std::to_underlying(flush_flags_);
-  }
-
- private:
-  Status Flush(const tablet::TabletPtr& tablet) override {
-    return tablet->Flush(
-        tablet::FlushMode::kAsync, flush_flags_, rocksdb::FlushReason::kAdminFlush);
-  }
-
-  Status WaitForFlush(const tablet::TabletPtr& tablet) override {
-    return tablet->WaitForFlush();
-  }
-
-  const tablet::FlushFlags flush_flags_;
-};
-
-class VectorIndexFlusher : public TabletsFlusherBase {
- public:
-  explicit VectorIndexFlusher(
-      const TabletServiceAdminImpl& service,
-      const TSTabletManager::TabletPtrs& tablets,
-      TableIds&& vector_index_ids,
-      FlushTabletsResponsePB& resp)
-      : TabletsFlusherBase(service, tablets, resp),
-        vector_index_ids_(std::move(vector_index_ids)) {
-    VLOG_WITH_PREFIX(1) << "VectorIndexFlusher: vector index ids: "
-                        << (vector_index_ids_.size() ? AsString(vector_index_ids_) : "all");
-  }
-
- private:
-  Status Flush(const tablet::TabletPtr& tablet) override {
-    auto [it, inserted] = tablet_vector_indexes_.try_emplace(
-      tablet->tablet_id(),
-      tablet->vector_indexes().Collect(vector_index_ids_)
-    );
-
-    if (!inserted) {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Flush of vector indexes is already running for tablet " << tablet->tablet_id();
-      return Status::OK();
-    }
-
-    it->second.Flush();
-    return Status::OK();
-  }
-
-  Status WaitForFlush(const tablet::TabletPtr& tablet) override {
-    auto it = tablet_vector_indexes_.find(tablet->tablet_id());
-    if (it == tablet_vector_indexes_.end()) {
-      LOG_WITH_PREFIX(DFATAL) << "Vector indexes are not found for tablet " << tablet->tablet_id();
-      return Status::OK();
-    }
-
-    return it->second.WaitForFlush();
-  }
-
-  TableIds vector_index_ids_;
-  std::unordered_map<TabletId, tablet::VectorIndexList> tablet_vector_indexes_;
-};
-
-bool IsRegularOnly(const FlushTabletsRequestPB& req) {
-  return req.flags() == tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY;
-}
-
 bool IsVectorIndexOnly(const FlushTabletsRequestPB& req) {
   return (req.flags() == tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY) ||
          (req.flags() == tablet::FLUSH_COMPACT_DEFAULT && req.vector_index_ids_size());
-}
-
-auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
-  return TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
-}
-
-Status TriggerFlush(
-    const TabletServiceAdminImpl& service,
-    const TSTabletManager::TabletPtrs& tablets,
-    const FlushTabletsRequestPB& req,
-    FlushTabletsResponsePB& resp) {
-  // FlushCompactFlags for FLUSH operation:
-  // 1. FLUSH_COMPACT_DEFAULT
-  //    Flush regular + intents + vector indexes. If vector_index_ids field is not empty,
-  //    the value is treated as FLUSH_COMPACT_VECTOR_INDEX_ONLY.
-  //
-  // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
-  //    Flush only regular db, used in tests only.
-  //
-  // 3. FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED
-  //    Not applicable for FLUSH operation.
-  //
-  // 4. FLUSH_COMPACT_VECTOR_INDEX_ONLY
-  //    Flush only vector indexes. Empty vector_index_ids means all vector indexes.
-  //
-  // 5. FLUSH_COMPACT_ALL
-  //    Flush regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
-  DCHECK_EQ(req.operation(), FlushTabletsRequestPB::FLUSH);
-  SCHECK_FORMAT(
-    req.flags() != tablet::FLUSH_COMPACT_VECTOR_INDEX_EXCLUDED, InvalidArgument,
-    "Flag [$0] is not supported for FLUSH operation", req.flags());
-
-  if (IsVectorIndexOnly(req)) {
-    return VectorIndexFlusher{ service, tablets, CopyVectorIndexIds(req), resp }.Run();
-  }
-
-  const tablet::FlushFlags flush_flags =
-      IsRegularOnly(req) ? tablet::FlushFlags::kRegular : tablet::FlushFlags::kAllDbs;
-  return TabletsFlusher{ service, tablets, flush_flags, resp }.Run();
 }
 
 Result<TableIdsPtr> CollectVectorIndexesForCompaction(const FlushTabletsRequestPB& req) {
@@ -2084,7 +1925,7 @@ Result<TableIdsPtr> CollectVectorIndexesForCompaction(const FlushTabletsRequestP
     return nullptr;
   }
 
-  return std::make_shared<TableIds>(CopyVectorIndexIds(req));
+  return std::make_shared<TableIds>(req.vector_index_ids().begin(), req.vector_index_ids().end());
 }
 
 Status TriggerCompact(
@@ -2169,10 +2010,22 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   }
   switch (req->operation()) {
     case FlushTabletsRequestPB::FLUSH: {
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          TriggerFlush(*this, tablet_ptrs, *req, *resp),
-          resp, &context);
-      break;
+      auto deadline = context.GetClientDeadline();
+      auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+      auto status = server_->tablet_manager()->tablet_flusher().Submit(
+          std::move(tablet_ptrs), *req, deadline,
+          [shared_context, resp](const Status& status, const TabletId& failed_tablet_id) {
+            if (!status.ok()) {
+              resp->set_failed_tablet_id(failed_tablet_id);
+              SetupErrorAndRespond(resp->mutable_error(), status, shared_context.get());
+            } else {
+              shared_context->RespondSuccess();
+            }
+          });
+      if (!status.ok()) {
+        SetupErrorAndRespond(resp->mutable_error(), status, shared_context.get());
+      }
+      return;
     }
     case FlushTabletsRequestPB::COMPACT: {
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(

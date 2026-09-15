@@ -286,6 +286,8 @@ set(TSERVER_SRCS
   remote_snapshot_transfer_client.cc
   service_util.cc
   session_registry.cc
+  snapshot_preflush.cc
+  tablet_flusher.cc
   tablet_limits.cc
   tablet_memory_manager.cc
   tablet_server.cc
