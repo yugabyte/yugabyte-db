@@ -13,10 +13,14 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
 
+#include <strings.h>
+
 #include <fstream>
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
+
+#include "yb/gutil/map-util.h"
 
 #include "yb/util/env_util.h"
 #include "yb/util/format.h"
@@ -71,6 +75,7 @@ DECLARE_uint32(ysql_conn_mgr_auth_msg_timeout);
 DECLARE_uint32(ysql_conn_mgr_tcmalloc_gc_interval);
 DECLARE_uint32(ysql_conn_mgr_backend_drain_timeout_ms);
 DECLARE_uint32(ysql_conn_mgr_socket_listen_backlog);
+DECLARE_bool(ysql_conn_mgr_full_tls_handshake);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -144,12 +149,142 @@ std::string get_num_workers(uint32_t value) {
   return std::to_string(value);
 }
 
-void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs) {
+/*
+ * Non-empty defaults from PostgreSQL (guc.c / postgresql.conf.sample). Used
+ * when ysql_pg.conf has no active assignment for the GUC.
+ */
+static const char kPgSslCiphersDefault[] = "HIGH:MEDIUM:+3DES:!aNULL";
+static const char kPgSslMinProtocolVersionDefault[] = "TLSv1.2";
+static const char kPgSslPreferServerCiphersDefault[] = "on";
+static const char kPgSslEcdhCurveDefault[] = "prime256v1";
+
+/*
+ * Accepted spellings for ssl_min_protocol_version: ssl_protocol_versions_info[] in guc.c minus
+ * its "" entry, because the GUC is declared over ssl_protocol_versions_info + 1.  An empty value
+ * has to be rejected rather than tolerated same as PostgreSQL itself.
+ */
+static const char* const kPgSslMinProtocolVersions[] = {"TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"};
+
+/*
+ * Matched case-insensitively to stay in step with PostgreSQL, whose enum lookup uses
+ * pg_strcasecmp().
+ */
+static Result<std::string> ValidatePgSslMinProtocolVersion(
+    const std::string& value, const std::string& key) {
+  for (const char* const candidate : kPgSslMinProtocolVersions) {
+    if (strcasecmp(value.c_str(), candidate) == 0) {
+      return value;
+    }
+  }
+
+  return STATUS_FORMAT(
+      InvalidArgument, "Invalid value '$0' for PostgreSQL setting $1", value, key);
+}
+
+/*
+ * Translate a boolean GUC value into the spelling conn mgr's config parser
+ * accepts: od_config_reader_yes_no() only matches the "yes" and "no" keywords.
+ *
+ * Mirrors parse_bool_with_len() from PostgreSQL's src/backend/utils/adt/bool.c, of which
+ * Odyssey keeps a copy in src/odyssey/sources/misc.c.
+ *
+ * If value is in-correct return an error, so conn mgr start fail and it's supervisor will retry,
+ * same as how max_connections is handled in UpdateConfigFromGFlags().
+ */
+static Result<std::string> PgBoolToYCMBool(const std::string& value, const std::string& key) {
+  const char* const chars = value.c_str();
+  const size_t len = value.size();
+
+  switch (*chars) {
+    case 't':
+    case 'T':
+      if (strncasecmp(chars, "true", len) == 0) {
+        return "yes";
+      }
+      break;
+    case 'f':
+    case 'F':
+      if (strncasecmp(chars, "false", len) == 0) {
+        return "no";
+      }
+      break;
+    case 'y':
+    case 'Y':
+      if (strncasecmp(chars, "yes", len) == 0) {
+        return "yes";
+      }
+      break;
+    case 'n':
+    case 'N':
+      if (strncasecmp(chars, "no", len) == 0) {
+        return "no";
+      }
+      break;
+    case 'o':
+    case 'O':
+      // 'o' is not unique enough.
+      if (strncasecmp(chars, "on", (len > 2 ? len : 2)) == 0) {
+        return "yes";
+      }
+      if (strncasecmp(chars, "off", (len > 2 ? len : 2)) == 0) {
+        return "no";
+      }
+      break;
+    case '1':
+      if (len == 1) {
+        return "yes";
+      }
+      break;
+    case '0':
+      if (len == 1) {
+        return "no";
+      }
+      break;
+    default:
+      break;
+  }
+
+  return STATUS_FORMAT(
+      InvalidArgument, "Invalid boolean value '$0' for PostgreSQL setting $1", value, key);
+}
+
+Status YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>& ysql_conn_mgr_configs) {
+  if (FLAGS_ysql_conn_mgr_full_tls_handshake) {
+    CHECK_GT(conf_->ssl_config_map.size(), 0);
+    const std::map<std::string, std::string>& pg_conf = conf_->ssl_config_map;
+    std::string tls_ca_file = FindOrDie(pg_conf, "ssl_ca_file");
+    std::string tls_key_file = FindOrDie(pg_conf, "ssl_key_file");
+    std::string tls_cert_file = FindOrDie(pg_conf, "ssl_cert_file");
+
+    std::string yb_crl_file = FindOrDie(pg_conf, "ssl_crl_file");
+    std::string yb_crl_dir = FindOrDie(pg_conf, "ssl_crl_dir");
+    std::string yb_max_protocol = FindOrDie(pg_conf, "ssl_max_protocol_version");
+    std::string yb_dh_params_file = FindOrDie(pg_conf, "ssl_dh_params_file");
+    std::string yb_passphrase_command = FindOrDie(pg_conf, "ssl_passphrase_command");
+
+    ysql_conn_mgr_configs["{%enable_tls%}"] = enable_tls ? "" : "#";
+    ysql_conn_mgr_configs["{%tls_ca_file%}"] = tls_ca_file;
+    ysql_conn_mgr_configs["{%tls_key_file%}"] = tls_key_file;
+    ysql_conn_mgr_configs["{%tls_cert_file%}"] = tls_cert_file;
+    ysql_conn_mgr_configs["{%yb_tls_cipher_list%}"] = FindOrDie(pg_conf, "ssl_ciphers");
+    ysql_conn_mgr_configs["{%yb_tls_min_protocol_version%}"] =
+        VERIFY_RESULT(ValidatePgSslMinProtocolVersion(
+            FindOrDie(pg_conf, "ssl_min_protocol_version"), "ssl_min_protocol_version"));
+    ysql_conn_mgr_configs["{%yb_tls_prefer_server_ciphers%}"] = VERIFY_RESULT(PgBoolToYCMBool(
+        FindOrDie(pg_conf, "ssl_prefer_server_ciphers"), "ssl_prefer_server_ciphers"));
+    ysql_conn_mgr_configs["{%yb_tls_ecdh_curve%}"] = FindOrDie(pg_conf, "ssl_ecdh_curve");
+    ysql_conn_mgr_configs["{%yb_tls_crl_file%}"] = yb_crl_file;
+    ysql_conn_mgr_configs["{%yb_tls_crl_dir%}"] = yb_crl_dir;
+    ysql_conn_mgr_configs["{%yb_tls_max_protocol_version%}"] = yb_max_protocol;
+    ysql_conn_mgr_configs["{%yb_tls_dh_params_file%}"] = yb_dh_params_file;
+    ysql_conn_mgr_configs["{%yb_tls_passphrase_command%}"] = yb_passphrase_command;
+    return Status::OK();
+  }
+
   std::string tls_ca_file;
   std::string tls_key_file;
   std::string tls_cert_file;
 
-  // ssl config
   if (enable_tls && !certs_for_client_dir.empty()) {
     if (tls_cert_file.empty())
     tls_cert_file = Format("$0/node.$1.crt",
@@ -163,10 +298,27 @@ void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn
     tls_ca_file = Format("$0/ca.crt", certs_for_client_dir);
   }
 
-  (*ysql_conn_mgr_configs)["{%enable_tls%}"] = enable_tls ? "" : "#";
-  (*ysql_conn_mgr_configs)["{%tls_ca_file%}"] = tls_ca_file;
-  (*ysql_conn_mgr_configs)["{%tls_key_file%}"] = tls_key_file;
-  (*ysql_conn_mgr_configs)["{%tls_cert_file%}"] = tls_cert_file;
+  ysql_conn_mgr_configs["{%enable_tls%}"] = enable_tls ? "" : "#";
+  ysql_conn_mgr_configs["{%tls_ca_file%}"] = tls_ca_file;
+  ysql_conn_mgr_configs["{%tls_key_file%}"] = tls_key_file;
+  ysql_conn_mgr_configs["{%tls_cert_file%}"] = tls_cert_file;
+
+  // The remaining values only reach OpenSSL through yb_mm_tls_bind_pg_ssl_globals(), which
+  // runs solely on the be_tls_init() path, so they are inert here. They still need entries:
+  // PutConfigValue() loops forever on a placeholder with no map entry, and
+  // yb_tls_prefer_server_ciphers is unquoted in the template and read by
+  // od_config_reader_yes_no(), which rejects anything other than "yes"/"no".
+  ysql_conn_mgr_configs["{%yb_tls_prefer_server_ciphers%}"] = "yes";
+  // tls_protocols was hardcoded to this in the template before it became a placeholder.
+  ysql_conn_mgr_configs["{%yb_tls_min_protocol_version%}"] = "TLSv1.2";
+  ysql_conn_mgr_configs["{%yb_tls_cipher_list%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_ecdh_curve%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_crl_file%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_crl_dir%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_max_protocol_version%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_dh_params_file%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_passphrase_command%}"] = "";
+  return Status::OK();
 }
 
 void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
@@ -200,6 +352,10 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
 
   if (!conf_) {
     RETURN_NOT_OK(UpdateConfigFromGFlags());
+    if (FLAGS_ysql_conn_mgr_full_tls_handshake) {
+      DCHECK_EQ(conf_->ssl_config_map.size(), 0);
+      RETURN_NOT_OK(UpdateSSLConfigFromYsqlPgConf());
+    }
   }
 
   // Config map
@@ -267,7 +423,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_socket_listen_backlog%}",
       std::to_string(FLAGS_ysql_conn_mgr_socket_listen_backlog)}};
 
-  AddSslConfig(&ysql_conn_mgr_configs);
+  RETURN_NOT_OK(AddSslConfig(ysql_conn_mgr_configs));
 
   // Create a config file. Since the config can be concurrently read by Odyssey (consider the case
   // of it processing a SIGHUP while another config is being written), we want to ensure the config
@@ -367,6 +523,76 @@ Status YsqlConnMgrConf::UpdateConfigFromGFlags() {
 
   CHECK_OK(postgres_address_.ParseString(
       FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));
+  return Status::OK();
+}
+
+/*
+ * Read SSL related GUC values from an already-written ysql_pg.conf file.
+ * Commented out lines are ignored, as they are not the active
+ * values postgres runs with.
+ */
+Status YsqlConnMgrConf::UpdateSSLConfigFromYsqlPgConf() {
+  std::ifstream ysql_pg_conf_file(ysql_pgconf_file_, std::ios_base::in);
+  if (!ysql_pg_conf_file.is_open()) {
+    return STATUS_FORMAT(
+        IllegalState, "Unable to read the ysql pg conf file. File path: $0. Error details: $1",
+        ysql_pgconf_file_, std::strerror(errno));
+  }
+
+  std::map<std::string, std::string> pg_conf = {
+      {"ssl_ca_file", ""},
+      {"ssl_key_file", ""},
+      {"ssl_cert_file", ""},
+      {"ssl_crl_file", ""},
+      {"ssl_crl_dir", ""},
+      {"ssl_max_protocol_version", ""},
+      {"ssl_dh_params_file", ""},
+      {"ssl_passphrase_command", ""},
+      {"ssl_ciphers", kPgSslCiphersDefault},
+      {"ssl_min_protocol_version", kPgSslMinProtocolVersionDefault},
+      {"ssl_prefer_server_ciphers", kPgSslPreferServerCiphersDefault},
+      {"ssl_ecdh_curve", kPgSslEcdhCurveDefault},
+  };
+
+  std::string line;
+  while (std::getline(ysql_pg_conf_file, line)) {
+    // Strip leading whitespace if present.
+    size_t start = line.find_first_not_of(" \t");
+    if (start == std::string::npos)
+      continue;
+    if (line[start] == '#')
+      continue;
+    line = line.substr(start);
+
+    // The name ends at the first separator, and an assignment needs a '=' after it.
+    size_t key_end = line.find_first_of(" \t=");
+    if (key_end == std::string::npos)
+      continue;
+    auto it = pg_conf.find(line.substr(0, key_end));
+    if (it == pg_conf.end())
+      continue;
+    size_t eq = line.find('=', key_end);
+    if (eq == std::string::npos)
+      continue;
+
+    // Extract the value, stripping whitespace, quotes, and inline comments.
+    std::string val = line.substr(eq + 1);
+    size_t vs = val.find_first_not_of(" \t");
+    val = vs == std::string::npos ? "" : val.substr(vs);
+    if (!val.empty() && (val.front() == '\'' || val.front() == '"')) {
+      const char quote = val.front();
+      const size_t quote_end = val.find(quote, 1);
+      val = quote_end == std::string::npos ? val.substr(1) : val.substr(1, quote_end - 1);
+    } else {
+      size_t ve = val.find('#');
+      if (ve != std::string::npos)
+        val = val.substr(0, ve);
+      boost::trim_right(val);
+    }
+    it->second = val;
+  }
+
+  conf_->ssl_config_map = pg_conf;
   return Status::OK();
 }
 

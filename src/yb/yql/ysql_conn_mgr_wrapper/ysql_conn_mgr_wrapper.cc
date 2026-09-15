@@ -228,6 +228,14 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Connection Manager's listening socket (the backlog argument to listen(2)). "
     "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, full_tls_handshake, true,
+    "When true, Ysql Connection Manager builds its server SSL_CTX via PostgreSQL's "
+    "be_tls_init() so the client-facing TLS handshake honours the full set of "
+    "PostgreSQL SSL GUCs (ssl_ciphers, ssl_min_protocol_version, ssl_ecdh_curve, "
+    "ssl_crl_file, ssl_dh_params_file, etc.). When false, the connection manager "
+    "falls back to the original machinarium-managed SSL_CTX that only honours the "
+    "cert/key/CA files derived from certs_for_client_dir.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
@@ -367,6 +375,10 @@ Status YsqlConnMgrWrapper::Start() {
   }
 
   proc_->SetEnv(YSQL_CONN_MGR_WARMUP_DB, FLAGS_ysql_conn_mgr_warmup_db);
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_FULL_TLS_HANDSHAKE",
+      FLAGS_ysql_conn_mgr_full_tls_handshake ? "true" : "false");
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.

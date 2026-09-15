@@ -163,6 +163,14 @@ typedef enum {
 	OD_YB_ENABLE_PARSE_QUEUE_TRACKING,
 	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
 	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
+	OD_YB_LTLS_MAX_PROTOCOL_VERSION,
+	OD_YB_LTLS_PREFER_SERVER_CIPHERS,
+	OD_YB_LTLS_ECDH_CURVE,
+	OD_YB_LTLS_DH_PARAMS_FILE,
+	OD_YB_LTLS_CRL_FILE,
+	OD_YB_LTLS_CRL_DIR,
+	OD_YB_LTLS_CIPHER_LIST,
+	OD_YB_LTLS_PASSPHRASE_COMMAND,
 } od_lexeme_t;
 
 static od_keyword_t od_config_keywords[] = {
@@ -358,6 +366,16 @@ static od_keyword_t od_config_keywords[] = {
 		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
 	od_keyword("yb_backend_drain_timeout_ms",
 		   OD_YB_BACKEND_DRAIN_TIMEOUT_MS),
+	/* TLS */
+	od_keyword("yb_tls_max_protocol_version", OD_YB_LTLS_MAX_PROTOCOL_VERSION),
+	od_keyword("yb_tls_prefer_server_ciphers",
+		   OD_YB_LTLS_PREFER_SERVER_CIPHERS),
+	od_keyword("yb_tls_ecdh_curve", OD_YB_LTLS_ECDH_CURVE),
+	od_keyword("yb_tls_dh_params_file", OD_YB_LTLS_DH_PARAMS_FILE),
+	od_keyword("yb_tls_crl_file", OD_YB_LTLS_CRL_FILE),
+	od_keyword("yb_tls_crl_dir", OD_YB_LTLS_CRL_DIR),
+	od_keyword("yb_tls_cipher_list", OD_YB_LTLS_CIPHER_LIST),
+	od_keyword("yb_tls_passphrase_command", OD_YB_LTLS_PASSPHRASE_COMMAND),
 
 	{ 0, 0, 0 },
 };
@@ -801,6 +819,58 @@ static int od_config_reader_listen(od_config_reader_t *reader)
 		case OD_LCOMPRESSION:
 			if (!od_config_reader_yes_no(reader,
 						     &listen->compression))
+				return NOT_OK_RESPONSE;
+			continue;
+			/* YB */
+		/* yb_tls_max_protocol_version */
+		case OD_YB_LTLS_MAX_PROTOCOL_VERSION:
+			if (!od_config_reader_string(
+				    reader,
+				    &listen->tls_opts->yb_tls_max_protocol_version))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_prefer_server_ciphers */
+		case OD_YB_LTLS_PREFER_SERVER_CIPHERS:
+			if (!od_config_reader_yes_no(
+				    reader,
+				    &listen->tls_opts->yb_tls_prefer_server_ciphers))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_ecdh_curve */
+		case OD_YB_LTLS_ECDH_CURVE:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_ecdh_curve))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_dh_params_file */
+		case OD_YB_LTLS_DH_PARAMS_FILE:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_dh_params_file))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_crl_file */
+		case OD_YB_LTLS_CRL_FILE:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_crl_file))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_crl_dir */
+		case OD_YB_LTLS_CRL_DIR:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_crl_dir))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_cipher_list */
+		case OD_YB_LTLS_CIPHER_LIST:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_cipher_list))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_passphrase_command */
+		case OD_YB_LTLS_PASSPHRASE_COMMAND:
+			if (!od_config_reader_string(
+				    reader,
+				    &listen->tls_opts->yb_tls_passphrase_command))
 				return NOT_OK_RESPONSE;
 			continue;
 		default:

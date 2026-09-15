@@ -682,13 +682,39 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected static int getOdysseyPid() throws Exception {
-    Process p = Runtime.getRuntime().exec(
-        new String[]{"/bin/sh", "-c", "pgrep -f odyssey | head -1"});
+    // Exec pgrep directly (no shell). Pattern is scoped to this test run's actual base tmp dir
+    // (via TestUtils.getBaseTmpDir()) so it searches for correct host on which test is running.
+    String pattern = "odyssey.*" + quoteBracketsForEre(TestUtils.getBaseTmpDir());
+    return pgrepFirstPid(new String[]{"pgrep", "-f", pattern}, "odyssey");
+  }
+
+  /*
+   * Same shape as getOdysseyPid, but for the miniCluster's YSQL postmaster. Pattern is scoped
+   * to this test run's actual base tmp dir (via TestUtils.getBaseTmpDir()) so it searches for
+   * matches correct host on which test is running.
+   */
+  protected static int getPostmasterPid() throws Exception {
+    String pattern = "postgres -D " + quoteBracketsForEre(TestUtils.getBaseTmpDir());
+    return pgrepFirstPid(new String[]{"pgrep", "-f", pattern}, "postmaster");
+  }
+
+  /*
+   * pgrep -f matches an ERE, so brackets in the tmp dir have to be escaped before it is spliced
+   * into one: a parameterized test's TEST_TMPDIR carries the parameter index
+   * (.../<method>[0]_attempt_...), and "[0]" would otherwise be read as a bracket expression
+   * matching the character 0, so the pattern matches no real process.
+   */
+  private static String quoteBracketsForEre(String path) {
+    return path.replace("[", "\\[").replace("]", "\\]");
+  }
+
+  private static int pgrepFirstPid(String[] pgrepCmd, String name) throws Exception {
+    Process p = Runtime.getRuntime().exec(pgrepCmd);
     try (BufferedReader reader =
              new BufferedReader(new InputStreamReader(p.getInputStream()))) {
       String line = reader.readLine();
       if (line == null || line.trim().isEmpty()) {
-        throw new RuntimeException("Could not find Odyssey process via pgrep");
+        throw new RuntimeException("Could not find " + name + " process via pgrep");
       }
       return Integer.parseInt(line.trim());
     }

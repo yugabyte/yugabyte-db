@@ -8,6 +8,28 @@
 #include <machinarium.h>
 #include <machinarium_private.h>
 
+/* YB includes */
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include "yb_pg_tls_link_support.h"
+
+/* YB: Defined in be-secure-openssl.c when built under YB_CONN_MGR. */
+extern int be_tls_init(bool isServerStart);
+extern SSL_CTX *yb_be_tls_take_context(void);
+
+static bool yb_full_tls_handshake(void)
+{
+	static int cached = -1;
+	if (cached == -1) {
+		const char *v = getenv("YB_YSQL_CONN_MGR_FULL_TLS_HANDSHAKE");
+		/* Default to enabled when the env var is not set (matches gflag default). */
+		cached = (v == NULL || strcmp(v, "false") != 0) ? 1 : 0;
+	}
+	return cached != 0;
+}
+
 #if !USE_BORINGSSL && (OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 static pthread_mutex_t *mm_tls_locks = NULL;
@@ -176,12 +198,59 @@ SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 	}
 	// Cached context not found - we must create ctx
 
-	SSL_CTX *ctx;
+	SSL_CTX *ctx = NULL;
 	SSL_METHOD *ssl_method = NULL;
-	if (is_client)
+
+	/*
+	 * YB: From Client to conn mgr: Postgres be_tls_init() owns the SSL_CTX.
+	 * From conn mgr to Postgres: unchanged machinarium client setup.
+	 *
+	 * be_tls_init() reads process-wide Postgres GUC globals and installs the
+	 * context it builds into the process-wide SSL_context, but the cache
+	 * above is per worker thread, so several workers can reach this point at
+	 * once.  Hold the lock across bind -> init -> take so a second worker
+	 * cannot overwrite the globals mid-init or free a context another worker
+	 * is about to claim.
+	 */
+	if (is_client) {
 		ssl_method = (SSL_METHOD *)SSLv23_client_method();
-	else
+	}
+	else {
+		if (yb_full_tls_handshake()) {
+			int rc;
+
+			pthread_mutex_lock(&yb_pg_tls_link_support_lock);
+			if (io->tls)
+				yb_mm_tls_bind_pg_ssl_globals(io->tls);
+			yb_pg_tls_set_current_io(io);
+			rc = be_tls_init(true);
+			if (rc == 0) {
+				ctx = yb_be_tls_take_context();
+				if (ctx == NULL)
+					yb_pg_tls_report_error(
+						"be_tls_init() produced no SSL_CTX");
+			} else if (!io->tls_error) {
+				yb_pg_tls_report_error("be_tls_init() failed");
+			}
+			yb_pg_tls_set_current_io(NULL);
+			pthread_mutex_unlock(&yb_pg_tls_link_support_lock);
+
+			if (ctx == NULL)
+				goto error;
+			SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+			SSL_CTX_set_mode(ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+			SSL_CTX_set_mode(ctx, SSL_MODE_RELEASE_BUFFERS);
+			/*
+			* No SSL_CTX_set_session_id_context() or
+			* SSL_OP_CIPHER_SERVER_PREFERENCE here: be_tls_init() already sets
+			* SSL_SESS_CACHE_OFF and SSL_OP_NO_TICKET, and re-applies
+			* SSL_OP_CIPHER_SERVER_PREFERENCE itself when
+			* ssl_prefer_server_ciphers is on.  Do not re-add them.
+			*/
+			goto cache;
+		}
 		ssl_method = (SSL_METHOD *)SSLv23_server_method();
+	}
 	ctx = SSL_CTX_new(ssl_method);
 	if (ctx == NULL) {
 		return NULL;
@@ -270,8 +339,7 @@ SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 
 		SSL_CTX_set_options(ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
 	}
-	// Place new ctx on top of cache
-
+cache:
 	ctx_container = malloc(sizeof(*ctx_container));
 	ctx_container->key = io->tls;
 	ctx_container->tls_ctx = ctx;

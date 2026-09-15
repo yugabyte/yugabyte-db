@@ -167,6 +167,9 @@ MACHINE_API int machine_tls_set_server(machine_tls_t *, char *);
 
 MACHINE_API int machine_tls_set_protocols(machine_tls_t *, char *);
 
+MACHINE_API int
+yb_machine_tls_set_max_protocol_version(machine_tls_t *, char *);
+
 MACHINE_API int machine_tls_set_ca_path(machine_tls_t *, char *);
 
 MACHINE_API int machine_tls_set_ca_file(machine_tls_t *, char *);
@@ -174,6 +177,21 @@ MACHINE_API int machine_tls_set_ca_file(machine_tls_t *, char *);
 MACHINE_API int machine_tls_set_cert_file(machine_tls_t *, char *);
 
 MACHINE_API int machine_tls_set_key_file(machine_tls_t *, char *);
+
+MACHINE_API int yb_machine_tls_set_crl_file(machine_tls_t *, char *);
+
+MACHINE_API int yb_machine_tls_set_crl_dir(machine_tls_t *, char *);
+
+MACHINE_API int yb_machine_tls_set_cipher_list(machine_tls_t *, char *);
+
+MACHINE_API int
+yb_machine_tls_set_prefer_server_ciphers(machine_tls_t *, int);
+
+MACHINE_API int yb_machine_tls_set_ecdh_curve(machine_tls_t *, char *);
+
+MACHINE_API int yb_machine_tls_set_dh_params_file(machine_tls_t *, char *);
+
+MACHINE_API int yb_machine_tls_set_passphrase_command(machine_tls_t *, char *);
 
 /* io control */
 

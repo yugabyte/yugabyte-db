@@ -636,6 +636,12 @@ static const struct config_enum_entry password_encryption_options[] = {
 	{NULL, 0, false}
 };
 
+/*
+ * YB: Conn Mgr mirrors these name to enum mappings in
+ * src/odyssey/third_party/machinarium/sources/yb_pg_tls_link_support.h
+ * (yb_mm_tls_protocol_to_pg_enum).  Keep that copy in sync if this table
+ * or enum ssl_protocol_versions in libpq.h changes.
+ */
 const struct config_enum_entry ssl_protocol_versions_info[] = {
 	{"", PG_TLS_ANY, false},
 	{"TLSv1", PG_TLS1_VERSION, false},

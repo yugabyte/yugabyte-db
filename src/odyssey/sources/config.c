@@ -252,6 +252,24 @@ int od_config_validate(od_config_t *config, od_logger_t *logger)
 					 "unknown tls_opts->tls mode");
 				return -1;
 			}
+
+			/*
+			 * YB: the client-facing context is built by Postgres'
+			 * be_tls_init(), which asks for a client certificate but
+			 * never requires one.
+			 * Refuse the modes that promise enforcement, and no plans
+			 * to support these modes in conn mgr as well.
+			 */
+			if (listen->tls_opts->tls_mode ==
+				    OD_CONFIG_TLS_VERIFY_CA ||
+			    listen->tls_opts->tls_mode ==
+				    OD_CONFIG_TLS_VERIFY_FULL) {
+				od_error(
+					logger, "config", NULL, NULL,
+					"listen tls mode \"%s\" is not supported: client certificate verification is not implemented",
+					listen->tls_opts->tls);
+				return -1;
+			}
 		}
 	}
 
