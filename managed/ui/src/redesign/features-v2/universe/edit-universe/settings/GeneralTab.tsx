@@ -249,7 +249,7 @@ export const GeneralTab = () => {
                   <YBTag
                     key={region.code}
                     variant="light"
-                    size="medium"
+                    size="large"
                     endIcon={
                       region.uuid ===
                       primaryCluster?.placement_spec?.cloud_list[0].default_region ? (

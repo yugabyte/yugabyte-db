@@ -189,6 +189,16 @@ extern const char *yb_show_maxconnections(void);
 
 extern void assign_tcmalloc_sample_period(int newval, void *extra);
 extern void assign_yb_dist_tracecontext(const char *newval, void *extra);
+extern bool check_yb_conn_mgr_client_addr(char **newval, void **extra,
+										  GucSource source);
+extern void assign_yb_conn_mgr_client_addr(const char *newval, void *extra);
+extern bool check_yb_conn_mgr_client_hostname(char **newval, void **extra,
+											  GucSource source);
+extern void assign_yb_conn_mgr_client_hostname(const char *newval, void *extra);
+extern bool check_yb_conn_mgr_client_port(int *newval, void **extra,
+										  GucSource source);
+extern void assign_yb_conn_mgr_client_port(int newval, void *extra);
+
 extern void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval,
 														  void *extra);
 extern void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);

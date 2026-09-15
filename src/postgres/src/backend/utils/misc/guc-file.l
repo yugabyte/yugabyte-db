@@ -150,11 +150,60 @@ ProcessConfigFile(GucContext context)
 	/*
 	 * Read and apply the config file.  We don't need to examine the result.
 	 */
-	(void) ProcessConfigFileInternal(context, true, elevel);
+	(void) ProcessConfigFileInternal(NULL /* yb_config_file */ , context,
+									 true /* applySettings */ , elevel);
 
 	/* Clean up */
 	MemoryContextSwitchTo(caller_cxt);
 	MemoryContextDelete(config_cxt);
+}
+
+/*
+ * Check a config file without applying anything.
+ *
+ * Errors are reported via elog(ERROR) so if this returns without throwing
+ * that is considered a success. Only the 1st GUC which fails validation is
+ * caught by the error.
+ *
+ * This catches:
+ * 1. Parse errors, such as a wrong delimiter, unit or type in a GUC value.
+ * 2. GUC names that do not exist.
+ * 3. GUC check hook failures.
+ *
+ * It does not check:
+ * 1. Whether the GUC can only be applied on a restart. That context is not
+ *    available in the current call stack.
+ * 2. Some checks performed in actual startup code that are not expressed as
+ *    GUC validations.
+ */
+void
+YbValidateConfigFile(const char *config_file)
+{
+	ConfigVariable *head;
+	ConfigVariable *item;
+	StringInfoData errbuf;
+
+	head = ProcessConfigFileInternal(config_file, PGC_POSTMASTER,
+									 false /* applySettings */ , ERROR);
+
+	/*
+	 * If we got here, we either have a successful apply or a parse failure,
+	 * which are reported separately.
+	 */
+	initStringInfo(&errbuf);
+	for (item = head; item; item = item->next)
+	{
+		if (item->errmsg)
+			appendStringInfo(&errbuf, "%s\n", item->errmsg);
+	}
+
+	FreeConfigVariables(head);
+
+	if (errbuf.len > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("configuration file \"%s\" contains errors", config_file),
+				 errdetail("%s", errbuf.data)));
 }
 
 /*

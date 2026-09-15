@@ -33,6 +33,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
@@ -54,6 +55,7 @@
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/get_context.h"
+#include "yb/rocksdb/table/index_reader.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
@@ -78,6 +80,7 @@ using std::unique_ptr;
 using namespace std::literals;
 
 DECLARE_double(cache_single_touch_ratio);
+DECLARE_bool(rocksdb_multi_level_index_range_cache_enabled);
 
 namespace rocksdb {
 
@@ -1588,6 +1591,231 @@ TEST_F(TableTest, MultiLevelIndexTest) {
     const int expected_index_levels = static_cast<int>(
         ceil(std::log(keys) / std::log(entries_per_index_block)));
     TestIndex(table_options, expected_index_levels);
+  }
+}
+
+// Fixture for the multi-level index range-cache fast path
+// (FLAGS_rocksdb_multi_level_index_range_cache_enabled). Builds a table whose index is split
+// across multiple levels, so the fast path (which re-seeks only the bottom-level index iterator)
+// is actually engaged.
+class MultiLevelIndexRangeCacheTest : public TableTest {
+ protected:
+  static constexpr int kNumKeys = 40;
+
+  void SetUp() override {
+    TableTest::SetUp();
+    ASSERT_TRUE(FLAGS_rocksdb_multi_level_index_range_cache_enabled)
+        << "Fast path must be on by default for these tests to exercise it.";
+
+    // Keys with distinct, lexicographically-sorted 4-digit prefixes and large random suffixes.
+    // The large suffixes force ~2 keys per data block (many data blocks), and the tiny index
+    // block size below forces the index to be split across multiple levels.
+    for (int i = 0; i < kNumKeys; ++i) {
+      prefixes_.push_back(std::to_string(1000 + i));  // 1000..1039, all 4 digits.
+      AddInternalKey(&c_, prefixes_.back());
+    }
+
+    table_options_.index_type = IndexType::kMultiLevelBinarySearch;
+    table_options_.min_keys_per_index_block = 2;
+    table_options_.index_block_size = 2 * 24;  // Tiny: force multiple index levels.
+    table_options_.block_size = 1700;          // ~2 keys per data block: force many data blocks.
+    table_options_.block_cache = NewLRUCache(1_MB);
+    options_.table_factory.reset(NewBlockBasedTableFactory(table_options_));
+
+    comparator_ = std::make_shared<InternalKeyComparator>(BytewiseComparator());
+    ioptions_ = std::make_unique<const ImmutableCFOptions>(options_);
+    c_.Finish(options_, *ioptions_, table_options_, comparator_, &keys_, &kvmap_);
+
+    auto props = c_.GetTableProperties().user_collected_properties;
+    auto pos = props.find(BlockBasedTablePropertyNames::kNumIndexLevels);
+    ASSERT_NE(pos, props.end());
+    ASSERT_GE(DecodeFixed32(pos->second.c_str()), 3)
+        << "Test setup failed to produce a multi-level index.";
+
+    reader_ = c_.GetTableReader();
+  }
+
+  // Encoded internal key that seeks to (just before) the i-th stored key.
+  std::string SeekKey(int i) const {
+    return InternalKey(prefixes_[i], 0, kTypeValue).Encode().ToString();
+  }
+  // Encoded internal key that seeks just past the i-th stored key (a between-keys target).
+  std::string SeekBetween(int i) const {
+    return InternalKey(prefixes_[i] + "~", 0, kTypeValue).Encode().ToString();
+  }
+
+  // Runs the given seek targets on the multi-level index iterator (each followed by a short forward
+  // walk) and returns {observed keys, number of DoSeek calls the index iterator performed}.
+  // `enable_cache` toggles the fast path. `next_steps` is the number of Next() calls after each
+  // Seek. Note a leaf-crossing Next() invalidates the range cache, so pass next_steps = 0 to keep
+  // consecutive Seeks eligible for the fast path (needed when asserting on the DoSeek count).
+  std::pair<std::vector<std::string>, uint64_t> Collect(
+      const std::vector<std::string>& targets, bool enable_cache, int next_steps = 3) {
+    const bool saved = FLAGS_rocksdb_multi_level_index_range_cache_enabled;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_multi_level_index_range_cache_enabled) = enable_cache;
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        reader_->NewDataBlockAwareIndexIterator(ReadOptions()));
+    std::vector<std::string> observed;
+    for (const auto& target : targets) {
+      iter->Seek(target);
+      EXPECT_OK(iter->status());
+      if (iter->Valid()) {
+        observed.push_back(iter->key().ToString());  // Seek result.
+      }
+      for (int n = 0; n < next_steps && iter->Valid(); ++n) {
+        iter->Next();
+        if (iter->Valid()) {
+          observed.push_back(iter->key().ToString());
+        }
+      }
+      observed.push_back("|");  // Delimiter so walks of different lengths can't alias.
+    }
+    const uint64_t num_do_seek_calls = TEST_MultiLevelIndexIteratorNumDoSeekCalls(iter.get());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_multi_level_index_range_cache_enabled) = saved;
+    return {std::move(observed), num_do_seek_calls};
+  }
+
+  // Asserts the cache-disabled and cache-enabled runs return the same keys, and returns
+  // {DoSeek count with cache disabled, DoSeek count with cache enabled}.
+  std::pair<uint64_t, uint64_t> ExpectFastMatchesSlow(
+      const std::string& scenario, const std::vector<std::string>& targets, int next_steps = 3) {
+    SCOPED_TRACE(scenario);
+    const auto slow = Collect(targets, /* enable_cache = */ false, next_steps);
+    const auto fast = Collect(targets, /* enable_cache = */ true, next_steps);
+    // Compare only the observed keys (.first); the DoSeek counts (.second) intentionally differ.
+    EXPECT_EQ(slow.first, fast.first);
+    return {slow.second, fast.second};
+  }
+
+  TableConstructor c_{BytewiseComparator()};
+  std::vector<std::string> prefixes_;
+  std::vector<std::string> keys_;
+  stl_wrappers::KVMap kvmap_;
+  Options options_;
+  BlockBasedTableOptions table_options_;
+  std::shared_ptr<InternalKeyComparator> comparator_;
+  std::unique_ptr<const ImmutableCFOptions> ioptions_;
+  TableReader* reader_ = nullptr;
+};
+
+// Seek into the last leaf index block, walk off the end of the index, then re-seek into the same
+// (still-cached) leaf range and Next() again.
+TEST_F(MultiLevelIndexRangeCacheTest, ReseekAfterEndOfIndex) {
+  std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+      reader_->NewDataBlockAwareIndexIterator(ReadOptions()));
+  // Lands on the last leaf index block.
+  const std::string last_target = SeekKey(kNumKeys - 1);
+  auto do_seek_calls = [&] { return TEST_MultiLevelIndexIteratorNumDoSeekCalls(iter.get()); };
+
+  // First Seek: the cache is empty, so this must take the slow path (one full DoSeek)
+  uint64_t before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 1u) << "first Seek must take the slow path";
+
+  // Off the end: ancestors go invalid, but the leaf range cache stays valid.
+  iter->Next();
+  ASSERT_OK(iter->status());
+  ASSERT_FALSE(iter->Valid());
+
+  // Re-seek into the still-cached leaf range. The cache Contains() the target, but the iterator is
+  // invalid, so the Valid() gate must skip the fast path and perform a full DoSeek.
+  before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 1u)
+      << "re-seek after walking off the end must take the slow path (fast path gated by Valid())";
+
+  // The iterator is valid again and the cache is repopulated: seeking into the same leaf range now
+  // must take the fast path (zero DoSeek).
+  before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 0u)
+      << "in-range seek on a valid iterator must take the fast path";
+
+  // Next() must cleanly reach end-of-index (all ancestors must be valid here).
+  iter->Next();
+  ASSERT_OK(iter->status());
+  ASSERT_FALSE(iter->Valid());
+
+  // The next Seek must once more take the slow path.
+  before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 1u)
+      << "Seek after walking off the end must take the slow path (fast path gated by Valid())";
+}
+
+// Forward seeks must return the same results with the fast path enabled as with it disabled.
+TEST_F(MultiLevelIndexRangeCacheTest, ForwardSeeksMatchSlowPath) {
+  // Monotonic ascending sweep over every key. Each leaf index block contains ~2 keys.
+  {
+    std::vector<std::string> targets;
+    for (int i = 0; i < kNumKeys; ++i) {
+      targets.push_back(SeekKey(i));
+    }
+
+    // next_steps = 0: pure consecutive seeks with no intervening Next(), so the range cache stays
+    // valid across seeks and the fast path is actually exercised. (A leaf-crossing Next() would
+    // invalidate it and force a full DoSeek on the following Seek.)
+    auto do_seeks = ExpectFastMatchesSlow("ascending-sweep", targets, /* next_steps = */ 0);
+
+    // do_seeks = {DoSeek count cache-off, DoSeek count cache-on}. Consecutive in-leaf forward seeks
+    // take the fast path, which skips the full DoSeek, so the cache-enabled run performs strictly
+    // fewer DoSeek calls.
+    EXPECT_LT(do_seeks.second, do_seeks.first) << "cache-enabled run did not reduce DoSeek count";
+
+    // next_steps = 1: consecutive seeks with 1 Next, so the range cache should still stay valid
+    // across seeks.
+    do_seeks = ExpectFastMatchesSlow("ascending-sweep", targets, /* next_steps = */ 1);
+    EXPECT_LT(do_seeks.second, do_seeks.first) << "cache-enabled run did not reduce DoSeek count";
+  }
+
+  // Forward seek by a large stride: the second target is in a different (later) index page.
+  {
+    std::vector<std::string> targets;
+    for (int i = 0; i < kNumKeys; i += 4) {
+      targets.push_back(SeekKey(i));
+    }
+    auto do_seeks = ExpectFastMatchesSlow("forward-across-pages", targets);
+    EXPECT_EQ(do_seeks.second, do_seeks.first) << "should not run into fast path";
+  }
+
+  // Forward seek to a between-keys target
+  {
+    std::vector<std::string> targets;
+    for (int i = 0; i < kNumKeys; ++i) {
+      targets.push_back(SeekKey(i));
+      targets.push_back(SeekBetween(i));
+    }
+    [[maybe_unused]] auto do_seeks = ExpectFastMatchesSlow("forward-between-keys", targets, 0);
+    EXPECT_LT(do_seeks.second, do_seeks.first) << "cache-enabled run did not reduce DoSeek count";
+  }
+}
+
+// Backward seeks must return the same results with the fast path enabled as with it disabled.
+TEST_F(MultiLevelIndexRangeCacheTest, BackwardSeeksMatchSlowPath) {
+  // Monotonic backward sweep over every key.
+  {
+    std::vector<std::string> targets;
+    for (int i = kNumKeys - 1; i >= 0; --i) {
+      targets.push_back(SeekKey(i));
+    }
+    auto do_seeks = ExpectFastMatchesSlow("backward-sweep", targets);
+    EXPECT_EQ(do_seeks.second, do_seeks.first) << "should not run into fast path";
+  }
+  {
+    std::vector<std::string> targets;
+    for (int i = kNumKeys - 1; i >= 0; i -= 4) {
+      targets.push_back(SeekKey(i));
+    }
+    auto do_seeks = ExpectFastMatchesSlow("backward-stride", targets);
+    EXPECT_EQ(do_seeks.second, do_seeks.first) << "should not run into fast path";
   }
 }
 

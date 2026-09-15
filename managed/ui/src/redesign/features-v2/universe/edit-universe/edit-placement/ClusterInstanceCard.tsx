@@ -1,7 +1,6 @@
-import { FC, Fragment } from 'react';
+import { FC, Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
-import { mui, YBButton, YBDropdown, YBTable } from '@yugabyte-ui-library/core';
-import EditIcon from '@app/redesign/assets/edit2.svg';
+import { mui, YBButton, YBDropdown, YBTable, YBTag } from '@yugabyte-ui-library/core';
 import { KeyboardArrowDown } from '@material-ui/icons';
 import { useTranslation } from 'react-i18next';
 import {
@@ -10,21 +9,32 @@ import {
   ClusterSpec,
   ClusterSpecClusterType,
   NodeDetailsDedicatedTo,
+  PlacementAZ,
   PlacementRegion
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
+  AZ_NOT_PREFERRED,
+  AZ_PREFFERED_HIGHEST_RANK
+} from '../../create-universe/helpers/constants';
+import {
   countRegionsAzsAndNodes,
-  countMasterNodesInAz,
+  countNodesInAzByType,
   getDedicatedCountsForPlacementRegion,
   getDedicatedTserverMasterDisplayCounts,
   getResilientType,
   useEditUniverseContext,
-  useIsUniverseReady
+  useIsUniverseReady,
+  withUniverseResource
 } from '../EditUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { PreferredInfoModal } from '@app/redesign/features-v2/universe/create-universe/steps/nodes-availability/PrefferedInfoModal';
+
+import EditIcon from '@app/redesign/assets/edit2.svg';
+import PreferredRankStarIcon from '@app/redesign/assets/preferred-rank-star.svg';
+import HelpCircleIcon from '@app/redesign/assets/help-circle.svg';
 
 export type ClusterInstanceCardEditMenuItem = {
   id: string;
@@ -49,7 +59,7 @@ interface ClusterInstanceCardProps {
   /** When set, replaces the default three-item edit menu (primary / geo primary card). */
   editMenuItems?: ClusterInstanceCardEditMenuItem[];
 }
-const { Box, Typography, MenuItem, Divider, styled } = mui;
+const { Box, Typography, MenuItem, Divider, styled, useTheme } = mui;
 
 const StyledClusterInfo = styled(Box)(({ theme }) => ({
   border: `1px solid ${theme.palette.grey[200]}`,
@@ -70,6 +80,96 @@ const StyledValue = styled(Typography)({
   lineHeight: '16px'
 });
 
+const NestedAzTable = styled(Box)(({ theme }) => ({
+  width: '100%',
+  '& tbody tr:not(:last-of-type) td, & thead th': {
+    boxShadow: `inset 0 -1px 0 ${theme.palette.grey[200]}`
+  }
+}));
+
+const nestedAzTableOptions = {
+  pagination: false,
+  muiTableProps: { sx: { width: '100%' } }
+};
+
+const regionTableDetailPanelProps = ({ row }: { row: { getIsExpanded: () => boolean } }) => ({
+  sx: {
+    padding: '0 !important',
+    overflow: 'hidden !important',
+    display: row.getIsExpanded() ? 'table-cell' : 'none !important',
+    '& [class*="MuiTableCell-root"]': {
+      height: 'auto !important',
+      minHeight: 'unset !important',
+      maxHeight: 'none !important',
+      lineHeight: 'inherit !important',
+      borderBottom: 'none !important'
+    }
+  }
+});
+
+const isAzPreferred = (az: PlacementAZ) =>
+  az.leader_affinity === true && (az.leader_preference ?? AZ_NOT_PREFERRED) > AZ_NOT_PREFERRED;
+
+const PreferredAzTag: FC<{ az: PlacementAZ }> = ({ az }) => {
+  const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
+  const theme = useTheme();
+  const rank = az.leader_preference ?? AZ_NOT_PREFERRED;
+
+  if (isAzPreferred(az)) {
+    return (
+      <YBTag
+        size="medium"
+        customSx={{
+          background: '#E8E9FE',
+          color: theme.palette.grey[900],
+          fontWeight: 400
+        }}
+        endIcon={
+          rank === AZ_PREFFERED_HIGHEST_RANK ? (
+            <PreferredRankStarIcon width={16} height={16} />
+          ) : undefined
+        }
+      >
+        {t('preferredYesRank', { rank })}
+      </YBTag>
+    );
+  }
+
+  return (
+    <YBTag
+      size="medium"
+      customSx={{
+        backgroundColor: theme.palette.grey[200],
+        color: theme.palette.grey[700],
+        fontWeight: 400
+      }}
+    >
+      {t('notPreferred')}
+    </YBTag>
+  );
+};
+
+const PreferredColumnHeader: FC<{ onHelpClick: () => void }> = ({ onHelpClick }) => {
+  const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <span>{t('preferred')}</span>
+      <Box
+        component="span"
+        data-testid="preferred-column-help"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onHelpClick();
+        }}
+        sx={{ display: 'inline-flex', cursor: 'pointer', alignItems: 'center' }}
+      >
+        <HelpCircleIcon width={18} height={18} />
+      </Box>
+    </Box>
+  );
+};
+
 export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   editPlacementClicked,
   title,
@@ -83,7 +183,9 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const { universeData } = useEditUniverseContext();
   const isUniverseReady = useIsUniverseReady();
+  const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
   if (!universeData) return null;
+  const universeUUID = universeData.info?.universe_uuid;
   const isK8s = placement.cloud_list?.[0]?.code === CloudType.kubernetes;
   const regionStats = countRegionsAzsAndNodes(placement);
   const resilientType = getResilientType(
@@ -94,6 +196,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   const isReadReplicaCluster = cluster.cluster_type === ClusterSpecClusterType.ASYNC;
   const dedicatedFromSpec = !!cluster.node_spec?.dedicated_nodes;
   const regionList = placement.cloud_list.map((cloud) => cloud.region_list).flat();
+  const hasPreferredAz = regionList.some((region) => (region.az_list ?? []).some(isAzPreferred));
 
   const dedicatedDisplayTotals = getDedicatedTserverMasterDisplayCounts(
     universeData,
@@ -123,48 +226,59 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
     return totalNodes ?? 0;
   };
 
+  const preferredColumn = {
+    accessorKey: 'leader_affinity',
+    header: t('preferred'),
+    enableSorting: false,
+    size: 160,
+    // eslint-disable-next-line react/display-name
+    Header: () => <PreferredColumnHeader onHelpClick={() => setShowPreferredInfoModal(true)} />,
+    // eslint-disable-next-line react/display-name
+    Cell: ({ row: azRow }: { row: { original: PlacementAZ } }) => (
+      <PreferredAzTag az={azRow.original} />
+    )
+  };
+
   const renderExpandDetails = ({ row }: any) => {
     const placementRegion: PlacementRegion = row.original;
+    const azList = (placementRegion.az_list ?? []) as unknown as Record<string, string>[];
+    const columns: Array<Record<string, any>> = dedicatedFromSpec
+      ? [
+          { accessorKey: 'name', header: t('availabilityZone') },
+          {
+            accessorKey: 'tServers',
+            header: t('tServers'),
+            Cell: ({ row: azRow }: any) => azRow.original?.num_nodes_in_az ?? 0
+          },
+          ...(!isReadReplicaCluster
+            ? [
+                {
+                  accessorKey: 'masters',
+                  header: t('masters'),
+                  Cell: ({ row: azRow }: any) =>
+                    countNodesInAzByType(universeData!, azRow.original?.uuid, NodeDetailsDedicatedTo.MASTER)
+                }
+              ]
+            : [])
+        ]
+      : [
+          { accessorKey: 'name', header: t('availabilityZone') },
+          { accessorKey: 'num_nodes_in_az', header: t(isK8s ? 'noOfPods' : 'noOfNodes') }
+        ];
 
-    if (!dedicatedFromSpec) {
-      return (
-        <YBTable
-          columns={[
-            { accessorKey: 'name', header: t('availabilityZone') },
-            { accessorKey: 'num_nodes_in_az', header: t(isK8s ? 'noOfPods' : 'noOfNodes') }
-          ]}
-          data={(placementRegion.az_list as unknown as Record<string, string>[]) ?? []}
-          withBorder={false}
-          options={{
-            pagination: false
-          }}
-        />
-      );
+    if (hasPreferredAz) {
+      columns.push(preferredColumn);
     }
-    const columns = [
-      { accessorKey: 'name', header: t('availabilityZone') },
-      {
-        accessorKey: 'tServers',
-        header: t('tServers'),
-        Cell: ({ row: azRow }: any) => azRow.original?.num_nodes_in_az ?? 0
-      }
-    ];
-    if (!isReadReplicaCluster) {
-      columns.push({
-        accessorKey: 'masters',
-        header: t('masters'),
-        Cell: ({ row: azRow }: any) => countMasterNodesInAz(universeData!, azRow.original?.uuid)
-      });
-    }
+
     return (
-      <YBTable
-        columns={columns}
-        data={(placementRegion.az_list as unknown as Record<string, string>[]) ?? []}
-        withBorder={false}
-        options={{
-          pagination: false
-        }}
-      />
+      <NestedAzTable>
+        <YBTable
+          columns={columns}
+          data={azList}
+          withBorder={false}
+          options={nestedAzTableOptions}
+        />
+      </NestedAzTable>
     );
   };
 
@@ -197,6 +311,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         </Typography>
         <YBDropdown
           dataTestId="edit-placement-actions"
+          disableScrollLock
           slotProps={{
             paper: {
               sx: editMenuItems
@@ -274,7 +389,10 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
               ))
             : [
                 <RbacValidator
-                  accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT}
+                  accessRequiredOn={withUniverseResource(
+                    ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT,
+                    universeUUID
+                  )}
                   isControl
                 >
                   <MenuItem
@@ -290,7 +408,10 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                   </MenuItem>
                 </RbacValidator>,
                 <RbacValidator
-                  accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT}
+                  accessRequiredOn={withUniverseResource(
+                    ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT,
+                    universeUUID
+                  )}
                   isControl
                 >
                   <MenuItem
@@ -305,10 +426,13 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                     {t(isK8s ? 'editPodsAndAvailabilityZones' : 'editNodesAndAvailabilityZones')}
                   </MenuItem>
                 </RbacValidator>,
-                ...(editMasterServerNodeAllocationClicked
+                ...(editMasterServerNodeAllocationClicked && dedicatedFromSpec
                   ? [
                       <RbacValidator
-                        accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                        accessRequiredOn={withUniverseResource(
+                          ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                          universeUUID
+                        )}
                         isControl
                       >
                         <MenuItem
@@ -406,10 +530,17 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
             pagination: false,
             initialState: {
               expanded: true
-            }
+            },
+            muiDetailPanelProps: regionTableDetailPanelProps
           }}
         />
       </Box>
+      <PreferredInfoModal
+        open={showPreferredInfoModal}
+        onClose={() => {
+          setShowPreferredInfoModal(false);
+        }}
+      />
     </Box>
   );
 };

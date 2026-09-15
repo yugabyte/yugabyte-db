@@ -87,7 +87,7 @@ void ApplyIntentsTask::Run() {
 }
 
 void ApplyIntentsTask::Done(const Status& status) {
-  WARN_NOT_OK(status, "Apply intents task failed");
+  WARN_NOT_OK(status, LogPrefix() + "Apply intents task failed");
   operation_.Reset();
   transaction_.reset();
 }

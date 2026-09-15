@@ -1,16 +1,15 @@
 LOAD 'pg_hint_plan';
-ALTER SYSTEM SET session_preload_libraries TO 'pg_hint_plan';
 SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 
 -- Queries on ordinary tables with default setting
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
--- Note that parallel is not enforced on a single relation without
--- the GUCs related to parallelism reset.
+-- Note that parallel is enforced on a single relation with "hard" mode
+-- since pgs_mask directly penalizes non-parallel paths.
 /*+Parallel(t1 5 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
--- Still it works for multiple relations.
+-- It also works for multiple relations.
 /*+Parallel(t11 5 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 as t11, s1.t1 as t12;
 
@@ -57,7 +56,7 @@ SET enable_parallel_append to true;
 /*+Parallel(p1 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
--- hinting on children doesn't work (changed as of pg_hint_plan 10)
+-- hinting on children propagates to the whole inheritance tree
 SET enable_parallel_append to false;
 /*+Parallel(p1_c1 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
@@ -151,7 +150,7 @@ SET enable_parallel_append to true;
 /*+Parallel(p1 8 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
--- This hint doesn't turn on parallel, so the Parallel hint is ignored
+-- This hint disables parallel on p1 (nworkers=0), combined with IndexScan
 set max_parallel_workers_per_gather TO 0;
 /*+Parallel(p1 0 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
@@ -183,6 +182,18 @@ SET max_parallel_workers_per_gather to 8;
 /*+Parallel(p1 5 hard)Parallel(p2 6 hard) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
+-- On empty tables, parallel hints are enforced through pgs_mask
+-- penalization of non-parallel paths.
+/*+Parallel(t5 4 hard) Parallel(t6 2 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t5 NATURAL JOIN s1.t6;
+/*+Parallel(t5 4 hard) Parallel(t6 2 hard) NoSeqScan(t5) NoSeqScan(t6) */
+EXPLAIN (COSTS false) SELECT * FROM s1.t5 NATURAL JOIN s1.t6;
+INSERT INTO s1.t5 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 1) i) t;
+INSERT INTO s1.t6 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 1) i) t;
+ANALYZE s1.t5;
+ANALYZE s1.t6;
+/*+Parallel(t5 4 hard) Parallel(t6 2 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t5 NATURAL JOIN s1.t6;
 
 -- Negative hints
 SET enable_indexscan to DEFAULT;
@@ -206,20 +217,14 @@ EXPLAIN (COSTS false) SELECT * FROM p1;
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
 -- Hints on unhintable relations are just ignored
+SELECT explain_filter('
 /*+Parallel(p1 5 hard) Parallel(s1 3 hard) IndexScan(ft1) SeqScan(cte1)
-  TidScan(fs1) IndexScan(t) IndexScan(*VALUES*) */
-\o results/ut-W.tmpout
+  IndexScan(t) IndexScan(*VALUES*) */
 EXPLAIN (COSTS false) SELECT id FROM p1_c1_c1 as s1 TABLESAMPLE SYSTEM(10)
  UNION ALL
 SELECT id FROM ft1
  UNION ALL
 (WITH cte1 AS (SELECT id FROM p1 WHERE id % 2 = 0) SELECT id FROM cte1)
  UNION ALL
-SELECT userid FROM pg_stat_statements fs1
- UNION ALL
 SELECT x FROM (VALUES (1), (2), (3)) t(x);
-\o
-\! sql/maskout2.sh results/ut-W.tmpout
-
-ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
-SELECT pg_reload_conf();
+');

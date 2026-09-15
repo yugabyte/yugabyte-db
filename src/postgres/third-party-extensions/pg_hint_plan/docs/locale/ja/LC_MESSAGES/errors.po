@@ -1,78 +1,83 @@
 # LANGUAGE message translation file for pg_hint_plan errors.
-# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (C) 2012-2026, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 # This file is distributed under the same license as the pg_hint_plan
 # package.
 # Julien Rouhaud <rjuju123@gmail.com>, 2023.
+# Tatsuro Yamada <yamatattsu@gmail.com>, 2023.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_hint_plan \n"
+"Project-Id-Version: pg_hint_plan\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-03-14 16:08+0800\n"
-"PO-Revision-Date: 2023-03-14 16:08+0800\n"
-"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"POT-Creation-Date: 2023-11-09 10:50+0900\n"
+"PO-Revision-Date: 2023-11-09 15:48+0900\n"
+"Last-Translator: Tatsuro Yamada <yamatattsu@gmail.com>\n"
+"Language-Team: \n"
 "Language: ja\n"
-"Language-Team: ja <LL@li.org>\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 "Generated-By: Babel 2.12.1\n"
+"X-Generator: Poedit 3.2.2\n"
 
-#: ../../errors.md:1 e8084bcb28054ad3a89ca6d6b940e3b4
+#: ../../errors.md:1 7bb59eaf638542abb9586f050733a4e0
 msgid "Errors"
-msgstr ""
+msgstr "エラー"
 
-#: ../../errors.md:3 da64bc0ef4af481f8dcb444f1e30608c
-msgid ""
-"`pg_hint_plan` stops parsing on any error and uses hints already parsed "
-"on the most cases. Following are the typical errors."
-msgstr ""
+#: ../../errors.md:3 e3db83c556504b0abfe85134459031bc
+msgid "`pg_hint_plan` stops hint parsing on any error and will uses the hints already parsed.  Here are some typical errors."
+msgstr "`pg_hint_plan`はエラーが発生するとヒントの構文解析を停止し、既に構文解析されたヒントを使用します。以下は典型的なエラーです。"
 
-#: ../../errors.md:6 d1b5e21f2fee455cb48c0c675820aa2e
+#: ../../errors.md:6 a8760d36d17f470ab6afbbb02c1ff219
 msgid "Syntax errors"
-msgstr ""
+msgstr "シンタックスエラー"
 
-#: ../../errors.md:8 661711bb3037474a966dc5f79114e5f3
+#: ../../errors.md:8 b1414efb066a4ddfbad0ce8cbe16fb58
 msgid ""
-"Any syntactical errors or wrong hint names are reported as a syntax "
-"error. These errors are reported in the server log with the message level"
-" specified by `pg_hint_plan.message_level` if `pg_hint_plan.debug_print` "
-"is on and above."
+"Any syntactical errors or wrong hint names are reported as a syntax error. These errors are reported in the server log with the message level "
+"specified by `pg_hint_plan.message_level` if `pg_hint_plan.debug_print` is on and above."
 msgstr ""
+"構文的なエラーやヒント名の誤りなどはシンタックスエラーとして出力されます。これらのエラーは`pg_hint_plan.debug_print`がON以上の場合、`pg_hint_plan."
+"message_level`によって指定されたメッセージレベルでサーバログに出力されます。"
 
-#: ../../errors.md:12 1b66e4a4ee1d4092bf9b60316ea5fde0
-msgid "Object misspecifications"
-msgstr ""
+#: ../../errors.md:13 d28f5080cc7e41acabc18494d6ac768a
+msgid "Incorrect Object definitions"
+msgstr "誤ったオブジェクトの指定"
 
-#: ../../errors.md:14 00514154bea44ec4be4494b4585650ab
+#: ../../errors.md:15 1643ff73330f44eea56fd6babeb8a4e4
 msgid ""
-"Object misspecifications result in silent ignorance of the hints. This "
-"kind of error is reported as \"not used hints\" in the server log by the "
-"same condition as syntax errors."
+"Incorrect object definitions result in silently ignoring the hints. This kind of error is reported as a \"Not Used Hint\" in the server logs."
 msgstr ""
+"オブジェクトの指定に誤りがあるとヒントは無言で無視されます。この種類のエラーはシンタックスエラーと同様の条件で \"Not used hints\" としてサーバログ"
+"に出力されます。"
 
-#: ../../errors.md:18 58830d316aa8419ea400c5c2e987baac
+#: ../../errors.md:18 da03af4bd07e450c952f8f8c471d9f71
 msgid "Redundant or conflicting hints"
-msgstr ""
+msgstr "冗長または競合するヒント"
 
-#: ../../errors.md:20 8dfb10a676f145d6936cbcc3bdf4d8eb
+#: ../../errors.md:20 833a65ab64b043c08b4cb3aaf687272a
 msgid ""
-"The last hint will be active when redundant hints or hints conflicting "
-"with each other. This kind of error is reported as \"duplication hints\" "
-"in the server log by the same condition to syntax errors."
+"The last hint is considered when redundant hints are defined or hints conflict with each other.  This kind of error is reported as a duplicated "
+"hints."
 msgstr ""
+"冗長なヒントが指定されている場合やヒント同士が競合している場合は、最後のヒントが考慮されます。この種類のエラーは \"duplication hints\" として報告"
+"されます。"
 
-#: ../../errors.md:24 3e950fa501ee465c848be48d99b5256d
+#: ../../errors.md:24 f3374244abe74052b9814e28cbe98045
 msgid "Nested comments"
-msgstr ""
+msgstr "ネストされたコメント"
 
-#: ../../errors.md:26 ce0443c0e8a74399bf519665e6122bf6
-msgid ""
-"Hint comment cannot include another block comment within. If "
-"`pg_hint_plan` finds it, differently from other erros, it stops parsing "
-"and abandans all hints already parsed. This kind of error is reported in "
-"the same manner as other errors."
-msgstr ""
+#: ../../errors.md:26 020914d49a2d42b28d82f4fd898d99dc
+msgid "Hint comments cannot be recursive.   If detected, hint parsing is immediately stopped and all the hints already parsed are ignored."
+msgstr "ヒントコメントは再帰的に使用できません。 検出された場合、ヒントの構文解析は直ちに停止され、既に解析されたヒントはすべて無視されます。"
 
+#~ msgid "Object misspecifications"
+#~ msgstr "オブジェクトの指定誤り"
+
+#~ msgid ""
+#~ "Hint comment cannot include another block comment within. If `pg_hint_plan` finds it, differently from other erros, it stops parsing and "
+#~ "abandans all hints already parsed. This kind of error is reported in the same manner as other errors."
+#~ msgstr ""
+#~ "コメントヒント内に別のブロックコメントを含めることはできません。`pg_hint_plan` はそれを見つけた場合、他のエラーとは異なり構文解析を中止し、既に"
+#~ "構文解析された全てのヒントを破棄します。この種類のエラーは他のエラーと同様の方法で出力されます。"

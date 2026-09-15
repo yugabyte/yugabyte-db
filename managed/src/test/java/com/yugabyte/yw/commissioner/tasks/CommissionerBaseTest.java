@@ -162,7 +162,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListLiveTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.util.TabletServerInfo;
 import play.Application;
@@ -513,6 +513,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient().when(cloudAPI.isValidCreds(any())).thenReturn(true);
   }
 
+  // The application wiring below is identical for every test method (a fixed set of mock bindings
+  // held in instance fields), so share one application instance across all of the class' methods.
+  // Per-method isolation is restored by the base class (DB truncation + mock reset). Subclasses
+  // that
+  // need genuinely per-method wiring must override this to return false.
+  @Override
+  protected boolean reusableApplication() {
+    return true;
+  }
+
   @Override
   protected Application provideApplication() {
     return configureApplication(
@@ -573,11 +583,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .build();
   }
 
-  public void mockWaits(YBClient mockClient) {
+  public void mockWaits(YBClientApi mockClient) {
     mockWaits(mockClient, 1);
   }
 
-  public void mockWaits(YBClient mockClient, int version) {
+  public void mockWaits(YBClientApi mockClient, int version) {
     try {
       // PlacementUtil mock.
       CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
@@ -966,7 +976,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
-  protected void setCheckNodesAreSafeToTakeDown(YBClient mockClient) {
+  protected void setCheckNodesAreSafeToTakeDown(YBClientApi mockClient) {
     try {
       when(mockClient.areNodesSafeToTakeDown(any(), any(), anyLong()))
           .thenReturn(new AreNodesSafeToTakeDownResponse(null));
@@ -1138,7 +1148,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     + "    Leap status     : Normal"));
   }
 
-  protected void setMockLiveTabletServers(YBClient mockClient, Universe universe) {
+  protected void setMockLiveTabletServers(YBClientApi mockClient, Universe universe) {
     try {
       List<TabletServerInfo> tabletServerInfoList = new ArrayList<>();
 

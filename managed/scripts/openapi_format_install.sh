@@ -1,26 +1,24 @@
 #!/bin/bash
+# Ensure openapi-format is available locally so the batch formatter (openapi_format_batch.js) can
+# `require` it. We install into scripts/node_modules (gitignored) rather than relying on a global
+# install or per-file `npx` - the latter re-resolved the package on every one of the ~350 files and
+# dominated build time.
+set -euo pipefail
 
-export NPM_BIN="$(npm root -g 2>/dev/null)/../../bin"
-echo "npm bin at: $NPM_BIN"
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 openapi_format_ver="1.17.1"
-# Check if openapi-format is installed locally.
-if command -v openapi-format > /dev/null
-then
-  local_version=$(openapi-format --version)
-  if [ "$local_version" != "$openapi_format_ver" ];
-  then
-    echo "Warning: Local openapi-format version ($local_version) is not the required \
-        ($openapi_format_ver). Installing..."
-    set -e
-    npm install -g openapi-format@$openapi_format_ver
-    set +e
-  else
-    echo "Using local openapi-format version: $local_version"
+pkg_json="$SCRIPT_DIR/node_modules/openapi-format/package.json"
+
+# Skip the install when the correct version is already present locally.
+if [ -f "$pkg_json" ]; then
+  installed_ver=$(node -e "process.stdout.write(require('$pkg_json').version)" 2>/dev/null \
+    || echo "")
+  if [ "$installed_ver" == "$openapi_format_ver" ]; then
+    echo "Using local openapi-format version: $installed_ver"
+    exit 0
   fi
-else
-  echo "Installing openapi-format version via $NPM_BIN/npx: $openapi_format_ver"
-  set -e
-  $NPM_BIN/npx openapi-format@$openapi_format_ver --version
-  set +e
 fi
+
+echo "Installing openapi-format@$openapi_format_ver into $SCRIPT_DIR/node_modules ..."
+npm install --prefix "$SCRIPT_DIR" --no-save --no-package-lock --no-fund --no-audit \
+  "openapi-format@$openapi_format_ver"

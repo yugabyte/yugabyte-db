@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.IsXClusterBootstrapRequiredResponse;
 import org.yb.client.XClusterCreateOutboundReplicationGroupResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
@@ -45,7 +45,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
               taskParams().getDbs()));
     }
 
-    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(sourceUniverse)) {
       log.info(
           "Checkpointing databases for XClusterConfig({}): source db ids: {}",
           xClusterConfig.getUuid(),
@@ -91,7 +91,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
   }
 
   protected void waitForCheckpointingToBeReady(
-      YBClient client,
+      YBClientApi client,
       XClusterConfig xClusterConfig,
       Set<String> dbIds,
       long xClusterWaitTimeoutMs) {

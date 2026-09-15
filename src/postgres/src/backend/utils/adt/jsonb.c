@@ -2034,3 +2034,37 @@ JsonbUnquote(Jsonb *jb)
 	else
 		return JsonbToCString(NULL, &jb->root, VARSIZE(jb));
 }
+
+/*
+ * YB: If val_type has a native non-string JSON scalar form (bool, numeric,
+ * or null), push that value onto pstate and return true.
+ *
+ * Returns false for all other types (arrays, composites, types that have a
+ * native string representation in JSON such as dates/timestamps, text, etc.).
+ * Callers must then stringify the datum themselves (e.g. with the type's output
+ * function) and push a jbvString.
+ */
+bool
+yb_datum_to_jsonb_non_string_scalar_value(Datum val, Oid val_type,
+										  JsonbInState *result)
+{
+	JsonTypeCategory tcategory;
+	Oid			outfuncoid;
+
+	json_categorize_type(val_type, true /* is_jsonb */ , &tcategory,
+						 &outfuncoid);
+
+	if (tcategory != JSONTYPE_BOOL &&
+		tcategory != JSONTYPE_NUMERIC)
+
+		return false;
+
+	datum_to_jsonb_internal(val,
+							false /* is_null */ ,
+							result,
+							tcategory,
+							outfuncoid,
+							false /* key_scalar */ );
+
+	return true;
+}

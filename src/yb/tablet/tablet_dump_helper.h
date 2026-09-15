@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <optional>
+
+#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/slice.h"
@@ -28,6 +31,15 @@ namespace yb::tablet {
 // An empty target_table_id hashes every (non-parent, non-vector-index) table in the tablet, which
 // for a colocated tablet means all colocated tables sharing it.
 //
+// An explicit read_ht is waited for. A replica that stays behind fails with READ_TIME_NOT_REACHED
+// rather than reporting a partially applied state as the state at read_ht. A read_ht more than
+// FLAGS_dump_tablet_data_max_read_time_ahead_ms ahead of this server's clock is rejected with
+// InvalidArgument instead of waited for.
+//
+// max_read_time_wait bounds the wait. nullopt falls back to
+// FLAGS_dump_tablet_data_max_read_time_wait_ms. Zero fails immediately. The wait never outlives
+// the RPC deadline.
+//
 // If start_partition_key / end_partition_key are non-empty, the scan is further restricted to that
 // partition-key sub-range within each scanned table's own key space (raw PartitionPB encoding;
 // start inclusive, end exclusive, empty = the table's natural start/end). For a colocated table the
@@ -35,8 +47,8 @@ namespace yb::tablet {
 // table's slice of the shared tablet.
 Status DumpTabletData(
     Tablet& tablet, std::shared_future<client::YBClient*> client_future, WritableFile* file,
-    uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash, uint64_t& row_count,
-    const TableId& target_table_id = "", Slice start_partition_key = Slice(),
-    Slice end_partition_key = Slice());
+    uint64_t read_ht, std::optional<MonoDelta> max_read_time_wait, CoarseTimePoint deadline,
+    uint64_t& xor_hash, uint64_t& row_count, const TableId& target_table_id = "",
+    Slice start_partition_key = Slice(), Slice end_partition_key = Slice());
 
 }  // namespace yb::tablet

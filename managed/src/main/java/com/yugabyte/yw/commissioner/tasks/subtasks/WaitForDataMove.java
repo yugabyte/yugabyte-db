@@ -22,7 +22,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetLoadMovePercentResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Slf4j
@@ -57,11 +57,14 @@ public class WaitForDataMove extends UniverseTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     log.info("Running {} on masterAddresses = {}.", getName(), masterAddresses);
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
       String taskUUIDString = getTaskUUID().toString();
       while (percent < 100) {
-        waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
+        // Always keep a real poll interval. getSleepMultiplier() is 0 when
+        // yb.tasks.disabled_timeouts=true (test conf), and busy-polling getLoadMoveCompletion
+        // starves the catalog-manager BG task that actually drives the load balancer.
+        waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
         GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
         if (response.hasError()) {
           log.warn("{} response has error {}.", getName(), response.errorMessage());

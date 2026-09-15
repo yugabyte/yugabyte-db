@@ -544,6 +544,13 @@ const struct config_enum_entry yb_batch_detection_mechanism_options[] = {
 	{NULL, 0, false}
 };
 
+const struct config_enum_entry yb_db_history_retention_pin_mode_options[] = {
+	{"none", YB_DB_HISTORY_RETENTION_PIN_MODE_NONE, false},
+	{"ddl_only", YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY, false},
+	{"all", YB_DB_HISTORY_RETENTION_PIN_MODE_ALL, false},
+	{NULL, 0, false}
+};
+
 const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
 	{"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
 	{"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},

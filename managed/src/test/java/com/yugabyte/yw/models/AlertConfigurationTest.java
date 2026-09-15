@@ -44,7 +44,6 @@ import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
-import io.ebean.CallableSql;
 import io.ebean.DB;
 import jakarta.persistence.PersistenceException;
 import java.io.IOException;
@@ -438,8 +437,10 @@ public class AlertConfigurationTest extends FakeDBApplication {
         configuration2,
         platformConfiguration,
         configuration);
+    // Postgres orders NULLs last for ASC sorts, so the configuration with an alert count comes
+    // first and the two configurations with no alerts (null count) follow, tie-broken by uuid.
     assertSort(
-        SortBy.alertCount, SortDirection.ASC, configuration2, platformConfiguration, configuration);
+        SortBy.alertCount, SortDirection.ASC, configuration, configuration2, platformConfiguration);
   }
 
   private void assertSort(
@@ -709,18 +710,29 @@ public class AlertConfigurationTest extends FakeDBApplication {
   @Test
   public void testTransactions() {
     AlertConfiguration configuration = createTestConfiguration();
-    CallableSql dropTable = DB.createCallableSql("drop table maintenance_window");
-    DB.getDefault().execute(dropTable);
+    // Temporarily make the maintenance_window table unavailable to force the save below to fail. We
+    // rename it (rather than dropping it) so it can be restored intact afterwards - the application
+    // and its database are shared across test methods, so dropping the table would break the rest
+    // of the suite.
+    DB.getDefault()
+        .execute(
+            DB.createCallableSql(
+                "alter table maintenance_window rename to maintenance_window_bak"));
+    try {
+      configuration.setMaintenanceWindowUuids(ImmutableSet.of(UUID.randomUUID()));
 
-    configuration.setMaintenanceWindowUuids(ImmutableSet.of(UUID.randomUUID()));
+      assertThat(
+          () -> alertConfigurationService.save(configuration),
+          thrown(PersistenceException.class, containsString("maintenance_window")));
 
-    assertThat(
-        () -> alertConfigurationService.save(configuration),
-        thrown(
-            PersistenceException.class, containsString("Table \"MAINTENANCE_WINDOW\" not found")));
-
-    AlertConfiguration updated = alertConfigurationService.get(configuration.getUuid());
-    assertThat(updated.getMaintenanceWindowUuids(), nullValue());
+      AlertConfiguration updated = alertConfigurationService.get(configuration.getUuid());
+      assertThat(updated.getMaintenanceWindowUuids(), nullValue());
+    } finally {
+      DB.getDefault()
+          .execute(
+              DB.createCallableSql(
+                  "alter table maintenance_window_bak rename to maintenance_window"));
+    }
   }
 
   private void testValidationCreate(Consumer<AlertConfiguration> modifier, String expectedMessage) {

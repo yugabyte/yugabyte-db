@@ -25,8 +25,11 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
+#include "yb/master/master_defaults.h"
+
 #include "yb/tools/test_admin_client.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -1477,7 +1480,27 @@ TEST_F_EX(PggateTestSelect, TestGetYbSystemTableInfo, PggateTestSelectWithYbSyst
   auto database_name = "yb_system";
   auto table_name = "abcd";
 
-  sleep(NonTsanVsTsan(10, 30));  // Wait for master to create yb_system database.
+  // The master bootstraps yb_system asynchronously: it creates the database, then
+  // pg_yb_notifications and its publication. Those DDLs bump the yb_system catalog version and
+  // write pg_publication, so they conflict with the DDLs below, which cannot be retried. Wait for
+  // the publication, created by the last bootstrap statement, to become visible.
+  ASSERT_OK(WaitFor(
+      [this, database_name]() -> Result<bool> {
+        auto conn = PgConnect(database_name);
+        if (!conn.ok()) {
+          LOG(WARNING) << "Failed to connect to " << database_name << ": " << conn.status();
+          return false;
+        }
+        auto exists = conn->FetchRow<bool>(Format(
+            "SELECT EXISTS(SELECT 1 FROM pg_publication WHERE pubname = '$0')",
+            master::kPgYbNotificationsPublicationName));
+        if (!exists.ok()) {
+          LOG(WARNING) << "Failed to query pg_publication: " << exists.status();
+          return false;
+        }
+        return *exists;
+      },
+      120s * kTimeMultiplier, "yb_system bootstrap to complete"));
 
   auto conn = ASSERT_RESULT(PgConnect(database_name));
 

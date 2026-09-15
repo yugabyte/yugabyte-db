@@ -40,6 +40,8 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/transaction_error.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -52,6 +54,7 @@
 #include "yb/docdb/consensus_frontier.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -121,6 +124,11 @@ DEFINE_RUNTIME_bool(abort_active_txns_during_xrepl_bootstrap, true,
     "Abort active transactions during xcluster and cdc bootstrapping. Inconsistent replicated data "
     "may be produced if this is disabled.");
 TAG_FLAG(abort_active_txns_during_xrepl_bootstrap, advanced);
+
+DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
+    "When the maintenance manager computes the GC-able WAL size, log WAL retention diagnostics if "
+    "the first retained segment is at least this old in seconds. 0 disables.");
+TAG_FLAG(log_retention_diagnostics_min_age_secs, advanced);
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -227,6 +235,7 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
+    ThreadPool* snapshot_cleanup_pool,
     rpc::ThreadPool* raft_notifications_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequests* retryable_requests,
@@ -295,7 +304,7 @@ Status TabletPeer::InitTabletPeer(
       };
     });
 
-    tablet_->SetCleanupPool(raft_pool);
+    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler(), raft_pool);
 
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();
@@ -366,6 +375,7 @@ Status TabletPeer::InitTabletPeer(
   operation_tracker_.StartMemoryTracking(tablet_->mem_tracker());
 
   RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
+  RETURN_NOT_OK(set_cdc_sdk_safe_time(meta_->cdc_sdk_safe_time()));
 
   TRACE("TabletPeer::Init() finished");
   VLOG_WITH_PREFIX(2) << "Peer Initted";
@@ -1035,24 +1045,42 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
 }
 
 Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
-    std::string* details) const {
+    std::string* retention_details) const {
   if (PREDICT_FALSE(!log_)) {
     auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
     LOG(DFATAL) << status;
     return status;
   }
 
+  std::vector<std::string> factors;
+  const auto AddIndexFactor =
+      [&factors, retention_details](
+          const std::string& name, int64_t index, const std::string& extra = "") {
+    if (retention_details) {
+      factors.push_back(Format(
+          "$0: $1$2", name,
+          index == std::numeric_limits<int64_t>::max() ? "<max_int>" : std::to_string(index),
+          extra));
+    }
+  };
+  const auto FinalizeRetentionDetails = [&factors, retention_details](int64_t result_index) {
+    if (retention_details) {
+      *retention_details += Format(
+          "Earliest needed op ID idx = min of [$0] = $1.",
+          JoinStrings(factors, ", "), result_index);
+    }
+  };
+
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
   auto latest_log_entry_op_id = log_->GetLatestEntryOpId();
   int64_t min_index = latest_log_entry_op_id.index;
-  if (details) {
-    *details += Format("Latest log entry op id: $0\n", latest_log_entry_op_id);
-  }
+  AddIndexFactor("latest log entry op ID idx", latest_log_entry_op_id.index);
 
   // If we never have written to the log, no need to proceed.
   if (min_index == 0) {
+    FinalizeRetentionDetails(min_index);
     return log::MinRetainLogIndexInfo{min_index};
   }
 
@@ -1065,9 +1093,7 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
       DCHECK(s.IsNotFound()) << "Unexpected error calling LogAnchorRegistry: " << s.ToString();
     } else {
       min_index = std::min(min_index, min_anchor_index);
-      if (details) {
-        *details += Format("Min anchor index: $0\n", min_anchor_index);
-      }
+      AddIndexFactor("min anchor idx", min_anchor_index);
     }
   }
 
@@ -1083,21 +1109,26 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
   }
 
   min_index = std::min(min_index, min_pending_op_index);
-  if (details && min_pending_op_index != std::numeric_limits<int64_t>::max()) {
-    *details += Format("Min pending op id index: $0\n", min_pending_op_index);
+  if (min_pending_op_index != std::numeric_limits<int64_t>::max()) {
+    AddIndexFactor("min pending op ID idx", min_pending_op_index);
   }
 
   auto min_retryable_request_op_id = VERIFY_RESULT(GetRaftConsensus())->MinRetryableRequestOpId();
   min_index = std::min(min_index, min_retryable_request_op_id.index);
-  if (details) {
-    *details += Format("Min retryable request op id: $0\n", min_retryable_request_op_id);
-  }
+  AddIndexFactor("min retryable req op ID idx", min_retryable_request_op_id.index);
 
   auto tablet = VERIFY_RESULT(shared_tablet());
   auto* transaction_coordinator = tablet->transaction_coordinator();
   if (transaction_coordinator) {
-    auto transaction_coordinator_min_op_index = transaction_coordinator->PrepareGC(details);
+    std::string txn_coord_detail;
+    auto transaction_coordinator_min_op_index =
+        transaction_coordinator->PrepareGC(retention_details ? &txn_coord_detail : nullptr);
     min_index = std::min(min_index, transaction_coordinator_min_op_index);
+    if (transaction_coordinator_min_op_index != std::numeric_limits<int64_t>::max()) {
+      AddIndexFactor(
+          "txn coord min op ID idx", transaction_coordinator_min_op_index,
+          Format(" ($0)", txn_coord_detail));
+    }
   }
 
   // We keep at least one committed operation in the log so that we can always recover safe time
@@ -1121,9 +1152,7 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
   //   because the earlier value of the last committed op id that we read prevents us from doing so.
   auto last_committed_op_id = VERIFY_RESULT(GetConsensus())->GetLastCommittedOpId();
   min_index = std::min(min_index, last_committed_op_id.index);
-  if (details) {
-    *details += Format("Last committed op id: $0\n", last_committed_op_id);
-  }
+  AddIndexFactor("last committed op ID idx", last_committed_op_id.index);
 
   if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     tablet_->FlushIntentsDbIfNecessary(latest_log_entry_op_id);
@@ -1131,15 +1160,11 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
         tablet_->MaxPersistentOpId(true /* invalid_if_no_new_data */));
     if (max_persistent_op_id.regular.valid()) {
       min_index = std::min(min_index, max_persistent_op_id.regular.index);
-      if (details) {
-        *details += Format("Max persistent regular op id: $0\n", max_persistent_op_id.regular);
-      }
+      AddIndexFactor("max persistent regular op ID idx", max_persistent_op_id.regular.index);
     }
     if (max_persistent_op_id.intents.valid()) {
       min_index = std::min(min_index, max_persistent_op_id.intents.index);
-      if (details) {
-        *details += Format("Max persistent intents op id: $0\n", max_persistent_op_id.intents);
-      }
+      AddIndexFactor("max persistent intents op ID idx", max_persistent_op_id.intents.index);
     }
   }
 
@@ -1152,21 +1177,22 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
     // https://github.com/yugabyte/yugabyte-db/issues/16684.
     auto min_unflushed_change_metadata_index = meta_->MinUnflushedChangeMetadataOpId().index;
     min_index = std::min(min_index, min_unflushed_change_metadata_index);
-    if (details) {
-      *details += Format(
-          "Min unflushed CHANGE_METADATA_OP index: $0\n", min_unflushed_change_metadata_index);
-    }
+    AddIndexFactor(
+        "min unflushed CHANGE_METADATA_OP ID idx", min_unflushed_change_metadata_index);
   }
+
+  FinalizeRetentionDetails(min_index);
 
   // Index xrepl (CDCSDK/xCluster) still needs the source to retain. This is the same value Log GC
   // applies as its soft xrepl floor; bundling it here gives remote bootstrap and GC one source of
   // truth. Returns int64 max when no xrepl consumer constrains retention.
-  const int64_t log_index_needed_by_cdc = log_->GetXReplMinReplicatedIndex();
-
-  if (details) {
-    *details += Format("Earliest needed log index: $0\n", min_index);
-    *details += Format(
-        "Log index needed by xrepl (CDCSDK/xCluster): $0\n", log_index_needed_by_cdc);
+  std::string xrepl_factors;
+  const int64_t log_index_needed_by_cdc =
+      log_->GetXReplMinReplicatedIndex(retention_details ? &xrepl_factors : nullptr);
+  if (retention_details && log_index_needed_by_cdc != std::numeric_limits<int64_t>::max()) {
+    *retention_details += Format(
+        " log_index_needed_by_cdc = min of [$0] = $1.", xrepl_factors,
+        log_index_needed_by_cdc);
   }
 
   return log::MinRetainLogIndexInfo{min_index, log_index_needed_by_cdc};
@@ -1198,8 +1224,34 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
-  const auto min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
-  RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size));
+
+  const int64_t diag_min_retain_age_secs = FLAGS_log_retention_diagnostics_min_age_secs;
+  bool collect_diagnostics = false;
+  if (diag_min_retain_age_secs > 0) {
+    constexpr auto kLogInterval = std::chrono::minutes(1);
+    const auto now = CoarseMonoClock::Now();
+    auto next_allowed = next_wal_retention_diag_log_time_.load();
+    collect_diagnostics =
+        now >= next_allowed &&
+        next_wal_retention_diag_log_time_.compare_exchange_strong(next_allowed, now + kLogInterval);
+  }
+
+  if (!collect_diagnostics) {
+    const auto min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
+    return log_->GetGCableDataSize(min_op_idx, retention_size);
+  }
+
+  log::WalRetentionDiagnostics diagnostics;
+  const auto min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex(&diagnostics.details));
+  RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size, &diagnostics));
+
+  if (diagnostics.first_retained_segment_age_secs >= diag_min_retain_age_secs &&
+      !diagnostics.details.empty()) {
+    LOG(DETAIL) << LogPrefix()
+        << "WAL retention details (gcable_bytes=" << *retention_size
+        << ", first_retain_seg_age=" << diagnostics.first_retained_segment_age_secs << "s): "
+        << diagnostics.details;
+  }
   return Status::OK();
 }
 
@@ -1217,10 +1269,9 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
   return yb::OpId();
 }
 
-bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh_ptr) const {
-  std::lock_guard l(cdc_min_replicated_index_lock_);
-  auto seconds_since_last_refresh =
-      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
+bool TabletPeer::is_cdc_barrier_stale(
+    const MonoTime& refresh_time, double* seconds_since_last_refresh_ptr) const {
+  auto seconds_since_last_refresh = MonoTime::Now().GetDeltaSince(refresh_time).ToSeconds();
   if (seconds_since_last_refresh_ptr) {
     *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
   }
@@ -1228,6 +1279,17 @@ bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_re
       ? FLAGS_cdc_min_replicated_index_considered_stale_secs_master
       : FLAGS_cdc_min_replicated_index_considered_stale_secs;
   return (seconds_since_last_refresh > stale_secs);
+}
+
+bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh_ptr) const {
+  std::lock_guard l(cdc_resource_refresh_time_lock_);
+  return is_cdc_barrier_stale(
+      cdc_min_replicated_index_refresh_time_, seconds_since_last_refresh_ptr);
+}
+
+bool TabletPeer::is_cdc_sdk_safe_time_stale(double* seconds_since_last_refresh_ptr) const {
+  std::lock_guard l(cdc_resource_refresh_time_lock_);
+  return is_cdc_barrier_stale(cdc_sdk_safe_time_refresh_time_, seconds_since_last_refresh_ptr);
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
@@ -1242,7 +1304,7 @@ Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replica
 }
 
 Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
-  std::lock_guard l(cdc_min_replicated_index_lock_);
+  std::lock_guard l(cdc_resource_refresh_time_lock_);
   return set_cdc_min_replicated_index_unlocked(cdc_min_replicated_index);
 }
 
@@ -1269,6 +1331,10 @@ Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_chec
 Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
   VLOG(1) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
   RETURN_NOT_OK(meta_->set_cdc_sdk_safe_time(cdc_sdk_safe_time));
+  {
+    std::lock_guard l(cdc_resource_refresh_time_lock_);
+    cdc_sdk_safe_time_refresh_time_ = MonoTime::Now();
+  }
   return Status::OK();
 }
 
@@ -1296,19 +1362,39 @@ bool TabletPeer::is_under_cdc_sdk_replication() {
   return meta_->is_under_cdc_sdk_replication();
 }
 
-Status TabletPeer::reset_all_cdc_retention_barriers_if_stale() {
-  double seconds_since_last_refresh;
-  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
-    VLOG_WITH_PREFIX(1) << "Trying to reset cdc retention barriers. Seconds since last update: "
-                        << seconds_since_last_refresh;
-    RETURN_NOT_OK(SetAllCDCRetentionBarriers(
-        std::numeric_limits<int64_t>::max() /* cdc_wal_index */,
-        OpId::Max() /* cdc_sdk_intents_op_id */, MonoDelta::kZero /* cdc_sdk_op_id_expiration */,
-        HybridTime::kInvalid /* cdc_sdk_history_cutoff */, true /* require_history_cutoff */,
-        false /* initial_retention_barrier */));
-    TEST_SYNC_POINT("TabletPeer::reset_all_cdc_retention_barriers_if_stale::End");
+Result<CDCRetentionBarrierMoveSelector> TabletPeer::reset_cdc_retention_barriers_if_stale() {
+  double seconds_since_cdc_min_replicated_index_last_refresh;
+  double seconds_since_cdc_sdk_safe_time_last_refresh;
+  bool is_cdc_min_replicated_index_stale =
+      this->is_cdc_min_replicated_index_stale(&seconds_since_cdc_min_replicated_index_last_refresh);
+  bool is_cdc_sdk_safe_time_stale =
+      this->is_cdc_sdk_safe_time_stale(&seconds_since_cdc_sdk_safe_time_last_refresh);
+  if (!is_cdc_min_replicated_index_stale && !is_cdc_sdk_safe_time_stale) {
+    return CDCRetentionBarrierMoveSelector{
+        .move_cdc_min_replicated_index = false,
+        .move_cdc_sdk_min_checkpoint_op_id = false,
+        .move_cdc_sdk_safe_time = false};
   }
-  return Status::OK();
+
+  // The WAL and intent retention barriers share the cdc_min_replicated_index staleness clock, so
+  // when it is stale we release both of them. The history barrier has its own clock and is released
+  // independently. Barriers that are still being advanced are left in place.
+  CDCRetentionBarrierMoveSelector barrier_move_selector{
+      .move_cdc_min_replicated_index = is_cdc_min_replicated_index_stale,
+      .move_cdc_sdk_min_checkpoint_op_id = is_cdc_min_replicated_index_stale,
+      .move_cdc_sdk_safe_time = is_cdc_sdk_safe_time_stale};
+  VLOG_WITH_PREFIX(1) << "Trying to reset stale cdc retention barriers. WAL/intent barriers stale: "
+                      << is_cdc_min_replicated_index_stale << " ("
+                      << seconds_since_cdc_min_replicated_index_last_refresh
+                      << "s), history barrier stale: " << is_cdc_sdk_safe_time_stale << " ("
+                      << seconds_since_cdc_sdk_safe_time_last_refresh << "s)";
+  RETURN_NOT_OK(SetAllCDCRetentionBarriers(
+      std::numeric_limits<int64_t>::max() /* cdc_wal_index */,
+      OpId::Max() /* cdc_sdk_intents_op_id */, MonoDelta::kZero /* cdc_sdk_op_id_expiration */,
+      HybridTime::kInvalid /* cdc_sdk_history_cutoff */, true /* require_history_cutoff */,
+      false /* initial_retention_barrier */, barrier_move_selector));
+  TEST_SYNC_POINT("TabletPeer::reset_cdc_retention_barriers_if_stale::End");
+  return barrier_move_selector;
 }
 
 OpId TabletPeer::GetLatestCheckPoint() {
@@ -1400,25 +1486,33 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
 
 Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-    bool initial_retention_barrier) {
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   auto tablet = VERIFY_RESULT(shared_tablet());
   Log* log = log_atomic_.load(std::memory_order_acquire);
 
   {
-    std::lock_guard lock(cdc_min_replicated_index_lock_);
-    cdc_min_replicated_index_refresh_time_ = MonoTime::Now();
+    std::lock_guard lock(cdc_resource_refresh_time_lock_);
+    auto now = MonoTime::Now();
+    // Refresh only the clocks of the barriers actually being moved.
+    if (barrier_move_selector.move_cdc_min_replicated_index ||
+        barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id) {
+      cdc_min_replicated_index_refresh_time_ = now;
+    }
+    if (barrier_move_selector.move_cdc_sdk_safe_time) {
+      cdc_sdk_safe_time_refresh_time_ = now;
+    }
   }
 
   if (initial_retention_barrier) {
     RETURN_NOT_OK(tablet->SetAllInitialCDCRetentionBarriers(
-        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_history_cutoff,
-        require_history_cutoff));
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_history_cutoff, require_history_cutoff,
+        barrier_move_selector));
     return true;
   } else {
     return tablet->MoveForwardAllCDCRetentionBarriers(
-        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration,
-        cdc_sdk_history_cutoff, require_history_cutoff);
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+        require_history_cutoff, barrier_move_selector);
   }
 }
 
@@ -1426,13 +1520,12 @@ Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
 // retention barrier
 Result<bool> TabletPeer::SetAllInitialCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff) {
-
+    bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector) {
   MonoDelta cdc_sdk_op_id_expiration =
       MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms);
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, /*initial_retention_barrier=*/true);
+      require_history_cutoff, /*initial_retention_barrier=*/true, barrier_move_selector);
 }
 
 // Applies only to CDCSDK streams
@@ -1448,11 +1541,11 @@ Result<bool> TabletPeer::SetAllInitialCDCSDKRetentionBarriers(
 // corresponding to the slowest consumer of this tablet among all streams.
 Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
-
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, /*initial_retention_barrier=*/false);
+      require_history_cutoff, /*initial_retention_barrier=*/false, barrier_move_selector);
 }
 
 std::string TabletPeer::AllCDCRetentionBarriersToString() const {
@@ -1966,9 +2059,11 @@ void TabletPeer::NotifyCommitedAsyncWrites(const OpId& committed_op_id) {
     while (it != in_flight_async_write_queries_.end()) {
       Status status;
       if (it->first.term != committed_op_id.term) {
-        // Stale callback from previous term.
-        status = STATUS_FORMAT(
-            IllegalState, "Unexpected tablet $0 term change. New term: $1, expected term: $2",
+        // Stale callback from previous term. Return NOT_THE_LEADER so the client can retry on
+        // the new leader.
+        status = STATUS_EC_FORMAT(
+            IllegalState, tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER),
+            "Unexpected tablet $0 term change. New term: $1, expected term: $2",
             tablet_id(), committed_op_id.term, it->first.term);
       } else if (it->first.index > committed_op_id.index) {
         break;
@@ -2050,17 +2145,18 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
     if (op_id.index < first_index) {
       return Status::OK();
     }
-    // Write was lost/overwritten.
-    return STATUS_FORMAT(
-        NotFound,
+    // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
+    // transparently retry the transaction instead of surfacing an internal error.
+    return STATUS_EC_FORMAT(
+        NotFound, TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
         "term $2 is $3). Retry the transaction.",
         tablet_id(), op_id, leader_state.term, first_index);
   }
 
   // Two or more terms ago - we can't verify presence without a log lookup.
-  return STATUS_FORMAT(
-      NotFound,
+  return STATUS_EC_FORMAT(
+      NotFound, TransactionError(TransactionErrorCode::kAborted),
       "Tablet $0: tablet leader moved more than once since async write $1 was issued "
       "(write from term $2, current term is $3). Retry the transaction.",
       tablet_id(), op_id, op_id.term, leader_state.term);

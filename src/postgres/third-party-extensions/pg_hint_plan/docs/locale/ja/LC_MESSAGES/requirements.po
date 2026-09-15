@@ -1,74 +1,81 @@
 # LANGUAGE message translation file for pg_hint_plan requirements.
-# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (C) 2012-2026, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 # This file is distributed under the same license as the pg_hint_plan
 # package.
 # Julien Rouhaud <rjuju123@gmail.com>, 2023.
+# Tatsuro Yamada <yamatattsu@gmail.com>, 2023.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_hint_plan \n"
+"Project-Id-Version: pg_hint_plan\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-03-14 16:08+0800\n"
-"PO-Revision-Date: 2023-03-14 16:08+0800\n"
-"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"POT-Creation-Date: 2023-11-09 10:50+0900\n"
+"PO-Revision-Date: 2023-11-10 08:31+0900\n"
+"Last-Translator: Tatsuro Yamada <yamatattsu@gmail.com>\n"
+"Language-Team: \n"
 "Language: ja\n"
-"Language-Team: ja <LL@li.org>\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 "Generated-By: Babel 2.12.1\n"
+"X-Generator: Poedit 3.2.2\n"
 
-#: ../../requirements.md:1 9b851363090041158bcd2c0cc4e14c68
+#: ../../requirements.md:1 26f3405d14e1471d98d797d27f70f0e1
 msgid "Requirements"
-msgstr ""
+msgstr "動作環境"
 
-#: ../../requirements.md:3 8162c8bfb3be47338da6dddbeac03829
-msgid "pg_hint_plan 1.5 requires PostgreSQL 15."
-msgstr ""
+#: ../../requirements.md:3 e2a338fd547c4102a8ba452a1ce76fe4
+msgid "pg_hint_plan 1.8 requires PostgreSQL 18."
+msgstr "pg_hint_plan 1.8 は PostgreSQL 18 のみをサポートします。"
 
-#: ../../requirements.md:6 67a79c17c8114b65be782af199946732
+#: ../../requirements.md:5 2f43757380444e08ab0e181a788a1b78
 msgid "PostgreSQL versions tested"
-msgstr ""
+msgstr "テスト済みのPostgreSQLバージョン"
 
-#: ../../requirements.md:8 eba0833e7aaf46c38524fd6f2446c295
-msgid "Version 15"
-msgstr ""
+#: ../../requirements.md:7 744d9ef1bc3240a9af15e103cf476a19
+msgid "Version 18"
+msgstr "・バージョン 18"
 
-#: ../../requirements.md:10 0d4f67726dee4783b01f2bd1eb8a9ad1
+#: ../../requirements.md:9 27a4d38176f445efaec1e1f5367ab674
 msgid "OS versions tested"
-msgstr ""
+msgstr "テスト済みのOSバージョン"
 
-#: ../../requirements.md:12 d92020bcba904ac6b42630742149a3a8
+#: ../../requirements.md:11 eb5a718ba289445eb2478b2650b23bfd
 msgid "CentOS 8.5"
-msgstr ""
+msgstr "・CentOS 8.5"
 
-#: ../../requirements.md:14 04457f3a63dc41d493bbdf14c233b73f
+#: ../../requirements.md:13 4f3befbd04964972b9a7fb70ba217dfe
 msgid "See also"
+msgstr "関連項目"
+
+#: ../../requirements.md:16 13bf779462964c18a3e97148198d04f3
+msgid "References"
 msgstr ""
 
-#: ../../requirements.md:17 839ed12af5c6479eb2ad5d538f727823
-msgid "PostgreSQL documents"
-msgstr ""
-
-#: ../../requirements.md:19 fc4a7444ee8942dcab0cd061a57e2e5d
+#: ../../requirements.md:18 554dc9beb49d4774a7e3c99e426cc9c1
 msgid "[EXPLAIN](http://www.postgresql.org/docs/current/static/sql-explain.html)"
-msgstr ""
+msgstr "[EXPLAIN](http://www.postgresql.org/docs/current/static/sql-explain.html)"
 
-#: ../../requirements.md:20 cfb50411d3164c36aa9442e72e2bf8fe
+#: ../../requirements.md:19 f960539e7df047a39a37f7660b8ed5e5
 msgid "[SET](http://www.postgresql.org/docs/current/static/sql-set.html)"
-msgstr ""
+msgstr "[SET](http://www.postgresql.org/docs/current/static/sql-set.html)"
 
-#: ../../requirements.md:21 258fd8cd8eb541c3b04a776c234cb877
+#: ../../requirements.md:20 bab201f98ce04f06a704b1f766459215
 msgid ""
-"[Server Config](http://www.postgresql.org/docs/current/static/runtime-"
-"config.html)"
+"[Server Config](http://www.postgresql.org/docs/current/static/runtime-config."
+"html)"
 msgstr ""
+"[Server Config](http://www.postgresql.org/docs/current/static/runtime-config."
+"html)"
 
-#: ../../requirements.md:22 7a9a8baed3974e089aa2c80b54a3c28d
+#: ../../requirements.md:21 562b990d519e4102a2fe16ae980a37ef
 msgid ""
-"[Parallel Plans](http://www.postgresql.org/docs/current/static/parallel-"
-"plans.html)"
+"[Parallel Plans](http://www.postgresql.org/docs/current/static/parallel-plans."
+"html)"
 msgstr ""
+"[Parallel Plans](http://www.postgresql.org/docs/current/static/parallel-plans."
+"html)"
 
+#~ msgid "PostgreSQL documents"
+#~ msgstr "PostgreSQLドキュメント"

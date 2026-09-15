@@ -252,6 +252,13 @@ ResourceOwnerForgetSnapshot(ResourceOwner owner, Snapshot snap)
 	ResourceOwnerForget(owner, PointerGetDatum(snap), &snapshot_resowner_desc);
 }
 
+/* YB declarations */
+static void YbResetReadPoint(void);
+static YbcReadPointHandle YbGetOldestReadPointHandle(void);
+static void YbNoteReadPointAdded(YbOptionalReadPointHandle handle);
+static void YbNoteReadPointRemoved(YbOptionalReadPointHandle handle);
+static void YbPublishOldestReadPointIfChanged(void);
+
 /*
  * Snapshot fields to be serialized.
  *
@@ -442,6 +449,8 @@ GetTransactionSnapshot(void)
 			/* Mark it as "registered" in FirstXactSnapshot */
 			FirstXactSnapshot->regd_count++;
 			pairingheap_add(&RegisteredSnapshots, &FirstXactSnapshot->ph_node);
+			YbNoteReadPointAdded(FirstXactSnapshot->yb_read_point_handle);
+			YbPublishOldestReadPointIfChanged();
 		}
 		else
 			CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
@@ -560,6 +569,8 @@ GetNonHistoricCatalogSnapshot(Oid relid)
 		 * CatalogSnapshot pointer is already valid.
 		 */
 		pairingheap_add(&RegisteredSnapshots, &CatalogSnapshot->ph_node);
+		YbNoteReadPointAdded(CatalogSnapshot->yb_read_point_handle);
+		YbPublishOldestReadPointIfChanged();
 	}
 
 	return CatalogSnapshot;
@@ -582,9 +593,13 @@ InvalidateCatalogSnapshot(void)
 		yb_debug_log_snapshot_mgmt_stack_trace ? YBCGetStackTrace() : "");
 	if (CatalogSnapshot)
 	{
+		YbOptionalReadPointHandle yb_read_point = CatalogSnapshot->yb_read_point_handle;
+
 		pairingheap_remove(&RegisteredSnapshots, &CatalogSnapshot->ph_node);
 		CatalogSnapshot = NULL;
 		SnapshotResetXmin();
+		YbNoteReadPointRemoved(yb_read_point);
+		YbPublishOldestReadPointIfChanged();
 		INJECTION_POINT("invalidate-catalog-snapshot-end", NULL);
 	}
 }
@@ -726,6 +741,8 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 		/* Mark it as "registered" in FirstXactSnapshot */
 		FirstXactSnapshot->regd_count++;
 		pairingheap_add(&RegisteredSnapshots, &FirstXactSnapshot->ph_node);
+		YbNoteReadPointAdded(FirstXactSnapshot->yb_read_point_handle);
+		YbPublishOldestReadPointIfChanged();
 	}
 
 	FirstSnapshotSet = true;
@@ -855,6 +872,8 @@ PushActiveSnapshotWithLevel(Snapshot snapshot, int snap_level)
 	YbLogActiveSnapshot("Pushed new active snapshot: ",
 						ActiveSnapshot, yb_debug_log_snapshot_mgmt_stack_trace);
 	YBCOnActiveSnapshotChange();
+	YbNoteReadPointAdded(ActiveSnapshot->as_snap->yb_read_point_handle);
+	YbPublishOldestReadPointIfChanged();
 }
 
 /*
@@ -913,12 +932,18 @@ PopActiveSnapshot(void)
 {
 	ActiveSnapshotElt *newstack;
 
+	/* YB declarations */
+	YbOptionalReadPointHandle yb_read_point;
+
 	newstack = ActiveSnapshot->as_next;
 
 	Assert(ActiveSnapshot->as_snap->active_count > 0);
 
 	YbLogActiveSnapshot("Pop active snapshot: ",
 						ActiveSnapshot, yb_debug_log_snapshot_mgmt_stack_trace);
+
+	/* Read before the snapshot can be freed below. */
+	yb_read_point = ActiveSnapshot->as_snap->yb_read_point_handle;
 
 	ActiveSnapshot->as_snap->active_count--;
 
@@ -933,6 +958,8 @@ PopActiveSnapshot(void)
 
 	SnapshotResetXmin();
 	YBCOnActiveSnapshotChange();
+	YbNoteReadPointRemoved(yb_read_point);
+	YbPublishOldestReadPointIfChanged();
 }
 
 void
@@ -1000,7 +1027,14 @@ RegisterSnapshotOnOwner(Snapshot snapshot, ResourceOwner owner)
 	ResourceOwnerRememberSnapshot(owner, snap);
 
 	if (snap->regd_count == 1)
+	/*
+	 * YB: Update read point after registering snapshot.
+	 */
+	{
 		pairingheap_add(&RegisteredSnapshots, &snap->ph_node);
+		YbNoteReadPointAdded(snap->yb_read_point_handle);
+		YbPublishOldestReadPointIfChanged();
+	}
 
 	return snap;
 }
@@ -1043,7 +1077,14 @@ UnregisterSnapshotNoOwner(Snapshot snapshot)
 
 	snapshot->regd_count--;
 	if (snapshot->regd_count == 0)
+	/*
+	 * YB: Update read point after unregistering snapshot.
+	 */
+	{
 		pairingheap_remove(&RegisteredSnapshots, &snapshot->ph_node);
+		YbNoteReadPointRemoved(snapshot->yb_read_point_handle);
+		YbPublishOldestReadPointIfChanged();
+	}
 
 	if (snapshot->regd_count == 0 && snapshot->active_count == 0)
 	{
@@ -1138,6 +1179,8 @@ AtSubAbort_Snapshot(int level)
 
 		next = ActiveSnapshot->as_next;
 
+		YbNoteReadPointRemoved(ActiveSnapshot->as_snap->yb_read_point_handle);
+
 		/*
 		 * Decrement the snapshot's active count.  If it's still registered or
 		 * marked as active by an outer subtransaction, we can't free it yet.
@@ -1162,6 +1205,7 @@ AtSubAbort_Snapshot(int level)
 
 	SnapshotResetXmin();
 	YBCOnActiveSnapshotChange();
+	YbPublishOldestReadPointIfChanged();
 }
 
 /*
@@ -1185,6 +1229,7 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 		Assert(FirstXactSnapshot->regd_count > 0);
 		Assert(!pairingheap_is_empty(&RegisteredSnapshots));
 		pairingheap_remove(&RegisteredSnapshots, &FirstXactSnapshot->ph_node);
+		YbNoteReadPointRemoved(FirstXactSnapshot->yb_read_point_handle);
 	}
 	FirstXactSnapshot = NULL;
 
@@ -1219,6 +1264,7 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 
 			pairingheap_remove(&RegisteredSnapshots,
 							   &esnap->snapshot->ph_node);
+			YbNoteReadPointRemoved(esnap->snapshot->yb_read_point_handle);
 		}
 
 		exportedSnapshots = NIL;
@@ -1246,6 +1292,7 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 	 */
 	ActiveSnapshot = NULL;
 	pairingheap_reset(&RegisteredSnapshots);
+	YbResetReadPoint();
 
 	CurrentSnapshot = NULL;
 	SecondarySnapshot = NULL;
@@ -1261,6 +1308,8 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 		SnapshotResetXmin();
 
 	Assert(resetXmin || MyProc->xmin == 0);
+
+	YbPublishOldestReadPointIfChanged();
 }
 
 static char *
@@ -1368,6 +1417,8 @@ ExportSnapshot(Snapshot snapshot)
 
 	snapshot->regd_count++;
 	pairingheap_add(&RegisteredSnapshots, &snapshot->ph_node);
+	YbNoteReadPointAdded(snapshot->yb_read_point_handle);
+	YbPublishOldestReadPointIfChanged();
 
 	/*
 	 * Fill buf with a text serialization of the snapshot, plus identification
@@ -2190,6 +2241,162 @@ YbGetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists)
 		GetCatalogSnapshot(table_oid);
 	return CatalogSnapshotData.yb_read_point_handle.has_value ?
 		CatalogSnapshotData.yb_read_point_handle.value : YbcInvalidReadPointHandle;
+}
+
+/*
+ * Walk a pairing heap subtree (a node and all its siblings/descendants),
+ * tracking the smallest read-point handle across the snapshots it contains.
+ */
+static YbcReadPointHandle
+YbMinReadPointInSnapshotHeap(pairingheap_node *node, YbcReadPointHandle oldest)
+{
+	for (; node != NULL; node = node->next_sibling)
+	{
+		SnapshotData *snap = pairingheap_container(SnapshotData, ph_node, node);
+
+		if (snap->yb_read_point_handle.has_value &&
+			(oldest == YbcInvalidReadPointHandle ||
+			 snap->yb_read_point_handle.value < oldest))
+			oldest = snap->yb_read_point_handle.value;
+		oldest = YbMinReadPointInSnapshotHeap(node->first_child, oldest);
+	}
+	return oldest;
+}
+
+/*
+ * YbComputeOldestReadPointHandle
+ *
+ *		Walks the active snapshot stack and the registered snapshots to find the
+ *		read-point handle (read time serial number) of the oldest snapshot still
+ *		referenced by this backend.
+ *
+ *		Returns YbcInvalidReadPointHandle when no live snapshot carries a read
+ *		point. Unlike GetOldestSnapshot(), which orders by LSN, this compares
+ *		read-point handles directly.
+ */
+static YbcReadPointHandle
+YbComputeOldestReadPointHandle(void)
+{
+	YbcReadPointHandle oldest = YbcInvalidReadPointHandle;
+	ActiveSnapshotElt *elt;
+
+	for (elt = ActiveSnapshot; elt != NULL; elt = elt->as_next)
+	{
+		Snapshot	snap = elt->as_snap;
+
+		if (snap->yb_read_point_handle.has_value &&
+			(oldest == YbcInvalidReadPointHandle ||
+			 snap->yb_read_point_handle.value < oldest))
+			oldest = snap->yb_read_point_handle.value;
+	}
+
+	if (!pairingheap_is_empty(&RegisteredSnapshots))
+		oldest = YbMinReadPointInSnapshotHeap(RegisteredSnapshots.ph_root, oldest);
+
+	return oldest;
+}
+
+/*
+ * Oldest read-point handle across the live snapshots, or
+ * YbcInvalidReadPointHandle when it has to be recomputed by walking them.
+ *
+ * Read-point handles are serial numbers, so a snapshot joining the live set can
+ * only lower the oldest handle, which is a Min() against the tracked value, and
+ * a snapshot leaving can only raise it, and only if it carried the oldest handle
+ * itself. That keeps the walk off the push / pop / register / unregister path.
+ * Recomputation is deferred to the next read rather than done when the oldest
+ * handle leaves, so that a backend which publishes no pin (see
+ * YbShouldPublishDbHistoryRetentionPin) never walks the snapshot structures at all.
+ */
+static YbcReadPointHandle yb_oldest_read_point = YbcInvalidReadPointHandle;
+
+static void
+YbNoteReadPointAdded(YbOptionalReadPointHandle handle)
+{
+	if (handle.has_value &&
+		yb_oldest_read_point != YbcInvalidReadPointHandle &&
+		handle.value < yb_oldest_read_point)
+		yb_oldest_read_point = handle.value;
+}
+
+static void
+YbNoteReadPointRemoved(YbOptionalReadPointHandle handle)
+{
+	if (handle.has_value && handle.value == yb_oldest_read_point)
+		yb_oldest_read_point = YbcInvalidReadPointHandle;
+}
+
+static void
+YbResetReadPoint(void)
+{
+	yb_oldest_read_point = YbcInvalidReadPointHandle;
+}
+
+/*
+ * YbGetOldestReadPointHandle
+ *
+ * Returns the read-point handle of the oldest snapshot still referenced by
+ * this backend, walking the live snapshots only when the previous oldest
+ * handle has since been removed.
+ */
+static YbcReadPointHandle
+YbGetOldestReadPointHandle(void)
+{
+	if (yb_oldest_read_point == YbcInvalidReadPointHandle)
+		yb_oldest_read_point = YbComputeOldestReadPointHandle();
+
+	return yb_oldest_read_point;
+}
+
+/*
+ * Last value published to session shared memory. Avoids redundant SHMEM stores when
+ * push/pop/register/unregister does not change the oldest live read-point handle.
+ */
+static YbcReadPointHandle yb_published_oldest_read_point = YbcInvalidReadPointHandle;
+
+/*
+ * Pin when yb_db_history_retention_pin_mode is all, or ddl_only while a DDL is in progress.
+ */
+static bool
+YbShouldPublishDbHistoryRetentionPin(void)
+{
+	return yb_db_history_retention_pin_mode == YB_DB_HISTORY_RETENTION_PIN_MODE_ALL ||
+		(yb_db_history_retention_pin_mode == YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY &&
+		 YBCPgIsDdlMode());
+}
+
+/*
+ * YbPublishOldestReadPointIfChanged
+ *
+ *		When history retention pinning is enabled for this backend, recompute the
+ *		oldest live read-point handle and publish it into session shared memory.
+ *		When pinning is not enabled, publish invalid without walking the snapshot
+ *		structures. The tserver heartbeat maps a non-zero serial to a HybridTime
+ *		and aggregates per-database history retention pins.
+ */
+static void
+YbPublishOldestReadPointIfChanged(void)
+{
+	YbcReadPointHandle oldest;
+
+	if (!IsYugaByteEnabled())
+		return;
+
+	/*
+	 * Skip the oldest-snapshot walk when this backend should not contribute a
+	 * pin; still publish invalid so the tserver can clear a stale pin after a
+	 * mode / DDL-state transition.
+	 */
+	if (!YbShouldPublishDbHistoryRetentionPin())
+		oldest = YbcInvalidReadPointHandle;
+	else
+		oldest = YbGetOldestReadPointHandle();
+
+	if (oldest == yb_published_oldest_read_point)
+		return;
+
+	yb_published_oldest_read_point = oldest;
+	YBCPgPublishOldestReadPointHandle(oldest);
 }
 
 void

@@ -107,11 +107,28 @@ Examples:
 
 If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
 
+### Step 4b: Cut the prose the branch added
+
+Re-read the **text** the branch adds — comments, `architecture/` docs, agent docs — and
+apply [`AGENTS.md` § Prose
+discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume). It
+is a gate here because it is easy to hold at the start of a task and gone by the end of
+one, and this is the last point where cutting is free.
+
+```
+git diff <upstream>/master...HEAD -- '*.md'   # doc prose; also skim added comments in the code diff
+```
+
+Land any resulting edits as a new commit before Step 5 — the script refuses to run against
+a dirty tree.
+
 ### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
 
 > **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **the branch name itself** (it becomes the public PR head ref), **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names, region/zone names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, private keys, or license keys; internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths; unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames). See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
 
-Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script:
+Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script.
+
+Say **why**, always — a reviewer who has to reverse-engineer the motivation is the expensive case — then what changed, and whatever the reader must *act* on (new gflags, upgrade/rollback consequences, migration steps). Not a narration of the diff. Keep the test plan to what was actually run. See [`AGENTS.md` § Prose discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
 
 ```
 .agents/scripts/create-pr.sh \

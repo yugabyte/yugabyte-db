@@ -137,8 +137,8 @@ Other times, A may have higher or lower preference than B.
 
 Read Time Options:
 
-1) Passed read time: statements such as BACKFILL, USE_SNAPSHOT or GUC options
-   such as yb_read_time specify an explicit read time at which the operations
+1) Passed read time: statements such as BACKFILL or GUC options such as
+   yb_read_time specify an explicit read time at which the operations
    must read the database. The contract to read at that point cannot be
    violated.
 2) Reset read point: used for non transactional writes when the read point
@@ -148,24 +148,28 @@ Read Time Options:
 3) Serializable isolation: Precedes clamp / defer read time options since
    serializable avoids read restart errors. Incompatible with other read
    time options.
-4) Follower reads may specify a staleness value and the read time is picked
+4) Catalog read time: ops using the PG catalog snapshot clamp the uncertainty
+   window and are always sent to the leader.
+5) Cross txn snapshot read time: applies to the transaction snapshot only.
+   e.g. USE_SNAPSHOT option of CREATE REPLICATION SLOT command.
+6) Follower reads may specify a staleness value and the read time is picked
    at now - staleness. If a read time is specified above, that read time
    is used instead. Other read time options do not apply.
-5) Restart read: occurs when a read faces a read restart error and the read
+7) Restart read: occurs when a read faces a read restart error and the read
    must restart at the restart_read_time passed back by the storage layer.
    This is a sibling of passed read time, where pggate already knows the
    read time of the snapshot. Does not co-occur with passed read time, reset
    read time, clamp or deferred options because they do not face a read restart
    error. Compatible with ENSURE_READ_TIME_IS_SET.
-6) Clamp / defer: options to deliberately choose a read time to avoid read
+8) Clamp / defer: options to deliberately choose a read time to avoid read
    restart errors. These options only pick their read time in the query layer.
    Compatible with all others since the only strict requirements with this
    option is to avoid read restart errors. The read point selection itself
    is flexible.
-7) Ensure read time is set: in some cases, we are required to pick the
+9) Ensure read time is set: in some cases, we are required to pick the
    read time on the query layer. For this reason, this option is incompatible
    with reset read time option, which has the opposite requirement. Less
    preferred compared to clamp / defer since clamp / defer additionally require
    that there be no read restart errors.
-8) Catch-all: no additional requirements other than the typical snapshot
+10) Catch-all: no additional requirements other than the typical snapshot
    semantics. Lowest preference for this reason.

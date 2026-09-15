@@ -464,4 +464,8 @@ extern Datum jsonb_build_object_worker(int nargs, const Datum *args, const bool 
 extern Datum jsonb_build_array_worker(int nargs, const Datum *args, const bool *nulls,
 									  const Oid *types, bool absent_on_null);
 
+/* YB helper functions */
+extern bool yb_datum_to_jsonb_non_string_scalar_value(Datum val, Oid val_type,
+													  JsonbInState *result);
+
 #endif							/* __JSONB_H__ */

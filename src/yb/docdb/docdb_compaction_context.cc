@@ -758,7 +758,7 @@ class VectorMetadataFilter {
   }
 
   inline IntentAwareIterator* iterator() {
-    return std::get<docdb::IntentAwareIteratorPtr>(iterator_holder_).get();
+    return iterator_holder_.iter.get();
   }
 
   rocksdb::CompactionReason compaction_reason_;

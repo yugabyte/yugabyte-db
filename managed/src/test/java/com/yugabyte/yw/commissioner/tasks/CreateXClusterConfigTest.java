@@ -98,7 +98,7 @@ import org.yb.client.SetupUniverseReplicationResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.XClusterCreateOutboundReplicationGroupResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
@@ -122,7 +122,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   private String namespace1Name;
   private String namespace1Id;
   private XClusterConfigCreateFormData createFormData;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() throws Exception {
@@ -188,7 +188,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     createFormData.targetUniverseUUID = targetUniverseUUID;
     createFormData.tables = exampleTables;
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);

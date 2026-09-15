@@ -10,12 +10,13 @@ The available hints are listed below.
 | | `IndexScan(table[ index...])` | Forces index scan on the table.  Restricts to specified indexes if any. |
 | | `IndexOnlyScan(table[ index...])` | Forces index-only scan on the table.  Restricts to specified indexes if any.  Index scan may be used if index-only scan is not available. |
 | | `BitmapScan(table[ index...])`| Forces bitmap scan on the table.  Restricts to specified indexes if any. |
-| | `IndexScanRegexp(table[ POSIX Regexp...])`<br>`IndexOnlyScanRegexp(table[ POSIX Regexp...])`<br>`BitmapScanRegexp(table[ POSIX Regexp...])` | Forces index scan, index-only scan (For PostgreSQL 9.2 and later) or bitmap scan on the table.  Restricts to indexes that matches the specified POSIX regular expression pattern. |
+| | `IndexScanRegexp(table[ POSIX Regexp...])`<br>`IndexOnlyScanRegexp(table[ POSIX Regexp...])`<br>`BitmapScanRegexp(table[ POSIX Regexp...])` | Forces index scan, index-only scan or bitmap scan on the table.  Restricts to indexes that matches the specified POSIX regular expression pattern. |
 | | `NoSeqScan(table)`| Forces to *not* do sequential scan on the table. |
 | | `NoTidScan(table)`| Forces to *not* do TID scan on the table.|
 | | `NoIndexScan(table)`| Forces to *not* do index scan and index-only scan on the table. |
 | | `NoIndexOnlyScan(table)`| Forces to *not* do index only scan on the table. |
 | | `NoBitmapScan(table)` | Forces to *not* do bitmap scan on the table. |
+| Disable indexes | `DisableIndex(table index...)` | Disables the specified indexes during query planning, taking precedence over any other hints. |
 | Join method| `NestLoop(table table[ table...])` | Forces nested loop for the joins on the tables specified. |
 | | `HashJoin(table table[ table...])`| Forces hash join for the joins on the tables specified. |
 | | `MergeJoin(table table[ table...])` | Forces merge join for the joins on the tables specified. |
@@ -27,5 +28,5 @@ The available hints are listed below.
 | Behavior control on Join | `Memoize(table table[ table...])` | Allows the topmost join of a join among the specified tables to Memoize the inner result. Not enforced. |
 | | `NoMemoize(table table[ table...])` | Inhibits the topmost join of a join among the specified tables from Memoizing the inner result. |
 | Row number correction | `Rows(table table[ table...] correction)` | Corrects row number of a result of the joins on the tables specified.  The available correction methods are absolute (#<n>), addition (+<n>), subtract (-<n>) and multiplication (*<n>).  <n> should be a string that strtod() can understand. |
-| Parallel query configuration | `Parallel(table <# of workers> [soft\|hard])` | Enforces or inhibits parallel execution of the specified table.  <# of workers> is the desired number of parallel workers, where zero means inhibiting parallel execution.  If the third parameter is soft (default), it just changes max\_parallel\_workers\_per\_gather and leaves everything else to the planner.  Hard enforces the specified number of workers. |
+| Parallel query configuration | `Parallel(table <# of workers> [soft\|hard])` | Enforces or inhibits parallel execution of the specified table.  <# of workers> is the desired number of parallel workers, where zero means inhibiting parallel execution.  If the third parameter is soft (default), it suggests the number of workers but lets the planner decide whether parallel is worthwhile based on cost.  Hard forces parallel execution regardless of cost estimates by penalizing non-parallel paths. |
 | GUC | `Set(GUC-param value)` | Sets GUC parameter to the value defined while planner is running. |

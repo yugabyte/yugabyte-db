@@ -33,6 +33,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/reserved_address_segment.h"
+#include "yb/util/shmem/robust_lent_object.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
@@ -130,10 +131,6 @@ class TServerSharedData {
     return pid_;
   }
 
-  docdb::ObjectLockSharedState* object_lock_state() const {
-    return object_lock_state_.get();
-  }
-
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
@@ -153,8 +150,6 @@ class TServerSharedData {
   // Whether AllocatorsInitialized() has been called -- until then, pointers in shared memory cannot
   // be used.
   std::atomic<bool> fully_initialized_{false};
-
-  SharedMemoryUniquePtr<docdb::ObjectLockSharedState> object_lock_state_;
 };
 
 using SharedMemoryReadyCallback = std::function<void()>;
@@ -184,6 +179,10 @@ class SharedMemoryManager {
     return data_.get();
   }
 
+  SharedMemoryBackingAllocator& allocator() {
+    return allocator_;
+  }
+
  private:
   void ExecuteParentNegotiator(const std::shared_ptr<AddressSegmentNegotiator>& negotiator);
 
@@ -208,7 +207,7 @@ class SharedMemoryManager {
   ConcurrentPointer<TServerSharedData> data_{nullptr};
 };
 
-using PgSessionLockOwnerTagShared = ChildProcessRO<docdb::SessionLockOwnerTag>;
+using PgSessionObjectLockData = RobustLentObject<docdb::ObjectLockSharedState>;
 
 YB_STRONGLY_TYPED_BOOL(Create);
 
@@ -285,7 +284,11 @@ class PgSessionSharedMemoryManager {
 
   SharedExchange& exchange();
 
-  [[nodiscard]] PgSessionLockOwnerTagShared& object_locking_data();
+  [[nodiscard]] PgSessionObjectLockData& object_locking_data();
+
+  void SetOldestReadPointSerialNo(uint64_t serial_no);
+  // Returns a pointer into session shared memory; valid for the manager's lifetime.
+  [[nodiscard]] std::atomic<uint64_t>* OldestReadPointSerialNoPtr();
 
   static Result<PgSessionSharedMemoryManager> Make(
       const std::string& instance_id, uint64_t session_id, Create create);
@@ -299,9 +302,12 @@ class PgSessionSharedMemoryManager {
   std::unique_ptr<Impl> impl_;
 };
 
-constexpr size_t kTooBigResponseMask = 1ULL << 63;
-constexpr size_t kBigSharedMemoryMask = 1ULL << 62;
+constexpr size_t kTooBigResponseMark = 1ULL << 63;
+constexpr size_t kBigSharedMemoryMarkShift = 62;
+constexpr size_t kBigSharedMemoryMark = 1ULL << kBigSharedMemoryMarkShift;
 constexpr size_t kBigSharedMemoryIdShift = 40;
+constexpr size_t kBigSharedMemoryMaxId =
+    (1ULL << (kBigSharedMemoryMarkShift - kBigSharedMemoryIdShift)) - 1;
 
 std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id);
 

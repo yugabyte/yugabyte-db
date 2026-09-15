@@ -377,6 +377,43 @@ public class KubernetesManagerTest extends FakeDBApplication {
     assertEquals(true, status);
   }
 
+  // PLAT-21834: When the label selector matches no StatefulSet (e.g. querying yb-master on a
+  // read-only cluster, which has no master StatefulSets), the label query returns an empty
+  // string. Previously "".split(" ") produced {""} which slipped past the length check and led to
+  // `kubectl get statefulset ""` failing with "resource name may not be empty". Verify we now fail
+  // fast with a clear error instead.
+  @Test
+  public void testCheckStatefulSetStatus_emptyOutput_throws() {
+    ShellResponse emptyResponse = ShellResponse.create(0, "");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(emptyResponse);
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3));
+    assertTrue(thrown.getMessage().contains("No StatefulSets found"));
+    // Only the label query should have run; we must not attempt the second per-name lookup with an
+    // empty resource name.
+    Mockito.verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  // PLAT-21834: Whitespace-only output should also be treated as "no StatefulSet found".
+  @Test
+  public void testCheckStatefulSetStatus_whitespaceOutput_throws() {
+    ShellResponse whitespaceResponse = ShellResponse.create(0, "   ");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(whitespaceResponse);
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3));
+    assertTrue(thrown.getMessage().contains("No StatefulSets found"));
+  }
+
   private void setupUniverse() {
     kubernetesProvider.setConfigMap(ImmutableMap.of("KUBECONFIG", "test"));
     kubernetesProvider.save();

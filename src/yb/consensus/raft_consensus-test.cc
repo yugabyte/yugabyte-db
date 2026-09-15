@@ -56,9 +56,10 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(never_fsync);
+DECLARE_int64(protege_synchronization_timeout_ms);
+DECLARE_int32(retryable_request_timeout_secs);
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -120,6 +121,8 @@ class MockQueue : public PeerMessageQueue {
                                       bool* last_exchange_successful));
   MOCK_METHOD2(ResponseFromPeer, bool(const std::string& peer_uuid,
                                       const LWConsensusResponsePB& response));
+  MOCK_CONST_METHOD1(CanPeerBecomeLeader, bool(const std::string& peer_uuid));
+  MOCK_CONST_METHOD1(PeerLastReceivedOpId, OpId(const TabletServerId& uuid));
   MOCK_METHOD0(Close, void());
 };
 
@@ -267,11 +270,15 @@ class RaftConsensusTest : public YBTest {
         .WillByDefault(Invoke(this, &RaftConsensusTest::AppendToLog));
   }
 
-  void SetUpConsensus(int64_t initial_term = consensus::kMinimumTerm, int num_peers = 1) {
+  void SetUpConsensus(
+      int64_t initial_term = consensus::kMinimumTerm, int num_peers = 1,
+      std::unique_ptr<PeerProxyFactory> proxy_factory = nullptr) {
     config_ = BuildRaftConfigPBForTests(num_peers);
     config_.set_committed_op_index(kInvalidOpIdIndex);
 
-    auto proxy_factory = std::make_unique<LocalTestPeerProxyFactory>(nullptr);
+    if (!proxy_factory) {
+      proxy_factory = std::make_unique<LocalTestPeerProxyFactory>(nullptr);
+    }
 
     string peer_uuid = config_.peers(num_peers - 1).permanent_uuid();
 
@@ -355,7 +362,7 @@ class RaftConsensusTest : public YBTest {
   // Add a single no-op with the given OpId to a ConsensusRequestPB.
   void AddNoOpToConsensusRequest(LWConsensusRequestPB* request, const OpId& noop_opid);
 
-  scoped_refptr<ConsensusRound> AppendNoOpRound() {
+  scoped_refptr<ConsensusRound> MakeNoOpRound() {
     auto replicate_ptr = rpc::MakeSharedMessage<LWReplicateMsg>();
     replicate_ptr->set_op_type(NO_OP);
     replicate_ptr->set_hybrid_time(clock_->Now().ToUint64());
@@ -366,11 +373,18 @@ class RaftConsensusTest : public YBTest {
         std::bind(&RaftConsensusSpy::NonTrackedRoundReplicationFinished,
                   consensus_.get(), round.get(), &DoNothingStatusCB, std::placeholders::_1)));
     round->BindToTerm(consensus_->TEST_LeaderTerm());
+    return round;
+  }
 
+  scoped_refptr<ConsensusRound> AppendNoOpRound() {
+    auto round = MakeNoOpRound();
     CHECK_OK(consensus_->TEST_Replicate(round));
     LOG(INFO) << "Appended NO_OP round with opid " << round->id();
     return round;
   }
+
+  // Like AppendNoOpRound, but returns the replication status instead of expecting success.
+  Status TryReplicateNoOpRound() { return consensus_->TEST_Replicate(MakeNoOpRound()); }
 
   void DumpRounds() {
     LOG(INFO) << "Dumping rounds...";
@@ -920,6 +934,130 @@ TEST_F(RaftConsensusTest, TestLastLeaderReceivedNotMinimum) {
   ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()),  replicating_op_id);
+}
+
+// Proxy for acking the RunLeaderElection RPC sent on leadership transfer.
+class NoOpElectionPeerProxy : public PeerProxy {
+ public:
+  void UpdateAsync(
+      const LWConsensusRequestPB* request, RequestTriggerMode trigger_mode,
+      LWConsensusResponsePB* response, rpc::RpcController* controller,
+      const rpc::ResponseCallback& callback) override {}
+
+  void RequestConsensusVoteAsync(
+      const VoteRequestPB* request, VoteResponsePB* response, rpc::RpcController* controller,
+      const rpc::ResponseCallback& callback) override {}
+
+  void RunLeaderElectionAsync(
+      const RunLeaderElectionRequestPB* request, RunLeaderElectionResponsePB* response,
+      rpc::RpcController* controller, const rpc::ResponseCallback& callback) override {
+    callback();
+  }
+};
+
+class NoOpElectionPeerProxyFactory : public PeerProxyFactory {
+ public:
+  NoOpElectionPeerProxyFactory()
+      : messenger_(
+            rpc::CreateAutoShutdownMessengerHolder(
+                CHECK_RESULT(rpc::MessengerBuilder("stepdown-test").Build()))) {}
+
+  PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override {
+    return std::make_unique<NoOpElectionPeerProxy>();
+  }
+
+  rpc::Messenger* messenger() const override { return messenger_.get(); }
+
+ private:
+  // The messenger is real (not just a stub) because RaftConsensus schedules CheckDelayedStepDown
+  // on peer_proxy_factory_->messenger()->scheduler().
+  rpc::AutoShutdownMessengerHolder messenger_;
+};
+
+class RaftConsensusLeaderTransferTest : public RaftConsensusTest {
+ public:
+  // Starts a 3-peer config as leader, with one appended op the protege (peer-0) has not received.
+  void StartLeaderWithLaggingProtege() {
+    SetUpConsensus(
+        kMinimumTerm, /* num_peers = */ 3, std::make_unique<NoOpElectionPeerProxyFactory>());
+    // These tests only assert on role changes; allow all other queue and peer manager traffic.
+    SetUpGeneralExpectations();
+    EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_)).Times(AnyNumber());
+    EXPECT_CALL(*queue_, Init(_)).Times(AnyNumber());
+    EXPECT_CALL(*queue_, SetLeaderMode(_, _, _, _, _)).Times(AnyNumber());
+    EXPECT_CALL(*queue_, SetNonLeaderMode()).Times(AnyNumber());
+    EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _)).Times(AnyNumber());
+    EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _)).Times(AnyNumber());
+
+    ConsensusBootstrapInfo info;
+    ASSERT_OK(consensus_->Start(info));
+    ASSERT_OK(consensus_->EmulateElection());
+
+    protege_ = config_.peers(0).permanent_uuid();
+    EXPECT_CALL(*queue_, CanPeerBecomeLeader(protege_)).WillRepeatedly(Return(true));
+
+    const auto protege_op = AppendNoOpRound()->id();
+    SetProtegeLastReceivedOp(protege_op);
+    leader_last_op_ = AppendNoOpRound()->id();
+  }
+
+  void SetProtegeLastReceivedOp(const OpId& op_id) {
+    EXPECT_CALL(*queue_, PeerLastReceivedOpId(protege_)).WillRepeatedly(Return(op_id));
+  }
+
+  void RequestStepDownToProtege() {
+    LeaderStepDownRequestPB req;
+    req.set_tablet_id(kTestTablet);
+    req.set_new_leader_uuid(protege_);
+    LeaderStepDownResponsePB resp;
+    ASSERT_OK(consensus_->StepDown(&req, &resp));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  }
+
+  // Simulates the queue's majority-replicated notification, which completes a pending transfer.
+  void DeliverMajorityReplicatedNotification() {
+    OpId committed_index;
+    OpId last_applied_op_id;
+    consensus_->TEST_UpdateMajorityReplicated(
+        leader_last_op_, &committed_index, &last_applied_op_id);
+  }
+
+ protected:
+  std::string protege_;
+  OpId leader_last_op_;
+};
+
+// A step down must stay pending until the protege's log covers every appended op. Write pipelining
+// acks at append time, so transferring leadership too early can discard ops.
+TEST_F(RaftConsensusLeaderTransferTest, TransfersOnlyToSynchronizedProtege) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_protege_synchronization_timeout_ms) = 3600 * 1000;
+  ASSERT_NO_FATALS(StartLeaderWithLaggingProtege());
+  ASSERT_NO_FATALS(RequestStepDownToProtege());
+  ASSERT_EQ(consensus_->GetActiveRole(), PeerRole::LEADER);
+  ASSERT_NOK(TryReplicateNoOpRound());
+
+  // If the protege is lagging, ensure that we don't stepdown to it yet.
+  ASSERT_NO_FATALS(DeliverMajorityReplicatedNotification());
+  ASSERT_EQ(consensus_->GetActiveRole(), PeerRole::LEADER);
+
+  // Once the protege has the whole log, the next notification completes the transfer.
+  SetProtegeLastReceivedOp(leader_last_op_);
+  ASSERT_NO_FATALS(DeliverMajorityReplicatedNotification());
+  ASSERT_EQ(consensus_->GetActiveRole(), PeerRole::FOLLOWER);
+}
+
+// If the protege never catches up, the protege_synchronization_timeout_ms transfers leadership
+// unconditionally, so a step down cannot get stuck behind a stream of async writes.
+TEST_F(RaftConsensusLeaderTransferTest, TransfersToLaggingProtegeAfterTimeout) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_protege_synchronization_timeout_ms) = 500;
+  ASSERT_NO_FATALS(StartLeaderWithLaggingProtege());
+  ASSERT_NO_FATALS(RequestStepDownToProtege());
+  ASSERT_EQ(consensus_->GetActiveRole(), PeerRole::LEADER);
+  ASSERT_NOK(TryReplicateNoOpRound());
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> { return consensus_->GetActiveRole() == PeerRole::FOLLOWER; },
+      MonoDelta::FromSeconds(10), "Leadership transferred after timeout"));
 }
 
 } // namespace yb::consensus

@@ -16,52 +16,46 @@ CREATE FOREIGN TABLE ft1 (id int, val int) SERVER file_server OPTIONS (format 'c
 -- foreign table test
 SELECT * FROM ft1;
 \t
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout
+');
 
 ----
 ---- No. S-1-5 object type for the hint
 ----
 
 -- No. S-1-5-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+SeqScan(t1)SeqScan(ft_1)SeqScan(ft_2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout;
+');
 
 ----
 ---- No. J-1-6 object type for the hint
 ----
 
 -- No. J-1-6-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+MergeJoin(ft_1 ft_2)Leading(ft_1 ft_2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout;
+');
 
 ----
 ---- No. L-1-6 object type for the hint
 ----
 
 -- No. L-1-6-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+Leading(ft_1 ft_2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout;
+');
 
 ----
 ---- No. R-1-6 object type for the hint
 ----
 
 -- No. R-1-6-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+Rows(ft_1 ft_2 #1)Leading(ft_1 ft_2 t1)*/
 EXPLAIN SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
-\o
-\! sql/maskout.sh results/ut-fdw.tmpout | sql/maskout2.sh
-\! rm results/ut-fdw.tmpout
+');

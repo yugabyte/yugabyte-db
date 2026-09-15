@@ -29,6 +29,22 @@
 
 namespace yb::docdb {
 
+// State tracking active kStrongWrite, kWeakWrite intent types at the tserver's Object lock Manager.
+// - first 32 bits store the num_active kStrongWrite
+// - last 32 bits store the num_active kWeakWrite
+//
+// Since fastpath object locking is enabled for kAccessShare, kRowShare & kRowExclusive alone, all
+// of which request intent_type(s) kWeakRead/kStrongRead, it is sufficient to just track active
+// write intent types for detecting fast path locking conflicts. Hence not reusing LockState here.
+//
+// Additionally, since write lock state for multiple objects (with same hash) is stored in the same
+// entry, it is better to not use LockState here as it could potentially lead to overflow.
+using SharedWriteLockState = uint64_t;
+
+SharedWriteLockState LockStateToSharedWriteLockState(LockState lock_state);
+
+void SharedWriteLockStateRelease(SharedWriteLockState& held, SharedWriteLockState release);
+
 TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type);
 
 std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLockType lock_type);
@@ -37,7 +53,6 @@ std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLo
     ObjectLockFastpathLockType lock_type);
 
 struct ObjectLockFastpathRequest {
-  SessionLockOwnerTag owner;
   SubTransactionId subtxn_id;
   uint32_t database_oid;
   uint32_t relation_oid;
@@ -47,7 +62,7 @@ struct ObjectLockFastpathRequest {
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
-        owner, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
+        subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
   }
 };
 
@@ -59,38 +74,31 @@ class ObjectLockSharedState {
   class Impl;
 
  public:
-  class ActivationGuard {
-   public:
-    ActivationGuard() = default;
-    explicit ActivationGuard(Impl* impl);
-    ActivationGuard(ActivationGuard&& other);
-    ~ActivationGuard();
-    ActivationGuard& operator=(ActivationGuard&& other) PARENT_PROCESS_ONLY;
-   private:
-    Impl* impl_ = nullptr;
-  };
-
-  explicit ObjectLockSharedState(SharedMemoryBackingAllocator& allocator);
+  ObjectLockSharedState(
+      SharedMemoryBackingAllocator& allocator,
+      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
   ~ObjectLockSharedState();
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents)
-      PARENT_PROCESS_ONLY;
+  void Enable() PARENT_PROCESS_ONLY;
 
-  void PauseAndReset() PARENT_PROCESS_ONLY;
-  void Resume() PARENT_PROCESS_ONLY;
+  void Disable() PARENT_PROCESS_ONLY;
 
-  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  void Shutdown() PARENT_PROCESS_ONLY;
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  // Returns whether any lock requests were consumed.
+  bool ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+
+  // Returns whether any lock requests were consumed.
+  bool ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY;
 
-  [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
+  size_t CumulativeLockRequestCount() const;
 
   [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
 

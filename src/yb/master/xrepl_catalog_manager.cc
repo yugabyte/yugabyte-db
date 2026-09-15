@@ -4053,6 +4053,9 @@ Status CatalogManager::GetCDCStream(
 
   stream_info->set_is_notification_slot(is_notification_slot);
 
+  stream_info->set_xcluster_use_target_applied_filter(
+      stream_lock->pb.xcluster_use_target_applied_filter());
+
   return Status::OK();
 }
 
@@ -4233,6 +4236,8 @@ Status CatalogManager::ListCDCStreams(
     stream->set_detect_publication_changes_implicitly(
         ltm->pb.has_detect_publication_changes_implicitly() &&
         ltm->pb.detect_publication_changes_implicitly());
+
+    stream->set_xcluster_use_target_applied_filter(ltm->pb.xcluster_use_target_applied_filter());
   }
   return Status::OK();
 }
@@ -4312,7 +4317,9 @@ Status CatalogManager::UpdateCDCStreams(
           MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
     auto& pb = stream_lock.mutable_data()->pb;
+    const bool preserve_use_target_applied_filter = pb.xcluster_use_target_applied_filter();
     pb.CopyFrom(entry);
+    pb.set_xcluster_use_target_applied_filter(preserve_use_target_applied_filter);
 
     for (auto it = pb.mutable_options()->begin(); it != pb.mutable_options()->end(); ++it) {
       if (it->key() == cdc::kStreamState) {
