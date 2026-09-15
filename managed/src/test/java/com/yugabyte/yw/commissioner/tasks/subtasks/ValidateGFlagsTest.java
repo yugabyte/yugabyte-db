@@ -39,13 +39,13 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ValidateGFlagsTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private AvailabilityZone az1;
   private AvailabilityZone az2;
 
@@ -68,12 +68,12 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     userIntent.deviceInfo = deviceInfo;
     defaultUniverse.save();
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     lenient()
         .when(
             mockGFlagsValidation.validateGFlagsViaRpc(
-                any(YBClient.class), any(HostAndPort.class), anyMap(), any(ServerType.class)))
+                any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class)))
         .thenReturn(new HashMap<>());
   }
 
@@ -100,7 +100,7 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any(), eq(false));
     verify(mockGFlagsValidation, never())
         .validateGFlagsViaRpc(
-            any(YBClient.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
+            any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
   }
 
   // Test that nodes with null cloudInfo and null cloudInfo.private_ip are skipped during gflags
@@ -146,7 +146,7 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any(), eq(false));
     verify(mockGFlagsValidation, never())
         .validateGFlagsViaRpc(
-            any(YBClient.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
+            any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
   }
 
   // Sample negative case - exception should be thrown by subtask if invalid gflag was given.

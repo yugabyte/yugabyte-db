@@ -2,8 +2,13 @@ package com.yugabyte.yw.cloud.azu;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.azure.core.management.SubResource;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
@@ -23,8 +28,10 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeID;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
@@ -105,6 +112,31 @@ public class AZUCloudImplTest extends FakeDBApplication {
     List<LoadBalancingRuleInner> newLbRules =
         azuCloudImpl.ensureLoadBalancingRules("TCP", portsToCheck, null, backends, frontend);
     assertEquals(1, newLbRules.size());
+  }
+
+  @Test
+  public void testEnsureBackendsDetachEmptiesExistingPool() {
+    BackendAddressPoolInner existingPool = (new BackendAddressPoolInner()).withId("Backend1");
+    List<BackendAddressPoolInner> backends = new ArrayList<>(Arrays.asList(existingPool));
+    BackendAddressPoolInner emptiedPool = (new BackendAddressPoolInner()).withId("Backend1");
+    when(mockApiClient.updateIPsInBackendPool(
+            eq("lb-1"), eq(Collections.<String, String>emptyMap()), eq(existingPool), isNull()))
+        .thenReturn(emptiedPool);
+    List<BackendAddressPoolInner> result =
+        azuCloudImpl.ensureBackends(mockApiClient, "lb-1", backends, new ArrayList<NodeID>());
+    assertEquals(1, result.size());
+    assertEquals(emptiedPool, result.get(0));
+    verify(mockApiClient)
+        .updateIPsInBackendPool(
+            eq("lb-1"), eq(Collections.<String, String>emptyMap()), eq(existingPool), isNull());
+  }
+
+  @Test
+  public void testEnsureBackendsDetachWithNoPools() {
+    List<BackendAddressPoolInner> result =
+        azuCloudImpl.ensureBackends(mockApiClient, "lb-1", null, new ArrayList<NodeID>());
+    assertEquals(0, result.size());
+    verifyNoInteractions(mockApiClient);
   }
 
   @Test

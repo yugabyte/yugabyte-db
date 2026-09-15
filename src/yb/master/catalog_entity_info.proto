@@ -668,6 +668,14 @@ message SysCDCStreamEntryPB {
 
   // This field stores the list of tables that were dropped while being part of the CDCSDK stream.
   repeated bytes dropped_table_id = 17;
+
+  // Immutable per stream, stamped true at creation only when the xcluster_use_target_applied_filter
+  // AutoFlag is promoted AND the stream is unidirectional automatic DDL mode. When true, the
+  // producer's loop-prevention filter uses WritePB.xcluster_target_applied (instead of
+  // has_external_hybrid_time) and the source replicates index backfill writes (rather than the
+  // target running them locally). Defaults to false so legacy and bi-directional streams keep
+  // the legacy filter.
+  optional bool xcluster_use_target_applied_filter = 18 [default = false];
 }
 
 

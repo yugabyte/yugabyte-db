@@ -17,8 +17,15 @@
 #include "yb/rocksdb/table/block_based_table_internal.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
+#include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+
+DEFINE_RUNTIME_bool(rocksdb_multi_level_index_range_cache_enabled, true,
+    "Enable per-iterator caching of the bottom-level (leaf) index block's internal key range. "
+    "When the next Seek's target falls in the cached range, the top-level index and intermediate "
+    "levels Seek is skipped and only the bottom-level block is re-positioned.");
+TAG_FLAG(rocksdb_multi_level_index_range_cache_enabled, advanced);
 
 namespace rocksdb {
 
@@ -281,13 +288,16 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
   MultiLevelIterator(
       std::unique_ptr<TwoLevelBlockIteratorState> index_iterator_state,
       std::unique_ptr<TwoLevelBlockIteratorState> data_iterator_state, BlockIter* top_level_iter,
-      uint32_t num_levels, bool need_free_top_level_iter)
+      const Block* top_level_index_block, uint32_t num_levels, bool need_free_top_level_iter,
+      const Comparator* comparator)
       : num_levels_(num_levels),
         index_iterator_state_(std::move(index_iterator_state)),
         data_iterator_state_(std::move(data_iterator_state)),
         iter_(num_levels),
         index_block_handle_(num_levels - 1),
         bottom_level_iter_(iter_.data() + (num_levels - 1)),
+        comparator_(comparator),
+        top_level_index_block_(DCHECK_NOTNULL(top_level_index_block)),
         need_free_top_level_iter_(need_free_top_level_iter) {
     iter_[0].Set(top_level_iter);
   }
@@ -307,7 +317,38 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       return Entry();
     }
 
-    return DoSeek(std::bind(&BlockIterWrapper::Seek, std::placeholders::_1, target));
+    // Fast path: if `target` falls in the cached bottom-level (leaf) index block's [low, high]
+    // range, skip the Seek on all higher-level iterators and only re-position the bottom-level
+    // iterator. The bottom-level block stays loaded (its handle is unchanged in
+    // index_block_handle_), so this avoids the top-level index Seek and any intermediate-level
+    // Seeks. See BottomBlockRangeCache below for the invariants (P1/P2/P3) that make this correct.
+    if (FLAGS_rocksdb_multi_level_index_range_cache_enabled &&
+        bottom_block_range_cache_.Valid() &&
+        Valid()) {
+      DebugCheckPositioned();
+      DebugCheckCacheHighBound();
+      if (bottom_block_range_cache_.Contains(*comparator_, target)) {
+        bottom_level_iter_->Seek(target);
+        if (bottom_level_iter_->Valid()) {
+          bottommost_positioned_iter_ = bottom_level_iter_;
+          DebugCheckFastPathMatchesDoSeek(target);
+          return Entry();
+        }
+      }
+    }
+
+    const auto& result =
+        DoSeek(std::bind(&BlockIterWrapper::Seek, std::placeholders::_1, target));
+    // Only maintain the range cache when the fast path can actually use it. When the flag is off
+    // this skips the two key copies in PopulateBottomBlockRangeCacheAfterSeek on every Seek, so a
+    // disabled flag adds no overhead beyond the flag check itself. Correctness across a runtime
+    // toggle is preserved because the cache is only made valid here (now gated) and is invalidated
+    // by InitSubIterator on any block reload; a cache left valid while disabled still describes the
+    // loaded leaf.
+    if (FLAGS_rocksdb_multi_level_index_range_cache_enabled) {
+      PopulateBottomBlockRangeCacheAfterSeek(target);
+    }
+    return result;
   }
 
   const KeyValueEntry& SeekToFirst() override {
@@ -353,12 +394,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     return status_;
   }
 
-  void SetSubIterator(BlockIterWrapper* iter_wrapper, BlockIter* iter) {
-    if (iter_wrapper->iter() != nullptr) {
-      SaveError(iter_wrapper->status());
-    }
-    iter_wrapper->Set(iter);
-  }
+  uint64_t TEST_GetNumDoSeekCalls() const { return num_do_seek_calls_; }
 
   // Find the approximate middle key starting from the given lower bound key.
   // Algorithm:
@@ -377,9 +413,11 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     std::unique_ptr<BlockIter> main_block_iter_holder;
     std::unique_ptr<BlockIter> aux_block_iter_holder;
 
-    // This top-level block iterator should not be deallocated and hence is not referenced by the
-    // unique pointers above.
-    BlockIter* top_level_iter = iter_[0].iter();
+    // Use our own iterator over the top-level index block instead of iter_[0], so GetMiddleKey does
+    // not reposition the shared iterator chain and break invariant P1 (see BottomBlockRangeCache).
+    std::unique_ptr<BlockIter> top_level_iter_holder(
+        top_level_index_block_->NewIndexBlockIterator(comparator_));
+    BlockIter* top_level_iter = top_level_iter_holder.get();
 
     // Iterate from index top-level (0) up to and including the data blocks level (num_levels_).
     for (int64_t cur_level = 0; cur_level <= num_levels_; ++cur_level) {
@@ -485,8 +523,67 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     if (status_.ok() && !s.ok()) status_ = s;
   }
 
+  void SetSubIterator(BlockIterWrapper* iter_wrapper, BlockIter* iter) {
+    if (iter_wrapper->iter() != nullptr) {
+      SaveError(iter_wrapper->status());
+    }
+    iter_wrapper->Set(iter);
+  }
+
+  // Debug-only: verify invariant P1 (positioned) directly.
+  void DebugCheckPositioned() const {
+#ifndef NDEBUG
+    for (uint32_t level = 0; level + 1 < num_levels_; ++level) {
+      DCHECK(iter_[level].Valid()) << "P1 violated: level " << level << " is not positioned";
+      DCHECK(iter_[level].value() == Slice(index_block_handle_[level]))
+          << "P1 violated: level " << level << " entry does not lead to the loaded child block";
+    }
+#endif
+  }
+
+  // Debug-only: verify invariant P2 (high bound) directly.
+  void DebugCheckCacheHighBound() const {
+#ifndef NDEBUG
+    if (bottom_block_range_cache_.Valid()) {
+      // The cache should only be populated when num_levels_ >= 2.
+      DCHECK_GE(num_levels_, 2u);
+      bottom_block_range_cache_.DebugCheckHighBound(*comparator_, (bottom_level_iter_ - 1)->key());
+    }
+#endif
+  }
+
+  // Debug-only cross-check of a fast-path hit: a full DoSeek must land on exactly the same entry,
+  // and must not move any ancestor. When the checks pass this DoSeek is a state no-op (ancestors
+  // re-seek onto their current entries), so debug builds exercise the same post-Seek state as
+  // release.
+  void DebugCheckFastPathMatchesDoSeek([[maybe_unused]] Slice target) {
+#ifndef NDEBUG
+    boost::container::small_vector<std::string, kIterChainInitialCapacity> ancestor_keys;
+    for (uint32_t level = 0; level + 1 < num_levels_; ++level) {
+      ancestor_keys.push_back(iter_[level].key().ToString());
+    }
+    const auto fast_path_key = bottom_level_iter_->key().ToBuffer();
+    const auto fast_path_value = bottom_level_iter_->value().ToBuffer();
+    DoSeek(std::bind(&BlockIterWrapper::Seek, std::placeholders::_1, target));
+    // This DoSeek is a cross-check, not a real one - undo its increment so num_do_seek_calls_
+    // reflects release behavior (a fast-path hit performs zero DoSeek).
+    --num_do_seek_calls_;
+    DCHECK(Valid()) << "DoSeek disagrees with fast path: expected a valid entry";
+    DCHECK_EQ(fast_path_key, bottom_level_iter_->key().ToBuffer())
+        << "Fast-path key differs from DoSeek";
+    DCHECK_EQ(fast_path_value, bottom_level_iter_->value().ToBuffer())
+        << "Fast-path value differs from DoSeek";
+    for (uint32_t level = 0; level + 1 < num_levels_; ++level) {
+      DCHECK_EQ(ancestor_keys[level], iter_[level].key().ToString())
+          << "Ancestor moved at level " << level
+          << ": the skipped Seek was not a no-op, P1/P2/P3 reasoning is broken";
+    }
+#endif
+  }
+
   template <typename F>
   const KeyValueEntry& DoSeek(F seek_function) {
+    ++num_do_seek_calls_;
     auto* iter = iter_.data();
     seek_function(iter);
     bottommost_positioned_iter_ = iter;
@@ -502,6 +599,8 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
   template <typename F1, typename F2>
   const KeyValueEntry& DoMove(F1 move_function, F2 lower_levels_init_function) {
     DCHECK(Valid());
+    DebugCheckPositioned();
+
     // First try to move iterator starting with bottom level.
     auto* iter = bottom_level_iter_;
     move_function(iter);
@@ -533,12 +632,35 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
         && handle.compare(*child_index_block_handle) == 0) {
       // wrapper is already set to iterator for this handle, no need to change.
     } else {
+      // A different sub-block is being loaded; the cached bottom-block range no longer applies
+      // (the parent chain or the leaf itself is moving). This is the single choke point where a
+      // sub-block is (re)loaded, so invalidating here keeps the cache coherent (invariant P2).
+      bottom_block_range_cache_.Invalidate();
       // TODO(index_iter): consider updating existing iterator rather than recreating, measure
       // potential perf impact.
       auto* iter = index_iterator_state_->NewSecondaryIterator(handle);
       handle.CopyToBuffer(child_index_block_handle);
       SetSubIterator(sub_iter, iter);
     }
+  }
+
+  // Populate the range cache for the currently-loaded bottom-level (leaf) index block (see
+  // BottomBlockRangeCache and its P2/P3 invariants). `low` is the just-resolved target (which
+  // must be in this block since DoSeek landed on bottom_level_iter_ via it); `high` is the parent
+  // iterator's current index key - the largest key this leaf covers.
+  void PopulateBottomBlockRangeCacheAfterSeek(Slice target) {
+    if (num_levels_ < 2 || bottommost_positioned_iter_ != bottom_level_iter_) {
+      // Single level (nothing to skip), or DoSeek didn't reach the bottom level (e.g. an upper
+      // level was invalid). Cache nothing.
+      bottom_block_range_cache_.Invalidate();
+      return;
+    }
+    auto* parent_iter = bottom_level_iter_ - 1;  // iter_[num_levels_ - 2]
+    if (!parent_iter->Valid()) {
+      bottom_block_range_cache_.Invalidate();
+      return;
+    }
+    bottom_block_range_cache_.Populate(target, parent_iter->key());
   }
 
   std::unique_ptr<InternalIterator> GetCurrentDataBlockIterator() const override {
@@ -565,10 +687,93 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
   // handle passed to index_iterator_state_->NewSecondaryIterator to create iter_[level].
   boost::container::small_vector<std::string, kIterChainInitialCapacity - 1> index_block_handle_;
   BlockIterWrapper* const bottom_level_iter_;
+  // Internal key comparator used by this index's BlockIters; used to compare the seek target
+  // against the cached range bounds consistently with how DoSeek selects blocks.
+  const Comparator* const comparator_;
+  // Non-owning pointer to the top-level index block that iter_[0] iterates over (owned by the
+  // MultiLevelIndexReader, which outlives this iterator). GetMiddleKey builds its own iterator over
+  // it so it does not reposition iter_[0] and break invariant P1.
+  const Block* const top_level_index_block_;
   bool need_free_top_level_iter_;
   Status status_ = Status::OK();
   BlockIterWrapper* bottommost_positioned_iter_ = nullptr;
+
+  // Test-only counter of DoSeek calls
+  uint64_t num_do_seek_calls_ = 0;
+
+  // BottomBlockRangeCache holds the cached internal-key range [low, high] of the bottom-level index
+  // block loaded into bottom_level_iter_ at the moment Populate() was last called; it is valid
+  // until Invalidate() is called.
+  // The Seek fast path uses it to skip the upper-level Seeks: when the target belongs to a valid
+  // BottomBlockRangeCache it re-seeks only bottom_level_iter_.
+  //
+  // (1) MultiLevelIterator maintains the following invariants between external operations:
+  //   P1 (positioned):      If MultiLevelIterator::Valid(), every iterator above the bottom level
+  //                         is positioned on the entry that leads to the bottom-level index block
+  //                         currently loaded into bottom_level_iter_ (the loaded index leaf).
+  //   P2 (high bound):      If the cache is valid, `high` is the parent's index key for the
+  //                         currently loaded index leaf - the largest key that leaf covers. Holds
+  //                         at every instant, not just between operations: InitSubIterator - the
+  //                         single place a sub-block is (re)loaded - invalidates the cache before
+  //                         loading, and SetSubIterator is private so no reload can bypass it.
+  //   P3 (low bound):       If the cache is valid, `low` is a target that a DoSeek already
+  //                         resolved into the loaded index leaf. Established by
+  //                         PopulateBottomBlockRangeCacheAfterSeek.
+  //
+  // (2) Why the fast path is correct: Valid() and P1 give ancestors -> the loaded index leaf; P2
+  // gives the largest key that leaf covers; P3 gives that `low` resolves into it. Seek() returns
+  // the first entry >= target, so at every level every entry before the one chosen for `low` is
+  // < low, and any target in [low, high] selects those same index entries. Skipping the ancestor
+  // Seeks therefore keeps all invariants, and a later Next()/Prev() ascends over a consistent
+  // chain.
+  class BottomBlockRangeCache {
+   public:
+    bool Valid() const { return valid_; }
+
+    // Returns true iff `target` falls in [low, high]. Precondition: the cache is valid (callers
+    // gate on Valid() before reaching here).
+    bool Contains(const Comparator& c, Slice target) const {
+      DCHECK(valid_) << "BottomBlockRangeCache should be valid";
+      // High bound first: the common miss in a forward scan is target > high.
+      return c.Compare(target, high_internal_key_) <= 0 &&
+             c.Compare(target, low_internal_key_) >= 0;
+    }
+
+    void Populate(Slice low_internal_key, Slice high_internal_key) {
+      low_internal_key.CopyToBuffer(&low_internal_key_);
+      high_internal_key.CopyToBuffer(&high_internal_key_);
+      valid_ = true;
+    }
+
+    void Invalidate() { valid_ = false; }
+
+    // Debug-only check for invariant P2: the cached high bound must still equal the parent's index
+    // key.
+    void DebugCheckHighBound(const Comparator& c, Slice parent_index_key) const {
+      DCHECK(valid_) << "BottomBlockRangeCache should be valid";
+      DCHECK(c.Compare(parent_index_key, high_internal_key_) == 0)
+          << "range cache high bound no longer matches the parent's index key (P2 violated)";
+    }
+
+   private:
+    // The P3 lower bound. It is target-anchored and is never lowered, so only forward
+    // (non-decreasing) targets can hit the fast path.
+    std::string low_internal_key_;
+    // The P2 high bound - the parent's index key for the cached index leaf, i.e. the largest key
+    // it covers.
+    std::string high_internal_key_;
+    bool valid_ = false;
+  };
+  BottomBlockRangeCache bottom_block_range_cache_;
 };
+
+uint64_t TEST_MultiLevelIndexIteratorNumDoSeekCalls(
+    const DataBlockAwareIndexInternalIterator* iter) {
+  // `iter` must be a MultiLevelIterator (e.g. from MultiLevelIndexReader::NewDataBlockAwareIterator
+  // for a multi-level index). The downcast lives here because MultiLevelIterator is defined only in
+  // this translation unit.
+  return down_cast<const MultiLevelIterator*>(iter)->TEST_GetNumDoSeekCalls();
+}
 
 Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
     RandomAccessFileReader* file, const Footer& footer, const uint32_t num_levels,
@@ -596,8 +801,8 @@ DataBlockAwareIndexInternalIterator* MultiLevelIndexReader::NewDataBlockAwareIte
   auto* top_level_iter = top_level_index_block_->NewIndexBlockIterator(
       comparator_.get(), iter, /* total_order_seek = */ true);
   return new MultiLevelIterator(
-      std::move(index_iterator_state), std::move(data_iterator_state), top_level_iter, num_levels_,
-      top_level_iter != iter);
+      std::move(index_iterator_state), std::move(data_iterator_state), top_level_iter,
+      top_level_index_block_.get(), num_levels_, top_level_iter != iter, comparator_.get());
 }
 
 Result<std::string> MultiLevelIndexReader::GetMiddleKey() const {

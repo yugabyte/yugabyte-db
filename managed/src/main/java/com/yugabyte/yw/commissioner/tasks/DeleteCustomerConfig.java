@@ -37,6 +37,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
+  private static final String OCI = Util.OCI;
   private static final String NFS = Util.NFS;
 
   private final CloudUtilFactory cloudUtilFactory;
@@ -85,6 +86,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
             case S3:
             case GCS:
             case AZ:
+            case OCI:
               for (Backup backup : backupList) {
                 boolean success = true;
                 try {

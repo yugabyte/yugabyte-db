@@ -180,6 +180,10 @@ PgFlushDebugContext PgFlushDebugContext::ChangeTxnSnapshot(uint64_t read_point) 
   return {"before restoring transaction snapshot corresponding to read point $0", read_point};
 }
 
+PgFlushDebugContext PgFlushDebugContext::SwitchToCatalogSnapshot(uint64_t read_point) {
+  return {"before switching to catalog snapshot corresponding to read point $0", read_point};
+}
+
 PgFlushDebugContext PgFlushDebugContext::ExportSnapshot(
     PgOid oid, std::optional<uint64_t> read_point) {
   return {

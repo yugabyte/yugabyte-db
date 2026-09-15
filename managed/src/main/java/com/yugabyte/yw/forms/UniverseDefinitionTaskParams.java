@@ -853,8 +853,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               .forEach(
                   az -> {
                     int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfoUtil.addPlacementZone(
-                        az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    PlacementInfo.PlacementAZ mergedAz =
+                        PlacementInfoUtil.addPlacementZone(
+                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    // AZs are disjoint across partitions, so each AZ is added exactly once
+                    // and it is safe to copy the K8s statefulset indices directly. These
+                    // indices must be preserved: master addresses and pod names computed
+                    // from the overall placement (e.g. during a K8s full move) rely on them,
+                    // and dropping them would generate stale/incorrect master addresses.
+                    mergedAz.masterStsIndex = az.masterStsIndex;
+                    mergedAz.tsStsIndex = az.tsStsIndex;
                   });
         }
         return result;
@@ -1855,6 +1863,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
     }
 
+    public DeviceInfo getBaseDeviceInfo(UUID providerUUID) {
+      if (isMulticloudSupport()) {
+        return getNodeSpecProperty(
+            providerUUID, null, ServerType.TSERVER, HierarchicalNodesSpec.NodeSpec::getDeviceInfo);
+      }
+      return deviceInfo;
+    }
+
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
       return getDeviceInfoForAz(nodeDetails.getAzUuid(), nodeDetails.dedicatedTo);
     }
@@ -1885,10 +1901,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       OverridenDetails overridenDetails =
           getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
       if (overridenDetails.getDeviceInfo() != null) {
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overridenDetails.getDeviceInfo()),
-            azUUID);
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Getting overriden device info {} for az {}",
+              Json.toJson(overridenDetails.getDeviceInfo()),
+              azUUID);
+        }
         return mergeDeviceInfos(deviceInfo, overridenDetails.getDeviceInfo());
       }
       return deviceInfo;
@@ -1904,9 +1922,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       JsonNode original = Json.toJson(deviceInfo);
       JsonNode overriden = Json.toJson(overridenDeviceInfo);
-      log.debug("Merging device info {} with {}", original, overriden);
+      log.trace("Merging device info {} with {}", original, overriden);
       CommonUtils.deepMerge(original, overriden, true);
-      log.debug("Device info after merging {}", original);
+      log.trace("Device info after merging {}", original);
       return Json.fromJson(original, DeviceInfo.class);
     }
 

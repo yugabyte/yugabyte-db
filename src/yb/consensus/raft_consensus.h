@@ -239,8 +239,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
             .op_id = majority_replicated,
             .leader_lease_expiration = CoarseTimePoint::min(),
             .ht_lease_expiration = HybridTime::kMin.GetPhysicalValueMicros(),
-            .num_sst_files = 0,
-            .peer_got_all_ops = {}},
+            .num_sst_files = 0},
         committed_index, last_committed_op_id);
   }
 
@@ -714,6 +713,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Checked whether we should start step down when protege did not synchronize before timeout.
   void CheckDelayedStepDown(const Status& status);
+
+  // Whether the delayed step down protege has received every operation present in our log.
+  bool ProtegeSynchronizedUnlocked() const;
 
   void ClearPendingConfigUnlocked();
 

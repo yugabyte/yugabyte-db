@@ -33,6 +33,8 @@ To know more about the internals of CDC, see [Overview](./cdc-overview).
 
 Get started with Yugabyte gRPC replication.
 
+{{<tags/feature/ea idea="2762">}}Create and manage gRPC CDC streams using the PostgreSQL replication slot interface (`yb_grpc` plugin) (v2026.1.1.0 and later). See [Create a gRPC CDC stream](./cdc-get-started/#create-a-grpc-cdc-stream).
+
 For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/stable/develop/tutorials/cdc-tutorials/).
 
 {{<lead link="./cdc-get-started/">}}

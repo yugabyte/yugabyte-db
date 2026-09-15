@@ -471,7 +471,9 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     List<Map<String, Object>> checks = new ArrayList<>();
     result.put("checks", checks);
 
-    // Pattern to match check lines (name and status)
+    // Pattern to match check lines (name and status). This relies on pg_upgrade separating the
+    // check name from its result by at least two spaces, which prep_status() in
+    // src/postgres/src/bin/pg_upgrade/util.c guarantees even for names too long for the column.
     Pattern checkPattern = Pattern.compile("^(Checking.+?)\\s{2,}(\\w+)$");
 
     Map<String, Object> currentCheck = null;

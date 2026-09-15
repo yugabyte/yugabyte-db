@@ -62,7 +62,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.IsXClusterBootstrapRequiredResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 
@@ -167,7 +167,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Duration xclusterWaitTimeout =
         confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
 
-    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(sourceUniverse)) {
       List<String> lastErrors = new ArrayList<>();
       boolean result =
           doWithConstTimeout(

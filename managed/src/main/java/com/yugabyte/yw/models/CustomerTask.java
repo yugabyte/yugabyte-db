@@ -189,6 +189,9 @@ public class CustomerTask extends Model {
     @EnumValue("RollbackUpgrade")
     RollbackUpgrade,
 
+    @EnumValue("RollbackEditUniverse")
+    RollbackEditUniverse,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -504,6 +507,8 @@ public class CustomerTask extends Model {
           return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
         case RollbackUpgrade:
           return completed ? "Rolled back upgrade" : "Rolling back upgrade";
+        case RollbackEditUniverse:
+          return completed ? "Rolled back edit universe" : "Rolling back edit universe";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:

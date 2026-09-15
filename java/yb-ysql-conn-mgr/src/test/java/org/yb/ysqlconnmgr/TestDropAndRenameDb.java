@@ -72,6 +72,9 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
         Integer.toString(BasePgSQLTest.CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
     builder.addCommonTServerFlag(
         "ysql_conn_mgr_idle_time", Integer.toString(IDLE_CONNECTION_TIME_SECS));
+    // The default jitter (120s) dwarfs the idle time and is redrawn on every one second tick, so an
+    // idle backend can defer expiry well past the window testBackendCleanupOnDropDb waits in.
+    builder.addCommonTServerFlag("ysql_conn_mgr_jitter_time", "0");
   }
 
   private void executeDDL(String query, boolean shouldSucceed) {

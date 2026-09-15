@@ -388,6 +388,8 @@ pgstat_tracks_io_bktype(BackendType bktype)
 		case YB_MATVIEW_REFRESH_DDL:
 		case YB_RELCACHE_INIT_BACKEND:
 		case YB_GLOBAL_VIEW_BACKEND:
+		case YB_XCLUSTER_DDL_QUEUE_BACKEND:
+		case YB_XCLUSTER_SETUP_BACKEND:
 			return false;
 	}
 

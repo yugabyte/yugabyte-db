@@ -9,7 +9,7 @@ import (
     "time"
 
     "github.com/yugabyte/gocql"
-    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PgClientConnectionParams struct {
@@ -88,6 +88,6 @@ func (h *HelperContainer) CreatePgClient(log logger.Logger,
     }
 
     log.Debugf("Initializing pgx client.")
-    conn, err := pgxpool.Connect(context.Background(), url)
+    conn, err := pgxpool.New(context.Background(), url)
     return conn, err
 }

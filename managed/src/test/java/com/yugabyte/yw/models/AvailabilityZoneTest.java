@@ -48,7 +48,7 @@ public class AvailabilityZoneTest extends FakeDBApplication {
     try {
       AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone 2", "subnet-2");
     } catch (Exception e) {
-      assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
+      assertThat(e.getMessage(), containsString("duplicate key value violates unique constraint"));
     }
   }
 

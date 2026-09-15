@@ -371,6 +371,11 @@ func upgradeCmd() *cobra.Command {
 					log.Fatal("Failed to get status: " + err.Error())
 				}
 				statuses = append(statuses, status)
+				// byoc-api-proxy manages itself best effort and may validly not be
+				// running, so it never fails or rolls back an upgrade.
+				if service.Name() == ByocApiProxyServiceName {
+					continue
+				}
 				if !common.IsHappyStatus(status) {
 					if rollback {
 						rollbackUpgrade(backupDir, state)

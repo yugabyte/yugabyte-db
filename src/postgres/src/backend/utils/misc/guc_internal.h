@@ -15,7 +15,8 @@
 #include "utils/guc.h"
 
 extern int	guc_name_compare(const char *namea, const char *nameb);
-extern ConfigVariable *ProcessConfigFileInternal(GucContext context,
+extern ConfigVariable *ProcessConfigFileInternal(const char *yb_config_file,
+												 GucContext context,
 												 bool applySettings, int elevel);
 extern void record_config_file_error(const char *errmsg,
 									 const char *config_file,

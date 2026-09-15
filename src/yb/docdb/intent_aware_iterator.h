@@ -98,9 +98,7 @@ class IntentAwareIterator final {
       const DocDB& doc_db, const rocksdb::ReadOptions& read_opts,
       const ReadOperationData& read_operation_data,
       const TransactionOperationContext& txn_op_context,
-      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
-      AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
-          AvoidUselessNextInsteadOfSeek::kFalse);
+      IntentAwareIteratorFlags flags = {});
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;

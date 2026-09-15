@@ -2,12 +2,15 @@ package checks
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
+
+var servicesRunningIgnoreList = []string{"yb-logrotate", "byoc-api-proxy"}
 
 var ServicesRunningCheck *servicesRunningCheck = &servicesRunningCheck{
 	CheckName:   "services_running",
@@ -42,9 +45,9 @@ func (s *servicesRunningCheck) Execute() Result {
 
 	failedServices := make([]string, 0)
 	for _, service := range s.Services {
-		if service.Name() == "yb-logrotate" {
-			logging.Debug("Skipping yb-logrotate service in services running check")
-			continue // Skip yb-logrotate service in services running check
+		if slices.Contains(servicesRunningIgnoreList, service.Name()) {
+			logging.Debug("Skipping " + service.Name() + " service in services running check")
+			continue
 		}
 		status, err := service.Status()
 		if err != nil {

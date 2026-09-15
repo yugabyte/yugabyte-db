@@ -31,7 +31,9 @@
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/util/backoff_waiter.h"
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_xcluster_api_v2);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_log_queries);
 
@@ -241,7 +243,15 @@ Status XClusterDDLReplicationTestBase::StepDownDdlQueueTablet(Cluster& cluster) 
   return StepDown(leader_peer, /*new_leader_uuid=*/"", ForceStepDown::kTrue);
 }
 
-Status XClusterDDLReplicationTestBase::MoveDdlQueueTabletLeaderToPgProxy(Cluster& cluster) {
+Status XClusterDDLReplicationTestBase::MoveDdlQueueTabletLeaderToPgProxy(
+    Cluster& cluster, bool disable_leader_balancing) {
+  if (disable_leader_balancing) {
+    // Keep the leader where this function puts it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    // Prevent other leader elections from happening.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 20;
+  }
+
   auto ddl_queue_table = VERIFY_RESULT(GetYsqlTable(
       &cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;

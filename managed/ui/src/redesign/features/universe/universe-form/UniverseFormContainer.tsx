@@ -1,4 +1,4 @@
-import { createContext, FC } from 'react';
+import { createContext, FC, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useMethods } from 'react-use';
 import { useSelector } from 'react-redux';
@@ -19,6 +19,10 @@ import {
   UniverseResource
 } from './utils/dto';
 import { useFormMainStyles } from './universeMainStyle';
+import {
+  UNIVERSE_FORM_OVERLAY_ID,
+  setOnboardingFullscreenOverlayOpen
+} from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 
 const VIEW = 'VIEW';
 
@@ -128,6 +132,13 @@ export const UniverseFormContainer: FC<RouteComponentProps<{}, UniverseFormConta
     [QUERY_KEY.fetchCustomerRunTimeConfigs, customerUUID],
     () => api.fetchRunTimeConfigs(true, customerUUID)
   );
+
+  useEffect(() => {
+    setOnboardingFullscreenOverlayOpen(UNIVERSE_FORM_OVERLAY_ID, true);
+    return () => {
+      setOnboardingFullscreenOverlayOpen(UNIVERSE_FORM_OVERLAY_ID, false);
+    };
+  }, []);
 
   const switchInternalRoutes = () => {
     const isViewMode = mode === VIEW;

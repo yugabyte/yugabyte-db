@@ -271,7 +271,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   //  @Test
   public void testListProvidersWithValidCustomer() {
-    Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
+    Customer otherCustomer = ModelFactory.testCustomer("diffcust4", "Different Customer 4");
+    Provider.create(otherCustomer.getUuid(), Common.CloudType.aws, "Amazon");
     Provider p = ModelFactory.gcpProvider(customer);
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
@@ -477,7 +478,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateProviderSameNameDiffCustomer() {
-    Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
+    Customer otherCustomer = ModelFactory.testCustomer("diffcust3", "Different Customer 3");
+    Provider.create(otherCustomer.getUuid(), Common.CloudType.aws, "Amazon");
     createProviderTest(buildProviderReq("aws", "Amazon"), REGION_CODES_FROM_CLOUD_API);
   }
 

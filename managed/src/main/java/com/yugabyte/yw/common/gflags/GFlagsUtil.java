@@ -213,6 +213,9 @@ public class GFlagsUtil {
 
   public static final String ALLOWED_PREVIEW_FLAGS_CSV = "allowed_preview_flags_csv";
 
+  public static final Set<String> GFLAGS_ALLOWED_ONLY_IN_NON_ROLLING_UPGRADE =
+      ImmutableSet.of("emergency_repair_mode");
+
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
       Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
   private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
@@ -1498,6 +1501,58 @@ public class GFlagsUtil {
         retFlags = new HashMap<>();
       }
       return new HashMap<>(retFlags);
+    }
+  }
+
+  public static Set<String> getChangedGFlags(
+      Collection<Cluster> currentClusters,
+      Collection<Cluster> updatedClusters,
+      Collection<String> candidateGFlags) {
+    Set<String> changedGFlags = new TreeSet<>();
+    Map<UUID, Cluster> currentClustersByUuid =
+        currentClusters.stream()
+            .collect(Collectors.toMap(cluster -> cluster.uuid, cluster -> cluster));
+    Map<UUID, Cluster> updatedClustersByUuid =
+        updatedClusters.stream()
+            .collect(Collectors.toMap(cluster -> cluster.uuid, cluster -> cluster));
+
+    Set<UUID> clusterUuids = new HashSet<>(currentClustersByUuid.keySet());
+    clusterUuids.addAll(updatedClustersByUuid.keySet());
+    for (UUID clusterUuid : clusterUuids) {
+      Cluster currentCluster = currentClustersByUuid.get(clusterUuid);
+      Cluster updatedCluster = updatedClustersByUuid.get(clusterUuid);
+
+      Set<UUID> azUuids = new HashSet<>();
+      azUuids.add(null);
+      addPerAZGFlagUuids(azUuids, currentCluster);
+      addPerAZGFlagUuids(azUuids, updatedCluster);
+      for (UUID azUuid : azUuids) {
+        for (ServerType serverType : EnumSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+          Map<String, String> currentGFlags =
+              currentCluster == null
+                  ? Collections.emptyMap()
+                  : getGFlagsForAZ(azUuid, serverType, currentCluster, currentClusters);
+          Map<String, String> updatedGFlags =
+              updatedCluster == null
+                  ? Collections.emptyMap()
+                  : getGFlagsForAZ(azUuid, serverType, updatedCluster, updatedClusters);
+          for (String gflag : candidateGFlags) {
+            if (currentGFlags.containsKey(gflag) != updatedGFlags.containsKey(gflag)
+                || !Objects.equals(currentGFlags.get(gflag), updatedGFlags.get(gflag))) {
+              changedGFlags.add(gflag);
+            }
+          }
+        }
+      }
+    }
+    return changedGFlags;
+  }
+
+  private static void addPerAZGFlagUuids(Set<UUID> azUuids, @Nullable Cluster cluster) {
+    if (cluster != null
+        && cluster.userIntent.specificGFlags != null
+        && cluster.userIntent.specificGFlags.getPerAZ() != null) {
+      azUuids.addAll(cluster.userIntent.specificGFlags.getPerAZ().keySet());
     }
   }
 

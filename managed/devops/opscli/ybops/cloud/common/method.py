@@ -1356,25 +1356,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 rotate_certs,
                 args.skip_cert_validation)
 
-        # Copying client certs
-        if args.client_cert_path is not None:
-            logging.info("Client Certificate Exists: {}.".format(args.client_cert_path))
-            if args.root_cert_path_client_to_server is not None:
-                self.cloud.copy_client_certs(
-                    self.extra_vars,
-                    args.root_cert_path_client_to_server,
-                    args.client_cert_path,
-                    args.client_key_path,
-                    args.certs_location_client_to_server
-                )
-            else:
-                self.cloud.copy_client_certs(
-                    self.extra_vars,
-                    args.root_cert_path,
-                    args.client_cert_path,
-                    args.client_key_path,
-                    args.certs_location
-                )
+        # Client certs are not deployed to ~/.yugabytedb on DB nodes. On ROTATE_CERTS,
+        # cleanup_client_certs above removes leftovers if present.
 
         if args.local_gflag_files_path is not None and args.remote_gflag_files_path is not None:
             # Copy all the files from local gflags file path to remote

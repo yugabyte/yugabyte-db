@@ -1346,5 +1346,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     UUID rootCAUUID;
     @Builder.Default boolean useExistingServerCert = false;
     Boolean useYBDBInbuiltYbc;
+    @Builder.Default boolean reconcilePgDataOwnershipToRoot = false;
   }
 }

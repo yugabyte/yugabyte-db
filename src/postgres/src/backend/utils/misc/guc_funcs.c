@@ -1059,7 +1059,8 @@ show_all_file_settings(PG_FUNCTION_ARGS)
 	ConfigVariable *conf;
 
 	/* Scan the config files using current context as workspace */
-	conf = ProcessConfigFileInternal(PGC_SIGHUP, false, DEBUG3);
+	conf = ProcessConfigFileInternal(NULL /* yb_config_file */ , PGC_SIGHUP,
+									 false /* applySettings */ , DEBUG3);
 
 	/* Build a tuplestore to return our results in */
 	InitMaterializedSRF(fcinfo, 0);

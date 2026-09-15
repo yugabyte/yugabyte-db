@@ -10,8 +10,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.mock.env.MockEnvironment;
 
 class ConfigValidatorTest {
@@ -157,6 +160,34 @@ class ConfigValidatorTest {
     assertTrue(
         errors.stream().noneMatch(e -> e.contains("Failed to convert")),
         "should not surface raw conversion errors, got: " + errors);
+  }
+
+  @Test
+  void collectErrors_placeholdersShadowedByOverlay_notReported() {
+    // Bundled application.yaml style defaults with required placeholders.
+    MockEnvironment env =
+        new MockEnvironment()
+            .withProperty("yba.uuid", "${YBA_UUID}")
+            .withProperty("yba.base-url", "${YBA_BASE_URL:http://localhost:9001/api}")
+            .withProperty("proxied-app.base-url", "${PROXIED_APP_BASE_URL:http://localhost:9000}")
+            .withProperty("proxied-app.read-timeout", "PT30S")
+            .withProperty("proxied-app.auth.type", "${PROXIED_APP_AUTH_TYPE:service_account}")
+            .withProperty("proxied-app.auth.api-key", "${API_KEY}");
+    // Installer-generated application.yaml overlay (snake_case keys, higher precedence).
+    env.getPropertySources()
+        .addFirst(
+            new MapPropertySource(
+                "overlay",
+                Map.of(
+                    "yba.uuid", UUID.randomUUID().toString(),
+                    "proxied_app.auth.type", "api_key",
+                    "proxied_app.auth.api_key", "tok-123")));
+    // Match a Boot-loaded environment, where relaxed property resolution is attached.
+    ConfigurationPropertySources.attach(env);
+
+    List<String> errors = ConfigValidator.collectErrors(env);
+
+    assertTrue(errors.isEmpty(), "expected no errors, got: " + errors);
   }
 
   @Test

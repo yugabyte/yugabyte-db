@@ -1,0 +1,92 @@
+!!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
+exporters:
+  datadog/node_agent_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DataDogExporter
+    api: {key: apikey, site: ddsite}
+    retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m,
+      max_interval: 10m}
+extensions:
+  file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
+    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
+      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+    directory: /mnt/d0/otel-collector/queue
+processors:
+  attributes/node_agent_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+    actions:
+    - {action: upsert, key: ddsource, value: yugabyte}
+    - {action: upsert, key: service, value: yb-otel-collector}
+    - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.region, value: ''}
+    - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.purpose, value: DATA_DOG_NODE_AGENT_LOG_EXPORT}
+    - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
+    - {action: delete, key: log.file.name}
+    - {action: upsert, from_attribute: log_level, key: yugabyte.log_level}
+    - {action: delete, key: log_level}
+    - {action: upsert, from_attribute: statement_id, key: yugabyte.statement_id}
+    - {action: delete, key: statement_id}
+    - {action: upsert, from_attribute: substatement_id, key: yugabyte.substatement_id}
+    - {action: delete, key: substatement_id}
+    - {action: upsert, from_attribute: class, key: yugabyte.class}
+    - {action: delete, key: class}
+    - {action: upsert, from_attribute: command, key: yugabyte.command}
+    - {action: delete, key: command}
+    - {action: upsert, from_attribute: object_type, key: yugabyte.object_type}
+    - {action: delete, key: object_type}
+    - {action: upsert, from_attribute: object_name, key: yugabyte.object_name}
+    - {action: delete, key: object_name}
+    - {action: upsert, from_attribute: statement, key: yugabyte.statement}
+    - {action: delete, key: statement}
+    - {action: upsert, key: tag, value: value}
+    - {action: upsert, key: additionalTag, value: otherValue}
+  batch/node_agent_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
+    send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
+  memory_limiter/node_agent_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
+    check_interval: 10s, limit_mib: 2048}
+  transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
+    log_statements:
+    - context: log
+      statements: ['replace_pattern(body, "^otho8Aut", "")']
+receivers:
+  filelog/node_agent: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
+    attributes: {yugabyte.server_log_type: node_agent}
+    include: [/opt/yugabyte/node-agent/logs/node_agent.log]
+    operators:
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator {
+      on_error: send, regex: '^timestamp=(?P<log_time_full>\S+)\s+level=(?P<log_level>\S+)\s+message="(?P<message>[^"]*)"',
+      type: regex_parser}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator {
+      if: attributes.log_time_full != nil, on_error: send, parse_from: attributes.log_time_full,
+      regex: '^(?P<log_time_millis>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)\d*Z$',
+      type: regex_parser}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TimeParserOperator {
+      if: attributes.log_time_millis != nil, layout: '%Y-%m-%dT%H:%M:%S.%L', parse_from: attributes.log_time_millis,
+      type: time_parser}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$SeverityParserOperator {
+      parse_from: attributes.log_level, type: severity_parser}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MoveOperator {
+      from: attributes.message, if: attributes.message != nil, to: body, type: move}
+    poll_interval: 1s
+    start_at: beginning
+    storage: file_storage/queue
+service:
+  extensions: [file_storage/queue]
+  pipelines:
+    logs/node_agent_logs_00000000-0000-0000-0000-000000000000:
+      exporters: [datadog/node_agent_logs_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/node_agent_logs_00000000-0000-0000-0000-000000000000,
+        batch/node_agent_logs_00000000-0000-0000-0000-000000000000, memory_limiter/node_agent_logs_00000000-0000-0000-0000-000000000000,
+        transform/replace]
+      receivers: [filelog/node_agent]
+  telemetry:
+    logs:
+      output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
+              without_units: true}

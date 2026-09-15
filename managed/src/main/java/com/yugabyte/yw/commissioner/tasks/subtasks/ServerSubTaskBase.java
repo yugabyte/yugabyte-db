@@ -21,7 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public abstract class ServerSubTaskBase extends AbstractTaskBase {
@@ -69,7 +69,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
         taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
   }
 
-  public YBClient getClient() {
+  public YBClientApi getClient() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
@@ -86,7 +86,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
     return ybService.getClient(masterAddresses, certificate);
   }
 
-  public YBClient getClient(long adminOperationTimeoutMs) {
+  public YBClientApi getClient(long adminOperationTimeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();

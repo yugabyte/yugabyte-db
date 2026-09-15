@@ -1,13 +1,17 @@
+import { useEffect, useMemo } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { mui, yba } from '@yugabyte-ui-library/core';
 import { InstanceARNField } from '../../create-universe/fields';
+import { awsArnFormSchema } from '../../create-universe/fields/arn-field/awsArnValidation';
 import { useEditUniverse } from '../../../../../v2/api/universe/universe';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { FullMoveWarning } from '../components';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -35,15 +39,27 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
   const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const providerSpec = primaryCluster?.provider_spec;
-  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const awsArnString = primaryCluster?.provider_spec?.aws_instance_profile;
 
   const defaultValues = {
     awsArnString
   };
-  const methods = useForm<NodeAcessFormProps>({ defaultValues });
+  const validationSchema = useMemo(() => awsArnFormSchema(t), [t]);
+  const methods = useForm<NodeAcessFormProps>({
+    defaultValues,
+    resolver: yupResolver(validationSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onChange'
+  });
+  const {
+    handleSubmit,
+    reset,
+    formState: { isDirty }
+  } = methods;
 
-  const { handleSubmit } = methods;
+  useEffect(() => {
+    if (open) reset(defaultValues);
+  }, [open]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
     if (!universeUUID || !primaryCluster?.uuid) {
@@ -69,6 +85,7 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
       },
       {
         onSuccess: (response) => {
+          reset(values);
           handleEditUniverseSuccess(response.task_uuid);
           onClose();
         },
@@ -95,6 +112,7 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
       <FormProvider {...methods}>
         <ModalContent>
           <InstanceARNField disabled={false} />
+          {isDirty && <FullMoveWarning setting="instanceProfileArn" />}
         </ModalContent>
       </FormProvider>
     </YBModal>

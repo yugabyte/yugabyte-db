@@ -11,6 +11,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -209,6 +211,150 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .verifyTasks(taskInfo.getSubTasks());
 
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRejectedForRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "true");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(
+        exception.getMessage(),
+        containsString(
+            "GFlags emergency_repair_mode can only be changed using NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRejectedForNonRestartUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "true");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testSpecificNonRollingOnlyGFlagRejectedForRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("emergency_repair_mode", "true"), ImmutableMap.of());
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testPerAZNonRollingOnlyGFlagRejectedForRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(Collections.emptyMap(), Collections.emptyMap());
+    SpecificGFlags.PerProcessFlags perProcessFlags = new SpecificGFlags.PerProcessFlags();
+    perProcessFlags.value =
+        ImmutableMap.of(MASTER, ImmutableMap.of("emergency_repair_mode", "true"));
+    specificGFlags.setPerAZ(ImmutableMap.of(az1.getUuid(), perProcessFlags));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRemovalRejectedForRollingUpgrade() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags =
+                    new HashMap<>(ImmutableMap.of("emergency_repair_mode", "true")));
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of();
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagDisableRejectedForRollingUpgrade() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags =
+                    new HashMap<>(ImmutableMap.of("emergency_repair_mode", "true")));
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "false");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagAllowedForNonRollingUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("emergency_repair_mode", "true");
+    taskParams.tserverGFlags = ImmutableMap.of();
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testSkipConfiguredPrechecksForNonRollingGFlagsUpgrade() {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.skipPrechecksForNonRollingGFlagsUpgrade.getKey(), "true");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    "2024.2.0.0-b1");
+    expectedUniverseVersion++;
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    Set<TaskType> precheckTaskTypes =
+        Set.of(
+            TaskType.CheckForClusterServers,
+            TaskType.CheckNodeDataDirDiskSpace,
+            TaskType.UpdateConsistencyCheck,
+            TaskType.ValidateGFlags);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(subTask -> precheckTaskTypes.contains(subTask.getTaskType())));
   }
 
   @Test
