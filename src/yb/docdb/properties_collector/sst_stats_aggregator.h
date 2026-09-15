@@ -139,19 +139,21 @@ class SstStatsAggregator {
   void OnFlushCompleted(const rocksdb::FlushJobInfo& info);
   void OnCompactionCompleted(const rocksdb::CompactionJobInfo& info);
 
-  // Replaces the aggregate with the sum over the whole live file set. `snapshot` fills the live
+  // Replaces the aggregate with the sum over the whole live file set. `source` provides the live
   // file list and the properties collection keyed by base file path, as
-  // DB::GetLiveFilesMetaData / DB::GetPropertiesOfAllTables return them; it runs without the lock
-  // held because reading a properties block can hit disk.
+  // DB::GetLiveFilesMetaData / DB::GetPropertiesOfAllTables return them. They are separate so a
+  // steady-state pass whose live file numbers are already exactly counted can avoid reading any
+  // properties blocks. Both callbacks run without the lock held because they can hit disk.
   //
   // The snapshot is dropped rather than installed if a flush or compaction landed while it ran:
   // it predates that event, so installing it would undo an update the incremental path already
-  // applied exactly. A tablet busy enough to skip every resync is one whose file set only ever
-  // changes through events the listener sees.
-  using SnapshotFn = std::function<Status(
-      std::vector<rocksdb::LiveFileMetaData>* live_files,
-      rocksdb::TablePropertiesCollection* properties)>;
-  Status Resync(const SnapshotFn& snapshot);
+  // applied exactly. Resync retries once immediately so a single event does not postpone the
+  // tablet's first complete snapshot for a whole interval.
+  struct SnapshotSource {
+    std::function<Status(std::vector<rocksdb::LiveFileMetaData>*)> live_files;
+    std::function<Status(rocksdb::TablePropertiesCollection*)> properties;
+  };
+  Status Resync(const SnapshotSource& source);
 
   Snapshot Get() const EXCLUDES(mutex_);
 
@@ -166,6 +168,8 @@ class SstStatsAggregator {
   std::unordered_set<uint64_t> counted_files_ GUARDED_BY(mutex_);
   // Bumped by every file added or removed; lets Resync tell that its snapshot was overtaken.
   uint64_t event_seqno_ GUARDED_BY(mutex_) = 0;
+  // True when the last installed snapshot omitted at least one unreadable properties block.
+  bool properties_incomplete_ GUARDED_BY(mutex_) = false;
   int64_t last_resync_micros_ GUARDED_BY(mutex_) = 0;
 };
 

@@ -116,16 +116,20 @@ rocksdb::CompactionJobInfo CompactionOf(const FileEntries& inputs, const FileEnt
   return info;
 }
 
-SstStatsAggregator::SnapshotFn SnapshotOf(FileEntries files) {
-  return [files = std::move(files)](
-      std::vector<rocksdb::LiveFileMetaData>* live_files,
-      rocksdb::TablePropertiesCollection* properties) {
-    std::vector<std::string> paths;
-    AddFiles(files, &paths, properties);
-    for (const auto& [file_number, file_properties] : files) {
-      live_files->push_back(LiveFile(file_number));
-    }
-    return Status::OK();
+SstStatsAggregator::SnapshotSource SnapshotOf(FileEntries files) {
+  auto shared_files = std::make_shared<FileEntries>(std::move(files));
+  return {
+      .live_files = [shared_files](std::vector<rocksdb::LiveFileMetaData>* live_files) {
+        for (const auto& file : *shared_files) {
+          live_files->push_back(LiveFile(file.first));
+        }
+        return Status::OK();
+      },
+      .properties = [shared_files](rocksdb::TablePropertiesCollection* properties) {
+        std::vector<std::string> paths;
+        AddFiles(*shared_files, &paths, properties);
+        return Status::OK();
+      },
   };
 }
 
@@ -236,12 +240,18 @@ TEST_F(SstStatsAggregatorTest, CompactionWithoutInputProperties) {
   const auto file = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
   const auto output = CoveredFile(/* entries = */ 90, /* reclaimable = */ 5);
   aggregator.OnFlushCompleted(FlushOf(1, file));
+  ASSERT_OK(aggregator.Resync(SnapshotOf({{1, &file}})));
 
   aggregator.OnCompactionCompleted(CompactionOf({{1, nullptr}}, {{2, &output}}));
   const auto after = aggregator.Get().aggregate;
   // The consumed file's statistics stay in the sums, and the counter says so.
   EXPECT_EQ(after.total_entries, 190);
   EXPECT_EQ(after.unsubtracted_files, 1);
+
+  // Matching file numbers alone cannot take the fast path while a subtraction is outstanding.
+  ASSERT_OK(aggregator.Resync(SnapshotOf({{2, &output}})));
+  EXPECT_EQ(aggregator.Get().aggregate.total_entries, 90);
+  EXPECT_EQ(aggregator.Get().aggregate.unsubtracted_files, 0);
 }
 
 TEST_F(SstStatsAggregatorTest, CompactionOfUncountedFile) {
@@ -275,25 +285,34 @@ TEST_F(SstStatsAggregatorTest, ResyncCountsUncoveredFiles) {
   EXPECT_EQ(aggregator.Get().aggregate.uncovered_files, 0);
 }
 
-TEST_F(SstStatsAggregatorTest, ResyncOvertakenByFlushIsDropped) {
+TEST_F(SstStatsAggregatorTest, ResyncOvertakenByFlushIsRetried) {
   SstStatsAggregator aggregator;
   const auto flushed = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
   const auto stale = CoveredFile(/* entries = */ 7, /* reclaimable = */ 7);
 
-  const auto status = aggregator.Resync(
-      [&](std::vector<rocksdb::LiveFileMetaData>* live_files,
-          rocksdb::TablePropertiesCollection* properties) {
-        // The file set the snapshot saw, before the flush that lands underneath it.
-        live_files->push_back(LiveFile(9));
-        (*properties)[PathOf(9)] = std::make_shared<rocksdb::TableProperties>(stale);
-        aggregator.OnFlushCompleted(FlushOf(1, flushed));
+  int properties_calls = 0;
+  const auto status = aggregator.Resync({
+      .live_files = [&](std::vector<rocksdb::LiveFileMetaData>* live_files) {
+        live_files->push_back(LiveFile(properties_calls == 0 ? 9 : 1));
         return Status::OK();
-      });
+      },
+      .properties = [&](rocksdb::TablePropertiesCollection* properties) {
+        if (properties_calls++ == 0) {
+          // The first snapshot saw file 9, then a flush replaced the state underneath it.
+          (*properties)[PathOf(9)] = std::make_shared<rocksdb::TableProperties>(stale);
+          aggregator.OnFlushCompleted(FlushOf(1, flushed));
+        } else {
+          (*properties)[PathOf(1)] = std::make_shared<rocksdb::TableProperties>(flushed);
+        }
+        return Status::OK();
+      },
+  });
   ASSERT_OK(status);
 
   const auto snapshot = aggregator.Get();
   EXPECT_EQ(snapshot.aggregate.total_entries, 100);
-  EXPECT_EQ(snapshot.last_resync_micros, 0);
+  EXPECT_GT(snapshot.last_resync_micros, 0);
+  EXPECT_EQ(properties_calls, 2);
 }
 
 TEST_F(SstStatsAggregatorTest, ResyncSurvivesReplayedFlush) {
@@ -301,21 +320,57 @@ TEST_F(SstStatsAggregatorTest, ResyncSurvivesReplayedFlush) {
   const auto file = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
   aggregator.OnFlushCompleted(FlushOf(1, file));
 
-  const auto status = aggregator.Resync(
-      [&](std::vector<rocksdb::LiveFileMetaData>* live_files,
-          rocksdb::TablePropertiesCollection* properties) {
+  const auto status = aggregator.Resync({
+      .live_files = [&](std::vector<rocksdb::LiveFileMetaData>* live_files) {
         live_files->push_back(LiveFile(1));
-        (*properties)[PathOf(1)] = std::make_shared<rocksdb::TableProperties>(file);
         // An event replayed for a file already counted leaves the file set alone, so the snapshot
         // taken above still describes it and must not be discarded as overtaken.
         aggregator.OnFlushCompleted(FlushOf(1, file));
         return Status::OK();
-      });
+      },
+      .properties = [&](rocksdb::TablePropertiesCollection* properties) {
+        (*properties)[PathOf(1)] = std::make_shared<rocksdb::TableProperties>(file);
+        return Status::OK();
+      },
+  });
   ASSERT_OK(status);
 
   const auto snapshot = aggregator.Get();
   EXPECT_EQ(snapshot.aggregate.total_entries, 100);
   EXPECT_GT(snapshot.last_resync_micros, 0);
+}
+
+TEST_F(SstStatsAggregatorTest, ResyncSkipsPropertiesForUnchangedFileSet) {
+  SstStatsAggregator aggregator;
+  const auto file = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
+  ASSERT_OK(aggregator.Resync(SnapshotOf({{1, &file}})));
+
+  int properties_calls = 0;
+  ASSERT_OK(aggregator.Resync({
+      .live_files = [](std::vector<rocksdb::LiveFileMetaData>* live_files) {
+        live_files->push_back(LiveFile(1));
+        return Status::OK();
+      },
+      .properties = [&](rocksdb::TablePropertiesCollection*) {
+        ++properties_calls;
+        return STATUS(IOError, "must not read an unchanged file");
+      },
+  }));
+
+  EXPECT_EQ(properties_calls, 0);
+  EXPECT_EQ(aggregator.Get().aggregate.total_entries, 100);
+}
+
+TEST_F(SstStatsAggregatorTest, ResyncRetriesUnreadableProperties) {
+  SstStatsAggregator aggregator;
+  const auto file = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
+  ASSERT_OK(aggregator.Resync(SnapshotOf({{1, nullptr}})));
+  ASSERT_EQ(aggregator.Get().aggregate.uncovered_files, 1);
+
+  // An unchanged file set must not take the fast path after an incomplete properties read.
+  ASSERT_OK(aggregator.Resync(SnapshotOf({{1, &file}})));
+  EXPECT_EQ(aggregator.Get().aggregate.total_entries, 100);
+  EXPECT_EQ(aggregator.Get().aggregate.uncovered_files, 0);
 }
 
 }  // namespace yb::docdb
