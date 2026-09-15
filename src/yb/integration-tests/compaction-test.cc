@@ -608,6 +608,39 @@ TEST_F(SstStatsAggregateTest, TracksFlushAndCompactionOutputs) {
   }
 }
 
+TEST_F(SstStatsAggregateTest, ReplacesAggregatorAfterTruncate) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, /* num_tablets = */ 1);
+  ASSERT_OK(WriteAtLeastFilesPerDb(2));
+
+  const auto tablets_before = WorkloadTablets();
+  ASSERT_EQ(tablets_before.size(), 1);
+  const auto old_stats = tablets_before.front()->sst_stats();
+  ASSERT_NE(old_stats, nullptr);
+  const auto old_aggregate = old_stats->Get().aggregate;
+  ASSERT_GT(old_aggregate.total_entries, 0);
+
+  const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+  ASSERT_OK(workload_->client().TruncateTable(table_info->id(), /* wait = */ true));
+
+  const auto tablets_after = WorkloadTablets();
+  ASSERT_EQ(tablets_after.size(), 1);
+  const auto new_stats = tablets_after.front()->sst_stats();
+  ASSERT_NE(new_stats, nullptr);
+  ASSERT_NE(new_stats, old_stats);
+  ASSERT_OK(tablets_after.front()->ResyncSstStats());
+  ASSERT_EQ(new_stats->Get().aggregate, docdb::SstStatsAggregate());
+  ASSERT_GT(new_stats->Get().last_resync_micros, 0);
+
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(2));
+  const auto new_aggregate = new_stats->Get().aggregate;
+  ASSERT_GT(new_aggregate.total_entries, 0);
+  ASSERT_EQ(new_aggregate.covered_files, tablets_after.front()->GetCurrentVersionNumSSTFiles());
+  // Holding the old shared_ptr is safe, but its aggregate belongs to the destroyed RocksDB.
+  ASSERT_EQ(old_stats->Get().aggregate, old_aggregate);
+}
+
 class SstStatsCoverageTest : public SstStatsAggregateTest {
  protected:
   bool CollectorEnabled() override { return false; }

@@ -174,12 +174,14 @@ bar is end-to-end flush and compaction throughput with the flag on versus off.
 ## The tablet aggregate
 
 `SstStatsAggregator` sums the additive scalars over one tablet's live files. It is maintained from
-the tablet's RocksDB event listener and resynced periodically from `DB::GetPropertiesOfAllTables`
-(`TableProperties::Add` drops `user_collected_properties`, so the built-in aggregation cannot be
-used). Both paths are needed: the listener because a full compaction that reclaims the garbage must
-be visible to the trigger at once rather than a resync interval later, the resync because the file
-set also changes without any event -- DB open, remote bootstrap, snapshot restore, split
-inheritance.
+the tablet's RocksDB event listener and periodically checked against `DB::GetLiveFilesMetaData`.
+When that file set differs from the one counted, a compaction input could not be subtracted, or the
+previous properties read was incomplete, it is rebuilt from `DB::GetPropertiesOfAllTables`
+(`TableProperties::Add` drops
+`user_collected_properties`, so the built-in aggregation cannot be used). Both paths are needed:
+the listener because a full compaction that reclaims the garbage must be visible to the trigger at
+once rather than a resync interval later, the resync because the file set also changes without any
+event -- DB open, remote bootstrap, snapshot restore, split inheritance.
 
 The distributions do not aggregate this way. Bucket-wise merging is exact, but a set of files that
 shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per tablet against
