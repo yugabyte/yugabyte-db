@@ -303,7 +303,7 @@ class SpecialEnv : public EnvWrapper {
 #endif  // !(defined NDEBUG) || !defined(OS_WIN)
         return base_->Close();
       }
-      Status Flush(FlushMode mode) override { return base_->Flush(mode); }
+      Status Flush() override { return base_->Flush(); }
       Status Sync() override {
         ++env_->sync_counter_;
         while (env_->delay_sstable_sync_.load(std::memory_order_acquire)) {
@@ -317,7 +317,6 @@ class SpecialEnv : public EnvWrapper {
       yb::IOPriority GetIOPriority() override {
         return base_->GetIOPriority();
       }
-      uint64_t Size() const override { return base_->Size(); }
       const std::string& filename() const override { return base_->filename(); }
     };
     class ManifestFile : public WritableFile {
@@ -333,7 +332,7 @@ class SpecialEnv : public EnvWrapper {
       }
       Status Truncate(uint64_t size) override { return base_->Truncate(size); }
       Status Close() override { return base_->Close(); }
-      Status Flush(FlushMode mode) override { return base_->Flush(mode); }
+      Status Flush() override { return base_->Flush(); }
       Status Sync() override {
         ++env_->sync_counter_;
         if (env_->manifest_sync_error_.load(std::memory_order_acquire)) {
@@ -342,7 +341,7 @@ class SpecialEnv : public EnvWrapper {
           return base_->Sync();
         }
       }
-      uint64_t Size() const override { return base_->Size(); }
+      uint64_t GetFileSize() override { return base_->GetFileSize(); }
       const std::string& filename() const override { return base_->filename(); }
 
      private:
@@ -375,7 +374,7 @@ class SpecialEnv : public EnvWrapper {
       }
       Status Truncate(uint64_t size) override { return base_->Truncate(size); }
       Status Close() override { return base_->Close(); }
-      Status Flush(FlushMode mode) override { return base_->Flush(mode); }
+      Status Flush() override { return base_->Flush(); }
       Status Sync() override {
         ++env_->sync_counter_;
         return base_->Sync();
@@ -383,7 +382,6 @@ class SpecialEnv : public EnvWrapper {
       bool IsSyncThreadSafe() const override {
         return env_->is_wal_sync_thread_safe_.load();
       }
-      uint64_t Size() const override { return base_->Size(); }
       const std::string& filename() const override { return base_->filename(); }
 
      private:
