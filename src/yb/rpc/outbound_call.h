@@ -481,6 +481,10 @@ class OutboundCall : public RpcCall {
   // before the call is queued, so no synchronization is needed.
   ConnectionId conn_id_;
 
+  // OpenTelemetry span for this call, created at start (if a trace context is active) and ended at
+  // completion.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
+
  private:
   friend class RpcController;
 
@@ -604,13 +608,9 @@ class OutboundCall : public RpcCall {
 
   std::unique_ptr<MetadataSerializer> metadata_serializer_;
 
-  // OpenTelemetry span for this call, created at start (if a trace context is active) and ended at
-  // completion.
-  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
-
   // The trace context active when this call was constructed -- its PARENT, re-activated around the
   // completion callback so follow-on RPCs nest as SIBLINGS of this call.
-  dist_trace::trace::SpanContext trace_parent_ = dist_trace::trace::SpanContext::GetInvalid();
+  std::optional<dist_trace::trace::SpanContext> trace_parent_;
 
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.
