@@ -1106,6 +1106,12 @@ public class TestPgSelect extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute(query);
 
+      // The seek count asserted below only counts the regular DB. Distributed writes apply their
+      // intents to the regular DB asynchronously, so a scan racing an unapplied INSERT runs off the
+      // end of the regular DB early and DoSeekForward elides the final seek. Write
+      // non-transactionally to keep every row in the regular DB by the time the INSERT returns.
+      statement.execute("SET yb_disable_transactional_writes = true");
+
       query = "INSERT INTO t (SELECT 1, i, i, i, i FROM GENERATE_SERIES(1, 100) AS i)";
       statement.execute(query);
 
@@ -1114,6 +1120,8 @@ public class TestPgSelect extends BasePgSQLTest {
 
       query = "INSERT INTO t (SELECT 3, i, i, i, i FROM GENERATE_SERIES(1, 100) AS i)";
       statement.execute(query);
+
+      statement.execute("RESET yb_disable_transactional_writes");
 
       Set<Row> expectedRows = new HashSet<>();
       expectedRows.add(new Row(1));
