@@ -834,7 +834,8 @@ message GetUniverseReplicationInfoResponsePB {
   optional MasterErrorPB error = 1;
 
   optional XClusterReplicationType replication_type = 2;
-  optional string source_master_addresses = 3;
+  optional string DEPRECATED_source_master_addresses = 3;
+  repeated HostPortPB source_master_addrs = 7;
 
   message TableInfoPB {
     required string target_table_id = 1;

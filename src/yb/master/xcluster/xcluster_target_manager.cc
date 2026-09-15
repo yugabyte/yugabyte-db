@@ -614,6 +614,7 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
       replication_info_pb.replication_group_id());
   if (producer_map) {
     result.master_addrs = PBListAsString(producer_map->master_addrs());
+    result.source_master_addrs.CopyFrom(producer_map->master_addrs());
     result.disable_stream = producer_map->disable_stream();
     result.compatible_auto_flag_config_version =
         producer_map->compatible_auto_flag_config_version();

@@ -71,6 +71,9 @@ DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
 
+DEFINE_test_flag(bool, return_legacy_universe_replication_info, false,
+    "Omit fields that older masters did not populate in GetUniverseReplicationInfo responses.");
+
 DEFINE_RUNTIME_AUTO_bool(ysql_auto_add_new_index_to_bidirectional_xcluster_infra, kExternal,
     false, true,
     "Determines if the system supports the capability of automatically adding ysql index to "
@@ -727,7 +730,11 @@ Status XClusterManager::GetUniverseReplicationInfo(
       xcluster::ReplicationGroupId(req->replication_group_id())));
 
   resp->set_replication_type(replication_info.replication_type);
-  resp->set_source_master_addresses(replication_info.master_addrs);
+  resp->set_deprecated_source_master_addresses(replication_info.master_addrs);
+  if (!FLAGS_TEST_return_legacy_universe_replication_info) {
+    resp->mutable_source_master_addrs()->CopyFrom(replication_info.source_master_addrs);
+    resp->set_automatic_ddl_mode(replication_info.automatic_ddl_mode);
+  }
 
   for (const auto& [_, tables] : replication_info.table_statuses_by_namespace) {
     for (const auto& table_status : tables) {

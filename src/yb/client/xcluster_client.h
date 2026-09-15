@@ -201,7 +201,8 @@ class XClusterClient {
 
   struct XClusterInboundReplicationGroupInfo {
     XClusterReplicationType replication_type = XClusterReplicationType::XCLUSTER_NON_TRANSACTIONAL;
-    std::string source_master_addrs;
+    std::string deprecated_source_master_addresses;
+    std::vector<HostPort> source_master_addrs;
     // Map of target namespace id to source namespace id. Only used in db scope replication.
     std::unordered_map<NamespaceId, NamespaceId> db_scope_namespace_id_map;
     bool automatic_ddl_mode = false;

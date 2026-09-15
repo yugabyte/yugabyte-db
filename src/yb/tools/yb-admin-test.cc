@@ -1240,8 +1240,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRows) {
   ASSERT_EQ(full_rows, 10);
   ASSERT_TRUE(full_next.empty());
 
-  auto [cap_rows, cap_hash, next_key] = ParseHashTotals(ASSERT_RESULT(
-      CallAdmin("--max_rows_per_scan", "4", "get_table_hash", table_id, ht.ToUint64())));
+  auto [cap_rows, cap_hash, next_key] = ParseHashTotals(
+      ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64(), "", "", "4")));
   ASSERT_EQ(cap_rows, 4);
   ASSERT_FALSE(next_key.empty());
 
@@ -1293,9 +1293,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsPinnedReadTimeIgnoresLaterWr
   int windows = 0;
   int extra_key = kNumRows + 1;
   do {
-    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
-        "--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64(), next_key,
-        std::string())));
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
+        CallAdmin("get_table_hash", table_id, ht.ToUint64(), next_key, std::string(), cap_arg)));
     total_rows += rows;
     total_hash ^= hash;
     next_key = next;
@@ -1366,8 +1365,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsHashPartitioned) {
   ASSERT_TRUE(full_next.empty());
 
   const auto cap_arg = std::to_string(kCap);
-  auto [cap_rows, cap_hash, next_key] = ParseHashTotals(ASSERT_RESULT(
-      CallAdmin("--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64())));
+  auto [cap_rows, cap_hash, next_key] = ParseHashTotals(
+      ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64(), "", "", cap_arg)));
   ASSERT_EQ(cap_rows, kCap);
   ASSERT_FALSE(next_key.empty());
 
@@ -1394,9 +1393,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsHashPartitioned) {
   constexpr int kMaxWindows = 4 * kNumRows / kCap;
   int windows = 1;
   for (; windows < kMaxWindows && !next_key.empty(); ++windows) {
-    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
-        "--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64(), next_key,
-        std::string())));
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
+        CallAdmin("get_table_hash", table_id, ht.ToUint64(), next_key, std::string(), cap_arg)));
     total_rows += rows;
     total_hash ^= hash;
     next_key = next;
@@ -1464,8 +1462,7 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashNextKeyIsEncodedOnTabletBoundary) {
   ASSERT_GT(first_rows, 0U) << "leading tablet holds no rows, so no cap can end on its boundary";
 
   auto [cap_rows, cap_hash, next_key] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
-      "--max_rows_per_scan", std::to_string(first_rows), "get_table_hash", table_id,
-      ht.ToUint64())));
+      "get_table_hash", table_id, ht.ToUint64(), "", "", std::to_string(first_rows))));
   ASSERT_EQ(cap_rows, first_rows);
   ASSERT_EQ(cap_hash, first_hash);
   ASSERT_FALSE(next_key.empty()) << "cap ran out with tablets still unhashed, so a key is owed";
@@ -1487,7 +1484,7 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashNextKeyIsEncodedOnTabletBoundary) {
 }
 
 // The same values in a different arrangement have to hash differently, or a cross-cluster
-// comparison calls a target that has visibly lost data a match. Each pair of tables below is
+// comparison reports a target that has visibly lost data as kMatch. Each pair of tables below is
 // created from identical DDL, so the two hold the same column ids and differ only in where the
 // values sit. Every pair hashed identically before per-column and per-row identity went into the
 // hash.
@@ -1700,8 +1697,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsBoundaries) {
   // out of rows, not because of the cap, so it has no row to continue from; the continuation has to
   // name where the next tablet starts.
   {
-    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
-        CallAdmin("--max_rows_per_scan", "3", "get_table_hash", table_id, ht.ToUint64())));
+    auto [rows, hash, next] = ParseHashTotals(
+        ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64(), "", "", "3")));
     ASSERT_EQ(rows, 3);
     ASSERT_FALSE(next.empty())
         << "a cap spent at a tablet edge left seven rows unhashed and reported the scan complete";
@@ -1715,8 +1712,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsBoundaries) {
 
   // A cap equal to the row count is spent on the table's last row, and there is nothing to resume.
   {
-    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
-        CallAdmin("--max_rows_per_scan", "10", "get_table_hash", table_id, ht.ToUint64())));
+    auto [rows, hash, next] = ParseHashTotals(
+        ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64(), "", "", "10")));
     ASSERT_EQ(rows, 10);
     ASSERT_EQ(hash, full_hash);
     ASSERT_TRUE(next.empty()) << "a cap spent on the last row must report the scan complete";
@@ -1724,8 +1721,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsBoundaries) {
 
   // A cap the scan never reaches is an uncapped scan.
   {
-    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
-        CallAdmin("--max_rows_per_scan", "11", "get_table_hash", table_id, ht.ToUint64())));
+    auto [rows, hash, next] = ParseHashTotals(
+        ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64(), "", "", "11")));
     ASSERT_EQ(rows, 10);
     ASSERT_EQ(hash, full_hash);
     ASSERT_TRUE(next.empty());
@@ -1739,9 +1736,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsBoundaries) {
     int windows = 0;
     constexpr int kMaxWindows = 40;
     do {
-      auto [rows, hash, window_next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
-          "--max_rows_per_scan", "1", "get_table_hash", table_id, ht.ToUint64(), next,
-          std::string())));
+      auto [rows, hash, window_next] = ParseHashTotals(ASSERT_RESULT(
+          CallAdmin("get_table_hash", table_id, ht.ToUint64(), next, std::string(), "1")));
       ASSERT_LE(rows, 1);
       total_rows += rows;
       total_hash ^= hash;
@@ -1802,9 +1798,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsColocatedChild) {
   uint64_t total_hash = 0;
   int windows = 0;
   do {
-    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(CallAdmin(
-        "--max_rows_per_scan", cap_arg, "get_table_hash", table_id, ht.ToUint64(), next_key,
-        std::string())));
+    auto [rows, hash, next] = ParseHashTotals(ASSERT_RESULT(
+        CallAdmin("get_table_hash", table_id, ht.ToUint64(), next_key, std::string(), cap_arg)));
     total_rows += rows;
     total_hash ^= hash;
     next_key = next;
@@ -1844,7 +1839,7 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashMaxRowsRejectsColocationParent) {
   ASSERT_TRUE(next.empty());
   ASSERT_STR_CONTAINS(output, "Hash scheme version: ");
 
-  auto result = CallAdmin("--max_rows_per_scan", "5", "get_table_hash", parent_table);
+  auto result = CallAdmin("get_table_hash", parent_table, "", "", "", "5");
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.status().ToString(), "max_rows requires a concrete table id");
 }
@@ -1967,8 +1962,8 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashRejectsMalformedHashBound) {
 
   // A continuation key from a real capped scan still resumes, so the check above rejects malformed
   // bounds without rejecting the bounds this command hands out.
-  auto [capped_rows, capped_hash, next] = ParseHashTotals(ASSERT_RESULT(
-      CallAdmin("--max_rows_per_scan", "3", "get_table_hash", table_id, ht.ToUint64())));
+  auto [capped_rows, capped_hash, next] = ParseHashTotals(
+      ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64(), "", "", "3")));
   ASSERT_EQ(capped_rows, 3);
   ASSERT_FALSE(next.empty());
   auto [rest_rows, rest_hash, rest_next] = ParseHashTotals(ASSERT_RESULT(
@@ -1978,6 +1973,113 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableHashRejectsMalformedHashBound) {
   ASSERT_EQ(capped_hash ^ rest_hash, std::get<1>(ParseHashTotals(
       ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())))));
 }
+
+// Omitting read_ht sends the command down the read-time resolution path, which draws the time from
+// the target's xCluster safe time. This cluster has no inbound replication at all, so no safe time
+// exists for the namespace and there is no time to resolve.
+//
+// The failure has to be kError, not kTryAgain or kDiverged: nothing about the data was learned, and
+// nothing will be learned by retrying, so a driver has to be told to supply a time rather than to
+// come back later. Above all it must not reach the hashes -- a hash at an unresolved time would let
+// each universe pin its own instant, and every write in between would surface as false divergence.
+// The absence of both per-side totals in the JSON is what shows nothing was hashed.
+TEST_F(AdminCliTestWithYSQL, TestVerifyXClusterSliceWithoutSafeTimeIsInfra) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE TABLE verify_no_safe_time_tbl (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO verify_no_safe_time_tbl SELECT g, g FROM generate_series(1, 5) g"));
+  auto tables = ASSERT_RESULT(client_->ListTables(
+      "verify_no_safe_time_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+
+  // read_ht omitted entirely. The command still exits 0: the tool ran, and the verdict is in the
+  // JSON rather than in the process status.
+  string json_out = ASSERT_RESULT(CallAdmin(
+      "verify_xcluster_slice", table_id, table_id, GetMasterAddresses()));
+  boost::erase_all(json_out, "\n");
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(json_out));
+  ASSERT_EQ(ASSERT_RESULT(root["result"].GetString()), "kError");
+
+  // Assert on the message, not just the verdict. kError on its own tells an operator nothing about
+  // what to fix.
+  const auto detail = ASSERT_RESULT(root["detail"].GetString());
+  ASSERT_STR_CONTAINS(detail, "unable to resolve the target's xCluster safe time");
+  ASSERT_STR_CONTAINS(detail, "no usable xCluster safe time for namespace");
+
+  // Neither side may appear: a side is emitted only when it hashed, so their absence is the
+  // observable form of "the hashes were never called".
+  ASSERT_FALSE(root["source"].IsValid());
+  ASSERT_FALSE(root["target"].IsValid());
+
+  // An explicit read time cannot bypass the same safety check.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  string pinned_out = ASSERT_RESULT(CallAdmin(
+      "verify_xcluster_slice", table_id, table_id, GetMasterAddresses(), ht.ToUint64()));
+  boost::erase_all(pinned_out, "\n");
+  JsonDocument pinned_doc;
+  auto pinned_root = ASSERT_RESULT(pinned_doc.Parse(pinned_out));
+  ASSERT_EQ(ASSERT_RESULT(pinned_root["result"].GetString()), "kError");
+  ASSERT_FALSE(pinned_root["source"].IsValid());
+  ASSERT_FALSE(pinned_root["target"].IsValid());
+}
+
+// Invalid positional values must fail before verification can silently reinterpret them.
+TEST_F(AdminCliTestWithYSQL, TestVerifyXClusterRejectsInvalidArguments) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE TABLE verify_flags_tbl (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO verify_flags_tbl SELECT g, g FROM generate_series(1, 5) g"));
+  auto tables = ASSERT_RESULT(
+      client_->ListTables("verify_flags_tbl", /* exclude_ysql = */ false, "yugabyte"));
+  ASSERT_EQ(tables.size(), 1U);
+  const auto table_id = tables.front().table_id();
+
+  auto slice_at = [&](const std::string& read_ht) {
+    return CallAdmin(
+        "verify_xcluster_slice", table_id, table_id, GetMasterAddresses(), read_ht);
+  };
+
+  // A literal negative read time is not tested because it cannot be reached: flag parsing claims
+  // any leading-dash token, so "-1" here is rejected as an unknown flag named 1 before the argument
+  // is ever parsed as a time. The guard against it stays in the code as a guard on the conversion
+  // to unsigned, not as a reachable input.
+  //
+  // 0 is the sentinel for "resolve a time for me", which a caller asks for by omitting the argument
+  // entirely. Passing it literally is someone who believes they pinned a time and did not.
+  auto zero_ht = slice_at("0");
+  ASSERT_NOK(zero_ht);
+  ASSERT_STR_CONTAINS(zero_ht.status().ToString(), "read_ht must be a positive hybrid time");
+
+  // A thread count below one is not a smaller sweep but no sweep at all, and the sweep clamps to
+  // sequential rather than refusing, so an accepted 0 would report a clean result over work it
+  // never did.
+  //
+  // The argument is checked before the nonexistent group is looked up, so a "no such replication
+  // group" error would itself be the failure this asserts against.
+  auto no_concurrency = CallAdmin(
+      "verify_xcluster_group", "no_such_replication_group", "", "0");
+  ASSERT_NOK(no_concurrency);
+  ASSERT_STR_CONTAINS(
+      no_concurrency.status().ToString(), "max_concurrent_ranges must be at least 1");
+
+  // A valid read time passes argument validation and reaches verification. This cluster has no
+  // xCluster safe time, so verification reports kError rather than rejecting the argument.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  auto ok_out = ASSERT_RESULT(slice_at(std::to_string(ht.ToUint64())));
+  boost::erase_all(ok_out, "\n");
+  JsonDocument ok_doc;
+  auto ok_root = ASSERT_RESULT(ok_doc.Parse(ok_out));
+  ASSERT_EQ(ASSERT_RESULT(ok_root["result"].GetString()), "kError");
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(ok_root["detail"].GetString()),
+      "unable to resolve the target's xCluster safe time");
+}
+
 
 // Test that partition ranges are displayed in correct format for both hash and range partitioning
 // (similar to the :9000/tablets endpoint format)

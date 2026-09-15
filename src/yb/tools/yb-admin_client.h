@@ -34,6 +34,7 @@
 #include <functional>
 #include <iosfwd>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "yb/cdc/cdc_service.pb.h"
@@ -561,6 +562,50 @@ class ClusterAdminClient {
   // Fingerprint of the table's current catalog schema. This only talks to the master, so verify can
   // afford to call it both before and after hashing a slice.
   Result<SchemaFingerprint> GetSchemaFingerprint(const TableId& table_id);
+
+  // Vector index contents are not part of DumpTabletData's row hash.
+  Result<bool> IsVectorIndex(const TableId& table_id);
+
+  // The xCluster safe time of the namespace this table belongs to, on the cluster this client is
+  // connected to. Only meaningful on a target: safe time is the minimum, over every producer
+  // tablet replicating into that namespace, of what has been applied here, so it covers every
+  // replicated table in the namespace including table_id. Fails when the namespace has no safe
+  // time (no transactional inbound replication, or it has not been computed yet).
+  Result<uint64_t> GetXClusterSafeTimeForTable(const TableId& table_id);
+
+  // Schema-sandwich one slice against source, using this client as the target. Runs the algorithm
+  // in VerifyXClusterSlice with the two clients supplying the schema and hash calls, and returns
+  // the outcome rather than printing it.
+  Result<SliceVerifyOutcome> VerifyXClusterSliceAgainst(
+      ClusterAdminClient* source, const SliceVerifyRequest& req);
+
+  // Discovers a replication group's source and table pairs from this target, then verifies every
+  // pair. Slice outcomes and the final summary are printed as JSON records.
+  Status VerifyXClusterGroup(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const GroupVerifyOptions& options,
+      const std::unordered_set<TableId>& skip_source_table_ids);
+
+  // Every user table and index in the namespace that owns `table_id`, for expanding a colocation
+  // parent into the tables worth verifying: the parent holds no user rows, only a dummy
+  // `parent_column` schema.
+  //
+  // This is the whole namespace, not just the tables sharing the parent's tablet. The two coincide
+  // for a colocated database under db-scoped replication, where every table is replicated, but not
+  // for a tablegroup parent, so a caller needing the parent's tablet mates must narrow this itself.
+  //
+  // Non-vector indexes are included: a colocated index lives in the parent's tablet, so
+  // IsTableEligibleForXClusterReplication rejects it as a secondary table and it never gets its own
+  // stream -- the parent's carries it. Leaving it out would mean the one kind of index the group
+  // cannot name is also the one kind nothing verifies. A non-colocated index arrives as an ordinary
+  // pair and is deduped against what this returns. Vector indexes are paired during discovery and
+  // then skipped because DumpTabletData deliberately does not hash their data.
+  Result<std::vector<client::YBTableName>> ListUserTablesInNamespaceOf(const TableId& table_id);
+
+  // The table's tablet boundaries, as the key ranges a sweep can verify it in concurrently. These
+  // are logical key intervals rather than anything about placement, so they remain meaningful
+  // against a target cluster split into different tablets.
+  Result<std::vector<KeyRange>> ListTableKeyRanges(const TableId& table_id);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

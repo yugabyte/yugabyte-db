@@ -15,6 +15,7 @@
 
 #include "yb/ash/rpc_wait_state.h"
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -599,7 +600,8 @@ XClusterClient::GetUniverseReplicationInfo(
 
   XClusterClient::XClusterInboundReplicationGroupInfo result;
   result.replication_type = resp.replication_type();
-  result.source_master_addrs = resp.source_master_addresses();
+  result.deprecated_source_master_addresses = resp.deprecated_source_master_addresses();
+  HostPortsFromPBs(resp.source_master_addrs(), &result.source_master_addrs);
 
   for (const auto& pb_table_info : resp.table_infos()) {
     XClusterClient::XClusterInboundReplicationGroupInfo::XClusterInboundReplicationGroupTableInfo

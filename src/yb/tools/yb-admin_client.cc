@@ -5281,6 +5281,331 @@ Result<SchemaFingerprint> ClusterAdminClient::GetSchemaFingerprint(const TableId
       Format("Cannot fingerprint schema of table $0", table_id));
 }
 
+Result<bool> ClusterAdminClient::IsVectorIndex(const TableId& table_id) {
+  const auto info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  return info.index_info && info.index_info->is_vector_index();
+}
+
+Result<std::vector<client::YBTableName>> ClusterAdminClient::ListUserTablesInNamespaceOf(
+    const TableId& table_id) {
+  const auto info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& table_name = info.table_name;
+  SCHECK_FORMAT(
+      !table_name.namespace_id().empty(), IllegalState, "Table $0 reported no namespace id",
+      table_id);
+  master::NamespaceIdentifierPB ns;
+  ns.set_id(table_name.namespace_id());
+  // The id is what resolves the namespace. GetTableSchema leaves the type unset, so this carries
+  // UNKNOWN, which the master ignores when an id is present.
+  ns.set_database_type(table_name.namespace_type());
+  return yb_client_->ListUserTables(ns, /* include_indexes = */ true);
+}
+
+Result<std::vector<KeyRange>> ClusterAdminClient::ListTableKeyRanges(const TableId& table_id) {
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
+  RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
+  const auto table_info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& partition_schema = table_info.partition_schema;
+
+  // Returned encoded, not as raw partition keys. A hash table's partition key is a bare 2-byte
+  // hash, while the continuation key a capped scan hands back is a full encoded row key, and the
+  // two do not byte-compare: an encoded key is larger than almost every 2-byte bound. Since a
+  // range's end is compared against continuation keys to decide when the range is covered, a raw
+  // bound would declare the range finished on its first capped slice. GetEncodedPartitionKey is the
+  // identity for a range table, so this is a no-op there.
+  auto encode = [&partition_schema](const std::string& key) -> Result<std::string> {
+    if (key.size() != dockv::PartitionSchema::kPartitionKeySize) {
+      return key;
+    }
+    return partition_schema.GetEncodedPartitionKey(key);
+  };
+
+  std::vector<KeyRange> ranges;
+  ranges.reserve(tablet_locations.size());
+  for (const auto& location : tablet_locations) {
+    ranges.push_back(
+        KeyRange{
+            .start = VERIFY_RESULT(encode(location.partition().partition_key_start())),
+            .end = VERIFY_RESULT(encode(location.partition().partition_key_end()))});
+  }
+  // Ranges are verified independently so order does not affect the result, but a stable order keeps
+  // a sequential run's output reproducible.
+  std::sort(ranges.begin(), ranges.end(), [](const KeyRange& lhs, const KeyRange& rhs) {
+    return lhs.start < rhs.start;
+  });
+  return ranges;
+}
+
+Result<uint64_t> ClusterAdminClient::GetXClusterSafeTimeForTable(const TableId& table_id) {
+  const auto info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& namespace_id = info.table_name.namespace_id();
+  // Defensive and untested: a table the master returned always carries a namespace id, and the
+  // safe time RPC would fail obscurely on an empty one.
+  SCHECK_FORMAT(
+      !namespace_id.empty(), IllegalState, "Table $0 reported no namespace id", table_id);
+  // Every way of not getting a usable time ends in the same advice, which the master's own wording
+  // ("Could not find safe time entry for namespace ...") does not carry. This is what an operator
+  // sees when the universe has no inbound transactional replication, the common way here.
+  const auto no_safe_time_advice = Format(
+      "no usable xCluster safe time for namespace $0. A read time is resolved from the target's "
+      "xCluster safe time, which exists only while transactional (or automatic-mode) xCluster "
+      "replication is inbound and has been computed; verification cannot safely distinguish "
+      "replication lag from divergence without it",
+      namespace_id);
+  // NONE keeps every replicated table in the namespace in the minimum, including the ddl_queue
+  // table. Filtering it out would hand back a time ahead of a pending DDL.
+  const auto safe_time = VERIFY_RESULT_PREPEND(
+      yb_client_->GetXClusterSafeTimeForNamespace(
+          namespace_id, master::XClusterSafeTimeFilter::NONE),
+      no_safe_time_advice);
+  // kInvalid / kMin / kMax all mean some tablet of the namespace has not reported yet; reading at
+  // one would fail obscurely or silently read where the data has not reached. Defensive and
+  // untested: the master reports a namespace with no computed safe time as an error instead.
+  SCHECK_FORMAT(
+      !safe_time.is_special(), IllegalState, "$0 (safe time is $1)", no_safe_time_advice,
+      safe_time);
+  return safe_time.ToUint64();
+}
+
+Result<SliceVerifyOutcome> ClusterAdminClient::VerifyXClusterSliceAgainst(
+    ClusterAdminClient* source, const SliceVerifyRequest& req) {
+  SCHECK(source != nullptr, InvalidArgument, "source cluster client is required");
+  auto fetch = [](ClusterAdminClient* client) {
+    return [client](const TableId& table_id) { return client->GetSchemaFingerprint(table_id); };
+  };
+  auto hash = [](ClusterAdminClient* client) {
+    return [client](
+               const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key,
+               uint64_t max_rows) {
+      return client->ComputeTableXorHash(
+          table_id, read_ht, start_key, end_key, /* verbose = */ nullptr, max_rows);
+    };
+  };
+  auto safe_time = GetXClusterSafeTimeForTable(req.target_table_id);
+  if (!safe_time.ok()) {
+    return BaseSliceOutcome(
+        req, ClassifyStatus(safe_time.status(), XClusterClassifyContext::kHash),
+        Format("unable to resolve the target's xCluster safe time: $0", safe_time.status()));
+  }
+  if (req.read_ht && req.read_ht > *safe_time) {
+    return BaseSliceOutcome(
+        req, XClusterVerifyResult::kTryAgain,
+        Format(
+            "requested read time $0 is ahead of the target's xCluster safe time $1, so the "
+            "target has not necessarily applied everything the source holds at that time. "
+            "Nothing was compared; retry once the target has caught up, or verify at a read time "
+            "at or below the safe time.",
+            req.read_ht, *safe_time));
+  }
+  // Drawn from the target rather than the source clock. The target's xCluster safe time is a
+  // source-cluster hybrid time already applied here, so both sides can read it immediately. Naming
+  // the source's current time instead would make every slice wait out the replication lag, and
+  // report the ordinary lag that outlives the wait as kTryAgain.
+  ResolveReadTimeFn resolve_read_time = [safe_time = *safe_time]() {
+    return safe_time;
+  };
+  return VerifyXClusterSlice(
+      req, fetch(source), fetch(this), hash(source), hash(this), resolve_read_time);
+}
+
+namespace {
+
+// A colocation parent names the tables sharing its replicated tablet but contains no user rows.
+template <typename AddPairFn>
+Status ExpandColocationParent(
+    ClusterAdminClient* source, ClusterAdminClient* target, const TableId& source_parent,
+    const TableId& target_parent, const AddPairFn& add_pair,
+    std::vector<std::string>* unpaired) {
+  const auto source_tables = VERIFY_RESULT(source->ListUserTablesInNamespaceOf(source_parent));
+  const auto target_tables = VERIFY_RESULT(target->ListUserTablesInNamespaceOf(target_parent));
+
+  using TableKey = std::pair<std::string, std::string>;
+  auto key_of = [](const client::YBTableName& name) {
+    return TableKey(name.pgschema_name(), name.table_name());
+  };
+  auto describe = [](const client::YBTableName& name) {
+    return name.pgschema_name().empty()
+               ? name.table_name()
+               : Format("$0.$1", name.pgschema_name(), name.table_name());
+  };
+  auto never_replicated = [](const client::YBTableName& name) {
+    return name.pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+           name.table_name() == xcluster::kDDLReplicatedTableName;
+  };
+
+  std::map<TableKey, client::YBTableName> target_by_key;
+  std::set<TableKey> ambiguous;
+  for (const auto& table : target_tables) {
+    if (never_replicated(table)) {
+      continue;
+    }
+    if (!target_by_key.emplace(key_of(table), table).second) {
+      ambiguous.insert(key_of(table));
+    }
+  }
+
+  for (const auto& table : source_tables) {
+    if (never_replicated(table)) {
+      continue;
+    }
+    if (ambiguous.contains(key_of(table))) {
+      unpaired->push_back(Format(
+          "$0 ($1) matches more than one table on the target by schema and name; it cannot be "
+          "paired unambiguously", describe(table), table.table_id()));
+      target_by_key.erase(key_of(table));
+      continue;
+    }
+    const auto it = target_by_key.find(key_of(table));
+    if (it == target_by_key.end()) {
+      unpaired->push_back(Format(
+          "$0 ($1) is on the source and not the target", describe(table), table.table_id()));
+      continue;
+    }
+    RETURN_NOT_OK(add_pair(table.table_id(), it->second.table_id()));
+    target_by_key.erase(it);
+  }
+  for (const auto& [key, table] : target_by_key) {
+    unpaired->push_back(Format(
+        "$0 ($1) is on the target and not the source", describe(table), table.table_id()));
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ClusterAdminClient::VerifyXClusterGroup(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const GroupVerifyOptions& options,
+    const std::unordered_set<TableId>& skip_source_table_ids) {
+  const auto group_info = VERIFY_RESULT(
+      XClusterClient().GetUniverseReplicationInfo(replication_group_id));
+  SCHECK_FORMAT(
+      !group_info.source_master_addrs.empty(), NotSupported,
+      "replication group $0 does not report structured source master addresses; upgrade the target "
+      "masters before verification",
+      replication_group_id);
+  SCHECK_FORMAT(
+      group_info.automatic_ddl_mode, NotSupported,
+      "verification of replication group $0 requires automatic-mode xCluster, because its "
+      "certified safe time distinguishes replication lag from divergence",
+      replication_group_id);
+  const auto source_master_addrs =
+      HostPort::ToCommaSeparatedString(group_info.source_master_addrs);
+  ClusterAdminClient source(source_master_addrs, timeout_);
+  RETURN_NOT_OK_PREPEND(
+      source.Init(),
+      Format("Unable to connect to source masters at [$0]", source_master_addrs));
+
+  std::vector<TablePairToVerify> pairs;
+  std::vector<std::string> unpaired;
+  size_t skipped = 0;
+  std::unordered_set<TableId> matched_skips;
+  std::unordered_set<TableId> seen_source;
+  auto add_pair = [&](const TableId& source_table_id, const TableId& target_table_id) -> Status {
+    if (!seen_source.insert(source_table_id).second) {
+      return Status::OK();
+    }
+    if (skip_source_table_ids.contains(source_table_id)) {
+      ++skipped;
+      matched_skips.insert(source_table_id);
+      std::cerr << "Skipping table " << source_table_id
+                << " (skip_source_table_ids); it will not be verified" << std::endl;
+      return Status::OK();
+    }
+    if (target_table_id.empty()) {
+      unpaired.push_back(Format(
+          "$0 has no target table in this group; it may not be fully set up yet",
+          source_table_id));
+      return Status::OK();
+    }
+    const auto source_is_vector_index = VERIFY_RESULT(source.IsVectorIndex(source_table_id));
+    const auto target_is_vector_index = VERIFY_RESULT(IsVectorIndex(target_table_id));
+    if (source_is_vector_index || target_is_vector_index) {
+      if (source_is_vector_index != target_is_vector_index) {
+        unpaired.push_back(Format(
+            "$0 and $1 disagree on whether the table is a vector index",
+            source_table_id, target_table_id));
+      } else {
+        std::cerr << "Skipping vector index " << source_table_id
+                  << "; verify does not hash vector index data" << std::endl;
+      }
+      return Status::OK();
+    }
+    pairs.push_back(TablePairToVerify{
+        .source_table_id = source_table_id, .target_table_id = target_table_id});
+    return Status::OK();
+  };
+
+  std::vector<std::pair<TableId, TableId>> colocation_parents;
+  for (const auto& table : group_info.table_infos) {
+    if (xcluster::IsSequencesDataAlias(table.source_table_id) ||
+        xcluster::IsSequencesDataAlias(table.target_table_id)) {
+      std::cerr << "Skipping sequences data for replication group " << replication_group_id
+                << "; verify does not hash sequence data" << std::endl;
+      continue;
+    }
+    if (IsColocationParentTableId(table.source_table_id) ||
+        IsColocationParentTableId(table.target_table_id)) {
+      colocation_parents.emplace_back(table.source_table_id, table.target_table_id);
+      continue;
+    }
+    RETURN_NOT_OK(add_pair(table.source_table_id, table.target_table_id));
+  }
+
+  for (const auto& [source_parent, target_parent] : colocation_parents) {
+    if (target_parent.empty()) {
+      unpaired.push_back(Format(
+          "$0 has no target colocation parent in this group; it may not be fully set up yet",
+          source_parent));
+      continue;
+    }
+    RETURN_NOT_OK_PREPEND(
+        ExpandColocationParent(
+            &source, this, source_parent, target_parent, add_pair, &unpaired),
+        Format("Unable to expand colocation parent $0", source_parent));
+  }
+
+  for (const auto& id : skip_source_table_ids) {
+    if (!matched_skips.contains(id)) {
+      std::cerr << "Warning: skip_source_table_ids named " << id
+                << ", which is not a source table in this group; it skipped nothing" << std::endl;
+    }
+  }
+  SCHECK_FORMAT(
+      !pairs.empty() || skipped == 0, InvalidArgument,
+      "every table in replication group $0 was skipped by skip_source_table_ids, so nothing was "
+      "verified", replication_group_id);
+  const auto unpaired_detail = unpaired.empty() ? std::string() : Format(": $0", unpaired);
+  SCHECK_FORMAT(
+      !pairs.empty(), NotFound, "replication group $0 has no tables to verify$1",
+      replication_group_id, unpaired_detail);
+
+  auto summary = VERIFY_RESULT(VerifyXClusterTablePairs(
+      pairs, options,
+      [this, &source](const SliceVerifyRequest& req) {
+        return VerifyXClusterSliceAgainst(&source, req);
+      },
+      [&source](const TableId& table_id) {
+        return source.ListTableKeyRanges(table_id);
+      },
+      [](const SliceVerifyOutcome& outcome) {
+        std::cout << SliceVerifyOutcomeToJsonLine(outcome) << std::endl;
+      }));
+  if (!unpaired.empty()) {
+    summary.unpaired = std::move(unpaired);
+    ApplyVerdict(&summary, XClusterVerifyResult::kSchemaMismatch);
+  }
+  std::cout << GroupVerifySummaryToJson(summary) << std::endl;
+  SCHECK_FORMAT(
+      summary.result == XClusterVerifyResult::kMatch, IllegalState,
+      "verify finished as $0; see the summary above", ToCString(summary.result));
+  return Status::OK();
+}
+
 Status ClusterAdminClient::AreNodesSafeToTakeDown(
     const std::vector<std::string>& tserver_uuids, const std::vector<std::string>& master_uuids,
     int follower_lag_bound_ms) {
