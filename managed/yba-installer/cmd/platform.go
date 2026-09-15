@@ -600,6 +600,9 @@ func (plat Platform) FinishReplicatedMigrate() error {
 	return nil
 }
 
+// platformKeystoreAlias is the alias the platform key is stored under in server.bcfks.
+const platformKeystoreAlias = "yugaware"
+
 func createPemFormatKeyAndCert() error {
 	paths := getServerKeyAndCert()
 	keyFile := paths.KeyPath
@@ -649,6 +652,18 @@ func createPemFormatKeyAndCert() error {
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
+	}
+
+	// Called from every install, upgrade, reconfigure and cert-rotation path, so an upgrade is
+	// what moves an existing install off the PEM keystore.
+	keystorePassword, err := common.EnsureGeneratedPassword("platform.keyStorePassword")
+	if err != nil {
+		return err
+	}
+	if err := common.GenerateBCFKSKeystore(
+		certFile, keyFile, common.GetSelfSignedCertsDir(), platformKeystoreAlias,
+		keystorePassword); err != nil {
+		return fmt.Errorf("failed to generate platform BCFKS keystore: %w", err)
 	}
 	return nil
 }

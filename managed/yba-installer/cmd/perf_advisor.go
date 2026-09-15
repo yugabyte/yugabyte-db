@@ -465,9 +465,13 @@ func ensurePerfAdvisorTLSKeystore() error {
 	if _, err := os.Stat(keyPath); err != nil {
 		return fmt.Errorf("platform server key not found at %s: %w", keyPath, err)
 	}
-	// FixConfigValues() in common.Install() (and reconfigure) generates this password when empty
-	// and calls InitViper(), so it is already set by the time we run here.
-	password := viper.GetString("perfAdvisor.tls.keystorePassword")
+	// Generated here rather than relied upon: FixConfigValues() fills this in on install and
+	// reconfigure, but not on upgrade, so an install upgrading from a release that predates the
+	// key reaches this with an empty string - which keytool rejects outright.
+	password, err := common.EnsureGeneratedPassword("perfAdvisor.tls.keystorePassword")
+	if err != nil {
+		return err
+	}
 	return common.GeneratePerfAdvisorTLSKeystore(certPath, keyPath, common.GetPerfAdvisorCertsDir(), password)
 }
 

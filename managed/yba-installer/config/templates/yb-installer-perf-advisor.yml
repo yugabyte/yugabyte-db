@@ -60,8 +60,9 @@ services:
       # Perf Advisor TLS/SSL Configuration
       {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}
       server.ssl.enabled=true
-      server.ssl.key-store-type=PKCS12
-      server.ssl.key-store={{ .DataDir }}/certs/tls.p12
+      server.ssl.key-store-type=BCFKS
+      server.ssl.key-store-provider=BCFIPS
+      server.ssl.key-store={{ .DataDir }}/certs/tls.bcfks
       server.ssl.key-store-password={{ yamlPath "perfAdvisor.tls.keystorePassword" }}
       {{ if ne (yamlPath "perfAdvisor.tls.sslProtocols") "" }}
       server.ssl.enabled-protocols={{ yamlPath "perfAdvisor.tls.sslProtocols" }}
@@ -114,6 +115,11 @@ services:
       Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
       # ysql_dump links against YugabyteDB's own C++ runtime, shipped in the same bundle.
       Environment="LD_LIBRARY_PATH={{ .YsqlDumpLibPath }}"
+      {{- if eq (yamlPath "fips.enabled") "true" }}
+      # approved_only has to reach the JVM as a flag: BouncyCastle latches the mode when
+      # CryptoServicesRegistrar initialises, before any application code runs.
+      Environment="JAVA_OPTS=-Dorg.bouncycastle.fips.approved_only=true"
+      {{- end }}
 
       ExecStart=/bin/sh -c "{{ .PABin }}/perf-advisor \
         --spring.config.additional-location=file:{{ .ConfFileLocation }}"

@@ -20,6 +20,14 @@ host: ""
 server_cert_path: ""
 server_key_path: ""
 
+# FIPS 140-3 mode.
+# When true, the platform JVM runs BouncyCastle in approved-only mode
+# (-Dorg.bouncycastle.fips.approved_only=true) and YBA enforces the FIPS password policy.
+# The TLS keystore is written in BCFKS format either way, so this can be turned on later
+# without regenerating certificates.
+fips:
+   enabled: false
+
 # Linux user which will run all services that make up YugabyteDB Anywhere.
 # With default settings, the user "yugabyte" will be created and used.
 # If customized, the specified user is assumed to exist and will be used.

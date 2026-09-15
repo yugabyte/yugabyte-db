@@ -8,9 +8,12 @@ services:
 
       play.crypto.secret = ${?PLATFORM_APP_SECRET}
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
+      # BCFKS, not PEM: "PEM" is not a JCE keystore type, so Play parses the file itself and
+      # re-wraps it in a SunJSSE keystore, outside the FIPS-validated provider. BCFKS is opened
+      # by BCFIPS. Written on every install and upgrade whether or not FIPS mode is on.
       play.server.https.keyStore{
-          path = "{{ baseInstall }}/data/yba-installer/certs/server.pem"
-          type = "PEM"
+          path = "{{ baseInstall }}/data/yba-installer/certs/server.bcfks"
+          type = "BCFKS"
           password = "{{ yamlPath "platform.keyStorePassword" }}"
       }
 
@@ -253,6 +256,9 @@ services:
 
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
+        {{- if eq (yamlPath "fips.enabled") "true" }}
+        -Dorg.bouncycastle.fips.approved_only=true \
+        {{- end }}
         -Dhttp.port=disabled \
         -Dhttps.port={{ yamlPath "platform.port" }}{{- if eq (yamlPath "platform.proxy.enable") "true"}} \
         -Dhttp.nonProxyHosts={{ yamlPath "platform.proxy.java_non_proxy" }} \

@@ -191,29 +191,133 @@ func parsePrivateKey(filePath string) (*rsa.PrivateKey, error) {
 	return privateKey, nil
 }
 
-// GeneratePerfAdvisorTLSKeystore creates a PKCS12 keystore (tls.p12) from the given PEM cert
-// and key, for use by Perf Advisor when TLS is enabled. outDir is the directory to write
-// tls.p12 into (e.g. GetPerfAdvisorCertsDir()). password is the keystore password.
-func GeneratePerfAdvisorTLSKeystore(certPath, keyPath, outDir, password string) error {
-	if err := MkdirAll(outDir, DirMode); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("create perf-advisor certs dir: %w", err)
+// BCFKSKeystoreName is the keystore the platform loads its TLS material from. BCFKS is the
+// BouncyCastle FIPS keystore format: unlike PEM, which Play parses itself and re-wraps in a
+// SunJSSE keystore, it is opened by the FIPS-validated provider. Generated whether or not FIPS
+// mode is on, so the on-disk format does not change when the flag is flipped.
+const BCFKSKeystoreName = "server.bcfks"
+
+// keystorePasswordEnvVar is how openssl and keytool receive the keystore password, keeping it
+// out of argv and therefore out of yba-ctl.log.
+const keystorePasswordEnvVar = "YBA_KEYSTORE_PASSWORD"
+
+// GenerateBCFKSKeystore converts a PEM cert and key into a BCFKS keystore at
+// outDir/BCFKSKeystoreName, under the given alias and password.
+func GenerateBCFKSKeystore(certPath, keyPath, outDir, alias, password string) error {
+	return writeBCFKSKeystore(certPath, keyPath, filepath.Join(outDir, BCFKSKeystoreName),
+		alias, password)
+}
+
+// writeBCFKSKeystore converts a PEM cert and key into a BCFKS keystore at keystorePath.
+//
+// keytool cannot read a PEM key directly, so this goes through a PKCS12 intermediate. That
+// intermediate is written to a temporary directory and deleted, because openssl builds it with
+// PBE algorithms that are not FIPS approved - nothing that is kept depends on them.
+// keystoreToolOutput is what openssl or keytool actually said. Without it the failure reads as a
+// bare "exit status 1", which says nothing about a rejected password, an unreadable provider jar
+// or an unwritable path - and yba-ctl.log is the only other place to look.
+func keystoreToolOutput(out *shell.Output) string {
+	for _, s := range []string{out.StderrString(), out.StdoutString()} {
+		if trimmed := strings.TrimSpace(s); trimmed != "" {
+			return trimmed
+		}
 	}
-	keystorePath := filepath.Join(outDir, "tls.p12")
-	// openssl pkcs12 -export -out tls.p12 -inkey key.pem -in cert.pem -passout pass:<password>
-	out := shell.Run("openssl", "pkcs12", "-export",
-		"-out", keystorePath,
+	return "no output"
+}
+
+func writeBCFKSKeystore(certPath, keyPath, keystorePath, alias, password string) error {
+	outDir := filepath.Dir(keystorePath)
+	if err := MkdirAll(outDir, DirMode); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("create keystore dir: %w", err)
+	}
+	bcFipsJar, err := bcFipsJarPath()
+	if err != nil {
+		return err
+	}
+	tmpDir, err := os.MkdirTemp("", "yba-bcfks")
+	if err != nil {
+		return fmt.Errorf("create temp dir for keystore conversion: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	intermediate := filepath.Join(tmpDir, "intermediate.p12")
+	// The password goes through the environment, not argv: shell.Run logs the joined argv to
+	// yba-ctl.log, which the support bundle collects.
+	passEnv := map[string]string{keystorePasswordEnvVar: password}
+	out := shell.RunWithEnvVars("openssl", passEnv, "pkcs12", "-export",
+		"-out", intermediate,
 		"-inkey", keyPath,
 		"-in", certPath,
-		"-passout", "pass:"+password)
+		"-name", alias,
+		"-passout", "env:"+keystorePasswordEnvVar)
 	if !out.Succeeded() {
-		return fmt.Errorf("openssl pkcs12 export: %w", out.Error)
+		return fmt.Errorf("openssl pkcs12 export: %w: %s", out.Error, keystoreToolOutput(out))
 	}
-	log.Debug("Generated Perf Advisor TLS keystore at " + keystorePath)
+
+	// keytool appends to an existing store, so it has to write somewhere empty - but not over the
+	// live keystore: reconfigure and cert rotation regenerate it under a running platform, so a
+	// keytool failure there would leave the install with no keystore to serve from. Build it
+	// alongside and rename, which is atomic within the directory.
+	stagedPath := keystorePath + ".new"
+	if err := os.RemoveAll(stagedPath); err != nil {
+		return fmt.Errorf("remove stale staged keystore %s: %w", stagedPath, err)
+	}
+	keytoolPath, err := javaBinary("keytool")
+	if err != nil {
+		return err
+	}
+	out = shell.RunWithEnvVars(keytoolPath, passEnv, "-importkeystore",
+		"-srckeystore", intermediate,
+		"-srcstoretype", "PKCS12",
+		"-srcstorepass:env", keystorePasswordEnvVar,
+		"-destkeystore", stagedPath,
+		"-deststoretype", "BCFKS",
+		"-deststorepass:env", keystorePasswordEnvVar,
+		"-providerclass", "org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider",
+		"-providerpath", bcFipsJar,
+		"-noprompt")
+	if !out.Succeeded() {
+		os.Remove(stagedPath)
+		return fmt.Errorf("keytool import to BCFKS: %w: %s", out.Error, keystoreToolOutput(out))
+	}
+	if err := os.Rename(stagedPath, keystorePath); err != nil {
+		os.Remove(stagedPath)
+		return fmt.Errorf("move the new keystore into %s: %w", keystorePath, err)
+	}
+	log.Debug("Generated BCFKS keystore at " + keystorePath)
+
 	if HasSudoAccess() {
 		username := viper.GetString("service_username")
 		if err := Chown(outDir, username, username, true); err != nil {
-			return fmt.Errorf("chown perf-advisor certs dir: %w", err)
+			return fmt.Errorf("chown keystore dir: %w", err)
 		}
+	}
+	return nil
+}
+
+const (
+	// PerfAdvisorKeystoreName is the keystore Perf Advisor serves TLS from.
+	PerfAdvisorKeystoreName = "tls.bcfks"
+	// perfAdvisorLegacyKeystoreName is the PKCS12 keystore releases before BCFKS produced.
+	perfAdvisorLegacyKeystoreName = "tls.p12"
+	perfAdvisorKeystoreAlias      = "perf-advisor"
+)
+
+// GeneratePerfAdvisorTLSKeystore creates the BCFKS keystore (tls.bcfks) Perf Advisor serves TLS
+// from, out of the given PEM cert and key. outDir is the directory to write it into (e.g.
+// GetPerfAdvisorCertsDir()). password is the keystore password.
+//
+// Produced whether or not FIPS mode is on, so turning the flag on does not need new certificates.
+func GeneratePerfAdvisorTLSKeystore(certPath, keyPath, outDir, password string) error {
+	keystorePath := filepath.Join(outDir, PerfAdvisorKeystoreName)
+	if err := writeBCFKSKeystore(certPath, keyPath, keystorePath,
+		perfAdvisorKeystoreAlias, password); err != nil {
+		return err
+	}
+	// Upgrades from a PKCS12 release leave the old keystore behind; nothing reads it any more.
+	legacyPath := filepath.Join(outDir, perfAdvisorLegacyKeystoreName)
+	if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
+		log.Warn("Could not remove superseded keystore " + legacyPath + ": " + err.Error())
 	}
 	return nil
 }

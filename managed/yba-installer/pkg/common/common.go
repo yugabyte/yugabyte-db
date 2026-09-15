@@ -358,7 +358,7 @@ func setJDKEnvironmentVariable() error {
 	if err != nil {
 		return fmt.Errorf("failed to setup JDK Environment: %s", err.Error())
 	}
-	javaHome := GetInstallerSoftwareDir() + javaExtractedFolderName
+	javaHome := filepath.Join(GetInstallerSoftwareDir(), javaExtractedFolderName)
 	if err := os.Setenv("JAVA_HOME", javaHome); err != nil {
 		return fmt.Errorf("failed setting JAVA_HOME environment variable: %s", err.Error())
 	}
@@ -377,8 +377,10 @@ func javaDirectoryName() (string, error) {
 		return "", fmt.Errorf("could not get java folder name: %w", out.Error)
 	}
 
+	// tar lists the directory as "jdk-.../" and StdoutString() keeps the trailing newline, so
+	// trim whitespace before the slash - otherwise the newline ends up inside JAVA_HOME.
 	javaExtractedFolderName := strings.TrimSuffix(
-		strings.ReplaceAll(out.StdoutString(), " ", ""),
+		strings.TrimSpace(strings.ReplaceAll(out.StdoutString(), " ", "")),
 		"/")
 	return javaExtractedFolderName, nil
 }
@@ -490,6 +492,30 @@ func renameThirdPartyDependencies() error {
 		return err
 	}
 	return nil
+}
+
+// EnsureGeneratedPassword returns the configured value for key, generating and persisting one
+// first if it is empty.
+//
+// FixConfigValues does this for every generated password, but only install and reconfigure call
+// it - PreUpgrade does not. An upgrade from a release that predates a key therefore arrives here
+// with the reference file's empty string, which openssl accepts and keytool does not: it requires
+// at least six characters and exits 1. Callers that need a usable password ask for it this way
+// rather than assuming an earlier phase filled it in.
+func EnsureGeneratedPassword(key string) (string, error) {
+	if value := viper.GetString(key); len(value) > 0 {
+		return value, nil
+	}
+	log.Debug("Generating a value for " + key + ", which is not set")
+	if err := SetYamlValue(InputFile(), key, GenerateRandomStringURLSafe(32)); err != nil {
+		return "", fmt.Errorf("could not generate %s: %w", key, err)
+	}
+	InitViper()
+	value := viper.GetString(key)
+	if len(value) == 0 {
+		return "", fmt.Errorf("%s is still empty after generating one", key)
+	}
+	return value, nil
 }
 
 // FixConfigValues sets any mandatory config defaults not set by user (generally passwords)
