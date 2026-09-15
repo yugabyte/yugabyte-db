@@ -55,7 +55,6 @@ floating_point_literal ::= non_integer_fixed_point_literal | "NaN" | "Infinity" 
 
 - Columns of type `REAL`, `DOUBLE PRECISION`, and `FLOAT` can be part of the `PRIMARY KEY`.
 - Values of different floating-point and fixed-point data types are comparable and convertible to one another.
-- Conversion from floating-point types into `DECIMAL` will raise an error for the special values `NaN`, `Infinity`, and `-Infinity`.
 - The ordering for special floating-point values is defined as (in ascending order): `-Infinity`, all negative values in order, all positive values in order, `Infinity`, and `NaN`.
 - Values of non-integer numeric data types are neither comparable nor convertible to integer although integers are convertible to them. This restriction will be removed.
 
@@ -65,9 +64,11 @@ The following keywords are used to specify a column of exact user-specified prec
 
 ```ebnf
 type_specification ::= { DEC | DECIMAL | NUMERIC }
-fixed_point_literal ::= [ + | - ] { digit [ digit ...] '.' [ digit ...] | '.' digit [ digit ...] }
+fixed_point_literal ::= non_integer_fixed_point_literal | "NaN" | "Infinity" | "-Infinity"
+non_integer_fixed_point_literal ::= [ + | - ] { digit [ digit ...] '.' [ digit ...] | '.' digit [ digit ...] }
 ```
 
 - Columns of type `DEC`, `DECIMAL`, and `NUMERIC` can be part of the `PRIMARY KEY`.
 - Values of different floating-point and fixed-point data types are comparable and convertible to one another.
+- `NUMERIC` / `DECIMAL` support the special values `NaN`, `Infinity`, and `-Infinity` (PostgreSQL-compatible). Ordering is `-Infinity` < finite values < `Infinity` < `NaN`, and `NaN` equals `NaN` for uniqueness.
 - Values of non-integer numeric data types are neither comparable nor convertible to integer although integers are convertible to them. This restriction will be removed.
