@@ -24,12 +24,12 @@ import {
   COLLECTION_LEVEL_OPTIONS,
   CollectionLevelOption,
   getDefaultFormValues,
+  getScrapeConfigTargetOptions,
   getValidationSchema,
   METRICS_EXPORT_DOCS_URL,
   METRICS_EXPORT_TRANSLATION_KEY_PREFIX,
   MetricsExportFormValues,
   MetricsExportOperation,
-  SCRAPE_CONFIG_TARGET_OPTIONS,
   ScrapeConfigTargetOption
 } from './metricsExportHelpers';
 
@@ -47,6 +47,7 @@ interface MetricsExportSettingsModalProps {
   universeUuid: string;
   universeName: string;
   replicationFactor: number;
+  isKubernetes?: boolean;
   onClose: () => void;
 }
 
@@ -220,6 +221,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
   universeUuid,
   universeName,
   replicationFactor,
+  isKubernetes = false,
   onClose
 }) => {
   const classes = useStyles();
@@ -237,6 +239,11 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
     api.fetchTelemetryProviderList()
   );
 
+  const scrapeConfigTargetOptions = useMemo(
+    () => getScrapeConfigTargetOptions(isKubernetes),
+    [isKubernetes]
+  );
+
   const telemetryProviderOptions = useMemo(
     () =>
       (telemetryProvidersQuery.data ?? []).reduce((filteredProviders, telemetryProvider) => {
@@ -252,7 +259,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
   );
 
   const formMethods = useForm<MetricsExportFormValues>({
-    defaultValues: getDefaultFormValues(currentTelemetryConfig?.metrics),
+    defaultValues: getDefaultFormValues(currentTelemetryConfig?.metrics, { isKubernetes }),
     resolver: yupResolver(getValidationSchema(t)),
     mode: 'onChange'
   });
@@ -260,10 +267,10 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
 
   useEffect(() => {
     if (telemetryConfigQuery.isSuccess) {
-      reset(getDefaultFormValues(currentTelemetryConfig?.metrics));
+      reset(getDefaultFormValues(currentTelemetryConfig?.metrics, { isKubernetes }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [telemetryConfigQuery.isSuccess, currentTelemetryConfig]);
+  }, [telemetryConfigQuery.isSuccess, currentTelemetryConfig, isKubernetes]);
 
   const configureTelemetry = useConfigureExportTelemetryConfig();
 
@@ -553,7 +560,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
                         control={control}
                         name="scrapeConfigTargets"
                         render={({ field, fieldState }) => {
-                          const selectedTargets = SCRAPE_CONFIG_TARGET_OPTIONS.filter(
+                          const selectedTargets = scrapeConfigTargetOptions.filter(
                             (targetOption) => field.value.includes(targetOption.value)
                           );
 
@@ -568,7 +575,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
                                 className={classes.metricSourcesAutocomplete}
                                 value={selectedTargets as unknown as Record<string, string>[]}
                                 options={
-                                  SCRAPE_CONFIG_TARGET_OPTIONS as unknown as Record<
+                                  scrapeConfigTargetOptions as unknown as Record<
                                     string,
                                     string
                                   >[]

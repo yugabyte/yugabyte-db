@@ -13,7 +13,7 @@ import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.RollbackAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterTypes.MasterErrorPB;
 
 @Slf4j
@@ -42,7 +42,7 @@ public class RollbackAutoFlags extends ServerSubTaskBase {
   public void run() {
     log.info("Running {}", getName());
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = getClient()) {
+    try (YBClientApi client = getClient()) {
       RollbackAutoFlagsResponse resp = client.rollbackAutoFlags(taskParams().rollbackVersion);
       if (resp.hasError()) {
         MasterErrorPB error = resp.getError();

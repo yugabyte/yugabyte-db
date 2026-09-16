@@ -35,23 +35,23 @@ receivers:
       - job_name: yugabyte
         metric_relabel_configs:
         - regex: (.*)
-          replacement: $1
+          replacement: $$1
           source_labels: [__name__]
           target_label: saved_name
         - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
-          replacement: $1
+          replacement: $$1
           source_labels: [__name__]
           target_label: server_type
         - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
-          replacement: $2
+          replacement: $$2
           source_labels: [__name__]
           target_label: service_type
         - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
-          replacement: $3
+          replacement: $$3
           source_labels: [__name__]
           target_label: service_method
         - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
-          replacement: rpc_latency$4
+          replacement: rpc_latency$$4
           source_labels: [__name__]
           target_label: __name__
         metrics_path: /prometheus-metrics
@@ -147,7 +147,7 @@ receivers:
           source_labels: [__name__]
           target_label: __name__
         - regex: (.*)
-          replacement: $1
+          replacement: $$1
           source_labels: [__name__]
           target_label: saved_name
         metrics_path: /metrics
@@ -181,4 +181,9 @@ service:
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
-    metrics: {address: '0.0.0.0:8889'}
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
+              without_units: true}

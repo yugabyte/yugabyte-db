@@ -380,6 +380,20 @@ pgstat_tracks_io_bktype(BackendType bktype)
 		case B_WAL_WRITER:
 			return true;
 
+		/*
+		 * YB_TODO_PG19MERGE: opt YB-only BackendTypes out of IO tracking for now.
+		 *
+		 * Note this is not symmetric with pgstat_tracks_backend_bktype().  There,
+		 * pgstat_count_backend_io_op() returns early for an untracked type, so
+		 * false merely hides the row.  Here, pgstat_count_io_op() asserts
+		 * pgstat_tracks_io_op() and pgstat_io_flush_cb() asserts
+		 * pgstat_bktype_io_stats_valid(), so false is a claim that the process
+		 * performs no tracked IO at all.  YB_YSQL_CONN_MGR is set on every backend
+		 * serving user sessions through Connection Manager, and temp relations are
+		 * not YB relations, so they take the normal local-buffer path and reach
+		 * pgstat_count_io_op*() from localbuf.c.  A temp-table workload on a
+		 * conn-mgr assert-enabled cluster is expected to trip those asserts.
+		 */
 		case YB_YSQL_CONN_MGR:
 		case YB_YSQL_CONN_MGR_WAL_SENDER:
 		case YB_YSQL_CONN_MGR_CTRL:
@@ -388,6 +402,8 @@ pgstat_tracks_io_bktype(BackendType bktype)
 		case YB_MATVIEW_REFRESH_DDL:
 		case YB_RELCACHE_INIT_BACKEND:
 		case YB_GLOBAL_VIEW_BACKEND:
+		case YB_XCLUSTER_DDL_QUEUE_BACKEND:
+		case YB_XCLUSTER_SETUP_BACKEND:
 			return false;
 	}
 

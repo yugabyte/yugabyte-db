@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.EditSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
@@ -65,7 +65,7 @@ public class UpdatePitrConfig extends UniverseTaskBase {
       pitrConfig.setKubernetesResourceDetails(taskParams().getKubernetesResourceDetails());
     }
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       ListSnapshotSchedulesResponse scheduleListResp =
           client.listSnapshotSchedules(pitrConfig.getUuid());
       if (!(CollectionUtils.size(scheduleListResp.getSnapshotScheduleInfoList()) == 1

@@ -81,8 +81,9 @@ struct FsManagerOpts {
   FsManagerOpts(const FsManagerOpts&);
   FsManagerOpts& operator=(const FsManagerOpts&);
 
-  // The aggregated registry associated with the server.
-  MetricRegistry* metric_registry;
+  // The aggregated registry associated with the server. Left null by callers that do not export
+  // metrics (tools, unit tests), so every use has to be null-checked.
+  MetricRegistry* metric_registry = nullptr;
 
   // The memory tracker under which all new memory trackers will be parented.
   // If NULL, new memory trackers will be parented to the root tracker.
@@ -322,6 +323,24 @@ class FsManager {
   Status CheckWrite(const std::string& path);
 
   void CreateAndSetFaultDriveMetric(const std::string& path);
+
+  // The union of the WAL and data roots we are actually going to use, i.e. excluding any dropped
+  // for failing the startup write check.
+  //
+  // Deliberately not canonicalized_all_fs_roots_, which is the same union as configured but is
+  // never narrowed afterwards: the write-check failure path in CheckAndOpenFileSystemRoots()
+  // erases a faulted root from the WAL and data sets only. That is the right set for callers that
+  // clean up (lock files, DeleteFileSystemLayout, DumpFileSystemTree), which still have business
+  // with a faulted root, and the wrong one for callers about to write to or account for a drive.
+  std::set<std::string> UsableFsRoots() const;
+
+  // Instantiates the 'drive' metric entity for every root we are going to use and wires it to the
+  // per-drive IO counters that the writable-file layer feeds. Until a root is registered here,
+  // writes under it are not attributed to any drive and cost nothing.
+  void SetUpDriveIoMetrics();
+
+  // Instantiates the 'drive' metric entity for 'path', creating it if needed.
+  scoped_refptr<MetricEntity> GetOrCreateDriveMetricEntity(const std::string& path);
 
   // ==========================================================================
   //  file-system helpers

@@ -136,10 +136,10 @@ Implicit publication is controlled by the following flags. Set them on both YB-M
 
 | Flag | Details |
 | :--- | :--- |
-| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodoc-publication). |
+| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodic-publication). |
 | cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
 
-### Periodoc publication
+### Periodic publication
 
 If [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, YugabyteDB does not apply publication changes immediately. (This is also the behavior in versions earlier than v2026.1.) Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. This behavior differs from PostgreSQL.
 

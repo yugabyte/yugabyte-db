@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -69,6 +71,8 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.yaml.snakeyaml.Yaml;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -142,14 +146,22 @@ public class NodeInstanceController extends AuthenticatedController {
     String helmValues = "";
     Provider provider = Util.getProviderForNode(detail, universe);
     if (provider.getCloudCode() == CloudType.kubernetes) {
-      // Return helm values for the corresponding node also for k8s universes.
+      // For k8s universes, show the applied kubernetes overrides for the node. Prefer the live
+      // helm release values; if they cannot be fetched (e.g. operator-managed universes, where
+      // the helm release is not owned by YBA), fall back to the overrides persisted on the
+      // UserIntent so the UI can still display them. See PLAT-20542.
       helmValues = getAZHelmValues(universe, nodeName);
+      if (StringUtils.isBlank(helmValues)) {
+        helmValues = getStoredKubernetesOverrides(universe, nodeName);
+      }
     }
     NodeDetailsResp resp = new NodeDetailsResp(detail, universe, helmValues);
     return PlatformResults.withData(resp);
   }
 
-  // Returns the helm values for the release the nodeName is present in.
+  // Returns the live helm release values for the release the nodeName is present in, or an empty
+  // string if they cannot be fetched (blank values or any error). The caller decides how to fall
+  // back. See getStoredKubernetesOverrides and PLAT-20542.
   private String getAZHelmValues(Universe universe, String nodeName) {
     // From nodedetails, nodeName get cluster.
     // From nodedetails get AZ name/code.
@@ -188,16 +200,66 @@ public class NodeInstanceController extends AuthenticatedController {
               azConfig,
               universe.getUniverseDetails().useNewHelmNamingStyle,
               isReadOnlyCluster);
-      return kubernetesManagerFactory
-          .getManager()
-          .getOverridenHelmReleaseValues(namespace, helmReleaseName, azConfig);
+      return StringUtils.defaultString(
+          kubernetesManagerFactory
+              .getManager()
+              .getOverridenHelmReleaseValues(namespace, helmReleaseName, azConfig));
     } catch (Exception e) {
-      log.error(
-          String.format(
-              "Exception in getting helm values for universe: %s with node: %s exception: %s",
-              universe.getUniverseUUID(), nodeName, e.getMessage()),
-          e);
-      // Swallow the exception so that user can see other node details.
+      // Expected for operator-managed universes (YBA does not own the helm release). Swallow so
+      // the user can still see other node details; blank return lets the caller fall back to
+      // UserIntent overrides. See PLAT-20542.
+      log.debug(
+          "Unable to fetch live helm release values for universe: {} node: {}. Error: {}",
+          universe.getUniverseUUID(),
+          nodeName,
+          e.getMessage());
+      return "";
+    }
+  }
+
+  // Returns the kubernetes overrides persisted on the UserIntent for the node's cluster. This is
+  // used as a fallback when the live helm release values cannot be fetched, most notably for
+  // operator-managed universes where the overrides originate from the custom resource.
+  //
+  // UserIntent stores two sibling YAML documents (not nested representations):
+  //   - universeOverrides: one YAML string for the whole cluster
+  //   - azOverrides: Map<AZ name, YAML string> — per-AZ helm overrides (each AZ may target a
+  //     different k8s cluster). This is distinct from provider/region/zone OVERRIDES config.
+  // For display we deep-merge the two YAML maps at their roots (AZ wins), matching
+  // KubernetesUtil's provider → universe → AZ merge order for the universe/AZ layers.
+  private String getStoredKubernetesOverrides(Universe universe, String nodeName) {
+    try {
+      NodeDetails nodeDetails = universe.getNode(nodeName);
+      if (nodeDetails == null) {
+        return "";
+      }
+      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+      if (cluster == null || cluster.userIntent == null) {
+        return "";
+      }
+      UserIntent userIntent = cluster.userIntent;
+      String universeOverrides = StringUtils.defaultString(userIntent.universeOverrides);
+      String azOverride = "";
+      if (userIntent.azOverrides != null && nodeDetails.cloudInfo != null) {
+        azOverride =
+            StringUtils.defaultString(userIntent.azOverrides.get(nodeDetails.cloudInfo.az));
+      }
+      if (StringUtils.isBlank(azOverride)) {
+        return universeOverrides;
+      }
+      if (StringUtils.isBlank(universeOverrides)) {
+        return azOverride;
+      }
+      // Both fields are independent YAML docs; parse and deep-merge (AZ overrides win).
+      Map<String, Object> mergedOverrides = HelmUtils.convertYamlToMap(universeOverrides);
+      HelmUtils.mergeYaml(mergedOverrides, HelmUtils.convertYamlToMap(azOverride));
+      return new Yaml().dump(mergedOverrides);
+    } catch (Exception e) {
+      log.debug(
+          "Failed to read stored kubernetes overrides for universe: {} node: {}. Error: {}",
+          universe.getUniverseUUID(),
+          nodeName,
+          e.getMessage());
       return "";
     }
   }

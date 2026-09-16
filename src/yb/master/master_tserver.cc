@@ -28,6 +28,8 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -339,6 +341,11 @@ const std::string& MasterTabletServer::permanent_uuid() const {
 Result<std::string> MasterTabletServer::GetUniverseUuid() const {
   LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
   return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
+}
+
+std::optional<docdb::ObjectLockSharedStateHolder>
+MasterTabletServer::AllocateObjectLockSharedState() const {
+  return std::nullopt;
 }
 
 rpc::ServiceIfPtr MasterTabletServer::CreateCDCService(

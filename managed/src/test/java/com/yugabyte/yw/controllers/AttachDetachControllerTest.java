@@ -70,7 +70,7 @@ import org.yb.Schema;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
@@ -264,7 +264,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     }
     createXClusterRequestParams.putArray("tables").addAll(tables);
 
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(

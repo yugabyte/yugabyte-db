@@ -4,6 +4,8 @@ package api.v2.controllers;
 
 import api.v2.models.TaskPagedQuerySpec;
 import api.v2.models.TaskPagedResp;
+import api.v2.models.TaskRollbackSpec;
+import api.v2.models.YBATask;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.audit.AuditService;
@@ -30,5 +32,11 @@ public class TaskApiControllerImp extends TaskApiControllerImpInterface {
   public TaskPagedResp pageListTasks(
       Request request, UUID cUUID, TaskPagedQuerySpec taskPagedQuerySpec) throws Exception {
     return customerTaskHandler.pageListTasks(cUUID, taskPagedQuerySpec);
+  }
+
+  @Override
+  public YBATask rollbackTask(
+      Request request, UUID cUUID, UUID tUUID, TaskRollbackSpec taskRollbackSpec) throws Exception {
+    return customerTaskHandler.rollbackTask(cUUID, tUUID);
   }
 }

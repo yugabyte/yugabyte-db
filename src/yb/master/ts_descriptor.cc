@@ -42,6 +42,7 @@
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
@@ -199,6 +200,15 @@ Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
     if (req.has_faulty_drive()) {
       has_faulty_drive_ = req.faulty_drive();
     }
+
+    // Populate local per-tserver database pins from tserver heartbeat
+    ts_ysql_db_oldest_pinned_read_times_.clear();
+    for (const auto& [db_oid, pin] : req.ts_ysql_db_oldest_pinned_read_times()) {
+      HybridTime pin_ht = HybridTime::FromPB(pin.db_level_oldest_read_time());
+      if (pin_ht.is_valid()) {
+        ts_ysql_db_oldest_pinned_read_times_.emplace(static_cast<PgOid>(db_oid), pin_ht);
+      }
+    }
   }
   if (lock->pb.state() == SysTabletServerEntryPB::REMOVED) {
     return STATUS_FORMAT(
@@ -218,6 +228,11 @@ MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
 MonoTime TSDescriptor::LastHeartbeatTime() const {
   SharedLock<decltype(mutex_)> l(mutex_);
   return last_heartbeat_;
+}
+
+DbOidToHybridTimeMap TSDescriptor::GetYsqlDbOldestPinnedReadTimes() const {
+  SharedLock<decltype(mutex_)> l(mutex_);
+  return ts_ysql_db_oldest_pinned_read_times_;
 }
 
 int64_t TSDescriptor::latest_seqno() const {

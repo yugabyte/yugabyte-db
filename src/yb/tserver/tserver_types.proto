@@ -131,6 +131,10 @@ message TabletServerErrorPB {
     // The tablet server either does not have a live ysql lease or it does not have the expected
     // lease epoch. It cannot service a lock acquire / release request.
     INVALID_YSQL_LEASE = 32;
+
+    // This replica's safe time has not reached the requested read time. Retryable; the status
+    // message reports the gap.
+    READ_TIME_NOT_REACHED = 33;
   }
 
   // The error code.

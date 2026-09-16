@@ -477,8 +477,6 @@ extern void check_GUC_name_for_parameter_acl(const char *name);
 extern void InitializeGUCOptions(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions();
-extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
-extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void AtStart_GUC(void);
 extern int	NewGUCNestLevel(void);
 extern void RestrictSearchPath(void);
@@ -530,8 +528,6 @@ extern void write_nondefault_variables(GucContext context);
 extern void read_nondefault_variables(void);
 #endif
 
-extern void YbSetParallelWorker();
-
 /* GUC serialization */
 extern Size EstimateGUCStateSpace(void);
 extern void SerializeGUCState(Size maxsize, char *start_address);
@@ -563,5 +559,12 @@ extern void GUC_check_errcode(int sqlerrcode);
 #define GUC_check_errhint \
 	pre_format_elog_string(errno, TEXTDOMAIN), \
 	GUC_check_errhint_string = format_elog_string
+
+
+/* YB declarations */
+extern void YbValidateConfigFile(const char *config_file);
+extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
+extern void YbResetYsqlConnMgrGucDefaults(void);
+extern void YbSetParallelWorker();
 
 #endif							/* GUC_H */

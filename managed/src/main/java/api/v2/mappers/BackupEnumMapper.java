@@ -38,6 +38,7 @@ public interface BackupEnumMapper {
     @ValueMapping(target = "NFS", source = "NFS"),
     @ValueMapping(target = "AZ", source = "AZ"),
     @ValueMapping(target = "GCS", source = "GCS"),
+    @ValueMapping(target = "OCI", source = "OCI"),
     @ValueMapping(target = "FILE", source = "FILE")
   })
   BackupSpec.StorageConfigTypeEnum toStorageConfigTypeEnum(StorageConfigType storageConfigType);

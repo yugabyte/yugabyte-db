@@ -277,7 +277,7 @@ public class KubernetesOperator {
                   // OSS mode reconcilers: YBUniverse, Release, Backup, Restore,
                   // StorageConfig, Provider, SupportBundle.
                   // Non-OSS additionally: ScheduledBackup, PitrConfig, PitrRestore,
-                  // DrConfig, YBCertificate.
+                  // DrConfig, YBCertificate, TelemetryProvider.
 
                   YBUniverseReconciler ybUniverseController =
                       reconcilerFactory.getYBUniverseReconciler(client);
@@ -348,6 +348,8 @@ public class KubernetesOperator {
                   Thread pitrRestoreReconcilerThread = null;
                   Thread drConfigReconcilerThread = null;
                   Thread kmsConfigReconcilerThread = null;
+                  Thread universeKeyRotationReconcilerThread = null;
+                  Thread telemetryProviderReconcilerThread = null;
 
                   if (!ossMode) {
                     YBCertificateReconciler ybCertificateReconciler =
@@ -369,6 +371,10 @@ public class KubernetesOperator {
                         reconcilerFactory.getDrConfigReconciler(client);
                     KMSConfigReconciler kmsConfigReconciler =
                         reconcilerFactory.getKMSConfigReconciler(client);
+                    UniverseKeyRotationReconciler universeKeyRotationReconciler =
+                        reconcilerFactory.getUniverseKeyRotationReconciler(client);
+                    TelemetryProviderReconciler telemetryProviderReconciler =
+                        reconcilerFactory.getTelemetryProviderReconciler(client);
 
                     scheduledBackupReconcilerThread =
                         new Thread(() -> scheduledBackupReconciler.run());
@@ -376,6 +382,10 @@ public class KubernetesOperator {
                     pitrRestoreReconcilerThread = new Thread(() -> pitrRestoreReconciler.run());
                     drConfigReconcilerThread = new Thread(() -> drConfigReconciler.run());
                     kmsConfigReconcilerThread = new Thread(() -> kmsConfigReconciler.run());
+                    universeKeyRotationReconcilerThread =
+                        new Thread(() -> universeKeyRotationReconciler.run());
+                    telemetryProviderReconcilerThread =
+                        new Thread(() -> telemetryProviderReconciler.run());
                   }
 
                   if (confGetter.getGlobalConf(
@@ -389,6 +399,10 @@ public class KubernetesOperator {
                       pitrRestoreReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                       drConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                       kmsConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                      universeKeyRotationReconcilerThread.setUncaughtExceptionHandler(
+                          exceptionHandler);
+                      telemetryProviderReconcilerThread.setUncaughtExceptionHandler(
+                          exceptionHandler);
                     }
                   }
 
@@ -400,6 +414,8 @@ public class KubernetesOperator {
                     pitrRestoreReconcilerThread.start();
                     drConfigReconcilerThread.start();
                     kmsConfigReconcilerThread.start();
+                    universeKeyRotationReconcilerThread.start();
+                    telemetryProviderReconcilerThread.start();
                   }
 
                   ybUniverseReconcilerThread.join();
@@ -410,6 +426,8 @@ public class KubernetesOperator {
                     pitrRestoreReconcilerThread.join();
                     drConfigReconcilerThread.join();
                     kmsConfigReconcilerThread.join();
+                    universeKeyRotationReconcilerThread.join();
+                    telemetryProviderReconcilerThread.join();
                   }
 
                   LOG.info(

@@ -111,7 +111,7 @@ import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.RelationType;
@@ -126,7 +126,7 @@ public class TablesControllerTest extends FakeDBApplication {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private TablesController tablesController;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private AuditService auditService;
   private ListTablesResponse mockListTablesResponse;
   MockedStatic<FileUtils> mockedFileUtils;
@@ -146,7 +146,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     tableHandler = spy(app.injector().instanceOf(UniverseTableHandler.class));

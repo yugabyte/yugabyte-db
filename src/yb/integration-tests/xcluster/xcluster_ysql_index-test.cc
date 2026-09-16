@@ -18,6 +18,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/master/master.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -35,6 +36,7 @@ DECLARE_bool(TEST_fail_universe_replication_merge);
 DECLARE_string(ysql_yb_test_block_index_phase);
 DECLARE_int32(ysql_yb_index_state_flags_update_delay);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(xcluster_enable_target_applied_filter);
 
 using std::string;
 using namespace std::chrono_literals;
@@ -680,6 +682,9 @@ class XClusterBiDirectionalIndexTest : public XClusterYsqlNonTransactionalTest,
 
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
+    // Enable the target-applied filter AutoFlag so we can assert that bi-directional (non-automatic
+    // DDL mode) streams are never stamped with it, even when the flag is on.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = true;
     XClusterYsqlNonTransactionalTest::SetUp();
 
     // Setup the reverse replication.
@@ -779,6 +784,18 @@ TEST_P(XClusterBiDirectionalIndexTest, CreateIndex) {
     auto consumer_index = ASSERT_RESULT(
         GetYsqlTable(&consumer_cluster_, namespace_name, "" /* schema_name */, kIndexName));
     ASSERT_NE(producer_index.table_id(), consumer_index.table_id());
+  }
+
+  // xcluster_use_target_applied_filter is only stamped on automatic DDL mode streams. Ensure that
+  // the streams are not stamped with it in non-automatic mode.
+  {
+    for (const auto& table_id : ASSERT_RESULT(GetReplicationTableIds())) {
+      master::ListCDCStreamsResponsePB resp;
+      ASSERT_OK(GetCDCStreamForTable(table_id, &resp));
+      ASSERT_EQ(resp.streams_size(), 1);
+      ASSERT_FALSE(resp.streams(0).xcluster_use_target_applied_filter())
+          << "Unexpected target-applied filter on stream for table " << table_id;
+    }
   }
 
   ASSERT_OK(InsertRowsAndValidate());

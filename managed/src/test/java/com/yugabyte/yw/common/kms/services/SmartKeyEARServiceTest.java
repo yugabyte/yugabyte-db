@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -186,8 +187,12 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
     payload.set("key_ops", keyOps);
     when(mockApiHelper.postRequest(anyString(), eq(Json.newObject()), anyMap()))
         .thenReturn(Json.parse(getAccessTokenMockResponse));
-    when(mockApiHelper.postRequest(
-            eq("https://api.amer.smartkey.io/crypto/v1/keys"), eq(payload), anyMap()))
+    // Defensive setUp stub only exercised by a subset of the tests; declared lenient so
+    // MockitoJUnitRunner's strict-stub check does not fail on runs whose ordering leaves it unused.
+    lenient()
+        .when(
+            mockApiHelper.postRequest(
+                eq("https://api.amer.smartkey.io/crypto/v1/keys"), eq(payload), anyMap()))
         .thenReturn(Json.parse(postCreateMockResponse));
     encryptionService = new TestEncryptionAtRestService();
   }

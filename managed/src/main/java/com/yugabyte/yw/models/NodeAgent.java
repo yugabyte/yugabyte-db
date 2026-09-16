@@ -45,6 +45,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -81,6 +82,8 @@ public class NodeAgent extends Model {
 
   private static final Set<State> INACTIVE_STATES =
       ImmutableSet.of(State.REGISTERING, State.REGISTERED);
+
+  public static final Duration INITIAL_SERVER_CERT_EXPIRY = Duration.ofDays(356);
 
   /** Node agent server OS type. */
   public enum OSType {
@@ -185,8 +188,11 @@ public class NodeAgent extends Model {
     private String certPath;
     private String serverCert;
     private String serverKey;
-    private boolean offloadable;
+    private String signerPublicKey;
+    private String signerPrivateKey;
     private String compressor;
+    private boolean offloadable;
+    private long serverCertExpirySecs;
   }
 
   public static final Finder<UUID, NodeAgent> finder =
@@ -196,7 +202,11 @@ public class NodeAgent extends Model {
   public static final String ROOT_CA_KEY_NAME = "ca.key.pem";
   public static final String SERVER_CERT_NAME = "server.crt";
   public static final String SERVER_KEY_NAME = "server.key";
+  public static final String NODE_AGENT_CERT_NAME = "node_agent.crt";
+  public static final String NODE_AGENT_KEY_NAME = "node_agent.key";
   public static final String MERGED_ROOT_CA_CERT_NAME = "merged.ca.key.crt";
+  public static final String SIGNER_PUBLIC_KEY_NAME = "signer.pub";
+  public static final String SIGNER_PRIVATE_KEY_NAME = "signer.key";
 
   @Id
   @ApiModelProperty(value = "Node agent UUID", accessMode = READ_ONLY)
@@ -419,25 +429,34 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public byte[] getServerCert() {
-    Path serverCertPath = getCertDirPath().resolve(SERVER_CERT_NAME);
-    Objects.requireNonNull(serverCertPath, "Server cert must exist");
+  private byte[] getFileContent(String filename) {
+    Path filePath = getCertDirPath().resolve(filename);
+    Objects.requireNonNull(filePath, filename + " must exist");
     try {
-      return Files.readAllBytes(serverCertPath);
+      return Files.readAllBytes(filePath);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
   @JsonIgnore
-  public byte[] getServerKey() {
-    Path serverKeyPath = getCertDirPath().resolve(SERVER_KEY_NAME);
-    Objects.requireNonNull(serverKeyPath, "Server key must exist");
-    try {
-      return Files.readAllBytes(serverKeyPath);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+  public byte[] getServerCertContent() {
+    return getFileContent(SERVER_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public byte[] getServerKeyContent() {
+    return getFileContent(SERVER_KEY_NAME);
+  }
+
+  @JsonIgnore
+  public byte[] getSignerPublicKeyContent() {
+    return getFileContent(SIGNER_PUBLIC_KEY_NAME);
+  }
+
+  @JsonIgnore
+  public byte[] getSignerPrivateKeyContent() {
+    return getFileContent(SIGNER_PRIVATE_KEY_NAME);
   }
 
   public void saveState(State state) {
@@ -488,12 +507,7 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public PrivateKey getPrivateKey() {
-    return CertificateHelper.getPrivateKey(new String(getServerKey()));
-  }
-
-  @JsonIgnore
-  public PublicKey getPublicKey() {
+  public PublicKey getServerPublicKey() {
     try {
       X509Certificate cert = getServerX509Cert();
       return cert.getPublicKey();
@@ -509,7 +523,7 @@ public class NodeAgent extends Model {
     try {
       CertificateFactory factory = CertificateFactory.getInstance("X.509");
       return (X509Certificate)
-          factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
+          factory.generateCertificate(new ByteArrayInputStream(getServerCertContent()));
     } catch (RuntimeException e) {
       throw e;
     } catch (Exception e) {
@@ -518,11 +532,25 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public Date getServerCertExpiry() {
-    // TODO Cache this to avoid doing expensive work in periodic calls.
-    return CertificateHelper.extractDatesFromCertBundle(
-            Collections.singletonList(getServerX509Cert()))
-        .getRight();
+  public PrivateKey getSignerPrivateKey() {
+    Path signerPrivateKeyPath = getCertDirPath().resolve(SIGNER_PRIVATE_KEY_NAME);
+    if (!Files.exists(signerPrivateKeyPath) || getServerCertExpirySecs() <= 0L) {
+      // Capability check to detect older version for backward compatibility.
+      // Not a clean solution but this will go away.
+      return CertificateHelper.getPrivateKey(new String(getServerKeyContent()));
+    }
+    return CertificateHelper.getPrivateKey(new String(getSignerPrivateKeyContent()));
+  }
+
+  @JsonIgnore
+  public PublicKey getSignerPublicKey() {
+    Path signerPublicKeyPath = getCertDirPath().resolve(SIGNER_PUBLIC_KEY_NAME);
+    if (!Files.exists(signerPublicKeyPath) || getServerCertExpirySecs() <= 0) {
+      // Capability check to detect older version for backward compatibility.
+      // Not a clean solution but this will go away.
+      return getServerX509Cert().getPublicKey();
+    }
+    return CertificateHelper.getPublicKey(new String(getSignerPublicKeyContent()));
   }
 
   @JsonIgnore
@@ -532,6 +560,16 @@ public class NodeAgent extends Model {
       throw new IllegalArgumentException("Missing cert path");
     }
     return Paths.get(certDirPath);
+  }
+
+  @JsonIgnore
+  public Path getServerCertFilePath() {
+    return getCertDirPath().resolve(SERVER_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public Path getServerKeyFilePath() {
+    return getCertDirPath().resolve(SERVER_KEY_NAME);
   }
 
   @JsonIgnore
@@ -545,13 +583,8 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public Path getServerCertFilePath() {
-    return getCertDirPath().resolve(SERVER_CERT_NAME);
-  }
-
-  @JsonIgnore
-  public Path getServerKeyFilePath() {
-    return getCertDirPath().resolve(SERVER_KEY_NAME);
+  public long getServerCertExpirySecs() {
+    return getConfig().getServerCertExpirySecs();
   }
 
   @JsonIgnore
@@ -576,11 +609,13 @@ public class NodeAgent extends Model {
 
   public void updateServerInfo(ServerInfo serverInfo) {
     if (getConfig().isOffloadable() != serverInfo.getOffloadable()
+        || getConfig().getServerCertExpirySecs() != serverInfo.getCertExpirySecs()
         || !Objects.equals(getConfig().getCompressor(), serverInfo.getCompressor())) {
       updateInTxn(
           n -> {
             n.getConfig().setOffloadable(serverInfo.getOffloadable());
             n.getConfig().setCompressor(serverInfo.getCompressor());
+            n.getConfig().setServerCertExpirySecs(serverInfo.getCertExpirySecs());
             n.update();
           });
     }

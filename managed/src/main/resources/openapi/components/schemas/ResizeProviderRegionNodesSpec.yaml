@@ -1,0 +1,16 @@
+title: ResizeProviderRegionNodesSpec
+description: 'Region-level resize node specification, optionally containing per-AZ overrides.'
+type: object
+allOf:
+  - $ref: "./ResizeProviderNodesSpec.yaml"
+  - properties:
+      region_code:
+        description: Region code within the cloud provider.
+        type: string
+      az_nodes_specs:
+        description: Per-availability-zone resize node specification overrides.
+        type: array
+        items:
+          $ref: "./ResizeProviderAzNodesSpec.yaml"
+    required:
+      - region_code

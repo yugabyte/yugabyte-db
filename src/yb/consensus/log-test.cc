@@ -51,6 +51,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 
@@ -455,6 +456,107 @@ TEST_F(LogTest, TestFsyncDataSize) {
   ASSERT_OK(AppendNoOp(&opid));
   ASSERT_OK(log_->Close());
   LOG(INFO)<< "Wrote " << size << " batches to log";
+}
+
+// A log that takes one append and then goes quiet must still get that append fsynced within
+// interval_durable_wal_write_ms.
+//
+// This is deliberately the inverse of the three tests above. Each of them appends a *second* op
+// after its sleep, which is what actually provokes the fsync, so they pass whether or not the
+// interval bounds anything - they encode the lazy behaviour rather than checking the guarantee.
+// Here nothing is appended after the sleep, only Log::MaybeSyncInBackground() is called, which is
+// what a heartbeat arriving at an idle follower does.
+TEST_F(LogTest, TestOverdueEntrySyncsWithoutFurtherAppends) {
+  constexpr int kIntervalMs = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(kIntervalMs);
+  // Put the size arm far out of reach so that only the time arm can explain an fsync here.
+  options_.bytes_durable_wal_write_mb = 1024;
+
+  // Registered before BuildLog() on purpose: PosixWritableFile resolves its drive once, in its
+  // constructor, and Log::Open() creates the first WAL segment. tablet_wal_path_ lives under this
+  // test's own temp directory, so no other test in the process shares these counters.
+  auto& drive_stats = DriveIoStatsRegistry::Instance().Register(tablet_wal_path_, nullptr);
+
+  BuildLog();
+  const auto syncs_before = drive_stats.sync_count();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+
+  // Nothing is overdue yet, so the check declines to do anything.
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+  ASSERT_EQ(drive_stats.sync_count(), syncs_before);
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 10));
+
+  // The appender is still parked in its drain wait and will not call Sync() again on its own, so
+  // this call is the only thing that can get the entry to disk.
+  ASSERT_TRUE(log_->MaybeSyncInBackground());
+  ASSERT_OK(WaitFor(
+      [&drive_stats, syncs_before] { return drive_stats.sync_count() > syncs_before; },
+      MonoDelta::FromSeconds(10), "the overdue entry to be fsynced"));
+
+  // With nothing left unsynced the check is a no-op again, which is what keeps its cost on the
+  // per-tablet-per-heartbeat path down to a single atomic load.
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+
+  ASSERT_OK(log_->Close());
+}
+
+// Under durable_wal_write every Sync() from the appender already fsyncs in-line, so the background
+// check has nothing to add. It tests this before consulting periodic_sync_needed_, because
+// FindSyncType() returns kForceFsync unconditionally in that mode and would otherwise have every
+// heartbeat submit a redundant fsync racing the in-line one.
+TEST_F(LogTest, TestBackgroundSyncIsNoOpUnderDurableWalWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  options_.durable_wal_write = true;
+  // Well past the interval by the time the check below runs, so nothing but the durable_wal_write
+  // short-circuit itself can explain it declining.
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(1);
+  options_.preallocate_segments = false;
+  BuildLog();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(20));
+
+  // Asserted on the return value and not on the drive's fsync counter, which would be the obvious
+  // instrument and is the wrong one: durable_wal_write also selects O_DIRECT for the segment, and
+  // PosixDirectIOWritableFile overrides Sync() to be its own write rather than reaching
+  // PosixWritableFile::Sync(), so drive_sync_count legitimately stays at zero in this mode and the
+  // device cost shows up in drive_write_time instead. The return value being false is the property
+  // anyway: nothing was submitted.
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+
+  ASSERT_OK(log_->Close());
+}
+
+// The same guarantee must not be claimed when the operator has asked for it not to apply:
+// with interval_durable_wal_write_ms disabled and the size arm far away, nothing is overdue no
+// matter how long the log sits, and the check must stay silent rather than fsync on every
+// heartbeat.
+TEST_F(LogTest, TestNoBackgroundSyncWhenIntervalDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  // How LogOptions spells "--interval_durable_wal_write_ms=0": an uninitialized MonoDelta, not a
+  // zero one (log_util.cc). MonoDelta's operator bool tests Initialized(), so a zero delta would
+  // read as enabled.
+  options_.interval_durable_wal_write = MonoDelta();
+  options_.bytes_durable_wal_write_mb = 1024;
+
+  auto& drive_stats = DriveIoStatsRegistry::Instance().Register(tablet_wal_path_, nullptr);
+
+  BuildLog();
+  const auto syncs_before = drive_stats.sync_count();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+
+  SleepFor(MonoDelta::FromMilliseconds(200));
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+  ASSERT_EQ(drive_stats.sync_count(), syncs_before);
+
+  ASSERT_OK(log_->Close());
 }
 
 // Regression test for part of KUDU-735:
@@ -951,7 +1053,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   const int kNumOpsPerSegment = 5;
   OpIdPB op_id = MakeOpId(1, entries_per_chunk - 10);
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
-                                              &op_id, /* anchors = */ nullptr));
+                                              &op_id, /*anchors=*/ nullptr));
 
   // Run a GC on an op in the second index chunk. We should remove only the
   // earliest segment, because we are set to retain 4.
@@ -974,6 +1076,53 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 
   auto result = log_reader->LookupOpId(entries_per_chunk - 5);
   ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected result: " << result;
+}
+
+TEST_F(LogTest, TestRetentionDiagnostics) {
+  BuildLog();
+  const int kNumTotalSegments = 4;
+  const int kNumOpsPerSegment = 5;
+  OpIdPB op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendMultiSegmentSequence(
+      kNumTotalSegments, kNumOpsPerSegment, &op_id, /*anchors=*/ nullptr));
+
+  auto GetWalDiagnostics =
+      [this](const MinRetainLogIndexInfo& info) -> Result<WalRetentionDiagnostics> {
+    int64_t gcable_bytes = 0;
+    WalRetentionDiagnostics diagnostics;
+    RETURN_NOT_OK(log_->GetGCableDataSize(info, &gcable_bytes, &diagnostics));
+    return diagnostics;
+  };
+
+  // Verify the index-retention reason is printed.
+  auto diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ 3}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "Idx retention: start retain at");
+  ASSERT_STR_CONTAINS(diagnostics.details, ">= earliest needed op ID idx (3)");
+  ASSERT_STR_NOT_CONTAINS(diagnostics.details, ">= cdc_min_replicated_index (");
+  ASSERT_GE(diagnostics.first_retained_segment_age_secs, 0);
+
+  // Verify the xrepl reason is printed.
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index(),
+                            /*log_index_needed_by_cdc=*/ 3}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "cdc_min_replicated_index = min of");
+  ASSERT_STR_CONTAINS(diagnostics.details, ">= cdc_min_replicated_index (3)");
+  ASSERT_STR_CONTAINS(diagnostics.details, "<max_int>");
+  ASSERT_STR_NOT_CONTAINS(diagnostics.details, "9223372036854775807");
+
+  // Verify the min-segments cap reason is printed
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 10;
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index()}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "capped GC at");
+
+  // Verify the time-retention reason is printed
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 500;
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index()}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "Time retention: retain start at");
 }
 
 // Tests that we can append FLUSH_MARKER messages to the log queue to make sure

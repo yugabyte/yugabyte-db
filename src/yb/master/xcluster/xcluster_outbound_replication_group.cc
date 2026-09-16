@@ -169,8 +169,8 @@ Status XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap(
   LOG_WITH_PREFIX(INFO) << "Creating xcluster streams for " << table_ids.size()
                         << " table(s) in namespace " << namespace_id;
 
-  auto create_context =
-      VERIFY_RESULT(helper_functions_.create_xcluster_streams_func(table_ids, epoch));
+  auto create_context = VERIFY_RESULT(
+      helper_functions_.create_xcluster_streams_func(table_ids, epoch, AutomaticDDLMode()));
 
   SCHECK_EQ(
       create_context->streams_.size(), table_ids.size(), IllegalState,
@@ -1046,8 +1046,8 @@ Status XClusterOutboundReplicationGroup::CreateStreamForNewTable(
     ns_info->mutable_table_infos()->insert({table_id, std::move(ns_table_info)});
   }
 
-  auto create_context =
-      VERIFY_RESULT(helper_functions_.create_xcluster_streams_func({table_id}, epoch));
+  auto create_context = VERIFY_RESULT(
+      helper_functions_.create_xcluster_streams_func({table_id}, epoch, AutomaticDDLMode()));
 
   SCHECK_EQ(create_context->streams_.size(), 1, IllegalState, "Unexpected number of streams");
 

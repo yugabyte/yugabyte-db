@@ -14,7 +14,7 @@ type: docs
 
 You can export cluster metrics and logs to third-party tools for analysis and customization.
 
-All metrics exported from a cluster are prefixed with `ybdb`.
+All YugabyteDB metrics exported from a cluster are prefixed with `ybdb`.
 
 To export either metrics or logs from a cluster:
 
@@ -146,7 +146,7 @@ The [Prometheus](https://prometheus.io/docs/introduction/overview/) integration 
 
   - Prometheus listening on the HTTP or HTTPS port that matches the endpoint URL you provide.
 
-    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. The default Prometheus listen port (9090) is not used and export fails if Prometheus is only reachable on 9090. Configure Prometheus to listen on port 80 or 443, or place a reverse proxy such as nginx in front of Prometheus to terminate HTTP/HTTPS on 80 or 443 and forward traffic to Prometheus.
+    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. The default Prometheus listen port (9090) is not supported and export fails if Prometheus is only reachable on 9090. Configure Prometheus to listen on port 80 or 443, or place a reverse proxy such as nginx in front of Prometheus to terminate HTTP/HTTPS on 80 or 443 and forward traffic to Prometheus.
 
   - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
   {{< note title="Note" >}}
@@ -209,7 +209,7 @@ The [VictoriaMetrics](https://docs.victoriametrics.com/) integration requires th
 
   - VictoriaMetrics listening on the HTTP or HTTPS port that matches the endpoint URL you provide.
 
-    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. The default VictoriaMetrics listen port is not used and export fails if VictoriaMetrics is only reachable on a non-standard port such as 8428. Configure VictoriaMetrics to listen on port 80 or 443, or place a reverse proxy such as nginx in front of VictoriaMetrics to terminate HTTP/HTTPS on 80 or 443 and forward traffic to VictoriaMetrics.
+    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. The default VictoriaMetrics listen port is not supported and export fails if VictoriaMetrics is only reachable on a non-standard port such as 8428. Configure VictoriaMetrics to listen on port 80 or 443, or place a reverse proxy such as nginx in front of VictoriaMetrics to terminate HTTP/HTTPS on 80 or 443 and forward traffic to VictoriaMetrics.
 
 - YugabyteDB Aeon cluster from which you want to export metrics
   - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).

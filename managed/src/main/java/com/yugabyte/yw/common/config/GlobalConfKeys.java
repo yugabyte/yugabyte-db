@@ -2273,12 +2273,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
       new ConfKeyInfo<>(
-          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
+          "yb.ui.feature_flags.enable_new_universe_experience",
           ScopeType.GLOBAL,
-          "Enable Edit Universe V2 UI",
-          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
+          "Enable new Universe experience",
+          "Enable new Universe experience in UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> gcpCapacityReservationGcEnabled =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation.gcp_gc_enabled",
@@ -2340,4 +2340,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
+      new ConfKeyInfo<>(
+          "yb.ui.enable_new_universe_experience_for_all_users",
+          ScopeType.GLOBAL,
+          "Whether to enable new universe experience for all users",
+          "Whether to enable new universe experience for all users",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

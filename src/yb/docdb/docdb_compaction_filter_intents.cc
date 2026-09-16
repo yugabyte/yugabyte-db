@@ -118,8 +118,9 @@ Status DocDBIntentsCompactionFilter::CleanupTransactions() {
   if (!transactions_to_cleanup_.empty()) {
     TransactionStatusManager* manager = tablet_->transaction_participant();
     if (rejected_transactions_ > 0) {
-      LOG_WITH_PREFIX(WARNING) << "Number of aborted transactions not cleaned up "
-                               << "on account of reaching size limits: " << rejected_transactions_;
+      LOG_WITH_PREFIX(WARNING) << "Number of transaction cleanup candidates not included in this "
+                               << "compaction's batch (aborted_intent_cleanup_max_batch_size): "
+                               << rejected_transactions_;
     }
     RETURN_NOT_OK(manager->Cleanup(std::move(transactions_to_cleanup_)));
   }

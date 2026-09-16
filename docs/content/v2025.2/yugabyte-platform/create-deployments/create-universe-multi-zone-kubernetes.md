@@ -252,7 +252,7 @@ tserver:
       effect: NoSchedule
 ```
 
-## Deploy immutable YB Contoller (YBC)
+## Deploy immutable YB Controller (YBC)
 
 By default, YugabyteDB Anywhere deploys YBC on Kubernetes universes by copying the YBC package from YugabyteDB Anywhere to the database pods and extracting it. While this approach ensures a stable YBC version, it has some limitations:
 

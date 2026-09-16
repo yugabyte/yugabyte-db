@@ -18,6 +18,8 @@
 #include <string_view>
 #include <vector>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -37,17 +39,21 @@ class PgGlobalViewRead : public PgMemctx::Registrable {
   // A nullptr entry means the corresponding parameter is NULL.
   void SetParams(std::span<const char*> values);
 
-  // Executes the query on the given tserver. On success with rows,
-  // returns the serialized PgResultPB in {pgresult, pgresult_size, nullptr}.
-  // On error, returns {nullptr, 0, error_message} with error_message
-  // pointing to a string valid until the next ExecScan call. On success
-  // with zero rows, returns {nullptr, 0, nullptr}.
-  YbcRemotePgExecResult ExecScan(
+  // Runs the query on the given tserver. Returns the result protobuf, valid
+  // until ClearScanState or the next ExecScan; NULL on error or empty result.
+  YbcPgResultPB ExecScan(
       PgClient& client, std::string_view database_name, std::string_view query,
       std::string_view tserver_uuid);
 
+  // Error message from the last ExecScan; NULL if it succeeded. Owned here,
+  // valid until ClearScanState or the next ExecScan.
+  const char* GetError() const;
+
+  // Releases the per-scan result buffers, error message, and params.
+  void ClearScanState();
+
  private:
-  std::vector<uint8_t> serialized_result_;
+  PgResultPB result_pb_;
   std::vector<std::optional<std::string>> params_;
   std::string last_error_;
 };

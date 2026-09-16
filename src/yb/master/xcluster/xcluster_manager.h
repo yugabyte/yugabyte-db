@@ -100,7 +100,7 @@ class XClusterManager : public XClusterManagerIf,
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
-  Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+  Result<XClusterBackfillDecision> TryGetXClusterInfoForIndexBackfill(
       const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
       const LeaderEpoch& epoch) const override;
 

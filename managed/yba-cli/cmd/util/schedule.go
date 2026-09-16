@@ -6,10 +6,23 @@ package util
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
 )
+
+// Layouts YBA is known to use when serializing schedule times as strings. The
+// first is ScheduleResp's @JsonFormat pattern; RFC3339Nano covers endpoints
+// that emit an offset or fractional seconds.
+var customTimeLayouts = []string{
+	"2006-01-02T15:04:05Z",
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+}
 
 // CustomTime struct for marshaling/unmarshaling time.Time
 type CustomTime struct {
@@ -871,13 +884,48 @@ func (v *NullableSchedule) UnmarshalJSON(src []byte) error {
 }
 
 // UnmarshalJSON implements the Unmarshaler interface.
+// YBA serializes schedule times either as epoch milliseconds or, since the
+// @JsonFormat annotations added to ScheduleResp, as "yyyy-MM-dd'T'HH:mm:ss'Z'"
+// strings. The CLI talks to both older and newer YBA, so accept either shape.
 func (ct *CustomTime) UnmarshalJSON(b []byte) error {
-	var timestamp int64
-	if err := json.Unmarshal(b, &timestamp); err != nil {
-		return err
+	trimmed := strings.TrimSpace(string(b))
+	if trimmed == "" || trimmed == "null" {
+		ct.Time = time.Time{}
+		return nil
 	}
 
-	// Convert from milliseconds to seconds for Unix timestamp
-	ct.Time = time.UnixMilli(timestamp)
-	return nil
+	if trimmed[0] != '"' {
+		var timestamp int64
+		if err := json.Unmarshal(b, &timestamp); err != nil {
+			return err
+		}
+		ct.Time = time.UnixMilli(timestamp)
+		return nil
+	}
+
+	var value string
+	if err := json.Unmarshal(b, &value); err != nil {
+		return err
+	}
+	value = strings.TrimSpace(value)
+	if len(value) == 0 {
+		ct.Time = time.Time{}
+		return nil
+	}
+
+	for _, layout := range customTimeLayouts {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			ct.Time = parsed
+			return nil
+		}
+	}
+
+	// Epoch milliseconds sent as a quoted number.
+	if timestamp, err := strconv.ParseInt(value, 10, 64); err == nil {
+		ct.Time = time.UnixMilli(timestamp)
+		return nil
+	}
+
+	return fmt.Errorf("cannot parse %q as a time value", value)
 }

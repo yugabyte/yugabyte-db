@@ -4,6 +4,7 @@ package com.yugabyte.yw.api.v2;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -14,6 +15,8 @@ import static play.mvc.Http.Status.NOT_FOUND;
 import api.v2.handlers.BackupAndRestoreHandler;
 import api.v2.models.BackupPagedQuerySpec;
 import api.v2.models.BackupPagedResp;
+import api.v2.models.IncrementalBackupPagedQuerySpec;
+import api.v2.models.IncrementalBackupPagedResp;
 import api.v2.models.PaginationSpec;
 import api.v2.models.Restore;
 import api.v2.models.RestoreApiFilter;
@@ -77,6 +80,90 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
     assertThat(resp.getEntities().size(), greaterThanOrEqualTo(1));
     assertEquals(backup.getBackupUUID(), resp.getEntities().get(0).getInfo().getUuid());
     assertEquals(universe.getUniverseUUID(), resp.getEntities().get(0).getSpec().getUniverseUuid());
+  }
+
+  @Test
+  public void pageListIncrementalBackups_returnsChainIncludingFullBackup() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer, "backup-storage");
+    Backup full =
+        ModelFactory.createBackup(
+            customer.getUuid(), universe.getUniverseUUID(), customerConfig.getConfigUUID());
+    Backup incremental = createIncrementalBackup(customerConfig, full);
+    ModelFactory.createBackup(
+        customer.getUuid(), universe.getUniverseUUID(), customerConfig.getConfigUUID());
+
+    IncrementalBackupPagedQuerySpec spec = new IncrementalBackupPagedQuerySpec();
+    spec.offset(0).limit(10);
+
+    IncrementalBackupPagedResp resp =
+        handler.pageListIncrementalBackups(customer.getUuid(), full.getBackupUUID(), spec);
+
+    assertEquals(2, resp.getTotalCount());
+    assertEquals(2, resp.getEntities().size());
+    assertFalse(resp.getHasNext());
+    List<UUID> uuids =
+        resp.getEntities().stream().map(b -> b.getInfo().getUuid()).collect(Collectors.toList());
+    assertThat(uuids, containsInAnyOrder(incremental.getBackupUUID(), full.getBackupUUID()));
+    assertEquals(full.getBackupUUID(), resp.getEntities().get(0).getInfo().getBaseBackupUuid());
+    assertEquals(full.getBackupUUID(), resp.getEntities().get(1).getInfo().getBaseBackupUuid());
+  }
+
+  @Test
+  public void pageListIncrementalBackups_resolvesChainFromIncrementalUuid() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer, "backup-storage");
+    Backup full =
+        ModelFactory.createBackup(
+            customer.getUuid(), universe.getUniverseUUID(), customerConfig.getConfigUUID());
+    Backup incremental = createIncrementalBackup(customerConfig, full);
+
+    IncrementalBackupPagedQuerySpec spec = new IncrementalBackupPagedQuerySpec();
+    spec.offset(0).limit(10);
+
+    IncrementalBackupPagedResp resp =
+        handler.pageListIncrementalBackups(customer.getUuid(), incremental.getBackupUUID(), spec);
+
+    assertEquals(2, resp.getTotalCount());
+    List<UUID> uuids =
+        resp.getEntities().stream().map(b -> b.getInfo().getUuid()).collect(Collectors.toList());
+    assertThat(uuids, containsInAnyOrder(incremental.getBackupUUID(), full.getBackupUUID()));
+  }
+
+  @Test
+  public void pageListIncrementalBackups_paginatesWithHasNext() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer, "backup-storage");
+    Backup full =
+        ModelFactory.createBackup(
+            customer.getUuid(), universe.getUniverseUUID(), customerConfig.getConfigUUID());
+    createIncrementalBackup(customerConfig, full);
+    createIncrementalBackup(customerConfig, full);
+
+    IncrementalBackupPagedQuerySpec firstPage = new IncrementalBackupPagedQuerySpec();
+    firstPage.offset(0).limit(2);
+    IncrementalBackupPagedResp page1 =
+        handler.pageListIncrementalBackups(customer.getUuid(), full.getBackupUUID(), firstPage);
+    assertEquals(3, page1.getTotalCount());
+    assertEquals(2, page1.getEntities().size());
+    assertTrue(page1.getHasNext());
+
+    IncrementalBackupPagedQuerySpec secondPage = new IncrementalBackupPagedQuerySpec();
+    secondPage.offset(2).limit(2);
+    IncrementalBackupPagedResp page2 =
+        handler.pageListIncrementalBackups(customer.getUuid(), full.getBackupUUID(), secondPage);
+    assertEquals(3, page2.getTotalCount());
+    assertEquals(1, page2.getEntities().size());
+    assertFalse(page2.getHasNext());
+  }
+
+  @Test
+  public void pageListIncrementalBackups_invalidBackup() {
+    IncrementalBackupPagedQuerySpec spec = new IncrementalBackupPagedQuerySpec();
+    spec.offset(0).limit(10);
+
+    PlatformServiceException pse =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.pageListIncrementalBackups(customer.getUuid(), UUID.randomUUID(), spec));
+    assertEquals(NOT_FOUND, pse.getHttpStatus());
   }
 
   @Test
@@ -489,5 +576,16 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
     storageInfo.storageLocation = "s3://bucket/univ/keyspace-" + keyspace;
     params.backupStorageInfoList.add(storageInfo);
     return RestoreKeyspace.create(UUID.randomUUID(), params);
+  }
+
+  private Backup createIncrementalBackup(CustomerConfig customerConfig, Backup baseBackup) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = customerConfig.getConfigUUID();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    params.tableUUID = UUID.randomUUID();
+    params.baseBackupUUID = baseBackup.getBaseBackupUUID();
+    return Backup.create(customer.getUuid(), params);
   }
 }

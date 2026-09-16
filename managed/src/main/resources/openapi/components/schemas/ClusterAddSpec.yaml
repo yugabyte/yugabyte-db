@@ -23,6 +23,14 @@ properties:
     format: int32
     example: 3
     minimum: 1
+  dedicated_nodes:
+    description: Whether to run tserver and master processes in dedicated nodes in this cluster. Defaults to false where master and tserver processes share the same node.
+    type: boolean
+    example: false
+  provider_specs:
+    type: array
+    items:
+      $ref: "./ClusterPerProviderSpec.yaml"
   node_spec:
     $ref: "./ClusterNodeSpec.yaml"
   provider_spec:

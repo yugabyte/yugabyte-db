@@ -49,6 +49,7 @@ var installCmd = &cobra.Command{
 		// Save the services installed
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
 		state.Services.NodeExporter = viper.GetBool("nodeExporter.enabled")
+		state.Services.ByocApiProxy = viper.GetBool("byocApiProxy.enabled")
 		state.Services.Platform = true
 		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
 			log.Fatal("failed to start install: " + err.Error())
@@ -170,6 +171,11 @@ func getAndPrintStatus(state *ybactlstate.State) {
 			log.Fatal("failed to get status: " + err.Error())
 		}
 		statuses = append(statuses, status)
+		// byoc-api-proxy manages itself best effort and may validly not be running
+		// (e.g. configuration not provided yet), so it never gates command success.
+		if service.Name() == ByocApiProxyServiceName {
+			continue
+		}
 		if !common.IsHappyStatus(status) {
 			log.Fatal(status.Service + " is not running! Install might have failed, please check " +
 				common.YbactlLogFile())

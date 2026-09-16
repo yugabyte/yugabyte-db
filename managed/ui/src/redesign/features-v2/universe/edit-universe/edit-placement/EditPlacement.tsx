@@ -1,4 +1,4 @@
-import { FC, useEffect, useMemo } from 'react';
+import { FC, useEffect, useMemo, useState } from 'react';
 import { mui, Step, YBMultiLevelStepper } from '@yugabyte-ui-library/core';
 
 import { useTranslation } from 'react-i18next';
@@ -20,6 +20,14 @@ import {
   getNodesAvailabilityDefaultsForEditPlacement,
   getResilienceAndRegionsProps
 } from './EditPlacementUtils';
+import {
+  WhatNewInPlacement,
+  WHAT_NEW_IN_PLACEMENT_MODAL_DISMISS_KEY
+} from '@app/redesign/features-v2/onboarding/universe-revamp/modals/WhatNewInPlacement';
+import {
+  EDIT_PLACEMENT_OVERLAY_ID,
+  setOnboardingFullscreenOverlayOpen
+} from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 
 const { styled, Grid2: Grid, Typography, Box } = mui;
 
@@ -72,6 +80,8 @@ export const EditPlacement: FC<EditPlacementProps> = ({
   const { resetContext, setActiveStep, setNodesAndAvailability, setResilience } =
     editPlacementContext[1];
 
+  const [showWhatNewInPlacement, setShowWhatNewInPlacement] = useState(false);
+
   const steps = useMemo(() => {
     return [
       {
@@ -96,12 +106,15 @@ export const EditPlacement: FC<EditPlacementProps> = ({
 
   useEffect(() => {
     if (!visible) {
+      setOnboardingFullscreenOverlayOpen(EDIT_PLACEMENT_OVERLAY_ID, false);
       return;
     }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    setOnboardingFullscreenOverlayOpen(EDIT_PLACEMENT_OVERLAY_ID, true);
     return () => {
       document.body.style.overflow = previousOverflow;
+      setOnboardingFullscreenOverlayOpen(EDIT_PLACEMENT_OVERLAY_ID, false);
     };
   }, [visible]);
 
@@ -122,6 +135,22 @@ export const EditPlacement: FC<EditPlacementProps> = ({
     }
   }, [visible, skipResilienceAndRegionsStep, selectedPartitionUUID]);
 
+  useEffect(() => {
+    if (!visible) {
+      setShowWhatNewInPlacement(false);
+      return;
+    }
+    if (localStorage.getItem(WHAT_NEW_IN_PLACEMENT_MODAL_DISMISS_KEY) === 'true') {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setShowWhatNewInPlacement(true);
+    }, 1400);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [visible]);
+
   if (!visible) {
     return null;
   }
@@ -129,6 +158,11 @@ export const EditPlacement: FC<EditPlacementProps> = ({
   const hideModal = () => {
     resetContext();
     onHide();
+  };
+
+  const dismissWhatNewInPlacement = () => {
+    localStorage.setItem(WHAT_NEW_IN_PLACEMENT_MODAL_DISMISS_KEY, 'true');
+    setShowWhatNewInPlacement(false);
   };
 
   return (
@@ -205,6 +239,10 @@ export const EditPlacement: FC<EditPlacementProps> = ({
           </Grid>
         </Box>
       </EditPlacementContext.Provider>
+      <WhatNewInPlacement
+        open={showWhatNewInPlacement}
+        onClose={dismissWhatNewInPlacement}
+      />
     </EditPlacementRoot>
   );
 };

@@ -61,25 +61,7 @@ INSERT INTO json_table VALUES ('test', '{"test1":"test2", "test3": 4}', 1);
 SELECT yb_index_check('json_table_a_b_idx'::regclass::oid);
 
 -- Inconsistent Indexes
-SELECT oid AS db_oid FROM pg_database WHERE datname = (
-    SELECT CASE
-        WHEN COUNT(*) = 1 THEN 'template1'
-        ELSE current_database() END FROM pg_yb_catalog_version) \gset
-SELECT
-$force_cache_refresh$
-SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
-UPDATE pg_yb_catalog_version
-   SET current_version       = current_version + 1,
-       last_breaking_version = current_version + 1
- WHERE db_oid = :db_oid;
-RESET yb_non_ddl_txn_for_sys_tables_allowed;
-DO
-$$
-BEGIN
-    PERFORM pg_sleep(1);
-END;
-$$;
-$force_cache_refresh$ AS force_cache_refresh \gset
+\i yb_commands/yb_index_check_setup.sql
 
 -- Missing Index Row
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
