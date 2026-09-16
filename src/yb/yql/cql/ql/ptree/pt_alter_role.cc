@@ -108,7 +108,9 @@ Status PTAlterRole::Analyze(SemContext* sem_context) {
 
 void PTAlterRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
   MCString sem_output("\tAlter Role ", sem_context->PTempMem());
-  sem_output = sem_output + " role_name  " + role_name() + " salted_hash = " + *salted_hash_;
+  // Never emit the salted_hash: it is the (bcrypt) password material, sensitive whether it was
+  // hashed here from a plaintext PASSWORD or supplied verbatim via HASHED PASSWORD.
+  sem_output = sem_output + " role_name  " + role_name() + " salted_hash = <REDACTED>";
   sem_output = sem_output + " login = " + (login() ? "true" : "false");
   sem_output = sem_output + " superuser = " + (superuser() ? "true" : "false");
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
