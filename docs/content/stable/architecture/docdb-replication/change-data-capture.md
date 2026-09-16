@@ -49,7 +49,7 @@ The YugabyteDB Debezium connector captures row-level changes in the schemas of a
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. You can specify which tables to include or exclude. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-{{<tags/feature/ea idea="2762">}}In v2026.1.1.0 and later, you can use standard PostgreSQL replication slot commands with the `yb_grpc` output plugin to create gRPC CDC streams.
+{{<tags/feature/ea idea="2762">}}In v2026.1.2.0 and later, you can use standard PostgreSQL replication slot commands with the `yb_grpc` output plugin to create gRPC CDC streams.
 
 Creating a slot returns a user-chosen `slot_name` and a stream UUID (`yb_stream_id` in `pg_replication_slots`) for the connector.
 
@@ -57,7 +57,7 @@ You can also use the legacy [yb-admin](../../../admin/yb-admin/#create-change-da
 
 {{< note title="Note" >}}
 
-For v2026.1.1.0 and later, PostgreSQL replication slot syntax is recommended.
+For v2026.1.2.0 and later, PostgreSQL replication slot syntax is recommended.
 
 {{< /note >}}
 

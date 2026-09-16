@@ -953,7 +953,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
 * You have a change data stream created on the database you want to monitor the changes for. You can create the stream in the following ways:
-  * {{<tags/feature/ea idea="2762">}}Using the PostgreSQL replication slot syntax with the `yb_grpc` plugin (YugabyteDB v2026.1.1.0 or later). You then pass the slot name and a publication to the connector using the `slot.name` and `publication.name` properties. Refer to [Using a replication slot and publication](#using-a-replication-slot-and-publication).
+  * {{<tags/feature/ea idea="2762">}}Using the PostgreSQL replication slot syntax with the `yb_grpc` plugin (YugabyteDB v2026.1.2.0 or later). You then pass the slot name and a publication to the connector using the `slot.name` and `publication.name` properties. Refer to [Using a replication slot and publication](#using-a-replication-slot-and-publication).
   * Using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command. You then pass the generated stream ID to the connector using the `database.streamid` property.
 * The table to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
@@ -1022,7 +1022,7 @@ See [Transformers](#transformers).
 
 ### Using a replication slot and publication
 
-{{<tags/feature/ea idea="2762">}}Starting in YugabyteDB v2026.1.1.0, you can create a gRPC CDC stream using the PostgreSQL replication slot syntax with the `yb_grpc` plugin:
+{{<tags/feature/ea idea="2762">}}Starting in YugabyteDB v2026.1.2.0, you can create a gRPC CDC stream using the PostgreSQL replication slot syntax with the `yb_grpc` plugin:
 
 ```sql
 SELECT * FROM pg_create_logical_replication_slot('my_slot', 'yb_grpc');
