@@ -43,6 +43,10 @@ Before you deploy, review [Plan your universe](create-universes-overview/).
     href="create-universes-overview/"
     icon="fa-thin fa-map">}}
 
+{{</index/block>}}
+
+{{<index/block>}}
+
   {{<index/item
     title="Create a universe"
     body="Deploy a universe across multiple zones or regions."
