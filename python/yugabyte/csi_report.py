@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import time
-from typing import List, Optional, Tuple, Any, Dict
+from typing import BinaryIO, List, Optional, Tuple, Any, Dict
 from yugabyte.test_descriptor import TestDescriptor, SimpleTestDescriptor
 
 # Non-standard module. Needed in builddir venv for code-checks and in system modules for spark job
@@ -349,6 +349,64 @@ def close_item(item: str, time_sec: float, status: str, tags: List[str]) -> str:
     return ''
 
 
+# Marks the interesting part of a failing test log. A truncated copy is centered on the first
+# occurrence instead of ending at the file's tail, which after a failure is usually just teardown
+# noise. Byte strings: the search runs over the raw file, which need not be valid UTF-8.
+LOG_MARKERS = [b'Test failure stack trace:']
+
+# Read size of the marker search, which streams the file rather than loading it.
+MARKER_CHUNK_SIZE = 1 << 20
+
+# Marks a cut edge of the excerpt.
+CUT_MARK = '  ...  '
+
+
+def find_marker(file: BinaryIO, file_size: int, markers: List[bytes]) -> Optional[int]:
+    """Offset of the first occurrence of any marker in file, or None when none is present.
+
+    The first failure is the root cause; the ones after it are usually cascading.
+    """
+    overlap = max(len(marker) for marker in markers) - 1
+    pos = 0
+    while pos < file_size:
+        file.seek(pos)
+        chunk = file.read(MARKER_CHUNK_SIZE + overlap)
+        if not chunk:
+            break
+        found: Optional[int] = None
+        for marker in markers:
+            at = chunk.find(marker)
+            if at >= 0:
+                found = at if found is None else min(found, at)
+        if found is not None:
+            return pos + found
+        pos += MARKER_CHUNK_SIZE
+    return None
+
+
+def truncated_log(path: str, file_size: int, limit: int) -> Tuple[str, bool]:
+    """The at most limit bytes of path to report as a log message, and whether it is centered.
+
+    The excerpt is centered on the first failure marker when the file has one, and is the tail
+    of the file otherwise. Both cut edges are trimmed to a line boundary and marked.
+    """
+    with open(path, 'rb') as file:
+        marker = find_marker(file, file_size, LOG_MARKERS)
+        if marker is None:
+            start = file_size - limit
+        else:
+            start = min(max(marker - limit // 2, 0), file_size - limit)
+        file.seek(start)
+        text = file.read(limit).decode('utf-8', 'replace')
+    if start > 0:
+        text = CUT_MARK + text[text.find('\n') + 1:]       # drop the partial first line
+    if start + limit < file_size:
+        end = text.rfind('\n')
+        if end >= 0:
+            text = text[:end + 1] + CUT_MARK
+    return text, marker is not None
+
+
 def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
     csi = csi_env()
     if not csi['launch'] or not configured():
@@ -366,18 +424,20 @@ def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
                 continue
             file_size = os.path.getsize(path)
             try:
-                with open(path, 'r') as file:
-                    if file_size > msg_limit:
-                        log_content = base_file
-                        if file_size < file_limit:
-                            log_content += ' [TRUNCATED end of file] (full file attached) =====\n'
-                            large_file = True
-                        else:
-                            log_content += ' [TRUNCATED end of file] (file too large) =====\n'
-                            log_content += f" size: {file_size} limit: {file_limit} =====\n"
-                        file.seek(file_size - msg_limit)
-                        log_content += '  ...  ' + file.read()
+                if file_size > msg_limit:
+                    excerpt, centered = truncated_log(path, file_size, msg_limit)
+                    log_content = base_file
+                    log_content += ' [TRUNCATED around failure]' if centered \
+                        else ' [TRUNCATED end of file]'
+                    if file_size < file_limit:
+                        log_content += ' (full file attached) =====\n'
+                        large_file = True
                     else:
+                        log_content += ' (file too large) =====\n'
+                        log_content += f" size: {file_size} limit: {file_limit} =====\n"
+                    log_content += excerpt
+                else:
+                    with open(path, 'r') as file:
                         log_content = base_file + ' =====\n' + file.read()
             except Exception as e:
                 logging.error(f"CSI Error: Could not read {path}: {e}")

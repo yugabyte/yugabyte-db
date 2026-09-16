@@ -20,6 +20,7 @@ aborted a whole test run.
 """
 
 import json
+import os
 from typing import Any, Dict, List
 
 import pytest
@@ -256,3 +257,101 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_classify_execution(rerun: bool, attempt: int, reps: str, attempt_index: int,
                             expected: Any) -> None:
     assert csi_report.classify_execution(rerun, attempt, reps, attempt_index) == expected
+
+
+# ---------------------------------------------------------------------------------------------
+# truncated_log: what a large log is cut down to. The tail of a failing test's log is teardown
+# noise, so the excerpt is centered on the first failure marker when there is one - the earlier
+# logic kept the tail unconditionally and dropped the very lines the failure is diagnosed from.
+# ---------------------------------------------------------------------------------------------
+
+MARKER = csi_report.LOG_MARKERS[0].decode()
+
+
+def lines(tag: str, count: int) -> str:
+    """Filler log lines, tagged so a test can tell which part of the file an excerpt came from."""
+    return "".join(f"{tag} line {i}\n" for i in range(count))
+
+
+def truncate(tmp_path: Any, content: str, limit: int) -> Any:
+    """truncated_log() of a log file holding content."""
+    path = tmp_path / "test.log"
+    path.write_text(content)
+    return csi_report.truncated_log(str(path), path.stat().st_size, limit)
+
+
+def test_excerpt_is_centered_on_the_marker(tmp_path: Any) -> None:
+    text, centered = truncate(
+        tmp_path, lines("before", 2000) + MARKER + "\n" + lines("after", 2000), 4000)
+
+    assert centered
+    assert MARKER in text
+    assert text.startswith(csi_report.CUT_MARK) and text.endswith(csi_report.CUT_MARK)
+    # Marker near the middle: roughly as much context before it as after.
+    at = text.index(MARKER)
+    assert abs(at - (len(text) - at)) < len(text) // 4
+
+
+def test_first_marker_wins(tmp_path: Any) -> None:
+    """A test can fail more than once; the first failure is the root cause of the ones after it."""
+    text, centered = truncate(
+        tmp_path,
+        lines("before", 2000) + f"{MARKER} #0\n" + lines("middle", 2000) + f"{MARKER} #1\n",
+        1000)
+
+    assert centered
+    assert f"{MARKER} #0" in text
+    assert f"{MARKER} #1" not in text
+
+
+def test_no_marker_keeps_the_tail(tmp_path: Any) -> None:
+    text, centered = truncate(tmp_path, lines("plain", 5000), 1000)
+
+    assert not centered
+    assert text.startswith(csi_report.CUT_MARK)
+    assert not text.endswith(csi_report.CUT_MARK)
+    assert "plain line 4999" in text
+
+
+def test_marker_near_the_start_keeps_the_head(tmp_path: Any) -> None:
+    text, _ = truncate(tmp_path, MARKER + "\n" + lines("after", 5000), 1000)
+
+    assert text.startswith(MARKER)
+
+
+def test_marker_near_the_end_keeps_the_tail(tmp_path: Any) -> None:
+    text, _ = truncate(tmp_path, lines("before", 5000) + MARKER + "\n" + lines("after", 2), 1000)
+
+    assert MARKER in text
+    assert text.rstrip().endswith("after line 1")
+
+
+def test_excerpt_respects_the_limit(tmp_path: Any) -> None:
+    limit = 1000
+    text, _ = truncate(
+        tmp_path, lines("before", 2000) + MARKER + "\n" + lines("after", 2000), limit)
+
+    assert len(text) <= limit + 2 * len(csi_report.CUT_MARK)
+
+
+def test_marker_found_across_a_chunk_boundary(
+        tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The streaming search overlaps its reads, so a marker split between chunks is still seen."""
+    monkeypatch.setattr(csi_report, 'MARKER_CHUNK_SIZE', 64)
+    filler = "x" * (64 - len(MARKER) // 2)
+
+    text, centered = truncate(tmp_path, f"{filler}\n{MARKER}\n" + lines("after", 100), 100)
+
+    assert centered
+    assert MARKER in text
+
+
+def test_invalid_utf8_does_not_fail(tmp_path: Any) -> None:
+    """Daemon logs can carry raw bytes; a cut in mid-character must not abort the upload."""
+    path = tmp_path / "test.log"
+    path.write_bytes(b"\xff\xfe binary junk\n" * 200 + MARKER.encode() + b"\n" + b"tail\n" * 200)
+
+    text, centered = csi_report.truncated_log(str(path), path.stat().st_size, 500)
+
+    assert centered
+    assert MARKER in text
