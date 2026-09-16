@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< page-finder/head text="Plan your deployment" subtle="across different products">}}
-  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../deploy/" >}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../deploy/checklist/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-basics/create-clusters-overview/" >}}
 {{< /page-finder/head >}}
