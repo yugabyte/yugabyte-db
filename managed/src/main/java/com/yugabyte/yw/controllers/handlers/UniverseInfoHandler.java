@@ -64,7 +64,7 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.GetMasterRegistrationResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Slf4j
@@ -159,9 +159,13 @@ public class UniverseInfoHandler {
   }
 
   public List<Details> healthCheck(UUID universeUUID) {
+    return healthCheck(universeUUID, null);
+  }
+
+  public List<Details> healthCheck(UUID universeUUID, Integer limit) {
     List<Details> detailsList = new ArrayList<>();
     try {
-      List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
+      List<HealthCheck> checks = HealthCheck.getAll(universeUUID, limit);
       for (HealthCheck check : checks) {
         detailsList.add(check.getDetailsJson());
       }
@@ -180,7 +184,7 @@ public class UniverseInfoHandler {
 
   public HostAndPort getMasterLeaderIP(Universe universe) {
     // Get and return Leader IP
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
       if (leaderMasterHostAndPort == null) {
         throw new PlatformServiceException(
@@ -194,7 +198,7 @@ public class UniverseInfoHandler {
 
   public List<MasterInfo> getMasterInfos(Universe universe) {
     // Get and return Leader IP
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       List<GetMasterRegistrationResponse> masterRegistrationResponseList =
           client.getMasterRegistrationResponseList();
       if (masterRegistrationResponseList == null) {

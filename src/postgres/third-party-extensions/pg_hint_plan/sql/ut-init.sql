@@ -1,6 +1,5 @@
 SET search_path TO public;
 
-CREATE EXTENSION pg_stat_statements;
 CREATE EXTENSION btree_gist;
 CREATE EXTENSION btree_gin;
 
@@ -28,6 +27,8 @@ CREATE TABLE s1.t1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s1.t2 (LIKE s1.t1 INCLUDING ALL);
 CREATE TABLE s1.t3 (LIKE s1.t1 INCLUDING ALL);
 CREATE TABLE s1.t4 (LIKE s1.t1 INCLUDING ALL);
+CREATE TABLE s1.t5 (LIKE s1.t1 INCLUDING ALL);
+CREATE TABLE s1.t6 (LIKE s1.t1 INCLUDING ALL);
 CREATE TABLE s2.t1 (LIKE s1.t1 INCLUDING ALL);
 CREATE TABLE s1.p1 (LIKE s1.t1 INCLUDING ALL);
 CREATE UNIQUE INDEX p1_parent ON s1.p1 USING btree (c4 COLLATE "C" varchar_ops ASC NULLS LAST, (c1 * 2 < 100)) WHERE c1 < 10;
@@ -136,6 +137,8 @@ ANALYZE s1.p2c3c1;
 ANALYZE s1.p2c3c2;
 ANALYZE s1.ti1;
 ANALYZE s1.pt1;
+ANALYZE s1.t5;
+ANALYZE s1.t6;
 
 CREATE FUNCTION s1.f1 () RETURNS s1.t1 AS $$
 VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')
@@ -165,5 +168,3 @@ SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1
 SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.ctid = '(1,1)' AND b2t1.c1 = b2t2.c1 AND b2t2.ctid = '(1,1)' AND b2t1.c1 = b2t3.c1 AND b2t3.ctid = '(1,1)' AND b2t1.c1 = b2t4.c1 AND b2t4.ctid = '(1,1)';
 SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = b3t2.c1 AND b3t2.ctid = '(1,1)' AND b3t1.c1 = b3t3.c1 AND b3t3.ctid = '(1,1)' AND b3t1.c1 = b3t4.c1 AND b3t4.ctid = '(1,1)';
 );
-CREATE RULE "_RETURN" AS ON SELECT TO s1.r4 DO INSTEAD SELECT r4t1.c1, r4t1.c2, r4t1.c3, r4t1.c4 FROM s1.t1 r4t1;
-CREATE RULE "_RETURN" AS ON SELECT TO s1.r5 DO INSTEAD SELECT r5t1.c1, r5t1.c2, r5t1.c3, r5t1.c4 FROM s1.t1 r5t1;

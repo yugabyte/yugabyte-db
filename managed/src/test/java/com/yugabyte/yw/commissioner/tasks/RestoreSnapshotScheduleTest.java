@@ -30,13 +30,13 @@ import org.mockito.ArgumentCaptor;
 import org.yb.client.ListSnapshotRestorationsResponse;
 import org.yb.client.RestoreSnapshotScheduleResponse;
 import org.yb.client.SnapshotRestorationInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final long RESTORE_TIME_IN_MILLIS = 1700000000000L;
 
@@ -44,7 +44,7 @@ public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUpBase();
     defaultUniverse = ModelFactory.createUniverse();
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 

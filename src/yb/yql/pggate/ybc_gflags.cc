@@ -57,6 +57,14 @@ DEFINE_test_flag(uint32, ysql_conn_mgr_auth_delay_ms, 0,
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
     "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
+    "Enable the use of the auth-backend for authentication of logical connections. "
+    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
+    "spawning a fresh PG backend to perform authentication for each incoming auth request."
+    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
+    "and thus is faster as it skips needing to spawn a new backend process each time."
+    );
+
 DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_query_size, 4096,
     "Maximum size of the query which connection manager can process in the deploy phase or while"
     "forwarding the client query");
@@ -181,6 +189,7 @@ DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -252,6 +261,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
+      .ysql_conn_mgr_use_auth_backend = &FLAGS_ysql_conn_mgr_use_auth_backend,
       .TEST_ysql_log_perdb_allocated_new_objectid =
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
@@ -286,7 +296,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
-          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization
+          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
+      .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
+          &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
   };
   // clang-format on
   return &accessor;

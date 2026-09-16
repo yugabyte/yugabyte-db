@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import org.apache.commons.collections4.MapUtils;
 
@@ -35,7 +36,14 @@ public final class OCICloudUtil {
           "yb_user_email",
           "yb_yba_url");
 
+  private static final Pattern INSTANCE_CONFIGURATION_OCID_PATTERN =
+      Pattern.compile("^ocid1\\.instanceconfiguration\\.[^.\\s]+\\.[^.\\s]+\\.[^.\\s]+$");
+
   private OCICloudUtil() {}
+
+  public static boolean isValidInstanceConfigurationOcid(String value) {
+    return value != null && INSTANCE_CONFIGURATION_OCID_PATTERN.matcher(value).matches();
+  }
 
   /**
    * Computes the distinct freeform tag keys that would be applied to an OCI instance after merging

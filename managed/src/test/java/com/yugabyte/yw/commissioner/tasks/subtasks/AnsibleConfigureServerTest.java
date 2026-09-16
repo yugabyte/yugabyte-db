@@ -35,7 +35,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
 
 @RunWith(JUnitParamsRunner.class)
@@ -44,14 +44,14 @@ public class AnsibleConfigureServerTest extends CommissionerBaseTest {
   private Provider provider;
   private Universe universe;
   private ListMasterRaftPeersResponse mockMastersResponse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setup() {
     defaultCustomer = ModelFactory.testCustomer();
     setupUniverse(Common.CloudType.onprem);
     mockMastersResponse = mock(ListMasterRaftPeersResponse.class);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     List<PeerInfo> servers = new ArrayList<>();
     // IP for host-n1.

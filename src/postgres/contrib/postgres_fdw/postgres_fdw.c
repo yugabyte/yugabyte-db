@@ -2013,7 +2013,19 @@ postgresIterateForeignScan(ForeignScanState *node)
 			fetch_more_data(node);
 		/* If we didn't get any tuples, must be end of data. */
 		if (fsstate->next_tuple >= fsstate->num_tuples)
-			return ExecClearTuple(slot);
+		{
+			ExecClearTuple(slot);
+			/*
+			 * YB: a global-view child is fully drained here. Release its
+			 * buffer.
+			 */
+			if (fsstate->yb_gvr && fsstate->eof_reached)
+			{
+				fsstate->tuples = NULL;
+				MemoryContextReset(fsstate->batch_cxt);
+			}
+			return slot;
+		}
 	}
 
 	/*
@@ -9256,16 +9268,21 @@ static PGresult *
 YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *database_name,
 						 const char *query, const char *tserver_uuid)
 {
-	YbcRemotePgExecResult yb_result =
-		YBCPgGlobalViewReadExecScan(yb_gvr, database_name, query, tserver_uuid);
-	PGresult *res = libpqsrv_PQwrap(YBCPgResultFromPB(yb_result.pgresult, yb_result.pgresult_size));
+	PGresult   *res =
+		libpqsrv_PQwrap(YBCPgResultFromPB(YBCPgGlobalViewReadExecScan(yb_gvr,
+																	  database_name,
+																	  query,
+																	  tserver_uuid)));
 	if (!res)
 	{
-		if (yb_result.error_message)
+		const char *error_message = YBCPgGlobalViewReadGetError(yb_gvr);
+
+		if (error_message)
 			ereport(WARNING,
 					(errmsg("global view: skipping tserver %s: %s",
-							tserver_uuid, yb_result.error_message)));
+							tserver_uuid, error_message)));
 		res = libpqsrv_PQwrap(PQmakeEmptyPGresult(NULL, PGRES_TUPLES_OK));
 	}
+	YBCPgGlobalViewReadClearScanState(yb_gvr);
 	return res;
 }

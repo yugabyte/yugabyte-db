@@ -15,7 +15,7 @@ import com.yugabyte.yw.models.Universe;
 import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
@@ -58,7 +58,7 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
     }
 
     int autoFlagConfigVersion;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       WireProtocol.AutoFlagsConfigPB autoFlagsConfigPB =
           client.autoFlagsConfig().getAutoFlagsConfig();
       autoFlagConfigVersion = autoFlagsConfigPB.getConfigVersion();

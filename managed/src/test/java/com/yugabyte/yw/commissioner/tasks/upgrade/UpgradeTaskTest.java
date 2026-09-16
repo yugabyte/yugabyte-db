@@ -72,7 +72,7 @@ import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.RollbackAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
@@ -91,7 +91,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     FULL_UPGRADE_TSERVER_ONLY
   }
 
-  protected YBClient mockClient;
+  protected YBClientApi mockClient;
   protected Universe defaultUniverse;
 
   protected Region region;
@@ -211,7 +211,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
 
     // Setup mocks
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     try {
       when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);

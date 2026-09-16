@@ -1,33 +1,37 @@
-# SOME DESCRIPTIVE TITLE.
-# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# LANGUAGE message translation file for pg_hint_plan uninstallation.
+# Copyright (C) 2012-2026, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 # This file is distributed under the same license as the pg_hint_plan
 # package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, 2023.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+# Tatsuro Yamada <yamatattsu@gmail.com>, 2023.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_hint_plan \n"
+"Project-Id-Version: pg_hint_plan\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-03-14 16:08+0800\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"POT-Creation-Date: 2023-11-09 10:50+0900\n"
+"PO-Revision-Date: 2023-11-10 08:46+0900\n"
+"Last-Translator: Tatsuro Yamada <yamatattsu@gmail.com>\n"
+"Language-Team: \n"
 "Language: ja\n"
-"Language-Team: ja <LL@li.org>\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 "Generated-By: Babel 2.12.1\n"
+"X-Generator: Poedit 3.2.2\n"
 
-#: ../../uninstallation.md:1 a1bcfa20fafc4bbea90bb31096e6d458
+#: ../../uninstallation.md:1 f3cc8a1c1ca3459ab9d7e0d78b5ebad0
 msgid "Uninstallation"
-msgstr ""
+msgstr "アンインストール"
 
-#: ../../uninstallation.md:3 7c118fae103f41e3b93ddf287d32db16
+#: ../../uninstallation.md:3 aa4ccdaf9927460fb3c337548536e4f3
 msgid ""
 "`make uninstall` in the top directory of source tree will uninstall the "
 "installed files if you installed from the source tree and it is left "
-"available."
+"available.  Setting the environment variable `PATH` may be necessary."
 msgstr ""
-
+"ソース ツリーからインストールし、それが利用可能なままになっている場合は、"
+"ソース ツリーの最上位ディレクトリにある `make uninstall` を実行するとイン"
+"ストールされたファイルがアンインストールされます。環境変数 `PATH` の設定"
+"が必要な場合があります。"

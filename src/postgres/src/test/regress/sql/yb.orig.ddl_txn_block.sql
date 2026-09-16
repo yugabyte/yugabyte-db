@@ -389,10 +389,29 @@ SELECT atttypmod FROM pg_attribute
 -- #28502: After a DDL in a SERIALIZABLE transaction, DML with NO WAIT / SKIP
 -- LOCKED must still warn that those clauses are unsupported.
 CREATE TABLE test_nowait (id int PRIMARY KEY);
+CREATE INDEX NONCONCURRENTLY test_nowait_id_idx ON test_nowait (id);
 INSERT INTO test_nowait VALUES (1);
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE dummy_nowait (id int);
 SELECT * FROM test_nowait FOR UPDATE NOWAIT;
 SELECT * FROM test_nowait FOR UPDATE SKIP LOCKED;
+-- Same for an index scan.
+-- TODO(#33411): index scans still stamp the rowmark on every fetch call, so a
+-- one-row point lookup warns twice (row fetch plus end-of-scan call), unlike
+-- the seq scans above, which warn once per scan.
+EXPLAIN (COSTS OFF) SELECT * FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+SELECT * FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+SELECT * FROM test_nowait WHERE id = 1 FOR UPDATE SKIP LOCKED;
+-- The planner does not choose an index only scan for a locked relation, even
+-- when hinted: locking needs the ybctid junk column, which check_index_only
+-- does not treat as index-returnable, even though secondary indexes do store
+-- it (ybidxbasectid) and yb_enable_primary_key_decode_from_index is enabled.
+-- TODO(#33411): if ybctid ever becomes index-returnable, index only scans
+-- become plannable here, and they do not stamp the rowmark at all: no warning,
+-- and no scan-level lock.
+SET yb_enable_primary_key_decode_from_index = on;
+EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(test_nowait test_nowait_id_idx) */ SELECT id FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+/*+ IndexOnlyScan(test_nowait test_nowait_id_idx) */ SELECT id FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+/*+ IndexOnlyScan(test_nowait test_nowait_id_idx) */ SELECT id FROM test_nowait WHERE id = 1 FOR UPDATE SKIP LOCKED;
 ROLLBACK;
 DROP TABLE test_nowait;

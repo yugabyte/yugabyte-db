@@ -20,3 +20,15 @@ properties:
   tserver_logs:
     description: yb-tserver log export. null = disabled.
     $ref: "./TServerLogsTelemetrySpec.yaml"
+  ysql_conn_mgr_logs:
+    description: YSQL Connection Manager log export. null = disabled.
+    $ref: "./YsqlConnMgrLogsTelemetrySpec.yaml"
+  node_agent_logs:
+    description: node-agent log export. null = disabled.
+    $ref: "./NodeAgentLogsTelemetrySpec.yaml"
+  ynp_logs:
+    description: YNP (node provisioning) log export. null = disabled.
+    $ref: "./YnpLogsTelemetrySpec.yaml"
+  controller_logs:
+    description: YB-Controller log export. null = disabled.
+    $ref: "./ControllerLogsTelemetrySpec.yaml"

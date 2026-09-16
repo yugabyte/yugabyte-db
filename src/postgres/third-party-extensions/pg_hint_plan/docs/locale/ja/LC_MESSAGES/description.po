@@ -1,46 +1,54 @@
 # LANGUAGE message translation file for pg_hint_plan description.
-# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (C) 2012-2026, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 # This file is distributed under the same license as the pg_hint_plan
 # package.
 # Julien Rouhaud <rjuju123@gmail.com>, 2023.
+# Tatsuro Yamada <yamatattsu@gmail.com>, 2023.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_hint_plan \n"
+"Project-Id-Version: pg_hint_plan\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-03-14 16:08+0800\n"
-"PO-Revision-Date: 2023-03-14 16:08+0800\n"
-"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"POT-Creation-Date: 2023-11-09 10:50+0900\n"
+"PO-Revision-Date: 2023-11-09 15:31+0900\n"
+"Last-Translator: Tatsuro Yamada <yamatattsu@gmail.com>\n"
+"Language-Team: \n"
 "Language: ja\n"
-"Language-Team: ja <LL@li.org>\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 "Generated-By: Babel 2.12.1\n"
+"X-Generator: Poedit 3.2.2\n"
 
-#: ../../description.md:1 492c2876625149a7933a40a6ca6a37bc
+#: ../../description.md:1 0082a55147374c7ab16faf346b5cde78
 msgid "Description"
-msgstr ""
+msgstr "機能説明"
 
-#: ../../description.md:3 563b48c038c24b86ac6017e6643433e6
+#: ../../description.md:3 a578f7e648784224aa5562b6c0859fe0
 msgid "Basic Usage"
-msgstr ""
+msgstr "基本的な使用方法"
 
-#: ../../description.md:5 f2442db1185c4220a8a3146eec62a7bd
+#: ../../description.md:5 3b1114e41a8e4a9a88e435ba40b8ed46
 msgid ""
 "`pg_hint_plan` reads hinting phrases in a comment of special form given "
-"with the target SQL statement. The special form is beginning by the "
-"character sequence `\"/\\*+\"` and ends with `\"\\*/\"`. Hint phrases are"
-" consists of hint name and following parameters enclosed by parentheses "
-"and delimited by spaces. Each hinting phrases can be delimited by new "
-"lines for readability."
+"a SQL statement.  A hint can be specified by prefixing it with the "
+"sequence `\"/\\*+\"` and ending it with `\"\\*/\"`.  Hint phrases "
+"consist of hint names and parameters enclosed by parentheses and "
+"delimited by whitespaces.  Hint phrases can use newlines for readability."
 msgstr ""
+"`pg_hint_plan`はSQL文に与えられた特別な形式のコメント内のヒント句を読み取"
+"ります。\n"
+"ヒントは先頭に `\"/*+\"`というシーケンスを付け、最後に `\"*/\"` を付ける"
+"ことで指定できます。\n"
+"ヒント句はヒント名とそれに続くパラメータを括弧で囲み、スペースで区切った"
+"ものです。\n"
+"ヒント句は読みやすくするために改行することができます。"
 
-#: ../../description.md:11 a1611a789c7747d5b32eddff4b33381e
+#: ../../description.md:11 4bf58e34acd743419ea82b29b6e2f6fb
 msgid ""
-"In the example below, hash join is selected as the joining method and "
-"scanning `pgbench_accounts` by sequential scan method."
+"In the example below, a hash join is selected as the join method while "
+"doing a sequential scan on `pgbench_accounts`:"
 msgstr ""
-
+"以下の例では、`pgbench_accounts` に対してシーケンシャルスキャンを行う際に"
+"結合方法としてハッシュ結合が選択されています。"

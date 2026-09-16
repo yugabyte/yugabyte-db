@@ -32,6 +32,8 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include <stdlib.h>
+
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -2664,7 +2666,15 @@ Status ExternalTabletServer::Launch(
     flags.Add(flag_value.first, flag_value.second);
   }
 
-  return StartProcess(flags.value());
+  // The standalone backends that initdb runs get no explicit port, so pre-PG12 servers derive
+  // their System V shared memory key from the compiled in default port. All tablet servers of
+  // the cluster run initdb at the same time and would then share a single key, which can make
+  // initdb fail with "pre-existing shared memory block is still in use". The child process
+  // inherits this environment, giving each of them its own key.
+  setenv("PGPORT", std::to_string(pgsql_rpc_port_).c_str(), /* overwrite */ 1);
+  auto status = StartProcess(flags.value());
+  unsetenv("PGPORT");
+  return status;
 }
 
 Status ExternalTabletServer::BuildServerStateFromInfoPath() {
@@ -2732,6 +2742,26 @@ Status ExternalTabletServer::SetNumDrives(uint16_t num_drives) {
   num_drives_ = num_drives;
   data_dirs_ = FsDataDirs(root_dir_, "tserver", num_drives_);
   return Status::OK();
+}
+
+void ExternalTabletServer::Shutdown(
+    SafeShutdown safe_shutdown, RequireExitCode0 require_exit_code_0) {
+  auto postmaster_pid = PostmasterPid();
+  ExternalDaemon::Shutdown(safe_shutdown, require_exit_code_0);
+  if (!postmaster_pid.ok()) {
+    return;
+  }
+  // Killing the tablet server does not reap postgres: it gets reparented and only exits
+  // asynchronously in response to its parent death signal. Wait for it, otherwise a following
+  // Restart() races with an orphan postmaster that still holds the YSQL port and keeps writing to
+  // the pg_data directory.
+  const auto pid = *postmaster_pid;
+  const auto pid_file = JoinPathSegments(GetRootDir(), "pg_data", "postmaster.pid");
+  WARN_NOT_OK(
+      WaitFor(
+          [pid, &pid_file] { return kill(pid, 0) != 0 || !Env::Default()->FileExists(pid_file); },
+          30s * kTimeMultiplier, Format("Waiting for postmaster $0 to exit", pid)),
+      LogPrefix() + "Postmaster did not exit");
 }
 
 Result<pid_t> ExternalTabletServer::PostmasterPid() {

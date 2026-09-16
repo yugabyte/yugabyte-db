@@ -3833,11 +3833,54 @@
   boot_val => 'true',
 },
 
+# YB: Internal GUCs written by YSQL Connection Manager on every logical
+# client attach.
+{ name => 'yb_conn_mgr_client_addr', type => 'string', context => 'PGC_USERSET', group => 'UNGROUPED',
+  short_desc => 'IP address of the logical client connected through YSQL Connection Manager.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
+  variable => 'yb_conn_mgr_client_addr',
+  boot_val => '""',
+  check_hook => 'check_yb_conn_mgr_client_addr',
+  assign_hook => 'assign_yb_conn_mgr_client_addr',
+},
+
+# YB: Internal GUCs written by YSQL Connection Manager on every logical
+# client attach.
+{ name => 'yb_conn_mgr_client_hostname', type => 'string', context => 'PGC_USERSET', group => 'UNGROUPED',
+  short_desc => 'Hostname of the logical client connected through YSQL Connection Manager.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
+  variable => 'yb_conn_mgr_client_hostname',
+  boot_val => '""',
+  check_hook => 'check_yb_conn_mgr_client_hostname',
+  assign_hook => 'assign_yb_conn_mgr_client_hostname',
+},
+
+# YB: Internal GUCs written by YSQL Connection Manager on every logical
+# client attach.
+{ name => 'yb_conn_mgr_client_port', type => 'int', context => 'PGC_USERSET', group => 'UNGROUPED',
+  short_desc => 'TCP port of the logical client connected through YSQL Connection Manager.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
+  variable => 'yb_conn_mgr_client_port',
+  boot_val => '-1',
+  min => '-1',
+  max => '65535',
+  check_hook => 'check_yb_conn_mgr_client_port',
+  assign_hook => 'assign_yb_conn_mgr_client_port',
+},
+
 { name => 'yb_conn_mgr_selective_deallocate', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
   short_desc => 'Enables connection-manager-aware DEALLOCATE behavior.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_conn_mgr_selective_deallocate',
   boot_val => 'true',
+},
+
+{ name => 'yb_db_history_retention_pin_mode', type => 'enum', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Controls which transactions pin their read snapshot for history retention.',
+  long_desc => 'A pinned read snapshot holds back the history cutoff cluster-wide, which prevents "snapshot too old" errors for long-running statements and transactions (bounded by db_history_retention_pin_max_txn_age_sec). Configure one of: (a) ddl_only: Default. Only DDL transactions publish a pin. (b) all: Both DML and DDL transactions publish a pin. (c) none: No transaction publishes a pin.',
+  variable => 'yb_db_history_retention_pin_mode',
+  boot_val => 'YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY',
+  options => 'yb_db_history_retention_pin_mode_options',
 },
 
 { name => 'yb_ddl_rollback_enabled', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
@@ -4851,7 +4894,7 @@
   short_desc => 'Show QPM maximum execution time parameter values.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_qpm_configuration.show_max_exec_params',
-  boot_val => 'false',
+  boot_val => 'true',
 },
 
 { name => 'yb_pg_stat_plans_track', type => 'enum', context => 'PGC_SUSET', group => 'QUERY_TUNING_METHOD',

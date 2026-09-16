@@ -211,15 +211,17 @@ describe('ReviewHardwareChangesModal', () => {
     expect(screen.getByText('rollingRestartDescription')).toBeInTheDocument();
   });
 
-  it('disables confirm while options are loading', () => {
+  it('shows a loading indicator and hides update options while options are loading', () => {
     renderReview({
       resizeOptions: undefined,
       isLoadingOptions: true
     });
 
     expect(screen.getByTestId('edit-hardware-confirm-and-apply')).toBeDisabled();
-    expect(screen.getByTestId('hardware-rolling-restart')).toBeDisabled();
-    expect(screen.getByTestId('hardware-migrate-nodes')).toBeDisabled();
+    expect(screen.getByTestId('hardware-resize-options-loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('hardware-rolling-restart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hardware-migrate-nodes')).not.toBeInTheDocument();
+    expect(screen.queryByText('universeUpdateOptions')).not.toBeInTheDocument();
   });
 
   it('disables confirm when no options are available', () => {

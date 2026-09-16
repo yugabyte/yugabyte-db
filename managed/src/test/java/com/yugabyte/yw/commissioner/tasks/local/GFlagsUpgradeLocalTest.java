@@ -87,7 +87,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
       List.of("vector_index_backend", "limit_auto_flag_promote_for_new_universe");
   private static final List<String> TSERVER_INVALID_GFLAGS_CAUGHT_BOTH_PATHS =
       List.of("rpc_throttle_threshold_bytes", "vmodule");
-    // CLI uses old DB version, so these flag validations not caught.
+  // CLI uses old DB version, so these flag validations not caught.
   private static final List<String> TSERVER_INVALID_GFLAGS_CAUGHT_RPC_ONLY =
       List.of("enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled");
 
@@ -176,6 +176,12 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     runConfValidationPrecheckOnUniverse(universe);
   }
 
+  // A real released version >= 2024.2.0.0/2.25.0.0, the threshold below which
+  // use_memory_defaults_optimized_for_ysql is not defaulted to true for new universes.
+  private static final String ELIGIBLE_DB_VERSION = "2024.2.3.0-b116";
+  private static final String ELIGIBLE_DB_VERSION_URL =
+      "https://software.yugabyte.com/releases/2024.2.3.0/yugabyte-2024.2.3.0-b116-%s-%s.tar.gz";
+
   @Test
   public void testNonRestartAndNonRollingUpgrade() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
@@ -208,6 +214,33 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
     verifyYSQL(universe);
+  }
+
+  // PLAT-21736: Master and TServer must agree on use_memory_defaults_optimized_for_ysql, since
+  // they use it to negotiate available memory on a node. This gflag is only defaulted to true
+  // for new universes on DB versions >= 2024.2.0.0/2.25.0.0, so pin an eligible version here
+  // rather than relying on whichever build the local test harness happens to run.
+  @Test
+  public void testNewUniverseSetsMemoryDefaultsOptimizedForYsql() throws InterruptedException {
+    addRelease(ELIGIBLE_DB_VERSION, ELIGIBLE_DB_VERSION_URL);
+    localNodeManager.addVersionBinPath(
+        ELIGIBLE_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + ELIGIBLE_DB_VERSION + "/bin");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.ybSoftwareVersion = ELIGIBLE_DB_VERSION;
+    Universe universe = createUniverse(userIntent);
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    NodeDetails node = universe.getNodesByCluster(primaryCluster.uuid).get(0);
+
+    assertEquals(
+        "true",
+        getVarz(node, universe, UniverseTaskBase.ServerType.MASTER)
+            .get("use_memory_defaults_optimized_for_ysql"));
+    assertEquals(
+        "true",
+        getVarz(node, universe, UniverseTaskBase.ServerType.TSERVER)
+            .get("use_memory_defaults_optimized_for_ysql"));
   }
 
   @Test
@@ -846,11 +879,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     addRelease(CLI_VALIDATION_DB_VERSION, CLI_VALIDATION_DB_VERSION_URL);
     addRelease(BATCH_RPC_VALIDATION_DB_VERSION, BATCH_RPC_VALIDATION_DB_VERSION_URL);
     localNodeManager.addVersionBinPath(
-        CLI_VALIDATION_DB_VERSION,
-        baseDir + "/yugabyte/yugabyte-" + CLI_VALIDATION_DB_VERSION + "/bin");
+        CLI_VALIDATION_DB_VERSION, deriveYBBinPath(CLI_VALIDATION_DB_VERSION));
     localNodeManager.addVersionBinPath(
-        BATCH_RPC_VALIDATION_DB_VERSION,
-        baseDir + "/yugabyte/yugabyte-" + BATCH_RPC_VALIDATION_DB_VERSION + "/bin");
+        BATCH_RPC_VALIDATION_DB_VERSION, deriveYBBinPath(BATCH_RPC_VALIDATION_DB_VERSION));
     runtimeConfService.setKey(
         customer.getUuid(),
         ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
@@ -905,7 +936,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     if (!expectUseCLIBinary) {
       for (String flagName : TSERVER_INVALID_GFLAGS_CAUGHT_RPC_ONLY) {
         assertThat(
-            "Expected tserver validation error for " + flagName + " via batch RPC on version "
+            "Expected tserver validation error for "
+                + flagName
+                + " via batch RPC on version "
                 + dbVersion,
             errors,
             containsString(flagName));

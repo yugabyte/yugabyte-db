@@ -56,6 +56,7 @@ TestSpec		parseresult;			/* result of parsing is left here */
 %token <str> sqlblock identifier
 %token <integer> INTEGER
 %token NOTICES PERMUTATION SESSION SETUP STEP TEARDOWN TEST
+%token YB_NEVER_WAITS
 
 %%
 
@@ -159,7 +160,6 @@ step:
 				$$->used = false;
 			}
 		;
-
 
 opt_permutation_list:
 			permutation_list
@@ -273,6 +273,15 @@ blocker:
 				$$ = pg_malloc_object(PermutationStepBlocker);
 				$$->stepname = NULL;
 				$$->blocktype = PSB_ONCE;
+				$$->num_notices = -1;
+				$$->step = NULL;
+				$$->target_notices = -1;
+			}
+			| YB_NEVER_WAITS
+			{
+				$$ = pg_malloc(sizeof(PermutationStepBlocker));
+				$$->stepname = NULL;
+				$$->blocktype = PSB_YB_NEVER_WAITS;
 				$$->num_notices = -1;
 				$$->step = NULL;
 				$$->target_notices = -1;

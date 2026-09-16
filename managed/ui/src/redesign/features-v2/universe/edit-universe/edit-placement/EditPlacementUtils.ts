@@ -78,18 +78,31 @@ export const getResilienceAndRegionsProps = (
     
   }
 
-  // Expert form uses raw RF and AZ/REGION FT — not guided NODE_LEVEL collapse.
-  if (resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
-    return {
-      ...toExpertResilienceForDefaults(resilience),
-      resilienceFactor: clusterReplicationFactor
-    };
-  }
+  const guidedSupported =
+    resilienceFormMode === ResilienceFormMode.GUIDED
+      ? isCurrentConfigSupportedByGuidedMode(
+          resilience,
+          getNodesAvailabilityDefaultsForEditPlacement(universeData, selectedPartitionUUID)
+        ).isSupported
+      : false;
+  const effectiveFormMode =
+    resilienceFormMode === ResilienceFormMode.GUIDED && !guidedSupported
+      ? ResilienceFormMode.EXPERT_MODE
+      : resilienceFormMode;
 
-  return {
-    ...resilience,
-    resilienceFormMode
-  };
+  // Expert form uses raw RF and AZ/REGION FT — not guided NODE_LEVEL collapse.
+  const result =
+    effectiveFormMode === ResilienceFormMode.EXPERT_MODE
+      ? {
+          ...toExpertResilienceForDefaults(resilience),
+          resilienceFactor: clusterReplicationFactor
+        }
+      : {
+          ...resilience,
+          resilienceFormMode: effectiveFormMode
+        };
+
+  return result;
 };
 
 /** Defaults for edit-placement nodes step (honors dedicated nodes and geo partition/default partition placement). */
@@ -177,6 +190,29 @@ export const buildPrimaryPlacementEditPayload = (
     placementSpec: buildPlacementSpecFromRegionList(primaryCluster.placement_spec, regionList)
   };
 };
+
+/** Payload shape used to detect no-op placement edits (matches submit path). */
+export function buildPlacementEditComparePayload(
+  universeData: Universe,
+  resilience: ResilienceAndRegionsProps,
+  nodesAndAvailability: NodeAvailabilityProps | undefined,
+  selectedPartitionUUID?: string
+) {
+  if (selectedPartitionUUID) {
+    return buildGeoPartitionPlacementEditPayload(
+      universeData,
+      selectedPartitionUUID,
+      resilience,
+      nodesAndAvailability
+    );
+  }
+  return {
+    ...buildPrimaryPlacementEditPayload(universeData, resilience, nodesAndAvailability),
+    num_nodes: nodesAndAvailability
+      ? getNodeCount(nodesAndAvailability.availabilityZones)
+      : undefined
+  };
+}
 
 export const buildGeoPartitionPlacementEditPayload = (
   universeData: Universe,

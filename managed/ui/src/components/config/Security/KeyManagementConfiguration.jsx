@@ -9,7 +9,8 @@ import {
   YBButton,
   YBFormSelect,
   YBCheckBox,
-  YBFormDropZone
+  YBFormDropZone,
+  YBFormToggle
 } from '../../common/forms/fields';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -28,6 +29,8 @@ import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
 import { RuntimeConfigKey, YBAHost } from '../../../redesign/helpers/constants';
+
+import './KeyManagementConfiguration.scss';
 
 const awsRegionList = AWS_REGIONS.map((region, index) => {
   return {
@@ -130,6 +133,7 @@ const DEFAULT_FORM_DATA = {
   AZU_KEY_ALGORITHM: DEFAULT_AZU_PROTECTION_ALGO,
   AZU_KEY_SIZE: DEFAULT_KEY_SIZE,
   ociAuthType: DEFAULT_OCI_AUTH_OPTION,
+  editOciPrivateKey: false,
   ciphertrustAuthType: DEFAULT_CIPHERTRUST_AUTH_OPTION,
   cipherTrustKeyAlgorithm: DEFAULT_CIPHERTRUST_KEY_ALGORITHM_OPTION,
   cipherTrustKeySize:
@@ -250,14 +254,23 @@ class KeyManagementConfiguration extends Component {
       };
 
       switch (kmsProvider.value) {
-        case KmsProvider.OCI:
-  if (isFieldModified('OCI_CONFIG_FILE')) {
-    data['OCI_CONFIG_FILE'] = values.OCI_CONFIG_FILE;
-  }
-  if (isFieldModified('OCI_CONFIG_PROFILE')) {
-    data['OCI_CONFIG_PROFILE'] = values.OCI_CONFIG_PROFILE;
-  }
-  break;
+        case KmsProvider.OCI: {
+          if (isFieldModified('TENANCY_OCID')) data['ociTenancyId'] = values.TENANCY_OCID;
+          if (isFieldModified('USER_OCID')) data['ociUserId'] = values.USER_OCID;
+          if (isFieldModified('FINGERPRINT')) data['ociFingerprint'] = values.FINGERPRINT;
+          if (isFieldModified('OCI_COMPARTMENT_OCID')) {
+            data['ociCompartmentId'] = values.OCI_COMPARTMENT_OCID;
+          }
+
+          if (values.editOciPrivateKey && values.PRIVATE_KEY) {
+            readUploadedFile(values.PRIVATE_KEY).then((privateKeyContent) => {
+              data['ociPrivateKeyContent'] = privateKeyContent;
+              updateConfig(data);
+            });
+            return;
+          }
+          break;
+        }
         case KmsProvider.AWS:
           if (values.AWS_KMS_ENDPOINT) data['AWS_KMS_ENDPOINT'] = values.AWS_KMS_ENDPOINT;
 
@@ -358,22 +371,26 @@ class KeyManagementConfiguration extends Component {
       };
 
       switch (kmsProvider.value) {
-        case KmsProvider.OCI:{
-  const ociAuthType = values.ociAuthType?.value ?? OciKmsAuthType.API_KEY;
-  data['ociAuthType'] = ociAuthType;
-  if (ociAuthType === OciKmsAuthType.API_KEY) {
-  data['ociTenancyId'] = values.TENANCY_OCID;
-  data['ociUserId'] = values.USER_OCID;
-  data['ociFingerprint'] = values.FINGERPRINT;
-  data['ociPrivateKeyContent'] = values.PRIVATE_KEY;
-  }
-  
-  data['ociRegion'] = values.OCI_REGION.value;
-  data['ociCompartmentId'] = values.OCI_COMPARTMENT_OCID;
-  data['ociVaultId'] = values.OCI_VAULT_OCID;
-  data['ociKeyName'] = values.OCI_KEY_NAME;
-  break;
-}
+        case KmsProvider.OCI: {
+          const ociAuthType = values.ociAuthType?.value ?? OciKmsAuthType.API_KEY;
+          data['ociAuthType'] = ociAuthType;
+          data['ociRegion'] = values.OCI_REGION.value;
+          data['ociCompartmentId'] = values.OCI_COMPARTMENT_OCID;
+          data['ociVaultId'] = values.OCI_VAULT_OCID;
+          data['ociKeyName'] = values.OCI_KEY_NAME;
+
+          if (ociAuthType === OciKmsAuthType.API_KEY) {
+            data['ociTenancyId'] = values.TENANCY_OCID;
+            data['ociUserId'] = values.USER_OCID;
+            data['ociFingerprint'] = values.FINGERPRINT;
+            readUploadedFile(values.PRIVATE_KEY).then((privateKeyContent) => {
+              data['ociPrivateKeyContent'] = privateKeyContent;
+              createConfig(data);
+            });
+            return;
+          }
+          break;
+        }
         case KmsProvider.AWS:
           if (values.AWS_KMS_ENDPOINT) data['AWS_KMS_ENDPOINT'] = values.AWS_KMS_ENDPOINT;
 
@@ -1294,7 +1311,6 @@ getOciForm = (values) => {
                 component={YBFormInput}
                 placeholder={'ocid1.user.oc1..aaaaaaa...'}
                 className={'kube-provider-input-field'}
-                disabled={isEdit}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
@@ -1315,7 +1331,6 @@ getOciForm = (values) => {
                 component={YBFormInput}
                 placeholder={'ocid1.tenancy.oc1..aaaaaaa...'}
                 className={'kube-provider-input-field'}
-                disabled={isEdit}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
@@ -1336,7 +1351,6 @@ getOciForm = (values) => {
                 component={YBFormInput}
                 placeholder={'20:3b:97:13:55:1c:...'}
                 className={'kube-provider-input-field'}
-                disabled={isEdit}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
@@ -1347,26 +1361,84 @@ getOciForm = (values) => {
             </Col>
           </Row>
 
-          <Row className="config-provider-row" key={'private-key-field'}>
-            <Col lg={3}>
-              <div className="form-item-custom-label">Private Key</div>
-            </Col>
-            <Col lg={7}>
-              <Field
-                name={'PRIVATE_KEY'}
-                component={YBFormInput}
-                placeholder={'-----BEGIN PRIVATE KEY-----...'}
-                className={'kube-provider-input-field'}
-                disabled={isEdit}
-              />
-            </Col>
-            <Col lg={1} className="config-zone-tooltip">
-              <YBInfoTip
-                title="Private Key"
-                content="Private key that will be used for authentication with the OCI "
-              />
-            </Col>
-          </Row>
+          {isEdit ? (
+            <>
+              <Row className="config-provider-row" key={'current-private-key-field'}>
+                <Col lg={3}>
+                  <div className="form-item-custom-label">Current Private Key</div>
+                </Col>
+                <Col lg={7}>
+                  <Field
+                    name={'CURRENT_PRIVATE_KEY'}
+                    component={YBFormInput}
+                    className={'kube-provider-input-field'}
+                    disabled={true}
+                  />
+                </Col>
+                <Col lg={1} className="config-zone-tooltip">
+                  <YBInfoTip
+                    title="Current Private Key"
+                    content="Masked value of the private key currently configured for this KMS config."
+                  />
+                </Col>
+              </Row>
+
+              <Row className="config-provider-row" key={'change-private-key-field'}>
+                <Col lg={3}>
+                  <div className="form-item-custom-label">Change Private Key</div>
+                </Col>
+                <Col lg={7}>
+                  <Field name={'editOciPrivateKey'} component={YBFormToggle} />
+                </Col>
+                <Col lg={1} className="config-zone-tooltip">
+                  <YBInfoTip
+                    title="Change Private Key"
+                    content="Enable to upload a new PEM private key file for this KMS config."
+                  />
+                </Col>
+              </Row>
+
+              {values?.editOciPrivateKey && (
+                <Row className="config-provider-row" key={'private-key-field'}>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Private Key</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field
+                      name={'PRIVATE_KEY'}
+                      component={YBFormDropZone}
+                      title={'Upload API Private Key PEM File'}
+                    />
+                  </Col>
+                  <Col lg={1} className="config-zone-tooltip">
+                    <YBInfoTip
+                      title="Private Key"
+                      content="PEM private key file that will be used for authentication with the OCI KMS service."
+                    />
+                  </Col>
+                </Row>
+              )}
+            </>
+          ) : (
+            <Row className="config-provider-row" key={'private-key-field'}>
+              <Col lg={3}>
+                <div className="form-item-custom-label">Private Key</div>
+              </Col>
+              <Col lg={7}>
+                <Field
+                  name={'PRIVATE_KEY'}
+                  component={YBFormDropZone}
+                  title={'Upload API Private Key PEM File'}
+                />
+              </Col>
+              <Col lg={1} className="config-zone-tooltip">
+                <YBInfoTip
+                  title="Private Key"
+                  content="PEM private key file that will be used for authentication with the OCI KMS service."
+                />
+              </Col>
+            </Row>
+          )}
         </>
       )}
 
@@ -1401,7 +1473,6 @@ getOciForm = (values) => {
             component={YBFormInput}
             placeholder={'ocid1.compartment.oc1..aaaaaaa...'}
             className={'kube-provider-input-field'}
-            disabled={isEdit}
           />
         </Col>
         <Col lg={1} className="config-zone-tooltip">
@@ -1528,6 +1599,19 @@ getOciForm = (values) => {
       formData.ociAuthType =
         OCI_AUTH_OPTIONS.find((authOption) => authOption.value === credentials.ociAuthType) ??
         DEFAULT_OCI_AUTH_OPTION;
+      formData.USER_OCID = credentials.ociUserId;
+      formData.TENANCY_OCID = credentials.ociTenancyId;
+      formData.FINGERPRINT = credentials.ociFingerprint;
+      formData.CURRENT_PRIVATE_KEY = credentials.ociPrivateKeyContent;
+      formData.editOciPrivateKey = false;
+      formData.OCI_COMPARTMENT_OCID = credentials.ociCompartmentId;
+      formData.OCI_VAULT_OCID = credentials.ociVaultId;
+      formData.OCI_KEY_NAME = credentials.ociKeyName;
+      if (credentials.ociRegion) {
+        formData.OCI_REGION = OCI_KMS_Region.find(
+          (region) => region.value === credentials.ociRegion
+        );
+      }
     }
 
     if (provider === KmsProvider.CIPHERTRUST) {
@@ -1811,11 +1895,20 @@ getOciForm = (values) => {
         cipherTrustKeySize: Yup.object().when('kmsProvider', {
           is: (provider) => provider?.value === KmsProvider.CIPHERTRUST,
           then: Yup.object().required('Key size is Required')
+        }),
+
+        // OCI KMS
+        PRIVATE_KEY: Yup.mixed().when(['kmsProvider', 'ociAuthType', 'editOciPrivateKey'], {
+          is: (provider, ociAuthType, editOciPrivateKey) =>
+            provider?.value === KmsProvider.OCI &&
+            ociAuthType?.value === OciKmsAuthType.API_KEY &&
+            (!isEdit || editOciPrivateKey),
+          then: Yup.mixed().required('Private Key is Required')
         })
       });
 
       return (
-        <div className="provider-config-container">
+        <div className="provider-config-container kms-config-form">
           <Formik
             initialValues={formData}
             validationSchema={validationSchema}

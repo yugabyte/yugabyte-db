@@ -79,17 +79,28 @@ To understand the impact of collations, see [Collations](../../explore/ysql-lang
 
 ## DDL
 
-### Catalog Version Mismatch: A DDL occurred while processing this query
+### Catalog version mismatch: A DDL occurred while processing this query
 
-When executing queries in the YSQL layer, the query may fail with the following error:
+When executing queries in the YSQL layer, a query may fail with an error similar to the following:
 
 ```output
-org.postgresql.util.PSQLException: ERROR: Catalog Version Mismatch: A DDL occurred while processing this query. Try Again
+ERROR:  The catalog snapshot used for this transaction has been invalidated: expected: 15552, got: 15550: MISMATCHED_SCHEMA
 ```
 
-A DML query in YSQL may touch multiple servers, and each server has a Catalog Version which is used to track schema changes. When a DDL statement runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
+This means a breaking DDL (a schema or cluster-wide change, such as `ALTER ROLE` or `REVOKE`) committed on another connection while this query was running. The database aborts the query and returns SQLSTATE [40001](../../develop/learn/transactions/transactions-errorcodes-ysql/#40001-serialization-failure), which is always safe to retry.
 
-In these cases, the database aborts the query and returns a `40001` PostgreSQL error code. Errors with this code can be safely retried from the client side.
+YSQL already attempts to [retry](../../develop/learn/transactions/transactions-retries-ysql/#automatic-retries) some `40001` errors, including this one, transparently on your behalf for plain DML (`SELECT`/`INSERT`/`UPDATE`/`DELETE`) statements. DDL statements are not retried automatically. If you still see this error, retry the statement or transaction from the client.
+
+Most common database-level DDL, such as `CREATE TABLE`, `ALTER TABLE`, or `DROP TABLE`, do not cause this error on their own, because they are not usually breaking DDL (DDL event triggers can sometimes cause exceptions to this rule). It's typically caused by a change with cluster-wide effect, such as a role or tablespace change.
+
+To find which statement caused the mismatch, check the PostgreSQL log on the node that ran the DDL for a line similar to:
+
+```output
+LOG:  MaybeLogNewSQLIncrementCatalogVersion: incrementing all master db catalog versions (breaking) with inval messages, new version for database 13537 is 2
+DETAIL:  Local version: 1, node tag: ALTER ROLE.
+```
+
+The `node tag` names the statement that produced the new version.
 
 ## ysql_dump
 

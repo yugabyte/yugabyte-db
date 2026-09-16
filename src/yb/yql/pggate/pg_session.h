@@ -186,6 +186,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   Status SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options);
 
+  void SetupDeferReadPointOptionForSeparateDdlTxn(tserver::PgPerformOptionsPB* options) const;
+
   void SetTransactionHasWrites();
   Result<bool> CurrentTransactionUsesFastPath() const;
 
@@ -311,8 +313,11 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
 template<class PB>
 Status SetupPerformOptionsForDdlIfNeeded(PgSession& session, PB& req) {
-  return req.use_regular_transaction_block() ?
-    session.SetupPerformOptionsForDdl(req.mutable_options()) : Status::OK();
+  if (req.use_regular_transaction_block()) {
+    return session.SetupPerformOptionsForDdl(req.mutable_options());
+  }
+  session.SetupDeferReadPointOptionForSeparateDdlTxn(req.mutable_options());
+  return Status::OK();
 }
 
 }  // namespace yb::pggate

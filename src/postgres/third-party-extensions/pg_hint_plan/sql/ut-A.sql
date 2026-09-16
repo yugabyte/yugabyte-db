@@ -77,39 +77,21 @@ SET pg_hint_plan.enable_hint_table TO on;
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 -- No. A-6-2-1
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
-	'',
-	'SeqScan(t1)');
+SELECT get_query_id('SELECT * FROM s1.t1 WHERE t1.c1 = 1;') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+	VALUES (:'query_id', '', 'SeqScan(t1)');
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-6-2-2
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
-	'psql',
-	'BitmapScan(t1)');
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+	VALUES (:'query_id', 'dummy_application_name', 'SeqScan(t1)');
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 TRUNCATE hint_plan.hints;
 
 -- No. A-6-2-3
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
-	'dummy_application_name',
-	'SeqScan(t1)'
-);
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-TRUNCATE hint_plan.hints;
-
--- No. A-6-2-4
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT * FROM s1.t1;',
-	'',
-	'SeqScan(t1)'
-);
+SELECT get_query_id('SELECT * FROM s1.t1;') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+	VALUES (:'query_id', '', 'SeqScan(t1)');
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 TRUNCATE hint_plan.hints;
 
@@ -118,32 +100,23 @@ TRUNCATE hint_plan.hints;
 ----
 
 -- No. A-6-3-1
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT c1 FROM s1.t1;',
-	'',
-	'SeqScan(t1)'
-);
+SELECT get_query_id('SELECT c1 FROM s1.t1;') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+	VALUES (:'query_id', '', 'SeqScan(t1)');
 EXPLAIN (COSTS false) SELECT c1 FROM s1.t1;
 TRUNCATE hint_plan.hints;
 
 -- No. A-6-3-2
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
-	'',
-	'SeqScan(t1)'
-);
+SELECT get_query_id('SELECT * FROM s1.t1 WHERE t1.c1 = 1;') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+	VALUES (:'query_id', '', 'SeqScan(t1)');
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 TRUNCATE hint_plan.hints;
 
 -- No. A-6-3-3
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ? OR t1.c1 = ?;',
-	'',
-	'SeqScan(t1)'
-);
+SELECT get_query_id('SELECT * FROM s1.t1 WHERE t1.c1 = 1 OR t1.c1 = 2') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+	VALUES (:'query_id', '', 'SeqScan(t1)');
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 OR t1.c1 = 0;
 TRUNCATE hint_plan.hints;
 SET pg_hint_plan.enable_hint_table TO off;
@@ -708,11 +681,9 @@ SHOW pg_hint_plan.parse_messages;
 ---- No. A-8-5 original GUC parameter pg_hint_plan.enable_hint_table
 ----
 
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-	VALUES (
-	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
-	'',
-	'SeqScan(t1)');
+SELECT get_query_id('SELECT * FROM s1.t1 WHERE t1.c1 = 1;') AS query_id \gset
+INSERT INTO hint_plan.hints (query_id, application_name, hints)
+	VALUES (:'query_id', '', 'SeqScan(t1)');
 
 -- No. A-8-5-1
 SET pg_hint_plan.enable_hint_table TO on;
@@ -955,15 +926,9 @@ SHOW pg_hint_plan.debug_print;
 ----
 
 -- No. A-11-5-1
-SELECT pg_stat_statements_reset();
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+Set(enable_seqscan off)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+SeqScan(t1)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-SELECT s.query, s.calls
-  FROM public.pg_stat_statements s
-  JOIN pg_catalog.pg_database d
-    ON (s.dbid = d.oid)
- ORDER BY 1;
 
 ----
 ---- No. A-12-1 reset of global variable of core at the error
@@ -1163,6 +1128,13 @@ $$ LANGUAGE SQL IMMUTABLE;
 -- on the following hint. pg_hint_plan shows the log for the function
 -- but the resulting explain output doesn't contain the corresponding
 -- plan.
+--
+-- Note that since PostgreSQL 18 (commit 0dca5d68d7be), SQL functions
+-- use the plan cache.  Hence, the IndexScan of recall_planner() can be
+-- reported the first time the function is run, but not afterwards
+-- as no more planning happens.  The output of the plans is unchanged,
+-- with the IndexScan hint still taking effect based on the plan cached
+-- during the first query run.
 /*+HashJoin(t_1 t_2)*/
 EXPLAIN (COSTS false)
  SELECT recall_planner() FROM s1.t1 t_1

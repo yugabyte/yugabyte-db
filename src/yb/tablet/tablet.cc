@@ -759,7 +759,9 @@ Tablet::Tablet(const TabletInitData& data)
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
-      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
+      schedule_tablet_metadata_validation_(
+          std::move(data.schedule_tablet_metadata_validation)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -1418,12 +1420,15 @@ void Tablet::RegularDbFilesChanged() {
   }
 }
 
-void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
+void Tablet::SetCleanupPool(
+    ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
+  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+
   if (!transaction_participant_) {
     return;
   }
 
-  cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  cleanup_intent_files_token_ = intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   CleanupIntentFiles();
 }
@@ -1704,6 +1709,8 @@ bool Tablet::StartShutdown(
   // pause.
   TEST_SYNC_POINT("Tablet::StartShutdown");
 
+  snapshots_->StartShutdown();
+
   // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
   // operations below: otherwise a poll could submit a transaction status update operation against
   // the paused tablet and fail with a non-shutdown status, tripping a DFATAL. See issue #32211.
@@ -1752,6 +1759,7 @@ void Tablet::CompleteShutdown() {
   LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
       << "CompleteShutdown called without a preceding StartShutdown";
 
+  snapshots_->CompleteShutdown();
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
@@ -1848,19 +1856,15 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     }
   }
 
-  if (abort_ops) {
-    abort_pending_op_status_holder_.SetError(
-        STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix()));
-  }
+  // Abort in-flight operations polling the abort source (e.g. iterators), so the pause below
+  // does not wait for their natural completion. Clearing the signal on return is safe: both
+  // counters are drained and disabled by then.
+  auto abort_scope = abort_ops
+      ? std::make_optional(abort_pending_op_source_.Abort(
+            STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix())))
+      : std::nullopt;
 
   op_pauses.not_blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kFalse);
-
-  if (abort_ops) {
-    // Clean aborted status after all pending operations have been completed.
-    // This is necessary for the cases when we want to start rocksdb again for the tablet, for
-    // example after truncate or restore.
-    abort_pending_op_status_holder_.Reset();
-  }
 
   return op_pauses;
 }
@@ -2627,7 +2631,9 @@ Status Tablet::Flush(
   ScopedRWOperation pending_op;
   if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
     pending_op = CreateScopedRWOperationBlockingRocksDbShutdownStart();
-    LOG_IF(DFATAL, !pending_op.ok())
+    // A background flush (e.g. from TabletMemoryManager) legitimately races with shutdown of the
+    // tablet it picked, and its caller just logs the returned error.
+    LOG_IF(DFATAL, !pending_op.ok() && !IsShutdownRequested())
         << "CreateScopedRWOperationBlockingRocksDbShutdownStart failed";
     RETURN_NOT_OK(pending_op);
   }
@@ -2924,20 +2930,22 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 Status Tablet::SetAllCDCRetentionBarriersUnlocked(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
     HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
-    HybridTime min_start_ht_cdc_unstreamed_txns) {
+    HybridTime min_start_ht_cdc_unstreamed_txns,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   // WAL, History, Intents Retention
   RETURN_NOT_OK(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
                                                       cdc_sdk_intents_op_id,
                                                       cdc_sdk_history_cutoff,
                                                       require_history_cutoff,
-                                                      initial_retention_barrier));
+                                                      initial_retention_barrier,
+                                                      barrier_move_selector));
   // Intents Retention setting on txn_participant
   // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
   // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
   // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
-  if (txn_participant) {
+  if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id && txn_participant) {
     VLOG_WITH_PREFIX_AND_FUNC(1)
         << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
@@ -2956,14 +2964,16 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
 // retention barrier
 Status Tablet::SetAllInitialCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "CDC Retention barrier initialization request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
 
   cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
-  if (log && log->cdc_min_replicated_index() > cdc_wal_index) {
+  if (barrier_move_selector.move_cdc_min_replicated_index && log &&
+      log->cdc_min_replicated_index() > cdc_wal_index) {
     log->set_cdc_min_replicated_index(cdc_wal_index);
   }
   auto intent_retention_duration =
@@ -2974,7 +2984,7 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
   return SetAllCDCRetentionBarriersUnlocked(
       cdc_wal_index, cdc_sdk_intents_op_id, intent_retention_duration, cdc_sdk_history_cutoff,
       require_history_cutoff, true /* initial_retention_barrier */,
-      min_start_ht_cdc_unstreamed_txns);
+      min_start_ht_cdc_unstreamed_txns, barrier_move_selector);
 }
 
 // This is called From ChangeMetadaOperation::Apply during the
@@ -3006,7 +3016,7 @@ Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
 Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
     MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff) {
+    bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "Move forward CDC Retention barrier request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
@@ -3021,7 +3031,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
       FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) {
     VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
 
-    if (log) {
+    if (barrier_move_selector.move_cdc_min_replicated_index && log) {
       log->set_cdc_min_replicated_index(cdc_wal_index);
     }
 
@@ -3030,7 +3040,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     RETURN_NOT_OK(SetAllCDCRetentionBarriersUnlocked(
         cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
         require_history_cutoff, false /* initial_retention_barrier */,
-        min_start_ht_cdc_unstreamed_txns));
+        min_start_ht_cdc_unstreamed_txns, barrier_move_selector));
     return true;
   } else {
     VLOG_WITH_PREFIX(1) << "Revision of CDC retention barriers is currently blocked";
@@ -3105,6 +3115,11 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
         *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
   }
 
+  // Analogous to ScheduleValidation on tablet open for non-colocated index tablets.
+  if (schedule_tablet_metadata_validation_) {
+    schedule_tablet_metadata_validation_(*metadata_);
+  }
+
   return Status::OK();
 }
 
@@ -3137,9 +3152,10 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
   return Status::OK();
 }
 
-Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
+Status Tablet::MarkBackfillDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
-  auto status = metadata_->OnBackfillDone(op_id, table_id);
+  auto status = metadata_->OnBackfillDone(op_id, table_id, birth_time);
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
     return status;
@@ -4125,9 +4141,7 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
 
 ScopedRWOperation Tablet::CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
     const CoarseTimePoint deadline) const {
-  return ScopedRWOperation(
-      &pending_op_counter_not_blocking_rocksdb_shutdown_start_, abort_pending_op_status_holder_,
-      deadline);
+  return ScopedRWOperation(&pending_op_counter_not_blocking_rocksdb_shutdown_start_, deadline);
 }
 
 ScopedRWOperation Tablet::CreateScopedRWOperationBlockingRocksDbShutdownStart(
@@ -5940,6 +5954,12 @@ Result<RetrieveFullDocKeyResult> RetrieveFullDocKey(
 
   for (; data_entry.Valid(); data_entry = MoveIterator<direction>(data_iter)) {
     VLOG_WITH_FUNC(2) << log_prefix << "data_entry.key: " << data_entry.key.ToDebugHexString();
+    if (direction == Direction::kBackward && !end_bound.empty() && data_entry.key < end_bound) {
+      // The doc key prefix of data_entry.key is also below end_bound, so nothing left to return.
+      // RocksDB records of the doc key equal to end_bound sort above it (they have a hybrid time
+      // suffix) and are excluded by the decoded key check below.
+      return RetrieveFullDocKeyResult::kReachedEnd;
+    }
     // Use encoded doc key to avoid breaking data related to the same row into halves.
     const auto doc_key_size_result =
         dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
@@ -6219,6 +6239,13 @@ Status Tablet::GetTabletKeyRanges(
 
   RSTATUS_DCHECK(
       use_empty_as_last_key.has_value(), InternalError, "use_empty_as_last_key is not set");
+
+  // Regular DB metadata records (see IsRegularDBMetaKeyType) sort before all user table rows and
+  // are not valid doc keys, so start from the minimum possible table row key instead.
+  const Slice table_rows_start(&dockv::kMinRegularDbTableRowFirstByte, 1);
+  if (lower_bound_key < table_rows_start) {
+    lower_bound_key = table_rows_start;
+  }
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
                                << " upper_bound_key: " << upper_bound_key.ToDebugHexString()

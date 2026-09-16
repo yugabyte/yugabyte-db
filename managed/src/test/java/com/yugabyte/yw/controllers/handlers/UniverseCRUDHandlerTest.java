@@ -575,6 +575,77 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     assertNull(azOverrides.get(az2.getUuid()));
   }
 
+  // PLAT-21736: use_memory_defaults_optimized_for_ysql must be set on both Master and TServer,
+  // since the two processes rely on agreeing on this flag to negotiate available memory.
+  @Test
+  public void maybeSetNewInstallGflags_setsMemoryFlagOnBothMasterAndTserver() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", false, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    Map<String, String> masterFlags = universe.getNewInstallGFlags(ServerType.MASTER);
+    Map<String, String> tserverFlags = universe.getNewInstallGFlags(ServerType.TSERVER);
+    assertEquals("true", masterFlags.get("use_memory_defaults_optimized_for_ysql"));
+    assertEquals("true", tserverFlags.get("use_memory_defaults_optimized_for_ysql"));
+    // Sanity check the sibling flags from the same eligibility bucket are still master-only.
+    assertEquals("true", masterFlags.get("enforce_tablet_replica_limits"));
+    assertEquals("true", masterFlags.get("split_respects_tablet_replica_limits"));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagWhenYsqlDisabled() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", false, false);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    Map<String, String> masterFlags = universe.getNewInstallGFlags(ServerType.MASTER);
+    Map<String, String> tserverFlags = universe.getNewInstallGFlags(ServerType.TSERVER);
+    assertTrue(!masterFlags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    assertTrue(!tserverFlags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    // Non-memory flags in this bucket are unaffected by enableYSQL.
+    assertEquals("true", masterFlags.get("enforce_tablet_replica_limits"));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagBelowVersionThreshold() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.1.0.0", false, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    assertTrue(universe.getNewInstallGFlags(ServerType.MASTER).isEmpty());
+    assertTrue(universe.getNewInstallGFlags(ServerType.TSERVER).isEmpty());
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagForDedicatedNodes() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", true, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    assertTrue(
+        !universe
+            .getNewInstallGFlags(ServerType.MASTER)
+            .containsKey("use_memory_defaults_optimized_for_ysql"));
+    assertTrue(
+        !universe
+            .getNewInstallGFlags(ServerType.TSERVER)
+            .containsKey("use_memory_defaults_optimized_for_ysql"));
+  }
+
+  private Cluster newInstallGflagsCluster(
+      String ybSoftwareVersion, boolean dedicatedNodes, boolean enableYSQL) {
+    UserIntent userIntent = testIntent();
+    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    userIntent.dedicatedNodes = dedicatedNodes;
+    userIntent.enableYSQL = enableYSQL;
+    userIntent.providerType = Common.CloudType.aws;
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
   private UniverseConfigureTaskParams buildConfigureTaskParams(
       boolean dedicatedNodes, boolean setMasterDeviceInfo, boolean setMasterInstanceType) {
     UserIntent userIntent = new UserIntent();

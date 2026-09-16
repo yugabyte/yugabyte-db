@@ -57,7 +57,9 @@
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/ip.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
+#include "common/string.h"
 #include "executor/ybModifyTable.h"
 #include "libpq/libpq-be.h"
 #include "optimizer/cost.h"
@@ -67,6 +69,7 @@
 #include "replication/walsender.h"
 #include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
+#include "utils/backend_status.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -75,6 +78,7 @@
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
+#include <netdb.h>
 
 #define CONFIG_FILENAME "postgresql.conf"
 #define HBA_FILENAME	"pg_hba.conf"
@@ -110,6 +114,15 @@ uint64_t	yb_conn_mgr_sighup_logical_client_version = 0;
 bool		yb_conn_mgr_sighup_had_backend_guc_change = false;
 
 extern bool yb_conn_mgr_modifying_defaults;
+
+/*
+ * YB: GUC storage variables for CM logical-client metadata.
+ * Written by Odyssey on every client attach via the 'G' packet; read back
+ * by pg_stat_activity through the PgBackendStatus shared memory entry.
+ */
+char	   *yb_conn_mgr_client_addr;
+int			yb_conn_mgr_client_port;
+char	   *yb_conn_mgr_client_hostname;
 
 static int	GUC_check_errcode_value;
 
@@ -356,8 +369,16 @@ static bool call_enum_check_hook(const struct config_generic *conf, int *newval,
  * checks, and we return the ConfigVariable list so that it can be printed out
  * by show_all_file_settings().
  */
+
+/*
+ * YB: When yb_config_file is set, we are in validation mode only. This is
+ * similar to show_all_file_settings above, except that errors are reported via
+ * elog(ERROR) so that we have the detailed GUC failure message to show the
+ * user.
+ */
 ConfigVariable *
-ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
+ProcessConfigFileInternal(const char *yb_config_file, GucContext context,
+						  bool applySettings, int elevel)
 {
 	bool		error = false;
 	bool		applying = false;
@@ -367,12 +388,30 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 	HASH_SEQ_STATUS status;
 	GUCHashEntry *hentry;
 
+	/* YB declarations */
+	bool		yb_validating = (yb_config_file != NULL);
+	int			yb_parse_elevel;
+
+	/* Checking a file must never change the settings the server is running. */
+	Assert(!yb_validating || !applySettings);
+
+	if (!yb_validating)
+		yb_config_file = ConfigFileName;
+
+	/*
+	 * Never let the parser throw. It frees its buffer only when it returns
+	 * normally, so an error thrown from inside it leaks that memory. Ask it to
+	 * log problems instead: it writes each one into the entry list, and the
+	 * caller reports them from there.
+	 */
+	yb_parse_elevel = yb_validating ? LOG : elevel;
+
 	/* Parse the main config file into a list of option names and values */
-	ConfFileWithError = ConfigFileName;
+	ConfFileWithError = yb_config_file;
 	head = tail = NULL;
 
-	if (!ParseConfigFile(ConfigFileName, true,
-						 NULL, 0, CONF_FILE_START_DEPTH, elevel,
+	if (!ParseConfigFile(yb_config_file, true,
+						 NULL, 0, CONF_FILE_START_DEPTH, yb_parse_elevel,
 						 &head, &tail))
 	{
 		/* Syntax error(s) detected in the file, so bail out */
@@ -389,7 +428,7 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 	if (DataDir)
 	{
 		if (!ParseConfigFile(PG_AUTOCONF_FILENAME, false,
-							 NULL, 0, CONF_FILE_START_DEPTH, elevel,
+							 NULL, 0, CONF_FILE_START_DEPTH, yb_parse_elevel,
 							 &head, &tail))
 		{
 			/* Syntax error(s) detected in the file, so bail out */
@@ -550,6 +589,8 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 		}
 
 		/* No more to do if we're just doing show_all_file_settings() */
+
+		/* YB: This also keeps us safe when using this code for validation. */
 		if (!applySettings)
 			continue;
 
@@ -628,7 +669,8 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 
 		scres = set_config_option(item->name, item->value,
 								  context, PGC_S_FILE,
-								  GUC_ACTION_SET, applySettings, 0, false);
+								  GUC_ACTION_SET, applySettings,
+								  yb_validating ? elevel : 0, false);
 		if (scres > 0)
 		{
 			/* variable was updated, so log the change if appropriate */
@@ -8762,6 +8804,183 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	yb_guc_remote_span_ctx = YBCGetValidSpanContext((const char *) extra);
 	MemoryContextSwitchTo(oldcontext);
+}
+
+bool
+check_yb_conn_mgr_client_addr(char **newval, void **extra, GucSource source)
+{
+	char	   *clean;
+	char	   *ret;
+
+	/* Always allow reset to empty string */
+	if ((*newval)[0] == '\0')
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_addr.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_addr,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_conn_mgr_client_addr can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	/* Basic sanity: clean the string of non-ASCII bytes */
+	clean = pg_clean_ascii(*newval, MCXT_ALLOC_NO_OOM);
+	if (!clean)
+		return false;
+
+	ret = guc_strdup(LOG, clean);
+	if (!ret)
+	{
+		pfree(clean);
+		return false;
+	}
+
+	guc_free(*newval);
+
+	pfree(clean);
+	*newval = ret;
+	return true;
+}
+
+void
+assign_yb_conn_mgr_client_addr(const char *newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_addr() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	if (YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort))
+	{
+		/*
+		 * Resolve the logical-client hostname once during authentication.
+		 */
+		if (newval[0] != '\0' && log_hostname)
+		{
+			struct addrinfo hints;
+			struct addrinfo *gai_result;
+
+			MemSet(&hints, 0, sizeof(hints));
+			hints.ai_flags = AI_NUMERICHOST;
+			hints.ai_socktype = SOCK_STREAM;
+
+			if (getaddrinfo(newval, NULL, &hints, &gai_result) == 0)
+			{
+				char		remote_hostname[NI_MAXHOST];
+				int			ret;
+
+				ret = pg_getnameinfo_all((const struct sockaddr_storage *) gai_result->ai_addr,
+										 gai_result->ai_addrlen,
+										 remote_hostname, sizeof(remote_hostname),
+										 NULL, 0,
+										 NI_NAMEREQD);
+				freeaddrinfo(gai_result);
+
+				if (ret != 0)
+					ereport(WARNING,
+							(errmsg_internal("pg_getnameinfo_all() failed: %s",
+											 gai_strerror(ret))));
+				else
+					SetConfigOption("yb_conn_mgr_client_hostname",
+									remote_hostname,
+									PGC_USERSET, PGC_S_CLIENT);
+			}
+		}
+	}
+
+	yb_pgstat_set_ycm_client_info(newval,
+								  NULL,
+								  newval[0] == '\0' ? "" : NULL);
+}
+
+bool
+check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source)
+{
+	char	   *clean;
+	char	   *ret;
+
+	/* Always allow reset to empty string */
+	if ((*newval)[0] == '\0')
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_port.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_port,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_conn_mgr_client_hostname can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	/* Only allow clean ASCII chars in the hostname */
+	clean = pg_clean_ascii(*newval, MCXT_ALLOC_NO_OOM);
+	if (!clean)
+		return false;
+
+	ret = guc_strdup(LOG, clean);
+	if (!ret)
+	{
+		pfree(clean);
+		return false;
+	}
+
+	guc_free(*newval);
+
+	pfree(clean);
+	*newval = ret;
+	return true;
+}
+
+void
+assign_yb_conn_mgr_client_hostname(const char *newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_hostname() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	yb_pgstat_set_ycm_client_info(NULL, NULL, newval);
+}
+
+bool
+check_yb_conn_mgr_client_port(int *newval, void **extra, GucSource source)
+{
+	/* Always allow reset to -1 */
+	if (*newval == -1)
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_hostname.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_hostname,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_conn_mgr_client_port can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	return true;
+}
+
+void
+assign_yb_conn_mgr_client_port(int newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_port() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	yb_pgstat_set_ycm_client_info(NULL, &newval, NULL);
 }
 
 /*

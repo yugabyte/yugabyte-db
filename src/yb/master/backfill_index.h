@@ -218,6 +218,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   // Persist the value in read_time_for_backfill_ to the sys-catalog and start the backfill job.
   Status PersistSafeTimeAndStartBackfill() EXCLUDES(mutex_);
 
+  // For the xCluster replicated backfill path, the source runs the backfill and replicates the
+  // writes, so there is no local backfill and we can just mark the backfill as done.
+  Status FinalizeReplicatedIndexBackfill(HybridTime source_backfill_ht);
+
   // We want to prevent major compactions from garbage collecting delete markers
   // on an index table, until the backfill process is complete.
   // This API is used at the end of a successful backfill to enable major compactions

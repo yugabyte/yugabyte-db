@@ -215,6 +215,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kReplicaState_TakeUpdateLock:
       return "A write/alter RPC needs to wait for the ReplicaState lock to replicate a "
           "batch of writes through Raft.";
+    case WaitStateCode::kRaft_WaitingForPipelinedReplication:
+      return "A WaitForAsyncWrite rpc is waiting for a pipelined write to be Raft replicated.";
     case WaitStateCode::kRocksDB_ReadBlockFromFile:
       return "RocksDB is reading a block from a file.";
     case WaitStateCode::kRocksDB_OpenFile:
@@ -258,6 +260,9 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "YB client is looking up tablet information from the master.";
     case WaitStateCode::kYBClient_WaitingOnMaster:
       return "YB client is waiting on an RPC sent to the master.";
+    case WaitStateCode::kYBClient_WaitingForPipelinedWrites:
+      return "YB client is waiting for its pipelined writes to be Raft replicated before it can "
+             "commit the transaction.";
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return "Waiting for index backfill chunk to be processed.";
     case WaitStateCode::kVectorIndex_Search:
@@ -675,6 +680,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kLock;
 
     case WaitStateCode::kRaft_WaitingForReplication:
+    case WaitStateCode::kRaft_WaitingForPipelinedReplication:
     case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
     case WaitStateCode::kRemoteBootstrap_FetchData:
     case WaitStateCode::kXCluster_WaitingForGetChanges:
@@ -727,6 +733,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
     case WaitStateCode::kYBClient_WaitingOnMaster:
+    case WaitStateCode::kYBClient_WaitingForPipelinedWrites:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kVectorIndex_Search:
@@ -745,6 +752,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
     case WaitStateCode::kYBClient_WaitingOnMaster:
+    case WaitStateCode::kYBClient_WaitingForPipelinedWrites:
     case WaitStateCode::kRetryableRequests_SaveToDisk:
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kLockedBatchEntry_Lock:
@@ -766,6 +774,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kSnapshot_CleanupSnapshotDir:
     case WaitStateCode::kSnapshot_RestoreCheckpoint:
     case WaitStateCode::kRaft_WaitingForReplication:
+    case WaitStateCode::kRaft_WaitingForPipelinedReplication:
     case WaitStateCode::kRaft_ApplyingEdits:
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:

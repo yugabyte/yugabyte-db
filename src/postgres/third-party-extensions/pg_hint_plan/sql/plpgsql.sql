@@ -8,12 +8,11 @@ SET client_min_messages TO log;
 
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.debug_print TO on;
-SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
+SET compute_query_id = on;
 SHOW pg_hint_plan.enable_hint_table;
 
 -- Internal handling of hints within plpgsql functions.
--- This forces an exception, manipulating internally plpgsql_recurse_level
--- in the resowner cleanup callback.
+-- This forces an exception, manipulating internally plpgsql_recurse_level.
 create or replace function test_hint_exception(level int)
 returns void language plpgsql as $$
 begin
@@ -28,8 +27,7 @@ begin
   exception when others then end;
 $$;
 -- Having a transaction context is essential to mess up with the
--- recursion counter and to make sure that the resowner cleanup is called
--- when expected.
+-- plpgsql_recurse_level.
 begin;
 select set_config('compute_query_id','off', true);
 -- Show plan without hints
@@ -72,35 +70,56 @@ begin
   end if;
   -- Mix of queries with and without hints.  The level is mixed in the
   -- query string to show it in the output generated.
+  raise notice 'Execution % at level %, hash-join t2/t1 hint', run, level;
+  execute 'explain (costs false) with test /*+ HashJoin(t2 t1) */
+    as (select ' || level || ' val)
+    select t1.val from test t1, test t2 where t1.val = t2.val;'
+    into c;
   raise notice 'Execution % at level %, no hints', run, level;
   execute 'explain (costs false) with test
     as (select ' || level || ' val)
     select t1.val from test t1, test t2 where t1.val = t2.val;'
     into c;
-  raise notice 'Execution % at level %, merge-join hint', run, level;
+  raise notice 'Execution % at level %, merge-join t1/t2 hint', run, level;
   execute 'explain (costs false) with test /*+ MergeJoin(t1 t2) */
     as (select ' || level || ' val)
     select t1.val from test t1, test t2 where t1.val = t2.val;'
     into c;
   execute 'select test_hint_queries(' || run || ',' || level || ')';
 end; $$;
+
 -- Entry point of this test.  This executes the transaction
 -- commands while calling test_hint_queries in a nested loop.
-create procedure test_hint_transaction()
+-- "mode" can be set to "before" or "after", to control the timing of
+-- the subtransaction commands launched in this procedure.
+create procedure test_hint_transaction(mode text)
 language plpgsql as $$
 declare c text;
 begin
   for i in 0..3 loop
-    execute 'select test_hint_queries(' || i || ', 0)';
-    insert into test_hint_tab (a) values (i);
+
+    if mode = 'before' then
+      execute 'select test_hint_queries(' || i || ', 0)';
+      insert into test_hint_tab (a) values (i);
+    end if;
+
+    -- Mix commits and rollbacks.
     if i % 2 = 0 then
       commit;
     else
       rollback;
     end if;
+
+    if mode = 'after' then
+      execute 'select test_hint_queries(' || i || ', 0)';
+      insert into test_hint_tab (a) values (i);
+    end if;
   end loop;
 end; $$;
-call test_hint_transaction();
+
+call test_hint_transaction('before');
+call test_hint_transaction('after');
+
 table test_hint_tab;
 drop procedure test_hint_transaction;
 drop function test_hint_queries;

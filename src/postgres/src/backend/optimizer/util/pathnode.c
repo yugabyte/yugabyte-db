@@ -1566,6 +1566,8 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 		}
 		else
 		{
+			uint64		enable_mask = PGS_SEQSCAN;
+
 			ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
 							false,	/* is_backward_scan */
 							true,	/* is_seq_scan */
@@ -1575,9 +1577,14 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 							rel->reltablespace);
 			pathnode->rows = rel->rows;
 
-			uint64		enable_mask = PGS_SEQSCAN |
-				(parallel_workers > 0 ? 0 : PGS_CONSIDER_NONPARTIAL);
-
+			/*
+			 * PG19 marks a scan disabled via Path.disabled_nodes from
+			 * RelOptInfo.pgs_mask.  pg_hint_plan scan hints (NoSeqScan)
+			 * clear PGS_SEQSCAN rather than flipping enable_seqscan, and
+			 * ybcCostEstimate does not set disabled_nodes.
+			 */
+			if (pathnode->parallel_workers == 0)
+				enable_mask |= PGS_CONSIDER_NONPARTIAL;
 			pathnode->disabled_nodes =
 				(rel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
 		}

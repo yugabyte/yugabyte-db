@@ -10,16 +10,26 @@ import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import api.v2.models.AZUpgradeState;
 import api.v2.models.TaskPagedQuerySpec;
 import api.v2.models.TaskPagedResp;
+import api.v2.models.YBATask;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.tasks.CustomerTaskHandler;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -181,5 +191,110 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     responseJson.put("retryable", false);
     responseJson.put("canRollback", false);
     return task;
+  }
+
+  @Test
+  public void rollbackTask_failedSoftwareUpgrade_returnsRollbackYBATask() {
+    // Put the universe in the state a failed, rollback-capable software upgrade leaves it in.
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams d = u.getUniverseDetails();
+              d.softwareUpgradeState = SoftwareUpgradeState.UpgradeFailed;
+              d.isSoftwareRollbackAllowed = true;
+              PrevYBSoftwareConfig prev = new PrevYBSoftwareConfig();
+              prev.setSoftwareVersion("2.21.0.0-b1");
+              d.prevYBSoftwareConfig = prev;
+              d.updateInProgress = false;
+              u.setUniverseDetails(d);
+            });
+
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.clusters = universe.getUniverseDetails().clusters;
+    params.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    params.ybSoftwareVersion = "2.21.0.0-b2";
+    JsonNode paramsJson = Json.toJson(params);
+
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo failed = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    failed.setUuid(taskUUID);
+    failed.setTaskParams(paramsJson);
+    failed.setOwner("");
+    failed.setYbaVersion(Util.getYbaVersion());
+    failed.setTaskState(TaskInfo.State.Failure);
+    failed.save();
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.SoftwareUpgrade,
+        universe.getName());
+
+    // commissioner.submit is mocked, so create the backing TaskInfo the rollback CustomerTask's
+    // foreign key references.
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    TaskInfo rollbackInfo = new TaskInfo(TaskType.RollbackUpgrade, null);
+    rollbackInfo.setUuid(rollbackTaskUUID);
+    rollbackInfo.setTaskParams(Json.newObject());
+    rollbackInfo.setOwner("");
+    rollbackInfo.setYbaVersion(Util.getYbaVersion());
+    rollbackInfo.setTaskState(TaskInfo.State.Created);
+    rollbackInfo.save();
+
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(taskUUID)).thenReturn(paramsJson);
+    when(mockCommissioner.submit(eq(TaskType.RollbackUpgrade), any())).thenReturn(rollbackTaskUUID);
+
+    YBATask result = handler.rollbackTask(customer.getUuid(), taskUUID);
+
+    // The V2 rollback returns a task handle pointing at the submitted rollback task + universe.
+    assertEquals(rollbackTaskUUID, result.getTaskUuid());
+    assertEquals(universe.getUniverseUUID(), result.getResourceUuid());
+  }
+
+  @Test
+  public void rollbackTask_customerNotFound_throwsNotFound() {
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.rollbackTask(UUID.randomUUID(), UUID.randomUUID()));
+    assertEquals(NOT_FOUND, ex.getHttpStatus());
+  }
+
+  @Test
+  public void rollbackTask_taskNotFound_throwsNotFound() {
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.rollbackTask(customer.getUuid(), UUID.randomUUID()));
+    assertEquals(NOT_FOUND, ex.getHttpStatus());
+  }
+
+  @Test
+  public void rollbackTask_notRollbackable_throwsForbidden() {
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditUniverse, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskParams(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.save();
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(false);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.rollbackTask(customer.getUuid(), taskUUID));
+    assertEquals(FORBIDDEN, ex.getHttpStatus());
   }
 }

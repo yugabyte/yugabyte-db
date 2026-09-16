@@ -65,7 +65,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ValidateFlagValueResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.Environment;
 
 @Singleton
@@ -731,13 +731,13 @@ public class GFlagsValidation {
    * exception is only thrown for RPC-level failures (e.g. the server is unreachable).
    *
    * @param client an open YBClient
-   * @param hp host and port of the target server — tserver (9100) or master (7100)
+   * @param hp host and port of the target server - tserver (9100) or master (7100)
    * @param flags all flags to validate
    * @param serverType used only for labelling errors in the returned map
-   * @return map of flag name → error message; empty map means all flags passed
+   * @return map of flag name -> error message; empty map means all flags passed
    */
   public Map<String, String> validateGFlagsViaRpc(
-      YBClient client, HostAndPort hp, Map<String, String> flags, ServerType serverType)
+      YBClientApi client, HostAndPort hp, Map<String, String> flags, ServerType serverType)
       throws Exception {
     ValidateFlagValueResponse response = client.validateFlagValues(hp, flags);
     if (!response.hasErrors()) {

@@ -54,6 +54,7 @@
 
 #include "yb/util/alignment.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
@@ -464,6 +465,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     struct iovec* remaining_iov = iov;
     int remaining_blocks = narrow_cast<int>(blocks_to_write);
     ssize_t total_written = 0;
+    const auto start = MonoTime::Now();
 
     while (remaining_blocks > 0) {
       ssize_t written = pwritev(
@@ -479,6 +481,19 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
 
       UnwrittenRemaining(&remaining_iov, written, &remaining_blocks);
       total_written += written;
+    }
+
+    if (drive_stats_) {
+      // RecordDirectWrite, not the buffered variant: this class overrides Sync() to be exactly
+      // this write and never reaches PosixWritableFile::Sync(), so nothing would ever come along
+      // to settle an unsynced-bytes debt. There is also nothing to settle - with O_DIRECT the
+      // bytes are on the device when pwritev returns.
+      //
+      // This is likewise the whole device cost on such a drive: no page cache in between and no
+      // fsync afterwards, so drive_write_time carries what drive_sync_time carries elsewhere.
+      // Bytes are block-padded, which is genuinely what reached the device.
+      drive_stats_->RecordDirectWrite(
+          static_cast<uint64_t>(total_written), MonoTime::Now() - start);
     }
 
     if (PREDICT_FALSE(total_written != bytes_to_write)) {

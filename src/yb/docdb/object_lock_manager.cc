@@ -66,14 +66,9 @@ DEFINE_test_flag(bool, olm_serve_redundant_lock, false,
     "the ref_count and returning.");
 
 METRIC_DEFINE_counter(server, object_locking_lock_acquires,
-                      "Number of object locking lock acquires (both fast and slow path)",
-                      yb::MetricUnit::kRequests,
-                      "Number of object locking lock acquires (both fast and slow path)");
-
-METRIC_DEFINE_counter(server, object_locking_fastpath_acquires,
-                      "Number of object locking fast path lock acquires",
-                      yb::MetricUnit::kRequests,
-                      "Number of object locking fast path lock acquires");
+    "Number of object locking slow path lock acquires",
+    yb::MetricUnit::kRequests,
+    "Number of object locking slow path lock acquires");
 
 using namespace std::placeholders;
 using namespace std::literals;
@@ -378,10 +373,7 @@ class ObjectLockManagerImpl {
       server_(server),
       waiters_amidst_resumption_on_messenger_("ObjectLockManagerImpl: " /* log_prefix */),
       shared_manager_(shared_manager) {
-    metric_num_acquires_ =
-        METRIC_object_locking_lock_acquires.Instantiate(metric_entity);
-    metric_num_fastpath_acquires_ =
-        METRIC_object_locking_fastpath_acquires.Instantiate(metric_entity);
+    metric_num_acquires_ = METRIC_object_locking_lock_acquires.Instantiate(metric_entity);
   }
 
   void Lock(LockData&& data);
@@ -406,7 +398,7 @@ class ObjectLockManagerImpl {
   void EnableSharedLockState() {
     std::lock_guard lock(global_mutex_);
     if (shared_manager_) {
-      shared_manager_->ResumeSharedLockState();
+      shared_manager_->Start();
     }
   }
 
@@ -531,7 +523,6 @@ class ObjectLockManagerImpl {
   ObjectLockSharedStateManager* const shared_manager_;
 
   scoped_refptr<Counter> metric_num_acquires_;
-  scoped_refptr<Counter> metric_num_fastpath_acquires_;
   std::vector<std::shared_ptr<WaitForLockersContext>>
       wait_for_lockers_trackers_ GUARDED_BY(global_mutex_);
 };
@@ -649,12 +640,10 @@ LockState TrackedTransactionLockEntry::GetLockStateForKeyUnlocked(
 
 void ObjectLockManagerImpl::ConsumePendingSharedLockRequestsUnlocked() {
   if (shared_manager_) {
-    size_t consumed = shared_manager_->ConsumePendingSharedLockRequests(
+    shared_manager_->ConsumePendingSharedLockRequests(
         make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
           ConsumePendingSharedLockRequestUnlocked(request);
         }));
-    IncrementCounterBy(metric_num_acquires_, consumed);
-    IncrementCounterBy(metric_num_fastpath_acquires_, consumed);
   }
 }
 
@@ -682,13 +671,11 @@ void ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
     }
   }
   std::lock_guard lock(global_mutex_);
-  size_t consumed = shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
+  shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
       make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
         ConsumePendingSharedLockRequestUnlocked(request);
       }),
       exclusive_locks);
-  IncrementCounterBy(metric_num_acquires_, consumed);
-  IncrementCounterBy(metric_num_fastpath_acquires_, consumed);
 }
 
 void ObjectLockManagerImpl::ReleaseExclusiveLockIntents(const LockStateMap& lockstates_map) {
@@ -1184,7 +1171,7 @@ void ObjectLockManagerImpl::Shutdown() {
   {
     std::lock_guard l(global_mutex_);
     if (shared_manager_) {
-      shared_manager_->PauseAndResetSharedLockState();
+      shared_manager_->Stop();
     }
     for (auto& [_, entry] : locks_) {
       std::lock_guard obj_lock(entry->mutex);

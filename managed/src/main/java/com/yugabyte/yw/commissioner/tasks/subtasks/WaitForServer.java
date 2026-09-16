@@ -29,7 +29,7 @@ import java.time.Duration;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForServer extends ServerSubTaskBase {
@@ -62,7 +62,7 @@ public class WaitForServer extends ServerSubTaskBase {
             : taskParams().currentUniverseState;
     boolean ret;
     long startMs = System.currentTimeMillis();
-    try (YBClient client = getClient()) {
+    try (YBClientApi client = getClient()) {
       HostAndPort hp = getHostPort();
       if (taskParams().serverType == ServerType.MASTER) {
         // This first calls waitForServer followed by availability check of master UUID.

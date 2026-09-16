@@ -12,6 +12,7 @@ export const AUDIT_LOG_TRANSLATION_KEY_PREFIX = 'editUniverse.logs.auditLogSetti
 export type AuditLogOperation = 'create' | 'edit';
 
 const DEFAULT_LOG_PARAMETER_MAX_SIZE = 0;
+export const DEFAULT_LOG_RETENTION_DAYS = 1;
 
 export interface AuditLogFormValues {
   classes: YSQLAuditConfigClassesItem[];
@@ -22,6 +23,8 @@ export interface AuditLogFormValues {
   logRelation: boolean;
   logStatement: boolean;
   logStatementOnce: boolean;
+  retainAuditLogArchive: boolean;
+  logRetentionDays: number;
 }
 
 const createDefaultFormValues = (): AuditLogFormValues => ({
@@ -32,13 +35,19 @@ const createDefaultFormValues = (): AuditLogFormValues => ({
   logParameter: false,
   logRelation: false,
   logStatement: true,
-  logStatementOnce: false
+  logStatementOnce: false,
+  retainAuditLogArchive: false,
+  logRetentionDays: DEFAULT_LOG_RETENTION_DAYS
 });
 
 export const getDefaultFormValues = (ysqlAuditConfig?: YSQLAuditConfig): AuditLogFormValues => {
   if (!ysqlAuditConfig) {
     return createDefaultFormValues();
   }
+
+  const logRetentionDays = ysqlAuditConfig.log_retention_days;
+  const retainAuditLogArchive =
+    logRetentionDays !== undefined && logRetentionDays !== null && logRetentionDays > 0;
 
   return {
     classes: ysqlAuditConfig.classes ?? [],
@@ -48,7 +57,9 @@ export const getDefaultFormValues = (ysqlAuditConfig?: YSQLAuditConfig): AuditLo
     logParameter: ysqlAuditConfig.log_parameter,
     logRelation: ysqlAuditConfig.log_relation,
     logStatement: ysqlAuditConfig.log_statement,
-    logStatementOnce: ysqlAuditConfig.log_statement_once
+    logStatementOnce: ysqlAuditConfig.log_statement_once,
+    retainAuditLogArchive,
+    logRetentionDays: retainAuditLogArchive ? logRetentionDays : DEFAULT_LOG_RETENTION_DAYS
   };
 };
 
@@ -69,9 +80,10 @@ const buildYsqlAuditConfig = (
     log_rows: currentYsqlConfig?.log_rows ?? false,
     log_statement: values.logStatement,
     log_statement_once: values.logStatementOnce,
-    ...(currentYsqlConfig?.log_retention_days !== undefined && {
-      log_retention_days: currentYsqlConfig.log_retention_days
-    })
+    // 0 disables dedicated audit-log retention (see YSQLAuditConfig.yaml log_retention_days).
+    log_retention_days: values.retainAuditLogArchive
+      ? Math.max(DEFAULT_LOG_RETENTION_DAYS, Number(values.logRetentionDays))
+      : 0
   };
 
   return ysqlConfig as YSQLAuditConfig;

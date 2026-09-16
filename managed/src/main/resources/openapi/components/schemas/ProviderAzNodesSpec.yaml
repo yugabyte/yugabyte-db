@@ -1,0 +1,11 @@
+title: ProviderAzNodesSpec
+description: Availability-zone-level node specification (leaf of the provider nodes specification hierarchy).
+type: object
+allOf:
+  - $ref: "./ProviderNodesSpec.yaml"
+  - properties:
+      az_code:
+        description: Availability zone code within the region.
+        type: string
+    required:
+      - az_code

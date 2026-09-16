@@ -68,6 +68,7 @@ import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.KeyUsage;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
@@ -445,6 +446,14 @@ public class CertificateHelper {
       } catch (CertificateException e) {
         throw new PlatformServiceException(BAD_REQUEST, "Unable to get cert Objects");
       }
+      // generateCertificates() returns an empty list (rather than throwing) for content that
+      // contains no valid PEM certificate. Treat that as invalid input here: otherwise
+      // extractDatesFromCertBundle() below returns an epoch..Long.MAX_VALUE expiry that then fails
+      // to
+      // persist ("timestamp out of range" on Postgres).
+      if (x509CACerts == null || x509CACerts.isEmpty()) {
+        throw new PlatformServiceException(BAD_REQUEST, "Unable to get cert Objects");
+      }
       Pair<Date, Date> dates = extractDatesFromCertBundle(x509CACerts);
       Date certStart = dates.getLeft();
       Date certExpiry = dates.getRight();
@@ -725,6 +734,25 @@ public class CertificateHelper {
       return new JcaPEMKeyConverter().getPrivateKey(privateKeyInfo);
     } catch (Exception e) {
       throw new RuntimeException("Exception occurred parsing the private key", e);
+    }
+  }
+
+  public static PublicKey getPublicKey(String keyContent) {
+    try (PEMParser parser = new PEMParser(new StringReader(keyContent))) {
+      Object parsedKey = parser.readObject();
+      if (parsedKey instanceof SubjectPublicKeyInfo) {
+        return new JcaPEMKeyConverter().getPublicKey((SubjectPublicKeyInfo) parsedKey);
+      } else if (parsedKey instanceof PEMKeyPair) {
+        return new JcaPEMKeyConverter().getKeyPair((PEMKeyPair) parsedKey).getPublic();
+      } else {
+        throw new RuntimeException(
+            "Unexpected public key type parsed: "
+                + (parsedKey == null ? "null" : parsedKey.getClass().getName()));
+      }
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException("Exception occurred parsing the public key", e);
     }
   }
 

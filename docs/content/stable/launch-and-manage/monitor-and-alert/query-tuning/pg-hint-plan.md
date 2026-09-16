@@ -34,7 +34,6 @@ pg_hint_plan is pre-configured, and enabled by default. The following YSQL confi
 | `pg_hint_plan.enable_hint` | Turns pg_hint_plan on or off. | on |
 | `pg_hint_plan.yb_bad_hint_mode` | Specifies the action taken if "bad" hints are specified.<br/>Valid values are `off`, `warn`, `replan`, and `error` | off |
 | `pg_hint_plan.enable_hint_table` | Enable use of the hint table for storing/retrieving hints. | off |
-| `pg_hint_plan.yb_use_query_id_for_hinting` | Use query IDs for storing/retrieving hints instead of query text. | off |
 | `pg_hint_plan.hints_anywhere` | Allow the hint string to be placed anywhere in the query text. | off |
 | `pg_hint_plan.debug_print` | Controls debug output.<br/>Valid values are `off` (no debug output), `on`, `detailed`, and `verbose`. | off |
 | `pg_hint_plan.message_level` | Specifies the minimum message level for debug output.<br/>In *decreasing order of severity*, the levels are:<br/>`error`, `warning`, `notice`, `info`, `log`, and `debug`.<br/>Messages at the `fatal` and `panic` levels are always included in the output. | info |
@@ -632,152 +631,7 @@ SET pg_hint_plan.enable_hint_table = on;
 
 The following example illustrates this in detail.
 
-```sql
-yugabyte=# INSERT INTO hint_plan.hints
-(norm_query_string,
- application_name,
- hints)
-VALUES
-('EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
- '',
- 'SeqScan(t1)');
-
-INSERT 0 1
-
-yugabyte=# INSERT INTO hint_plan.hints
-(norm_query_string,
- application_name,
- hints)
-VALUES
-('EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = ?;',
- '',
- 'IndexScan(t1)');
-
-INSERT 0 1
-
-yugabyte=# SELECT * FROM hint_plan.hints;
-```
-
-```output
--[ RECORD 1 ]-----+--------------------------------------------------------
-id                | 1
-norm_query_string | EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;
-application_name  |
-hints             | SeqScan(t1)
--[ RECORD 2 ]-----+--------------------------------------------------------
-id                | 2
-norm_query_string | EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = ?;
-application_name  |
-hints             | IndexScan(t1)
-```
-
-This example inserts queries into the `hint_plan.hints` table, with placeholders for positional parameters using a question mark (`?`) and their required hint phrases respectively. During runtime, when these queries are executed, `pg_hint_plan` automatically executes these queries with their respective hinting phrases.
-
-However, for the hints to be used the query text string must match the stored query string *exactly* (except for the positional parameters, but matching *is* case-sensitive). For example:
-
-```sql
-yugabyte=# SET pg_hint_plan.debug_print TO on;
-yugabyte=# \set SHOW_CONTEXT always
-yugabyte=# SET client_min_messages TO info;
-yugabyte=# SET pg_hint_plan.message_level TO info;
-yugabyte=# EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 7;
-```
-
-```output
-LOG:  pg_hint_plan:
-used hint:
-SeqScan(t1)
-not used hint:
-duplication hint:
-error hint:
-
-         QUERY PLAN
-----------------------------
- Seq Scan on t1
-   Storage Filter: (id = 7)
-(2 rows)
-```
-
-The debugging output shows that the `SeqScan(t1)` hint is used. Similarly, for the second (`SELECT id`) you would see the following:
-
-```sql
-yugabyte=# EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 7;
-```
-
-```output
-INFO:  pg_hint_plan:
-used hint:
-IndexScan(t1)
-not used hint:
-duplication hint:
-error hint:
-
-           QUERY PLAN
---------------------------------
- Index Scan using t1_pkey on t1
-   Index Cond: (id = 7)
-(2 rows)
-```
-
-However, if a space is inserted (after the WHERE clause) for the first query (`SELECT *`) the text will not match and the hint will not be used:
-
-```sql
-yugabyte=# EXPLAIN (COSTS false) SELECT * FROM t1 WHERE  t1.id = 7;
-```
-
-```output
-           QUERY PLAN
---------------------------------
- Index Scan using t1_pkey on t1
-   Index Cond: (id = 7)
-(2 rows)
-```
-
-Nor will the hint be used for the query without EXPLAIN:
-
-```sql
-yugabyte=# SELECT * FROM t1 WHERE t1.id = 7;
-```
-
-```output
- id | val
-----+-----
-  7 |   7
-(1 row)
-```
-
-To use hints for this query (without an EXPLAIN), you need to insert a new row in the hints table:
-
-```sql
-yugabyte=# INSERT INTO hint_plan.hints
-(norm_query_string,
- application_name,
- hints)
-VALUES
-('SELECT * FROM t1 WHERE t1.id = ?;',
- '',
- 'SeqScan(t1)');
-
-INSERT 0 1
-
-yugabyte=# SELECT * FROM t1 WHERE t1.id = 7;
-```
-
-```output
-LOG:  pg_hint_plan:
-used hint:
-SeqScan(t1)
-not used hint:
-duplication hint:
-error hint:
-
- id | val
-----+-----
-  7 |   7
-(1 row)
-```
-
-Inserting query text with positional parameters can be difficult and error-prone. An alternative is to use `query id` instead of query text. Each query processed by the planner is assigned an ID that is computed from the query's characterisics. To see a query's ID, simply run a verbose EXPLAIN. For example (with the WHERE clause condition on `val` instead of `id`):
+The hint table matches queries by their _query ID_, not by query text. Each query processed by the planner is assigned an ID that is computed from the query's internal representation. To find a query's ID, run a verbose `EXPLAIN`. For example:
 
 ```sql
 yugabyte=# EXPLAIN (VERBOSE true, COSTS off) SELECT * FROM t1 WHERE t1.val = 9;
@@ -789,37 +643,35 @@ yugabyte=# EXPLAIN (VERBOSE true, COSTS off) SELECT * FROM t1 WHERE t1.val = 9;
  Index Scan using t1_val on public.t1
    Output: id, val
    Index Cond: (t1.val = 9)
- Query Identifier: -6731874999214575733
+ Query Identifier: -6405212228727548255
 (4 rows)
 ```
 
-To use the hint table to store a hint for this query, set `pg_hint_plan.yb_use_query_id_for_hinting` to ON and simply use the query ID instead of query text when inserting into the hint plan table:
+To store a hint for this query, insert its query ID into the `query_id` column of the hint table, along with the hint phrases to apply and an optional application name:
 
 ```sql
-yugabyte=# SET pg_hint_plan.yb_use_query_id_for_hinting to ON;
 yugabyte=# INSERT INTO hint_plan.hints
-(norm_query_string,
-application_name,
-hints)
+(query_id,
+ application_name,
+ hints)
 VALUES
-('-6731874999214575733',
-'',
-'SeqScan(t1)');
+(-6405212228727548255,
+ '',
+ 'SeqScan(t1)');
 
 INSERT 0 1
 
-yugabyte=# SELECT norm_query_string, hints FROM hint_plan.hints ORDER BY id;
+yugabyte=# SELECT query_id, application_name, hints FROM hint_plan.hints ORDER BY id;
 ```
 
 ```output
-                    norm_query_string                     |     hints
-----------------------------------------------------------+---------------
- EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;  | SeqScan(t1)
- EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = ?; | IndexScan(t1)
- SELECT * FROM t1 WHERE t1.id = ?;                        | SeqScan(t1)
- -6731874999214575733                                     | SeqScan(t1)
-(4 rows)
+       query_id       | application_name |    hints
+----------------------+------------------+-------------
+ -6405212228727548255 |                  | SeqScan(t1)
+(1 row)
 ```
+
+During runtime, when a query with a matching query ID is planned, `pg_hint_plan` automatically applies the stored hint phrases.
 
 Now when the query is re-run you will see a sequential scan used for `t1` instead of index scan:
 
@@ -840,7 +692,7 @@ error hint:
  Seq Scan on public.t1
    Output: id, val
    Storage Filter: (t1.val = 9)
- Query Identifier: -6731874999214575733
+ Query Identifier: -6405212228727548255
 (4 rows)
 ```
 
@@ -1006,12 +858,12 @@ yugabyte=# EXPLAIN (COSTS off, HINTS on, VERBOSE on) SELECT COUNT(*) FROM t1, t2
                Output: t2.id, t2.val
                Index Cond: (t2.id = t1_1.id)
                Storage Filter: ((t1_1.val + t2.val) = $1024)
- Query Identifier: -7881676297850663726
+ Query Identifier: 5522780206682581229
  Generated hints: /*+ Leading((t1_1 t2)) IndexScan(t1_1 t1_val) IndexScan(t2 t2_pkey) NestLoop(t1_1 t2) Leading((t1 t3)) IndexScan(t1 t1_val) IndexScan(t3 t3_pkey) YbBatchedNL(t1 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (26 rows)
 ```
 
-The EXPLAIN output now contains a new line `Generated hints`. This is the set of hints, which if specified in conjunction with the query, will lead to the *exact same plan* in terms of join order, and join and table access methods. The SET options capture the relevant configuration options the planner used when searching for the best plan. To ensure the exact same plan is always given for this query, you can store the hints in the hint table using the query ID `-7881676297850663726`.
+The EXPLAIN output now contains a new line `Generated hints`. This is the set of hints, which if specified in conjunction with the query, will lead to the *exact same plan* in terms of join order, and join and table access methods. The SET options capture the relevant configuration options the planner used when searching for the best plan. To ensure the exact same plan is always given for this query, you can store the hints in the hint table using the query ID `5522780206682581229`.
 
 The generated hints also provide a useful template for devising a new set of hints to change the plan. Writing a new set of hints to constrain the plan for a complex query can be difficult. To see this, consider a query of the view 'information_schema.columns':
 

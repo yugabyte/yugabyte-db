@@ -662,7 +662,7 @@ public class TestTransaction extends BaseCQLTest {
 
           // Keep reading until we either:
           // (1) have the desired number of restart requests and retries.
-          // (2) have run for 100 seconds but still don't have the desired number of restart
+          // (2) have run for 250 seconds but still don't have the desired number of restart
           //     requests. We still assert finally for atleast 1 restart and retry to have occurred.
           //
           // ASAN gets the same lower thresholds as TSAN (issue #31707):
@@ -674,17 +674,36 @@ public class TestTransaction extends BaseCQLTest {
           // cap on CI hardware while still exercising the read-restart code path.
           final int TOTAL_RESTARTS = BuildTypeUtil.nonSanitizerVsSanitizer(10, 5);
           final int TOTAL_RETRIES = BuildTypeUtil.nonSanitizerVsSanitizer(10, 5);
+          // A read restarts only when a write commits in the window between the read time being
+          // picked by the CQL proxy and the tablets scanning the rows. For a serial read loop that
+          // window is a fraction of a millisecond, so a whole run can end with no restart at all.
+          // Keeping many reads in flight samples the window far more often and also widens it,
+          // since each read RPC waits behind the others on the tablet server. Scraping /metrics of
+          // every tablet server costs far more than a read, so poll the counters only once per
+          // several batches.
+          final int CONCURRENT_READS = 16;
+          final int READS_PER_POLL = 8 * CONCURRENT_READS;
           int i = 0;
           int currentRestarts = 0;
           int currentRetries = 0;
           long start_time = System.currentTimeMillis();
           while ((System.currentTimeMillis() - start_time) < 250 * 1000) {
-            i++;
-            List<Row> rows = session.execute(selectStmt.bind()).all();
-            assertEquals(2, rows.size());
-            assertEquals(TOTAL, rows.get(0).getInt("v") + rows.get(1).getInt("v"));
-            assertEquals(rows.get(0).getLong("writetime(v)"), rows.get(1).getLong("writetime(v)"));
+            List<ResultSetFuture> reads = new ArrayList<ResultSetFuture>();
+            for (int j = 0; j < CONCURRENT_READS; j++) {
+              reads.add(session.executeAsync(selectStmt.bind()));
+            }
+            for (ResultSetFuture read : reads) {
+              i++;
+              List<Row> rows = read.get().all();
+              assertEquals(2, rows.size());
+              assertEquals(TOTAL, rows.get(0).getInt("v") + rows.get(1).getInt("v"));
+              assertEquals(rows.get(0).getLong("writetime(v)"),
+                           rows.get(1).getLong("writetime(v)"));
+            }
 
+            if (i % READS_PER_POLL != 0) {
+              continue;
+            }
             currentRestarts = getRestartsCount("test_restart");
             currentRetries = getRetriesCount();
             if (currentRestarts - initialRestarts >= TOTAL_RESTARTS &&
@@ -692,6 +711,9 @@ public class TestTransaction extends BaseCQLTest {
               break;
             }
           }
+          // Pick up the restarts and retries from the reads done since the last poll.
+          currentRestarts = getRestartsCount("test_restart");
+          currentRetries = getRetriesCount();
           LOG.info("Current restarts = {}, retries = {} after {} tries",
                        currentRestarts, currentRetries, i);
           assertTrue(currentRestarts > initialRestarts);
