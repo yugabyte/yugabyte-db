@@ -19,6 +19,7 @@ public class SupportBundleComponentFactory {
   private final YbcLogsComponent ybcLogsComponent;
   private final K8sInfoComponent k8sInfoComponent;
   private final NodeAgentComponent nodeAgentComponent;
+  private final NodeHealthLogsComponent nodeHealthLogsComponent;
   private final YbaMetadataComponent ybaMetadataComponent;
   private final PrometheusMetricsComponent prometheusMetricsComponent;
   private final SystemLogsComponent systemLogsComponent;
@@ -39,6 +40,7 @@ public class SupportBundleComponentFactory {
       YbcLogsComponent ybcLogsComponent,
       K8sInfoComponent k8sInfoComponent,
       NodeAgentComponent nodeAgentComponent,
+      NodeHealthLogsComponent nodeHealthLogsComponent,
       YbaMetadataComponent ybaMetadataComponent,
       PrometheusMetricsComponent prometheusMetricsComponent,
       SystemLogsComponent systemLogsComponent,
@@ -56,6 +58,7 @@ public class SupportBundleComponentFactory {
     this.ybcLogsComponent = ybcLogsComponent;
     this.k8sInfoComponent = k8sInfoComponent;
     this.nodeAgentComponent = nodeAgentComponent;
+    this.nodeHealthLogsComponent = nodeHealthLogsComponent;
     this.ybaMetadataComponent = ybaMetadataComponent;
     this.prometheusMetricsComponent = prometheusMetricsComponent;
     this.systemLogsComponent = systemLogsComponent;
@@ -103,6 +106,9 @@ public class SupportBundleComponentFactory {
         break;
       case NodeAgent:
         supportBundleComponent = this.nodeAgentComponent;
+        break;
+      case NodeHealthLogs:
+        supportBundleComponent = this.nodeHealthLogsComponent;
         break;
       case YbaMetadata:
         supportBundleComponent = this.ybaMetadataComponent;
