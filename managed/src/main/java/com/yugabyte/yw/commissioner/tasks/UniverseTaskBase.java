@@ -1514,7 +1514,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
 
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the az uuid.
@@ -2321,7 +2321,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = universe.getCluster(node.placementUuid);
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -2655,7 +2655,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = universe.getCluster(node.placementUuid);
       DeleteRootVolumes.Params params = new DeleteRootVolumes.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       params.azUuid = node.azUuid;
       params.nodeName = node.nodeName;
       params.nodeUuid = node.nodeUuid;
@@ -2689,7 +2689,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       PauseServer.Params params = new PauseServer.Params();
       Cluster cluster = universe.getCluster(node.placementUuid);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -2729,7 +2729,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = universe.getCluster(node.placementUuid);
       ResumeServer.Params params = new ResumeServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -7738,7 +7738,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (!node.disksAreMountedByUUID) {
         UniverseDefinitionTaskParams.Cluster cluster = clusterMap.get(node.placementUuid);
         createUpdateMountedDisksTask(
-            node, node.getInstanceType(), cluster.userIntent.getDeviceInfoForNode(node));
+            node, node.getInstanceType(), cluster.userIntent.evaluateDeviceInfoForNode(node));
       }
     }
     boolean isNextFallThrough =

@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -1708,8 +1710,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         log.error("Provider {} is not ready", provider.getName());
         throw new RuntimeException("Provider " + provider.getName() + " is not ready");
       }
-      userIntent.provider = provider.getUuid().toString();
-      userIntent.providerType = CloudType.kubernetes;
+      ProviderInitializer providerInitializer =
+          Util.newProviderInitializer(
+              userIntent, provider.getUuid(), CloudType.kubernetes, confGetter);
+
       userIntent.replicationFactor =
           ybUniverse.getSpec().getReplicationFactor() != null
               ? ((int) ybUniverse.getSpec().getReplicationFactor().longValue())
@@ -1756,28 +1760,30 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               : 0;
       userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
       userIntent.setProxyConfig(toProxyConfig(ybUniverse.getSpec().getProxyConfig()));
-      userIntent.accessKeyCode = "";
+      providerInitializer.setAccessCode("");
 
       // Use new volume fields if any are present, otherwise fall back to old deviceInfo fields
       // If tserverVolume or masterVolume is present, use new fields for both (mutual exclusivity)
       if (ybUniverse.getSpec().getTserverVolume() != null
           || ybUniverse.getSpec().getMasterVolume() != null) {
         // Use new volume fields
-        userIntent.deviceInfo =
-            operatorUtils.mapTserverVolume(ybUniverse.getSpec().getTserverVolume());
-        userIntent.masterDeviceInfo =
-            operatorUtils.mapMasterVolume(ybUniverse.getSpec().getMasterVolume());
+        providerInitializer.setDeviceInfo(
+            operatorUtils.mapTserverVolume(ybUniverse.getSpec().getTserverVolume()));
+        providerInitializer.setMasterDeviceInfo(
+            operatorUtils.mapMasterVolume(ybUniverse.getSpec().getMasterVolume()));
       } else {
         // Use old deviceInfo fields
-        userIntent.deviceInfo = operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-        userIntent.masterDeviceInfo =
-            operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+        providerInitializer.setDeviceInfo(
+            operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo()));
+        providerInitializer.setMasterDeviceInfo(
+            operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo()));
       }
-      if (userIntent.deviceInfo == null) {
-        userIntent.deviceInfo = operatorUtils.defaultDeviceInfo();
+      if (userIntent.getBaseDeviceInfo(provider.getUuid()) == null) {
+        providerInitializer.setDeviceInfo(operatorUtils.defaultDeviceInfo());
       }
-      if (userIntent.masterDeviceInfo == null) {
-        userIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
+      if (userIntent.getBaseDeviceInfo(provider.getUuid(), UniverseTaskBase.ServerType.MASTER)
+          == null) {
+        providerInitializer.setMasterDeviceInfo(operatorUtils.defaultMasterDeviceInfo());
       }
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();

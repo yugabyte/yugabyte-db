@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup;
@@ -305,7 +306,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         getUpgradeParams(
             universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, ResizeNodeParams.class);
     resizeParams.clusters = Collections.singletonList(rrCluster);
-    rrCluster.userIntent.instanceType = instanceType2.getInstanceTypeCode();
+    TestUtils.existingProviderInitializer(rrCluster.userIntent)
+        .setInstanceType(instanceType2.getInstanceTypeCode());
     GFlagsUtil.removeGFlag(
         rrCluster.userIntent, "log_max_seconds_to_retain", UniverseTaskBase.ServerType.TSERVER);
 

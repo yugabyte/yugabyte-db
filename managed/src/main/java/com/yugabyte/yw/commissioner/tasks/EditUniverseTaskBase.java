@@ -265,16 +265,24 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
     // Update any tags on nodes that are not going to be removed and not being added.
     Cluster existingCluster = getUniverse().getCluster(cluster.uuid);
-    if (!cluster.areTagsSame(existingCluster)) {
-      log.info(
-          "Tags changed from '{}' to '{}'.",
-          existingCluster.userIntent.instanceTags,
-          cluster.userIntent.instanceTags);
-      createUpdateInstanceTagsTasks(
-          getNodesInCluster(cluster.uuid, liveNodes),
-          cluster.userIntent.instanceTags,
-          Util.getKeysNotPresent(
-              existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
+    for (UUID providerUUID : existingCluster.userIntent.getAllProviderUUIDs()) {
+      if (!existingCluster.areTagsChanged(cluster, providerUUID)) {
+        continue;
+      }
+      Map<String, String> newTags =
+          nullSafeTags(cluster.userIntent.getInstanceTagsForProvider(providerUUID));
+      Map<String, String> oldTags =
+          nullSafeTags(existingCluster.userIntent.getInstanceTagsForProvider(providerUUID));
+      log.info("Tags changed from '{}' to '{}' for provider {}.", oldTags, newTags, providerUUID);
+      Set<NodeDetails> providerNodes =
+          liveNodes.stream()
+              .filter(n -> n.isInPlacement(cluster.uuid))
+              .filter(n -> providerUUID.equals(cluster.getProviderUUIDForNode(n)))
+              .collect(Collectors.toSet());
+      if (!providerNodes.isEmpty()) {
+        createUpdateInstanceTagsTasks(
+            providerNodes, newTags, Util.getKeysNotPresent(oldTags, newTags));
+      }
     }
 
     boolean ignoreUseCustomImageConfig =
@@ -716,38 +724,43 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       if (targetCluster == null) {
         continue;
       }
-      // areTagsSame is true when tags match OR the provider does not support tag modification.
-      if (beforeCluster.areTagsSame(targetCluster)) {
-        continue;
-      }
-
-      Map<String, String> beforeTags = nullSafeTags(beforeCluster);
-      Map<String, String> targetTags = nullSafeTags(targetCluster);
-      Set<NodeDetails> nodesToTag =
-          PlacementInfoUtil.getLiveNodes(getNodesInCluster(beforeCluster.uuid, universe.getNodes()))
-              .stream()
-              .filter(n -> n.getNodeName() != null)
-              .filter(n -> beforeLiveNames.contains(n.getNodeName()))
-              .collect(Collectors.toSet());
-      if (nodesToTag.isEmpty()) {
+      for (UUID providerUUID : beforeCluster.userIntent.getAllProviderUUIDs()) {
+        // areTagsSame is true when tags match OR the provider does not support tag modification.
+        if (!beforeCluster.areTagsChanged(targetCluster, providerUUID)) {
+          continue;
+        }
+        Map<String, String> targetTags =
+            nullSafeTags(targetCluster.userIntent.getInstanceTagsForProvider(providerUUID));
+        Map<String, String> beforeTags =
+            nullSafeTags(beforeCluster.userIntent.getInstanceTagsForProvider(providerUUID));
+        Set<NodeDetails> nodesToTag =
+            PlacementInfoUtil.getLiveNodes(
+                    getNodesInCluster(beforeCluster.uuid, universe.getNodes()))
+                .stream()
+                .filter(n -> n.getNodeName() != null)
+                .filter(n -> beforeLiveNames.contains(n.getNodeName()))
+                .filter(n -> providerUUID.equals(beforeCluster.getProviderUUIDForNode(n)))
+                .collect(Collectors.toSet());
+        if (nodesToTag.isEmpty()) {
+          log.info(
+              "No Live-before/Live-after nodes to revert tags for cluster {}", beforeCluster.uuid);
+          continue;
+        }
         log.info(
-            "No Live-before/Live-after nodes to revert tags for cluster {}", beforeCluster.uuid);
-        continue;
+            "Reverting instance tags on {} node(s) for cluster {}",
+            nodesToTag.size(),
+            beforeCluster.uuid);
+        createUpdateInstanceTagsTasks(
+            nodesToTag, beforeTags, Util.getKeysNotPresent(targetTags, beforeTags));
       }
-      log.info(
-          "Reverting instance tags on {} node(s) for cluster {}",
-          nodesToTag.size(),
-          beforeCluster.uuid);
-      createUpdateInstanceTagsTasks(
-          nodesToTag, beforeTags, Util.getKeysNotPresent(targetTags, beforeTags));
     }
   }
 
-  protected static Map<String, String> nullSafeTags(Cluster cluster) {
-    if (cluster.userIntent == null || cluster.userIntent.instanceTags == null) {
+  protected static Map<String, String> nullSafeTags(Map<String, String> tags) {
+    if (tags == null) {
       return new HashMap<>();
     }
-    return new HashMap<>(cluster.userIntent.instanceTags);
+    return new HashMap<>(tags);
   }
 
   /**

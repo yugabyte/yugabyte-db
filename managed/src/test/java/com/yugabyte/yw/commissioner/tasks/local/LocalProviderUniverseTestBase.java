@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -870,13 +871,15 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       userIntent.universeName = univName;
     }
     userIntent.ybSoftwareVersion = ybVersion;
-    userIntent.accessKeyCode = accessKey.getKeyCode();
+
     if (!disableTls) {
       userIntent.enableNodeToNodeEncrypt = true;
       userIntent.enableClientToNodeEncrypt = true;
     }
     userIntent.specificGFlags = getGFlags();
-    userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.Local;
+    TestUtils.existingProviderInitializer(userIntent)
+        .setAccessCode(accessKey.getKeyCode())
+        .updateDeviceInfo(di -> di.storageType = PublicCloudConstants.StorageType.Local);
     return userIntent;
   }
 

@@ -791,7 +791,7 @@ public class NodeAgentRpcPayload {
             Objects.requireNonNull(universe.getCluster(node.placementUuid));
         CloudType cloudType = Util.getProviderForNode(nodeDetails, cluster).getCloudCode();
         if (cloudType != CloudType.onprem
-            && (deviceInfo = cluster.userIntent.getDeviceInfoForNode(node)) != null) {
+            && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
           serverControlInputBuilder.addAllMountPoints(getMountPoints(deviceInfo, cloudType));
           serverControlInputBuilder.setCheckDataVolumes(true);
         }

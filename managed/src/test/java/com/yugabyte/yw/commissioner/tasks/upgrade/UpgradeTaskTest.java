@@ -23,8 +23,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
@@ -36,6 +34,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -185,12 +184,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2.21.1.1-b1";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     userIntent.useSystemd = true;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
 
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId(), certUUID);
 
@@ -476,13 +478,16 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.numNodes = numNodes;
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = ybSoftwareVersion;
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     PlacementInfo pi = new PlacementInfo();
     List<UUID> azUUIDs = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
     int idx = 0;

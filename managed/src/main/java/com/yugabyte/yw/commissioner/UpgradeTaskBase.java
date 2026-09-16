@@ -1162,7 +1162,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       params.otelCollectorEnabled =
           installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
       params.telemetryConfig = telemetryConfig;
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       params.gflags = nodeToGflags.apply(node);
 
       ManageOtelCollector task = createTask(ManageOtelCollector.class);

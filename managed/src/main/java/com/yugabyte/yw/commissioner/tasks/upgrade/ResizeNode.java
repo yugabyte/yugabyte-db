@@ -98,7 +98,7 @@ public class ResizeNode extends UpgradeTaskBase {
             newIntent.getInstanceTypeForNode(node), currentIntent.getInstanceTypeForNode(node))) {
           continue;
         }
-        DeviceInfo deviceInfo = currentIntent.getDeviceInfoForNode(node);
+        DeviceInfo deviceInfo = currentIntent.evaluateDeviceInfoForNode(node);
         if (deviceInfo != null && deviceInfo.numVolumes != null && deviceInfo.numVolumes > 1) {
           throw new PlatformServiceException(
               BAD_REQUEST,
@@ -424,8 +424,8 @@ public class ResizeNode extends UpgradeTaskBase {
     if (taskParams().isForceResizeNode()) {
       return true;
     }
-    DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
-    DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(node);
+    DeviceInfo currentDeviceInfo = currentIntent.evaluateDeviceInfoForNode(node);
+    DeviceInfo newDeviceInfo = newIntent.evaluateDeviceInfoForNode(node);
     return isModifyingDevice(currentDeviceInfo, newDeviceInfo);
   }
 
@@ -453,7 +453,7 @@ public class ResizeNode extends UpgradeTaskBase {
     for (NodeDetails node : nodes) {
       if (!node.disksAreMountedByUUID) {
         createUpdateMountedDisksTask(
-                node, node.getInstanceType(), currentIntent.getDeviceInfoForNode(node))
+                node, node.getInstanceType(), currentIntent.evaluateDeviceInfoForNode(node))
             .setSubTaskGroupType(getTaskSubGroupType());
       }
     }
@@ -472,10 +472,10 @@ public class ResizeNode extends UpgradeTaskBase {
     byServerType.forEach(
         (type, nodes) -> {
           for (NodeDetails node : nodes) {
-            DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(node);
+            DeviceInfo newDeviceInfo = newIntent.evaluateDeviceInfoForNode(node);
             String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
             String currentInstanceType = node.cloudInfo.instance_type;
-            DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
+            DeviceInfo currentDeviceInfo = currentIntent.evaluateDeviceInfoForNode(node);
             Integer newCgroupSize = newIntent.getCGroupSize(node);
             Integer oldCgroupSize = currentIntent.getCGroupSize(node);
             createResizeNodeTasks(
@@ -554,8 +554,8 @@ public class ResizeNode extends UpgradeTaskBase {
     params.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     params.placementUuid = node.placementUuid;
     params.cgroupSize = getCGroupSize(node);
-    params.skipAnsiblePlaybookForCGroup =
-        NodeAgentClient.isCloudTypeSupported(nodeCluster.userIntent.providerType);
+    Common.CloudType providerType = nodeCluster.getProviderCloudType(node);
+    params.skipAnsiblePlaybookForCGroup = NodeAgentClient.isCloudTypeSupported(providerType);
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);
     subTaskGroup.addSubTask(changeInstanceTypeTask);

@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -118,7 +119,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   public void testExpand() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
-    userIntent.setCgroupSize(100);
+    TestUtils.existingProviderInitializer(userIntent).setCGroupSize(100);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
     initAndStartPayload(universe);
@@ -215,7 +216,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     ImageBundle imageBundle2 = ImageBundle.create(provider, "ib-1", details2, false);
 
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
-    userIntent.imageBundleUUID = imageBundle.getUuid();
+    TestUtils.existingProviderInitializer(userIntent).setImageBundleUUID(imageBundle.getUuid());
 
     Universe universe = createUniverse(userIntent);
     Map<String, String> gg =
@@ -226,7 +227,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.imageBundleUUID = imageBundle2.getUuid();
+    TestUtils.existingProviderInitializer(cluster.userIntent)
+        .setImageBundleUUID(imageBundle2.getUuid());
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -265,7 +267,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
         .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(cluster.userIntent).setInstanceType(INSTANCE_TYPE_CODE_2);
+
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -577,7 +580,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     TaskInfo taskInfo = waitForTask(taskID, universe);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     cluster = universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(cluster.userIntent).setInstanceType(INSTANCE_TYPE_CODE_2);
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -898,8 +901,9 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     initYSQL(universe, "table_in_main", partition.getTablespaceName());
     initYSQL(universe, "table_in_secondary", cluster.getPartitions().get(1).getTablespaceName());
 
-    universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType =
-        INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent)
+        .setInstanceType(INSTANCE_TYPE_CODE_2);
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),

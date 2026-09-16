@@ -159,8 +159,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
               String oldInstanceType = currentUserIntent.getInstanceTypeForNode(n);
               String newInstanceType = newUserIntent.getInstanceTypeForNode(n);
 
-              DeviceInfo oldDevice = currentUserIntent.getDeviceInfoForNode(n);
-              DeviceInfo newDevice = newUserIntent.getDeviceInfoForNode(n);
+              DeviceInfo oldDevice = currentUserIntent.evaluateDeviceInfoForNode(n);
+              DeviceInfo newDevice = newUserIntent.evaluateDeviceInfoForNode(n);
 
               Integer newCgroupSize = newUserIntent.getCGroupSize(n);
               Integer oldCgroupSize = currentUserIntent.getCGroupSize(n);
@@ -283,8 +283,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         instanceTypeChanged = true;
         hasChanges = true;
       }
-      DeviceInfo curDeviceInfo = currentUserIntent.getDeviceInfoForNode(node);
-      DeviceInfo newDeviceInfo = newUserIntent.getDeviceInfoForNode(node);
+      DeviceInfo curDeviceInfo = currentUserIntent.evaluateDeviceInfoForNode(node);
+      DeviceInfo newDeviceInfo = newUserIntent.evaluateDeviceInfoForNode(node);
       AtomicReference<String> error = new AtomicReference<>();
       boolean nodeDiskChanged =
           checkDiskChanged(provider.getCloudCode(), curDeviceInfo, newDeviceInfo, error::set);
