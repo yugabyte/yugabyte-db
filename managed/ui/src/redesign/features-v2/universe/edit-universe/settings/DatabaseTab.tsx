@@ -112,6 +112,11 @@ export const DatabaseTab = () => {
     )?.value === 'true'
   );
 
+  const isNonRestartGFlagUpgradeOptionEnabled =
+    runtimeConfigs?.configEntries?.find(
+      (config) => config.key === RuntimeConfigKey.ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION
+    )?.value === 'true';
+
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
@@ -179,7 +184,13 @@ export const DatabaseTab = () => {
               </YBButton>
             }
           >
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL,
+                universeUUID
+              )}
+              isControl
+            >
               <MenuItem
                 data-test-id="edit-ysql-settings"
                 data-testid="edit-ysql-settings"
@@ -194,7 +205,13 @@ export const DatabaseTab = () => {
                 {t('editYSQLSettings')}
               </MenuItem>
             </RbacValidator>
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL,
+                universeUUID
+              )}
+              isControl
+            >
               <MenuItem
                 data-test-id="edit-ycql-settings"
                 data-testid="edit-ycql-settings"
@@ -263,7 +280,13 @@ export const DatabaseTab = () => {
               </YBButton>
             }
           >
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL,
+                universeUUID
+              )}
+              isControl
+            >
               <MenuItem
                 data-test-id="edit-pooling-settings"
                 data-testid="edit-pooling-settings"
@@ -278,7 +301,13 @@ export const DatabaseTab = () => {
                 {t('editConnectionPooling')}
               </MenuItem>
             </RbacValidator>
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL,
+                universeUUID
+              )}
+              isControl
+            >
               <MenuItem
                 data-test-id="edit-postgres-compatibility-settings"
                 data-testid="edit-postgres-compatibility-settings"
@@ -320,7 +349,13 @@ export const DatabaseTab = () => {
         <StyledCardHeader sx={{ padding: !hasAnyGflags ? '24px' : '26px 24px' }}>
           {t('advancedConfigFlags')}
           {hasAnyGflags && (
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                universeUUID
+              )}
+              isControl
+            >
               <YBButton
                 dataTestId="edit-gflags-button"
                 variant="ghost"
@@ -378,7 +413,13 @@ export const DatabaseTab = () => {
               }}
             >
               {t('noGflagsAdded')} <br />
-              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
+              <RbacValidator
+                accessRequiredOn={withUniverseResource(
+                  ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                  universeUUID
+                )}
+                isControl
+              >
                 <YBButton
                   variant="secondary"
                   dataTestId="add-gflags-button"
@@ -460,7 +501,7 @@ export const DatabaseTab = () => {
             }}
             universeData={legacyUniverse}
             isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
-            isNonRestartGFlagUpgradeOptionEnabled={false}
+            isNonRestartGFlagUpgradeOptionEnabled={isNonRestartGFlagUpgradeOptionEnabled}
           />
         </>
       )}

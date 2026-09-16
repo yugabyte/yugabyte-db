@@ -199,9 +199,14 @@ export const getDedicatedCountsForPlacementRegion = (
 };
 
 /** Master nodes in a single AZ from universe node details. */
-export const countNodesInAzByType = (universeData: Universe, azUuid: string | undefined, nodeType: NodeDetailsDedicatedTo) => {
+export const countNodesInAzByType = (
+  universeData: Universe,
+  azUuid: string | undefined,
+  nodeType: NodeDetailsDedicatedTo
+) => {
   if (!azUuid) return 0;
-  return filter(universeData?.info?.node_details_set, { az_uuid: azUuid, dedicated_to: nodeType }).length;
+  return filter(universeData?.info?.node_details_set, { az_uuid: azUuid, dedicated_to: nodeType })
+    .length;
 };
 
 export const getResilientType = (
@@ -428,11 +433,15 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   });
 };
 
-export const getPlacementSpecFromCluster = (cluster: ClusterSpec | ClusterPartitionSpec): ClusterPlacementSpec | null => {
-  if('partitions_spec' in cluster && cluster.partitions_spec) {
-    return cluster.partitions_spec.find((partition) => partition.default_partition)?.placement ?? null;
+export const getPlacementSpecFromCluster = (
+  cluster: ClusterSpec | ClusterPartitionSpec
+): ClusterPlacementSpec | null => {
+  if ('partitions_spec' in cluster && cluster.partitions_spec) {
+    return (
+      cluster.partitions_spec.find((partition) => partition.default_partition)?.placement ?? null
+    );
   }
-  if('placement_spec' in cluster && cluster.placement_spec) {
+  if ('placement_spec' in cluster && cluster.placement_spec) {
     return cluster.placement_spec;
   }
   if ('placement' in cluster && cluster.placement) {
@@ -531,7 +540,11 @@ export function getDedicatedClusterDisplayNodeTotal(
   } else {
     const placement = getPlacementSpecFromCluster(cluster);
     if (placement) {
-      ({ tserver, master } = getDedicatedTserverMasterDisplayCounts(universeData, cluster, placement));
+      ({ tserver, master } = getDedicatedTserverMasterDisplayCounts(
+        universeData,
+        cluster,
+        placement
+      ));
     } else {
       const fromDetails = countMasterAndTServerNodes(universeData, cluster);
       tserver = fromDetails[NodeDetailsDedicatedTo.TSERVER] ?? 0;
