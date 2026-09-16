@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -265,6 +266,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     }
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getCluster(bundleUpgradeInfo.getClusterUuid());
+    if (cluster.getProviderCloudType(node) == CloudType.oci) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "VM image upgrade for OCI cloud based universe is not supported.");
+    }
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
     ImageBundle bundle =
         ImageBundle.getOrBadRequest(providerUUID, bundleUpgradeInfo.getImageBundleUuid());
