@@ -57,7 +57,7 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_scan_core.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
@@ -1175,7 +1175,8 @@ TableScanDesc
 heap_beginscan(Relation relation, Snapshot snapshot,
 			   int nkeys, ScanKey key,
 			   ParallelTableScanDesc parallel_scan,
-			   uint32 flags)
+			   uint32 flags,
+			   struct YbTableScanOptions *yb_options)
 {
 	HeapScanDesc scan;
 
@@ -1185,7 +1186,8 @@ heap_beginscan(Relation relation, Snapshot snapshot,
 	 */
 	if (IsYBRelation(relation))
 	{
-		return ybc_heap_beginscan(relation, snapshot, nkeys, key, flags);
+		return ybc_heap_beginscan(relation, snapshot, nkeys, key, flags,
+								  yb_options);
 	}
 
 	/*
@@ -1501,17 +1503,7 @@ bool
 heap_getnextslot(TableScanDesc sscan, ScanDirection direction, TupleTableSlot *slot)
 {
 	if (IsYBRelation(sscan->rs_rd))
-	{
-		HeapTuple	tuple = ybc_heap_getnext(sscan);
-
-		if (!tuple)
-		{
-			ExecClearTuple(slot);
-			return false;
-		}
-		ExecStoreHeapTuple(tuple, slot, false /* shouldFree */ );
-		return true;
-	}
+		return ybc_heap_getnextslot(sscan, direction, slot);
 
 	HeapScanDesc scan = (HeapScanDesc) sscan;
 
