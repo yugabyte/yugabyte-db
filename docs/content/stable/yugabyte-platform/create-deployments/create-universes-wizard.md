@@ -28,7 +28,7 @@ type: docs
   </li>
 </ul>
 
-{{<tags/ui/new>}} YugabyteDB Anywhere allows you to create a universe across multiple availability zones in a single geographic region, or spanning multiple regions (for example, Oregon, South Carolina, and Tokyo), using a provider configuration. This includes universes deployed on VMs (AWS, GCP, Azure, or on-premises) and on Kubernetes.
+{{<tags/ui/new>}} YugabyteDB Anywhere allows you to create a universe across multiple availability zones in a single geographic region, or spanning multiple regions (for example, Oregon, South Carolina, and Tokyo), using a provider configuration. This includes universes deployed on VMs (cloud provider, on-premises) and on Kubernetes.
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with [dedicated nodes for YB-Master processes](../dedicated-master/).
 
@@ -116,7 +116,7 @@ Specify the instance to use for the universe nodes:
 - Choose the **CPU Architecture**, either x86 (Intel) or AArch64 (ARM).
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
-  _This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider._
+  _This option only applies if you have selected an AWS, GCP, Azure, or OCI provider configuration. The available Linux versions are specified in the provider._
 
   If you are performing an airgapped installation, you cannot use YBA-Managed Linux versions; you must use a custom image. Do the following before creating your universe:
 
@@ -127,7 +127,7 @@ Specify the instance to use for the universe nodes:
 
 - Select the **Instance Type** to use for the nodes in the universe.
 - Specify the number and size of the storage volumes.
-- Select the storage type (AWS, GCP, or Azure only).
+- Select the storage type (AWS, GCP, Azure, or OCI only).
 
 #### Additional AWS fields
 
@@ -193,7 +193,7 @@ For security planning, refer to [Security](../create-universes-overview/#securit
 
 To enable IPv6 for the universe, select the **Enable IPv6** option. (Kubernetes only.)
 
-To enable public access to the universe, select the **Assign Public IP** option. (AWS, GCP, or Azure only.)
+To enable public access to the universe, select the **Assign Public IP** option. (AWS, GCP, Azure, or OCI only.)
 
 #### Encryption in Transit Settings
 
@@ -240,7 +240,7 @@ Instance Profile ARN
 
 #### User Tags
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. You can define these tags when you create a new universe, as well as modify or delete tags of an existing universe. Refer to [Create and edit instance tags](../../scale-deployments/instance-tags/). (AWS, GCP, or Azure only.)
+The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. You can define these tags when you create a new universe, as well as modify or delete tags of an existing universe. Refer to [Create and edit instance tags](../../scale-deployments/instance-tags/). (AWS, GCP, Azure, or OCI only.)
 
 #### Deployment Port Override
 

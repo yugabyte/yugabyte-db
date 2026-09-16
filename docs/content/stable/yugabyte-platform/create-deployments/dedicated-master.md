@@ -17,7 +17,7 @@ The default behavior when creating a universe is to locate [YB-Master](../../../
 
 You can specify that YB-Masters be placed on dedicated nodes when creating or editing a universe.
 
-Dedicated master placement can be used for universes using AWS, GCP, Azure, and On-Premises [provider configurations](../../configure-yugabyte-platform/); Kubernetes is not supported.
+Dedicated master placement can be used for universes using AWS, GCP, Azure, OCI, and On-Premises [provider configurations](../../configure-yugabyte-platform/); Kubernetes is not supported.
 
 When planning a universe, see also [Dedicated masters](../create-universes-overview/#dedicated-masters).
 
