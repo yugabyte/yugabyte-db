@@ -23,6 +23,7 @@
 
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
+#include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -1691,6 +1692,54 @@ TEST_F(ExternalObjectLockTest, TestWaitForLockers) {
   auto num_partitions = ASSERT_RESULT(conn2.FetchRow<int64_t>(
       "SELECT count(*) FROM pg_inherits WHERE inhparent = 'parent_t'::regclass"));
   ASSERT_EQ(num_partitions, 1);
+}
+
+TEST_F(ExternalObjectLockTest, YB_DISABLE_TEST_ON_MACOS(FastpathAvailabilityAfterLeaseExpiration)) {
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", /*tserver_index=*/0));
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", /*tserver_index=*/1));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test0(x INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(x INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test2(x INT)"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test1 IN EXCLUSIVE MODE"));
+
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test2 IN EXCLUSIVE MODE"));
+
+  {
+    auto ts = tablet_server(0);
+    ASSERT_OK(cluster_->SetFlag(ts, "vmodule", "ts_local_lock_manager=2"));
+    LogWaiter log_waiter(ts, "BootstrapDdlObjectLocks: success.");
+    ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+    ASSERT_OK(WaitForTServerLeaseToExpire(ts->uuid(), 10s));
+    ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "true"));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 5)));
+  }
+
+  ASSERT_NOK(conn1.CommitTransaction());
+  ASSERT_OK(conn2.CommitTransaction());
+
+  for (size_t i = 0; i < 3; ++i) {
+    auto ts = tablet_server(i);
+    ASSERT_OK(cluster_->SetFlag(ts, "ysql_log_statement", "all"));
+    ASSERT_OK(cluster_->SetFlag(ts, "vmodule", "object_lock_shared_state=1"));
+
+    LogWaiter log_waiter(ts, "exclusive intents exist, fastpath unusable");
+
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", i));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+    ASSERT_OK(conn.Execute("LOCK TABLE test0 IN ROW SHARE MODE"));
+    EXPECT_NOK(log_waiter.WaitFor(0s));
+    ASSERT_OK(conn.Execute("LOCK TABLE test1 IN ROW SHARE MODE"));
+    EXPECT_NOK(log_waiter.WaitFor(0s));
+    ASSERT_OK(conn.Execute("LOCK TABLE test2 IN ROW SHARE MODE"));
+    EXPECT_NOK(log_waiter.WaitFor(0s));
+
+    ASSERT_OK(conn.CommitTransaction());
+  }
 }
 
 struct IndexPhaseParam {

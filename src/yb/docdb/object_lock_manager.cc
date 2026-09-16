@@ -1216,9 +1216,6 @@ void ObjectLockManagerImpl::Shutdown() {
   std::vector<std::shared_ptr<WaitForLockersContext>> lock_waiters_trackers;
   {
     std::lock_guard l(global_mutex_);
-    if (shared_manager_) {
-      shared_manager_->Stop();
-    }
     for (auto& [_, entry] : locks_) {
       std::lock_guard obj_lock(entry->mutex);
       auto& index = entry->wait_queue.get<StartUsTag>();
@@ -1251,6 +1248,9 @@ void ObjectLockManagerImpl::Shutdown() {
         << "ref_count of some lock structures is non-zero on shutdown, implies either some "
         << "connections are outstanding or indicates a state corruption of the lock manager.\n"
         << AsString(locks_);
+  }
+  if (shared_manager_) {
+    shared_manager_->Stop();
   }
 }
 
