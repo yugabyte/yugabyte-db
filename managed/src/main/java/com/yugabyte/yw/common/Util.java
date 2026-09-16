@@ -181,9 +181,7 @@ public class Util {
 
   public static final int POSTGRES_PASSWORD_LENGTH = 20;
 
-  /**
-   * Safe-set of characters for generated Postgres passwords.
-   */
+  /** Safe-set of characters for generated Postgres passwords. */
   public static final String POSTGRES_PASSWORD_ALLOWED_CHARS =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@^*0123456789";
 
@@ -1904,7 +1902,7 @@ public class Util {
 
   public static String getPostgresCompatiblePassword() {
     return RandomStringUtils.secureStrong()
-            .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
+        .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
   }
 
   public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {
