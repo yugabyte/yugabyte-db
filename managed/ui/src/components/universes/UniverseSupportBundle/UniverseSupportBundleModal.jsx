@@ -1,8 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { connect, useDispatch, useSelector } from 'react-redux';
-import { useQuery, useQueryClient } from 'react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 
 import { FirstStep } from './FirstStep/FirstStep';
@@ -14,10 +13,9 @@ import {
 } from './SecondStep/SecondStep';
 import { ThirdStep } from './ThirdStep/ThirdStep';
 import { PerfAdvisorAPI, QUERY_KEY } from '@app/redesign/features/PerfAdvisor/api';
+import { supportBundleQueryKey } from '@app/redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { getSupportBundles } from '../../../selector/supportBundle';
-import { setListSupportBundle } from '../../../actions/supportBundle';
-import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import { fetchGlobalRunTimeConfigs } from '../../../api/admin';
 import {
@@ -37,10 +35,10 @@ import { YBModal } from '../../../redesign/components';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseSupportBundleModal.scss';
 
-const stepsObj = {
-  firstStep: 'firstStep',
-  secondStep: 'secondStep',
-  thirdStep: 'thirdStep'
+const SupportBundleStep = {
+  EMPTY: 'empty',
+  CREATE_FORM: 'createForm',
+  LIST: 'list'
 };
 
 const POLLING_INTERVAL = 10000; // ten seconds
@@ -50,13 +48,6 @@ const isPerfAdvisorNotFound = (error) =>
 
 export const UniverseSupportBundleModal = (props) => {
   const { currentUniverse, closeModal } = props;
-  const dispatch = useDispatch();
-
-  useEffect(() => {
-    return () => {
-      dispatch(setListSupportBundle({ data: [], status: 200 }));
-    };
-  }, [dispatch]);
 
   const globalRuntimeConfigsQuery = useQuery(
     ['globalRuntimeConfigs'],
@@ -89,9 +80,7 @@ export const UniverseSupportBundleModal = (props) => {
     );
   }
 
-  const useV2Api = isSupportBundleUiV2Enabled(
-    globalRuntimeConfigsQuery.data?.configEntries
-  );
+  const useV2Api = isSupportBundleUiV2Enabled(globalRuntimeConfigsQuery.data?.configEntries);
 
   return (
     <UniverseSupportBundleWizard
@@ -125,9 +114,8 @@ const UniverseSupportBundleWizard = (props) => {
   );
   const isPerfAdvisorRegistered =
     paRegistrationQuery.isSuccess && !!paRegistrationQuery.data?.success;
-  const [steps, setSteps] = useState(stepsObj.firstStep);
+  const [isOnCreateForm, setIsOnCreateForm] = useState(false);
   const [activePage, setActivePage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const defaultOptions = updateOptions(
     filterTypes[0],
     [true, true, true, true, true, true, true, true, true, true, true],
@@ -138,115 +126,79 @@ const UniverseSupportBundleWizard = (props) => {
   );
   const [payload, setPayload] = useState(defaultOptions);
   const isK8sUniverse = getIsKubernetesUniverse(currentUniverse);
-  const dispatch = useDispatch();
-  const [supportBundles] = useSelector(getSupportBundles);
   const queryClient = useQueryClient();
-  const [hasListed, setHasListed] = useState(false);
-  const [listError, setListError] = useState(false);
-  const hasListedSuccessfullyRef = useRef(false);
 
-  const refreshSupportBundles = useCallback(
-    (universeUUID, page = activePage) => {
-      const offset = useV2Api ? (page - 1) * SUPPORT_BUNDLE_PAGE_SIZE : 0;
-      return listSupportBundles(universeUUID, useV2Api, offset)
-        .then(({ bundles, totalCount: nextTotalCount }) => {
-          setTotalCount(nextTotalCount);
-          if (useV2Api) {
-            const lastPage = Math.max(
-              1,
-              Math.ceil(nextTotalCount / SUPPORT_BUNDLE_PAGE_SIZE)
-            );
-            if (page > lastPage) {
-              setActivePage(lastPage);
-              setHasListed(true);
-              hasListedSuccessfullyRef.current = true;
-              setListError(false);
-              return;
-            }
+  const offset = useV2Api ? (activePage - 1) * SUPPORT_BUNDLE_PAGE_SIZE : 0;
+
+  const supportBundlesListQuery = useQuery(
+    supportBundleQueryKey.list(universeDetails.universeUUID, useV2Api, activePage),
+    () => listSupportBundles(universeDetails.universeUUID, useV2Api, offset),
+    {
+      keepPreviousData: true,
+      refetchOnMount: 'always',
+      refetchInterval: (data) => {
+        const bundles = data?.bundles ?? [];
+        return bundles.some((supportBundle) => supportBundle.status === 'Running')
+          ? POLLING_INTERVAL
+          : false;
+      },
+      onSuccess: ({ totalCount: nextTotalCount }) => {
+        if (useV2Api) {
+          const lastPage = Math.max(1, Math.ceil(nextTotalCount / SUPPORT_BUNDLE_PAGE_SIZE));
+          if (activePage > lastPage) {
+            setActivePage(lastPage);
           }
-          dispatch(setListSupportBundle({ data: bundles, status: 200 }));
-          setHasListed(true);
-          hasListedSuccessfullyRef.current = true;
-          setListError(false);
-        })
-        .catch((error) => {
-          setHasListed(true);
-          if (!hasListedSuccessfullyRef.current) {
-            setListError(true);
-            return;
-          }
-          toast.error(createErrorMessage(error));
-        });
-    },
-    [dispatch, useV2Api, activePage]
+        }
+      },
+      onError: (error) => {
+        const cachedLists = queryClient.getQueriesData([
+          ...supportBundleQueryKey.ALL,
+          'list',
+          universeDetails.universeUUID
+        ]);
+        if (cachedLists.some(([, cachedList]) => cachedList)) {
+          handleServerError(error, { customErrorLabel: 'Failed to fetch support bundles' });
+        }
+      }
+    }
   );
 
-  useEffect(() => {
-    refreshSupportBundles(universeDetails.universeUUID, activePage);
-  }, [refreshSupportBundles, universeDetails.universeUUID, activePage]);
+  const supportBundles = supportBundlesListQuery.data?.bundles ?? [];
+  const totalCount = supportBundlesListQuery.data?.totalCount ?? 0;
+  const currentStep = isOnCreateForm
+    ? SupportBundleStep.CREATE_FORM
+    : totalCount === 0
+      ? SupportBundleStep.EMPTY
+      : SupportBundleStep.LIST;
 
-  useEffect(() => {
-    if (!hasListed) {
-      return undefined;
-    }
-    if (totalCount === 0) {
-      if (steps !== stepsObj.secondStep) {
-        setSteps(stepsObj.firstStep);
-      }
-      return undefined;
-    }
-    if (steps !== stepsObj.secondStep) {
-      setSteps(stepsObj.thirdStep);
-    }
-    if (
-      supportBundles &&
-      Array.isArray(supportBundles) &&
-      supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined
-    ) {
-      const timeoutId = setTimeout(() => {
-        refreshSupportBundles(universeDetails.universeUUID, activePage);
-      }, POLLING_INTERVAL);
-      return () => {
-        clearTimeout(timeoutId);
-      };
-    }
-    return undefined;
-  }, [
-    hasListed,
-    totalCount,
-    supportBundles,
-    refreshSupportBundles,
-    universeDetails.universeUUID,
-    activePage
-  ]);
-
-  const saveSupportBundle = async (universeUUID) => {
-    try {
-      await createSupportBundleRequest(universeUUID, payload, useV2Api);
-    } catch (error) {
-      if (error?.response?.status === 403) {
-        toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
-      } else {
-        toast.error(createErrorMessage(error));
+  const createSupportBundleMutation = useMutation(
+    (supportBundlePayload) =>
+      createSupportBundleRequest(universeDetails.universeUUID, supportBundlePayload, useV2Api),
+    {
+      onSuccess: async () => {
+        setActivePage(1);
+        await queryClient.invalidateQueries(supportBundleQueryKey.ALL);
+        setIsOnCreateForm(false);
+        setPayload(defaultOptions);
+      },
+      onError: (error) => {
+        if (error?.response?.status === 403) {
+          toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
+          return;
+        }
+        handleServerError(error, { customErrorLabel: 'Failed to create support bundle' });
       }
     }
-    handleStepChange(stepsObj.thirdStep);
-    setActivePage(1);
-    refreshSupportBundles(universeUUID, 1);
-    setPayload(defaultOptions);
-  };
-
-  const handleStepChange = (step) => {
-    setSteps(step);
-  };
+  );
 
   const handleDeleteBundle = async (universeUUID, bundleUUID) => {
     try {
       await deleteSupportBundleRequest(universeUUID, bundleUUID, useV2Api);
     } catch (error) {
-      toast.error(createErrorMessage(error));
+      handleServerError(error, { customErrorLabel: 'Failed to delete support bundle' });
+      return;
     }
-    refreshSupportBundles(universeUUID, activePage);
+    await supportBundlesListQuery.refetch();
   };
 
   const handleDownloadBundle = (universeUUID, bundleUUID) => {
@@ -258,9 +210,11 @@ const UniverseSupportBundleWizard = (props) => {
     closeModal();
   };
 
-  const isSubmitDisabled = steps === stepsObj.secondStep && payload?.components?.length === 0;
+  const isSubmitDisabled =
+    currentStep === SupportBundleStep.CREATE_FORM &&
+    (payload?.components?.length === 0 || createSupportBundleMutation.isLoading);
 
-  if (!hasListed) {
+  if (supportBundlesListQuery.isLoading) {
     return (
       <YBModal
         className="universe-support-bundle"
@@ -276,7 +230,7 @@ const UniverseSupportBundleWizard = (props) => {
     );
   }
 
-  if (listError) {
+  if (supportBundlesListQuery.isError && !supportBundlesListQuery.data) {
     return (
       <YBModal
         className="universe-support-bundle"
@@ -300,27 +254,28 @@ const UniverseSupportBundleWizard = (props) => {
       onClose={onClose}
       overrideHeight="fit-content"
       cancelLabel="Close"
-      submitLabel={steps === stepsObj.secondStep ? 'Create Bundle' : undefined}
+      submitLabel={currentStep === SupportBundleStep.CREATE_FORM ? 'Create Bundle' : undefined}
       onSubmit={
-        steps === stepsObj.secondStep
+        currentStep === SupportBundleStep.CREATE_FORM
           ? () => {
-              saveSupportBundle(universeDetails.universeUUID);
+              createSupportBundleMutation.mutate(payload);
             }
           : undefined
       }
+      isSubmitting={createSupportBundleMutation.isLoading}
       buttonProps={{ primary: { disabled: isSubmitDisabled } }}
     >
       <div className="universe-support-bundle-body">
-        {steps === stepsObj.firstStep && (
+        {currentStep === SupportBundleStep.EMPTY && (
           <FirstStep
             onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep);
+              setIsOnCreateForm(true);
             }}
             universeUUID={universeDetails.universeUUID}
             useV2Api={useV2Api}
           />
         )}
-        {steps === stepsObj.secondStep && (
+        {currentStep === SupportBundleStep.CREATE_FORM && (
           <SecondStep
             onOptionsChange={(selectedOptions) => {
               if (selectedOptions) {
@@ -337,7 +292,7 @@ const UniverseSupportBundleWizard = (props) => {
             useV2Api={useV2Api}
           />
         )}
-        {steps === stepsObj.thirdStep && (
+        {currentStep === SupportBundleStep.LIST && (
           <ThirdStep
             handleDownloadBundle={(bundleUUID) =>
               handleDownloadBundle(universeDetails.universeUUID, bundleUUID)
@@ -347,7 +302,7 @@ const UniverseSupportBundleWizard = (props) => {
             }
             supportBundles={supportBundles}
             onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep);
+              setIsOnCreateForm(true);
             }}
             universeUUID={universeDetails.universeUUID}
             useV2Api={useV2Api}
@@ -368,10 +323,4 @@ export function fetchEstimatedSupportBundleSize(universeUUID, supportBundle, use
   return estimateSupportBundleSizeRequest(universeUUID, supportBundle, useV2Api);
 }
 
-function mapStateToProps(state) {
-  return {
-    supportBundle: state.supportBundle
-  };
-}
-
-export default connect(mapStateToProps)(UniverseSupportBundleModal);
+export default UniverseSupportBundleModal;

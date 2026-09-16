@@ -481,7 +481,7 @@ export const SecondStep = ({
       },
       onError: (error) => {
         handleServerError(error, {
-          customErrorLabel: 'Failed fetch estimated support bundle size.'
+          customErrorLabel: 'Failed fetch estimated support bundle size'
         });
       }
     }
