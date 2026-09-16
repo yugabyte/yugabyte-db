@@ -46,3 +46,4 @@ test: yb.orig.merge_scan_derive
 # These tests define their own tables.
 test: yb.orig.merge_scan_degenerate
 test: yb.orig.merge_scan_subquery
+test: yb.orig.merge_scan_plan_cache

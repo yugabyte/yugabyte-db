@@ -545,6 +545,7 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(yb_rel_pushdown.quals);
 	COPY_NODE_FIELD(yb_rel_pushdown.colrefs);
 	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
+	COPY_NODE_FIELD(yb_merge_scan_info);
 	COPY_SCALAR_FIELD(yb_lock_mechanism);
 
 	return newnode;
@@ -575,6 +576,7 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_NODE_FIELD(yb_pushdown.quals);
 	COPY_NODE_FIELD(yb_pushdown.colrefs);
 	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
+	COPY_NODE_FIELD(yb_merge_scan_info);
 	COPY_SCALAR_FIELD(yb_num_decoded_pk_cols);
 
 	return newnode;
@@ -5394,6 +5396,7 @@ _copyYbMergeScanSaopColInfo(const YbMergeScanSaopColInfo *from)
 	COPY_NODE_FIELD(saop);
 	COPY_SCALAR_FIELD(indexcol);
 	COPY_SCALAR_FIELD(num_elems);
+	COPY_SCALAR_FIELD(derived);
 
 	return newnode;
 }

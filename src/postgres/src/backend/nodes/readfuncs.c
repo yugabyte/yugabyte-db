@@ -1950,6 +1950,7 @@ _readIndexScan(void)
 	READ_NODE_FIELD(yb_rel_pushdown.quals);
 	READ_NODE_FIELD(yb_rel_pushdown.colrefs);
 	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_NODE_FIELD(yb_merge_scan_info);
 	READ_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 
 	READ_DONE();
@@ -1974,6 +1975,7 @@ _readIndexOnlyScan(void)
 	READ_NODE_FIELD(yb_pushdown.quals);
 	READ_NODE_FIELD(yb_pushdown.colrefs);
 	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_NODE_FIELD(yb_merge_scan_info);
 	READ_INT_FIELD(yb_num_decoded_pk_cols);
 
 	READ_DONE();
@@ -2987,6 +2989,7 @@ _readYbMergeScanSaopColInfo(void)
 	READ_NODE_FIELD(saop);
 	READ_INT_FIELD(indexcol);
 	READ_INT_FIELD(num_elems);
+	READ_BOOL_FIELD(derived);
 
 	READ_DONE();
 }

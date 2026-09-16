@@ -2923,6 +2923,13 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 					 * ExecIndexBuildScanKeys set pinned_array_const and
 					 * this_array_const, respectively, to the same field in
 					 * memory.
+					 *
+					 * TODO(gkukreja) In a cached plan, copyObject performs
+					 * deep-copies without memoization, so it creates separate
+					 * copies for the array and the addresses never match and
+					 * we resort to priority based binding, which can lead to
+					 * a different SAOP being picked. This is tracked in
+					 * #32733 and will be fixed in a subsequent change.
 					 */
 					if (this_array_const == pinned_array_const)
 					{
