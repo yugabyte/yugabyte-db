@@ -13,10 +13,7 @@
 
 #pragma once
 
-#include "yb/util/drive_io_stats_fwd.h"
 #include "yb/util/file_system.h"
-
-struct iovec;
 
 namespace yb {
 
@@ -47,13 +44,6 @@ class PosixSequentialFile : public SequentialFile {
 #endif
   int fd_;
   bool use_os_buffer_;
-};
-
-// Identifies a locked file on the POSIX filesystem.
-class PosixFileLock : public FileLock {
- public:
-  int fd_;
-  std::string filename;
 };
 
 // pread() based random-access file.
@@ -88,86 +78,46 @@ class PosixRandomAccessFile : public RandomAccessFile {
   bool use_os_buffer_;
 };
 
-// fdatasync (or fsync, when FLAGS_writable_file_use_fsync is set) the given fd.
-Status DoSync(int fd, const std::string& filename);
+} // namespace yb
 
-// Get logical on-disk file size using file descriptor.
-Result<uint64_t> GetLogicalFileSize(int fd, const std::string& filename);
+namespace rocksdb {
+
+// TODO(unify_env): remove `using` statement once filesystem classes are fully merged into yb
+// namespace:
+using yb::FileSystemOptions;
 
 class PosixWritableFile : public WritableFile {
- public:
-  PosixWritableFile(const std::string& fname, int fd, const FileSystemOptions& options,
-                    uint64_t initial_size = 0, bool sync_on_close = false);
-
-  // Convenience constructor for callers that don't carry FileSystemOptions.
-  PosixWritableFile(const std::string& fname, int fd, uint64_t initial_size, bool sync_on_close)
-      : PosixWritableFile(fname, fd, FileSystemOptions::kDefault, initial_size, sync_on_close) {}
-
-  ~PosixWritableFile();
-
-  Status Append(const Slice& data) override;
-  Status AppendSlices(const Slice* slices, size_t num) override;
-  Status PreAllocate(uint64_t size) override;
-  Status Truncate(uint64_t size) override;
-  Status Close() override;
-  Status Flush(FlushMode mode) override;
-  Status Sync() override;
-  Status Fsync() override;
-  bool IsSyncThreadSafe() const override;
-  uint64_t Size() const override { return filesize_; }
-  Result<uint64_t> SizeOnDisk() const override;
-  Status InvalidateCache(size_t offset, size_t length) override;
-#ifdef ROCKSDB_FALLOCATE_PRESENT
-  size_t GetUniqueId(char* id) const override;
-#endif
-  const std::string& filename() const override { return filename_; }
-
- protected:
-  Status DoWritev(const Slice* slices, size_t n);
-  static void UnwrittenRemaining(
-      struct iovec** remaining_iov, ssize_t written, int* remaining_count);
-
-#ifdef ROCKSDB_FALLOCATE_PRESENT
-  Status Allocate(uint64_t offset, uint64_t len) override;
-  Status RangeSync(uint64_t offset, uint64_t nbytes) override;
-#endif
-
+ private:
   const std::string filename_;
   int fd_;
-  bool sync_on_close_;
   uint64_t filesize_;
-  uint64_t pre_allocated_size_;
-  std::atomic<bool> pending_sync_;
-
-  // Per-drive IO counters for the drive this file lives on, resolved once at construction by
-  // path prefix, or null when the file is under no registered drive root. Owned by the process-
-  // global DriveIoStatsRegistry, so this pointer stays valid for the life of the file.
-  DriveIoStats* const drive_stats_;
-
-  // Bytes appended since the last sync of this file, used to walk the drive's approximate
-  // unsynced-bytes gauge back down. Atomic because Sync() is documented thread-safe with respect
-  // to Append() (see IsSyncThreadSafe()). Maintained even when drive_stats_ is null, because the
-  // slow-sync log line reports it.
-  //
-  // Deliberately approximate, and the approximation is what keeps it cheap. Sync() zeroes this
-  // and then calls fsync, so an Append() landing in between is counted as still unsynced even
-  // though that fsync almost certainly pushed it out. Making the number exact would mean holding
-  // a lock across the append and the fsync together, i.e. serializing the two operations that
-  // IsSyncThreadSafe() exists to let run concurrently, and on the WAL that is the hot path. An
-  // upper bound is all the gauge claims to be (see the drive_bytes_unsynced description).
-  //
-  // Accessed with memory_order_relaxed, like the drive counters it feeds. It publishes no other
-  // memory, and every update is a read-modify-write on this one variable, so concurrent updates
-  // still compose correctly without any barrier.
-  std::atomic<uint64_t> unsynced_bytes_{0};
-
-  // Hands whatever this file still holds unsynced back to the drive gauge without counting a
-  // sync. Closing without syncing is the normal case, so without this the gauge only climbs.
-  void ReleaseUnsyncedBytes();
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   bool allow_fallocate_;
   bool fallocate_with_keep_size_;
 #endif
+
+ public:
+  PosixWritableFile(const std::string& fname, int fd,
+                    const FileSystemOptions& options);
+  ~PosixWritableFile();
+
+  // Means Close() will properly take care of truncate
+  // and it does not need any additional information
+  Status Truncate(uint64_t size) override;
+  Status Close() override;
+  Status Append(const Slice& data) override;
+  Status Flush() override;
+  Status Sync() override;
+  Status Fsync() override;
+  uint64_t GetFileSize() override;
+  bool IsSyncThreadSafe() const override;
+  Status InvalidateCache(size_t offset, size_t length) override;
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  Status Allocate(uint64_t offset, uint64_t len) override;
+  Status RangeSync(uint64_t offset, uint64_t nbytes) override;
+  size_t GetUniqueId(char* id) const override;
+#endif
+  const std::string& filename() const override { return filename_; }
 };
 
-} // namespace yb
+} // namespace rocksdb
