@@ -1257,6 +1257,7 @@ SELECT * FROM numeric_table;
 
 -- Casting from NaN to NaN should not cause a change in representation.
 INSERT INTO numeric_table VALUES (3, 'nan', 'NaN', 'naN', 'NaN');
+-- Duplicate primary key (row 3 already inserted above).
 INSERT INTO numeric_table VALUES (3, 'nan', 0, 0, 'NaN');
 ERROR:  duplicate key value violates unique constraint "numeric_table_pkey"
 -- ('inf'::real - 'inf'::real) produces a different representation of NaN than 'NaN'::real in some
