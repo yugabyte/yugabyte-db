@@ -48,7 +48,7 @@ In addition, the connector supports Kafka Connect v2.x and later.
 
 {{< warning title="YugabyteDB v2026.1.2.0 and later" >}}
 
-Starting with YugabyteDB v2026.1.2.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
+Starting with YugabyteDB v2026.1.2.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
 
 If your universe is on YugabyteDB v2026.1.2.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.2](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2) or later.
 
