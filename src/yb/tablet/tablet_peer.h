@@ -60,6 +60,7 @@
 #include "yb/tablet/write_query_context.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/disk_space_checker.h"
 
 using yb::consensus::StateChangeContext;
 
@@ -687,6 +688,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::atomic<OpId> last_known_committed_op_id_;
   std::deque<std::pair<OpId, std::vector<StdStatusCallback>>> in_flight_async_write_queries_
       GUARDED_BY(async_write_queries_mutex_);
+
+  // Tracks the free space on the data directory. The WAL directory, which can be on a different
+  // disk, is tracked by the Log.
+  DiskSpaceChecker data_disk_space_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
