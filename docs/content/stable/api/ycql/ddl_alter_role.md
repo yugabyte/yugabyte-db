@@ -16,7 +16,7 @@ type: docs
 ## Synopsis
 
 Use the `ALTER ROLE` statement to change the properties of an existing role.
-It allows modifying properties `SUPERUSER`, `PASSWORD`, and `LOGIN`.
+It allows modifying properties `SUPERUSER`, `PASSWORD`, `HASHED PASSWORD`, and `LOGIN`.
 
 This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
@@ -32,6 +32,7 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 alter_table ::= ALTER ROLE role_name WITH role_property [ AND role_property ...];
 
 role_property ::=  PASSWORD = '<Text Literal>'
+                 | HASHED PASSWORD = '<Text Literal>'
                  | LOGIN = <Boolean Literal>'
                  | SUPERUSER = '<Boolean Literal>'
 ```
@@ -39,10 +40,12 @@ role_property ::=  PASSWORD = '<Text Literal>'
 Where
 
 - `role_name` is a text identifier.
+- `<Text Literal>` for `HASHED PASSWORD` is a bcrypt hash (the value stored in the `salted_hash` column of `system_auth.roles`), not a plaintext password.
 
 ## Semantics
 
-An error is raised if `role_name` does not exist.
+- An error is raised if `role_name` does not exist.
+- `HASHED PASSWORD` replaces the role's password with a pre-computed bcrypt hash instead of hashing a plaintext value (compatible with Apache Cassandra 4.1). The value must be a valid bcrypt hash; `PASSWORD` and `HASHED PASSWORD` cannot be combined in the same statement.
 
 ## Examples
 
@@ -60,6 +63,10 @@ ycqlsh:example> ALTER ROLE finance with SUPERUSER = true;
 
 ```sql
 ycqlsh:example> ALTER ROLE finance with PASSWORD = 'jsfp9ajhufans2' AND SUPERUSER = false;
+```
+
+```sql
+ycqlsh:example> ALTER ROLE finance with HASHED PASSWORD = '$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW';
 ```
 
 ## See also

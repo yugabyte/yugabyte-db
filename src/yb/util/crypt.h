@@ -20,6 +20,17 @@ namespace util {
 
 static constexpr uint16_t kBcryptHashSize = 64;
 
+// Length of the bcrypt hash string itself -- "$2<variant>$<2-digit cost>$<22-char salt><31-char
+// checksum>" -- without the NUL terminator or the padding that brings a buffer up to
+// kBcryptHashSize.
+static constexpr uint16_t kBcryptHashStrLen = 60;
+
+// Cost (work factor) range the underlying crypt_blowfish implementation accepts. It refuses to
+// compute anything outside this range, so a hash whose cost field is out of range can never be
+// verified by bcrypt_checkpw, however well-formed the rest of the string is.
+static constexpr int kBcryptMinWorkFactor = 4;
+static constexpr int kBcryptMaxWorkFactor = 31;
+
 // Given a workfactor to slow down hash generation, create a salt.
 // workfactor: the exponentiation workfactor
 // hash: the output salt

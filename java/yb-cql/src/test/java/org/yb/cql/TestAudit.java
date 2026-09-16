@@ -210,6 +210,45 @@ public class TestAudit extends BaseCQLTest {
       assertNoPasswordInAudit(
           "CREATE ROLE user1 WITH login = true AND PASSWORD = <REDACTED>", password);
     }
+
+    // A client-supplied HASHED PASSWORD is credential material too and must be redacted the same
+    // way as a plaintext PASSWORD.
+    {
+      final String hash = "$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW";
+      assertAudit(
+          "CREATE ROLE user3 WITH login = true AND HaSHeD pAsSWorD =  '" + hash + "'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "CREATE ROLE user3 WITH login = true AND HaSHeD pAsSWorD =  <REDACTED>")));
+
+      assertAudit(
+          "ALTER ROLE user3 WITH HASHED PASSWORD='" + hash + "'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "ALTER ROLE user3 WITH HASHED PASSWORD=<REDACTED>")));
+    }
+
+    // Combining PASSWORD and HASHED PASSWORD is rejected in Analyze, but the rejected statement is
+    // still audited -- so *every* password clause has to be redacted, not just the first one the
+    // regex happens to find.
+    {
+      final String hash = "$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW";
+      final String plaintext = "pl4int3xt_pw";
+      auditRecords.discard();
+      String cql = "CREATE ROLE user4 WITH PASSWORD = '" + plaintext
+          + "' AND HASHED PASSWORD = '" + hash + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE with both PASSWORD and HASHED PASSWORD to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE user4 WITH PASSWORD = <REDACTED> AND HASHED PASSWORD = <REDACTED>",
+          plaintext, hash);
+    }
   }
 
   /**
