@@ -386,6 +386,9 @@ class PgApiImpl {
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
+  Result<client::TableSizeInfo> GetTablegroupDiskSize(
+      PgOid database_oid, PgOid tablegroup_oid, bool is_database_colocated);
+
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
   Status NewCreateIndex(const char *database_name,
