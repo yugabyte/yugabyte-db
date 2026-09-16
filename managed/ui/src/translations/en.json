@@ -4247,7 +4247,8 @@
         "pgCompatibility": {
           "label": "Enhanced Postgres Compatibility",
           "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
-          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
+          "YSQLWarn": "Enable YSQL first to use Postgres Compatibility."
         }
       },
       "securitySettings": {
