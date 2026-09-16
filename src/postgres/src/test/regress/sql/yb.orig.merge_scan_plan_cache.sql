@@ -79,6 +79,36 @@ SET plan_cache_mode = force_generic_plan;
 DEALLOCATE p_param;
 RESET plan_cache_mode;
 
+--
+-- Pinned SAOP, cached plan, without advanced index condition folding (#33965)
+--
+-- Previously in a cached plan, with condition folding disabled, executor used
+-- to bind a different SAOP than the one the planner picked.  This test checks
+-- that executor bind the same SAOP that the planner pinned.
+--
+-- The order of the two INs in the query matters and must not be changed.  When
+-- the executor cannot find the SAOP the planner picked, it binds the filter
+-- listed last.  The wider array is listed last so that this differs from the
+-- planner's choice.  Reversed, the two would agree by accident and the test
+-- would pass either way.
+--
+-- The storage counters are the assertion.  Binding the wider array scans all
+-- 24 rows and rechecks 12 of them away, so the prepared run would no longer
+-- collapse onto the unprepared one.
+--
+
+SET yb_enable_advanced_index_cond_fold = off;
+
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set P1 ':explain'
+\set stmt 'SELECT val, k FROM pc_tbl WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;'
+PREPARE p_pinned AS :stmt
+\set Q1 :stmt
+\set Q2 'EXECUTE p_pinned;'
+\i :run_query
+DEALLOCATE p_pinned;
+RESET yb_enable_advanced_index_cond_fold;
+
 RESET yb_max_merge_scan_streams;
 RESET enable_sort;
 
