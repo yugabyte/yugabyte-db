@@ -118,6 +118,7 @@ set(MASTER_SRCS
   multi_step_monitored_task.cc
   object_lock_info_manager.cc
   permissions_manager.cc
+  pg_catalog_versions_cache.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -276,6 +277,7 @@ ADD_YB_TEST(master_cluster_test)
 ADD_YB_TEST(master_tablet_service_test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(multi_step_monitored_task-test)
+ADD_YB_TEST(pg_catalog_versions_cache-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)
