@@ -827,8 +827,8 @@ yb-admin \
 
 **Notes**
 
-* A child table ID scopes the hash to that table. A colocation parent ID reports one row count and XOR hash per child table, in table-ID order, and omits `Total XOR hash`; use those per-table values for comparisons. A current client returns `NotSupported` when a parent-table request reaches an older YB-TServer that cannot report per-table hashes; hash child IDs individually or finish upgrading the YB-TServers. A concrete child-table request remains compatible with such a server.
-* Key range arguments (*start-key-hex* / *end-key-hex*) and a positive *max-rows* require a concrete table ID. Using them with a colocation parent table ID returns an error.
+* A child table ID scopes the hash to that table. A colocation parent ID reports one row count and XOR hash per child table, in table-ID order, and omits `Total XOR hash`; use those per-table values for comparisons. Colocated vector indexes are not hashed and get no per-table line. A current client returns `NotSupported` when a parent-table request reaches an older YB-TServer that cannot report per-table hashes; hash child IDs individually or finish upgrading the YB-TServers. A concrete child-table request remains compatible with such a server.
+* A positive *max-rows* requires a concrete table ID and returns an error with a colocation parent ID. Key range arguments (*start-key-hex* / *end-key-hex*) are likewise rejected with a parent ID, except in a colocated database whose child tables have all been dropped.
 * For hash-partitioned tables, each bound must be either a valid 2-byte hash-partition key, or a `Next key` returned by a prior capped scan.
 * When you specify both bounds, *start-key-hex* must be strictly less than *end-key-hex*, or the command returns an error rather than hashing an empty range. An empty bound means unbounded and is always accepted. The two are compared after both have been converted to the same internal key encoding, so a 2-byte hash bound and a longer `Next key` from a capped scan can be used together.
 * A positive *max-rows* stops after at most that many rows on a supporting YB-TServer. `Next key` is the exclusive continuation: usually the first unhashed row's encoded key, but it can be an encoded next-tablet boundary when the budget is exhausted exactly at a tablet boundary. Pass it through unchanged as the next *start-key-hex*.
@@ -867,6 +867,33 @@ Total row count: 300
 Total XOR hash: 1948762961
 Hash scheme version: 1
 ```
+
+**Example: Hash the tables of a colocated database**
+
+Pass the colocation parent ID to hash every table sharing its tablet. Results are reported per table because a single combined hash can cancel equal contributions from different tables.
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000033e8000030008000000000000000.colocation.parent.uuid
+```
+
+```output
+Processing 1 tablets for table 000033e8000030008000000000000000.colocation.parent.uuid
+Read HT: { years: 55 days: 142 time: 12:34:56.000000 }
+Tablet ID: cea3aaac2f10460a880b0b4a2a4b652a
+    Row count: 80
+    Table 000033e8000030008000000000004001: rows 50, XOR hash 3825474321
+    Table 000033e8000030008000000000004002: rows 30, XOR hash 2910384756
+    Hash scheme version: 1
+
+Total row count: 80
+Table 000033e8000030008000000000004001: rows 50, XOR hash 3825474321
+Table 000033e8000030008000000000004002: rows 30, XOR hash 2910384756
+Hash scheme version: 1
+```
+
+Compare each table's values against the same table on the other cluster.
 
 **Example: Hash a partition-key range**
 
@@ -2863,7 +2890,7 @@ yb-admin \
 
 **Read time**
 
-With *read-ht* omitted, both sides are read at the target's xCluster safe time for the table's namespace. This is a source-universe time already applied on the target. The command requires a usable inbound xCluster safe time even when *read-ht* is supplied. If the safe time cannot be resolved, the result is `kError` and neither side is hashed.
+With *read-ht* omitted, both sides are read at the target's xCluster safe time for the table's namespace. This is a source-universe time already applied on the target. The command requires a usable inbound xCluster safe time even when *read-ht* is supplied. If the safe time cannot be resolved, neither side is hashed: the result is `kTryAgain` when the attempt timed out, and `kError` otherwise, most often because the namespace has no inbound transactional or automatic-mode replication.
 
 Let each independent slice resolve its own time when working through a large table. A time reused across a long run can age past history retention and produce `kTryAgain`. Pass *read-ht* when you need to reproduce a slice at exactly the same instant.
 
@@ -2907,7 +2934,7 @@ A *read-ht* ahead of the target's xCluster safe time is reported `kTryAgain` wit
 * `result`: `kMatch`, `kDiverged`, `kTryAgain`, `kError`, or `kSchemaMismatch`.
 * `read_ht`: the time both sides were read at. Omitted only when no time was ever established, in which case nothing was hashed.
 * `end_key_hex`: the exclusive end actually hashed. It is earlier than the requested end when *max-rows* stops the source scan.
-* `source`, `target`: each carries `xor_hash`, `row_count`, `read_ht`, and `hash_scheme_version`, and appears only if that side hashed successfully.
+* `source`, `target`: each carries `xor_hash`, `row_count`, and `read_ht`, and appears only if that side hashed successfully. `hash_scheme_version` is present only when that side actually hashed a tablet.
 * `detail`: the reason for a result other than `kMatch`.
 
 `kTryAgain` means the slice reached no verdict because a replica was behind, the read time fell outside history retention, or an RPC timed out. `kError` covers other tool or cluster failures. Bound retries of `kTryAgain`; timeouts can also mean an unavailable server.
@@ -2948,8 +2975,8 @@ yb-admin \
 Each table is split into key ranges taken from the source's tablet boundaries, and each range is verified independently. A range is a range of key values rather than a reference to a tablet, so it means the same thing on both universes even when the target is split into different tablets.
 
 * *max-rows* (optional, default `0`) caps one slice. `0` hashes each range in one slice.
-* *max-concurrent-ranges* (optional, default `1`) sets how many ranges are verified at once.
-* *skip-source-table-ids* (optional) is a comma-separated list of source table IDs not to verify. Skips and IDs that match no table are reported on stderr.
+* *max-concurrent-ranges* (optional, default `1`) sets how many ranges are verified at once. Values below 1 are rejected.
+* *skip-source-table-ids* (optional) is a comma-separated list of source table IDs not to verify. Skips and IDs that match no table are reported on stderr. Skipping every table in the group is an error, because nothing would be verified.
 
 Slices within one range are sequential because each starts where the last stopped. Ranges can finish in any order when *max-concurrent-ranges* is greater than 1.
 
@@ -2957,13 +2984,13 @@ Slices within one range are sequential because each starts where the last stoppe
 
 Every table the replication group names, plus the tables it can only name indirectly.
 
-A colocated database replicates through a single stream on its colocation parent, so the group names that parent and never the tables holding the rows. The parent itself has no rows, so it is expanded into the tables sharing its tablet, matched between the two universes on schema-qualified table name — the same identity xCluster setup matches on.
+A colocated database replicates through a single stream on its colocation parent, so the group names that parent and never the tables holding the rows. The parent itself has no rows, so it is expanded into the user tables and indexes of its namespace, matched between the two universes on schema-qualified table name — the same identity xCluster setup matches on. Tables created in that database with colocation disabled are picked up by the same expansion.
 
-Regular indexes are verified. Vector indexes are skipped and reported on stderr because their data is not hashed.
+Regular indexes are verified. Vector indexes are skipped and reported on stderr because their data is not hashed. A pair where only one side is a vector index is reported in `unpaired` instead.
 
 Sequence data is also skipped and reported on stderr. During colocation expansion, `yb_xcluster_ddl_replication.replicated_ddls` is excluded because xCluster does not replicate its rows.
 
-A table found on only one universe is reported in `unpaired` and makes the group result `kSchemaMismatch`.
+A table found on only one universe, or one that matches more than one table on the target by schema and name, is reported in `unpaired` and makes the group result `kSchemaMismatch`.
 
 **Example**
 
@@ -2983,10 +3010,10 @@ Each slice prints a [verify_xcluster_slice](#verify-xcluster-slice) outcome as i
 The summary carries:
 
 * `result`: the worst verdict: `kDiverged`, then `kError`, `kSchemaMismatch`, `kTryAgain`, and `kMatch`.
-* `slices` and `tables`: how many slices ran, and how many tables they covered.
+* `slices` and `tables`: how many slices ran, and how many tables the sweep started. A table listed in `unfinished` counts here too.
 * `counts`: slices per verdict.
 * `unfinished`: source table ids the sweep did not cover completely, present only when there are any.
-* `unpaired`: tables found on one universe and not the other, present only when there are any. These are never verifiable, so re-running does not help; reconcile the two catalogs instead.
+* `unpaired`: tables the sweep could not pair, present only when there are any. Re-running does not help. A table on one universe only, or one matching several target tables, needs the catalogs reconciled; a table the group names without a target table is a stream that is not fully set up yet.
 
 The exit status is 0 only for `kMatch` and nonzero for every other group result.
 
