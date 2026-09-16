@@ -711,6 +711,9 @@ struct TableRowFetch {
   // Whether an index row was read.  Only a scan driven by a colocated index reads one, and it
   // reads none once the index is exhausted.
   bool read_index_row;
+  // Whether a table row was read.  A row that the condition of a colocated index filters out
+  // never reaches the table, and a fetch that finds nothing reads no row at all.
+  bool read_table_row;
 };
 
 Result<TableRowFetch> FetchTableRow(
@@ -721,10 +724,10 @@ Result<TableRowFetch> FetchTableRow(
     auto& index_row = index->row;
     switch(VERIFY_RESULT(index->iter.FetchNext(&index_row))) {
       case FetchResult::NotFound:
-        return TableRowFetch{FetchResult::NotFound, false};
+        return TableRowFetch{FetchResult::NotFound, false, false};
       case FetchResult::FilteredOut:
         VLOG(1) << "Row filtered out by colocated index condition";
-        return TableRowFetch{FetchResult::FilteredOut, true};
+        return TableRowFetch{FetchResult::FilteredOut, true, false};
       case FetchResult::Found:
         break;
     }
@@ -755,7 +758,8 @@ Result<TableRowFetch> FetchTableRow(
     case FetchResult::Found:
       break;
   }
-  return TableRowFetch{fetch_result, index != nullptr};
+  return TableRowFetch{
+      fetch_result, index != nullptr, fetch_result != FetchResult::NotFound};
 }
 
 struct RowPackerData {
@@ -2919,7 +2923,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         ++fetched_rows;
       }
     }
-    ++scanned_table_rows_;
+    if (fetch.read_table_row) {
+      ++scanned_table_rows_;
+    }
     if (fetch.read_index_row) {
       ++index_state->scanned_rows;
     }
