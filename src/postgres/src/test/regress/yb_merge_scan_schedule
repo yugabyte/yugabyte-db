@@ -45,3 +45,4 @@ test: yb.orig.merge_scan_derive
 
 # This test defines its own tables.
 test: yb.orig.merge_scan_degenerate
+test: yb.orig.merge_scan_plan_cache
