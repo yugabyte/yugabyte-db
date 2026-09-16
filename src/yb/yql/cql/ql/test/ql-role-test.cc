@@ -20,6 +20,7 @@
 #include "yb/client/permissions.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -43,6 +44,7 @@ class Master;
 namespace ql {
 
 using yb::util::kBcryptHashSize;
+using yb::util::kBcryptHashStrLen;
 using yb::util::bcrypt_hashpw;
 using yb::util::bcrypt_checkpw;
 using strings::Substitute;
@@ -1090,6 +1092,127 @@ TEST_F(TestQLRole, TestQLAlterRoleSimple) {
       EXEC_INVALID_STMT_WITH_ERROR(AlterStmt(role2, "UPDATED_WITH_DISABLED_AUTH"), "Unauthorized");
     }
   }
+}
+
+// Cassandra 4.1 HASHED PASSWORD: a client supplies a bcrypt hash directly so credentials can be
+// migrated without the plaintext, and without the server re-hashing an already-hashed value.
+TEST_F(TestQLRole, TestQLHashedPassword) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
+
+  // Produce a bcrypt hash the way a migrating client would (e.g. Cassandra's hash_password).
+  const string plaintext = "s3cr3t_pw";
+  char hash_buf[kBcryptHashSize];
+  ASSERT_EQ(0, bcrypt_hashpw(plaintext.c_str(), hash_buf));
+  // std::string stops at the trailing NUL, leaving the bcrypt string itself.
+  const string hash(hash_buf);
+  ASSERT_EQ(kBcryptHashStrLen, hash.size());
+
+  // salted_hash is stored zero-padded to kBcryptHashSize, so reading it back yields the bcrypt
+  // string followed by clean NUL padding (the #27523 fix), not trailing garbage.
+  auto read_hash = [&](const string& role) -> string {
+    EXPECT_OK(processor->Run(
+        Substitute("SELECT * FROM system_auth.roles WHERE role = '$0';", role)));
+    auto row_block = processor->row_block();
+    EXPECT_EQ(1, row_block->row_count());
+    // Look the column up by name rather than by position, so this does not silently read the wrong
+    // column if the roles vtable ever gains one.
+    const auto salted_hash_idx = row_block->schema().find_column("salted_hash");
+    EXPECT_GE(salted_hash_idx, 0);
+    if (salted_hash_idx < 0) {
+      return "";
+    }
+    const string stored =
+        row_block->row(0).column(static_cast<size_t>(salted_hash_idx)).string_value();
+    // Everything past the bcrypt string must be NUL padding.
+    for (size_t i = kBcryptHashStrLen; i < stored.size(); ++i) {
+      EXPECT_EQ('\0', stored[i]) << "non-NUL byte at index " << i << " for role " << role;
+    }
+    return stored.substr(0, kBcryptHashStrLen);
+  };
+
+  // CREATE ROLE with HASHED PASSWORD stores the hash verbatim; the original plaintext logs in.
+  const string role1 = "hashed_role1";
+  ExecuteValidModificationStmt(processor, Substitute(
+      "CREATE ROLE $0 WITH LOGIN = true AND HASHED PASSWORD = '$1';", role1, hash));
+  CheckRole(processor, role1, plaintext.c_str(), /*can_login=*/ true, /*is_superuser=*/ false);
+  EXPECT_EQ(hash, read_hash(role1));  // stored byte-for-byte, no re-hash.
+
+  // ALTER ROLE to a new hash: the old plaintext stops working, the new one works.
+  const string new_plaintext = "n3w_s3cr3t";
+  char new_hash_buf[kBcryptHashSize];
+  ASSERT_EQ(0, bcrypt_hashpw(new_plaintext.c_str(), new_hash_buf));
+  const string new_hash(new_hash_buf);
+  ExecuteValidModificationStmt(processor, Substitute(
+      "ALTER ROLE $0 WITH HASHED PASSWORD = '$1';", role1, new_hash));
+  CheckRole(processor, role1, new_plaintext.c_str(), /*can_login=*/ true, /*is_superuser=*/ false);
+  EXPECT_EQ(new_hash, read_hash(role1));
+
+  // Round-trip: create with plaintext, read the stored hash, recreate another role via HASHED
+  // PASSWORD from that hash; the original plaintext still authenticates.
+  const string role2 = "plain_role";
+  ExecuteValidModificationStmt(processor, Substitute(
+      "CREATE ROLE $0 WITH LOGIN = true AND PASSWORD = '$1';", role2, plaintext));
+  const string stored_hash = read_hash(role2);
+  ASSERT_EQ(kBcryptHashStrLen, stored_hash.size());
+  const string role3 = "rehashed_role";
+  ExecuteValidModificationStmt(processor, Substitute(
+      "CREATE ROLE $0 WITH LOGIN = true AND HASHED PASSWORD = '$1';", role3, stored_hash));
+  CheckRole(processor, role3, plaintext.c_str(), /*can_login=*/ true, /*is_superuser=*/ false);
+
+  // Reject PASSWORD and HASHED PASSWORD together (both map to the same role option).
+  EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+      "CREATE ROLE bad_role WITH PASSWORD = '$0' AND HASHED PASSWORD = '$1';", plaintext, hash),
+      "Invalid Role Definition");
+  EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+      "ALTER ROLE $0 WITH PASSWORD = '$1' AND HASHED PASSWORD = '$2';", role1, plaintext, hash),
+      "Invalid Role Definition");
+
+  // Reject non-bcrypt hashes: too short, missing $2 prefix, wrong alphabet.
+  EXEC_INVALID_STMT_WITH_ERROR(
+      "CREATE ROLE bad_role WITH HASHED PASSWORD = 'not_a_hash';", "Invalid bcrypt hash");
+  EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+      "CREATE ROLE bad_role WITH HASHED PASSWORD = '$0';", "$1a$10$" + hash.substr(7)),
+      "Invalid bcrypt hash");
+  EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+      "CREATE ROLE bad_role WITH HASHED PASSWORD = '$0';",
+      hash.substr(0, kBcryptHashStrLen - 1) + "!"),
+      "Invalid bcrypt hash");
+
+  // ALTER ROLE validates the hash exactly as CREATE ROLE does.
+  EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+      "ALTER ROLE $0 WITH HASHED PASSWORD = 'not_a_hash';", role1), "Invalid bcrypt hash");
+
+  // A well-formed hash whose cost bcrypt will not compute has to be rejected at DDL time. Stored,
+  // it would leave a role that exists but whose password can never be verified.
+  EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+      "CREATE ROLE bad_role WITH HASHED PASSWORD = '$0';", "$2a$03$" + hash.substr(7)),
+      "Invalid bcrypt hash");
+  EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+      "CREATE ROLE bad_role WITH HASHED PASSWORD = '$0';", "$2a$32$" + hash.substr(7)),
+      "Invalid bcrypt hash");
+
+  // The $2b$/$2x$/$2y$ variants are accepted as well, and crypt_blowfish has to be able to verify
+  // them: the four variants differ only in how they treat 8-bit and very long passwords, so for an
+  // ASCII password the checksum is the same and the original plaintext still authenticates.
+  for (const char variant : {'b', 'x', 'y'}) {
+    string variant_hash = hash;
+    variant_hash[2] = variant;
+    const string variant_role = string("hashed_role_2") + variant;
+    ExecuteValidModificationStmt(processor, Substitute(
+        "CREATE ROLE $0 WITH LOGIN = true AND HASHED PASSWORD = '$1';",
+        variant_role, variant_hash));
+    CheckRole(processor, variant_role, plaintext.c_str(), /*can_login=*/ true,
+              /*is_superuser=*/ false);
+    EXPECT_EQ(variant_hash, read_hash(variant_role));
+  }
+
+  // Lastly, create another role to verify the roles version didn't change after the failed
+  // statements above.
+  CreateRole(processor, "some_role");
 }
 
 // Test that whenever we remove a role, this role is removed from the member_of field of all the
