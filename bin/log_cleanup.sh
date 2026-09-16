@@ -253,3 +253,17 @@ for daemon_type in ${daemon_types}; do
       "${postgres_max_log_size_kb}" "delete"
   fi
 done
+
+# Node health check logs. node_health.py appends to metrics/logs/node_health-<date>.log and does
+# no rotation of its own; in a pod this script is the only thing that gzips the days it has
+# finished with and keeps the directory inside a budget. Node-level, hence outside the loop.
+health_log_dir="${YB_HOME_DIR}/metrics/logs/"
+health_log_max_size_kb=$(( 50 * 1000 ))
+if [[ -d "${health_log_dir}" ]]; then
+  # 0 budget: gzip every day except the one being written to now.
+  delete_or_gzip_log_files "${health_log_dir}" "node_health-*.log" 0 "gzip"
+  if [[ "${gzip_only}" == "false" ]]; then
+    delete_or_gzip_log_files "${health_log_dir}" "node_health-*.log*" \
+      "${health_log_max_size_kb}" "delete"
+  fi
+fi
