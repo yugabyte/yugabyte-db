@@ -449,6 +449,8 @@ std::string RedactPasswordLiterals(const std::string& operation) {
   static const auto replacement = "<REDACTED>";
   // Using somewhat tricky code to account for escaped quotes ('') in a password.
   // We replace an entire string, including quotes.
+  // This also covers HASHED PASSWORD = '...' since it ends in the same "password = '..." shape;
+  // the leading "HASHED " is kept and only the quoted hash is redacted.
   static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'", std::regex_constants::icase);
 
   // Redact *every* occurrence, not just the first one. A single statement can carry more than one
