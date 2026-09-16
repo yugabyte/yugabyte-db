@@ -45,7 +45,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 Create streams using one of the following methods:
 
-- PostgreSQL replication slot interface (recommended for v2026.1.1.0 and later)
+- PostgreSQL replication slot interface (recommended for v2026.1.2.0 and later)
 - yb-admin
 
 ### Using PostgreSQL replication slot syntax

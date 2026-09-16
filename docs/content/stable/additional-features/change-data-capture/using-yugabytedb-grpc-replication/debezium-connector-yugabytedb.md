@@ -46,11 +46,11 @@ Also, if a connector release for a particular version is not available, then it 
 
 In addition, the connector supports Kafka Connect v2.x and later.
 
-{{< warning title="YugabyteDB v2026.1.1.0 and later" >}}
+{{< warning title="YugabyteDB v2026.1.2.0 and later" >}}
 
-Starting with YugabyteDB v2026.1.1.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
+Starting with YugabyteDB v2026.1.2.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
 
-If your universe is on YugabyteDB v2026.1.1.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.1) or later.
+If your universe is on YugabyteDB v2026.1.2.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.2](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2) or later.
 
 {{< /warning >}}
 
@@ -1122,9 +1122,9 @@ The following properties are _required_ unless a default value is available:
 | database.dbname | N/A | The database from which to stream. |
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, as it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. Do not also set the `slot.name` property. |
-| slot.name | debezium | Name of the replication slot of a gRPC stream created using the PostgreSQL replication slot syntax. Use in place of `database.streamid`; the two are mutually exclusive. If the slot does not exist, the connector creates it using `plugin.name`. See [Using a replication slot and publication](#using-a-replication-slot-and-publication). Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
-| publication.name | dbz_publication | Name of the publication from which the connector derives the set of tables to capture when `slot.name` is used. The publication must exist before the connector starts. Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
-| plugin.name | yboutput | Name of the logical decoding plugin of the replication slot. Set to `yb_grpc` when using `slot.name` so that a slot created by the connector is a gRPC stream. Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
+| slot.name | debezium | Name of the replication slot of a gRPC stream created using the PostgreSQL replication slot syntax. Use in place of `database.streamid`; the two are mutually exclusive. If the slot does not exist, the connector creates it using `plugin.name`. See [Using a replication slot and publication](#using-a-replication-slot-and-publication). Connector version `dz.1.9.5.yb.grpc.2026.1.2` and later with YugabyteDB v2026.1.2.0 and later. |
+| publication.name | dbz_publication | Name of the publication from which the connector derives the set of tables to capture when `slot.name` is used. The publication must exist before the connector starts. Connector version `dz.1.9.5.yb.grpc.2026.1.2` and later with YugabyteDB v2026.1.2.0 and later. |
+| plugin.name | yboutput | Name of the logical decoding plugin of the replication slot. Set to `yb_grpc` when using `slot.name` so that a slot created by the connector is a gRPC stream. Connector version `dz.1.9.5.yb.grpc.2026.1.2` and later with YugabyteDB v2026.1.2.0 and later. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. Ignored when `slot.name` and `publication.name` are used; in that case the list of tables is derived from the publication. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<ul><li>`disable` uses an unencrypted connection</li><li>`require` uses an encrypted connection and fails if it can't be established</li><li>`verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found.</li></ul> |

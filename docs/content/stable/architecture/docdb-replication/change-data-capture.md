@@ -73,7 +73,7 @@ gRPC streams carry different metadata depending on how (and when) they were crea
 
 - **PostgreSQL syntax (`yb_grpc`)**: User-provided slot name, `yb_grpc` plugin, a `replica_identity_map`, and a `cdc_state` slot entry. [Before-image](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image) format comes from per-table replica identity (no stream-level `record_type`).
 - **yb-admin `create_change_data_stream`**: Auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. No `replica_identity_map`; before-image format still comes from the stream-level `record_type` passed to yb-admin.
-- **Pre-existing gRPC streams** (created in versions earlier than v2026.1.1.0): On master leader bringup after upgrading to v2026.1.1.0 or later, these streams are automatically backfilled to match the yb-admin shape above: auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. They keep using `record_type` and do **not** receive a `replica_identity_map`.
+- **Pre-existing gRPC streams** (created in versions earlier than v2026.1.2.0): On master leader bringup after upgrading to v2026.1.2.0 or later, these streams are automatically backfilled to match the yb-admin shape above: auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. They keep using `record_type` and do **not** receive a `replica_identity_map`.
 
 | Creation method | Replication slot name | Plugin | `replica_identity_map` | Slot entry in `cdc_state` | Before-image source |
 | :-------------- | :-------------------- | :----- | :--------------------- | :------------------------ | :------------------ |
