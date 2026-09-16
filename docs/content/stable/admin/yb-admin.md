@@ -820,22 +820,22 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables).
-* *read-ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Because the arguments are positional, pass 0 to keep the default when you also need to specify *start-key-hex* / *end-key-hex*. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
+* *read-ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time; pass `0` to keep the default when supplying later positional arguments. Use the same value on both clusters when comparing hashes.
 * *start-key-hex* (optional): Inclusive lower bound of the key range to hash, hex-encoded. Use a tablet's `partition_key_start_hex` from the JSON output of [list_tablets](#list-tablets), or a `Next key` returned by an earlier capped scan. Pass an empty string (`""`) for no lower bound.
 * *end-key-hex* (optional): Exclusive upper bound of the key range, hex-encoded. Use a tablet's `partition_key_end_hex` from the JSON output of `list_tablets`; it is already exclusive, so pass it through unchanged. Pass an empty string (`""`) for no upper bound. If you use an inclusive `hash_split` end from the text output, add 1; use an empty bound for the last tablet's `0xffff` end.
 * *max-rows* (optional, default `0`): Maximum number of rows to hash. `0` means unlimited.
 
 **Notes**
 
-* A child table ID scopes the hash to that table. A colocation parent ID reports one row count and XOR hash per child table, in table-ID order, and omits `Total XOR hash`; use those per-table values for comparisons. Colocated vector indexes are not hashed and get no per-table line. A current client returns `NotSupported` when a parent-table request reaches an older YB-TServer that cannot report per-table hashes; hash child IDs individually or finish upgrading the YB-TServers. A concrete child-table request remains compatible with such a server.
+* A child table ID scopes the hash to that table. A colocation parent ID reports one row count and XOR hash per child table, in table-ID order, and omits `Total XOR hash`. Colocated vector indexes are not hashed and get no per-table line. Against an older YB-TServer that cannot report per-table hashes, a parent request returns `NotSupported`; hash child IDs individually until the upgrade finishes.
 * A positive *max-rows* requires a concrete table ID and returns an error with a colocation parent ID. Key range arguments (*start-key-hex* / *end-key-hex*) are likewise rejected with a parent ID, except in a colocated database whose child tables have all been dropped.
 * For hash-partitioned tables, each bound must be either a valid 2-byte hash-partition key, or a `Next key` returned by a prior capped scan.
-* When you specify both bounds, *start-key-hex* must be strictly less than *end-key-hex*, or the command returns an error rather than hashing an empty range. An empty bound means unbounded and is always accepted. The two are compared after both have been converted to the same internal key encoding, so a 2-byte hash bound and a longer `Next key` from a capped scan can be used together.
+* With both bounds set, *start-key-hex* must be strictly less than *end-key-hex*, or the command returns an error rather than hashing an empty range. An empty bound means unbounded. The bounds are compared after server-side encoding, so a 2-byte hash bound and a longer `Next key` work together.
 * A positive *max-rows* stops after at most that many rows on a supporting YB-TServer. `Next key` is the exclusive continuation: usually the first unhashed row's encoded key, but it can be an encoded next-tablet boundary when the budget is exhausted exactly at a tablet boundary. Pass it through unchanged as the next *start-key-hex*.
 * Every page must use the same explicitly supplied *read-ht*. The pretty `Read HT` output is not the integer accepted by *read-ht* and is not a value to convert. If *read-ht* is `0`, each invocation chooses a new snapshot.
 * A read time remains available only within `timestamp_history_retention_interval_sec` (default 15 minutes). The history cutoff is pinned separately by each tablet RPC, so any multi-tablet or paged scan can fail with `Snapshot too old` after the read time ages out. Raise the retention interval for the scan, or hash independent sub-ranges at separately chosen times.
 * YB-TServers that predate *max-rows* ignore it. The client can still emit a `Next key` at a later tablet boundary, but that encoded continuation may be rejected by an old server on the next call. A `Total row count` greater than *max-rows* is the reliable signal that the cap was ignored; do not continue paging that scan.
-* `Hash scheme version` identifies the algorithm that produced the hash. **Two hashes are comparable only when their scheme versions are equal.** Under different schemes, identical data hashes to unrelated values, so a comparison across schemes reports a difference that isn't there. Check the version before comparing hashes between clusters or across an upgrade. A YB-TServer too old to report a version shows `0`. If the tablets of one table report different versions, which happens while an upgrade is rolling through a cluster, the command fails instead of combining them into a meaningless total; re-run once every YB-TServer is on the same version.
+* `Hash scheme version` identifies the algorithm that produced the hash. **Two hashes are comparable only when their scheme versions are equal**, because under different schemes identical data hashes to unrelated values. Check it before comparing across clusters or an upgrade. A YB-TServer too old to report a version shows `0`. If the tablets of one table report different versions, as happens mid-upgrade, the command fails rather than combine them; re-run once every YB-TServer is on the same version.
 
 **Example: Hash a full table**
 
@@ -870,7 +870,7 @@ Hash scheme version: 1
 
 **Example: Hash the tables of a colocated database**
 
-Pass the colocation parent ID to hash every table sharing its tablet. Results are reported per table because a single combined hash can cancel equal contributions from different tables.
+Pass the colocation parent ID to hash every table sharing its tablet. Results are per table, because a single combined hash can cancel equal contributions from different tables.
 
 ```sh
 ./bin/yb-admin \
@@ -897,7 +897,7 @@ Compare each table's values against the same table on the other cluster.
 
 **Example: Hash a partition-key range**
 
-Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are the hex encodings of a tablet's partition key boundaries, which you can obtain from [list_tablets](#list-tablets). Prefer its JSON output: `partition_key_start_hex` and `partition_key_end_hex` need no conversion. In the text output, a hash-partitioned tablet's range is printed as `hash_split: [0x..., 0x...]`; remove `0x` and add 1 to the inclusive end to obtain the exclusive bound. For the last tablet, whose text end is `0xffff`, use an empty *end-key-hex* for the unbounded end rather than overflowing it. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
+Use this to bisect after a whole-table mismatch, or to split a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are a tablet's partition key boundaries, hex-encoded, from [list_tablets](#list-tablets). Prefer its JSON output: `partition_key_start_hex` and `partition_key_end_hex` need no conversion. In the text output, a hash-partitioned tablet's range prints as `hash_split: [0x..., 0x...]`; remove `0x` and add 1 to the inclusive end. For the last tablet, whose text end is `0xffff`, pass an empty *end-key-hex* rather than overflowing it. The range is logical: each cluster resolves it against its own tablet boundaries.
 
 ```sh
 ./bin/yb-admin \
@@ -2943,9 +2943,7 @@ The exit status is 0 when the command produces an outcome, including `kDiverged`
 
 **Hash scheme versions**
 
-`hash_scheme_version` names the algorithm a side hashed under. Two hashes are comparable only when the versions are equal; under different schemes the same rows hash to unrelated values. During an upgrade, differing schemes produce `kError`, never `kDiverged`. Re-run once both universes use the same scheme.
-
-Version `0` means a YB-TServer is too old to report a scheme. It produces `kError` even if both sides report `0` and their hashes agree, because that hash lacks enough identity to establish a match.
+`hash_scheme_version` names the algorithm a side hashed under. Two hashes are comparable only when the versions are equal; under different schemes the same rows hash to unrelated values, so a mid-upgrade skew produces `kError`, never `kDiverged`. Version `0` means a YB-TServer too old to report a scheme, and also produces `kError` even when both sides report `0` and agree, because that hash carries too little identity to establish a match. Re-run once both universes are on the same scheme.
 
 `kSchemaMismatch` covers catalog differences that affect the rows read or their encoding: column IDs and types, key and hash-key membership, nullability, static-column status, sorting type, partitioning version, and default TTL. It does not compare the missing value recorded for `ADD COLUMN ... DEFAULT`; compare that catalog value before concluding that a resulting `kDiverged` means rows were lost.
 
@@ -2959,7 +2957,7 @@ The mixed-version limitations described for [get_table_hash](#get-table-hash) al
 
 Verifies every table in one inbound xCluster replication group, slice by slice, using [verify_xcluster_slice](#verify-xcluster-slice) for each slice. The table pairs come from the replication group, so you name a group rather than enumerating tables, and each slice resolves its own read time from the target's xCluster safe time.
 
-The group must use automatic DDL replication. The command derives connectable source YB-Master addresses from the target's replication information. If an older target master does not provide the structured address field, the command asks the operator to upgrade the target masters.
+The group must use automatic DDL replication. Source YB-Master addresses come from the target's replication information; if an older target master does not provide the structured address field, the command asks you to upgrade the target masters.
 
 **Syntax**
 
@@ -2972,7 +2970,7 @@ yb-admin \
 
 **How the work is divided**
 
-Each table is split into key ranges taken from the source's tablet boundaries, and each range is verified independently. A range is a range of key values rather than a reference to a tablet, so it means the same thing on both universes even when the target is split into different tablets.
+Each table is split into key ranges taken from the source's tablet boundaries, and each range is verified independently. A range is key values, not a reference to a tablet, so it means the same thing on both universes even when the target is split differently.
 
 * *max-rows* (optional, default `0`) caps one slice. `0` hashes each range in one slice.
 * *max-concurrent-ranges* (optional, default `1`) sets how many ranges are verified at once. Values below 1 are rejected.
@@ -3005,7 +3003,7 @@ A table found on only one universe, or one that matches more than one table on t
 {"result":"kMatch","slices":1,"tables":1,"counts":{"kMatch":1}}
 ```
 
-Each slice prints a [verify_xcluster_slice](#verify-xcluster-slice) outcome as it completes, one JSON object per line on stdout, followed by a final summary line. The summary is the line carrying `slices` and `counts`; a slice line carries `source_table_id`. Everything that is not a record, such as skip notices and errors, goes to stderr, so stdout can be fed to a JSON parser unfiltered.
+Each slice prints a [verify_xcluster_slice](#verify-xcluster-slice) outcome as it completes, one JSON object per line on stdout, followed by a summary line. The summary carries `slices` and `counts`; a slice line carries `source_table_id`. Skip notices and errors go to stderr, so stdout can be fed to a JSON parser unfiltered.
 
 The summary carries:
 
