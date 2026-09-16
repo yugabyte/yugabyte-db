@@ -674,8 +674,13 @@ EventTriggerDDLCommandStart(Node *parsetree)
 	if (!IsUnderPostmaster)
 		return;
 
-	/* Event triggers are also completely disabled in YSQL upgrade mode. */
-	if (IsYsqlUpgrade)
+	/*
+	 * Disable event triggers while YSQL upgrade scripts or pg_upgrade replay
+	 * DDL. This replay is an internal catalog operation, so invoking user
+	 * triggers could cause unintended side effects. During a major upgrade,
+	 * those side effects could also access tservers running the old version.
+	 */
+	if (IsYsqlUpgrade || IsBinaryUpgrade)
 		return;
 
 	runlist = EventTriggerCommonSetup(parsetree,
@@ -714,8 +719,8 @@ EventTriggerDDLCommandEnd(Node *parsetree)
 	if (!IsUnderPostmaster)
 		return;
 
-	/* Event triggers are also completely disabled in YSQL upgrade mode. */
-	if (IsYsqlUpgrade)
+	/* See EventTriggerDDLCommandStart for why upgrade DDL must not fire user triggers. */
+	if (IsYsqlUpgrade || IsBinaryUpgrade)
 		return;
 
 	/*
@@ -766,8 +771,8 @@ EventTriggerSQLDrop(Node *parsetree)
 	if (!IsUnderPostmaster)
 		return;
 
-	/* Event triggers are also completely disabled in YSQL upgrade mode. */
-	if (IsYsqlUpgrade)
+	/* See EventTriggerDDLCommandStart for why upgrade DDL must not fire user triggers. */
+	if (IsYsqlUpgrade || IsBinaryUpgrade)
 		return;
 
 	/*
@@ -841,8 +846,8 @@ EventTriggerTableRewrite(Node *parsetree, Oid tableOid, int reason)
 	if (!IsUnderPostmaster)
 		return;
 
-	/* Event triggers are also completely disabled in YSQL upgrade mode. */
-	if (IsYsqlUpgrade)
+	/* See EventTriggerDDLCommandStart for why upgrade DDL must not fire user triggers. */
+	if (IsYsqlUpgrade || IsBinaryUpgrade)
 		return;
 
 	/*
