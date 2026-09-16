@@ -1,4 +1,5 @@
 FormData_pg_yb_migration
+FormData_pg_yb_password_history
 FormData_pg_yb_profile
 FormData_pg_yb_role_profile
 FormData_pg_yb_tablegroup
@@ -6,6 +7,7 @@ FormData_yb_pg_catalog_version
 FormData_yb_pg_invalidation_messages
 FormData_yb_pg_logical_client_version
 Form_pg_yb_migration
+Form_pg_yb_password_history
 Form_pg_yb_profile
 Form_pg_yb_role_profile
 Form_pg_yb_tablegroup
