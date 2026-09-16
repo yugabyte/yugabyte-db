@@ -1001,8 +1001,12 @@ Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
       CloudInfoPB from_placement;
       if (const auto tablet_opt = GetTabletInfo(tablet_id)) {
         for (const auto& [ts_uuid, _] : *tablet_opt->get()->GetReplicaLocations()) {
-          // Replicas the analysis skipped (e.g. of the other replica type) have no ts meta.
-          if (!state_->per_ts_meta_.contains(ts_uuid)) {
+          // Only consider replicas the analysis counted as running for this tablet; this excludes
+          // replicas of the other replica type (live vs. read-only), whose tservers do have ts
+          // meta but were skipped by UpdateTablet.
+          const auto ts_meta_it = state_->per_ts_meta_.find(ts_uuid);
+          if (ts_meta_it == state_->per_ts_meta_.end() ||
+              !ts_meta_it->second.running_tablets.contains(tablet_id)) {
             continue;
           }
           const auto placement = state_->GetValidPlacement(ts_uuid);
