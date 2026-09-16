@@ -209,6 +209,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
       Universe universe, NodeDetails node, ImageBundleUpgradeInfo bundleUpgradeInfo) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getCluster(bundleUpgradeInfo.getClusterUuid());
+    if (cluster.getProviderCloudType(node) == CloudType.oci) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "VM image upgrade for OCI cloud based universe is not supported.");
+    }
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
     ImageBundle bundle =
         ImageBundle.getOrBadRequest(providerUUID, bundleUpgradeInfo.getImageBundleUuid());
