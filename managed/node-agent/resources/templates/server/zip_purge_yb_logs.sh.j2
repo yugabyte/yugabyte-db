@@ -49,6 +49,7 @@ log_purge_failures=0
 logs_disk_percent_max=10
 postgres_max_log_size_kb=$((100 * 1000))
 ysql_conn_mgr_max_log_size_kb=$((100 * 1000))
+health_log_max_size_kb=$((50 * 1000))
 logs_purge_threshold_kb=$((10 * 1000000))
 
 while [[ $# -gt 0 ]]; do
@@ -482,6 +483,24 @@ for daemon_type in $daemon_types; do
     fi
   fi
 done
+
+# node_health.py appends to metrics/logs/node_health-<date>.log and does no rotation of its
+# own, so gzipping the days it has finished with and keeping the directory inside a budget is
+# this script's job. Node-level, hence outside the per-daemon loop above.
+# The trailing slash matters: metrics/logs is a symlink onto the data partition and find does
+# not descend into a symlink given as a bare starting point.
+HEALTH_LOG_DIR="$YB_HOME_DIR/metrics/logs/"
+if [[ -d "$HEALTH_LOG_DIR" ]]; then
+  plain_health_log="node_health-*.log ! -name *.gz"
+  # 0 budget: gzip every day except the one being written to now.
+  process_plain_files "$HEALTH_LOG_DIR" "$plain_health_log" 0
+
+  if [ "$gzip_only" == false ]; then
+    health_log="node_health-*.log*"
+    delete_or_gzip_files "$HEALTH_LOG_DIR" "$health_log" "$health_log.gz" \
+      "$health_log_max_size_kb" "delete"
+  fi
+fi
 
 # Surface any log-purge failure (missed audit archive, missed gzip, missed
 # delete, missed retention purge) as a non-zero exit code so the systemd

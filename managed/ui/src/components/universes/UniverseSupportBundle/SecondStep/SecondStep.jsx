@@ -120,6 +120,7 @@ export const selectionOptions = [
   { label: 'Tablet Report', value: 'TabletReport' },
   { label: 'Cluster Config', value: 'ClusterConfig' },
   { label: 'Node agent logs', value: 'NodeAgent' },
+  { label: 'Node health check logs', value: 'NodeHealthLogs' },
   { label: 'Core Files', value: 'CoreFiles' },
   { label: 'YB-Controller logs', value: 'YbcLogs' },
   { label: 'Kubernetes Info', value: 'K8sInfo' },

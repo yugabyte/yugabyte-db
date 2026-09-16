@@ -17,6 +17,7 @@ enum:
   - TabletMeta
   - YbcLogs
   - NodeAgent
+  - NodeHealthLogs
   - SystemLogs
   - TabletReport
   - ClusterConfig
@@ -42,6 +43,7 @@ x-enum-varnames:
   - TabletMeta
   - YbcLogs
   - NodeAgent
+  - NodeHealthLogs
   - SystemLogs
   - TabletReport
   - ClusterConfig

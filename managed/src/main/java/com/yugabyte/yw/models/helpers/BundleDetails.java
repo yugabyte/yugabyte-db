@@ -65,6 +65,9 @@ public class BundleDetails {
     @EnumValue("NodeAgent")
     NodeAgent(ComponentLevel.NodeLevel),
 
+    @EnumValue("NodeHealthLogs")
+    NodeHealthLogs(ComponentLevel.NodeLevel),
+
     @EnumValue("SystemLogs")
     SystemLogs(ComponentLevel.NodeLevel),
 
