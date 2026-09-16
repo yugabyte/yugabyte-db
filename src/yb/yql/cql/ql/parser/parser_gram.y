@@ -626,7 +626,7 @@ using namespace yb::ql;
 
                           GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING
 
-                          HANDLER HAVING HEADER_P HOLD HOUR_P
+                          HANDLER HASHED HAVING HEADER_P HOLD HOUR_P
 
                           IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P
                           INCLUDE INCLUDING INCREMENT INDEX INDEXES INET INFINITY INHERIT INHERITS
@@ -5134,6 +5134,7 @@ unreserved_keyword:
   | GLOBAL { $$ = $1; }
   | GRANTED { $$ = $1; }
   | HANDLER { $$ = $1; }
+  | HASHED { $$ = $1; }
   | HEADER_P { $$ = $1; }
   | HOLD { $$ = $1; }
   | HOUR_P { $$ = $1; }
@@ -5673,6 +5674,9 @@ RoleOptionList:
 RoleOption:
   PASSWORD '=' Sconst {
       $$ = MAKE_NODE(@1, PTRolePassword, $3);
+  }
+  | HASHED PASSWORD '=' Sconst {
+      $$ = MAKE_NODE(@1, PTRolePassword, $4, true);
   }
   | LOGIN '=' boolean {
       $$ = MAKE_NODE(@1, PTRoleLogin, $3);
