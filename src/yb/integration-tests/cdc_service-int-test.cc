@@ -1026,8 +1026,11 @@ TEST_F(CDCServiceTest, YB_DISABLE_TEST_ON_MACOS(TestGetChangesWithDeadline)) {
   {
     // Get CDC changes. Note that the timeout value and read delay
     // should ensure that some, but not all records are read.
+    // The timeout also has to stay well clear of what answering one GetChanges costs: the server
+    // only reserves cdc_read_safe_deadline_ratio of it to stop reading, post-process and respond,
+    // which at 50ms left 15ms -- less than a cold call needs, so every attempt timed out.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_get_changes_read_loop_delay_ms) = 10 * kTimeMultiplier;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 50 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 500 * kTimeMultiplier;
 
     ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
         FLAGS_cdc_read_rpc_timeout_ms));
