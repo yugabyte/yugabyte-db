@@ -151,28 +151,6 @@ SELECT * FROM yb_stat_auto_analyze() WHERE relname = 'test';
 
 In this example, ANALYZE has run twice. The first run recorded a cooldown of 10 seconds (`10000000` microseconds, the default `ysql_auto_analyze_min_cooldown_per_table`), and the second run doubled it to 20 seconds (`20000000` microseconds, using the default scale factor of 2). The `mutations` value of `25` reflects rows changed since the last ANALYZE that have not yet crossed the threshold for the next run.
 
-### pg_stat_user_tables
-
-For PostgreSQL compatibility, Auto Analyze also updates [`pg_stat_user_tables`](https://www.postgresql.org/docs/15/monitoring-stats.html#MONITORING-PG-STAT-ALL-TABLES-VIEW) (`last_autoanalyze`, `autoanalyze_count`). Prefer [`yb_stat_auto_analyze()`](#observability) for Auto Analyze observability.
-
-To query that PostgreSQL view across tservers, enable `yb_enable_global_views` and use `gv$pg_stat_user_tables`.
-
-```sql
-SET yb_enable_global_views = on;
-
-SELECT server_uuid, relname, last_analyze, last_autoanalyze,
-       analyze_count, autoanalyze_count
-  FROM gv$pg_stat_user_tables
- WHERE relname = 'test';
-```
-
-```output
-             server_uuid              | relname | last_analyze |         last_autoanalyze         | analyze_count | autoanalyze_count
---------------------------------------+---------+--------------+----------------------------------+---------------+-------------------
- 00000000-0000-0000-0000-000000000001 | test    |              | 2026-09-11 18:48:54.123456+00    |             0 |                 2
-(1 row)
-```
-
 ## Limitations
 
 ANALYZE is technically considered a DDL statement (schema change) and normally conflicts with other [concurrent DDLs](../../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation). However, when run via the auto analyze service, ANALYZE can run concurrently with other DDL. In this case, ANALYZE is pre-empted by concurrent DDL and will be retried at a later point. However, when [transactional DDL](../../explore/transactions/transactional-ddl/) is enabled (off by default), certain kinds of transactions that contain DDL may face a `kConflict` error when a background ANALYZE from the auto analyze service interrupts this transaction. In such cases, it is recommended to disable the auto analyze service explicitly and trigger ANALYZE manually. Issue {{<issue 28903>}} tracks this scenario.
