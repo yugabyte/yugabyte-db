@@ -15,7 +15,7 @@ type: docs
 
 This page describes factors that can affect the performance of migration jobs being carried out using [yb-voyager](https://github.com/yugabyte/yb-voyager), along with the tuneable parameters you can use to improve performance.
 
-## Improve import performance
+## Improve import snapshot performance
 
 There are several factors that slow down data-ingestion performance in any database:
 
@@ -57,7 +57,7 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Configure the voyager machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the voyager machine's disk.
 
-## Improve live-migration streaming (CDC) performance
+## Improve import CDC streaming performance
 
 During [live migration](../../migrate/live-migrate/), after importing the snapshot, yb-voyager continuously applies change events captured from your source database. To apply changes quickly, the importer captures every insert, update, and delete in commit order and spreads them across many parallel channels (workers). The rule that decides which channel an event goes to is the CDC partition key, and choosing it well is the main lever for streaming throughput on write-heavy workloads.
 
@@ -67,7 +67,7 @@ The router sits between the ordered change stream and the parallel channels. Eac
 
 ### How events are partitioned by default
 
-By default (`--cdc-partition-key auto`), yb-voyager partitions each table's events by primary key: every event is routed by a hash of the row's primary key.
+By default (`--cdc-partition-key auto`), yb-voyager partitions most tables by primary key: every event is routed by a hash of the row's primary key. Tables that can't be partitioned by primary key (when primary key hashing isn't safe) are partitioned by table instead.
 
 - Events for the _same row_ always land on the _same channel_, so that row's history is applied in commit order.
 - Events for _different rows_ spread across _all channels_, so a single busy table can keep every channel working. This is what lets a distributed target like YugabyteDB absorb writes at full speed.
@@ -140,7 +140,7 @@ yb-voyager import data to target \
 The strategy is one of:
 
 - `(col1,col2)`: Partition the table by the given immutable column values (the custom key).
-- `pk`: Partition by primary key (the default).
+- `pk`: Partition by primary key.
 - `table`: Send all of the table's events to a single channel.
 
 Tables not listed keep the global `--cdc-partition-key` (default `auto`). For example, the following partitions one table by a custom key, forces another to a single channel, and leaves the rest on the default:

@@ -240,7 +240,7 @@ import-data:
 - `table`: Partition CDC events by table (all events for a table share one channel). Example: `public.orders:table`
 - `(col1,col2)`: Partition CDC events by the given column values (immutable columns), in the form `(col1,col2)`. Example: `public.payments:(customer_id,region)`
 
-Unlisted tables keep the global `--cdc-partition-key`. For how to choose a strategy, see [Improve live-migration streaming (CDC) performance](../../performance/#improve-live-migration-streaming-cdc-performance). |
+Unlisted tables keep the global `--cdc-partition-key`. For how to choose a strategy, see [Improve import CDC streaming performance](../../performance/#improve-import-cdc-streaming-performance). |
 
 | -e, --export-dir |
 
