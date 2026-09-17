@@ -15,6 +15,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -220,6 +221,15 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
     assertTaskSequence(
         subTasksByPosition, ENABLE_ROLLING_UPGRADE_TASK_SEQUENCE, createRollingUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
+
+    // Enabling inbuilt YBC must leave ybcSoftwareVersion set, matching what a universe created
+    // with inbuilt YBC records. Consumers branch on useYbdbInbuiltYbc, not on an unset version.
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+        defaultUniverse.getUniverseDetails().getYbcSoftwareVersion());
+    assertTrue(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
   }
 
   @Test
