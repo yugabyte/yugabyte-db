@@ -188,6 +188,8 @@ Status RpcRetrier::DoDelayedRetry(RpcCommand* rpc, const Status& why_status) {
 
 void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   auto retain_rpc = rpc->shared_from_this();
+  // Covers all exits: SendRpc as well as both Finished paths, whose callbacks may send more RPCs.
+  dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
 
   RpcRetrierState expected_state = RpcRetrierState::kWaiting;
   bool run = state_.compare_exchange_strong(expected_state, RpcRetrierState::kRunning);

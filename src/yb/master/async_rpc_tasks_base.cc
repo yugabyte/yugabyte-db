@@ -132,6 +132,8 @@ std::string RetryingRpcTask::LogPrefix() const {
 // Send the subclass RPC request.
 Status RetryingRpcTask::Run() {
   VLOG_WITH_PREFIX(1) << "Start Running";
+  dist_trace::ScopedAdoptSpan trace_scope(trace_parent_);
+
   attempt_start_ts_ = MonoTime::Now();
   ++attempt_;
   VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;
