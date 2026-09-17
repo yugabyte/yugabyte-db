@@ -141,27 +141,38 @@ Refer to [Manage runtime configuration settings](../administer-yugabyte-platform
 
 ### New and improved
 
-- Enhanced Universe Configuration
+The new experience provides significant enhancements and new features, including: 
 
-    Set up and manage universes using a wizard in **Guided** or **Expert** mode to help you build the right topology. In **Guided** mode, choose Region, Zone, Node, or None resilience; **Expert** mode gives you full control over replication factor and per-zone node counts. [Learn more](../create-deployments/create-universes-overview/#placement).
+- New Universe Configuration Wizard
+
+    Set up and manage universes using a wizard in **Guided** or **Expert** mode to help you build the right topology. In **Guided** mode, choose how resilient you want your universe to be and build from there; **Expert** mode gives you full control over replication factor and per-zone node counts.
+    
+    - [Plan your universe](../create-deployments/create-universes-overview/)
+    - [Create a universe](../create-deployments/create-universes-wizard)
+
+- Preferred availability zone ranking
+
+    You can now rank preferred regions and availability zones to optimize connection latency.
+    
+    [Learn about preferred regions and zones](../create-deployments/create-universes-overview/#preferred-region)
+
+- Add Read Replica wizard
+
+    Add a read replica to your universe using a new wizard, then edit placement, hardware, and flags independently.
+    
+    [Add a read replica](../create-deployments/read-replicas/)
+
+- Review before you apply
+
+    Placement and hardware changes now provide a summary of current and new values before you confirm. For vertical scaling, choose whether to resize existing nodes (smart resize) or migrate to a new set of nodes.
+    
+    [Scale and edit universes](../scale-deployments/edit-universe/)
 
 - Centralized universe settings
 
     Access all your universe configuration settings from a single **Settings** tab.
 
     See [Where did features move](#where-did-features-move).
-
-- Preferred availability zone ranking
-
-    Rank preferred regions and availability zones to optimize connection latency. [Learn more](../create-deployments/create-universes-overview/#preferred-region).
-
-- Add Read Replica wizard
-
-    Add a read replica to your universe using a wizard, then edit placement, hardware, and flags independently. [Learn more](../create-deployments/read-replicas/).
-
-- Review before you apply
-
-    Placement and hardware changes show a summary of current and new values before you confirm. For vertical scaling, choose whether to resize existing nodes (smart resize) or migrate to a new set of nodes. [Learn more](../scale-deployments/edit-universe/).
 
 ### Where did features move?
 
