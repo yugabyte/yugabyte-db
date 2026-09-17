@@ -1070,9 +1070,9 @@ class DBImpl : public DB {
       FlushReason flush_reason);
 
   using DB::GetPropertiesOfAllTables;
-  virtual Status GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
-                                          TablePropertiesCollection* props)
-      override;
+  virtual Status GetPropertiesOfAllTables(
+      ColumnFamilyHandle* column_family, TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override;
   virtual Status GetPropertiesOfTablesInRange(
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
       TablePropertiesCollection* props) override;

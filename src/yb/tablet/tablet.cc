@@ -69,6 +69,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/docdb_util.h"
+#include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
@@ -624,6 +625,10 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       : RocksDbListener(tablet, log_prefix) {}
 
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+    if (const auto sst_stats = tablet_.sst_stats()) {
+      sst_stats->OnCompactionCompleted(ci);
+    }
+
     auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
     if (ci.is_full_compaction) {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
@@ -648,6 +653,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
+    if (const auto sst_stats = tablet_.sst_stats()) {
+      sst_stats->OnFlushCompleted(flush_job_info);
+    }
     auto status = tablet_.MayModifyIntentsDbFlushedOpId();
     // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
     LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
@@ -1268,6 +1276,12 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   if (FLAGS_docdb_enable_sst_stats_collector) {
     regular_rocksdb_options.table_properties_collector_factories.push_back(
         docdb::MakeSstStatsCollectorFactory());
+    // Before DB::Open, so that the listener installed below always sees it. A reopen of a live
+    // tablet (truncate, snapshot restore) replaces the previous aggregator, which stays alive for
+    // as long as any reader still holds it.
+    auto sst_stats = std::make_shared<docdb::SstStatsAggregator>();
+    std::lock_guard lock(sst_stats_mutex_);
+    sst_stats_ = std::move(sst_stats);
   }
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
@@ -1922,6 +1936,13 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
       db_paths.push_back((*db_uniq_ptr)->GetName());
       db_uniq_ptr->reset();
     }
+  }
+  {
+    std::lock_guard lock(sst_stats_mutex_);
+    // The file numbers tracked by this instance belong to the regular DB just destroyed. Existing
+    // readers keep it alive through their shared_ptr; new readers see no aggregate until
+    // OpenRegularDB installs one for the replacement DB.
+    sst_stats_.reset();
   }
 
   key_bounds_ = docdb::KeyBounds();
@@ -4878,6 +4899,40 @@ uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
   return GetRegularDbStat([this] {
     return regular_db_->GetCurrentVersionNumSSTFiles();
   }, 0);
+}
+
+std::shared_ptr<docdb::SstStatsAggregator> Tablet::sst_stats() const {
+  std::lock_guard lock(sst_stats_mutex_);
+  return sst_stats_;
+}
+
+Status Tablet::ResyncSstStats() {
+  // Held for the whole resync: a truncate or a snapshot restore may install a new aggregator while
+  // this one is still installing its result.
+  const auto sst_stats = this->sst_stats();
+  if (!sst_stats) {
+    return Status::OK();
+  }
+
+  // Held across both snapshot phases and an optional retry so a truncate or snapshot restore
+  // cannot replace regular_db_ between the live-file and properties reads. This flavor does not
+  // prevent RocksDB shutdown from starting; that shutdown can make either callback fail.
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  SCHECK(regular_db_, IllegalState, "No regular DB to read SST statistics from");
+  return sst_stats->Resync({
+      .live_files = [this](std::vector<rocksdb::LiveFileMetaData>* live_files) {
+        regular_db_->GetLiveFilesMetaData(live_files);
+        return Status::OK();
+      },
+      .properties = [this](rocksdb::TablePropertiesCollection* properties) {
+        // Keep files whose properties cannot be read absent from the map. Resync compares this
+        // with the live-file list and counts each absence as uncovered instead of letting one bad
+        // properties block prevent this tablet from ever completing its first resync.
+        return regular_db_->GetPropertiesOfAllTables(
+            properties, rocksdb::TablePropertiesErrorHandling::kSkip);
+      },
+  });
 }
 
 std::pair<int, int> Tablet::GetNumMemtables() const {

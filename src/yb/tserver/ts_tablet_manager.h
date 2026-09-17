@@ -451,6 +451,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
 
+  // Background task that recomputes each tablet's DocDB SST statistics aggregate. The poller only
+  // hands the sweep to sst_stats_resync_pool_; ResyncSstStatsForAllTablets is the sweep itself.
+  void ResyncSstStats();
+  void ResyncSstStatsForAllTablets();
+
   // Background task that emits metrics.
   void EmitMetrics();
 
@@ -861,6 +866,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // on the server, accounting for hardlinks.
   std::unique_ptr<TsDataSizeMetrics> ts_data_size_metrics_;
   std::unique_ptr<rpc::Poller> data_size_metric_updater_;
+
+  // Recomputes each tablet's DocDB SST statistics aggregate from its whole live file set. The
+  // sweep reads a properties block per SST file not already in the table cache, so it runs on its
+  // own thread rather than on the messenger scheduler's IO threads, which also dispatch RPCs.
+  // Both are null unless the collector is enabled.
+  std::unique_ptr<rpc::Poller> sst_stats_resync_poller_;
+  std::unique_ptr<ThreadPool> sst_stats_resync_pool_;
+  // Set while a sweep is queued or running, so that a sweep outlasting the interval does not
+  // accumulate duplicate passes behind it.
+  std::atomic<bool> sst_stats_resync_active_{false};
 
   std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 
