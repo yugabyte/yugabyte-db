@@ -158,6 +158,7 @@ Status InitYB(const std::string &server_type, const char* argv0) {
   RETURN_NOT_OK(CheckCPUFlags());
   RETURN_NOT_OK(SetupLogDir(server_type));
   RETURN_NOT_OK(VersionInfo::Init());
+  SetFatalDetailsHeader(VersionInfo::GetShortVersionString());
   SetGLogHeader();
   InitGoogleLoggingSafe(argv0);
   return Status::OK();
