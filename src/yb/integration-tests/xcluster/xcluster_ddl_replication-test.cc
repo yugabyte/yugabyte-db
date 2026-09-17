@@ -4806,9 +4806,13 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PartmanExtension) {
 
   // Insert some data into the table and verify it is replicated.
   const auto select_data = "SELECT customer_id FROM orders ORDER BY order_date";
-  ASSERT_OK(
-      producer_conn_->Execute("INSERT INTO orders (order_date, customer_id) VALUES (current_date, "
-                              "1), (current_date + 1, 2)"));
+  // pg_partman premakes ahead of the highest order_date, not ahead of the clock. On the last day
+  // of a month current_date + 1 lands in the next partition, dropping the premade count to zero,
+  // so run_maintenance creates two partitions at once and the counts below never match.
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO orders (order_date, customer_id) VALUES "
+      "(date_trunc('month', current_date)::date, 1), "
+      "(date_trunc('month', current_date)::date + 1, 2)"));
   auto producer_data = ASSERT_RESULT(producer_conn_->FetchAllAsString(select_data));
   ASSERT_EQ(producer_data, "1; 2");
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
