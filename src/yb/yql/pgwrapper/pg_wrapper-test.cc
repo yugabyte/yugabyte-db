@@ -1247,13 +1247,13 @@ TEST_F(PgWrapperFlagsTest, ValidateCoDependentFlags) {
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("pg_cron_leader_lease_sec")), "60");
 
   // FLAG_GE_FLAG_VALIDATOR
-  ASSERT_NO_FATALS(expect_err({{"otel_batch_max_queue_size", "256"}},
-                              "otel_batch_max_queue_size"));
+  ASSERT_NO_FATALS(expect_err({{"otel_ysql_batch_max_queue_size", "256"}},
+                              "otel_ysql_batch_max_queue_size"));
   ASSERT_NO_FATALS(expect_ok({
-      {"otel_batch_max_queue_size", "256"},
+      {"otel_ysql_batch_max_queue_size", "256"},
       {"otel_batch_max_export_batch_size", "128"},
   }));
-  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_batch_max_queue_size")), "2048");
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_ysql_batch_max_queue_size")), "2048");
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_batch_max_export_batch_size")), "512");
 
   // FLAG_DELAYED_COND_VALIDATOR (raft lease vs heartbeat)
