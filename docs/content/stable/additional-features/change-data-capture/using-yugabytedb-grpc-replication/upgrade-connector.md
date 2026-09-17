@@ -97,7 +97,7 @@ To re-snapshot:
 
 1. Create a new stream ID.
 
-    {{<tags/feature/ea idea="2762">}}In v2026.1.1.0 and later, use the PostgreSQL replication slot interface with the `yb_grpc` plugin:
+    {{<tags/feature/ea idea="2762">}}In v2026.1.2.0 and later, use the PostgreSQL replication slot interface with the `yb_grpc` plugin:
 
     ```sql
     SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');

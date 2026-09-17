@@ -23,7 +23,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
     Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a CDC stream.
     
-    {{<tags/feature/ea idea="2762">}}Create and manage the stream using PostgreSQL replication slot commands (v2026.1.1.0 and later).
+    {{<tags/feature/ea idea="2762">}}Create and manage the stream using PostgreSQL replication slot commands (v2026.1.2.0 and later).
 
     You can also create a stream using the [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command.
 
@@ -45,14 +45,14 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 Create streams using one of the following methods:
 
-- PostgreSQL replication slot interface (recommended for v2026.1.1.0 and later)
+- PostgreSQL replication slot interface (recommended for v2026.1.2.0 and later)
 - yb-admin
 
 ### Using PostgreSQL replication slot syntax
 
-{{<tags/feature/ea idea="2762">}}Create, list, and drop gRPC CDC streams using standard PostgreSQL replication slot commands and the special output plugin `yb_grpc` (available in v2026.1.1.0 and later). The stream is still consumed by the YugabyteDB gRPC connector, but the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
+{{<tags/feature/ea idea="2762">}}Create, list, and drop gRPC CDC streams using standard PostgreSQL replication slot commands and the special output plugin `yb_grpc` (available in v2026.1.2.0 and later). The stream is still consumed by the YugabyteDB gRPC connector, but the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
 
-This capability is enabled automatically after you finalize a cluster upgrade to a supported version (v2026.1.1.0 and later). Creating a gRPC stream via PostgreSQL syntax is rejected until upgrade finalization completes.
+This capability is enabled automatically after you finalize a cluster upgrade to a supported version (v2026.1.2.0 and later). Creating a gRPC stream via PostgreSQL syntax is rejected until upgrade finalization completes.
 
 Streams created this way omit the stream-level `record_type` option that older gRPC connectors expect. Before-image format is driven by each table's [replica identity](../../using-logical-replication/key-concepts/#replica-identity) instead. Use a gRPC connector version that supports replica-identity-driven streams when consuming a stream created via PostgreSQL syntax.
 
@@ -87,7 +87,7 @@ CREATE_REPLICATION_SLOT my_grpc_slot LOGICAL yb_grpc;
 
 {{< note title="Legacy workflow" >}}
 
-Use `yb-admin create_change_data_stream` to create streams in versions earlier than v2026.1.1.0. For v2026.1.1.0 and later, PostgreSQL replication slot syntax is recommended for creating streams.
+Use `yb-admin create_change_data_stream` to create streams in versions earlier than v2026.1.2.0. For v2026.1.2.0 and later, PostgreSQL replication slot syntax is recommended for creating streams.
 
 {{< /note >}}
 
