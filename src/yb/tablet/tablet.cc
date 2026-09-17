@@ -1091,9 +1091,12 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
+  // rocksdb_shutdown_requested_ covers teardowns that skip Tablet::StartShutdown (e.g. snapshot
+  // restore), so their synchronous shutdown flush does not wait out the timeout.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
   if (initial &&
-      (shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
+      (shutdown_requested_.load(std::memory_order_acquire) ||
+       rocksdb_shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
     for (size_t idx = 0; idx != state->flush_ability.size(); ++idx) {
       if (state->NeedFlush(idx, memtable_index)) {
