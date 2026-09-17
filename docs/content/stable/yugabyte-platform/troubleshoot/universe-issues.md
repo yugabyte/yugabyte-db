@@ -107,13 +107,12 @@ The diagnostic information can be analyzed locally or the bundle can be forwarde
 
 The focus is to ensure that support bundle generation is successful in most cases, regardless of any individual file collection failures.
 
-<!-- TODO add in for v2026.1.2.0
 ### Perf Advisor Collector
 
 {{<tags/feature/ea idea="1428">}} The Perf Advisor (PA) collector collects performance monitoring data locally on the YugabyteDB Anywhere host. Use it to generate support bundles that include [Perf Advisor metadata](#perf-advisor-metadata), which you can share with {{% support-platform %}} for anomaly detection and cluster load analysis.
 
-{{< note title="YBA installer registration" >}}
-Starting in YugabyteDB Anywhere v2026.1.2.0, the [YBA installer](../../install-yugabyte-platform/install-software/installer/) automatically registers a Perf Advisor collector service during installation. The service is registered by default, but you must enable the collector for each universe before it begins collecting metadata.
+{{< note title="Automatic PA collector registration" >}}
+Starting in YugabyteDB Anywhere v2026.1.2.0, the [YBA installer](../../install-yugabyte-platform/install-software/installer/) automatically registers a Perf Advisor collector service during installation. On Kubernetes, [installing](../../install-yugabyte-platform/install-software/kubernetes/) or [upgrading](../../upgrade/upgrade-yp-kubernetes/) YugabyteDB Anywhere with Helm to v2026.1.2.0 or later automatically deploys the collector as a separate pod that requires 0.1 CPU and 512Mi of RAM. The collector is registered by default, but you must enable it for each universe before it begins collecting metadata.
 {{< /note >}}
 
 To enable the PA collector for a universe:
@@ -129,7 +128,6 @@ To disable collection, click **Actions > More > Disable Perf Advisor Collector**
 When you create a support bundle, select the **Perf Advisor metadata** component to include this data in the archive. Note that if the PA collector is not enabled for the universe, the **Perf Advisor metadata** option is not displayed. For more information about the component, see [Perf Advisor metrics](#perf-advisor-metrics).
 
 For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/).
--->
 
 ### Create support bundles
 
