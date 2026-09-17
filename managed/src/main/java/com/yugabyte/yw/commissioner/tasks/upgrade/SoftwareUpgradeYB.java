@@ -90,6 +90,10 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     boolean requireAdditionalSuperUserForCatalogUpgrade =
         softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
             universe, currentVersion, newVersion);
+    // Same password for CREATE_USER (before masters) and CREATE_PG_PASS_FILE (after masters),
+    // matching K8s so .pgpass is written on the current leader after the master roll.
+    String catalogUpgradePassword =
+        requireAdditionalSuperUserForCatalogUpgrade ? Util.getPostgresCompatiblePassword() : null;
     runUpgrade(
         () -> {
           MastersAndTservers nodesToApply = getNodesToBeRestarted();
@@ -161,11 +165,11 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   universe, YsqlMajorVersionUpgradeState.IN_PROGRESS);
             }
 
-            if (requireAdditionalSuperUserForCatalogUpgrade
+            if (catalogUpgradePassword != null
                 && nodesToApply.tserversList.size() == universe.getTServers().size()) {
-              // Create a superuser and pgpass file for ysql catalog upgrade.
-              createManageCatalogUpgradeSuperUserTask(
-                  Action.CREATE_USER_AND_PG_PASS_FILE, Util.getPostgresCompatiblePassword());
+              // Create a superuser (DDLs) before master upgrade. .pgpass is written later on the
+              // current master leader after the master roll, immediately before catalog upgrade.
+              createManageCatalogUpgradeSuperUserTask(Action.CREATE_USER, catalogUpgradePassword);
             }
           }
 
@@ -194,6 +198,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           if (nodesToApply.tserversList.size() == universe.getTServers().size()) {
             // If any tservers is upgraded, then we can assume pg upgrade is completed.
             if (requireYsqlMajorVersionUpgrade) {
+              if (catalogUpgradePassword != null) {
+                // Write .pgpass on the current master leader (after the master roll) so
+                // pg_upgrade finds credentials regardless of leadership changes during the roll.
+                createManageCatalogUpgradeSuperUserTask(
+                    Action.CREATE_PG_PASS_FILE, catalogUpgradePassword);
+              }
               createRunYsqlMajorVersionCatalogUpgradeTask();
 
               if (requireAdditionalSuperUserForCatalogUpgrade) {
