@@ -144,7 +144,7 @@ On Kubernetes, node-level resilience is labeled **Pod**.
 
 All availability zones have the same number of nodes. You cannot set per-zone counts in **Guided** mode; switch to **Expert** if you need that.
 
-After you set resilience, select regions, then assign availability zones and the number of nodes per zone. For multi-region clusters, optionally rank [preferred](#preferred-region) regions.
+After you set resilience, select regions, then assign availability zones and the number of nodes per zone. For multi-region clusters, optionally rank [preferred](#preferred-region) availability zones.
 
 ##### Region
 
@@ -195,19 +195,17 @@ If you switch from **Expert** to **Guided** and the current placement is not a *
 
 #### Preferred region
 
-You can optionally designate regions or availability zones (ranked in order of preference) as preferred. The preferred locations handle all read and write requests from clients.
+You can rank availability zones so [tablet leaders](../../../architecture/key-concepts/#tablet-leader) sit close to your application. Give every zone in a region the same rank to prefer that region. See [Preferred region](../../../architecture/key-concepts/#preferred-region) and [leader affinity](../../../architecture/key-concepts/#leader-affinity).
 
-Designating a region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred region.
+Preferred ranking controls where tablet leaders are elected. It does not change replica placement, [replication factor](../../../architecture/key-concepts/#replication-factor-rf), or where dedicated [YB-Master](../../../architecture/key-concepts/#master-server) processes run. Non-preferred zones still host tablet followers. When no zone is ranked, [leader balancing](../../../architecture/key-concepts/#leader-balancing) spreads leaders across the universe.
 
-When no region is preferred, YugabyteDB distributes requests equally across regions. You can set or change the preferred regions after universe creation.
+For lower latency, rank the zone or region closest to the application as 1. If the application uses a [smart driver](../../../architecture/key-concepts/#smart-driver), set the [topology keys](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to match.
 
-Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure the fault tolerance you configured.
+Ranks must be contiguous integers starting at 1. Zones with the same rank share leaders. Unranked zones are used only if no higher-ranked zone is available.
 
-By ranking preferred regions, you can determine which region will take up reads and writes in the event your first ranked region fails. For example, suppose you have a primary cluster with nodes in us-east, us-central, and us-west, and your application resides in us-east. You can rank preferred regions as follows: 1. us-east (for lowest latencies, as this is where the application is located) 2. us-central; 3. us-west. If us-east fails, the followers in us-central (as the second-ranked preferred region) will automatically be elected to be the leaders, and the application will start communicating with us-central. For an illustration of how ranking preferred regions works, refer to [Global database](/stable/develop/build-global-apps/global-database/).
+For example, a primary cluster in us-east, us-central, and us-west with the application in us-east: rank us-east 1, us-central 2, and us-west 3. If us-east fails, followers in us-central become leaders. See [Global database](/stable/develop/build-global-apps/global-database/).
 
-You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
-
-In cases where the cluster has [read replicas](#multiple-region) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
+You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions. If a client connects to a [read replica](#multiple-region), reads are served from the replica; writes still go to tablet leaders in the preferred region.
 
 #### Dedicated masters
 

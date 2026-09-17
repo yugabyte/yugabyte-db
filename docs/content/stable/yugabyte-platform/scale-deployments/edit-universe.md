@@ -62,13 +62,13 @@ In **Guided** mode, you set the following:
 
 1. **Resilience**. You can only _increase_ the resilience. Increasing resilience requires more nodes or availability zones.
 1. **Regions**. Select the regions where you want to locate the primary cluster.
-1. **Availability Zones and Nodes**. Select the zones, specify the number of nodes (the same in every zone), and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) regions.
+1. **Availability Zones and Nodes**. Select the zones, specify the number of nodes (the same in every zone), and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) availability zones.
 
 In **Expert** mode, you set the following:
 
 1. **Regions**. Select the regions where you want to locate the primary cluster.
 1. {{<tags/feature/ea idea="56">}}**Replication Factor**. You can only _increase_ the replication factor. This change may also require more nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning.
-1. **Availability Zones and Nodes**. Select the zones (you can add extra zones depending on the number of regions and RF), specify the number of nodes **per zone**, and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) regions.
+1. **Availability Zones and Nodes**. Select the zones (you can add extra zones depending on the number of regions and RF), specify the number of nodes **per zone**, and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) availability zones.
 
 When you are done, click **Review Changes**, confirm the summary, then click **Confirm and Apply**.
 
