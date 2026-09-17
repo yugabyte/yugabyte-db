@@ -397,7 +397,9 @@ public interface UserIntentMapper {
       fillUserIntentFromClusterResizeNodeSpec(source.getNodeSpec(), userIntent);
     }
     // node_spec / provider_nodes_specs may be omitted for gflags-only resize requests
-    userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    if (source.getGflags() != null) {
+      userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    }
     return userIntent;
   }
 
