@@ -1030,7 +1030,7 @@ SELECT * FROM pg_create_logical_replication_slot('my_slot', 'yb_grpc');
 
 Streams created this way appear in `pg_replication_slots` with `yb_grpc` as the plugin, and derive the before image behavior of each table from its [replica identity](../../using-logical-replication/key-concepts/#replica-identity), analogous to logical replication streams. (Streams created using yb-admin continue to rely on the `record_type` stream option.)
 
-You can consume these streams using connector version `dz.1.9.5.yb.grpc.2026.1.1` or later.
+You can consume these streams using connector version `dz.1.9.5.yb.grpc.2026.1.2` or later.
 
 Consume the stream in one of the following ways:
 
