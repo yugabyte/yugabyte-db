@@ -4,12 +4,13 @@ explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten;
             QUERY PLAN             
 -----------------------------------
- Sort
+ Incremental Sort
    Sort Key: tenk1.four, tenk1.ten
+   Presorted Key: tenk1.four
    ->  Sort
          Sort Key: tenk1.four
          ->  Seq Scan on tenk1
-(5 rows)
+(6 rows)
 
 -- When there is a LIMIT clause, incremental sort is beneficial because
 -- it only has to sort some of the groups, and not the entire table.
@@ -551,12 +552,13 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
 -------------------------------------------------
  [                                              +
      {                                          +
+         "Disabled": false,                     +
          "Sort Key": [                          +
              "t.a",                             +
              "t.b"                              +
          ],                                     +
          "Node Type": "Incremental Sort",       +
-         "Actual Rows": 55,                     +
+         "Actual Rows": 55.00,                  +
          "Actual Loops": 1,                     +
          "Async Capable": false,                +
          "Presorted Key": [                     +
@@ -574,7 +576,17 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
                  "Average Sort Space Used": "NN"+
              }                                  +
          },                                     +
-         "Parent Relationship": "Outer"         +
+         "Local Hit Blocks": 0,                 +
+         "Temp Read Blocks": 0,                 +
+         "Local Read Blocks": 0,                +
+         "Shared Hit Blocks": 0,                +
+         "Shared Read Blocks": 0,               +
+         "Parent Relationship": "Outer",        +
+         "Temp Written Blocks": 0,              +
+         "Local Dirtied Blocks": 0,             +
+         "Local Written Blocks": 0,             +
+         "Shared Dirtied Blocks": 0,            +
+         "Shared Written Blocks": 0             +
      }                                          +
  ]
 (1 row)
@@ -721,9 +733,10 @@ explain (costs off) select * from t left join (select * from (select * from t or
          Sort Key: t_1.a, t_1.b
          Presorted Key: t_1.a
          ->  Sort
+               Disabled: true
                Sort Key: t_1.a
                ->  Seq Scan on t t_1
-(10 rows)
+(11 rows)
 
 select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
  a | b | a | b 
@@ -754,12 +767,13 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
 -------------------------------------------------
  [                                              +
      {                                          +
+         "Disabled": false,                     +
          "Sort Key": [                          +
              "t.a",                             +
              "t.b"                              +
          ],                                     +
          "Node Type": "Incremental Sort",       +
-         "Actual Rows": 70,                     +
+         "Actual Rows": 70.00,                  +
          "Actual Loops": 1,                     +
          "Async Capable": false,                +
          "Presorted Key": [                     +
@@ -776,6 +790,9 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
                  "Average Sort Space Used": "NN"+
              }                                  +
          },                                     +
+         "Local Hit Blocks": 0,                 +
+         "Temp Read Blocks": 0,                 +
+         "Local Read Blocks": 0,                +
          "Pre-sorted Groups": {                 +
              "Group Count": 5,                  +
              "Sort Methods Used": [             +
@@ -787,7 +804,14 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
                  "Average Sort Space Used": "NN"+
              }                                  +
          },                                     +
-         "Parent Relationship": "Outer"         +
+         "Shared Hit Blocks": 0,                +
+         "Shared Read Blocks": 0,               +
+         "Parent Relationship": "Outer",        +
+         "Temp Written Blocks": 0,              +
+         "Local Dirtied Blocks": 0,             +
+         "Local Written Blocks": 0,             +
+         "Shared Dirtied Blocks": 0,            +
+         "Shared Written Blocks": 0             +
      }                                          +
  ]
 (1 row)

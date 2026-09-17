@@ -764,7 +764,8 @@ SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::reg
 ------------+-------------
  f          |           1
  t          |           0
-(2 rows)
+ t          |           1
+(3 rows)
 
 -- Once check_b is added to the parent, it should be made non-local for part_b
 ALTER TABLE parted ADD CONSTRAINT check_b CHECK (b >= 0);
@@ -774,7 +775,8 @@ SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::reg
 ------------+-------------
  f          |           1
  f          |           1
-(2 rows)
+ t          |           1
+(3 rows)
 
 -- Neither check_a nor check_b are droppable from part_b
 ALTER TABLE part_b DROP CONSTRAINT check_a;
@@ -788,7 +790,8 @@ ALTER TABLE parted DROP CONSTRAINT check_a, DROP CONSTRAINT check_b;
 SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_b'::regclass;
  conislocal | coninhcount 
 ------------+-------------
-(0 rows)
+ t          |           1
+(1 row)
 
 -- specify PARTITION BY for a partition
 CREATE TABLE fail_part_col_not_found PARTITION OF parted FOR VALUES IN ('c') PARTITION BY RANGE (c);
@@ -879,6 +882,8 @@ Partitions:
  b      | integer |           | not null | 0       | plain    |              | 
 Partition of: part_c FOR VALUES FROM (1) TO (10)
 Partition constraint: ((a IS NOT NULL) AND (a = 'c'::text) AND (b IS NOT NULL) AND (b >= 1) AND (b < 10))
+Not-null constraints:
+    "part_c_b_not_null" NOT NULL "b" (inherited)
 
 -- Show partition count in the parent's describe output
 -- Tempted to include \d+ output listing partitions with bound info but
