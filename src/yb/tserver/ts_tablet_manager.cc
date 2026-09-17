@@ -261,10 +261,11 @@ DEFINE_NON_RUNTIME_int32(docdb_sst_stats_resync_interval_sec, 300,
              "The interval at which each tablet's DocDB SST statistics aggregate is recomputed "
              "from its whole live file set, correcting for file-set changes that produce no "
              "RocksDB flush or compaction event (tablet open, remote bootstrap, snapshot restore, "
-             "files inherited by a split). Until the first pass, a tablet's aggregate covers only "
-             "the files written since it opened and no consumer reads it. If set to 0, it disables "
-             "the background task, which leaves the aggregate unusable. Only has an effect when "
-             "--docdb_enable_sst_stats_collector is set.");
+             "files inherited by a split). The first pass runs one interval after tserver start; "
+             "a tablet opened later waits until the next pass. Until then, its aggregate covers "
+             "only files written since it opened and no consumer reads it. If set to 0, it "
+             "disables the background task, which leaves the aggregate unusable. Only has an "
+             "effect when --docdb_enable_sst_stats_collector is set.");
 
 DEFINE_UNKNOWN_int32(send_wait_for_report_interval_ms, 60000,
              "The tick interval time to trigger updating all transaction coordinators with wait-for"

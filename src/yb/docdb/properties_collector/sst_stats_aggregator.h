@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -145,10 +146,12 @@ class SstStatsAggregator {
   // steady-state pass whose live file numbers are already exactly counted can avoid reading any
   // properties blocks. Both callbacks run without the lock held because they can hit disk.
   //
-  // The snapshot is dropped rather than installed if a flush or compaction landed while it ran:
-  // it predates that event, so installing it would undo an update the incremental path already
-  // applied exactly. Resync retries once immediately so a single event does not postpone the
-  // tablet's first complete snapshot for a whole interval.
+  // Flush and compaction events that land during the snapshot are journalled and replayed once it
+  // is installed. Replay keys on the file number, so an event the snapshot already reflects is a
+  // no-op: the file set comes out right either way, and a busy tablet cannot starve resync. One
+  // case stays inexact -- a file whose properties the snapshot could not read but the event could
+  // subtracts a covered contribution from an uncovered one -- which saturation bounds and the next
+  // pass corrects, since properties_incomplete_ keeps it off the fast path.
   struct SnapshotSource {
     std::function<Status(std::vector<rocksdb::LiveFileMetaData>*)> live_files;
     std::function<Status(rocksdb::TablePropertiesCollection*)> properties;
@@ -158,16 +161,29 @@ class SstStatsAggregator {
   Snapshot Get() const EXCLUDES(mutex_);
 
  private:
-  void AddFile(uint64_t file_number, const rocksdb::TableProperties& properties) REQUIRES(mutex_);
-  // `properties` is null when the event that removed the file did not carry them.
-  void RemoveFile(uint64_t file_number, const rocksdb::TableProperties* properties)
-      REQUIRES(mutex_);
+  enum class FileEventType : uint8_t {
+    kAdd,
+    kRemove,
+  };
 
+  struct FileEvent {
+    FileEventType type;
+    uint64_t file_number;
+    // Empty only when a compaction event did not carry a removed file's properties.
+    std::optional<SstStatsAggregate> contribution;
+  };
+
+  void ApplyFileEvent(const FileEvent& event) REQUIRES(mutex_);
+  void HandleFileEvent(const FileEvent& event) REQUIRES(mutex_);
+
+  // Serializes snapshots so resync_events_ belongs to exactly one resync. Held across the disk
+  // reads; the listener callbacks take mutex_ alone, so they are never delayed by them.
+  std::mutex resync_mutex_ ACQUIRED_BEFORE(mutex_);
   mutable std::mutex mutex_;
   SstStatsAggregate aggregate_ GUARDED_BY(mutex_);
   std::unordered_set<uint64_t> counted_files_ GUARDED_BY(mutex_);
-  // Bumped by every file added or removed; lets Resync tell that its snapshot was overtaken.
-  uint64_t event_seqno_ GUARDED_BY(mutex_) = 0;
+  bool resync_in_progress_ GUARDED_BY(mutex_) = false;
+  std::vector<FileEvent> resync_events_ GUARDED_BY(mutex_);
   // True when the last installed snapshot omitted at least one unreadable properties block.
   bool properties_incomplete_ GUARDED_BY(mutex_) = false;
   int64_t last_resync_micros_ GUARDED_BY(mutex_) = 0;

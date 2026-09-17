@@ -575,9 +575,12 @@ class SstStatsAggregateTest : public CompactionTest {
   docdb::SstStatsAggregate CheckAgainstLiveFiles(const tablet::TabletPtr& tablet) {
     const auto stats = tablet->sst_stats();
     EXPECT_NE(stats, nullptr);
-    const auto from_events = stats->Get().aggregate;
+    const auto before_resync = stats->Get();
     EXPECT_OK(tablet->ResyncSstStats());
-    EXPECT_EQ(stats->Get().aggregate, from_events);
+    const auto after_resync = stats->Get();
+    EXPECT_GT(after_resync.last_resync_micros, before_resync.last_resync_micros);
+    EXPECT_EQ(after_resync.aggregate, before_resync.aggregate);
+    const auto& from_events = before_resync.aggregate;
     EXPECT_EQ(from_events.covered_files, tablet->GetCurrentVersionNumSSTFiles());
     EXPECT_EQ(from_events.uncovered_files, 0);
     EXPECT_EQ(from_events.unsubtracted_files, 0);

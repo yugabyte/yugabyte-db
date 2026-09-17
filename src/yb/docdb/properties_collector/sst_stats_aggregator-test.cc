@@ -235,6 +235,30 @@ TEST_F(SstStatsAggregatorTest, FailedCompactionLeavesInputsCounted) {
   EXPECT_EQ(aggregator.Get().aggregate.covered_files, 1);
 }
 
+TEST_F(SstStatsAggregatorTest, IgnoresEmptyFlushOutput) {
+  SstStatsAggregator aggregator;
+  ASSERT_OK(aggregator.Resync(SnapshotOf({})));
+
+  aggregator.OnFlushCompleted(
+      FlushOf(1, FileProperties(/* entries = */ 0, /* raw_bytes = */ 0, /* stats = */ nullptr)));
+
+  // The fast path needs the tracked file set to equal the live one, so a file counted for the
+  // dropped output would force a properties read here.
+  int properties_calls = 0;
+  ASSERT_OK(aggregator.Resync({
+      .live_files = [](std::vector<rocksdb::LiveFileMetaData>*) {
+        return Status::OK();
+      },
+      .properties = [&](rocksdb::TablePropertiesCollection*) {
+        ++properties_calls;
+        return STATUS(IOError, "must not read properties for a dropped flush output");
+      },
+  }));
+
+  EXPECT_EQ(properties_calls, 0);
+  EXPECT_EQ(aggregator.Get().aggregate, SstStatsAggregate());
+}
+
 TEST_F(SstStatsAggregatorTest, CompactionWithoutInputProperties) {
   SstStatsAggregator aggregator;
   const auto file = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
@@ -285,25 +309,23 @@ TEST_F(SstStatsAggregatorTest, ResyncCountsUncoveredFiles) {
   EXPECT_EQ(aggregator.Get().aggregate.uncovered_files, 0);
 }
 
-TEST_F(SstStatsAggregatorTest, ResyncOvertakenByFlushIsRetried) {
+TEST_F(SstStatsAggregatorTest, ResyncReplaysConcurrentCompaction) {
   SstStatsAggregator aggregator;
-  const auto flushed = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
-  const auto stale = CoveredFile(/* entries = */ 7, /* reclaimable = */ 7);
+  const auto input = CoveredFile(/* entries = */ 7, /* reclaimable = */ 7);
+  const auto output = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
 
   int properties_calls = 0;
   const auto status = aggregator.Resync({
       .live_files = [&](std::vector<rocksdb::LiveFileMetaData>* live_files) {
-        live_files->push_back(LiveFile(properties_calls == 0 ? 9 : 1));
+        live_files->push_back(LiveFile(9));
         return Status::OK();
       },
       .properties = [&](rocksdb::TablePropertiesCollection* properties) {
-        if (properties_calls++ == 0) {
-          // The first snapshot saw file 9, then a flush replaced the state underneath it.
-          (*properties)[PathOf(9)] = std::make_shared<rocksdb::TableProperties>(stale);
-          aggregator.OnFlushCompleted(FlushOf(1, flushed));
-        } else {
-          (*properties)[PathOf(1)] = std::make_shared<rocksdb::TableProperties>(flushed);
-        }
+        ++properties_calls;
+        // File 9 was inherited, so removing it is a no-op against the incremental state. It must
+        // still be replayed against the snapshot that contains it.
+        (*properties)[PathOf(9)] = std::make_shared<rocksdb::TableProperties>(input);
+        aggregator.OnCompactionCompleted(CompactionOf({{9, &input}}, {{1, &output}}));
         return Status::OK();
       },
   });
@@ -311,8 +333,9 @@ TEST_F(SstStatsAggregatorTest, ResyncOvertakenByFlushIsRetried) {
 
   const auto snapshot = aggregator.Get();
   EXPECT_EQ(snapshot.aggregate.total_entries, 100);
+  EXPECT_EQ(snapshot.aggregate.covered_files, 1);
   EXPECT_GT(snapshot.last_resync_micros, 0);
-  EXPECT_EQ(properties_calls, 2);
+  EXPECT_EQ(properties_calls, 1);
 }
 
 TEST_F(SstStatsAggregatorTest, ResyncSurvivesReplayedFlush) {
@@ -323,8 +346,8 @@ TEST_F(SstStatsAggregatorTest, ResyncSurvivesReplayedFlush) {
   const auto status = aggregator.Resync({
       .live_files = [&](std::vector<rocksdb::LiveFileMetaData>* live_files) {
         live_files->push_back(LiveFile(1));
-        // An event replayed for a file already counted leaves the file set alone, so the snapshot
-        // taken above still describes it and must not be discarded as overtaken.
+        // The file is already in the snapshot being built, so replaying this event on top of it
+        // must not count the file a second time.
         aggregator.OnFlushCompleted(FlushOf(1, file));
         return Status::OK();
       },
@@ -361,7 +384,7 @@ TEST_F(SstStatsAggregatorTest, ResyncSkipsPropertiesForUnchangedFileSet) {
   EXPECT_EQ(aggregator.Get().aggregate.total_entries, 100);
 }
 
-TEST_F(SstStatsAggregatorTest, ResyncRetriesUnreadableProperties) {
+TEST_F(SstStatsAggregatorTest, ResyncRereadsAfterUnreadableProperties) {
   SstStatsAggregator aggregator;
   const auto file = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
   ASSERT_OK(aggregator.Resync(SnapshotOf({{1, nullptr}})));
@@ -371,6 +394,34 @@ TEST_F(SstStatsAggregatorTest, ResyncRetriesUnreadableProperties) {
   ASSERT_OK(aggregator.Resync(SnapshotOf({{1, &file}})));
   EXPECT_EQ(aggregator.Get().aggregate.total_entries, 100);
   EXPECT_EQ(aggregator.Get().aggregate.uncovered_files, 0);
+}
+
+TEST_F(SstStatsAggregatorTest, FailedResyncInstallsNothing) {
+  SstStatsAggregator aggregator;
+  const auto first = CoveredFile(/* entries = */ 100, /* reclaimable = */ 40);
+  const auto second = CoveredFile(/* entries = */ 60, /* reclaimable = */ 10);
+
+  const auto status = aggregator.Resync({
+      .live_files = [](std::vector<rocksdb::LiveFileMetaData>* live_files) {
+        live_files->push_back(LiveFile(1));
+        return Status::OK();
+      },
+      .properties = [&](rocksdb::TablePropertiesCollection*) {
+        aggregator.OnCompactionCompleted(CompactionOf({{1, &first}}, {{2, &second}}));
+        return STATUS(IOError, "properties block unreadable");
+      },
+  });
+  ASSERT_NOK(status);
+  // Nothing was installed, so the tablet has still never been measured.
+  ASSERT_EQ(aggregator.Get().last_resync_micros, 0);
+
+  // File 1 is live again on purpose: the failed pass journalled its removal, so replaying that
+  // journal here would drop a file the tablet has.
+  ASSERT_OK(aggregator.Resync(SnapshotOf({{1, &first}, {2, &second}})));
+  const auto snapshot = aggregator.Get();
+  EXPECT_EQ(snapshot.aggregate.total_entries, 160);
+  EXPECT_EQ(snapshot.aggregate.covered_files, 2);
+  EXPECT_GT(snapshot.last_resync_micros, 0);
 }
 
 }  // namespace yb::docdb

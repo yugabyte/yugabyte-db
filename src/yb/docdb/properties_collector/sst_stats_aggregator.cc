@@ -22,6 +22,7 @@
 #include "yb/rocksdb/db/filename.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
 namespace yb::docdb {
@@ -112,37 +113,48 @@ SstStatsAggregate SstFileContribution(const rocksdb::TableProperties& properties
   return result;
 }
 
-void SstStatsAggregator::AddFile(
-    uint64_t file_number, const rocksdb::TableProperties& properties) {
-  if (!counted_files_.insert(file_number).second) {
-    // A replayed event for a file already counted leaves the aggregate alone, so it must not bump
-    // the sequence number either: a resync in flight is still valid over this file set.
+void SstStatsAggregator::ApplyFileEvent(const FileEvent& event) {
+  if (event.type == FileEventType::kAdd) {
+    DCHECK(event.contribution);
+    if (counted_files_.insert(event.file_number).second) {
+      aggregate_ += *event.contribution;
+    }
     return;
   }
-  ++event_seqno_;
-  aggregate_ += SstFileContribution(properties);
+
+  if (counted_files_.erase(event.file_number) == 0) {
+    return;
+  }
+  if (event.contribution) {
+    aggregate_ -= *event.contribution;
+  } else {
+    ++aggregate_.unsubtracted_files;
+  }
 }
 
-void SstStatsAggregator::RemoveFile(
-    uint64_t file_number, const rocksdb::TableProperties* properties) {
-  if (counted_files_.erase(file_number) == 0) {
-    return;
+void SstStatsAggregator::HandleFileEvent(const FileEvent& event) {
+  // Journal even an event that is a no-op against the current state: a compaction can remove a
+  // file inherited at open, absent from counted_files_ but present in the snapshot being built.
+  if (resync_in_progress_) {
+    resync_events_.push_back(event);
   }
-  ++event_seqno_;
-  if (properties == nullptr) {
-    ++aggregate_.unsubtracted_files;
-    return;
-  }
-  aggregate_ -= SstFileContribution(*properties);
+  ApplyFileEvent(event);
 }
 
 void SstStatsAggregator::OnFlushCompleted(const rocksdb::FlushJobInfo& info) {
   const auto file_number = FileNumber(info.file_path);
-  if (file_number == 0) {
+  // RocksDB still sends a completion event when an empty flush output is dropped instead of added
+  // to the manifest.
+  if (file_number == 0 || info.table_properties.num_entries == 0) {
     return;
   }
+  const FileEvent event{
+      .type = FileEventType::kAdd,
+      .file_number = file_number,
+      .contribution = SstFileContribution(info.table_properties),
+  };
   std::lock_guard lock(mutex_);
-  AddFile(file_number, info.table_properties);
+  HandleFileEvent(event);
 }
 
 void SstStatsAggregator::OnCompactionCompleted(const rocksdb::CompactionJobInfo& info) {
@@ -154,7 +166,14 @@ void SstStatsAggregator::OnCompactionCompleted(const rocksdb::CompactionJobInfo&
   for (const auto& path : info.input_files) {
     const auto file_number = FileNumber(path);
     if (file_number != 0) {
-      RemoveFile(file_number, Lookup(info.table_properties, path));
+      const auto* properties = Lookup(info.table_properties, path);
+      HandleFileEvent({
+          .type = FileEventType::kRemove,
+          .file_number = file_number,
+          .contribution = properties
+              ? std::make_optional(SstFileContribution(*properties))
+              : std::nullopt,
+      });
     }
   }
   for (const auto& path : info.output_files) {
@@ -164,72 +183,82 @@ void SstStatsAggregator::OnCompactionCompleted(const rocksdb::CompactionJobInfo&
     // uncovered: resync will pick it up, and until then a file absent from counted_files_ is one
     // no later compaction will try to subtract.
     if (file_number != 0 && properties != nullptr) {
-      AddFile(file_number, *properties);
+      HandleFileEvent({
+          .type = FileEventType::kAdd,
+          .file_number = file_number,
+          .contribution = SstFileContribution(*properties),
+      });
     }
   }
 }
 
 Status SstStatsAggregator::Resync(const SnapshotSource& source) {
-  constexpr auto kMaxAttempts = 2;
-  for (int attempt = 0; attempt != kMaxAttempts; ++attempt) {
-    uint64_t seqno_before;
-    {
-      std::lock_guard lock(mutex_);
-      seqno_before = event_seqno_;
-    }
-
-    std::vector<rocksdb::LiveFileMetaData> live_files;
-    RETURN_NOT_OK(source.live_files(&live_files));
-
-    std::unordered_set<uint64_t> counted_files;
-    counted_files.reserve(live_files.size());
-    for (const auto& file : live_files) {
-      counted_files.insert(file.name_id);
-    }
-
-    {
-      std::lock_guard lock(mutex_);
-      if (event_seqno_ != seqno_before) {
-        continue;
-      }
-      // SST contributions are immutable. After one full resync has established coverage, an equal
-      // file set with no omitted properties or failed subtraction proves the aggregate is exact.
-      if (last_resync_micros_ != 0 && !properties_incomplete_ &&
-          aggregate_.unsubtracted_files == 0 && counted_files_ == counted_files) {
-        last_resync_micros_ = GetCurrentTimeMicros();
-        return Status::OK();
-      }
-    }
-
-    rocksdb::TablePropertiesCollection properties;
-    RETURN_NOT_OK(source.properties(&properties));
-
-    SstStatsAggregate aggregate;
-    bool properties_incomplete = false;
-    for (const auto& file : live_files) {
-      const auto* file_properties = Lookup(properties, file.BaseFilePath());
-      if (file_properties == nullptr) {
-        // Properties that could not be read at all: still count the file, so that a consumer sees
-        // the tablet is not fully measured. Its entries and bytes are simply unknown.
-        ++aggregate.uncovered_files;
-        properties_incomplete = true;
-        continue;
-      }
-      aggregate += SstFileContribution(*file_properties);
-    }
-
+  std::lock_guard resync_lock(resync_mutex_);
+  {
     std::lock_guard lock(mutex_);
-    if (event_seqno_ != seqno_before) {
+    resync_in_progress_ = true;
+    resync_events_.clear();
+  }
+  // Stops journalling if a snapshot read fails; the next pass would clear the journal anyway.
+  auto abort_resync = CancelableScopeExit([this] {
+    std::lock_guard lock(mutex_);
+    resync_in_progress_ = false;
+    resync_events_.clear();
+  });
+
+  std::vector<rocksdb::LiveFileMetaData> live_files;
+  RETURN_NOT_OK(source.live_files(&live_files));
+
+  std::unordered_set<uint64_t> counted_files;
+  counted_files.reserve(live_files.size());
+  for (const auto& file : live_files) {
+    counted_files.insert(file.name_id);
+  }
+
+  {
+    std::lock_guard lock(mutex_);
+    // SST contributions are immutable. After one full resync has established coverage, an equal
+    // file set with no omitted properties or failed subtraction proves the aggregate is exact.
+    if (last_resync_micros_ != 0 && !properties_incomplete_ &&
+        aggregate_.unsubtracted_files == 0 && counted_files_ == counted_files) {
+      last_resync_micros_ = GetCurrentTimeMicros();
+      resync_in_progress_ = false;
+      resync_events_.clear();
+      abort_resync.Cancel();
+      return Status::OK();
+    }
+  }
+
+  rocksdb::TablePropertiesCollection properties;
+  RETURN_NOT_OK(source.properties(&properties));
+
+  SstStatsAggregate aggregate;
+  bool properties_incomplete = false;
+  for (const auto& file : live_files) {
+    const auto* file_properties = Lookup(properties, file.BaseFilePath());
+    if (file_properties == nullptr) {
+      // Properties that could not be read at all: still count the file, so that a consumer sees
+      // the tablet is not fully measured. Its entries and bytes are simply unknown.
+      ++aggregate.uncovered_files;
+      properties_incomplete = true;
       continue;
     }
+    aggregate += SstFileContribution(*file_properties);
+  }
+
+  {
+    std::lock_guard lock(mutex_);
     aggregate_ = aggregate;
     counted_files_ = std::move(counted_files);
     properties_incomplete_ = properties_incomplete;
+    for (const auto& event : resync_events_) {
+      ApplyFileEvent(event);
+    }
     last_resync_micros_ = GetCurrentTimeMicros();
-    return Status::OK();
+    resync_in_progress_ = false;
+    resync_events_.clear();
   }
-
-  VLOG(1) << "Dropping SST statistics resync overtaken twice by a flush or compaction";
+  abort_resync.Cancel();
   return Status::OK();
 }
 
