@@ -309,7 +309,9 @@ TEST_F(XClusterDDLReplicationTest, CheckpointMultipleDatabases) {
   ASSERT_OK(SetUpClusters());
 
   std::vector<NamespaceName> namespaces{namespace_name};
-  for (int i = 0; i < base::NumCPUs() * 2; i++) {
+  // More DBs than cores, but capped: too many concurrent DDLs overflow the TS service queue.
+  const int num_dbs = std::min(base::NumCPUs() * 2, 64);
+  for (int i = 0; i < num_dbs; i++) {
     auto name = Format("db_$0", i);
     ASSERT_OK(CreateDatabase(&producer_cluster_, name, false));
     auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(name));
