@@ -2490,6 +2490,19 @@ retry1:
 							 errhint("Value must be one of the registered "
 									 "YbInternalConnKind wire names.")));
 			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_dist_traceparent") == 0)
+			{
+				/*
+				 * Not a registered GUC, so consume it here even when auth
+				 * passthrough discards it: it must not reach guc_options.
+				 */
+				if (!YbIsAuthPassthroughInProgress(port))
+				{
+					port->yb_dist_traceparent = pstrdup(valptr);
+					pg_clean_ascii(port->yb_dist_traceparent);
+				}
+			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
 				/*
