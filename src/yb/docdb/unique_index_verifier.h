@@ -65,9 +65,13 @@ struct UniqueIndexVerificationResult {
   UniqueIndexVerificationOutcome outcome = UniqueIndexVerificationOutcome::kClean;
 
   // Value-free context for kViolation / kInconclusive: encoding classes and counts only,
-  // never key or value bytes. (A keyed diagnostic fingerprint is deliberately absent until
-  // the observability part lands; see the design document's privacy requirements.)
+  // never key or value bytes.
   std::string reason;
+
+  // Raw encoded DocKey group of the first violating group: the in-process input for the
+  // caller's keyed diagnostic fingerprint. Never serialized, and deliberately excluded from
+  // ToString() -- raw index key bytes must not reach logs, errors, or support bundles.
+  std::string violating_group_prefix;
 
   // Non-empty when the scan stopped early (group budget or deadline): the encoded DocKey to
   // resume from. Empty means the scan reached the end of the key bounds.

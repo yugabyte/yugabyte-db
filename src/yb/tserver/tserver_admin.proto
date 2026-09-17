@@ -163,6 +163,10 @@ message VerifyUniqueIndexTabletRequestPB {
 
   // Stop with a resume key after this many DocKey groups; 0 = bounded only by the deadline.
   optional uint64 max_dockey_groups = 9;
+
+  // Per-job secret for the keyed violation fingerprint (see the response's
+  // violation_fingerprint). Absent disables fingerprinting.
+  optional bytes verification_fingerprint_key = 10;
 }
 
 message VerifyUniqueIndexTabletResponsePB {
@@ -178,8 +182,9 @@ message VerifyUniqueIndexTabletResponsePB {
   }
   optional Outcome outcome = 3;
 
-  // Value-free context for VIOLATION / INCONCLUSIVE: encoding classes and counts only, never
-  // key or value bytes.
+  // Value-free context for VIOLATION / INCONCLUSIVE: encoding classes and counts, plus an
+  // appended keyed fingerprint token when the request carried a key (see
+  // violation_fingerprint) -- never key or value bytes.
   optional string reason = 4;
 
   // Non-empty when the scan stopped early (group budget or deadline): the encoded DocKey to
@@ -193,6 +198,12 @@ message VerifyUniqueIndexTabletResponsePB {
   // Groups that exceeded the buffering bound and took the bounded-memory reverse walk,
   // which re-reads the group (roughly doubling its scan cost).
   optional uint64 fallback_groups = 8;
+
+  // Keyed, scope-limited correlation token ("<jobtag>-<digest>", truncated HMAC-SHA256 under
+  // the request's fingerprint key) for the first violating index key: non-reversible,
+  // incomparable across jobs, never the key or value bytes. Set only for VIOLATION when the
+  // request carried a key.
+  optional string violation_fingerprint = 9;
 }
 
 // A create tablet request.
