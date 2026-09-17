@@ -5383,18 +5383,18 @@ _copyYbMergeScanInfo(const YbMergeScanInfo *from)
 {
 	YbMergeScanInfo *newnode = makeNode(YbMergeScanInfo);
 
-	COPY_NODE_FIELD(saop_cols);
+	COPY_NODE_FIELD(stream_cols);
 	COPY_NODE_FIELD(sort_cols);
 
 	return newnode;
 }
 
-static YbMergeScanSaopColInfo *
-_copyYbMergeScanSaopColInfo(const YbMergeScanSaopColInfo *from)
+static YbMergeScanStreamColInfo *
+_copyYbMergeScanStreamColInfo(const YbMergeScanStreamColInfo *from)
 {
-	YbMergeScanSaopColInfo *newnode = makeNode(YbMergeScanSaopColInfo);
+	YbMergeScanStreamColInfo *newnode = makeNode(YbMergeScanStreamColInfo);
 
-	COPY_NODE_FIELD(saop);
+	COPY_NODE_FIELD(clause);
 	COPY_SCALAR_FIELD(indexcol);
 	COPY_SCALAR_FIELD(num_elems);
 	COPY_SCALAR_FIELD(derived);
@@ -6427,8 +6427,8 @@ copyObjectImpl(const void *from)
 			retval = _copyYbMergeScanInfo(from);
 			break;
 
-		case T_YbMergeScanSaopColInfo:
-			retval = _copyYbMergeScanSaopColInfo(from);
+		case T_YbMergeScanStreamColInfo:
+			retval = _copyYbMergeScanStreamColInfo(from);
 			break;
 
 		case T_YbSortInfo:

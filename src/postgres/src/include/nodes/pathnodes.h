@@ -1316,14 +1316,14 @@ typedef struct YbPlanInfo
  *
  * Holds info used for merge scans.
  */
-typedef struct YbMergeScanSaopColInfo
+typedef struct YbMergeScanStreamColInfo
 {
 	NodeTag		type;
-	ScalarArrayOpExpr *saop;
+	Expr	   *clause;			/* the SAOP */
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
-} YbMergeScanSaopColInfo;
+} YbMergeScanStreamColInfo;
 
 /*
  * Info propagated for YugabyteDB, for index scans.
@@ -1335,7 +1335,7 @@ typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
-	List	   *merge_scan_saop_cols;	/* List of YbMergeScanSaopColInfo */
+	List	   *merge_scan_stream_cols; /* List of YbMergeScanStreamColInfo */
 } YbIndexPathInfo;
 
 
