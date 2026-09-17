@@ -904,6 +904,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
     backupSchedule.setTaskParams(Json.toJson(params));
     backupSchedule.save();
 
+    setUniverseResourceDetails("operator-universe-cr", "test-namespace");
+
     operatorUtils.createBackupScheduleCr(
         backupSchedule, "test-full-schedule", "test-storage-config", "test-namespace");
 
