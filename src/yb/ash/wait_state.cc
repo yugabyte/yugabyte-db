@@ -265,6 +265,12 @@ std::string GetWaitStateDescription(WaitStateCode code) {
              "commit the transaction.";
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return "Waiting for index backfill chunk to be processed.";
+    case WaitStateCode::kUniqueIndexVerify_ResolveIntents:
+      return "Deferred unique-index verification is waiting for transactions committed within "
+             "the verification window to finish applying their intents.";
+    case WaitStateCode::kUniqueIndexVerify_Scan:
+      return "Deferred unique-index verification is scanning a unique-index tablet's history "
+             "for uniqueness violations.";
     case WaitStateCode::kVectorIndex_Search:
       return "The vector index is performing an approximate nearest neighbor search.";
   }
@@ -651,6 +657,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kWaitForReadTime:
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
     case WaitStateCode::kXCluster_WaitForSafeTime:
+    case WaitStateCode::kUniqueIndexVerify_ResolveIntents:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kCreatingNewTablet:
@@ -721,6 +728,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kRocksDB_NewIterator:
+    case WaitStateCode::kUniqueIndexVerify_Scan:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kYCQL_Parse:
@@ -796,6 +804,8 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
     case WaitStateCode::kXCluster_RateLimiter:
     case WaitStateCode::kXCluster_WaitForSafeTime:
+    case WaitStateCode::kUniqueIndexVerify_ResolveIntents:
+    case WaitStateCode::kUniqueIndexVerify_Scan:
     case WaitStateCode::kVectorIndex_Search:
       return "This contains tablet ID.";
 
