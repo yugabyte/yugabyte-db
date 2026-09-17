@@ -326,6 +326,96 @@ EXECUTE p_param(7);
 
 DEALLOCATE p_param;
 RESET plan_cache_mode;
+--
+-- Pinned SAOP, cached plan (#33965)
+--
+-- Previously in a cached plan, the executor bound a different SAOP than the
+-- one the planner picked.  This test checks that the executor binds the SAOP
+-- that the planner pinned.
+--
+-- When a column has multiple filters, the executor uses a priority algorithm
+-- to pick the one to bind, and merge scan overrides that with the SAOP the
+-- planner pinned.  Master reaches this shape only with
+-- yb_enable_advanced_index_cond_fold off, because folding first merges the two
+-- INs into one.  This branch has no condition folding, so no SET is needed.
+--
+-- The order of the two INs in the query matters and must not be changed.  When
+-- the executor cannot find the SAOP the planner picked, it binds the filter
+-- listed last.  The wider array is listed last so that this differs from the
+-- planner's choice.  Reversed, the two would agree by accident and the test
+-- would pass either way.
+--
+-- The storage counters are the assertion.  Binding the wider array scans all
+-- 24 rows and rechecks 12 of them away, so the prepared run would no longer
+-- collapse onto the unprepared one.
+--
+PREPARE p_pinned AS
+    SELECT val, k FROM pc_tbl
+    WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT val, k FROM pc_tbl
+WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Scan using pc_tbl_pkey on pc_tbl (actual rows=12 loops=1)
+   Index Cond: ((bkt4 = ANY ('{0,1}'::integer[])) AND (bkt4 = ANY ('{0,1,2,3}'::integer[])))
+   Merge Sort Key: val, k
+   Merge Stream Key: bkt4
+   Merge Streams: 2
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 2
+   Storage Table Rows Scanned: 12
+(8 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE p_pinned;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Scan using pc_tbl_pkey on pc_tbl (actual rows=12 loops=1)
+   Index Cond: ((bkt4 = ANY ('{0,1}'::integer[])) AND (bkt4 = ANY ('{0,1,2,3}'::integer[])))
+   Merge Sort Key: val, k
+   Merge Stream Key: bkt4
+   Merge Streams: 2
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 2
+   Storage Table Rows Scanned: 12
+(8 rows)
+
+SELECT val, k FROM pc_tbl
+WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;
+ val | k  
+-----+----
+   0 |  5
+   0 | 20
+   1 |  1
+   1 | 16
+   1 | 21
+   2 | 12
+   2 | 17
+   3 |  8
+   3 | 13
+   4 |  4
+   4 |  9
+   4 | 24
+(12 rows)
+
+EXECUTE p_pinned;
+ val | k  
+-----+----
+   0 |  5
+   0 | 20
+   1 |  1
+   1 | 16
+   1 | 21
+   2 | 12
+   2 | 17
+   3 |  8
+   3 | 13
+   4 |  4
+   4 |  9
+   4 | 24
+(12 rows)
+
+DEALLOCATE p_pinned;
 RESET yb_max_merge_scan_streams;
 RESET enable_sort;
 -- (Drop the table)

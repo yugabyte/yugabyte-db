@@ -75,6 +75,42 @@ EXECUTE p_param(7);
 DEALLOCATE p_param;
 RESET plan_cache_mode;
 
+--
+-- Pinned SAOP, cached plan (#33965)
+--
+-- Previously in a cached plan, the executor bound a different SAOP than the
+-- one the planner picked.  This test checks that the executor binds the SAOP
+-- that the planner pinned.
+--
+-- When a column has multiple filters, the executor uses a priority algorithm
+-- to pick the one to bind, and merge scan overrides that with the SAOP the
+-- planner pinned.  Master reaches this shape only with
+-- yb_enable_advanced_index_cond_fold off, because folding first merges the two
+-- INs into one.  This branch has no condition folding, so no SET is needed.
+--
+-- The order of the two INs in the query matters and must not be changed.  When
+-- the executor cannot find the SAOP the planner picked, it binds the filter
+-- listed last.  The wider array is listed last so that this differs from the
+-- planner's choice.  Reversed, the two would agree by accident and the test
+-- would pass either way.
+--
+-- The storage counters are the assertion.  Binding the wider array scans all
+-- 24 rows and rechecks 12 of them away, so the prepared run would no longer
+-- collapse onto the unprepared one.
+--
+
+PREPARE p_pinned AS
+    SELECT val, k FROM pc_tbl
+    WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT val, k FROM pc_tbl
+WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE p_pinned;
+SELECT val, k FROM pc_tbl
+WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;
+EXECUTE p_pinned;
+DEALLOCATE p_pinned;
+
 RESET yb_max_merge_scan_streams;
 RESET enable_sort;
 
