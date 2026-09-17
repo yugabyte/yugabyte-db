@@ -55,6 +55,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -68,6 +69,11 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace yb {
+
+namespace tserver {
+METRIC_DECLARE_gauge_uint32(ts_index_backfill_retention_barrier_tablets);
+METRIC_DECLARE_gauge_uint64(ts_index_backfill_oldest_retention_barrier_age_ms);
+}  // namespace tserver
 
 using dockv::DocKey;
 using dockv::MakeKeyEntryValues;
@@ -629,6 +635,73 @@ TEST_F(FixedHybridTimeWriteIdITest, MissingBarrierBlocksAllHistoryGC) {
       ASSERT_EQ(HybridTime::kMin, cutoff.primary_cutoff_ht)
           << "on " << peer->permanent_uuid();
     }
+  }
+}
+
+// Retention-barrier observability: the ts_index_backfill_* gauges surface active
+// generations (held-tablet count) and the oldest barrier's age, so a stuck barrier is
+// findable without reading superblocks. Each tserver hosts one replica of the single tablet
+// here, so the per-server count is 0 or 1.
+TEST_F(FixedHybridTimeWriteIdITest, RetentionBarrierMetricsTrackActiveGenerations) {
+  auto leaders = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_.table()->id(), /* num_active_leaders= */ 1));
+  const auto tablet_id = leaders.front()->tablet_id();
+
+  const auto barrier_tablets = [this](size_t ts_idx) -> Result<uint32_t> {
+    const auto metric =
+        cluster_->mini_tablet_server(ts_idx)->metric_entity().FindOrNull<AtomicGauge<uint32_t>>(
+            tserver::METRIC_ts_index_backfill_retention_barrier_tablets);
+    SCHECK_NOTNULL(metric.get());
+    return metric->value();
+  };
+  const auto oldest_age_ms = [this](size_t ts_idx) -> Result<uint64_t> {
+    const auto metric =
+        cluster_->mini_tablet_server(ts_idx)->metric_entity().FindOrNull<AtomicGauge<uint64_t>>(
+            tserver::METRIC_ts_index_backfill_oldest_retention_barrier_age_ms);
+    SCHECK_NOTNULL(metric.get());
+    return metric->value();
+  };
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_EQ(0, ASSERT_RESULT(barrier_tablets(i)));
+    ASSERT_EQ(0, ASSERT_RESULT(oldest_age_ms(i)));
+  }
+
+  // Activate with a barrier chosen in the past: once the gauge shows the pin, the reported
+  // age must be at least that far back (minus generous slack for coarse clock steps).
+  constexpr int kBarrierAgeSec = 5;
+  const auto barrier =
+      cluster_->mini_tablet_server(0)->server()->Clock()->Now().AddSeconds(-kBarrierAgeSec);
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, MakeActiveOrderingGeneration(barrier)));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> { return VERIFY_RESULT(barrier_tablets(i)) == 1; },
+        MonoDelta::FromSeconds(15) * kTimeMultiplier,
+        Format("barrier-tablet gauge to reach 1 on ts-$0", i)));
+    ASSERT_GE(ASSERT_RESULT(oldest_age_ms(i)), kBarrierAgeSec * 1000ULL - 500);
+  }
+
+  // Active without a barrier still counts as held (it blocks all history GC) but
+  // contributes no age -- the documented missing-barrier edge.
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> { return VERIFY_RESULT(oldest_age_ms(i)) == 0; },
+        MonoDelta::FromSeconds(15) * kTimeMultiplier,
+        Format("age gauge to drop to 0 on ts-$0", i)));
+    ASSERT_EQ(1, ASSERT_RESULT(barrier_tablets(i)));
+  }
+
+  // Release: both gauges return to zero.
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, tablet::IndexBackfillOrderingGeneration()));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> { return VERIFY_RESULT(barrier_tablets(i)) == 0; },
+        MonoDelta::FromSeconds(15) * kTimeMultiplier,
+        Format("barrier-tablet gauge to return to 0 on ts-$0", i)));
+    ASSERT_EQ(0, ASSERT_RESULT(oldest_age_ms(i)));
   }
 }
 
