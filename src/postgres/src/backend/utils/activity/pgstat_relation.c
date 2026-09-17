@@ -27,7 +27,7 @@
 #include "utils/timestamp.h"
 
 /* YB includes */
-#include "yb_internal_conn.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 
 /* Record that's written to 2PC state file when pgstat state is persisted */
@@ -332,7 +332,7 @@ pgstat_report_analyze(Relation rel,
 		tabentry->changes_since_analyze = 0;
 
 	if (IsAutoVacuumWorkerProcess() ||
-		YbIsAutoAnalyzeProcess())	/* YB */
+		yb_use_internal_auto_analyze_service_conn)	/* YB */
 	{
 		tabentry->autovac_analyze_timestamp = GetCurrentTimestamp();
 		tabentry->autovac_analyze_count++;

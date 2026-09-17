@@ -125,6 +125,4 @@ extern YbInternalConnKind YbLookupInternalConnKindByBackendType(BackendType type
  */
 extern bool YbIsInternalConnBackendType(BackendType backendType);
 
-extern bool YbIsAutoAnalyzeProcess(void);
-
 #endif							/* YB_INTERNAL_CONN_H */
