@@ -86,7 +86,7 @@ In **Guided** mode, you set the following:
 
 1. **Resilience**. Choose the outage domain (region, availability zone, node, or none) and how many of those outages to tolerate. Refer to [Guided mode](../create-universes-overview/#guided-mode).
 1. **Regions**. Select the regions where you want to locate the primary cluster. You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
-1. **Availability Zones and Nodes**. Select the zones, specify the number of nodes (the same in every zone), and optionally rank [preferred](../create-universes-overview/#preferred-region) regions.
+1. **Availability Zones and Nodes**. Select the zones, specify the number of nodes (the same in every zone), and optionally rank [preferred](../create-universes-overview/#preferred-region) availability zones.
 
 {{% /tab %}}
 
@@ -96,7 +96,7 @@ In **Expert** mode, you set the following:
 
 1. **Regions**. Select the regions where you want to locate the primary cluster. You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
 1. **Replication factor**. Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). Refer to [Expert mode](../create-universes-overview/#expert-mode).
-1. **Availability Zones and Nodes**. Select the zones (you can add extra zones depending on the number of regions and RF), specify the number of nodes **per zone**, and optionally rank [preferred](../create-universes-overview/#preferred-region) regions.
+1. **Availability Zones and Nodes**. Select the zones (you can add extra zones depending on the number of regions and RF), specify the number of nodes **per zone**, and optionally rank [preferred](../create-universes-overview/#preferred-region) availability zones.
 
 {{% /tab %}}
 

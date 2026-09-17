@@ -82,7 +82,7 @@ For more information, see [Follower reads examples](../../going-beyond-sql/follo
 
 ### Preferred region
 
-If application reads and writes originate primarily from a single region, designate it as preferred so tablet leaders pin to that region. Refer to [Preferred region](../../../yugabyte-platform/create-deployments/create-universes-overview/#preferred-region).
+If application reads and writes originate primarily from a single region, designate it as preferred so tablet leaders pin to that region. Ranking does not change replica placement. Refer to [Preferred region](../../../yugabyte-platform/create-deployments/create-universes-overview/#preferred-region).
 
 To set or change preferred regions after the universe exists, refer to [Scale universes](../../../yugabyte-platform/scale-deployments/edit-universe/).
 

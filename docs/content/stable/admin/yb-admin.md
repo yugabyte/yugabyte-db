@@ -1593,19 +1593,21 @@ This requests a placement of 3 replicas anywhere in the `us-east-1` region of `a
 
 #### set_preferred_zones
 
-Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
+Sets [leader affinity](../../architecture/key-concepts/#leader-affinity) for the cluster (preferred zones). The load balancer places tablet leaders on alive, healthy replicas in the listed availability zones, in order of preference. When no healthy replica is available in preference 1, preference 2 is used, and so on. Zones you omit are used only after every preferred rank is exhausted.
 
-Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
+This command does not change tablet replica placement (use [modify_placement_info](#modify-placement-info)) and does not move YB-Master processes. By default, the sys catalog (master) leader steps down onto a master that is already running in a preferred zone.
+
+Having tablet leaders in a single region reduces the number of network hops for transactional writes, which lowers latency.
 
 {{< note title="Note" >}}
 
-* Make sure you've already run [modify_placement_info](#modify-placement-info) command beforehand.
+* Make sure you've already run [modify_placement_info](#modify-placement-info). Preferred zones must match existing placement blocks.
 
-* By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
+* By default, transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction; using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
-* Leader blacklisted nodes don't host any leaders irrespective of their preference.
+* Leader-blacklisted nodes don't host any leaders, regardless of preference.
 
-* Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
+* Cluster configuration stores preferred zones in `multi_affinitized_leaders`. Older clusters may still have `affinitized_leaders`; this command rewrites the list as `multi_affinitized_leaders`.
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
@@ -1623,8 +1625,8 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *cloud.region.zone*: Specifies the cloud, region, and zone. Default is `cloud1.datacenter1.rack1`.
-* *preference*: Specifies the leader preference for a zone. Values have to be contiguous non-zero integers. Multiple zones can have the same value. Default is 1.
+* *cloud.region.zone*: Specifies the cloud, region, and zone. Use `*` for any zone in a region (`gcp.us-west1.*`) or any region in a cloud (`gcp.*.*`). Default is `cloud1.datacenter1.rack1`.
+* *preference*: Leader preference. Values must be contiguous integers starting at 1. Multiple zones can share a value (leaders are spread across them). Default is 1.
 
 **Example**
 
@@ -1676,7 +1678,7 @@ replication_info {
 }
 ```
 
-The following command sets the preferred region to `gcp.us-west1` and the fallback to zone `gcp.us-east4.us-east4-a`:
+The following command prefers both zones in `gcp.us-west1` (rank 1) and falls back to `gcp.us-east4.us-east4-a` (rank 2):
 
 ```sh
 ssh -i $PEM $ADMIN_USER@$MASTER1 \
@@ -1686,6 +1688,8 @@ ssh -i $PEM $ADMIN_USER@$MASTER1 \
     gcp.us-west1.us-west1-b:1 \
     gcp.us-east4.us-east4-a:2
 ```
+
+The equivalent region-level form is `gcp.us-west1.*:1 gcp.us-east4.us-east4-a:2`.
 
 Verify by running the following.
 

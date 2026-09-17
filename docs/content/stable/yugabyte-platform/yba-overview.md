@@ -152,7 +152,7 @@ The new experience provides significant enhancements and new features, including
 
 - Preferred availability zone ranking
 
-    You can now rank preferred regions and availability zones to optimize connection latency.
+    You can now rank preferred regions and availability zones to pin tablet leaders and optimize read and write latency.
     
     [Learn about preferred regions and zones](../create-deployments/create-universes-overview/#preferred-region)
 
