@@ -4249,26 +4249,35 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 					ybFoundHintedJoin = true;
 				}
 
-				if (ybRel->cheapest_total_path->total_cost < disable_cost ||
+				if (ybRel->cheapest_total_path->disabled_nodes == 0 ||
 					ybRel->cheapest_total_path->ybIsHinted ||
 					ybRel->cheapest_total_path->ybHasHintedUid)
 				{
 					/*
-					 * Found a join with cost < disable cost,
-					 * or whose cost could be >= disable cost because the join is
-					 * really expensive. But it is in a Leading hint, or
-					 * has been hinted using its UID so add it to the list
-					 * of joins we want to keep at this level.
+					 * Keep this join.  Either its cheapest path uses no
+					 * disabled nodes (so it is reachable via the hinted join
+					 * order), or it is part of a Leading hint / has been hinted
+					 * using its UID.
+					 *
+					 * Note: prior to PostgreSQL 17, a disabled join method
+					 * added disable_cost (1e10) to a path's total_cost, so a
+					 * "disabled" join was detected with total_cost >=
+					 * disable_cost.  PG17 replaced that scheme with a separate
+					 * disabled_nodes counter on Path, leaving total_cost at its
+					 * normal value.  This pruning must therefore test
+					 * disabled_nodes, not total_cost; otherwise no join is ever
+					 * classified as disabled and the pruning below never fires,
+					 * causing the join search over a fully Leading-hinted query
+					 * to degrade to an unbounded exhaustive DP search.
 					 */
 					ybLevelJoinRels = lappend(ybLevelJoinRels, ybRel);
 				}
 				else
 				{
 					/*
-					 * Found a join that has been disabled,
-					 * or that perhaps has a "true" cost > disable cost.
-					 * It is a join and is not hinted so set a flag so we can
-					 * try pruning below.
+					 * The cheapest path for this join uses one or more disabled
+					 * nodes, so it lies off the hinted join order and is not
+					 * itself hinted.  Flag it so we can prune it below.
 					 */
 					ybFoundDisabledRel = true;
 				}

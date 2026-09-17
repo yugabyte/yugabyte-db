@@ -134,13 +134,34 @@ CREATE VIEW v3 AS SELECT t_1.id t1_id, t_1.val t1_val, t_2.id t2_id, t_2.val t2_
 CREATE VIEW v4 AS SELECT v_2.t1_id, t_3.id FROM v2 v_2, t3 t_3 WHERE v_2.t1_id = t_3.id;
 
 /*
+ * Utility function to retrieve a query ID from a query.
+ *
+ * This wraps the input query within an EXPLAIN (VERBOSE, FORMAT json) and
+ * returns its query ID.
+ */
+CREATE FUNCTION get_query_id(text) RETURNS bigint
+LANGUAGE plpgsql AS
+$$
+DECLARE
+  query text;
+  explain_output text;
+  query_id bigint;
+BEGIN
+  query = 'EXPLAIN (VERBOSE, FORMAT json) ' || $1;
+  EXECUTE query INTO explain_output;
+  SELECT INTO query_id ((explain_output::jsonb)->0->'Query Identifier')::bigint;
+  return query_id;
+END;
+$$;
+
+/*
  * The following GUC parameters need the setting of the default value to
  * succeed in regression test.
  */
+SELECT current_database() AS datname \gset
 
 /* Fix auto-tunable parameters */
-ALTER SYSTEM SET effective_cache_size TO 16384;
-SELECT pg_reload_conf();
+ALTER DATABASE :"datname" SET effective_cache_size TO 16384;
 SET effective_cache_size TO 16384;
 
 -- YB: modify view to avoid yb_ settings.
@@ -152,5 +173,44 @@ SELECT name, setting, category
     OR name = 'client_min_messages'
  ORDER BY category, name;
 SELECT * FROM settings;
+
+-- EXPLAIN filtering
+--
+-- A lot of tests rely on EXPLAIN being executed with costs enabled
+-- to check the validity of the plans generated with hints.
+--
+-- This function takes in input a query, executes it and applies some
+-- filtering to ensure a stable output.  See the tests calling this
+-- function to see how it can be used.
+--
+-- Note that when combined with pg_hint_plan.debug_print, the first
+-- call of this function will produce extra LOG outputs regarding the
+-- "used hints" and "not used hints" due to the initial planning of
+-- this function, with one extra entry generated for each call of
+-- regexp_replace() done in this function.  This is harmless, even
+-- if it can produce some confusing output.  Any follow-up calls
+-- are done with this function called from the plan cache, causing
+-- the LOG to not show up.
+--
+-- If required, this can be extended with new operation modes.
+CREATE OR REPLACE FUNCTION explain_filter(text) RETURNS SETOF text
+LANGUAGE plpgsql AS
+$$
+DECLARE
+  ln text;
+BEGIN
+  FOR ln IN EXECUTE $1
+  LOOP
+    -- Replace cost values with some 'xxx'
+    ln := regexp_replace(ln, 'cost=10{7}[.0-9]+ ', 'cost={inf}..{inf} ');
+    ln := regexp_replace(ln, 'cost=[.0-9]+ ', 'cost=xxx..xxx ');
+    -- Replace width with some 'xxx'
+    ln := regexp_replace(ln, 'width=[0-9]+([^0-9])', 'width=xxx\1');
+    -- Filter foreign files
+    ln := regexp_replace(ln, '^( +Foreign File: ).*$', '\1 (snip..)');
+    return next ln;
+  END LOOP;
+END;
+$$;
 
 ANALYZE;

@@ -1,6 +1,6 @@
 # Errors
 
-`pg_hint_plan` stops hint parsing on any error and will uses the hints
+`pg_hint_plan` stops hint parsing on any error and will use the hints
 already parsed.  Here are some typical errors.
 
 ## Syntax errors

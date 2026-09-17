@@ -2,11 +2,12 @@
 
 ## Syntax and placement
 
-`pg_hint_plan` reads hints from only the first block comment and stops parsing
-from any characters except alphabetical characters, digits, spaces,
-underscores, commas and parentheses.  In the following example,
-`HashJoin(a b)` and `SeqScan(a)` are parsed as hints, but `IndexScan(a)` and
-`MergeJoin(a b)` are not:
+`pg_hint_plan` reads hints from only the first block comment and any additional
+hint comments cause an error.  Hint parsing also stops from any characters
+except alphabetical characters, digits, spaces, underscores, commas and
+parentheses.  In the following example, `HashJoin(a b)` and `SeqScan(a)` are
+parsed as hints, but `IndexScan(a)` and `MergeJoin(a b)` cause errors because
+they are in separate hint comments:
 
 ```sql
 =# /*+
@@ -34,9 +35,9 @@ underscores, commas and parentheses.  In the following example,
 
 `pg_hint_plan` works for queries in PL/pgSQL scripts with some restrictions.
 
--   Hints affect only on the following kind of queries:
-    -   Queries that returns one row (`SELECT`, `INSERT`, `UPDATE` and `DELETE`)
-    -   Queries that returns multiple rows (`RETURN QUERY`)
+-   Hints affect only the following kind of queries:
+    -   Queries that return one row (`SELECT`, `INSERT`, `UPDATE` and `DELETE`)
+    -   Queries that return multiple rows (`RETURN QUERY`)
     -   Dynamic SQL statements (`EXECUTE`)
     -   Cursor open (`OPEN`)
     -   Loop over result of a query (`FOR`)
@@ -70,10 +71,10 @@ TBL, tbl or Tbl.
 ## Escaping special characters in object names
 
 The objects defined in a hint's parameter can use double quotes if they
-includes parentheses, double quotes and white spaces.  The escaping rules are
+include parentheses, double quotes and white spaces.  The escaping rules are
 the same as PostgreSQL.
 
-## Distinction between multiple occurences of a table
+## Distinction between multiple occurrences of a table
 
 `pg_hint_plan` identifies the target object by using aliases if any.  This
 behavior is useful to point to a specific occurrence among multiple
@@ -120,20 +121,21 @@ from outside the view.
 
 ## Inheritance
 
-Hints can only point to the parent of an inheritance tree and the hint saffect
+Hints can only point to the parent of an inheritance tree and the hints affect
 all the tables in an inheritance tree.  Hints pointing directly to inherited
 children have no effect.
 
-## Hints in multistatements
+## Hints in multi-statement queries
 
-One multistatement can have exactly one hint comment and the hint affects all
-of the individual statements in the multistatement.
+A multi-statement query can have exactly one hint comment and the hint affects
+all of the individual statements in the multi-statement query.  Multiple hint
+comments in a multi-statement query cause an error.
 
 ## VALUES expressions
 
-`VALUES` expressions in `FROM` clause are named as `*VALUES*` internally these
-can be hinted if it is the only `VALUES` of a query.  Two or more `VALUES`
-expressions in a query cannot be distinguised by looking at an `EXPLAIN` result,
+`VALUES` expressions in `FROM` clause are named as `*VALUES*` internally so
+they can be hinted if there is only one `VALUES` in a query.  Two or more `VALUES`
+expressions in a query cannot be distinguished by looking at an `EXPLAIN` result,
 resulting in ambiguous results:
 
 ```sql
@@ -197,9 +199,35 @@ zero workers prevents a scan from being executed in parallel.
 
 ## Setting `pg_hint_plan` parameters by Set hints
 
-`pg_hint_plan` parameters influence its own behavior so some parameters
+`pg_hint_plan` parameters influence their own behavior so some parameters
 will not work as one could expect:
 
--   Hints to change `enable_hint`, `enable_hint_tables` are ignored even though
+-   Hints to change `enable_hint`, `enable_hint_table` are ignored even though
     they are reported as "used hints" in debug logs.
 -   Setting `debug_print` and `message_level` in the middle of query processing.
+
+## Using `DisableIndex` hint
+
+A `DisableIndex` hint excludes the specified indexes from being considered
+during query planning. It takes precedence over other hints. A disabled
+index will not be used, even if explicitly requested by `IndexScan`.
+
+```sql
+=# /*+DisableIndex(t t_c1) IndexScan(t t_c1) */
+   EXPLAIN SELECT * FROM t WHERE c1 = 1;
+LOG:  indexes disabled for DisableIndex(t): t_c1
+LOG:  available indexes for IndexScan(t):
+LOG:  pg_hint_plan:
+used hint:
+DisableIndex(t t_c1)
+not used hint:
+IndexScan(t t_c1)
+duplication hint:
+error hint:
+
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Index Scan using t_pkey on t  (cost=0.15..8.17 rows=1 width=12)
+   Index Cond: (c1 = 1)
+(2 rows)
+```

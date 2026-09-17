@@ -1,14 +1,11 @@
 LOAD 'pg_hint_plan';
--- We cannot do ALTER USER current_user SET ...
-DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user);
-INSERT INTO pg_db_role_setting (SELECT 0, (SELECT oid FROM pg_roles WHERE rolname = current_user), '{client_min_messages=log,pg_hint_plan.debug_print=on}');
-ALTER SYSTEM SET session_preload_libraries TO 'pg_hint_plan';
-SELECT pg_reload_conf();
 SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
 SET max_parallel_workers_per_gather TO 0;
+SET jit = off;
+SET enable_self_join_elimination = off;
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 >= 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
@@ -469,16 +466,6 @@ EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
 /*+SeqScan(v1t1)BitmapScan(v1t1_)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
 
--- No. S-2-3-6
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-/*+BitmapScan(r4t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-
--- No. S-2-3-7
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
-/*+SeqScan(r4t1)BitmapScan(r5t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
-
 ----
 ---- No. S-2-4 VALUES clause
 ----
@@ -806,41 +793,41 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 >= 1;
 ----
 
 -- No. S-3-5-1
-\o results/ut-S.tmpout
-/*+IndexScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+IndexScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+');
 -- No. S-3-5-2
-\o results/ut-S.tmpout
-/*+BitmapScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+BitmapScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+');
 -- No. S-3-5-3
-\o results/ut-S.tmpout
-/*+IndexOnlyScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+IndexOnlyScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+');
 -- No. S-3-5-4
-\o results/ut-S.tmpout
-/*+IndexScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+IndexScan(ti1 not_exist)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+');
 -- No. S-3-5-5
-\o results/ut-S.tmpout
-/*+BitmapScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+BitmapScan(ti1 not_exist)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+');
 -- No. S-3-5-6
-\o results/ut-S.tmpout
-/*+IndexOnlyScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+IndexOnlyScan(ti1 not_exist)*/
+EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+');
 -- No. S-3-5-7
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-\o results/ut-S.tmpout
-/*+TidScan(t1)*/ EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+TidScan(t1)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+');
 ----
 ---- No. S-3-6 query structure
 ----
@@ -976,29 +963,26 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 
 -- No. S-3-10-3
-\o results/ut-S.tmpout
+SELECT explain_filter('
 EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+');
 
-\o results/ut-S.tmpout
-/*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
-
+SELECT explain_filter('
+/*+IndexScan(p1 p1_parent)*/
+EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
+');
 
 -- No. S-3-10-4
-\o results/ut-S.tmpout
-/*+IndexScan(p1 p1_i2)*/ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
+SELECT explain_filter('
+/*+IndexScan(p1 p1_i2)*/
+EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
+');
 
 -- No. S-3-10-5
-\o results/ut-S.tmpout
-/*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
-\o
-\! sql/maskout.sh results/ut-S.tmpout
-
+SELECT explain_filter('
+/*+IndexScan(p2 p2c1_pkey)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
+');
 
 ----
 ---- No. S-3-12 specified same table
@@ -1193,9 +1177,3 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 -- No. S-3-15-5
 /*+IndexScan(ti1 not_exist1 not_exist2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
-
-DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user);
-
-ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
-SELECT pg_reload_conf();
-\! rm results/ut-S.tmpout

@@ -1,82 +1,82 @@
 # LANGUAGE message translation file for pg_hint_plan functional limitations.
-# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (C) 2012-2026, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 # This file is distributed under the same license as the pg_hint_plan
 # package.
 # Julien Rouhaud <rjuju123@gmail.com>, 2023.
+# Tatsuro Yamada <yamatattsu@gmail.com>, 2023.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_hint_plan \n"
+"Project-Id-Version: pg_hint_plan\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-03-14 16:08+0800\n"
-"PO-Revision-Date: 2023-03-14 16:08+0800\n"
-"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"POT-Creation-Date: 2023-11-09 10:50+0900\n"
+"PO-Revision-Date: 2023-11-09 16:11+0900\n"
+"Last-Translator: Tatsuro Yamada <yamatattsu@gmail.com>\n"
+"Language-Team: \n"
 "Language: ja\n"
-"Language-Team: ja <LL@li.org>\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 "Generated-By: Babel 2.12.1\n"
+"X-Generator: Poedit 3.2.2\n"
 
-#: ../../functional_limitations.md:1 754ee7dcce174b46b3c1efe4cc4fba86
+#: ../../functional_limitations.md:3 da6339603ee44e339854438c56df1a29
 msgid "Functional limitations"
-msgstr ""
+msgstr "機能的な制限事項"
 
-#: ../../functional_limitations.md:3 6c1833bc6d5644c2b27da25efc390fbe
-msgid "Influences of some of planner GUC parameters"
-msgstr ""
+#: ../../functional_limitations.md:5 be4f92a4dd7d47a989ba1c69bd77adc3
+msgid "Influence of planner GUC parameters"
+msgstr "プランナGUCパラメータの影響"
 
-#: ../../functional_limitations.md:5 1dfbde105f224fac91734d2533ca7798
+#: ../../functional_limitations.md:7 dafb3bc544094d148e90be5939598bd3
 msgid ""
-"The planner does not try to consider joining order for FROM clause "
-"entries more than `from_collapse_limit`. `pg_hint_plan` cannot affect "
-"joining order as expected for the case."
+"The planner does not try to consider joining order for FROM clause entries more than `from_collapse_limit`. `pg_hint_plan` cannot affect the "
+"joining order in this case."
 msgstr ""
+"プランナは、`from_collapse_limit`を超えるFROM句の項目に対する結合順を考慮しようとしません。`pg_hint_plan`は、このケースに対して期待される結合順"
+"に影響を与えることはできません。"
 
-#: ../../functional_limitations.md:9 b2d18bc403634586aa4b1252d6e49b6e
-msgid "Hints trying to enforce unexecutable plans"
-msgstr ""
+#: ../../functional_limitations.md:11 70edb32d7f0440fabb314c610a8fc821
+msgid "Hints trying to enforce non-executable plans"
+msgstr "実行不可能なプランの強制を試みるヒント"
 
-#: ../../functional_limitations.md:11 e7710f004e7f4a4bb09d275646ff4491
-msgid ""
-"Planner chooses any executable plans when the enforced plan cannot be "
-"executed."
-msgstr ""
+#: ../../functional_limitations.md:13 9ed907c72c54444eb44b2b882bd60dd4
+msgid "Planner chooses any executable plans when the enforced plan cannot be executed:"
+msgstr "強制されたプランが実行できない場合、プランナは任意の実行可能なプランを選択します。"
 
-#: ../../functional_limitations.md:13 5ece073c2f564da7a79db76126709a92
-msgid "`FULL OUTER JOIN` to use nested loop"
-msgstr ""
+#: ../../functional_limitations.md:16 1c5bd7e76aee488ba18b424cc4c88a7d
+msgid "`FULL OUTER JOIN` to use nested loop."
+msgstr "・`FULL OUTER JOIN`をnested loopで使用"
 
-#: ../../functional_limitations.md:14 8d0ca9684ebf4fee84b80eb565523cb9
-msgid "To use indexes that does not have columns used in quals"
-msgstr ""
+#: ../../functional_limitations.md:17 e9d031ec2aef47f2bfdd0c757524e18b
+msgid "Use of indexes that do not have columns used in quals."
+msgstr "・条件式で使用されるカラムを持っていないインデックスを使用"
 
-#: ../../functional_limitations.md:15 d1c9ba33191846d98b211cb15bd235dc
-msgid "To do TID scans for queries without ctid conditions"
-msgstr ""
+#: ../../functional_limitations.md:18 ec237007987748a3995e437a575c74bc
+msgid "TID scans for queries without ctid conditions."
+msgstr "・ctid条件が無いクエリに対するTIDスキャンの実行"
 
-#: ../../functional_limitations.md:17 5218fbab7a004568ad865cfed6ef0984
+#: ../../functional_limitations.md:20 87dad13bf42a42d599747de3bb2750f3
 msgid "Queries in ECPG"
-msgstr ""
+msgstr "ECPG内のクエリ"
 
-#: ../../functional_limitations.md:19 4da4d9067fbe4035b42ee12e403e810a
+#: ../../functional_limitations.md:22 28551eee47744d1eb740fbd1842d57a5
 msgid ""
-"ECPG removes comments in queries written as embedded SQLs so hints cannot"
-" be passed form those queries. The only exception is that `EXECUTE` "
-"command passes given string unmodifed. Please consider using the hint "
-"table in the case."
+"ECPG removes comments in queries written as embedded SQLs so hints cannot be passed to it.  The only exception `EXECUTE`, that passes the "
+"query string to the server as-is.  The hint table can be used in the case."
 msgstr ""
+"ECPGは埋め込みSQLとして書かれたクエリのコメントを削除するのでヒントを渡すことはできません。唯一の例外は`EXECUTE`で、これはクエリ文字列をそのま"
+"まサーバに渡します。このようなケースにおいてはヒントテーブルを利用することができます。"
 
-#: ../../functional_limitations.md:23 98b05c489b464d03bafd397a767b9935
-msgid "Work with `pg_stat_statements`"
-msgstr ""
+#: ../../functional_limitations.md:26 b06f1bb15ae142c3bc3b53165fe6ac94
+msgid "`pg_stat_statements`"
+msgstr "`pg_stat_statements`との連携"
 
-#: ../../functional_limitations.md:25 bdd39eecdc5a4e2dae91f940874a9c65
+#: ../../functional_limitations.md:28 a5024f97919e463f9d5cf05307f060aa
 msgid ""
-"`pg_stat_statements` generates a query id ignoring comments. As the "
-"result, the identical queries with different hints are summarized as the "
-"same query."
+"`pg_stat_statements` generates a query ID, ignoring comments.  Hence, queries with different hints, still written the same way, may compute "
+"the same query ID."
 msgstr ""
-
+"`pg_stat_statements`はコメントを無視したクエリIDを生成します。その結果、異なるヒントを持つクエリでも同じように書かれたものであれば、同一のクエ"
+"リIDが計算されます。"

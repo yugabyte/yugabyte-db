@@ -27,12 +27,11 @@ SELECT * FROM ft1;
 (10 rows)
 
 \t
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout
+');
  Nested Loop
-   Join Filter: (ft_1.id = t1.c1)
+   Join Filter: (t1.c1 = ft_1.id)
    ->  Nested Loop
          Join Filter: (ft_1.id = ft_2.id)
          ->  Foreign Scan on ft1 ft_1
@@ -46,9 +45,10 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1
 ---- No. S-1-5 object type for the hint
 ----
 -- No. S-1-5-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+SeqScan(t1)SeqScan(ft_1)SeqScan(ft_2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+');
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(t1)
@@ -58,8 +58,6 @@ SeqScan(ft_2)
 duplication hint:
 error hint:
 
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout;
  Nested Loop
    Join Filter: (t1.c1 = ft_2.id)
    ->  Hash Join
@@ -75,9 +73,10 @@ error hint:
 ---- No. J-1-6 object type for the hint
 ----
 -- No. J-1-6-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+MergeJoin(ft_1 ft_2)Leading(ft_1 ft_2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+');
 LOG:  pg_hint_plan:
 used hint:
 MergeJoin(ft_1 ft_2)
@@ -86,10 +85,8 @@ not used hint:
 duplication hint:
 error hint:
 
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout;
  Nested Loop
-   Join Filter: (ft_1.id = t1.c1)
+   Join Filter: (t1.c1 = ft_1.id)
    ->  Merge Join
          Merge Cond: (ft_1.id = ft_2.id)
          ->  Sort
@@ -107,9 +104,10 @@ error hint:
 ---- No. L-1-6 object type for the hint
 ----
 -- No. L-1-6-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+Leading(ft_1 ft_2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+');
 LOG:  pg_hint_plan:
 used hint:
 Leading(ft_1 ft_2 t1)
@@ -117,10 +115,8 @@ not used hint:
 duplication hint:
 error hint:
 
-\o
-\! sql/maskout2.sh results/ut-fdw.tmpout;
  Nested Loop
-   Join Filter: (ft_1.id = t1.c1)
+   Join Filter: (t1.c1 = ft_1.id)
    ->  Nested Loop
          Join Filter: (ft_1.id = ft_2.id)
          ->  Foreign Scan on ft1 ft_1
@@ -134,9 +130,10 @@ error hint:
 ---- No. R-1-6 object type for the hint
 ----
 -- No. R-1-6-6
-\o results/ut-fdw.tmpout
+SELECT explain_filter('
 /*+Rows(ft_1 ft_2 #1)Leading(ft_1 ft_2 t1)*/
 EXPLAIN SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+');
 LOG:  pg_hint_plan:
 used hint:
 Leading(ft_1 ft_2 t1)
@@ -145,10 +142,8 @@ not used hint:
 duplication hint:
 error hint:
 
-\o
-\! sql/maskout.sh results/ut-fdw.tmpout | sql/maskout2.sh
  Nested Loop  (cost=xxx..xxx rows=1 width=xxx)
-   Join Filter: (ft_1.id = t1.c1)
+   Join Filter: (t1.c1 = ft_1.id)
    ->  Nested Loop  (cost=xxx..xxx rows=1 width=xxx)
          Join Filter: (ft_1.id = ft_2.id)
          ->  Foreign Scan on ft1 ft_1  (cost=xxx..xxx rows=1 width=xxx)
@@ -160,4 +155,3 @@ error hint:
    ->  Index Scan using t1_i1 on t1  (cost=xxx..xxx rows=1 width=xxx)
          Index Cond: (c1 = ft_2.id)
 
-\! rm results/ut-fdw.tmpout

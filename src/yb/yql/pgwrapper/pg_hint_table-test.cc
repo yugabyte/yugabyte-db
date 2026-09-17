@@ -55,7 +55,6 @@ class PgHintTableTest : public LibPqTestBase {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS pg_hint_plan"));
     RETURN_NOT_OK(conn.Execute("SET pg_hint_plan.enable_hint_table TO on"));
-    RETURN_NOT_OK(conn.Execute("SET pg_hint_plan.yb_use_query_id_for_hinting TO on"));
     return conn;
   }
 
@@ -75,8 +74,8 @@ class PgHintTableTest : public LibPqTestBase {
       auto hint_value = Format("YbBatchedNL(pg_class $0 pg_attribute)", whitespace);
 
       RETURN_NOT_OK(conn_hint.ExecuteFormat(
-          "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
-          "VALUES ('$0', '', '$1')",
+          "INSERT INTO hint_plan.hints (query_id, application_name, hints) "
+          "VALUES ($0, '', '$1')",
           query_id + i, hint_value));
 
       // Execute the query to force hint cache lookups and refreshes
@@ -137,7 +136,7 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
 
   // Insert the hint entry to force a NestedLoop
   ASSERT_OK(conn2.Execute(Format(
-      "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('$0', '', "
+      "INSERT INTO hint_plan.hints (query_id, application_name, hints) VALUES ($0, '', "
       "'YbBatchedNL(pg_class pg_attribute)')",
       query_id)));
 
@@ -154,7 +153,7 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
   // 5. Delete the hint from the hint table
   // ----------------------------------------------------------------------------------------------
   ASSERT_OK(conn2.Execute(
-      Format("DELETE FROM hint_plan.hints WHERE norm_query_string = '$0'", query_id)));
+      Format("DELETE FROM hint_plan.hints WHERE query_id = $0", query_id)));
 
   // Wait for the heartbeat to propagate the invalidation messages for the hint table
   WaitForCatalogVersionToPropagate();
@@ -183,9 +182,9 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
     threads.AddThreadFunctor([&stop_threads, &conn_hint, hint]() {
       while (!stop_threads) {
         ASSERT_OK(conn_hint.Execute(Format(
-            "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
-            "VALUES ('$0', '', '$1') "
-            "ON CONFLICT (norm_query_string, application_name) "
+            "INSERT INTO hint_plan.hints (query_id, application_name, hints) "
+            "VALUES ($0, '', '$1') "
+            "ON CONFLICT (query_id, application_name) "
             "DO UPDATE SET hints = '$1'",
             query_id, hint)));
 
@@ -321,9 +320,9 @@ TEST_F_EX(PgHintTableTest, HintWithConcurrentAnalyze, PgHintTableTestTableLocksD
     LOG(INFO) << "Starting hint insertion thread";
     while (!stop_threads.load()) {
       auto status = conn_hint.ExecuteFormat(
-          "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
-          "VALUES ('$0', '', 'MergeJoin(pg_class pg_attribute)') "
-          "ON CONFLICT (norm_query_string, application_name) "
+          "INSERT INTO hint_plan.hints (query_id, application_name, hints) "
+          "VALUES ($0, '', 'MergeJoin(pg_class pg_attribute)') "
+          "ON CONFLICT (query_id, application_name) "
           "DO UPDATE SET hints = 'MergeJoin(pg_class pg_attribute)'",
           hint_num);
       FailIfNotConcurrentDDLErrors(status);
@@ -444,8 +443,8 @@ TEST_F(PgHintTableTest, PreparedStatementHintCacheRefresh) {
 
   // Insert a hint for the query
   ASSERT_OK(conn_hint.ExecuteFormat(
-      "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
-      "VALUES ('$0', '', 'MergeJoin(pg_class pg_attribute)')",
+      "INSERT INTO hint_plan.hints (query_id, application_name, hints) "
+      "VALUES ($0, '', 'MergeJoin(pg_class pg_attribute)')",
       query_with_param_id));
 
   // Wait for the heartbeat to propagate the invalidation messages for the hint table
@@ -515,8 +514,8 @@ TEST_F(PgHintTableTest, InvalidHint) {
 
   // Insert an invalid hint for the query (invalid join method)
   ASSERT_OK(conn_hint.ExecuteFormat(
-      "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
-      "VALUES ('$0', '', 'InvalidJoinMethod(pg_class pg_attribute)')",
+      "INSERT INTO hint_plan.hints (query_id, application_name, hints) "
+      "VALUES ($0, '', 'InvalidJoinMethod(pg_class pg_attribute)')",
       query_with_param_id));
 
   // Wait for the heartbeat to propagate the invalidation messages for the hint table

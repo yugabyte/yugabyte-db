@@ -453,44 +453,14 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	}
 
 	/*
-	 * Allow a plugin to editorialize on the new RelOptInfo. This could
-	 * involve editorializing on the information which get_relation_info
-	 * obtained from the catalogs, such as altering the assumed relation size,
-	 * removing an index, or adding a hypothetical index to the indexlist.
-	 *
-	 * An extension can also modify rel->pgs_mask here to control path
-	 * generation.
+	 * YB: Assign uniquified hint aliases before build_simple_rel_hook.
+	 * PG19 pg_hint_plan applies scan hints in that hook via find_scan_hint,
+	 * which looks up ybAliasForHinting (ybUniqueBaseId / ybPlanHintsAliasMapping).
+	 * If this runs after the hook, duplicate RTEs still have the raw eref
+	 * alias (e.g. both copies of t10 named "t10"), so generated hints such as
+	 * SeqScan(t10_1) stay HINT_STATE_NOTUSED even though EXPLAIN shows that
+	 * alias.
 	 */
-	if (build_simple_rel_hook)
-		(*build_simple_rel_hook) (root, rel, rte);
-
-	/*
-	 * Apply the parent's quals to the child, with appropriate substitution of
-	 * variables.  If any resulting clause is reduced to constant FALSE or
-	 * NULL, apply_child_basequals returns false to indicate that scanning
-	 * this relation won't yield any rows.  In this case, we mark the child as
-	 * dummy right away.  (We must do this immediately so that pruning works
-	 * correctly when recursing in expand_partitioned_rtentry.)
-	 */
-	if (parent)
-	{
-		AppendRelInfo *appinfo = root->append_rel_array[relid];
-
-		Assert(appinfo != NULL);
-		if (!apply_child_basequals(root, parent, rel, rte, appinfo))
-		{
-			/*
-			 * A restriction clause reduced to constant FALSE or NULL after
-			 * substitution.  Mark the child as dummy so that it need not be
-			 * scanned.
-			 */
-			mark_dummy_rel(rel);
-		}
-	}
-
-	/* Save the finished struct in the query's simple_rel_array */
-	root->simple_rel_array[relid] = rel;
-
 	if (IsYugaByteEnabled())
 	{
 		rte->ybScannedObjectName = rel->ybRelationName;
@@ -593,6 +563,50 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 						(errmsg("\nblock %d : table %s (unique base id = %d, relid = %d) -> Hint alias %s",
 								rel->ybBlockId, rte->eref->aliasname, rel->ybUniqueBaseId, relid, rel->ybHintAlias)));
 			}
+		}
+	}
+
+	/*
+	 * YB: Publish this RelOptInfo before build_simple_rel_hook. PG19
+	 * pg_hint_plan's find_scan_hint re-fetches the rel from simple_rel_array
+	 * (CHECK_RELATION_FOR_HINT). If the slot is still NULL it falls back to
+	 * rte->eref->aliasname and never matches uniquified names like t10_1.
+	 */
+	root->simple_rel_array[relid] = rel;
+
+	/*
+	 * Allow a plugin to editorialize on the new RelOptInfo. This could
+	 * involve editorializing on the information which get_relation_info
+	 * obtained from the catalogs, such as altering the assumed relation size,
+	 * removing an index, or adding a hypothetical index to the indexlist.
+	 *
+	 * An extension can also modify rel->pgs_mask here to control path
+	 * generation.
+	 */
+	if (build_simple_rel_hook)
+		(*build_simple_rel_hook) (root, rel, rte);
+
+	/*
+	 * Apply the parent's quals to the child, with appropriate substitution of
+	 * variables.  If any resulting clause is reduced to constant FALSE or
+	 * NULL, apply_child_basequals returns false to indicate that scanning
+	 * this relation won't yield any rows.  In this case, we mark the child as
+	 * dummy right away.  (We must do this immediately so that pruning works
+	 * correctly when recursing in expand_partitioned_rtentry.)
+	 */
+	if (parent)
+	{
+		AppendRelInfo *appinfo = root->append_rel_array[relid];
+
+		Assert(appinfo != NULL);
+		if (!apply_child_basequals(root, parent, rel, rte, appinfo))
+		{
+			/*
+			 * A restriction clause reduced to constant FALSE or NULL after
+			 * substitution.  Mark the child as dummy so that it need not be
+			 * scanned.
+			 */
+			mark_dummy_rel(rel);
 		}
 	}
 

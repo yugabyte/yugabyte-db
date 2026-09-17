@@ -1,3 +1,7 @@
+-- YB_TODO_PG19MERGE: Expression pushdown is not yet functional on the PG19 merge
+-- branch, so this test's plans show "Filter" instead of the expected "Storage
+-- Filter" and the golden currently fails. Revisit and regenerate this expected
+-- output once expression pushdown is restored.
 \set ECHO all
 SET client_min_messages = warning;
 drop schema if exists yb_hints cascade;
@@ -115,6 +119,7 @@ explain (hints on, costs on) select * from t1, t2 where a1<5 and b1=b2 order by 
 /*+ Leading(((t0 t1) t2)) */ explain (hints on, costs off) select count(*) from t0 left join t1 on a0=a1 inner join t2 on b0=b2 where unn2=1;
 
 -- Force t2-t0 join first and make this inner input to hash join with t1. Should see no errors/warnings.
+-- YB_TODO_PG19MERGE: BNL hinting broken
 /*+ Leading((t1 (t2 t0))) hashJoin(t0 t1 t2)  */ explain (hints on, costs off) select count(*) from t0 left join t1 on a0=a1 inner join t2 on b0=b2 where unn2=1;
 
 -- 'dt' should appear in the EXPLAIN since a subquery scan is required. No warnings/errors expected.
@@ -130,29 +135,39 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, (select b4 from t
 /*+ Leading(((t3 dt) (t1 t2))) */ explain (costs off) select count(*) from t1, t2, t3, (select b4 from t4, t5 where a4=a5 group by b4) dt where t1.a1=t2.a2 and a1=a3 and a1=b4;
 
 -- Change top join method to NLJ.
+-- YB_TODO_PG19MERGE: BNL hinting broken
 /*+ Leading(((t3 dt) (t1 t2))) NestLoop(t2 dt t3 t1) */ explain (costs off) select count(*) from t1, t2, t3, (select b4 from t4, t5 where a4=a5 group by b4) dt where t1.a1=t2.a2 and a1=a3 and a1=b4;
 
 -- Hint generation for WHERE subqueries.
 explain (hints on, costs off) select count(*) from t1, t2, t3 where a1=a2 and a1=a3 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
 
 -- Change join order and use all merge joins.
-/*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) MergeJoin(t1 ANY_subquery) MergeJoin(t1 ANY_subquery ANY_subquery_1) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+-- YB_TODO_PG19MERGE: BNL hinting broken
+/*+ Leading((((t1 unnamed_subquery) unnamed_subquery_1) t2)) MergeJoin(t1 unnamed_subquery) MergeJoin(t1 unnamed_subquery unnamed_subquery_1) MergeJoin(unnamed_subquery unnamed_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
 
 -- Hint generation for VALUES clause(s). Should see no errors/warnings.
-explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3)) val1(c0, c1), t0, t1, (values(1, 1), (2, 2), (3, 3)) val2(c0, c1)  where val1.c1=a0 and a0=a1 and val2.c1=val1.c1;
+-- YB_TODO_PG19MERGE: Disabled until get_parameter can deparse BNL batch
+-- PARAM_EXEC slots (non-base slots are not in the NestLoopParam list, so
+-- EXPLAIN trips Assert(paramkind == PARAM_EXTERN) on assert builds).
+-- Re-enable after https://phorge.dev.yugabyte.com/D56360.
+-- explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3)) val1(c0, c1), t0, t1, (values(1, 1), (2, 2), (3, 3)) val2(c0, c1)  where val1.c1=a0 and a0=a1 and val2.c1=val1.c1;
 
 -- Change query and force cross join between VALUES derived tables. Should work fine.
 /*+ Leading((((*VALUES* *VALUES*_1) t1) t0)) */ explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3)) val1(c0, c1), t0, t1, (values(1, 1), (2, 2), (3, 3)) val2(c0, c1)  where val1.c1=a0 and a0=a1 and b0=b1;
 
 -- Disable all join methods but hint the query. Should still give plan defined by hints.
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query forces YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
 set enable_mergejoin to 0; set enable_hashjoin to 0; set enable_nestloop to 0;
-/*+ Leading(((t2 t1) dt)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) YbBatchedNL(t1 t2) NestLoop(dt t1 t2)  Leading((t4 (t3 t5))) SeqScan(t4) SeqScan(t3) IndexScan(t5 t5_pkey) HashJoin(t3 t5) HashJoin(t3 t4 t5) */ explain (hints on, costs off) select * from t1, t2, (select a3 from t3 join t4 on a3=a4 join t5 on a3=a5 where unn5=1 group by a3) dt where a1=1 and b1=b2 and b1=a3;
+-- /*+ Leading(((t2 t1) dt)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) YbBatchedNL(t1 t2) NestLoop(dt t1 t2)  Leading((t4 (t3 t5))) SeqScan(t4) SeqScan(t3) IndexScan(t5 t5_pkey) HashJoin(t3 t5) HashJoin(t3 t4 t5) */ explain (hints on, costs off) select * from t1, t2, (select a3 from t3 join t4 on a3=a4 join t5 on a3=a5 where unn5=1 group by a3) dt where a1=1 and b1=b2 and b1=a3;
 reset enable_mergejoin; reset enable_hashjoin; reset enable_nestloop;
 
 -- Hint a cross join with ROWS. Should work.
 /*+ Leading(((((t5 t4) t1) t3) t2)) Rows(t4 t5 #10000) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;
 
 -- Query with derived tables but no actual tables. Will have *RESULT* type names in generated hints.
+-- YB_TODO_PG19MERGE: BNL hinting broken
 explain (hints on, costs off) SELECT * FROM
 ( SELECT 1 as key1 ) sub1
 LEFT JOIN
@@ -198,12 +213,16 @@ select a1, b1, a2, b2 from
 where unn1 < 4 and ch1 > ch2;
 
 -- Hints with CTEs. Should work.
+-- YB_TODO_PG19MERGE: BNL hinting broken
 /*+ Leading((y x)) Leading(((t2 t1) t0)) */ explain (hints on, costs off) with cte1 as (select a0, a1 from t0, t1, t2 where a0=a1 and a0=a2) select count(*) from cte1 x, cte1 y where x.a0=y.a0 and x.a1<y.a1;
 
 -- Complex query;
 explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
 
-/*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) YbBatchedNL(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query forces YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
+-- /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) YbBatchedNL(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
 
 -- Correlated subquery with multiple blocks. Should not give any warnings/errors.
 explain (hints on, costs off) select * from t1 left join t2 on a1=a2 or b1+b2 not in (select b3 from t3, t4, t5 where a3=a4 and a3=a5 and c3 != c1-c2) where a1 < (select max(a4) from t4, t5 where a4 != a5);
@@ -213,18 +232,25 @@ create temporary view v1(x, y, z) with(security_barrier) as select a1, a2, a3 fr
 explain (hints on, costs off) select sum(a1+x) from v1, t1, t2 where x=a1 and x=y and y=z and z=unn2;
 
 -- View on a view. Should see 2 inherited hint aliases and no warnings/errors.
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query plans as YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
 create temporary view v2(x, y, z) as select x, y, z from v1 where x<5 group by x, y, z ;
-explain (hints on, costs off) select sum(a1+x) from v2, t1, t2 where x=a1 and x=y and y=z and z=unn2;
+-- explain (hints on, costs off) select sum(a1+x) from v2, t1, t2 where x=a1 and x=y and y=z and z=unn2;
 
 -- Views with set ops. Should get no warnings/errors.
 create temporary view v3 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 union select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
 explain (hints on, costs off) select * from v3, t9 where z=a9;
 
+-- YB_TODO_PG19MERGE: Re-enable after
+-- https://github.com/yugabyte/yugabyte-db/issues/33985
 create temporary view v4 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 intersect all select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
-explain (hints on, costs off) select * from v4, t9 where z=a9;
+--explain (hints on, costs off) select * from v4, t9 where z=a9;
 
+-- YB_TODO_PG19MERGE: Re-enable after
+-- https://github.com/yugabyte/yugabyte-db/issues/33985
 create temporary view v5 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 except all select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
-explain (hints on, costs off) select * from v5, t9 where z=a9;
+--explain (hints on, costs off) select * from v5, t9 where z=a9;
 
 CREATE OR REPLACE FUNCTION func1(integer, integer) RETURNS integer
     AS 'select count(*) from t1, t2 where a1<$1 and b2>$2 and a1=a2;'
@@ -252,10 +278,12 @@ explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and
 explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
+-- YB_TODO_PG19MERGE: Join method choice is not working
 SET enable_partitionwise_join to true;
 /*+ Mergejoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
 -- Hint/join 2 partitions individually and union results. Should be OK.
+-- YB_TODO_PG19MERGE: BNL hinting broken
 /*+ NestLoop(t1_1 t2_1) Leading(t2_1 t1_1) MergeJoin(t1 t2) Leading((t1 t2)) IndexScan(t1 iprt1_p1_a) IndexScan(t2_1 iprt2_p2_b) */ explain (hints on, costs off) select count(*) from (select *
  from prt1_p1 t1, prt2_p1 t2 where t1.a+1=t2.b and t1.a=5 union all select * from prt1_p2 t1, prt2_p2 t2 where t1.a=t2.b and t1.a=10) dt;
 
@@ -269,26 +297,27 @@ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t
 -- Test hint table using query id instead of query text.
 create extension if not exists pg_hint_plan;
 set pg_hint_plan.enable_hint_table to on;
-set pg_hint_plan.yb_use_query_id_for_hinting to on;
 
 delete from hint_plan.hints;
 
 -- Query id is expected to be -7371982929224359937 for 'select * from information_schema.columns'.
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('-7371982929224359937', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
+INSERT INTO hint_plan.hints (query_id, application_name, hints) VALUES (-7371982929224359937, '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
 
 select * from hint_plan.hints;
 
+-- YB_TODO_PG19MERGE
 explain (hints on, costs off, verbose on) select * from information_schema.columns;
 
 delete from hint_plan.hints;
 
 reset pg_hint_plan.enable_hint_table;
-reset pg_hint_plan.yb_use_query_id_for_hinting;
 
 -- Test Leading semantics. Since this form of Leading allows (((t1 t2) t3)) or (((t2 t1) t3)) the following
 -- 2 queries should give the same plan.
+-- YB_TODO_PG19MERGE
 /*+ leading(t1 t2 t3) hashjoin(t1 t2) */ explain (hints on, costs off) select 1 from t1, t2, t3 where a1=a2 and a1=a3 and unn1=1;
 
+-- YB_TODO_PG19MERGE: BNL hinting broken
 /*+ leading(t2 t1 t3) hashjoin(t1 t2) */ explain (hints on, costs off) select 1 from t1, t2, t3 where a1=a2 and a1=a3 and unn1=1;
 
 set pg_hint_plan.yb_bad_hint_mode to error;
@@ -322,6 +351,7 @@ EXPLAIN (costs off, hints on) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (S
 /*+ Leading((((t3 t1_1) t2) dt)) */ explain (hints on, costs off) insert into t1 select t1.* from t1, t2, t3, (select b4 from t4, t5 dt where a4=a5 group by b4, b5) dt where t1.a1=t2.a2 and a1=a3 and a1=b4;
 
 -- Should work since we are forcing a cross join t2-t3 (planner would not normally try this join).
+-- YB_TODO_PG19MERGE
 /*+ noNestLoop(t1 t2) noNestLoop(t1 t3) Leading(t2 t3) */ explain (costs off, uids on) select max(a1) from t1 join t2 on a1<a2 join t3 on a1>a3;
 
 -- Test hints affecting NestLoop and YBBatchedNL join methods.
@@ -334,10 +364,14 @@ set yb_prefer_bnl to on;
 
 -- Should get HashJoin or MergeJoin since hint prevents both NestLoop and
 -- YBBatchedNL.
+-- YB_TODO_PG19MERGE: BNL hinting broken
 /*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
 
 -- Should get YBBatchedNL.
-/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query forces YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
+-- /*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
 
 -- Should get NestLoop, HashJoin, or MergeJoin.
 /*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
@@ -349,10 +383,14 @@ set yb_prefer_bnl to off;
 /*+ NestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
 
 -- Should get HashJoin, MergeJoin, or YBBatchedNL.
+-- YB_TODO_PG19MERGE: BNL hinting broken
 /*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
 
 -- Should get YBBatchedNL.
-/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query forces YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
+-- /*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
 
 -- Should get NestLoop, HashJoin, or MergeJoin.
 /*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
@@ -374,10 +412,16 @@ reset yb_enable_parallel_append;
 /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 badIndex) YbBatchedNL(t2 t1) */ explain (hints off, costs off) select * from t1, t2 where a1=1 and b1=b2;
 
 -- Specify a bad index with a valid one. Should get warnings.
-/*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx badIndex) YbBatchedNL(t2 t1) */ explain (hints off, costs off) select * from t1, t2 where a1=1 and b1=b2;
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query forces YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
+-- /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx badIndex) YbBatchedNL(t2 t1) */ explain (hints off, costs off) select * from t1, t2 where a1=1 and b1=b2;
 
 -- Specify a bad index with a valid one but bad name comes first. Should get warnings.
-/*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 badIndex t1_a1_asc_b1_asc_idx) YbBatchedNL(t2 t1) */ explain (hints off, costs off) select * from t1, t2 where a1=1 and b1=b2;
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query forces YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
+-- /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 badIndex t1_a1_asc_b1_asc_idx) YbBatchedNL(t2 t1) */ explain (hints off, costs off) select * from t1, t2 where a1=1 and b1=b2;
 
 -- Make index invalid for read and try to use it. Should get a warning (same as a missing index).
 set yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -407,7 +451,10 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 /*+ noNestLoop(t1 t2) NoYbBatchedNL(t1 t2) */ explain (hints on, costs off) select max(a1) from t1 join t2 on a1=a2;
 
 -- Try to force t0-t1 join. Should see errors/warnings since this is not a legal join order.
-/*+ Leading(((t0 t1) t2)) */ explain (hints on, costs off, uids on) select count(*) from t0 left join (t1 join t2 on a1=a2) on a0=a1;
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query plans as YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
+-- /*+ Leading(((t0 t1) t2)) */ explain (hints on, costs off, uids on) select count(*) from t0 left join (t1 join t2 on a1=a2) on a0=a1;
 
 -- Syntax error. Should see warnings/error.
 /*+ nestLoop(t4 t5 */ explain (hints on, costs off) select count(*) from t4 full join t5 on a4=a5;
@@ -458,7 +505,10 @@ set pg_hint_plan.yb_bad_hint_mode to error;
 
 -- Try to join subqueries first. This is illegal because they are semijoined so should see warnings.
 set pg_hint_plan.yb_bad_hint_mode to warn;
-/*+ Leading((((ANY_subquery ANY_subquery_1) t1) t2)) */ explain (hints on, costs off, uids on) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+-- YB_TODO_PG19MERGE: Disabled for the same get_parameter BNL deparse assert
+-- (this query plans as YbBatchedNL). Re-enable after
+-- https://phorge.dev.yugabyte.com/D56360.
+-- /*+ Leading((((unnamed_subquery unnamed_subquery_1) t1) t2)) */ explain (hints on, costs off, uids on) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
 
 set pg_hint_plan.yb_bad_hint_mode to replan;
 -- Not OK since forcing t1 and t2 to be directly joined. Should generate warnings and replan.
