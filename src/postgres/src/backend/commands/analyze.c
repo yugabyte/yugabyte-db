@@ -368,7 +368,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 
 	/* measure elapsed time iff autovacuum logging requires it */
 	if ((IsAutoVacuumWorkerProcess() ||
-		 YbIsAutoAnalyzeProcess()) &&	/* YB */
+		 yb_use_internal_auto_analyze_service_conn) &&	/* YB */
 		params->log_min_duration >= 0)
 	{
 		if (track_io_timing)
@@ -769,7 +769,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 
 	/* Log the action if appropriate */
 	if ((IsAutoVacuumWorkerProcess() ||
-		 YbIsAutoAnalyzeProcess()) &&	/* YB */
+		 yb_use_internal_auto_analyze_service_conn) &&	/* YB */
 		params->log_min_duration >= 0)
 	{
 		TimestampTz endtime = GetCurrentTimestamp();
