@@ -453,6 +453,11 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories(plat.version)
+	// Before the template, for the same reason as in PerfAdvisor.Upgrade: it renders this into
+	// yb-platform.conf, and createPemFormatKeyAndCert below builds the keystore from it.
+	if _, err := common.EnsureGeneratedPassword("platform.keyStorePassword"); err != nil {
+		return err
+	}
 	if err := template.GenerateTemplate(plat); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
