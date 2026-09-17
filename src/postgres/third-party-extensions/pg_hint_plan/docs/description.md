@@ -13,8 +13,8 @@ doing a sequential scan on `pgbench_accounts`:
 
 ```sql
 =# /*+
-     <b>HashJoin(a b)</b>
-     <b>SeqScan(a)</b>
+     HashJoin(a b)
+     SeqScan(a)
     */
    EXPLAIN SELECT *
      FROM pgbench_branches b

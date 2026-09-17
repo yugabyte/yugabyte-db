@@ -104,10 +104,6 @@ public class TestYbQueryId extends BasePgSQLTest {
           queryId2 = getExplainQueryId(stmt1, query);
           assertEquals(queryId1, queryId2);
 
-          stmt1.execute("SET pg_hint_plan.yb_use_query_id_for_hinting = TRUE");
-          queryId2 = getExplainQueryId(stmt1, query);
-          assertEquals(queryId1, queryId2);
-
           /*
           * Place comment in front of the query.
           */

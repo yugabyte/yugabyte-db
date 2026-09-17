@@ -1,7 +1,7 @@
-# SPEC file for pg_store_plans
-# Copyright(c) 2022-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# SPEC file for pg_hint_plan
+# Copyright(c) 2022-2025, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
-%define _pgdir   /usr/pgsql-15
+%define _pgdir   /usr/pgsql-19
 %define _bindir  %{_pgdir}/bin
 %define _libdir  %{_pgdir}/lib
 %define _datadir %{_pgdir}/share
@@ -13,10 +13,10 @@
   %define _sourcedir %(echo ${MAKE_ROOT})
 %endif
 
-## Set general information for pg_store_plans.
-Summary:    Optimizer hint on PostgreSQL 15
-Name:       pg_hint_plan15
-Version:    1.5.1
+## Set general information for pg_hint_plan.
+Summary:    Optimizer hint on PostgreSQL 19
+Name:       pg_hint_plan19
+Version:    1.9.0
 Release:    1%{?dist}
 License:    BSD
 Group:      Applications/Databases
@@ -26,8 +26,8 @@ BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-%(%{__id_u} -n)
 Vendor:     NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 ## We use postgresql-devel package
-BuildRequires:  postgresql15-devel
-Requires:  postgresql15-server
+BuildRequires:  postgresql19-devel
+Requires:  postgresql19-server
 
 ## Description for "pg_hint_plan"
 %description
@@ -35,19 +35,19 @@ Requires:  postgresql15-server
 pg_hint_plan provides capability to tweak execution plans to be
 executed on PostgreSQL.
 
-Note that this package is available for only PostgreSQL 15.
+Note that this package is available for only PostgreSQL 19.
 
 %package llvmjit
-Requires: postgresql15-server, postgresql15-llvmjit
-Requires: pg_hint_plan15 = 1.5.1
-Summary:  Just-in-time compilation support for pg_hint_plan15
+Requires: postgresql19-server, postgresql19-llvmjit
+Requires: pg_hint_plan19 = 1.9.0
+Summary:  Just-in-time compilation support for pg_hint_plan19
 
 %description llvmjit
-Just-in-time compilation support for pg_hint_plan15
+Just-in-time compilation support for pg_hint_plan19
 
 ## pre work for build pg_hint_plan
 %prep
-PATH=/usr/pgsql-15/bin:$PATH
+PATH=/usr/pgsql-19/bin:$PATH
 if [ "${MAKE_ROOT}" != "" ]; then
   pushd ${MAKE_ROOT}
   make clean %{name}-%{version}.tar.gz
@@ -58,7 +58,7 @@ if [ ! -d %{_rpmdir} ]; then mkdir -p %{_rpmdir}; fi
 
 ## Set variables for build environment
 %build
-PATH=/usr/pgsql-15/bin:$PATH
+PATH=/usr/pgsql-19/bin:$PATH
 make USE_PGXS=1 LDFLAGS+=-Wl,--build-id %{?_smp_mflags}
 
 ## Set variables for install
@@ -83,11 +83,29 @@ rm -rf %{buildroot}
 %{_datadir}/extension/pg_hint_plan--1.3.6--1.3.7.sql
 %{_datadir}/extension/pg_hint_plan--1.3.7--1.3.8.sql
 %{_datadir}/extension/pg_hint_plan--1.3.8--1.3.9.sql
-%{_datadir}/extension/pg_hint_plan--1.3.9--1.4.sql
+%{_datadir}/extension/pg_hint_plan--1.3.9--1.3.10.sql
+%{_datadir}/extension/pg_hint_plan--1.3.10--1.3.11.sql
+%{_datadir}/extension/pg_hint_plan--1.3.11--1.4.sql
 %{_datadir}/extension/pg_hint_plan--1.4--1.4.1.sql
 %{_datadir}/extension/pg_hint_plan--1.4.1--1.4.2.sql
-%{_datadir}/extension/pg_hint_plan--1.4.2--1.5.sql
+%{_datadir}/extension/pg_hint_plan--1.4.2--1.4.3.sql
+%{_datadir}/extension/pg_hint_plan--1.4.3--1.4.4.sql
+%{_datadir}/extension/pg_hint_plan--1.4.4--1.4.5.sql
+%{_datadir}/extension/pg_hint_plan--1.4.5--1.5.sql
 %{_datadir}/extension/pg_hint_plan--1.5--1.5.1.sql
+%{_datadir}/extension/pg_hint_plan--1.5.1--1.5.2.sql
+%{_datadir}/extension/pg_hint_plan--1.5.2--1.5.3.sql
+%{_datadir}/extension/pg_hint_plan--1.5.3--1.5.4.sql
+%{_datadir}/extension/pg_hint_plan--1.5.4--1.6.0.sql
+%{_datadir}/extension/pg_hint_plan--1.6.0--1.6.1.sql
+%{_datadir}/extension/pg_hint_plan--1.6.1--1.6.2.sql
+%{_datadir}/extension/pg_hint_plan--1.6.2--1.6.3.sql
+%{_datadir}/extension/pg_hint_plan--1.6.3--1.7.0.sql
+%{_datadir}/extension/pg_hint_plan--1.7.0--1.7.1.sql
+%{_datadir}/extension/pg_hint_plan--1.7.1--1.7.2.sql
+%{_datadir}/extension/pg_hint_plan--1.7.2--1.8.0.sql
+%{_datadir}/extension/pg_hint_plan--1.8.0--1.8.1.sql
+%{_datadir}/extension/pg_hint_plan--1.8.1--1.9.0.sql
 %{_datadir}/extension/pg_hint_plan.control
 
 %files llvmjit
@@ -99,9 +117,5 @@ rm -rf %{buildroot}
 
 # History of pg_hint_plan.
 %changelog
-* Tue Aug 29 2023 Michael Paquier
-- Version 1.5.1.
-* Fri Jan 20 2023 Michael Paquier
-- Version 1.5.0.
-* Thu Sep 29 2022 Masahiro Ikeda
-- Support PostgreSQL 15.
+* Mon Jun 30 2025 Michael Paquier
+- Support PostgreSQL 19.
