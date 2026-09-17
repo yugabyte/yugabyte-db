@@ -65,6 +65,7 @@ using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_bypass_index_backfill_ordering_generation_split_fence);
 DECLARE_bool(enable_load_balancing);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace yb {
 
@@ -264,10 +265,12 @@ class FixedHybridTimeWriteIdITest : public YBMiniClusterTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  static tablet::IndexBackfillOrderingGeneration MakeActiveOrderingGeneration() {
+  static tablet::IndexBackfillOrderingGeneration MakeActiveOrderingGeneration(
+      HybridTime retention_barrier_ht = HybridTime::kInvalid) {
     tablet::IndexBackfillOrderingGeneration generation;
     generation.active = true;
     generation.base_op_index = 0;
+    generation.retention_barrier_ht = retention_barrier_ht;
     return generation;
   }
 
@@ -533,6 +536,99 @@ TEST_F(FixedHybridTimeWriteIdITest, SplitWithFenceBypassedPreservesPerKeyWriteId
     ASSERT_EQ(rewritten_key_versions, 2U)
         << "Expected the inherited version and the post-split marked rewrite of "
         << inherited_key << " in child " << child_id << " (child write " << child_op_id << ")";
+  }
+}
+
+// The retention read-fence end to end: while a generation with a retention barrier is
+// active, the barrier holds the tablet's history cutoff below the verification window, so a
+// full compaction cannot drop superseded in-window versions; releasing the generation lifts
+// the barrier and the same compaction reclaims them.
+TEST_F(FixedHybridTimeWriteIdITest, RetentionBarrierPreservesSupersededWindowVersions) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto leaders = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_.table()->id(), /* num_active_leaders= */ 1));
+  const auto tablet_id = leaders.front()->tablet_id();
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s * kTimeMultiplier,
+      RequireLeaderIsReady::kTrue));
+
+  // Barrier strictly below the window (kWriteHT.Decremented()): the equality-insufficiency
+  // rule -- a cutoff equal to the window's lower bound can still drop lower-write-ID
+  // versions at that exact coordinate.
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, MakeActiveOrderingGeneration(kWriteHT.Decremented())));
+
+  // A superseded in-window version: "dup" is written at kWriteHT and overwritten at a later
+  // in-window hybrid time. Without the barrier, retention 0 makes the older version
+  // GC-eligible immediately.
+  const auto w1_op_id = ASSERT_RESULT(SendMarkedWrite(tablet_id, kWriteHT, {{"dup", "first"}}));
+  const auto w2_op_id = ASSERT_RESULT(SendMarkedWrite(
+      tablet_id, HybridTime::FromMicros(kWriteHT.GetPhysicalValueMicros() + 1000),
+      {{"dup", "second"}}));
+  ASSERT_OK(WaitAllReplicasApplied(tablet_id, w2_op_id));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(ListTabletPeers(cluster_.get(), tablet_id));
+  ASSERT_EQ(peers.size(), 3U);
+  auto count_versions = [](const tablet::TabletPtr& tablet) {
+    std::vector<std::string> entries;
+    tablet->TEST_DocDBDumpToContainer(entries, docdb::IncludeIntents::kFalse);
+    return entries.size();
+  };
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_OK(tablet->ForceManualRocksDBCompact());
+    ASSERT_EQ(2, count_versions(tablet))
+        << "Superseded in-window version was compacted away despite the retention barrier on "
+        << peer->permanent_uuid();
+  }
+  // The write IDs survived intact (byte-identical expectations incl. the superseded version).
+  ASSERT_NO_FATALS(AssertAllReplicasDumpTo(tablet_id, {
+      Format(
+          "SubDocKey(DocKey(0x0000, [\"dup\"], []), [ColumnId($0); HT{ physical: $1 w: $2 }]) "
+          "-> \"second\"",
+          table_.ColumnId("v"), kWriteHT.GetPhysicalValueMicros() + 1000,
+          kBackfillWriteIdFloor | static_cast<IntraTxnWriteId>(w2_op_id.index)),
+      ExpectedEntry("dup", w1_op_id.index, "first")}));
+
+  // Releasing the generation lifts the barrier: the same compaction now reclaims the
+  // superseded version (proving the barrier was what held it).
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, tablet::IndexBackfillOrderingGeneration()));
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_OK(tablet->ForceManualRocksDBCompact());
+    ASSERT_EQ(1, count_versions(tablet))
+        << "Superseded version survived compaction after the barrier was released on "
+        << peer->permanent_uuid();
+  }
+}
+
+// Fail-closed: an active generation without a retention barrier blocks all history GC
+// (HybridTime::kMin), mirroring the xCluster unknown-safe-time behavior.
+TEST_F(FixedHybridTimeWriteIdITest, MissingBarrierBlocksAllHistoryGC) {
+  auto leaders = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_.table()->id(), /* num_active_leaders= */ 1));
+  const auto tablet_id = leaders.front()->tablet_id();
+
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, MakeActiveOrderingGeneration()));  // No barrier.
+
+  auto peers = ASSERT_RESULT(ListTabletPeers(cluster_.get(), tablet_id));
+  ASSERT_EQ(peers.size(), 3U);
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
+    for (const auto& peer : peers) {
+      if (peer->permanent_uuid() !=
+          cluster_->mini_tablet_server(i)->server()->permanent_uuid()) {
+        continue;
+      }
+      const auto cutoff =
+          tablet_manager->TEST_AllowedHistoryCutoff(peer->tablet_metadata().get());
+      ASSERT_EQ(HybridTime::kMin, cutoff.primary_cutoff_ht)
+          << "on " << peer->permanent_uuid();
+    }
   }
 }
 
