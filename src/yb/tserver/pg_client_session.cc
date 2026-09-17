@@ -145,6 +145,10 @@ DEFINE_test_flag(bool, pause_perform_with_paging_state, false,
     "Pause Perform requests that contain a read operation with a "
     "paging state, until the flag is reset.");
 
+DEFINE_test_flag(bool, perform_async_error, false,
+    "Fail every Perform RPC when its response is sent, i.e. after the handler has already "
+    "returned success.");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
@@ -1682,7 +1686,15 @@ class RpcQuery : public std::enable_shared_from_this<RpcQuery<T>> {
   }
 
  private:
-  void SendResponse() { context.RespondSuccess(); }
+  void SendResponse() {
+    if constexpr (std::is_same_v<T, PerformQueryTraits>) {
+      if (PREDICT_FALSE(FLAGS_TEST_perform_async_error)) {
+        context.RespondFailure(STATUS(InternalError, "TEST_perform_async_error"));
+        return;
+      }
+    }
+    context.RespondSuccess();
+  }
 
   QueryData<T> data_;
 };
