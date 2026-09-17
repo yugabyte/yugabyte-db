@@ -95,12 +95,20 @@ public class YbcHandler {
               + " states.");
     }
 
+    if (universeDetails.getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot upgrade YB-Controller on universe "
+              + universeUUID
+              + " as it uses YBDB inbuilt YB-Controller.");
+    }
+
     String targetYbcVersion = ybcManager.getStableYbcVersion();
     if (!StringUtils.isEmpty(ybcVersion)) {
       targetYbcVersion = ybcVersion;
     }
 
-    if (universeDetails.getYbcSoftwareVersion().equals(targetYbcVersion)) {
+    if (StringUtils.equals(universeDetails.getYbcSoftwareVersion(), targetYbcVersion)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Ybc version " + targetYbcVersion + " is already present on universe " + universeUUID);
