@@ -65,7 +65,7 @@ A `LIMIT` clause on the outer query does not stop the checker early, so pass `lo
 
 `yb_index_check()` reads every physical row of the base table. If row-level security is enabled on that table and the caller cannot bypass it, the function fails before scanning.
 
-The check is allowed for superusers, table owners (unless `FORCE ROW LEVEL SECURITY` is set), and roles with `BYPASSRLS`. Tables without RLS are unaffected. On a partitioned index, the same rule applies to each partition's base table.
+The check is allowed for superusers, table owners (unless `FORCE ROW LEVEL SECURITY` is set), and roles with `BYPASSRLS`. Tables without RLS are unaffected. On a partitioned index, the same requirement applies to each partition: the caller must be allowed to read every row of that partition's base table.
 
 ## Examples
 
@@ -132,7 +132,7 @@ yugabyte=# SELECT * FROM yb_index_check('abcd_b_c_d_idx'::regclass, false, 100);
 (3 rows)
 ```
 
-`table_cols` and `index_cols` are omitted from the PostgreSQL log; they appear only in the SQL result. `MISSING_ROW` findings do not populate `table_cols` or `index_cols`. The corresponding log for the example above is:
+`table_cols` and `index_cols` are omitted from the PostgreSQL log; they appear only in the SQL result. The corresponding log for the example above is:
 
 ```output
 LOG:  inconsistent index row due to binary mismatch of key attribute
@@ -254,10 +254,10 @@ The result columns are:
 |---|---|---|
 | `tablerelid` | `oid` | OID of the base table. On a partitioned index this is the partition that owns the row. |
 | `indexrelid` | `oid` | OID of the index (or index partition) that contains the inconsistency. |
-| `ybctid` | `bytea` | `ybctid` of the base-table row. Set for missing and corrupted index rows; null for spurious index rows. |
-| `table_cols` | `jsonb` | Map of index column names to the corresponding values from the base table. Not populated for `MISSING_ROW`. Not written to the server log. |
-| `ybbasectid` | `bytea` | Base-table `ybctid` stored in the index row. Set for spurious and corrupted index rows; null for missing index rows. |
-| `index_cols` | `jsonb` | Map of index column names to the values stored in the index row. Not populated for `MISSING_ROW`. Not written to the server log. |
+| `ybctid` | `bytea` | `ybctid` of the base-table row. Null for `SPURIOUS_ROW` and `YBBASECTID_NULL`. |
+| `table_cols` | `jsonb` | Map of index column names to the corresponding values from the base table. Null for `MISSING_ROW`, `SPURIOUS_ROW`, and `YBBASECTID_NULL`. |
+| `ybbasectid` | `bytea` | Base-table `ybctid` stored in the index row. Null for `MISSING_ROW` and `YBBASECTID_NULL`. |
+| `index_cols` | `jsonb` | Map of index column names to the values stored in the index row. Null for `MISSING_ROW` and `YBBASECTID_NULL`. |
 | `error_category` | `text` | Inconsistency class. See the table below. |
 
 `error_category` values:
@@ -302,7 +302,7 @@ This error should not surface for checks run outside a transaction block after i
 
 Any operation that takes longer than `timestamp_history_retention_interval_sec` (TServer flag, default 900 seconds) under a single snapshot is susceptible to `Snapshot too old`.
 
-The default multi-snapshot mode is the recommended way to check large indexes and should not hit this error.
+The default multi-snapshot mode is the recommended way to check large indexes.
 
 If you still see `Snapshot too old`:
 
@@ -310,4 +310,4 @@ If you still see `Snapshot too old`:
 2. Ensure that GUC `yb_bnl_batch_size` is 1024 or larger. `yb_index_check()` uses batched nested loop join and honors this parameter.
 3. If you must use single-snapshot mode, increase the runtime-updatable GFlag `timestamp_history_retention_interval_sec` for the duration of the check. It is important to reset the flag value after the index check completes. Not doing so will impact the system's performance and resources. `yb_index_check()` on an index with `pg_table_size()` of 3GB took 700 seconds in a single region, multi-AZ 3-node cluster. This can be used as a benchmark to estimate the flag's value.
 
-This error should not surface in the default multi-snapshot mode after issue {{<issue 26283>}}.
+Multi-snapshot mode was added in issue {{<issue 26283>}} to reduce this risk.
