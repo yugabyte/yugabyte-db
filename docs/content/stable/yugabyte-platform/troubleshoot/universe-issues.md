@@ -109,7 +109,7 @@ The focus is to ensure that support bundle generation is successful in most case
 
 ### Perf Advisor Collector
 
-{{<tags/feature/ea idea="1428">}} The Perf Advisor (PA) collector collects performance monitoring data locally on the YugabyteDB Anywhere host. Use it to generate support bundles that include [Perf Advisor metadata](#perf-advisor-metadata), which you can share with {{% support-platform %}} for anomaly detection and cluster load analysis.
+{{<tags/feature/ea idea="1428">}} The Perf Advisor (PA) collector collects performance monitoring data locally on the YugabyteDB Anywhere host. Use it to generate support bundles that include [Perf Advisor metrics](#perf-advisor-metrics), which you can share with {{% support-platform %}} for anomaly detection and cluster load analysis.
 
 {{< note title="Automatic PA collector registration" >}}
 Starting in YugabyteDB Anywhere v2026.1.2.0, the [YBA installer](../../install-yugabyte-platform/install-software/installer/) automatically registers a Perf Advisor collector service during installation. On Kubernetes, [installing](../../install-yugabyte-platform/install-software/kubernetes/) or [upgrading](../../upgrade/upgrade-yp-kubernetes/) YugabyteDB Anywhere with Helm to v2026.1.2.0 or later automatically deploys the collector as a separate pod that requires 0.1 CPU and 512Mi of RAM. The collector is registered by default, but you must enable it for each universe before it begins collecting metadata.
@@ -125,7 +125,7 @@ After you enable the collector, it runs in the background and gathers metadata f
 
 To disable collection, click **Actions > More > Disable Perf Advisor Collector**.
 
-When you create a support bundle, select the **Perf Advisor metadata** component to include this data in the archive. Note that if the PA collector is not enabled for the universe, the **Perf Advisor metadata** option is not displayed. For more information about the component, see [Perf Advisor metrics](#perf-advisor-metrics).
+When you create a support bundle, select the **Perf Advisor metrics** component to include this data in the archive. Note that if the PA collector is not enabled for the universe, the **Perf Advisor metrics** option is not displayed. For more information about the component, see [Perf Advisor metrics](#perf-advisor-metrics).
 
 For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/).
 
