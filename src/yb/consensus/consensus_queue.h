@@ -166,9 +166,9 @@ class PeerMessageQueue {
     // Whether the last exchange with this peer was successful.
     bool is_last_exchange_successful = false;
 
-    // The time of the last communication with the peer.
-    // Defaults to the time of construction, so does not necessarily mean that
-    // successful communication ever took place.
+    // Last time we heard from this peer (RPC response or NotifyPeerIsResponsiveDespiteError).
+    // Defaults to construction time, so a just-tracked peer is treated as live. Not reset when
+    // SetLeaderMode re-enters LEADER mode on a config change.
     MonoTime last_successful_communication_time;
 
     // Leader lease expiration from this follower's point of view.
@@ -361,6 +361,12 @@ class PeerMessageQueue {
   Status UnRegisterObserver(PeerMessageQueueObserver* observer);
 
   virtual bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
+
+  // True if we have heard from this peer within follower_unavailable_considered_failed_sec.
+  // Based on last_successful_communication_time, which is not reset on config change.
+  // Untracked peers are treated as live so a just-added PRE_VOTER cannot race past this check
+  // before the queue starts tracking it.
+  bool IsPeerLive(const std::string& peer_uuid) const;
 
   virtual OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
 
