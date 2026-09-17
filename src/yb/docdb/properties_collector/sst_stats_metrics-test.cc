@@ -34,6 +34,8 @@ METRIC_DECLARE_gauge_uint64(docdb_sst_dead_row_entries);
 METRIC_DECLARE_gauge_uint64(docdb_sst_reclaimable_entries);
 METRIC_DECLARE_gauge_uint64(docdb_sst_reclaimable_bytes);
 METRIC_DECLARE_gauge_uint64(docdb_sst_files_without_stats);
+METRIC_DECLARE_gauge_uint64(docdb_sst_files_with_partial_stats);
+METRIC_DECLARE_gauge_uint64(docdb_sst_stats_available);
 
 // The gauges are tablet-entity metrics and MetricEntity::CheckInstantiation enforces that, but the
 // prototype that names the tablet entity lives in yb_tablet, which this test does not link. A
@@ -57,13 +59,15 @@ rocksdb::TableProperties FileProperties(uint64_t entries, const SstStats* stats)
   return properties;
 }
 
-// A file whose counters are all distinct, so that a gauge wired to the wrong field is visible.
+// A file whose counters are all distinct -- including shadowed (chain_entries - num_subdoc_keys)
+// and repackable (num_subdoc_keys - num_rows) -- so that a gauge wired to the wrong field reads a
+// wrong number rather than a coincidentally equal one. `entries` must be a multiple of 64.
 SstStats FileStats(uint64_t entries) {
   SstStats stats;
   stats.total_entries = entries;
-  stats.chain_entries = entries;
+  stats.chain_entries = entries / 8 * 7;
   stats.tombstone_entries = entries / 2;
-  stats.num_subdoc_keys = entries / 4;
+  stats.num_subdoc_keys = entries / 16 * 5;
   stats.num_rows = entries / 8;
   stats.dead_rows = entries / 16;
   stats.dead_row_entries = entries / 32;
@@ -134,6 +138,8 @@ TEST_F(SstStatsMetricsTest, ReportsNothingBeforeFirstResync) {
   EXPECT_EQ(Read(METRIC_docdb_sst_total_entries), 0);
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_entries), 0);
   EXPECT_EQ(Read(METRIC_docdb_sst_files_without_stats), 0);
+  // The one gauge that tells those zeros apart from measured ones.
+  EXPECT_EQ(Read(METRIC_docdb_sst_stats_available), 0);
 }
 
 TEST_F(SstStatsMetricsTest, UsesSumAggregation) {
@@ -147,6 +153,8 @@ TEST_F(SstStatsMetricsTest, UsesSumAggregation) {
            &METRIC_docdb_sst_reclaimable_entries,
            &METRIC_docdb_sst_reclaimable_bytes,
            &METRIC_docdb_sst_files_without_stats,
+           &METRIC_docdb_sst_files_with_partial_stats,
+           &METRIC_docdb_sst_stats_available,
        }) {
     EXPECT_EQ(prototype->aggregation_function(), AggregationFunction::kSum);
   }
@@ -167,9 +175,11 @@ TEST_F(SstStatsMetricsTest, ReportsAggregateAfterResync) {
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_entries), 20);
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_bytes), 200);
   EXPECT_EQ(Read(METRIC_docdb_sst_files_without_stats), 0);
+  EXPECT_EQ(Read(METRIC_docdb_sst_files_with_partial_stats), 0);
+  EXPECT_EQ(Read(METRIC_docdb_sst_stats_available), 1);
   // Derived: chain_entries - num_subdoc_keys and num_subdoc_keys - num_rows over the sum.
-  EXPECT_EQ(Read(METRIC_docdb_sst_shadowed_entries), 1280 - 320);
-  EXPECT_EQ(Read(METRIC_docdb_sst_repackable_entries), 320 - 160);
+  EXPECT_EQ(Read(METRIC_docdb_sst_shadowed_entries), 1120 - 400);
+  EXPECT_EQ(Read(METRIC_docdb_sst_repackable_entries), 400 - 160);
 }
 
 TEST_F(SstStatsMetricsTest, CountsFilesWithoutStats) {
@@ -198,6 +208,10 @@ TEST_F(SstStatsMetricsTest, PartialFileSuppressesDerivedGauges) {
   ASSERT_EQ(aggregator->Get().aggregate.partial_files, 1);
   EXPECT_EQ(Read(METRIC_docdb_sst_shadowed_entries), 0);
   EXPECT_EQ(Read(METRIC_docdb_sst_repackable_entries), 0);
+  // Those two zeros are only readable as "unavailable" because this gauge says so, and the file is
+  // measured, so it is not one of the files without statistics.
+  EXPECT_EQ(Read(METRIC_docdb_sst_files_with_partial_stats), 1);
+  EXPECT_EQ(Read(METRIC_docdb_sst_files_without_stats), 0);
   // The additive counters are still meaningful.
   EXPECT_EQ(Read(METRIC_docdb_sst_total_entries), 640);
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_entries), 10);
@@ -229,6 +243,30 @@ TEST_F(SstStatsMetricsTest, GaugesFollowAReopenedDb) {
   EXPECT_EQ(
       entity_->FindOrNull<FunctionGauge<uint64_t>>(METRIC_docdb_sst_total_entries), nullptr);
   EXPECT_EQ(retained_gauge->value(), 1920);
+}
+
+// The entity keys gauges by prototype, so two instances on one entity contend for the same slots.
+// The tablet destroys the old instance before building the new one, but nothing in the type
+// enforces that order.
+TEST_F(SstStatsMetricsTest, NewerInstanceOwnsTheGauges) {
+  const auto stats = FileStats(/* entries = */ 640);
+
+  auto first_aggregator = std::make_shared<SstStatsAggregator>();
+  auto first = std::make_unique<SstStatsMetrics>(entity_, first_aggregator);
+  ASSERT_OK(first_aggregator->Resync(SnapshotOf({&stats})));
+  ASSERT_EQ(Read(METRIC_docdb_sst_total_entries), 640);
+
+  // Constructed while the first is still alive, the second instance must take the gauges over
+  // rather than inherit the first's, which are bound to the first aggregator.
+  auto second_aggregator = std::make_shared<SstStatsAggregator>();
+  auto second = std::make_unique<SstStatsMetrics>(entity_, second_aggregator);
+  ASSERT_OK(second_aggregator->Resync(SnapshotOf({&stats, &stats})));
+  EXPECT_EQ(Read(METRIC_docdb_sst_total_entries), 1280);
+
+  // Destroying the superseded instance must leave the live gauges in place.
+  first.reset();
+  ASSERT_NE(entity_->FindOrNull<FunctionGauge<uint64_t>>(METRIC_docdb_sst_total_entries), nullptr);
+  EXPECT_EQ(Read(METRIC_docdb_sst_total_entries), 1280);
 }
 
 TEST_F(SstStatsMetricsTest, MetricsOwnAggregatorUntilDetached) {

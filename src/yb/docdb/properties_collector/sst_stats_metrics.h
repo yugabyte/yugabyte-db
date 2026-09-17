@@ -15,9 +15,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/gutil/ref_counted.h"
 #include "yb/util/metrics_fwd.h"
 
 namespace yb::docdb {
@@ -41,6 +43,11 @@ class SstStatsMetrics {
 
   const MetricEntityPtr entity_;
   const std::shared_ptr<const SstStatsAggregator> aggregator_;
+  // The gauges this instance put in the entity, parallel to MetricInfos::kMetricInfos. The entity
+  // keys gauges by prototype and outlives any one instance, so a second instance on the same
+  // entity replaces these; the destructor compares before removing so it cannot strip the
+  // replacements.
+  std::vector<scoped_refptr<FunctionGauge<uint64_t>>> gauges_;
 
   // Declared last so it is destroyed first, freezing the gauges while aggregator_ is still alive.
   std::shared_ptr<void> metric_detacher_;
