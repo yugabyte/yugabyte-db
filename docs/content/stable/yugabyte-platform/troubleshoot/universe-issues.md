@@ -305,7 +305,6 @@ The Prometheus metrics are stored in JSON files in the `support_bundle/YBA/promd
 
 You can also create "Custom Queries" by providing PromQL expressions; their results are stored in the support bundle under the corresponding folder name.
 
-<!-- TODO add back in v2026.1.2.0
 #### Perf Advisor metrics
 
 {{<tags/feature/ea idea="1428">}} Performance monitoring metrics collected from the [Perf Advisor (PA) collector](#perf-advisor-collector) registered with YugabyteDB Anywhere. This component is available only when the PA collector is enabled for the universe (**Actions > More > Enable Perf Advisor Collector**). If the collector is not enabled, **Perf Advisor metrics** does not appear in the support bundle component list.
@@ -318,7 +317,6 @@ You can configure the following options for this component:
 - Format: Choose **Binary** or **JSON** for the exported metrics format.
 
 The PA collector continues gathering metrics in the background after you enable it; creating a support bundle with **Perf Advisor metrics** selected captures the collected data for the chosen time window.
--->
 
 </details>
 
