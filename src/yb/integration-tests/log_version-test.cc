@@ -85,17 +85,14 @@ TEST_F(LogRollingTest, Rolling) {
   version = util::TrimStr(version);
   ASSERT_TRUE(std::regex_match(
       version, std::regex(R"(version \S+ build \S+ revision \S+ build_type \S+ built at .+)")));
-  const auto log_path = JoinPathSegments(master->GetDataDirs()[0], "logs", BaseName(exe) + ".INFO");
+  const auto logs_dir = JoinPathSegments(master->GetDataDirs()[0], "logs");
+  const auto log_path = JoinPathSegments(logs_dir, BaseName(exe) + ".INFO");
   const auto fingerprint = "Application fingerprint: " + version;
-  const LogHeader header(log_path);
-  ASSERT_NE(header.GetByPrefix(fingerprint), "");
-  const auto& initial_duration = header.GetByPrefix(kDurationPrefix);
-  ASSERT_NE(initial_duration, "");
-  // In case of log rolling log_path link will be pointed to newly created file
-  const auto initial_target = ASSERT_RESULT(env_->ReadLink(log_path));
-  auto prev_size = ASSERT_RESULT(env_->GetFileSize(log_path));
+  // In case of log rolling log_path link will be pointed to newly created file.
+  // Generate logs until the link has pointed to 5 distinct files.
+  std::vector<string> log_files = {ASSERT_RESULT(env_->ReadLink(log_path))};
   auto master_proxy = cluster_->GetMasterProxy<master::MasterDdlProxy>();
-  while(initial_target == ASSERT_RESULT(env_->ReadLink(log_path))) {
+  while (log_files.size() < 5) {
     // Call rpc functions to generate logs in master
     for(int i = 0; i < 20; ++i) {
       master::TruncateTableRequestPB req;
@@ -103,18 +100,29 @@ TEST_F(LogRollingTest, Rolling) {
       rpc::RpcController rpc;
       ASSERT_OK(master_proxy.TruncateTable(req, &resp, &rpc));
     }
-    const auto current_size = ASSERT_RESULT(env_->GetFileSize(log_path));
-    // Make sure log size is changed and it is not much than 2Mb
-    // Something goes wrong in other case
-    ASSERT_NE(current_size, prev_size);
-    ASSERT_LT(current_size, 2_MB);
-    prev_size = current_size;
+    auto target = ASSERT_RESULT(env_->ReadLink(log_path));
+    if (target != log_files.back()) {
+      log_files.push_back(std::move(target));
+    }
   }
-  const LogHeader fresh_header(log_path);
-  ASSERT_NE(fresh_header.GetByPrefix(fingerprint), "");
-  const auto& duration = fresh_header.GetByPrefix(kDurationPrefix);
-  ASSERT_NE(duration, "");
-  ASSERT_NE(duration, initial_duration);
+  // Rolled files are immutable, so checking them by name is race-free.
+  size_t prev_duration_sec = 0;
+  for (const auto& file : log_files) {
+    // glog symlink targets are relative to the log directory.
+    const LogHeader header(JoinPathSegments(logs_dir, file));
+    ASSERT_NE(header.GetByPrefix(fingerprint), "");
+    const auto& duration_line = header.GetByPrefix(kDurationPrefix);
+    ASSERT_NE(duration_line, "");
+    ASSERT_LT(ASSERT_RESULT(env_->GetFileSize(JoinPathSegments(logs_dir, file))), 2_MB);
+    const auto duration_str = duration_line.substr(kDurationPrefix.size());
+    std::smatch match;
+    ASSERT_TRUE(std::regex_match(duration_str, match, std::regex(R"((\d+):(\d{2}):(\d{2}))")))
+        << duration_str;
+    const size_t duration_sec =
+        (std::stoul(match[1]) * 60 + std::stoul(match[2])) * 60 + std::stoul(match[3]);
+    ASSERT_GE(duration_sec, prev_duration_sec) << "Log file durations out of order: " << file;
+    prev_duration_sec = duration_sec;
+  }
 }
 
 } // namespace test
