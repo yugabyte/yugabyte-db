@@ -35,6 +35,7 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -49,6 +50,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/integral_types.h"
 
@@ -185,6 +187,10 @@ class Peer : public std::enable_shared_from_this<Peer> {
  private:
   void SendNextRequest(RequestTriggerMode trigger_mode);
 
+  // Schedules a SignalRequest() 'delay' from now, to send a request that only advances this peer's
+  // committed OpId. See the deferral site in SendNextRequest() for why it is not sent right away.
+  void ScheduleDeferredCommitIndexPropagation(std::chrono::milliseconds delay);
+
   // Signals that a response was received from the peer. This method does response handling that
   // requires IO or may block.
   void ProcessResponse(TracePtr trace);
@@ -244,6 +250,17 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Latest heartbeat request and response
   ConsensusRequestPB heartbeat_request_;
   ConsensusResponsePB heartbeat_response_;
+
+  // Committed OpId index carried by the last request actually sent to this peer. A request may be
+  // built and then not sent (heartbeat suppression, committed OpId propagation deferral), so this
+  // cannot be read back from update_request_. Only touched by SendNextRequest(), i.e. under
+  // performing_update_mutex_.
+  int64_t last_sent_committed_index_ = kMinimumOpIdIndex;
+
+  // Committed OpId index whose propagation to this peer has already been deferred once, so that
+  // each committed OpId value delays at most one round of requests. Only touched by
+  // SendNextRequest(), i.e. under performing_update_mutex_.
+  int64_t deferred_commit_index_ = kInvalidOpIdIndex;
 
   // Each time a heartbeat request is sent this value is incremented.
   int64_t cur_heartbeat_id_ = 0;
