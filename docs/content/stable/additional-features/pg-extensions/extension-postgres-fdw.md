@@ -21,12 +21,14 @@ In v2026.1.2 and later, the extension is installed into `pg_catalog` during clus
 CREATE EXTENSION postgres_fdw;
 ```
 
-To connect to a remote YSQL or PostgreSQL database, create a foreign server object. Specify the connection information (except the username and password) using the `OPTIONS` clause. Include [`server_type`](#server-type-option) when the remote is YugabyteDB:
+To connect to a remote PostgreSQL database, create a foreign server object. Specify the connection information (except the username and password) using the `OPTIONS` clause:
 
 ```plpgsql
 CREATE SERVER my_server FOREIGN DATA WRAPPER postgres_fdw
     OPTIONS (host 'host_ip', dbname 'external_db', port 'port_number');
 ```
+
+For a remote YugabyteDB cluster, include [server_type](#server-type-option) when you create the server.
 
 Specify the username and password using `CREATE USER MAPPING`:
 
