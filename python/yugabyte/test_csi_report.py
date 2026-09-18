@@ -83,6 +83,11 @@ def test_test_ids_in_launches_is_a_no_op() -> None:
     assert csi_report.test_ids_in_launches('launch_type:baseline_test_run') == set()
 
 
+def test_previous_launch_unique_ids_is_a_no_op() -> None:
+    # None, not an empty set: "no tests are known" would make every test read as new.
+    assert csi_report.previous_launch_unique_ids() is None
+
+
 # ---------------------------------------------------------------------------------------------
 # create_suite: the update branch must replace a same-key count attribute (All/RegEx/Requested),
 # not append beside it. RP's /item/update replaces the whole attribute set but dedupes only on
@@ -235,6 +240,200 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
     assert csi_report.get_with_retries('http://csi/x', {}, {}) is None
     assert slept == [csi_report.GET_RETRY_DELAY_SEC * attempt
                      for attempt in range(1, csi_report.GET_ATTEMPTS)]
+
+
+# ---------------------------------------------------------------------------------------------
+# previous_launch_unique_ids: the launch this build's tests are "new" against.
+#
+# Picking the wrong launch does not produce a slightly wrong answer, it produces a flood: every
+# test the picked launch did not report reads as new. So the guards are pinned here.
+# ---------------------------------------------------------------------------------------------
+
+class FakeJson(FakeResponse):
+    def __init__(self, body: Any) -> None:
+        super().__init__(200)
+        self.body = body
+
+    def json(self) -> Any:
+        return self.body
+
+
+def attrs(**pairs: str) -> List[Any]:
+    return [{'key': key, 'value': value} for key, value in pairs.items()]
+
+
+def items_page(unique_ids: List[str], total_elements: int, total_pages: int) -> FakeJson:
+    return FakeJson({
+        'content': [{'uniqueId': unique_id} for unique_id in unique_ids],
+        'page': {'totalElements': total_elements, 'totalPages': total_pages},
+    })
+
+
+def suite(name: str, reported: int, **planned: str) -> Any:
+    """A suite item as CSI lists it: the planned count as an attribute named for the selection
+    method (create_suite), the reported count in its statistics."""
+    return {'name': name, 'attributes': attrs(**planned),
+            'statistics': {'executions': {'total': reported}}}
+
+
+# A previous launch whose two suites reached every test they planned.
+COMPLETE_SUITES = [suite('C++', reported=12000, All='12000'),
+                   suite('Java', reported=900, All='900')]
+
+
+def serve_csi(monkeypatch: pytest.MonkeyPatch, current: Any, launches: Any,
+              item_pages: Any = None, suites: Any = None) -> List[Any]:
+    """
+    A configured CSI answering the four queries the function makes: this launch, the lane's
+    launches, the chosen launch's suites, and one page of its items at a time. Records the params
+    of every call.
+    """
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'DBFT')
+    calls: List[Any] = []
+
+    def get(url: str, headers: Any = None, params: Any = None) -> Any:
+        calls.append((url, params))
+        if url.endswith('/launch/some-launch-uuid'):
+            return FakeJson(current)
+        if url.endswith('/launch'):
+            return FakeJson({'content': launches})
+        if url.endswith('/item') and params['filter.eq.type'] == 'SUITE':
+            return FakeJson({'content': COMPLETE_SUITES if suites is None else suites})
+        if url.endswith('/item'):
+            return (item_pages or [])[int(params['page.page']) - 1]
+        raise AssertionError("unexpected CSI query: " + url)
+
+    monkeypatch.setattr(csi_report.requests, 'get', get)
+    return calls
+
+
+def item_queries(calls: List[Any]) -> List[Any]:
+    """The params of the step-item (test list) queries among the recorded calls."""
+    return [params for url, params in calls
+            if url.endswith('/item') and params['filter.eq.type'] == 'step']
+
+
+def test_previous_launch_is_the_newest_completed_older_one(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Newer launches and the current one are not a baseline, and neither is one that did not run to
+    the end: it reported a fraction of its tests and the rest would read as new.
+    """
+    current = {'id': 500, 'name': 'master-alma8-clang21-tsan',
+               'attributes': attrs(version='2.31.0.0', bld='4242')}
+    launches = [
+        {'id': 501, 'status': 'IN_PROGRESS'},   # the next lane run, already started
+        {'id': 500, 'status': 'FAILED'},        # this launch
+        {'id': 499, 'status': 'INTERRUPTED'},   # aborted: an incomplete test list
+        {'id': 498, 'status': 'FAILED'},        # the one to compare against
+        {'id': 497, 'status': 'PASSED'},
+    ]
+    calls = serve_csi(monkeypatch, current, launches, [
+        items_page(['a-test:::A.One', 'a-test:::A.Two'], total_elements=3, total_pages=2),
+        items_page(['B#three'], total_elements=3, total_pages=2),
+    ])
+
+    assert csi_report.previous_launch_unique_ids() == {
+        'a-test:::A.One', 'a-test:::A.Two', 'B#three'}
+
+    lane_query = calls[1][1]
+    assert lane_query['filter.eq.name'] == 'master-alma8-clang21-tsan'
+    # Same lane name, other branch: the family name folds several branches together and only the
+    # version tells them apart.
+    assert lane_query['filter.has.compositeAttribute'] == 'version:2.31.0.0'
+    assert calls[2][1]['filter.eq.type'] == 'SUITE'
+    assert calls[2][1]['filter.eq.launchId'] == '498'
+    # Two pages of items, no more: the read is a handful of requests per build, not one per test.
+    assert [q['filter.eq.launchId'] for q in item_queries(calls)] == ['498', '498']
+    assert len(calls) == 5
+
+
+def test_a_truncated_previous_launch_is_not_a_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A main pass that stopped at its failure threshold still finished its launch, FAILED, with the
+    tests it never reached unreported. Every one of those would read as new, so a launch whose
+    suites reported fewer tests than they planned is not compared against, and its item list is
+    never read.
+    """
+    current = {'id': 500, 'name': 'master-alma8-clang21-tsan',
+               'attributes': attrs(version='2.31.0.0', bld='4242')}
+    calls = serve_csi(monkeypatch, current, [{'id': 498, 'status': 'FAILED'}], suites=[
+        suite('C++', reported=11400, All='12000'),   # stopped 600 tests short
+        suite('Java', reported=900, All='900'),
+    ])
+
+    assert csi_report.previous_launch_unique_ids() is None
+    assert item_queries(calls) == []
+
+
+def test_a_parent_suite_is_ignored_and_a_null_count_is_not_trusted(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A job may nest the language suites under a parent suite (YB_CSI_SUITE); it plans no tests and
+    says nothing about the list. A planned suite whose count attribute is null is not a full pass.
+    """
+    current = {'id': 500, 'name': 'master-alma8-clang21-tsan',
+               'attributes': attrs(version='2.31.0.0', bld='4242')}
+    parent = {'name': 'DB', 'attributes': [], 'statistics': {'executions': {'total': 12900}}}
+    serve_csi(monkeypatch, current, [{'id': 498, 'status': 'PASSED'}],
+              [items_page(['a-test:::A.One'], total_elements=1, total_pages=1)],
+              suites=[parent] + COMPLETE_SUITES)
+    assert csi_report.previous_launch_unique_ids() == {'a-test:::A.One'}
+
+    # Only the parent: nothing was planned that the list could be compared against.
+    serve_csi(monkeypatch, current, [{'id': 498, 'status': 'PASSED'}], suites=[parent])
+    assert csi_report.previous_launch_unique_ids() is None
+
+    null_count = {'name': 'C++', 'attributes': [{'key': 'All', 'value': None}],
+                  'statistics': {'executions': {'total': 12000}}}
+    serve_csi(monkeypatch, current, [{'id': 498, 'status': 'PASSED'}], suites=[null_count])
+    assert csi_report.previous_launch_unique_ids() is None
+
+
+def test_a_partial_previous_launch_is_not_a_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A launch that ran a named or filtered subset planned only that subset; its list says
+    nothing about the tests it was never going to run."""
+    current = {'id': 500, 'name': 'master-alma8-clang21-tsan',
+               'attributes': attrs(version='2.31.0.0', bld='4242')}
+    calls = serve_csi(monkeypatch, current, [{'id': 498, 'status': 'PASSED'}], suites=[
+        suite('C++', reported=40, RegEx='40'),
+    ])
+
+    assert csi_report.previous_launch_unique_ids() is None
+    assert item_queries(calls) == []
+
+
+def test_a_per_change_launch_has_no_lane_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A diff's predecessor is another revision of the same diff, not the lane's previous state."""
+    current = {'id': 500, 'name': 'D12345-alma9-clang21-asan',
+               'attributes': attrs(diff='3', branch='master')}
+    calls = serve_csi(monkeypatch, current, [])
+
+    assert csi_report.previous_launch_unique_ids() is None
+    assert len(calls) == 1
+
+
+def test_no_older_launch_means_no_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The first launch of a lane: every test is new, and repeating them all is not the point."""
+    current = {'id': 500, 'name': 'master-alma8-clang21-tsan',
+               'attributes': attrs(version='2.31.0.0', bld='4242')}
+    serve_csi(monkeypatch, current, [{'id': 500, 'status': 'FAILED'}])
+
+    assert csi_report.previous_launch_unique_ids() is None
+
+
+def test_an_oversized_item_query_is_abandoned(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Far more items than a lane reports is not one lane's list; paging on would be wasted."""
+    current = {'id': 500, 'name': 'master-alma8-clang21-tsan',
+               'attributes': attrs(version='2.31.0.0', bld='4242')}
+    serve_csi(monkeypatch, current, [{'id': 498, 'status': 'PASSED'}], [
+        items_page(['a-test:::A.One'],
+                   total_elements=csi_report.ITEM_QUERY_LIMIT + 1, total_pages=500),
+    ])
+
+    assert csi_report.previous_launch_unique_ids() is None
 
 
 # ---------------------------------------------------------------------------------------------
@@ -436,3 +635,67 @@ def test_invalid_utf8_does_not_fail(tmp_path: Any) -> None:
 
     assert centered
     assert MARKER in text
+
+
+# The new-test repetitions are dispatched serially after the main pass, and only for a test whose
+# first attempt passed, so consumers may read the kind on an item as "the first attempt passed".
+# That has to hold for every execution of the job, a Spark resubmit inside it included, which is
+# why the kind outranks task_resubmit.
+@pytest.mark.parametrize('rerun,attempt,attempt_index,expected', [
+    (False, 0, 2, (True, 'new_test_repetition', False)),
+    (False, 3, 5, (True, 'new_test_repetition', False)),  # resubmit inside the new-test job
+    # fail_repetition still wins, so a first-attempt failure can never read as a passing birth.
+    (True, 0, 2, (True, 'fail_repetition', False)),
+])
+def test_classify_execution_new_test(rerun: bool, attempt: int, attempt_index: int,
+                                     expected: Any) -> None:
+    assert csi_report.classify_execution(
+        rerun, attempt, '1', attempt_index, new_test=True) == expected
+
+
+# ---------------------------------------------------------------------------------------------
+# create_test: which executions ask CSI for a previous item before reporting.
+#
+# The query runs on every worker for every such execution, so an execution that does not need it
+# must not make it. A fail repetition and a new-test repetition run serially after the main pass,
+# in which their first attempt completed and reported; a repetition or a resubmit cannot know that.
+# ---------------------------------------------------------------------------------------------
+
+def serve_create(monkeypatch: pytest.MonkeyPatch) -> List[Any]:
+    """A configured CSI that accepts item creation and records each request body, and that
+    fails the test if any query is made."""
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'DBFT')
+    created: List[Any] = []
+
+    def post(url: str, headers: Any = None, data: Any = None) -> Any:
+        created.append(json.loads(data))
+        response = FakeJson({'id': 'new-item-uuid'})
+        response.status_code = 201
+        return response
+
+    def get(url: str, headers: Any = None, params: Any = None) -> Any:
+        raise AssertionError("this execution must not query CSI for a previous item: " + url)
+
+    monkeypatch.setattr(csi_report.requests, 'post', post)
+    monkeypatch.setattr(csi_report.requests, 'get', get)
+    return created
+
+
+@pytest.mark.parametrize('new_test,rerun,retry_kind', [
+    ('1', False, 'new_test_repetition'),
+    ('', True, 'fail_repetition'),
+])
+def test_a_serial_repetition_reports_without_querying(
+        monkeypatch: pytest.MonkeyPatch, new_test: str, rerun: bool, retry_kind: str) -> None:
+    monkeypatch.setenv('YB_CSI_NEW_TEST', new_test)
+    created = serve_create(monkeypatch)
+    descriptor = test_descriptor.TestDescriptor('tests-x/a-test:::A.B:::attempt_7')
+
+    assert csi_report.create_test(descriptor, 0.0, 0, rerun=rerun) == 'new-item-uuid'
+
+    [item] = created
+    assert item['retry'] is True
+    assert item['uniqueId'] == 'tests-x/a-test:::A.B'
+    assert {'key': 'retry_kind', 'value': retry_kind} in item['attributes']

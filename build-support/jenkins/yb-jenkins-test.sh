@@ -232,6 +232,9 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         run_tests_extra_args+=( "--num_repetitions" "${NUM_REPETITIONS}" )
       else
         run_tests_extra_args+=( "--fail_repetitions" "${YB_FAIL_REPETITIONS:-0}" )
+        # Extra runs of the tests this lane has not run before. Nothing to add when every test is
+        # already being repeated above.
+        run_tests_extra_args+=( "--new_test_repetitions" "${YB_NEW_TEST_REPETITIONS:-0}" )
       fi
 
       set +u  # because extra_args can be empty

@@ -22,6 +22,8 @@ import requests
 # Set by caller (run_tests_on_spark.py), based on other criteria
 # YB_CSI_REPS   - integer (default: 1) Number of times each test is being run.
 # YB_CSI_QID    - integer ID of launch to query
+# YB_CSI_NEW_TEST - non-empty for the extra runs of a test that is new on this lane
+#                 (--new_test_repetitions); set for that job only.
 # ===================================
 # Returned by create_suite(), but put into environment by caller:
 # YB_CSI_C++    - Suite ID for test, by language
@@ -83,6 +85,7 @@ def csi_env(content: str = 'json') -> Dict[str, Any]:
         'url_sync': f"https://{server}/api/v1/{project}",
         'reps': os.getenv('YB_CSI_REPS', '1'),
         'qid': os.getenv('YB_CSI_QID', ''),
+        'new_test': os.getenv('YB_CSI_NEW_TEST', ''),
         'headers': {
             'Authorization': 'Bearer ' + os.getenv('CSI_TOKEN', '')
         }
@@ -182,6 +185,158 @@ def test_ids_in_launches(attr_filter: str) -> Set[str]:
     logging.info("CSI: found %d test ids in %d launches matching %s",
                  len(ids), num_launches, attr_filter)
     return ids
+
+
+# Items are read in pages. csi/lib.groovy's q_items reads 200 at a time, but CSI honors far larger
+# pages and answers them faster per item, so a lane's ~14k items take three requests, not seventy.
+ITEM_PAGE_SIZE = 5000
+
+# A lane reports ~12k tests. A query answering with far more than that is not one lane's item list,
+# and paging through it would be a long way to reach a wrong answer.
+ITEM_QUERY_LIMIT = 30000
+
+
+# Whether a completed launch reported every test it planned. A main pass that stops at its failure
+# threshold still finishes its launch (FAILED), with the tests it never reached unreported, and
+# each of those would read as new against it. Each suite item carries the planned count as an
+# attribute named for how the tests were selected (run_tests_on_spark.py: 'All' for a full pass,
+# 'RegEx' or 'Requested' for a partial one) and the reported count in its statistics; this is the
+# comparison csi/lib.groovy's rerun_list makes before trusting a launch's test list. Only a suite
+# planned as 'All' can be the baseline for "new": a partial run's list says nothing about the rest.
+def previous_launch_reached_every_test(csi: Dict[str, Any], launch_id: str) -> bool:
+    response = get_with_retries(
+        csi['url_sync'] + '/item',
+        headers=csi['headers'],
+        params={
+            'filter.eq.launchId': launch_id,
+            'filter.eq.type': 'SUITE',
+            'page.size': '10',
+        })
+    if response is None:
+        return False
+    planned_suites = 0
+    for suite in (response.json().get('content') or []):
+        suite_attrs = {str(a.get('key')): a.get('value') for a in (suite.get('attributes') or [])}
+        if not any(key in suite_attrs for key in ('All', 'RegEx', 'Requested')):
+            # Not a suite the harness planned tests into: a parent suite a job may nest the
+            # language suites under (YB_CSI_SUITE) says nothing about the test list.
+            continue
+        planned_suites += 1
+        try:
+            planned = int(suite_attrs.get('All'))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            logging.info("CSI: launch %s suite %s was not a full pass (%s); no previous-launch "
+                         "test list", launch_id, suite.get('name', ''), sorted(suite_attrs))
+            return False
+        reported = ((suite.get('statistics') or {}).get('executions') or {}).get('total', 0)
+        if not isinstance(reported, int) or reported < planned:
+            logging.info("CSI: launch %s suite %s reported %s of %d planned tests; no "
+                         "previous-launch test list", launch_id, suite.get('name', ''),
+                         reported, planned)
+            return False
+    if planned_suites == 0:
+        logging.info("CSI: launch %s has no planned suites; no previous-launch test list",
+                     launch_id)
+        return False
+    return True
+
+
+# The uniqueIds the previous launch of this lane reported, or None when there is no comparable one.
+# The set of tests that ran then, against which the tests collected now are "new".
+#
+# "This lane" is the current launch's own name (<family>-<platform>-<compiler>-<bldtype>, written by
+# csi/lib.groovy start_launch) narrowed to the same 'version' attribute: the family name folds
+# branches together - a pg19 build and a master build are both e.g. master-alma8-clang21-asan and
+# differ only in version - and comparing against another branch's launch would make ordinary tests
+# look new.
+#
+# Returns None, never a partial set, whenever the answer cannot be trusted: CSI is off, this is a
+# per-change launch (identified by revision, whose predecessor is another revision of the same
+# change rather than the previous state of a lane), the lane has no earlier launch, the earlier
+# launch did not run to the end or did not reach every test it planned, or a query failed. Callers
+# must read None as "do nothing".
+def previous_launch_unique_ids() -> Optional[Set[str]]:
+    csi = csi_env()
+    if not csi['launch'] or not configured():
+        return None
+    start_time_sec = time.time()
+
+    response = get_with_retries(csi['url_sync'] + '/launch/' + csi['launch'],
+                                headers=csi['headers'], params={})
+    if response is None:
+        logging.error(f"CSI Error: Launch {csi['launch']} not found.")
+        return None
+    current = response.json()
+    current_name = current.get('name', '')
+    attributes = {a.get('key'): a.get('value') for a in (current.get('attributes') or [])}
+    version = attributes.get('version', '')
+    if not version or not attributes.get('bld', ''):
+        logging.info("CSI: %s is not a release launch; no previous-launch test list", current_name)
+        return None
+
+    response = get_with_retries(
+        csi['url_sync'] + '/launch',
+        headers=csi['headers'],
+        params={
+            'filter.eq.name': current_name,
+            'filter.has.compositeAttribute': f"version:{version}",
+            'page.sort': 'id,desc',
+            'page.size': '10',
+        })
+    if response is None:
+        return None
+    previous = None
+    for launch in (response.json().get('content') or []):
+        # An older launch of this lane that ran to the end: an interrupted or still-running one
+        # reported only part of its tests, and the rest of them would read as new.
+        if (launch.get('id', 0) < current.get('id', 0) and
+                launch.get('status', '') in ('PASSED', 'FAILED')):
+            previous = launch
+            break
+    if previous is None:
+        logging.info("CSI: no completed previous launch of %s at version %s", current_name, version)
+        return None
+    if not previous_launch_reached_every_test(csi, str(previous.get('id', ''))):
+        return None
+
+    unique_ids: Set[str] = set()
+    # As many pages as the item limit above allows, so a page count the server reports cannot
+    # keep this going on its own.
+    max_pages = ITEM_QUERY_LIMIT // ITEM_PAGE_SIZE + 1
+    page = 1
+    total_pages = 1
+    while page <= min(total_pages, max_pages):
+        response = get_with_retries(
+            csi['url_sync'] + '/item',
+            headers=csi['headers'],
+            params={
+                'filter.eq.launchId': str(previous.get('id', '')),
+                'filter.eq.type': 'step',
+                'page.sort': 'id,asc',
+                'page.page': str(page),
+                'page.size': str(ITEM_PAGE_SIZE),
+            })
+        if response is None:
+            return None
+        body = response.json()
+        for item in (body.get('content') or []):
+            if item.get('uniqueId'):
+                unique_ids.add(item['uniqueId'])
+        if page == 1:
+            page_info = body.get('page', {})
+            total_elements = page_info.get('totalElements', 0)
+            if total_elements > ITEM_QUERY_LIMIT:
+                logging.warning("CSI: launch %s reported %d items, over the limit of %d; "
+                                "no previous-launch test list",
+                                previous.get('id', ''), total_elements, ITEM_QUERY_LIMIT)
+                return None
+            total_pages = page_info.get('totalPages', 1)
+        page += 1
+
+    logging.info("CSI: previous launch of %s is id %s with %d tests, read in %.1f sec",
+                 current_name, previous.get('id', ''), len(unique_ids),
+                 time.time() - start_time_sec)
+    return unique_ids
 
 
 # Current practice is to name suite by language, return an EV name/value pair, that can be
@@ -304,6 +459,10 @@ def query_test(uniqueId: str, wait: bool) -> bool:
 #   fail_repetition - intentional re-run of a test that failed earlier (--fail_repetitions);
 #                     exists only after a first-attempt failure, so it must never enter a
 #                     first-attempt failure rate;
+#   new_test_repetition - intentional re-run of a test that is new on this lane
+#                     (--new_test_repetitions); dispatched only for a test whose first attempt
+#                     PASSED, so like fail_repetition it must never enter a first-attempt rate,
+#                     and it tells a consumer the first attempt's outcome without reading it;
 #   task_resubmit   - Spark re-ran the task because a worker died; an infra artifact;
 #   repetition      - unconditional extra run (--num_repetitions).
 # The shapes overlap: a Spark task resubmit (attempt > 0) can happen inside the
@@ -317,11 +476,18 @@ def query_test(uniqueId: str, wait: bool) -> bool:
 # Known gap: a driver-level Spark JOB resubmit starts a fresh task with attempt 0 and is
 # indistinguishable from a first attempt here.
 def classify_execution(rerun: bool, attempt: int, reps: str,
-                       attempt_index: int) -> Tuple[bool, str, bool]:
+                       attempt_index: int, new_test: bool = False) -> Tuple[bool, str, bool]:
     if rerun:
         # Intentionally re-running a completed (failed) test; serial, no wait needed. Checked
         # before attempt so a resubmit inside the rerun job keeps this kind (see above).
         return True, 'fail_repetition', False
+    if new_test:
+        # Intentionally re-running a test that is new on this lane and passed its first attempt.
+        # Dispatched serially after the main pass, like the fail repetitions, so the first attempt
+        # has long reported and no wait is needed. Checked before attempt for the same reason
+        # fail_repetition is: the "first attempt passed" implication has to hold for every
+        # execution of this job, including one Spark resubmitted.
+        return True, 'new_test_repetition', False
     if attempt > 0:
         # Spark re-tries happen only if there is some failure, so attempts are serial.
         # The previous attempt died before reporting completion; the query must wait to
@@ -349,8 +515,13 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
     pt = SimpleTestDescriptor.parse(full_name)
     tname = f"{pt.class_name} - {pt.test_name}"
 
-    retry, retry_kind, wait = classify_execution(rerun, attempt, csi['reps'], test.attempt_index)
-    if retry and not rerun:
+    retry, retry_kind, wait = classify_execution(rerun, attempt, csi['reps'], test.attempt_index,
+                                                 bool(csi['new_test']))
+    # A repetition runs alongside its first attempt and a resubmit follows a worker death, so
+    # either has to ask whether a previous item exists before calling itself a retry. A fail
+    # repetition or a new-test repetition runs serially after the main pass, in which its first
+    # attempt completed and reported, so neither asks: that would be one query per execution.
+    if retry and not rerun and not csi['new_test']:
         prev_test = query_test(full_name, wait)
         if not prev_test:
             # Found no previous test, so do not call this one a retry. The retry_kind
