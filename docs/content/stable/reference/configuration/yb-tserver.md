@@ -2103,6 +2103,123 @@ Default: `50`
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
+### Vector Index LSM compaction flags
+
+Use these flags to control background compaction of Vector LSM chunk files used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+
+##### --vector_index_compaction_chunk_max_mem_store_size_mb
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Available in v2026.1.1.0 and later.
+
+Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), there is no limit and a single output chunk is produced. When set to a non-zero value, this flag enables chunked compaction, allowing the output to be split into multiple chunks bounded by the specified memory budget.
+
+This flag takes priority over [`--vector_index_compaction_chunk_max_mem_store_size_percentage`](#vector-index-compaction-chunk-max-mem-store-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
+
+##### --vector_index_compaction_chunk_max_mem_store_size_percentage
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Available in v2026.1.1.0 and later.
+
+Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
+
+This flag is ignored when:
+
+- [`--vector_index_compaction_chunk_max_mem_store_size_mb`](#vector-index-compaction-chunk-max-mem-store-size-mb) is set to a non-zero value
+- Concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`)
+
+When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
+##### --vector_index_num_compactions_limit
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Maximum number of concurrent Vector LSM compactions per tablet server. Set to `0` for no per-tserver limit.
+
+When this flag is not `1` (concurrent compactions are allowed), [`--vector_index_compaction_chunk_max_mem_store_size_percentage`](#vector-index-compaction-chunk-max-mem-store-size-percentage) is ignored. Set an absolute limit with [`--vector_index_compaction_chunk_max_mem_store_size_mb`](#vector-index-compaction-chunk-max-mem-store-size-mb) instead, and account for total memory across concurrent merges.
+
+##### --vector_index_files_number_compaction_trigger
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Number of Vector LSM chunk files that triggers a background compaction.
+
+##### --vector_index_compaction_always_include_size_threshold
+
+{{% tags/wrap %}}
+
+Default: `67108864` (64MB)
+{{% /tags/wrap %}}
+
+Always include Vector LSM chunks of this size or smaller in a compaction by size ratio.
+
+##### --vector_index_compaction_size_ratio_percent
+
+{{% tags/wrap %}}
+
+Default: `20`
+{{% /tags/wrap %}}
+
+Percentage used to decide whether a larger Vector LSM chunk is included in a background compaction by size ratio. A succeeding chunk is included when it is at most this percentage larger than the running total of chunks already picked. For example, with the default of `20`, the next chunk is included if it is at most 20% larger than the running total.
+
+Set to `-100` to disable size-ratio compactions.
+
+Chunks at or below [`--vector_index_compaction_always_include_size_threshold`](#vector-index-compaction-always-include-size-threshold) are always included without applying this check.
+
+##### --vector_index_compaction_size_ratio_min_merge_width
+
+{{% tags/wrap %}}
+
+Default: `4`
+{{% /tags/wrap %}}
+
+Minimum number of Vector LSM chunks in a single background compaction by size ratio. The effective minimum is at least `2`.
+
+##### --vector_index_compaction_size_ratio_max_merge_width
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of Vector LSM chunks in a single background compaction by size ratio. When set to `0` (the default), there is no limit. If you set a value lower than [`--vector_index_compaction_size_ratio_min_merge_width`](#vector-index-compaction-size-ratio-min-merge-width), the minimum merge width is used instead.
+
+##### --vector_index_compaction_size_amp_max_percent
+
+{{% tags/wrap %}}
+
+Default: `200`
+{{% /tags/wrap %}}
+
+Maximum size amplification for Vector LSM background compaction, as a percentage. Size amplification is the total size of newer chunks relative to the earliest on-disk chunk. When newer chunks are at least this percentage of the base chunk size, a size-amplification compaction is triggered. For example, with the default of `200`, compaction is triggered when newer chunks total 200% of the earliest chunk size.
+
+Set to `-1` to disable size-amplification compactions.
+
+Size-amplification compaction is considered before size-ratio compaction when picking chunks for background compaction.
+
+##### --vector_index_compaction_size_amp_max_merge_width
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of Vector LSM chunks in a single background compaction by size amplification. When set to `0` (the default), there is no limit. A size-amplification compaction always includes at least 2 chunks.
+
 ### Concurrency control flags
 
 To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
