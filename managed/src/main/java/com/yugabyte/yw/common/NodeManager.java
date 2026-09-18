@@ -1630,7 +1630,7 @@ public class NodeManager extends DevopsBase {
           .maybeGetNodeAgent(instanceData.ip, provider, null /* universe */)
           .ifPresent(
               nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid())) {
                   nodeAgent.refresh();
                 }
                 commandArgs.add("--connection_type");
@@ -1772,15 +1772,11 @@ public class NodeManager extends DevopsBase {
           .maybeGetNodeAgent(nodeIp, provider, universe)
           .ifPresent(
               nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid())) {
                   nodeAgent.refresh();
                 }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                if (getNodeAgentClient()
-                    .isAnsibleOffloadingEnabled(nodeAgent, provider, universe)) {
-                  commandArgs.add("--offload_ansible");
-                }
                 nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }

@@ -903,6 +903,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -1085,6 +1087,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -1363,6 +1367,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -2614,6 +2620,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2839,7 +2846,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -5406,6 +5414,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5631,7 +5640,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -6344,22 +6354,39 @@
         "compressor" : {
           "type" : "string"
         },
-        "offloadable" : {
-          "type" : "boolean"
-        },
         "serverCert" : {
           "type" : "string"
         },
+        "serverCertExpirySecs" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "serverCertLocalPath" : {
+          "type" : "string"
+        },
         "serverKey" : {
+          "type" : "string"
+        },
+        "serverKeyLocalPath" : {
+          "type" : "string"
+        },
+        "signerPrivateKey" : {
+          "type" : "string"
+        },
+        "signerPublicKey" : {
           "type" : "string"
         }
       },
       "required" : [
         "certPath",
         "compressor",
-        "offloadable",
         "serverCert",
-        "serverKey"
+        "serverCertExpirySecs",
+        "serverCertLocalPath",
+        "serverKey",
+        "serverKeyLocalPath",
+        "signerPrivateKey",
+        "signerPublicKey"
       ],
       "type" : "object"
     },
@@ -8466,6 +8493,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8691,7 +8719,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -9267,6 +9296,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9492,7 +9522,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -10782,6 +10813,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11007,7 +11039,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -11512,6 +11545,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11737,7 +11771,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -12896,6 +12931,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "config" : {
           "$ref" : "#/definitions/Config",
           "description" : "Node agent configuration",
@@ -13106,6 +13147,12 @@
             "ARM64",
             "AMD64"
           ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
@@ -15749,6 +15796,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -15974,7 +16022,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -16790,6 +16839,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17015,7 +17065,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -17618,6 +17669,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17843,7 +17895,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -19138,6 +19191,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19363,7 +19417,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -19699,6 +19754,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19924,7 +19980,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -20102,6 +20159,7 @@
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
               "OperatorImportUniverse",
+              "UpgradeNodeAgent",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -20327,7 +20385,8 @@
               "DisablePitrConfig",
               "EnablePitrConfig",
               "UpdateAndPersistKubernetesImmutableYbc",
-              "OperatorImportResource"
+              "OperatorImportResource",
+              "RunUpgradeNodeAgent"
             ],
             "type" : "string"
           },
@@ -20654,6 +20713,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20879,7 +20939,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -21414,6 +21475,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21639,7 +21701,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -22507,6 +22570,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22732,7 +22796,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -23819,6 +23884,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24044,7 +24110,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -24490,6 +24557,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24715,7 +24783,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -25412,6 +25481,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25637,7 +25707,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -26047,6 +26118,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26272,7 +26344,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -26682,6 +26755,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26907,7 +26981,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -27827,6 +27902,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28052,7 +28128,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -29024,6 +29101,7 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -29249,7 +29327,8 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },

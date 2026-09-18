@@ -629,7 +629,7 @@ public class NodeUniverseManager extends DevopsBase {
       return optional;
     }
     NodeAgent nodeAgent = optional.get();
-    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid())) {
       nodeAgent.refresh();
     }
     return optional;

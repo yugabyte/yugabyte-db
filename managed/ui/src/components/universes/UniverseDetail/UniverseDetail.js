@@ -74,6 +74,7 @@ import {
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
+import { UpdateNodeAgentModal } from '../../../redesign/features/universe/universe-actions/update-node-agent/UpdateNodeAgentModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
@@ -356,6 +357,7 @@ class UniverseDetail extends Component {
       showTLSConfigurationModal,
       showRollingRestartModal,
       showInstallNodeAgentModal,
+      showUpdateNodeAgentModal,
       showUpgradeSystemdModal,
       showThirdpartyUpgradeModal,
       showRunSampleAppsModal,
@@ -1527,6 +1529,27 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       </RbacValidator>
                     )}
+                    {!isReadOnlyUniverse &&
+                      !universePaused &&
+                      !isKubernetesUniverse &&
+                      !isNodeAgentMissing && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.UPGRADE_NODE_AGENT
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isInstallNodeAgentDisabled}
+                            onClick={showUpdateNodeAgentModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-refresh">
+                              Update Node Agent Certificate
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
                     {!universePaused && (
                       <RbacValidator
                         isControl
@@ -1834,6 +1857,19 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
           isUniverseAction={true}
           isReinstall={!isNodeAgentMissing}
+        />
+
+        <UpdateNodeAgentModal
+          modalProps={{
+            open: showModal && visibleModal === 'updateNodeAgentModal',
+            onClose: () => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }
+          }}
+          universeUuid={currentUniverse.data.universeUUID}
+          isUniverseAction={true}
         />
 
         <UniverseSupportBundleModal

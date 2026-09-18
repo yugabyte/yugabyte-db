@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.models.NodeAgent;
@@ -124,7 +123,6 @@ import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -215,7 +213,7 @@ public class NodeAgentClient {
 
   @Builder
   public static class NodeAgentUpgradeParam {
-    @NonNull private String certDir;
+    @Nullable private String certDir;
     @Nullable private Path packagePath;
   }
 
@@ -650,7 +648,7 @@ public class NodeAgentClient {
   }
 
   public static String getNodeAgentJWT(NodeAgent nodeAgent, Duration tokenLifetime) {
-    PrivateKey privateKey = nodeAgent.getPrivateKey();
+    PrivateKey privateKey = nodeAgent.getSignerPrivateKey();
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
@@ -721,17 +719,6 @@ public class NodeAgentClient {
   /* Passing universe allows more specific check for the universe. */
   public boolean isClientEnabled(Provider provider, @Nullable Universe universe) {
     return nodeAgentEnablerProvider.get().isNodeAgentClientEnabled(provider, universe);
-  }
-
-  public boolean isAnsibleOffloadingEnabled(
-      NodeAgent nodeAgent, Provider provider, @Nullable Universe universe) {
-    if (!isClientEnabled(provider, universe)) {
-      return false;
-    }
-    if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)) {
-      return false;
-    }
-    return nodeAgent.getConfig().isOffloadable();
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {
@@ -991,7 +978,10 @@ public class NodeAgentClient {
   public void startUpgrade(NodeAgent nodeAgent, NodeAgentUpgradeParam param) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
-    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder().setCertDir(param.certDir);
+    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder();
+    if (StringUtils.isNotBlank(param.certDir)) {
+      builder.setCertDir(param.certDir);
+    }
     if (param.packagePath != null) {
       builder.setPackagePath(param.packagePath.toString());
     }

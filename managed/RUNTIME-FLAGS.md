@@ -61,6 +61,7 @@
 | "Show Hyperdisk storage types" | "yb.gcp.show_hyperdisks_storage_type" | "PROVIDER" | "Show Hyperdisk storage types during create/edit universe flow." | "Boolean" |
 | "Configure Clockbound when using cloud providers" | "yb.provider.configure_clockbound_cloud_provisioning" | "PROVIDER" | "Configure clockbound when creating cloud provider based Universes" | "Boolean" |
 | "GCP Connection Draining Timeout" | "yb.gcp.operations.connection_draining_timeout" | "PROVIDER" | "Set the connection draining timeout for the GCP load balancer." | "Duration" |
+| "Use Universe Certificates in Node Agent Installation" | "yb.node_agent.use_universe_certificates_on_install" | "PROVIDER" | "Use universe certificates in new node agent installation instead of the default certificates. Existing node agents will not be affected until they are reinstalled during tasks like OS Image Upgrade, Reprovisioning node etc" | "Boolean" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
