@@ -200,6 +200,23 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         log "Using disable list file: $SPARK_DISABLE_FILE"
         run_tests_extra_args+=( "--disable_list" "$SPARK_DISABLE_FILE" )
       fi
+      if [[ -n "${YB_BASELINE_BUILD_ROOT:-}" ]]; then
+        log "Will run failed tests on the baseline build at: $YB_BASELINE_BUILD_ROOT"
+        run_tests_extra_args+=( "--baseline_build_root" "$YB_BASELINE_BUILD_ROOT" )
+        run_tests_extra_args+=( "--baseline_repetitions" "${YB_BASELINE_REPETITIONS:-10}" )
+        if [[ -n "${YB_BASELINE_CSI_LAUNCH:-}" ]]; then
+          run_tests_extra_args+=( "--baseline_csi_launch" "$YB_BASELINE_CSI_LAUNCH" )
+        fi
+        if [[ -n "${YB_BASELINE_COMMIT_ID:-}" ]]; then
+          run_tests_extra_args+=( "--baseline_commit_id" "$YB_BASELINE_COMMIT_ID" )
+        fi
+        if [[ -n "${YB_BASELINE_STATUS_FILE:-}" ]]; then
+          run_tests_extra_args+=( "--baseline_status_file" "$YB_BASELINE_STATUS_FILE" )
+        fi
+        if [[ -n "${YB_BASELINE_TEST_LIST_FILE:-}" ]]; then
+          run_tests_extra_args+=( "--baseline_test_list_file" "$YB_BASELINE_TEST_LIST_FILE" )
+        fi
+      fi
       run_tests_extra_args+=( "--send_archive_to_workers" )
 
       # Workers use /private path, which caused mis-match when check is done by yb_dist_tests that

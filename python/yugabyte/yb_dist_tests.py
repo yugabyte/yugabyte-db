@@ -40,9 +40,12 @@ from yugabyte.test_descriptor import TestDescriptor
 import dataclasses
 
 
-# Name of the worker archive inside a build root. The .spark-no-extract suffix keeps Spark's
+# Names of the worker archive inside a build root. The .spark-no-extract suffix keeps Spark's
 # addFile from unpacking it for us - the untar step on the worker controls where the tree lands.
+# We use separate names to avoid conflicts when running tests on the same worker for both this
+# build and baseline build.
 ARCHIVE_FOR_WORKERS_NAME = 'archive_for_tests_on_spark.tar.gz.spark-no-extract'
+BASELINE_ARCHIVE_FOR_WORKERS_NAME = 'archive_for_tests_on_spark_baseline.tar.gz.spark-no-extract'
 
 CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC = 10
 
@@ -269,7 +272,7 @@ def validate_mvn_local_repo(mvn_local_repo: str) -> None:
         logging.info(f"All Maven plugin patterns were found in local repo {mvn_local_repo}")
 
 
-# Packs the worker archive for the build tree described by conf, including mvn_local_repo as that
+# Packs the worker archive for the tree described by conf, including mvn_local_repo as that
 # tree's Maven repository. Java tests run `mvn --offline` on the worker, so the repo has to be
 # included into the archive. Raises an error if mvn_local_repo is outside of build subdirectory.
 def create_archive_for_workers(conf: TestConfig, mvn_local_repo: str) -> None:
