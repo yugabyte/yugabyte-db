@@ -535,11 +535,16 @@ DROP INDEX r5n_r2_r3_r4_r5_r1_n_idx;
 -- Expression prefix secondary index
 --
 CREATE INDEX NONCONCURRENTLY ON r5n ((greatest(r2, r3, r4) - least(r2, r3, r4)) ASC, r2, r3, r4);
+ANALYZE r5n;
 
 -- No order
 -- Merge scan should not be used.
+-- Third hint is to use the expression index, which the first two do not choose
+-- because a sequential scan is cheaper for an unordered scan of it.
 \set query ':explain :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_expr_r2_r3_r4_idx) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
+\unset Q3
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2, r3, r4, n LIMIT 5;'
@@ -554,17 +559,14 @@ CREATE INDEX NONCONCURRENTLY ON r5n ((greatest(r2, r3, r4) - least(r2, r3, r4)) 
 \i :run_query
 
 -- Secondary index scan VS merge PK scan
--- Third hint is to use the PK index as the second hint ends up using the
--- expression index.
 \set query ':P :Q SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) = 4 ORDER BY r2, r3, r4, n LIMIT 5;'
-\set Q3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
 
 -- Merge secondary index scan VS merge PK scan
--- Third hint is to use the PK index as the second hint ends up using the
--- expression index.
+-- Third hint is to use the expression index as the second hint ends up using
+-- the PK index.
 \set query ':P :Q SELECT r2, r3, r4, n, r1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE r1 IN (1, 2, 3, 4) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (1, 2, 3, 4) ORDER BY r2, r3, r4, n LIMIT 5;'
-\set Q3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_merge_scan_streams 64)*/'
+\set Q3 '/*+IndexScan(r5n r5n_expr_r2_r3_r4_idx) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
 \unset Q3
 
@@ -576,6 +578,7 @@ DROP INDEX r5n_expr_r2_r3_r4_idx;
 -- Expressions in a secondary colocated index are useless for merge scan
 --
 CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3 DESC, (-r4));
+ANALYZE r5n;
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY r3 DESC, -r4, n LIMIT 5;'
@@ -596,6 +599,7 @@ DROP INDEX r5n_r2_r3_expr_idx;
 -- Duplicate columns secondary index
 --
 CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2, r5);
+ANALYZE r5n;
 
 -- No order
 -- Merge scan should not be used.
