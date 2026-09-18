@@ -62,6 +62,7 @@ class WaitQueue;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
+struct UniqueIndexVerificationResult;
 struct ApplyTransactionState;
 struct DocDB;
 struct DocReadContext;
