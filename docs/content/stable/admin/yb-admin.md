@@ -820,10 +820,10 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables).
-* *read-ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time; pass `0` to keep the default when supplying later positional arguments. Use the same value on both clusters when comparing hashes.
-* *start-key-hex* (optional): Inclusive lower bound of the key range to hash, hex-encoded. Use a tablet's `partition_key_start_hex` from the JSON output of [list_tablets](#list-tablets), or a `Next key` returned by an earlier capped scan. Pass an empty string (`""`) for no lower bound.
-* *end-key-hex* (optional): Exclusive upper bound of the key range, hex-encoded. Use a tablet's `partition_key_end_hex` from the JSON output of `list_tablets`; it is already exclusive, so pass it through unchanged. Pass an empty string (`""`) for no upper bound. If you use an inclusive `hash_split` end from the text output, add 1; use an empty bound for the last tablet's `0xffff` end.
-* *max-rows* (optional, default `0`): Maximum number of rows to hash. `0` means unlimited.
+* *read-ht*: Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time; pass `0` to keep the default when supplying later positional arguments. Use the same value on both clusters when comparing hashes.
+* *start-key-hex*: Inclusive lower bound of the key range to hash, hex-encoded. Use a tablet's `partition_key_start_hex` from the JSON output of [list_tablets](#list-tablets), or a `Next key` returned by an earlier capped scan. Pass an empty string (`""`) for no lower bound.
+* *end-key-hex*: Exclusive upper bound of the key range, hex-encoded. Use a tablet's `partition_key_end_hex` from the JSON output of `list_tablets`; it is already exclusive, so pass it through unchanged. Pass an empty string (`""`) for no upper bound. If you use an inclusive `hash_split` end from the text output, add 1; use an empty bound for the last tablet's `0xffff` end.
+* *max-rows*: Maximum number of rows to hash. Default is `0`; `0` means unlimited.
 
 **Notes**
 
@@ -835,7 +835,7 @@ yb-admin \
 * Every page must use the same explicitly supplied *read-ht*. The pretty `Read HT` output is not the integer accepted by *read-ht* and is not a value to convert. If *read-ht* is `0`, each invocation chooses a new snapshot.
 * A read time remains available only within `timestamp_history_retention_interval_sec` (default 15 minutes). The history cutoff is pinned separately by each tablet RPC, so any multi-tablet or paged scan can fail with `Snapshot too old` after the read time ages out. Raise the retention interval for the scan, or hash independent sub-ranges at separately chosen times.
 * YB-TServers that predate *max-rows* ignore it. The client can still emit a `Next key` at a later tablet boundary, but that encoded continuation may be rejected by an old server on the next call. A `Total row count` greater than *max-rows* is the reliable signal that the cap was ignored; do not continue paging that scan.
-* `Hash scheme version` identifies the algorithm that produced the hash. **Two hashes are comparable only when their scheme versions are equal**, because under different schemes identical data hashes to unrelated values. Check it before comparing across clusters or an upgrade. A YB-TServer too old to report a version shows `0`. If the tablets of one table report different versions, as happens mid-upgrade, the command fails rather than combine them; re-run once every YB-TServer is on the same version.
+* `Hash scheme version` identifies the algorithm that produced the hash. _Two hashes are comparable only when their scheme versions are equal_, because under different schemes identical data hashes to unrelated values. Check it before comparing across clusters or an upgrade. A YB-TServer too old to report a version shows `0`. If the tablets of one table report different versions, as happens mid-upgrade, the command fails rather than combine them; re-run once every YB-TServer is on the same version.
 
 **Example: Hash a full table**
 
@@ -2882,11 +2882,12 @@ yb-admin \
     [<end-key-hex>] [<max-rows>]
 ```
 
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default is `localhost:7100`.
 * *source-table-id*, *target-table-id*: UUIDs of the two tables to compare, obtained from [list_tables](#list-tables) on each universe.
 * *source-master-addresses*: Comma-separated list of source YB-Master hosts and ports.
-* *read-ht* (optional): Positive hybrid timestamp to read both sides at. Omit it to use the target's xCluster safe time.
-* *start-key-hex*, *end-key-hex* (optional): Key range to compare, in the same form as [get_table_hash](#get-table-hash). Omit both to compare the whole table.
-* *max-rows* (optional, default `0`): Maximum source rows in the slice. The target is hashed through the same exclusive end. `0` means unlimited.
+* *read-ht*: Positive hybrid timestamp to read both sides at. Omit it to use the target's xCluster safe time.
+* *start-key-hex*, *end-key-hex*: Key range to compare, in the same form as [get_table_hash](#get-table-hash). Omit both to compare the whole table.
+* *max-rows*: Maximum source rows in the slice. The target is hashed through the same exclusive end. Default is `0`; `0` means unlimited.
 
 **Read time**
 
@@ -2968,13 +2969,16 @@ yb-admin \
     [<max-concurrent-ranges>] [<skip-source-table-ids>]
 ```
 
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default is `localhost:7100`.
+* *replication-group-id*: The replication group identifier.
+
 **How the work is divided**
 
 Each table is split into key ranges taken from the source's tablet boundaries, and each range is verified independently. A range is key values, not a reference to a tablet, so it means the same thing on both universes even when the target is split differently.
 
-* *max-rows* (optional, default `0`) caps one slice. `0` hashes each range in one slice.
-* *max-concurrent-ranges* (optional, default `1`) sets how many ranges are verified at once. Values below 1 are rejected.
-* *skip-source-table-ids* (optional) is a comma-separated list of source table IDs not to verify. Skips and IDs that match no table are reported on stderr. Skipping every table in the group is an error, because nothing would be verified.
+* *max-rows* caps one slice. Default is `0`; `0` hashes each range in one slice.
+* *max-concurrent-ranges* sets how many ranges are verified at once. Default is `1`. Values below 1 are rejected.
+* *skip-source-table-ids* is a comma-separated list of source table IDs not to verify. Skips and IDs that match no table are reported on stderr. Skipping every table in the group is an error, because nothing would be verified.
 
 Slices within one range are sequential because each starts where the last stopped. Ranges can finish in any order when *max-concurrent-ranges* is greater than 1.
 
