@@ -460,7 +460,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<int64> GetChangeRecordCount(
       const xrepl::StreamId& stream_id, const YBTableName& table,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+      std::map<TabletId, CDCSDKCheckpointPB>& tablet_to_checkpoint,
       const int64 expected_total_records, bool explicit_checkpointing_enabled = false,
       std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records = {});
 

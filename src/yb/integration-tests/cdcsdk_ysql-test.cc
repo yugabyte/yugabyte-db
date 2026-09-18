@@ -12180,6 +12180,13 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
   LOG(INFO) << "Got " << received_records << " insert records";
   ASSERT_EQ(expected_records_size, received_records);
 
+  // GetChangeRecordCount returns as soon as it has seen every record, so the batch it fetched last
+  // is never acknowledged. Acknowledge the position it stopped at: intent SST files are released
+  // only once the barrier has moved past the segments holding those intents.
+  CDCSDKCheckpointPB ack_checkpoint = tablet_to_checkpoint[tablet_id];
+  ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &ack_checkpoint, &ack_checkpoint));
+
   // Wait for UpdatePeersAndMetrics to move the checkpoint & min_start_ht for CDC unstreamed txns.
   SleepFor(
       MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
