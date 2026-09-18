@@ -39,6 +39,7 @@ DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 DECLARE_bool(TEST_fatal_on_transaction_status_request_failure);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -346,8 +347,11 @@ class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
     GeoTransactionsTest::SetUp();
   }
 };
@@ -1065,6 +1069,10 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    // The in-txn-block write fastpath requires transactional DDL, so keep the two flags
+    // consistent.
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;

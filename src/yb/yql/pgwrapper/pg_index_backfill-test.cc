@@ -99,9 +99,12 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
         Format("--enable_object_locking_for_table_locks=$0", enable_table_locks));
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", enable_table_locks));
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_enable_ddl_savepoint_support=$0", enable_table_locks));
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0", enable_table_locks));
     // Concurrent DDL requires object locking, so when object locking is disabled, disable
     // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
     // on. When object locking is enabled, leave concurrent DDL at its default.
@@ -4312,6 +4315,8 @@ void DisableConcurrentDDL(ExternalMiniClusterOptions* opts) {
   AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
   opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+  opts->extra_tserver_flags.emplace_back(
+      "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
   opts->extra_tserver_flags.emplace_back(
       "--yb_fail_catalog_write_on_catalog_version_mismatch=true");
   opts->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");

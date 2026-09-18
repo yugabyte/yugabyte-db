@@ -29,6 +29,7 @@ public class TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking extends BasePgRegr
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
     // DDL savepoint requires transactional DDL to be enabled.
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
+    flagMap.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "false");
     flagMap.put("enable_object_locking_for_table_locks", "false");
     flagMap.put("ysql_enable_concurrent_ddl", "false");
     // ysql_enable_concurrent_ddl is a preview flag that now defaults to true, so overriding it
@@ -49,6 +50,7 @@ public class TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking extends BasePgRegr
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
     // DDL savepoint requires transactional DDL to be enabled.
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
+    flagMap.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "false");
     flagMap.put("enable_object_locking_for_table_locks", "false");
     flagMap.put("ysql_enable_concurrent_ddl", "false");
     // ysql_enable_concurrent_ddl is a preview flag that now defaults to true, so overriding it

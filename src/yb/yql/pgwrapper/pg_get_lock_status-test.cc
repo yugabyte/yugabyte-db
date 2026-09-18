@@ -47,6 +47,7 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_bool(TEST_pause_get_lock_status);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 
 using namespace std::literals;
 using std::string;
@@ -1002,8 +1003,11 @@ class PgGetLockStatusTestDisableObjectLocks : public PgLocksTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
     PgLocksTestBase::SetUp();
   }
 };

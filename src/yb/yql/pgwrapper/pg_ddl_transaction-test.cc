@@ -96,8 +96,6 @@ class PgDdlTransactionTest : public LibPqTestBase {
     opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
     opts->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
-    opts->extra_tserver_flags.push_back(
         Format("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0",
                (RandomUniformBool() ? "true" : "false")));
   }
@@ -1074,9 +1072,14 @@ class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
         "--ysql_yb_ddl_transaction_block_enabled=false");
     options->extra_tserver_flags.push_back(
         "--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=false"));
     options->extra_master_flags.push_back(

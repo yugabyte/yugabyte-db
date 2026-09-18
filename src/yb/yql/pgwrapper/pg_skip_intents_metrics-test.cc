@@ -48,8 +48,6 @@ class SkipIntentsMetricTest : public pgwrapper::LibPqTestBase {
 
     options->extra_tserver_flags.emplace_back(
         "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=true");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
 
     // Set a high max batch size to ensure metric tests stay reliable.
     // If the batch size is too low, inserting rows into a single table might
@@ -1196,6 +1194,7 @@ class SkipIntentsAutonomousDdlTest : public SkipIntentsMetricTest {
       flags->emplace_back("--ysql_enable_concurrent_ddl=false");
       flags->emplace_back("--enable_object_locking_for_table_locks=false");
       flags->emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+      flags->emplace_back("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
       // ysql_enable_concurrent_ddl is a preview flag, and in a release build false is not its
       // default, so turning it off has to be acknowledged like any other preview change.
       AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
@@ -1741,11 +1740,11 @@ class SkipIntentsNoDdlTxnBlockTest : public SkipIntentsMetricTest {
       flags->emplace_back("--enable_object_locking_for_table_locks=false");
       flags->emplace_back("--ysql_enable_concurrent_ddl=false");
       AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      // ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks also requires transactional DDL;
+      // leaving it at the base class value of true, or at its release-build default of true,
+      // would fail flag validation at startup.
+      flags->emplace_back("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     }
-    // ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks also requires transactional DDL;
-    // leaving the base class value of true would fail flag validation at startup.
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
   }
 };
 
