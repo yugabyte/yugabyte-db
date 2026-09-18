@@ -14,12 +14,12 @@ type: docs
 
 Starting in YugabyteDB Anywhere v2026.1.2.0, you can re-run node provisioning on an existing universe so OS-level settings match what the current YugabyteDB Anywhere expects. For universes still on [legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/), the action also migrates the nodes to use [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/), including [node agent](/stable/faq/yugabyte-platform/#what-is-a-node-agent) and user-level systemd.
 
-Your data is preserved. Only the OS and agent layers are reprovisioned; database software and data volumes remain untouched.
+Your data is preserved. Only the OS and node agent layers are reprovisioned; database software and data volumes remain untouched.
 
 The action applies the following OS settings:
 
 - Process and open-file limits (`nofile`, `nproc`)
-- Transparent hugepages (THP)
+- [Transparent hugepages](../../../deploy/manual-deployment/system-config/#enable-transparent-hugepages) (THP)
 - Clock synchronization (chrony / ClockBound)
 - Kernel/sysctl values (for example, `vm.swappiness`, `vm.max_map_count`, core dump pattern)
 
