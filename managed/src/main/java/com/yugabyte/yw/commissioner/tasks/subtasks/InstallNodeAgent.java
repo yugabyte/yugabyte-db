@@ -192,8 +192,11 @@ public class InstallNodeAgent extends NodeTaskBase {
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
               if (f.getCopyType() == CopyType.UPLOAD) {
                 log.info(
-                    "Uploading {} to {} with perm %s on node agent {}",
-                    f.getSourcePath(), f.getTargetPath(), filePerm, nodeAgent.getUuid());
+                    "Uploading {} to {} with perm {} on node agent {}",
+                    f.getSourcePath(),
+                    f.getTargetPath(),
+                    filePerm,
+                    nodeAgent.getUuid());
                 nodeUniverseManager.uploadFileToNode(
                     node,
                     universe,
