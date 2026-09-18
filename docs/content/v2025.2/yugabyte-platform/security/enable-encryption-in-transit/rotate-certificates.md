@@ -134,3 +134,20 @@ To rotate root certificates for a universe, do the following:
     - If available, using a hot certificate reload with no restart (**Apply all changes which do not require a restart immediately**).
 
 1. Click **Apply**.
+
+### Rotate node agent certificates
+
+By default, node agents use [automatically generated certificates](../auto-certificate/) to encrypt communication with YugabyteDB Anywhere.
+
+If you need to use custom certificates with node agents, do the following:
+
+1. Add your certificates to YugabyteDB Anywhere. Node agent supports [self-signed](../add-certificate-self/) and [CA-signed](../add-certificate-ca/) certificates.
+1. Set the **Use Universe Certificates in Node Agent Installation** Provider Runtime Configuration option (config key `yb.node_agent.use_universe_certificates_on_install`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/).
+1. For on-premises providers, set the `certificate_name` option in the provisioning script configuration file to the name of the certificate as entered for Step 1. Refer to [Automatically provision database nodes for on-premises providers](../../../prepare/server-nodes-software/software-on-prem/#modify-the-configuration-file).
+
+For existing universes, to update universe nodes to use the certificate, do the following:
+
+1. Navigate to your universe and select **Actions > More > Update Node Agent Certificate**.
+1. Choose whether to update all nodes or a selected node.
+1. Choose **Use custom certificate** and select the certificate.
+1. Click **Update Node Agent Certificate**.
