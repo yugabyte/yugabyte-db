@@ -48,8 +48,10 @@
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/scheduler.h"
 
 #include "yb/tablet/tablet_error.h"
 #include "yb/tserver/tserver_error.h"
@@ -86,6 +88,13 @@ DEFINE_RUNTIME_bool(collect_update_consensus_traces, false,
     "If true, collected traces from followers for UpdateConsensus "
     "running on a different server. ");
 TAG_FLAG(collect_update_consensus_traces, advanced);
+
+DEFINE_RUNTIME_int32(consensus_commit_index_propagation_delay_ms, 2,
+    "How long the leader waits before sending a follower an UpdateConsensus request that carries "
+    "no operations and only advances the follower's committed OpId. Waiting lets an operation "
+    "appended in the meantime carry the committed OpId instead, which keeps that operation from "
+    "queueing behind a round trip it does not need. Set to 0 to send such requests immediately.");
+TAG_FLAG(consensus_commit_index_propagation_delay_ms, advanced);
 
 DECLARE_int32(raft_heartbeat_interval_ms);
 
@@ -269,8 +278,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     return;
   }
 
-  int64_t commit_index_before = update_request_ && update_request_->has_committed_op_id() ?
-      update_request_->committed_op_id().index() : kMinimumOpIdIndex;
+  const int64_t commit_index_before = last_sent_committed_index_;
 
   arena_.Reset(ResetMode::kKeepFirst);
   update_request_ = arena_.NewObject<LWConsensusRequestPB>(&arena_);
@@ -380,6 +388,29 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     return;
   }
 
+  // A request with no operations that only advances the follower's committed OpId still holds this
+  // peer's single in-flight UpdateConsensus slot for a whole round trip, and an operation appended
+  // while it is in flight cannot be sent until it completes. That costs a client writing back to
+  // back against an otherwise idle tablet two round trips per write instead of one. Since every
+  // request carries committed_op_id anyway, wait a little: an operation arriving within the delay
+  // propagates the committed OpId for free, and if none arrives the deferred signal sends the
+  // request. Each committed OpId is deferred at most once, so propagation is delayed by at most
+  // one interval.
+  const bool req_is_commit_index_only =
+      update_request_->ops().empty() && commit_index_after > commit_index_before;
+  const auto commit_index_propagation_delay_ms = FLAGS_consensus_commit_index_propagation_delay_ms;
+  if (req_is_commit_index_only && last_exchange_successful &&
+      commit_index_propagation_delay_ms > 0 && commit_index_after != deferred_commit_index_) {
+    VLOG_WITH_PREFIX(2) << "Deferring propagation of committed OpId index " << commit_index_after
+                        << " by " << commit_index_propagation_delay_ms << "ms";
+    deferred_commit_index_ = commit_index_after;
+    queue_->RequestWasNotSent(peer_pb_.permanent_uuid());
+    processing_lock.unlock();
+    performing_update_lock.unlock();
+    ScheduleDeferredCommitIndexPropagation(commit_index_propagation_delay_ms * 1ms);
+    return;
+  }
+
   // If we're actually sending ops there's no need to heartbeat for a while, reset the heartbeater.
   if (!req_is_heartbeat) {
     heartbeater_->Snooze();
@@ -401,6 +432,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     // TODO(lw_uc) support multiraft heartbeat with LW
     update_request_->ToGoogleProtobuf(&heartbeat_request_);
     update_response_->ToGoogleProtobuf(&heartbeat_response_);
+    last_sent_committed_index_ = commit_index_after;
     cur_heartbeat_id_++;
     processing_lock.unlock();
     performing_update_lock.unlock();
@@ -423,12 +455,33 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // and this new request in the same order they were received by the remote peer.
   // TODO: Remove batched but unsent heartbeats (in the respective MultiRaftBatcher) in this case
   minimum_viable_heartbeat_ = cur_heartbeat_id_ + 1;
+  last_sent_committed_index_ = commit_index_after;
   processing_lock.unlock();
   performing_update_lock.release();
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
   proxy_->UpdateAsync(update_request_, trigger_mode, update_response_, &controller_,
                       std::bind(&Peer::ProcessResponse, retain_self, trace));
+}
+
+void Peer::ScheduleDeferredCommitIndexPropagation(std::chrono::milliseconds delay) {
+  std::weak_ptr<Peer> weak_peer = shared_from_this();
+  messenger_->scheduler().Schedule([weak_peer](const Status& status) {
+    if (!status.ok()) {
+      return;
+    }
+    auto peer = weak_peer.lock();
+    if (!peer) {
+      return;
+    }
+    // kNonEmptyOnly: if an operation has carried the committed OpId to the follower by now this
+    // request has become a heartbeat, and is dropped rather than costing an extra round trip.
+    auto signal_status = peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+    if (!signal_status.ok()) {
+      VLOG(1) << peer->LogPrefix() << "Deferred committed OpId propagation not sent: "
+              << signal_status;
+    }
+  }, delay);
 }
 
 std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
