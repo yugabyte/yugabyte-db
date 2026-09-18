@@ -19,7 +19,7 @@ YugabyteDB Anywhere provides the following built-in [roles for user accounts](..
 
 The first step after installing YugabyteDB Anywhere is to create your Super Admin account. You can subsequently use this account to create additional users and roles, configure your YugabyteDB Anywhere instance, and manage your user profile.
 
-A YugabyteDB Anywhere installation has one Super Admin user created during registration. You can provision additional Super Admin users through [LDAP](../../administer-yugabyte-platform/ldap-authentication/#assign-superadmin-via-group-mapping) or [OIDC](../../administer-yugabyte-platform/oidc-authentication/#assign-superadmin-via-group-mapping) group mapping when enabled.
+A YugabyteDB Anywhere installation has one Super Admin user created during registration. You can provision additional Super Admin users through [LDAP](../../administer-yugabyte-platform/ldap-authentication/#assign-superadmin-via-group-mapping) or [OIDC](../../administer-yugabyte-platform/oidc-authentication/#assign-superadmin-via-group-mapping) group mapping (when enabled).
 
 ## Create admin account
 
@@ -48,7 +48,7 @@ Sign in to YugabyteDB Anywhere using your new credentials.
 
 ## Recover Super Admin access
 
-If all local users are removed and LDAP or OIDC is unavailable, YugabyteDB Anywhere can become inaccessible. To restore access, create a local Super Admin directly in the YugabyteDB Anywhere database using `add_superadmin_user.py`.
+If all local users are removed and LDAP or OIDC is unavailable, YugabyteDB Anywhere can become inaccessible. To restore access, create a local Super Admin directly in the YugabyteDB Anywhere database using `add_superadmin_user.py`, as follows:
 
 1. Log in to the YugabyteDB Anywhere host and go to `yb_devops_home`.
 1. Run the script with `py_wrapper`, providing an email, password, and install type. For example:
