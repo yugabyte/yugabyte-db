@@ -1,7 +1,7 @@
 --
 -- See yb_merge_scan_schedule for details about the test.  Tests merge scan
 -- when the value type does not match the column type: a cross type SAOP
--- (issue #32841).
+-- (issue #32841) and a cross type equality (issue #33450).
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
@@ -22,3 +22,47 @@ SELECT $$'{1.5,2.5}'::float8[]$$ AS "R2" \gset
 SET yb_enable_advanced_index_cond_fold = off;
 \i :run_query
 RESET yb_enable_advanced_index_cond_fold;
+
+-- Same as above but for cross type equality.
+-- TODO(#33450): the planner should pick a plan that does not throw an error.
+SELECT $$'2.5'::real$$ AS "R1" \gset
+SELECT $$'2.5'::float8$$ AS "R2" \gset
+CREATE INDEX NONCONCURRENTLY num_tbl_i2_f4_id_idx ON num_tbl (i2 ASC, f4 ASC, id ASC);
+\set Q1 '/*+IndexScan(num_tbl num_tbl_i2_f4_id_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(num_tbl num_tbl_i2_f4_id_idx) Set(yb_max_merge_scan_streams 64)*/'
+
+\set query ':P :Q SELECT f4, id, i2, x FROM num_tbl WHERE i2 IN (1, 2) AND f4 = :R ORDER BY id LIMIT 10;'
+\i :run_query
+
+-- test yb_enable_advanced_index_cond_fold flag off
+SET yb_enable_advanced_index_cond_fold = off;
+\i :run_query
+RESET yb_enable_advanced_index_cond_fold;
+DROP INDEX num_tbl_i2_f4_id_idx;
+
+-- Same but with the cross type equality as a HASH column.
+CREATE INDEX NONCONCURRENTLY num_tbl_f4_hash_idx ON num_tbl (f4 HASH, i2 ASC, id ASC);
+\set Q1 '/*+IndexScan(num_tbl num_tbl_f4_hash_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(num_tbl num_tbl_f4_hash_idx) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+DROP INDEX num_tbl_f4_hash_idx;
+
+-- A duplicate index column: f4 = :R becomes an index condition on the first
+-- f4 only, and the second f4 holds the same value in every index row.  The
+-- second f4 should not be declared a stream key, so R1 stays clean while R2
+-- still errors on the first.
+CREATE INDEX NONCONCURRENTLY num_tbl_dup_idx ON num_tbl (i2 ASC, f4 ASC, f4 ASC, id ASC);
+\set Q1 '/*+IndexScan(num_tbl num_tbl_dup_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(num_tbl num_tbl_dup_idx) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+DROP INDEX num_tbl_dup_idx;
+
+-- A partial index whose predicate implies the equality: the planner drops
+-- f4 = :R from the index conditions, and every index row carries the
+-- constant anyway, so f4 should not be declared a stream key.  Neither R
+-- errors.
+CREATE INDEX NONCONCURRENTLY num_tbl_part_idx ON num_tbl (i2 ASC, f4 ASC, id ASC) WHERE f4 = '2.5'::real;
+\set Q1 '/*+IndexScan(num_tbl num_tbl_part_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(num_tbl num_tbl_part_idx) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+DROP INDEX num_tbl_part_idx;

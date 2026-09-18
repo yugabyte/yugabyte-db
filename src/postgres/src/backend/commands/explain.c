@@ -6797,7 +6797,13 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 									 es->ybMaskConstants);
 
 		stream_keys = lappend(stream_keys, exprstr);
-		stream_conds = lappend(stream_conds, item->clause);
+		/*
+		 * clause is the SAOP of a SAOP column, the equality index condition of
+		 * an equality column, or NULL for an equality column the plan has no
+		 * such condition for, which ybValidateMergeScanBinds should error on.
+		 */
+		if (item->clause)
+			stream_conds = lappend(stream_conds, item->clause);
 		num_streams *= item->num_elems;
 	}
 

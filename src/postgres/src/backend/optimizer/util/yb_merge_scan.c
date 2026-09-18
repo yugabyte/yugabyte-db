@@ -31,6 +31,7 @@
 #include "catalog/pg_type_d.h"
 #include "common/int.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "optimizer/paths.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/yb_merge_scan.h"
@@ -334,7 +335,11 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 	if (IsA(expr, RelabelType))
 		expr = ((RelabelType *) expr)->arg;
 
-	/* If same expr already used in stream_cols, then redundant */
+	/*
+	 * If same expr already used in stream_cols, then redundant.  Every entry
+	 * here carries a SAOP: the single-value equality entries are appended
+	 * after the pathkeys walk that calls this function.
+	 */
 	foreach(lc, *merge_scan_stream_cols)
 	{
 		YbMergeScanStreamColInfo *old_stream_col_info =
@@ -559,4 +564,186 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 	*p_sortOperators = sortOperators;
 	*p_collations = collations;
 	*p_nullsFirst = nullsFirst;
+}
+
+/*
+ * Whether the operator clause is an equality, per the index column's
+ * opfamily, between the given index column expression and anything else.
+ */
+static bool
+ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *expr,
+					   Expr *clause)
+{
+	OpExpr	   *op;
+	Expr	   *lhs;
+	Expr	   *rhs;
+
+	if (!is_opclause(clause) || list_length(((OpExpr *) clause)->args) != 2)
+		return false;
+	op = (OpExpr *) clause;
+	if (get_op_opfamily_strategy(op->opno, index->opfamily[indexcol]) !=
+		BTEqualStrategyNumber)
+		return false;
+	lhs = linitial(op->args);
+	rhs = lsecond(op->args);
+	if (IsA(lhs, RelabelType))
+		lhs = ((RelabelType *) lhs)->arg;
+	if (IsA(rhs, RelabelType))
+		rhs = ((RelabelType *) rhs)->arg;
+	return equal(lhs, expr) || equal(rhs, expr);
+}
+
+/*
+ * The first equality index clause on the column, or NULL if there is none.
+ * match_clause_to_indexcol commutes a clause whose index key is on the right,
+ * so the index key is on the left here, as in the fixed index condition.
+ */
+static Expr *
+ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
+{
+	ListCell   *lc;
+
+	foreach(lc, indexclauses)
+	{
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		ListCell   *lc2;
+
+		if (iclause->indexcol != indexcol)
+			continue;
+		foreach(lc2, iclause->indexquals)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
+			Oid			opno;
+
+			if (!is_opclause(rinfo->clause))
+				continue;
+			opno = ((OpExpr *) rinfo->clause)->opno;
+			if (get_op_opfamily_strategy(opno, index->opfamily[indexcol]) ==
+				BTEqualStrategyNumber)
+				return rinfo->clause;
+		}
+	}
+	return NULL;
+}
+
+/*
+ * Whether check_index_predicates dropped an equality on the index column from
+ * the index conditions because the partial index predicate implies it: such a
+ * clause is in the relation's baserestrictinfo but not in indrestrictinfo.
+ */
+static bool
+ybEqualityImpliedByIndexPredicate(IndexOptInfo *index, int indexcol,
+								  Expr *expr)
+{
+	ListCell   *lc;
+
+	if (index->indpred == NIL)
+		return false;
+	foreach(lc, index->rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+
+		if (list_member_ptr(index->indrestrictinfo, rinfo))
+			continue;
+		if (ybIsEqualityOnIndexCol(index, indexcol, expr, rinfo->clause))
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Prune the single-value equality stream key columns whose bind the merge
+ * order does not need, and store the equality index clause in the entries of
+ * the columns kept, so that EXPLAIN can show it.  build_index_pathkeys records
+ * every index column its walk skipped as an EquivalenceClass constant, since
+ * it cannot settle either question: the plan's last merge sort column is known
+ * only once truncate_useless_pathkeys has trimmed the pathkeys, and the plan's
+ * index clauses belong to the path.  A column at or after the last merge sort
+ * column (0-based last_sort_indexcol) does not affect the order and is
+ * dropped.  Ahead of it, normally the bind of the column's equality index
+ * condition is what keeps the column constant within each stream, but two
+ * cases leave the column without an index clause yet constant in every index
+ * row, so demanding a bind would be a false error:
+ *
+ * - A duplicate index column.  With an index on (a, b, b, c) and a query with
+ *   b = 5 ORDER BY c, the clause becomes an index condition on the first b
+ *   only, and the second b holds the same value as the first, which carries
+ *   the requirement.
+ *
+ * - A partial index whose predicate implies the equality.
+ *   check_index_predicates drops the clause from the index conditions (it is
+ *   in the relation's baserestrictinfo but not in indrestrictinfo), and every
+ *   index row satisfies the predicate.
+ *
+ * Any other column without an equality index clause stays declared, with a
+ * NULL clause, so that ybValidateMergeScanBinds reports it: a planner that
+ * relied on a condition it never produced (the class of divergence issue
+ * #32732 fixed for SAOP columns), or a future change that routes the equality
+ * to a filter running after the streams are merged (a table storage filter on
+ * a non-colocated secondary index, whose table fetch follows the index-side
+ * merge, or a local filter).  A routing to a filter inside the per-stream
+ * storage request would preserve the order and must add its case here.  SAOP
+ * entries are kept as they are.  Returns a new list.
+ */
+List *
+yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
+								List *indexclauses, int last_sort_indexcol)
+{
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, stream_cols)
+	{
+		YbMergeScanStreamColInfo *info = lfirst_node(YbMergeScanStreamColInfo,
+													 lc);
+		Expr	   *clause;
+		Expr	   *expr;
+		bool		dup = false;
+		int			i;
+
+		/* A SAOP column: keep the entry as it is. */
+		if (info->clause)
+		{
+			result = lappend(result, info);
+			continue;
+		}
+
+		/* At or after the last merge sort column: not needed for order. */
+		if (info->indexcol >= last_sort_indexcol)
+			continue;
+
+		clause = ybEqualityIndexClause(index, indexclauses, info->indexcol);
+		if (clause)
+		{
+			/*
+			 * Give the plan its own entry rather than filling in the path's,
+			 * which stays free of plan state and can be planned again.
+			 */
+			YbMergeScanStreamColInfo *plan_info =
+				makeNode(YbMergeScanStreamColInfo);
+
+			*plan_info = *info;
+			plan_info->clause = clause;
+			result = lappend(result, plan_info);
+			continue;
+		}
+
+		expr = ((TargetEntry *) list_nth(index->indextlist,
+										 info->indexcol))->expr;
+		for (i = 0; i < info->indexcol; i++)
+		{
+			if (equal(expr,
+					  ((TargetEntry *) list_nth(index->indextlist, i))->expr))
+			{
+				dup = true;
+				break;
+			}
+		}
+		if (dup || ybEqualityImpliedByIndexPredicate(index, info->indexcol,
+													 expr))
+			continue;
+
+		result = lappend(result, info);
+	}
+	return result;
 }

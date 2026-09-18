@@ -600,6 +600,7 @@ build_index_pathkeys(PlannerInfo *root,
 	int			yb_distinct_prefixlen;
 	int			yb_merge_scan_cardinality = 1;
 	PathKey	   *yb_pathkey = NULL;
+	List	   *yb_const_cols = NIL;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -706,6 +707,10 @@ build_index_pathkeys(PlannerInfo *root,
 			 */
 			if (!pathkey_is_redundant(cpathkey, retval))
 				retval = lappend(retval, cpathkey);
+			/* YB: Collect const cols for merge scan logic below. */
+			else if (yb_merge_scan_stream_cols &&
+					 EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass))
+				yb_const_cols = lappend_int(yb_const_cols, i);
 		}
 		else
 		{
@@ -738,6 +743,56 @@ build_index_pathkeys(PlannerInfo *root,
 		/* YB: For later use in creating a UpperUniquePath node. */
 		if (i == yb_distinct_prefixlen)
 			*yb_distinct_nkeys = list_length(retval);
+	}
+
+	/*
+	 * YB: For merge scan, const columns ahead of the last merge sort column
+	 * are stream keys too: each stream holds them at one value, and the merge
+	 * order relies on that.  Two things are not known here:
+	 *
+	 * - The column's condition.  Unlike a SAOP column, whose SAOP
+	 *   yb_indexcol_can_merge_scan picks from the restriction clauses under
+	 *   the rules match_clause_to_indexcol applies, a const column's condition
+	 *   is one the planner derives from the EquivalenceClass and may leave out
+	 *   (a duplicate index column, a partial index predicate implying it),
+	 *   which only the path's index clauses show.
+	 * - The last merge sort column, which is known only once
+	 *   truncate_useless_pathkeys has trimmed the pathkeys built here.
+	 *
+	 * So every const column is recorded here without a clause, and
+	 * create_indexscan_plan fills in the clause or drops the entry, see
+	 * yb_prune_merge_scan_stream_cols.
+	 */
+	if (yb_merge_scan_stream_cols && *yb_merge_scan_stream_cols != NIL)
+	{
+		ListCell   *yb_col_lc;
+
+		foreach(yb_col_lc, yb_const_cols)
+		{
+			int			yb_col = lfirst_int(yb_col_lc);
+			YbMergeScanStreamColInfo *yb_const_info;
+			int			yb_pos;
+			ListCell   *yb_lc;
+
+			/* The clause is filled in by create_indexscan_plan, see above. */
+			yb_const_info = makeNode(YbMergeScanStreamColInfo);
+			yb_const_info->indexcol = yb_col;
+			yb_const_info->num_elems = 1;
+			yb_const_info->derived = false;
+
+			/* Keep the list in index column order because EXPLAIN shows it. */
+			yb_pos = 0;
+			foreach(yb_lc, *yb_merge_scan_stream_cols)
+			{
+				if (lfirst_node(YbMergeScanStreamColInfo, yb_lc)->indexcol >
+					yb_col)
+					break;
+				yb_pos++;
+			}
+			*yb_merge_scan_stream_cols =
+				list_insert_nth(*yb_merge_scan_stream_cols, yb_pos,
+								yb_const_info);
+		}
 	}
 	return retval;
 }

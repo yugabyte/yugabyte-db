@@ -1319,7 +1319,7 @@ typedef struct YbPlanInfo
 typedef struct YbMergeScanStreamColInfo
 {
 	NodeTag		type;
-	Expr	   *clause;			/* the SAOP */
+	Expr	   *clause;			/* SAOP, equality index cond, or NULL */
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
@@ -1330,6 +1330,9 @@ typedef struct YbMergeScanStreamColInfo
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
+ *
+ * 'merge_scan_stream_cols' is the ordered list of merge stream keys before
+ * pruning by yb_prune_merge_scan_stream_cols.
  */
 typedef struct YbIndexPathInfo
 {
