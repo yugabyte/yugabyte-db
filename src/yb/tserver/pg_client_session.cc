@@ -57,6 +57,8 @@
 
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/scheduler.h"
 
@@ -67,6 +69,7 @@
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
+#include "yb/tserver/pg_shared_mem_trace.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/ts_local_lock_manager.h"
@@ -76,7 +79,9 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
+#include "yb/util/coding.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
@@ -144,6 +149,10 @@ DEFINE_test_flag(bool, pause_session_lock_release, false,
 DEFINE_test_flag(bool, pause_perform_with_paging_state, false,
     "Pause Perform requests that contain a read operation with a "
     "paging state, until the flag is reset.");
+
+DEFINE_test_flag(bool, perform_async_error, false,
+    "Fail every Perform RPC when its response is sent, i.e. after the handler has already "
+    "returned success.");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
@@ -842,18 +851,21 @@ concept QueryTraitsType = requires {
   typename T::ReqPB;
   typename T::RespPB;
   { T::kMethodName } -> std::convertible_to<const char*>;
+  { T::kReqType } -> std::convertible_to<PgSharedExchangeReqType>;
 };
 
 struct PerformQueryTraits {
   using ReqPB = PgPerformRequestPB;
   using RespPB = PgPerformResponsePB;
   static constexpr const char* kMethodName = "Perform";
+  static constexpr auto kReqType = PgSharedExchangeReqType::PERFORM;
 };
 
 struct ObjectLockQueryTraits {
   using ReqPB = const PgAcquireObjectLockRequestPB;
   using RespPB = PgAcquireObjectLockResponsePB;
   static constexpr const char* kMethodName = "AcquireObjectLock";
+  static constexpr auto kReqType = PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK;
 };
 
 using ResponseSender = std::function<void()>;
@@ -1149,6 +1161,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   // 8 bytes - timeout in milliseconds.
   // next - size of serialized AshMetadataPB protobuf (say 'x').
   // next 'x' bytes - serialized AshMetadataPB protobuf.
+  // next - size of serialized TraceContextPB protobuf (say 'y').
+  // next 'y' bytes - serialized TraceContextPB protobuf.
   // remaining bytes - serialized PgPerformRequestPB protobuf.
   template <class... Args>
   Result<RequestInfo> ParseRequest(
@@ -1160,6 +1174,27 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     input += sizeof(uint64_t);
     RETURN_NOT_OK(rpc::ParseMetadataFromSharedMemory(
         &input, end - input, rpc::AnyMessagePtr(&ash_metadata_)));
+    uint32_t trace_context_size = 0;
+    input = const_cast<uint8_t*>(GetVarint32Ptr(input, end, &trace_context_size));
+    if (input == nullptr || trace_context_size > static_cast<size_t>(end - input)) {
+      return STATUS(Corruption, "Unable to parse trace context size");
+    }
+    if (trace_context_size > 0) {
+      auto trace_context = rpc::ParseTraceContext(Slice(input, trace_context_size));
+      if (trace_context.ok()) {
+        if (dist_trace::IsDistTraceEnabled()) {
+          trace_span_ = dist_trace::StartServerSpan(
+              GetSharedMemSpanName(T::kReqType), *trace_context);
+          if (trace_span_) {
+            trace_span_->SetAttribute("rpc.system", "yb_shmem");
+          }
+        }
+      } else {
+        YB_LOG_EVERY_N_SECS(WARNING, 1)
+            << "Bad trace context in shared memory request: " << trace_context.status();
+      }
+      input += trace_context_size;
+    }
     RETURN_NOT_OK(pb_util::ParseFromArray(&req_, input, end - input));
     data_.emplace(
         std::forward<Args>(args)..., session_id, req_, resp_, sidecars_,
@@ -1184,9 +1219,14 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   }
 
   const AshMetadataPB& ash_metadata() const { return ash_metadata_; }
+  const opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>& trace_span() const {
+    return trace_span_;
+  }
 
  private:
   void SendResponse() {
+    EndSharedMemSpan(
+        &trace_span_, resp_.has_status() ? StatusFromPB(resp_.status()) : Status::OK());
     auto locked_session = session_.lock();
     if (!locked_session) {
       responded_ = true;
@@ -1248,6 +1288,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   std::remove_const_t<typename T::ReqPB> req_;
   typename T::RespPB resp_;
   AshMetadataPB ash_metadata_;
+  // Started only when the request carried a valid trace context; ended by SendResponse.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> trace_span_;
   rpc::Sidecars sidecars_;
   std::weak_ptr<PgClientSession> session_;
   SharedExchange& exchange_;
@@ -1682,7 +1724,15 @@ class RpcQuery : public std::enable_shared_from_this<RpcQuery<T>> {
   }
 
  private:
-  void SendResponse() { context.RespondSuccess(); }
+  void SendResponse() {
+    if constexpr (std::is_same_v<T, PerformQueryTraits>) {
+      if (PREDICT_FALSE(FLAGS_TEST_perform_async_error)) {
+        context.RespondFailure(STATUS(InternalError, "TEST_perform_async_error"));
+        return;
+      }
+    }
+    context.RespondSuccess();
+  }
 
   QueryData<T> data_;
 };
@@ -2805,6 +2855,8 @@ class PgClientSession::Impl {
             context_.TEST_mock_service, *data, deadline))) {
       return Status::OK();
     }
+
+    dist_trace::ScopedAdoptSpan trace_scope(query.trace_span());
     return DoHandleSharedExchangeQuery(precondition_waiter, std::move(data), deadline);
   }
 

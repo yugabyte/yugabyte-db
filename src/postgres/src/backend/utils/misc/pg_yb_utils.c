@@ -1233,7 +1233,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			hex_encode((const char *) YBCGetLocalTserverUuid(), UUID_LEN, hex_uuid);
 			hex_uuid[2 * UUID_LEN] = '\0';
 
-			YBCInitDistTrace(MyProcPid, hex_uuid);
+			YBCInitDistTrace(hex_uuid);
 
 			/* Hooks that close node spans left open by a query abort. */
 			YbDistTraceInstallExecutorHooks();
@@ -1244,10 +1244,10 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 void
 YBOnPostgresBackendShutdown()
 {
-	YBCDestroyPgGate();
-
 	if (YBCIsDistTraceEnabled())
-		YBCCleanupDistTrace();
+		YBCShutdownDistTrace();
+
+	YBCDestroyPgGate();
 }
 
 void
