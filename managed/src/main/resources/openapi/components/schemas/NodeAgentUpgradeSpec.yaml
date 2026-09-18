@@ -1,0 +1,31 @@
+title: NodeAgentUpgradeSpec
+description: |
+  NodeAgentUpgradeSpec
+
+  Request payload to upgrade node agents in a universe. Part of NodeAgentUpgradeReq.
+  If node_names is omitted or empty, all live nodes in the universe are upgraded.
+type: object
+properties:
+  certificate_name:
+    description: |
+      Optional name (label) of the YBA certificate config to use for the node agent upgrade.
+      If omitted, existing certificates are used.
+    type: string
+    example: my-custom-ca
+  node_names:
+    description: |
+      Optional list of node names whose node agents should be upgraded.
+      If omitted or empty, all live nodes in the universe are upgraded.
+    type: array
+    items:
+      type: string
+    example:
+      - yb-15-universe-n1
+      - yb-15-universe-n2
+  certs_only:
+    description: |
+      If true, replace node agent certificates without upgrading the package when
+      the node agent version already matches YBA. If the version does not match,
+      a full upgrade is performed so RPC stays compatible.
+    type: boolean
+    default: false

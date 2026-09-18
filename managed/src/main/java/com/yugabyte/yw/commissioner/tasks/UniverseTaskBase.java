@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.WRITE_READ_TABLE;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -79,8 +80,10 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -115,6 +118,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -2155,7 +2159,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(
       Universe universe, Collection<NodeDetails> nodes) {
-    return createInstallNodeAgentTasks(universe, nodes, false);
+    return createInstallNodeAgentTasks(universe, nodes, false /* reinstall */);
   }
 
   public SubTaskGroup createInstallNodeAgentTasks(
@@ -2172,6 +2176,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
+    AtomicReference<CertificateInfo> certificateInfoRef = new AtomicReference<>();
     filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(
             n -> {
@@ -2184,6 +2189,36 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return Provider.getOrBadRequest(
                             UUID.fromString(cluster.userIntent.provider));
                       });
+              CertificateInfo certificateInfo = null;
+              if (confGetter.getConfForScope(
+                  provider, ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall)) {
+                certificateInfo =
+                    certificateInfoRef.updateAndGet(
+                        info -> info == null ? universe.getCertificateInfoNodeToNode() : info);
+              }
+              if (certificateInfo != null) {
+                if (provider.getCloudCode() != CloudType.onprem
+                    && certificateInfo.getCertType() == CertConfigType.CustomCertHostPath) {
+                  throw new PlatformServiceException(
+                      BAD_REQUEST,
+                      "CustomCertHostPath type certificate is only supported for onprem provider"
+                          + " for node agent installation. Disable provider runtime config "
+                          + ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()
+                          + " to not use universe certificates for node agent installation and"
+                          + " retry.");
+                }
+                if (certificateInfo.getCertType() != CertConfigType.CustomCertHostPath
+                    && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
+                  throw new PlatformServiceException(
+                      BAD_REQUEST,
+                      "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
+                          + " agent. Disable provider runtime config "
+                          + ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()
+                          + " to not use universe certificates for node agent installation and"
+                          + " retry.");
+                }
+              }
+              params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();
               params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
@@ -2207,6 +2242,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               task.initialize(params);
               subTaskGroup.addSubTask(task);
             });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates tasks to perform upgrade of node agents. Optionally, only the certs can be replaced
+   * without upgrading the node agent binary.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes in the universe.
+   * @param certificateUuid the optional certificate to be used for the node agent.
+   * @param certsOnly if true, only the certs are replaced when the node agent version already
+   *     matches YBA; otherwise a full upgrade is performed so RPC stays compatible.
+   * @return the subtask group.
+   */
+  public SubTaskGroup createRunUpgradeNodeAgentTasks(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      @Nullable UUID certificateUuid,
+      boolean certsOnly) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            RunUpgradeNodeAgent.class.getSimpleName(), SubTaskGroupType.Provisioning);
+    getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
+    for (NodeDetails node : nodes) {
+      RunUpgradeNodeAgent.Params params = new RunUpgradeNodeAgent.Params();
+      params.nodeIp = node.cloudInfo.private_ip;
+      params.certificateUuid = certificateUuid;
+      params.certsOnly = certsOnly;
+      params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
+      params.setUniverseUUID(universe.getUniverseUUID());
+      RunUpgradeNodeAgent task = createTask(RunUpgradeNodeAgent.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }

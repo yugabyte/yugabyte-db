@@ -24,6 +24,7 @@ message ServerInfo {
     bool restartNeeded = 2;
     bool offloadable = 3;
     string compressor = 4;
+    int64 certExpirySecs = 5;
 }
 
 message PingRequest {

@@ -13,10 +13,11 @@ type RegisterRequest struct {
 
 type NodeAgent struct {
 	CommonInfo
-	Uuid         string          `json:"uuid,omitempty"`
-	CustomerUuid string          `json:"customerUuid,omitempty"`
-	UpdatedAt    time.Time       `json:"updatedAt,omitempty"`
-	Config       NodeAgentConfig `json:"config,omitempty"`
+	Uuid            string          `json:"uuid,omitempty"`
+	CustomerUuid    string          `json:"customerUuid,omitempty"`
+	CertificateUuid string          `json:"certificateUuid,omitempty"`
+	UpdatedAt       time.Time       `json:"updatedAt,omitempty"`
+	Config          NodeAgentConfig `json:"config,omitempty"`
 }
 
 type RegisterResponseSuccess struct {
@@ -33,20 +34,31 @@ type ResponseMessage struct {
 	Message       string `json:"message,omitempty"`
 }
 
+// CertificateInfo is a YBA certificate config (label + uuid).
+type CertificateInfo struct {
+	Uuid  string `json:"uuid,omitempty"`
+	Label string `json:"label,omitempty"`
+}
+
 type CommonInfo struct {
-	Name     string `json:"name,omitempty"`
-	IP       string `json:"ip,omitempty"`
-	State    string `json:"state,omitempty"`
-	Version  string `json:"version,omitempty"`
-	ArchType string `json:"archType,omitempty"`
-	OSType   string `json:"osType,omitempty"`
-	Home     string `json:"home,omitempty"`
-	Port     int    `json:"port,omitempty"`
+	Name            string `json:"name,omitempty"`
+	IP              string `json:"ip,omitempty"`
+	State           string `json:"state,omitempty"`
+	Version         string `json:"version,omitempty"`
+	ArchType        string `json:"archType,omitempty"`
+	OSType          string `json:"osType,omitempty"`
+	Home            string `json:"home,omitempty"`
+	Port            int    `json:"port,omitempty"`
+	CertificateName string `json:"certificateName,omitempty"`
 }
 
 type NodeAgentConfig struct {
-	ServerCert string `json:"serverCert,omitempty"`
-	ServerKey  string `json:"serverKey,omitempty"`
+	ServerCert          string `json:"serverCert,omitempty"`
+	ServerKey           string `json:"serverKey,omitempty"`
+	ServerCertLocalPath string `json:"serverCertLocalPath,omitempty"`
+	ServerKeyLocalPath  string `json:"serverKeyLocalPath,omitempty"`
+	SignerPublicKey     string `json:"signerPublicKey,omitempty"`
+	SignerPrivateKey    string `json:"signerPrivateKey,omitempty"`
 }
 
 type Customer struct {

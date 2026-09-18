@@ -163,6 +163,9 @@ const mapDispatchToProps = (dispatch) => {
     showInstallNodeAgentModal: () => {
       dispatch(openDialog('installNodeAgentModal'));
     },
+    showUpdateNodeAgentModal: () => {
+      dispatch(openDialog('updateNodeAgentModal'));
+    },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
         if (response.error) {
