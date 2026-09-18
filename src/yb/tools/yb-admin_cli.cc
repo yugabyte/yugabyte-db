@@ -78,7 +78,7 @@
 
 DEFINE_NON_RUNTIME_string(master_addresses, "localhost:7100",
     "Comma-separated list of YB Master server addresses");
-DEFINE_NON_RUNTIME_string(init_master_addrs, "", "host:port of any yb-master in a cluster");
+DEFINE_NON_RUNTIME_string(init_master_addrs, "", "host:port of any yb-master in a universe");
 DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
@@ -898,7 +898,7 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
       commands_.begin(), commands_.end(), [](const Command& command) { return !command.hidden_; });
 
   ostringstream str;
-  str << "administer a YugabyteDB cluster from the command line." << endl
+  str << "administer a YugabyteDB universe from the command line." << endl
       << endl
       << "Usage:" << endl
       << "  " << prog_name << " [global flags] <operation> [args]" << endl
