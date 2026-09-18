@@ -1647,6 +1647,85 @@ TEST_F(SkipIntentsGucConfOrderingTest, TestGucSetBeforeDdlTransactionBlock) {
       "on");
 }
 
+// The scenario below needs two DDL transactions to run concurrently, which requires concurrent
+// DDL. That flag defaults on only in release builds, so pin it: with it off the CREATE INDEX
+// fails on a plain sys_catalog write conflict that never reaches the query layer retry logic, and
+// the error carries no reason at all.
+class SkipIntentsRetryReasonTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+  }
+};
+
+// A statement that cannot be retried for a reason of its own reports that reason even when the
+// transaction has already taken the write fastpath. This mirrors the second permutation of the
+// yb.orig.inplace_catalog_updates isolation test: the GRANT updates pg_class first, so the CREATE
+// INDEX in the other transaction fails on its own inplace catalog update, after its backfill has
+// already skipped intents.
+TEST_F(SkipIntentsRetryReasonTest, TestRetryReasonPrefersStatementOverSkippedIntents) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE retry_reason_tb (k INT, v INT)"));
+  ASSERT_OK(setup_conn.Execute(
+      "INSERT INTO retry_reason_tb SELECT i, i FROM generate_series(1, 10) AS i"));
+  ASSERT_OK(setup_conn.Execute("CREATE ROLE retry_reason_role"));
+
+  auto grant_conn = ASSERT_RESULT(Connect());
+  auto index_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(grant_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(index_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(grant_conn.Execute("GRANT DELETE ON TABLE retry_reason_tb TO retry_reason_role"));
+
+  // The index is a relation this transaction created, so its backfill takes the fastpath and sets
+  // the skipped-intents state before the catalog update conflicts.
+  auto result = index_conn.Execute(
+      "CREATE INDEX NONCONCURRENTLY retry_reason_idx ON retry_reason_tb(v)");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "could not serialize access due to concurrent update");
+  ASSERT_STR_CONTAINS(result.ToString(), "retry of CREATE INDEX has not been validated");
+}
+
+// ysql_yb_enable_new_relation_fastpath_write is the kill switch for the optimization as a whole,
+// so turning it off has to be enough on its own: the cluster comes up with
+// ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks left on, and nothing takes the
+// fastpath. Both parameters land in ysql_pg.conf and postgres assigns them in the order they
+// appear there, so the dependency check between them must not reject this pair or the postmaster
+// refuses to start.
+class SkipIntentsFastpathDisabledTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_new_relation_fastpath_write=false");
+  }
+};
+
+TEST_F(SkipIntentsFastpathDisabledTest, TestKillSwitchDisablesFastpath) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_enable_new_relation_fastpath_write")),
+      "off");
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>(
+          "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks")),
+      "on");
+
+  // The parent gates the optimization, so no write takes the fastpath whatever this GUC says.
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("CREATE TABLE parent_off_tb AS SELECT generate_series(1, 100) AS id"));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), initial_writes);
+
+  // Enabling it explicitly is still rejected, since that value comes from the user.
+  auto set_conn = ASSERT_RESULT(Connect());
+  auto result = set_conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "yb_enable_new_relation_fastpath_write is disabled");
+}
+
 // Cluster without transactional DDL, where the in-txn-block fastpath cannot apply.
 class SkipIntentsNoDdlTxnBlockTest : public SkipIntentsMetricTest {
  protected:
