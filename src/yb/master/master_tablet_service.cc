@@ -25,9 +25,12 @@
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ysql/ysql_manager.h"
 
 #include "yb/rpc/rpc_context.h"
+
+#include "yb/tserver/service_util.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -59,7 +62,12 @@ Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabl
   TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
   YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
   tserver::ReadResponseMsg* resp) {
-  // Ignore looked_up_tablet_peer.
+  if (tablet_id == kSysCatalogTabletId) {
+    return tserver::GetTablet(
+        master_->tablet_server(), tablet_id, std::move(tablet_peer), consistency_level,
+        allow_split_tablet, resp);
+  }
+  // Virtual system tablets have no tablet peer.
   return master_->catalog_manager()->GetSystemTablet(tablet_id);
 }
 
