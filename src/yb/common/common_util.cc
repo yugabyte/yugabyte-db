@@ -20,6 +20,7 @@
 #include "yb/master/master_replication.pb.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/flags.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
@@ -105,6 +106,23 @@ int GetInitialNumTabletsPerTable(YQLDatabase db_type, size_t tserver_count) {
 
 int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count) {
   return GetInitialNumTabletsPerTable(table_type == PGSQL_TABLE_TYPE, tserver_count);
+}
+
+std::optional<UniqueIndexBackfillMode> GetUniqueIndexBackfillModeTestOverride() {
+  const auto test_mode =
+      google::GetCommandLineFlagInfoOrDie("TEST_ysql_index_backfill_unique_check_mode")
+          .current_value;
+  if (test_mode.empty()) {
+    return std::nullopt;
+  }
+  if (test_mode == "skip_all") {
+    return UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL;
+  }
+  if (test_mode == "check_all") {
+    return UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+  }
+  LOG(DFATAL) << "Unknown TEST_ysql_index_backfill_unique_check_mode value: " << test_mode;
+  return std::nullopt;
 }
 
 bool YsqlDdlRollbackEnabled() {

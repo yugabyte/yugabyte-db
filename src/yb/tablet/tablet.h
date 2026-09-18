@@ -36,6 +36,7 @@
 
 #include <boost/intrusive/list.hpp>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -199,6 +200,7 @@ class Tablet : public AbstractTablet,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
+      UniqueIndexBackfillMode unique_index_backfill_mode,
       uint64_t* number_of_rows_processed,
       double* num_rows_backfilled_in_index,
       std::string* backfilled_until);
