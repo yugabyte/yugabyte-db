@@ -2574,7 +2574,30 @@ Enables concurrent replication of multiple write operations in a transaction. Wr
 
 Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
 
-##### --use_cgroups_cpu
+##### --ysql_yb_enable_new_relation_fastpath_write
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2337">}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) configuration parameter. Enables faster writes into tables that the same transaction created or rebuilt.
+
+See also the `yb_enable_new_relation_fastpath_write` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+##### --ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2337">}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write_in_txn_blocks](#yb-enable-new-relation-fastpath-write-in-txn-blocks) configuration parameter. Extends the new-table write optimization to explicit transaction blocks.
+
+This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
+See also the `yb_enable_new_relation_fastpath_write_in_txn_blocks` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
@@ -3042,31 +3065,6 @@ Default: `1024`
 Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
-
-##### --ysql_yb_enable_new_relation_fastpath_write
-
-{{% tags/wrap %}}
-{{<tags/feature/ea idea="2337">}}
-Default: `true`
-{{% /tags/wrap %}}
-
-Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) configuration parameter. Enables faster writes into tables that the same transaction created or rebuilt.
-
-See also the `yb_enable_new_relation_fastpath_write` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
-
-##### --ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks
-
-{{% tags/wrap %}}
-{{<tags/feature/tp idea="2337">}}
-{{<tags/feature/restart-needed>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write_in_txn_blocks](#yb-enable-new-relation-fastpath-write-in-txn-blocks) configuration parameter. Extends the new-table write optimization to explicit transaction blocks.
-
-This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
-
-See also the `yb_enable_new_relation_fastpath_write_in_txn_blocks` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 ##### --ysql_follower_reads_avoid_waiting_for_safe_time
 

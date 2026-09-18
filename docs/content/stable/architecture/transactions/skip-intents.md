@@ -3,6 +3,8 @@ title: Skip intents optimization
 headerTitle: Skip intents optimization
 linkTitle: Skip intents optimization
 description: How YugabyteDB skips provisional writes (intents) when loading a table created in the same transaction.
+tags:
+  feature: early-access
 menu:
   stable:
     identifier: architecture-skip-intents
