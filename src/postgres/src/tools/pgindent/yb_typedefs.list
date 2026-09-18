@@ -132,6 +132,7 @@ YbInternalConnKindDescriptor
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListedValues
 YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
