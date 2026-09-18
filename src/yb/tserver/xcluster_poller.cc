@@ -344,7 +344,7 @@ void XClusterPoller::DoPoll() {
       if (!ddl_queue_status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
                                  << ddl_queue_status.ToString();
-        StoreNOKReplicationError();
+        StoreDdlQueueReplicationError(ddl_queue_status);
         if (FLAGS_enable_xcluster_stat_collection) {
           poll_stats_history_.SetError(std::move(ddl_queue_status));
         }
@@ -627,7 +627,7 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
         YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 30, 1)
             << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " ";
       }
-      StoreNOKReplicationError();
+      StoreDdlQueueReplicationError(s);
       if (FLAGS_enable_xcluster_stat_collection) {
         poll_stats_history_.SetError(std::move(s));
       }
@@ -782,15 +782,17 @@ XClusterPollerStats XClusterPoller::GetStats() const {
   return stats;
 }
 
-void XClusterPoller::StoreReplicationError(ReplicationErrorPb error) {
+void XClusterPoller::StoreReplicationError(
+    ReplicationErrorPb error, const std::string& error_detail) {
   DCHECK_NE(error, ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED);
 
   std::lock_guard l(replication_error_mutex_);
-  if (previous_replication_error_ != error) {
+  if (previous_replication_error_ != error || previous_replication_error_detail_ != error_detail) {
     // Avoid unnecessarily storing same errors since this is used in perf critical master heartbeat
     // path.
-    xcluster_consumer_->StoreReplicationError(GetPollerId(), error);
+    xcluster_consumer_->StoreReplicationError(GetPollerId(), error, error_detail);
     previous_replication_error_ = error;
+    previous_replication_error_detail_ = error_detail;
   }
 }
 
@@ -804,6 +806,21 @@ void XClusterPoller::StoreNOKReplicationError() {
   }
 
   StoreReplicationError(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR);
+}
+
+void XClusterPoller::StoreDdlQueueReplicationError(const Status& status) {
+  DCHECK(!status.ok());
+  if (ddl_queue_handler_->IsDdlReplicationPausedDueToStuckDdl()) {
+    StoreReplicationError(
+        ReplicationErrorPb::REPLICATION_DDL_QUEUE_PAUSED,
+        status.ToString(/*include_file_and_line=*/false));
+    return;
+  }
+  // Don't report TryAgain errors as these are expected during normal operations.
+  if (status.IsTryAgain()) {
+    return;
+  }
+  StoreNOKReplicationError();
 }
 
 void XClusterPoller::ClearReplicationError() {

@@ -33,6 +33,7 @@ YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 struct TabletReplicationError {
   int64_t consumer_term = 0;
   ReplicationErrorPb error;
+  std::string error_detail;
 };
 
 // Maps Consumer TableId, Producer TabletId to an error. This is per Replication Group.

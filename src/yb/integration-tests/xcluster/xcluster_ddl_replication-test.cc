@@ -37,6 +37,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_source_manager.h"
+#include "yb/master/xcluster/xcluster_status.h"
 
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -5114,6 +5115,96 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
     }
   }
   ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
+
+  // The pause is reported to master as its own replication error, not a generic SYSTEM_ERROR, and
+  // carries the handler's error text.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto admin_out =
+            CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId);
+        if (!admin_out.ok()) {
+          return false;
+        }
+        return admin_out->find("error: REPLICATION_DDL_QUEUE_PAUSED") != std::string::npos &&
+               admin_out->find("Failed DDL operation as requested") != std::string::npos;
+      },
+      kTimeout, "Wait for master to report REPLICATION_DDL_QUEUE_PAUSED"));
+
+  // Check that the master also has the full error string.
+  auto& catalog_manager =
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
+  const auto xcluster_status =
+      ASSERT_RESULT(catalog_manager.GetXClusterManagerImpl()->GetXClusterStatus());
+  bool found_ddl_queue_status = false;
+  for (const auto& group : xcluster_status.inbound_replication_group_statuses) {
+    for (const auto& [_, table_statuses] : group.table_statuses_by_namespace) {
+      for (const auto& table : table_statuses) {
+        if (table.target_table_id == consumer_ddl_queue_table.table_id()) {
+          found_ddl_queue_status = true;
+          ASSERT_STR_CONTAINS(table.status, "DDL_QUEUE_PAUSED");
+          ASSERT_STR_CONTAINS(table.status, "Failed DDL operation as requested");
+        }
+      }
+    }
+  }
+  ASSERT_TRUE(found_ddl_queue_status) << "ddl_queue table not found in xCluster status";
+}
+
+// The ddl_queue poller waits for the other pollers to reach the apply safe time before running a
+// DDL batch. This is part of normal replication and must not surface as a replication error.
+TEST_F(XClusterDDLReplicationTest, DDLQueueWaitingForSafeTimeIsNotReplicationError) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE lagging_table (key int PRIMARY KEY)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Freeze the pollers of lagging_table so the namespace safe time stops advancing.
+  auto lagging_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "lagging_table"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(lagging_table.table_id(), 0, &tablets));
+  std::unordered_set<TabletId> lagging_tablet_ids;
+  std::string filter;
+  for (const auto& t : tablets) {
+    lagging_tablet_ids.insert(t.tablet_id());
+    filter += (filter.empty() ? "" : ",") + t.tablet_id();
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = filter;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep(lagging_tablet_ids));
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE new_table (key int PRIMARY KEY)"));
+
+  auto consumer_ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto* xcluster_consumer =
+            consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+        if (!xcluster_consumer) {
+          return false;
+        }
+        for (const auto& stat : xcluster_consumer->GetPollerStats()) {
+          if (stat.consumer_table_id == consumer_ddl_queue_table.table_id() &&
+              stat.status.IsTryAgain()) {
+            return true;
+          }
+        }
+        return false;
+      },
+      kTimeout, "Wait for ddl_queue poller to wait on the xCluster safe time"));
+
+  // Leave time for the tserver to heartbeat any stored replication error to master.
+  SleepFor(3s * kTimeMultiplier);
+  auto admin_out =
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId));
+  ASSERT_STR_NOT_CONTAINS(admin_out, "REPLICATION_SYSTEM_ERROR");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(consumer_conn_->Fetch("SELECT * FROM new_table"));
 }
 
 TEST_F(XClusterDDLReplicationTest, VectorIndexCreatedBeforeDrSetup) {
