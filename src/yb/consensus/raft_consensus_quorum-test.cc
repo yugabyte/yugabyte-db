@@ -66,6 +66,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(retryable_request_timeout_secs);
@@ -75,6 +76,7 @@ DECLARE_bool(enable_wal_sync_on_consensus_update);
 DECLARE_int32(interval_durable_wal_write_ms);
 DECLARE_int32(bytes_durable_wal_write_mb);
 DECLARE_bool(never_fsync);
+DECLARE_int32(consensus_commit_index_propagation_delay_ms);
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -1354,6 +1356,91 @@ TEST_F(RaftConsensusCatchupProbeTest, MonotonicAdvanceDisabledRestoresFreeze) {
       << obs.lrcl_after_probe2 << "; the kill switch did not restore the freeze.";
   ASSERT_LT(obs.lrcl_after_probe2, obs.probe2_preceding);
   ASSERT_EQ(obs.last_received_after_probe2, obs.conflicting_op);
+}
+
+
+// Measures what the committed-OpId propagation deferral is for, end to end through RaftConsensus
+// rather than at the Peer level: with latency injected into every UpdateConsensus request, a client
+// that writes serially pays two request delays per write while the leader propagates the committed
+// OpId immediately, and one per write once it defers. Both regimes are measured in the same run, so
+// the assertions are a ratio rather than an absolute latency.
+TEST_F(RaftConsensusQuorumTest, TestSerialWritesDoNotWaitForCommitIndexPropagation) {
+  constexpr int kNumWrites = 10;
+  // Charged to every UpdateConsensus request, standing in for the leader-to-follower network
+  // latency. Has to be well above kClientTurnaround, the way a WAN round trip is against a client
+  // that sits next to the leader.
+  const auto kRequestDelay = MonoDelta::FromMilliseconds(30 * kTimeMultiplier);
+  // Time the client takes to issue its next write once it learns the previous one committed. The
+  // deferral window has to exceed this for the next operation to subsume the propagation.
+  const auto kClientTurnaround = MonoDelta::FromMilliseconds(1);
+
+  // Heartbeats would carry the committed OpId on their own schedule and add requests that have
+  // nothing to do with the writes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 60000;
+
+  ASSERT_OK(BuildAndStartConfig(3));
+  constexpr int kLeaderIdx = 2;
+  std::vector<LocalTestPeerProxy*> leader_proxies = {
+      GetLeaderProxyToPeer(0, kLeaderIdx), GetLeaderProxyToPeer(1, kLeaderIdx) };
+
+  // Commit one operation before charging for latency, so that the leader's initial NO_OP and each
+  // peer's status-only first exchange stay out of the measurement.
+  scoped_refptr<ConsensusRound> warmup;
+  ASSERT_OK(AppendDummyMessage(kLeaderIdx, &warmup));
+  ASSERT_OK(WaitForReplicate(warmup.get()));
+
+  for (auto* proxy : leader_proxies) {
+    proxy->TEST_SetUpdateDelay(kRequestDelay);
+  }
+
+  struct Measurement {
+    MonoDelta elapsed;
+    size_t requests;
+  };
+  // Rounds have to outlive the loop: the harness keys its completion latches by ConsensusRound
+  // address and never erases them, so a freed round's address coming back around trips InsertOrDie.
+  std::vector<scoped_refptr<ConsensusRound>> rounds;
+
+  // Writes kNumWrites operations one at a time, waiting for each to commit before issuing the next,
+  // which is what a client running statements back to back does.
+  auto measure = [&]() -> Result<Measurement> {
+    size_t requests_before = 0;
+    for (auto* proxy : leader_proxies) {
+      requests_before += proxy->update_count();
+    }
+    const auto start = MonoTime::Now();
+    for (int i = 0; i < kNumWrites; i++) {
+      SleepFor(kClientTurnaround);
+      scoped_refptr<ConsensusRound> round;
+      RETURN_NOT_OK(AppendDummyMessage(kLeaderIdx, &round));
+      RETURN_NOT_OK(WaitForReplicate(round.get()));
+      rounds.push_back(round);
+    }
+    const auto elapsed = MonoTime::Now() - start;
+    size_t requests_after = 0;
+    for (auto* proxy : leader_proxies) {
+      requests_after += proxy->update_count();
+    }
+    return Measurement { .elapsed = elapsed, .requests = requests_after - requests_before };
+  };
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_commit_index_propagation_delay_ms) = 0;
+  const auto immediate = ASSERT_RESULT(measure());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_commit_index_propagation_delay_ms) =
+      5 * kTimeMultiplier;
+  const auto deferred = ASSERT_RESULT(measure());
+
+  LOG(INFO) << kNumWrites << " serial writes at " << kRequestDelay << " per request: immediate "
+            << "propagation took " << immediate.elapsed << " over " << immediate.requests
+            << " requests, deferred propagation took " << deferred.elapsed << " over "
+            << deferred.requests << " requests";
+
+  // Immediate propagation costs two requests per write per follower -- the operation, then the
+  // committed OpId right behind it -- and the second one delays the next write by a whole request
+  // delay. Deferring costs one, because the next operation carries the committed OpId itself.
+  ASSERT_LT(deferred.requests * 4, immediate.requests * 3);
+  ASSERT_LT(deferred.elapsed.ToMilliseconds() * 4, immediate.elapsed.ToMilliseconds() * 3);
 }
 
 } // namespace yb::consensus
