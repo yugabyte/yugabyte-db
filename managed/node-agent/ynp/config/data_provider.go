@@ -20,17 +20,19 @@ type ResolverDataProvider interface {
 	GetInstanceType(ctx context.Context) (*model.NodeInstanceType, error)
 	GetTmpDirectory(ctx context.Context) (string, error)
 	GetNodeAgentPort(ctx context.Context) (string, error)
+	GetCertificateName(ctx context.Context) (string, error)
 }
 
 // DefaultResolverDataProvider is the default implementation of ResolverDataProvider that fetches data from YBA APIs.
 type DefaultResolverDataProvider struct {
-	args          *Args
-	sessionInfo   *model.SessionInfo
-	nodeInstance  *model.NodeInstance
-	provider      *model.Provider
-	instanceType  *model.NodeInstanceType
-	tmpDirectory  string
-	nodeAgentPort string
+	args            *Args
+	sessionInfo     *model.SessionInfo
+	nodeInstance    *model.NodeInstance
+	provider        *model.Provider
+	instanceType    *model.NodeInstanceType
+	tmpDirectory    string
+	nodeAgentPort   string
+	certificateName string
 }
 
 // NewDefaultResolverDataProvider creates a new instance of DefaultResolverDataProvider with the provided arguments.
@@ -132,6 +134,36 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 			Infof(ctx, "Could not fetch runtime config for node agent port - %s", err.Error())
 		return err
 	}
+	// Node agent may not exist yet for greenfield installs.
+	nodeAgent, err := yba.GetNodeAgentByIp(ctx,
+		ybaUrl.(string),
+		ybaApiKey.(string),
+		skipTlsVerify.(bool),
+		dp.sessionInfo.CustomerId,
+		nodeExternalFqdn.(string),
+	)
+	if err == util.ErrNotExist {
+		util.ConsoleLogger().
+			Infof(ctx, "Node agent not found for IP/FQDN %s", nodeExternalFqdn.(string))
+	} else if err != nil {
+		util.ConsoleLogger().
+			Infof(ctx, "Could not fetch node agent by IP/FQDN %s - %s", nodeExternalFqdn.(string), err.Error())
+		return err
+	} else if nodeAgent != nil && nodeAgent.CertificateUuid != "" {
+		dp.certificateName, err = yba.GetCertificateLabelByUuid(ctx,
+			ybaUrl.(string),
+			ybaApiKey.(string),
+			skipTlsVerify.(bool),
+			dp.sessionInfo.CustomerId,
+			nodeAgent.CertificateUuid,
+		)
+		if err != nil {
+			util.ConsoleLogger().
+				Infof(ctx, "Could not resolve certificate name for %s - %s",
+					nodeAgent.CertificateUuid, err.Error())
+			return err
+		}
+	}
 	return nil
 }
 
@@ -163,4 +195,8 @@ func (dp *DefaultResolverDataProvider) GetTmpDirectory(
 
 func (dp *DefaultResolverDataProvider) GetNodeAgentPort(ctx context.Context) (string, error) {
 	return dp.nodeAgentPort, nil
+}
+
+func (dp *DefaultResolverDataProvider) GetCertificateName(ctx context.Context) (string, error) {
+	return dp.certificateName, nil
 }

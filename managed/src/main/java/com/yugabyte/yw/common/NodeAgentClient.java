@@ -131,7 +131,6 @@ import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.collections4.queue.CircularFifoQueue;
@@ -226,7 +225,7 @@ public class NodeAgentClient {
 
   @Builder
   public static class NodeAgentUpgradeParam {
-    @NonNull private String certDir;
+    @Nullable private String certDir;
     @Nullable private Path packagePath;
   }
 
@@ -703,7 +702,7 @@ public class NodeAgentClient {
   }
 
   public static String getNodeAgentJWT(NodeAgent nodeAgent, Duration tokenLifetime) {
-    PrivateKey privateKey = nodeAgent.getPrivateKey();
+    PrivateKey privateKey = nodeAgent.getSignerPrivateKey();
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
@@ -756,7 +755,7 @@ public class NodeAgentClient {
       log.debug("Node agent {} is not in active state", nodeAgent);
       return Optional.empty();
     }
-    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid())) {
       nodeAgent.refresh();
     }
     return optional;
@@ -1137,7 +1136,10 @@ public class NodeAgentClient {
   public void startUpgrade(NodeAgent nodeAgent, NodeAgentUpgradeParam param) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
-    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder().setCertDir(param.certDir);
+    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder();
+    if (StringUtils.isNotBlank(param.certDir)) {
+      builder.setCertDir(param.certDir);
+    }
     if (param.packagePath != null) {
       builder.setPackagePath(param.packagePath.toString());
     }

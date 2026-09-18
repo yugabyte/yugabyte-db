@@ -85,6 +85,10 @@
           "type": "boolean",
           "description": "Skip TLS certificate verification."
         },
+        "certificate_name": {
+          "type": "string",
+          "description": "Optional custom YBA certificate config name (label) for node-agent TLS."
+        },
         "customer_uuid": {
           "type": "string",
           "description": "The UUID of the customer in Yugabyte Anywhere."

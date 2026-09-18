@@ -267,3 +267,61 @@ func GetProviderNodeInstances(
 	}
 	return instances, nil
 }
+
+// GetNodeAgentByIp makes an API call to YBA to get the node agent by node IP or FQDN.
+func GetNodeAgentByIp(
+	ctx context.Context,
+	ybaUrl, apiKey string,
+	skipTlsVerify bool,
+	customerUuid, nodeIp string,
+) (*model.NodeAgent, error) {
+	nodeAgentUrl := ybaUrl + util.PlatformGetNodeAgentEndpoint(customerUuid, nodeIp)
+	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaUrl), "https") || skipTlsVerify
+	headers := getAuthHeaders(apiKey)
+	resp, _, err := MakeRequest(ctx, nodeAgentUrl, "GET", headers, nil, skipTLSVerify)
+	if err != nil {
+		return nil, err
+	}
+	var nodeAgents []*model.NodeAgent
+	if err := json.Unmarshal(resp, &nodeAgents); err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to unmarshal node agent response: %s, error: %v", string(resp), err)
+		return nil, err
+	}
+	if len(nodeAgents) == 0 {
+		util.FileLogger().
+			Infof(ctx, "Node agent with IP %s is not found for customer %s", nodeIp, customerUuid)
+		return nil, util.ErrNotExist
+	}
+	return nodeAgents[0], nil
+}
+
+// GetCertificateLabelByUuid returns the certificate label for the given certificate UUID.
+func GetCertificateLabelByUuid(
+	ctx context.Context,
+	ybaUrl, apiKey string,
+	skipTlsVerify bool,
+	customerUuid, certificateUuid string,
+) (string, error) {
+	certificatesUrl := ybaUrl + util.PlatformGetCertificatesEndpoint(customerUuid)
+	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaUrl), "https") || skipTlsVerify
+	headers := getAuthHeaders(apiKey)
+	resp, _, err := MakeRequest(ctx, certificatesUrl, "GET", headers, nil, skipTLSVerify)
+	if err != nil {
+		return "", err
+	}
+	var certificates []model.CertificateInfo
+	if err := json.Unmarshal(resp, &certificates); err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to unmarshal certificates response: %s, error: %v", string(resp), err)
+		return "", err
+	}
+	for _, certificate := range certificates {
+		if certificate.Uuid == certificateUuid {
+			return certificate.Label, nil
+		}
+	}
+	util.FileLogger().
+		Errorf(ctx, "Certificate %s is not found for customer %s", certificateUuid, customerUuid)
+	return "", util.ErrNotExist
+}

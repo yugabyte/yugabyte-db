@@ -635,6 +635,22 @@ Node to node CA certificate for universe `'$universe_name'` expires in `$value` 
 min by (node_name) (ybp_health_check_n2n_ca_cert_validity_days{universe_uuid="$uuid"} < 30)
 ```
 
+#### Node agent server cert expiry
+
+Node agent server certificate for universe `'$universe_name'` will expire in `$value` days.
+
+```promql
+min by (universe_uuid) (((((label_replace(max_over_time(ybp_nodeagent_server_cert_expiring{customer_uuid="__customerUuid__"}[1m]), "node_address", "$1", "node_address", "(.+):([0-9]+)") > 0) - time()) / 86400) < 30) and on (node_address) (min_over_time(ybp_universe_node_function{universe_uuid="__universeUuid__"}[1m])))
+```
+
+#### Non-universe node agent server cert expiry
+
+Node agent server certificate on node agent(s) not associated with a universe will expire in `$value` days.
+
+```promql
+min by (node_address) (((((label_replace(max_over_time(ybp_nodeagent_server_cert_expiring{customer_uuid="__customerUuid__"}[1m]), "node_ip", "$1", "node_address", "(.+):([0-9]+)") > 0) - time()) / 86400) < 30) unless on (node_ip) (label_replace(min_over_time(ybp_universe_node_function{customer_uuid="__customerUuid__"}[1m]), "node_ip", "$1", "node_address", "(.*)")))
+```
+
 #### Private access key permission status
 
 Invalid permissions of private access key file for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
