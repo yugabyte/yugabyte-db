@@ -675,6 +675,17 @@ Default: `20000`
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
+##### yb_enable_global_views
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2134">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables querying of [global views](../../../explore/observability/global-views/) (`gv$<view_name>`), which return per-node statistics from every live YB-TServer. This is a SUSET parameter: a superuser can set it for a session (`SET yb_enable_global_views = on`) or for a role (`ALTER ROLE ... SET yb_enable_global_views = on`). To enable it cluster-wide, set `--ysql_pg_conf_csv=yb_enable_global_views=true` on every YB-TServer.
+
+The `gv$` views always exist in `pg_catalog`; querying one while this parameter is off fails. Querying a global view also requires membership in `pg_read_all_stats`. See [Enable global views](../../../launch-and-manage/monitor-and-alert/global-views/#enable-global-views).
+
 #### Bucket-based index scan optimization
 
 ##### yb_enable_derived_equalities
@@ -2530,6 +2541,16 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
+
+##### --remote_pg_query_execution_rpc_timeout_ms
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2134">}}
+{{<tags/feature/t-server>}}
+Default: `15000`
+{{% /tags/wrap %}}
+
+Per-node timeout, in milliseconds, for the RPC that carries a [global view](../../../explore/observability/global-views/) remote query. Runtime-modifiable. A node that exceeds this timeout is skipped with a WARNING, and the query returns rows from the remaining nodes.
 
 ##### --ysql_enable_write_pipelining
 
