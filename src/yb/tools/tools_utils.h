@@ -21,9 +21,10 @@ namespace yb::tools {
 
 // Return a secure context if needed, otherwise nullptr.
 //
-// certs_dir takes precedence over --certs_dir_name and --certs_dir. Connecting to a second universe
-// needs it: the flags name this universe's certificates, and two universes provisioned separately
-// have different certificate authorities.
+// certs_dir replaces --certs_dir_name, --certs_dir and --client_node_name together. Connecting to a
+// second universe needs it: those flags name this universe's certificates, and two universes
+// provisioned separately have different certificate authorities. A supplied certs_dir is read for
+// ca.crt alone, so it does not have to hold client certificates.
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContextIfNeeded(
     rpc::MessengerBuilder& messenger_builder, const std::string& certs_dir = {});
 

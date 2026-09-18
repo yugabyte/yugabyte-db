@@ -84,10 +84,11 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
 DEFINE_NON_RUNTIME_string(source_certs_dir_name, "",
     "Directory with certificates for connecting to the source universe, used by the "
-    "verify_xcluster_* commands. Defaults to --certs_dir_name, which is only correct when both "
-    "universes share a certificate authority; otherwise name the directory holding the source's "
-    "certificates, which xCluster keeps at <certs_for_cdc_dir>/<replication_group_id> on the "
-    "target's nodes.");
+    "verify_xcluster_* commands. Empty falls back to --certs_dir_name and then --certs_dir, which "
+    "name this universe's certificates and are only correct when both universes share a "
+    "certificate authority; otherwise name the directory holding the source's certificates, which "
+    "xCluster keeps at <certs_for_cdc_dir>/<replication_group_id> on the target's nodes. Since "
+    "empty always means fall back, a TLS target cannot reach a plaintext source.");
 
 #define REGISTER_COMMAND(command_name) \
   Register(#command_name, command_name##_args, command_name##_action)
