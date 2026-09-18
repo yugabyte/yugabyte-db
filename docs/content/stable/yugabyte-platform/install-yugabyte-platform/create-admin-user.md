@@ -82,7 +82,7 @@ If all local users are removed and LDAP or OIDC is unavailable, YugabyteDB Anywh
 
 1. Sign in to YugabyteDB Anywhere with the new local Super Admin user.
 
-If your installation has more than one account and the script can't determine which one to use, or if the default path to `application.conf` does not apply, see the script help for additional options: `./bin/py_wrapper ./bin/add_superadmin_user.py --help`.
+Use this script only when no local Super Admin is available. If a primary local Super Admin already exists, the script prints a message and exits without creating another user; sign in with the existing local Super Admin instead.
 
 ## Change your account information
 
