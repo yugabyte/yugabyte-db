@@ -50,16 +50,50 @@ You can set certain flags to increase performance using YugabyteDB in CI and CD 
 
 ## Concurrent DML during a DDL operation
 
-By default, YugabyteDB doesn't restrict DML and DDL concurrency. As a result, a DML statement can potentially operate using the old (prior to the DDL) or new schema; for example, an `ALTER TABLE <table> .. ADD COLUMN` DDL statement may add a new column while a `SELECT * from <table>` executes concurrently on the same relation. This can cause the following problems:
+Do not run DML against a relation while DDL is modifying that relation's schema.
 
-- Errors such as `schema mismatch errors` or `catalog version mismatch`. The client should [retry such operations](https://www.yugabyte.com/blog/retry-mechanism-spring-boot-app/) whenever possible.
-- Inconsistencies. For example, cases such as alter tables that cause rewrites, or creating indexes nonconcurrently.
+By default, YugabyteDB doesn't restrict DML and DDL concurrency. DML is *allowed* to execute while a DDL statement changes the schema that the DML is using. For example, `ALTER TABLE <table> ADD COLUMN` can add a column while `SELECT * FROM <table>` runs on the same relation. PostgreSQL typically prevents this by taking an ACCESS EXCLUSIVE table lock; YugabyteDB does not, unless you enable table-level locking.
 
-To avoid this, you can manually enable [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/tp idea="1114">}}.
+Allowed does not mean correct. Concurrent DML can use a stale schema, skip newly added structures, or write rows that the DDL never sees. Some of those outcomes return errors; others succeed and silently leave wrong data.
 
-Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [certain kinds of ALTER TABLE DDL statements](../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) involve making a full copy of the table(s) whose schema is being modified. For these operations, it is not recommended to run any concurrent DML statements on the table being modified by the `ALTER TABLE`, as the effect of such concurrent DML may not be reflected in the table copy.
+### Retryable errors
 
-Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table; for more information, see [Concurrent index creation](../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics).
+Concurrent DML may fail with `schema mismatch` or `catalog version mismatch`. Applications should [retry those operations](https://www.yugabyte.com/blog/retry-mechanism-spring-boot-app/).
+
+### Silent correctness issues
+
+When concurrent DML does not error, the failures fall into these categories:
+
+| Risk | What happens |
+| :--- | :----------- |
+| Stale snapshot / missed writes | DDL rewrites the table or index at a point-in-time snapshot. Concurrent DML writes to the old storage and is lost. |
+| Constraint violation escapes validation | DDL scans the table to validate a constraint. Concurrent DML can insert violating rows after the scan completes but before the constraint is enforced. |
+| Stale catalog / wrong routing | DDL modifies the partition descriptor or relation metadata. Concurrent DML using a cached (stale) catalog version may route rows incorrectly or miss newly added structures. |
+| Stale catalog / missed trigger fire | DDL adds or enables a trigger. Concurrent DML that already cached the old trigger list does not fire the new trigger. |
+
+### DDL operations that are unsafe with concurrent DML
+
+| DDL operation | Issue with concurrent DML |
+| :------------ | :------------------------ |
+| `CREATE INDEX NONCONCURRENTLY` / `REINDEX` | The index is built by scanning the table at a snapshot. Concurrent INSERTs and UPDATEs are not inserted into the new index, so index entries are missing. See [Concurrent index creation](../../api/ysql/the-sql-language/statements/ddl_create_index/#concurrent-index-creation). |
+| Partition commands (`CREATE TABLE ... PARTITION OF`, `ATTACH PARTITION`, `DETACH PARTITION`) | These modify the parent's partition descriptor. Concurrent DML using a stale cached descriptor may route rows to the wrong partition (for example, the default instead of the new partition), skip partition constraint checks, or write to a detached partition. |
+| ALTER TABLE table rewrite (`ALTER COLUMN TYPE`, `ADD COLUMN ... DEFAULT <volatile expression>`, `ADD`/`DROP PRIMARY KEY`) | The table is rewritten by copying data at a snapshot. Concurrent DML writes to the old table and is not reflected in the new table — silent data loss. See [Alter table operations that involve a table rewrite](../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite). |
+| Constraints and triggers (`ADD CONSTRAINT` CHECK/UNIQUE/FK, `SET NOT NULL`, `CREATE`/`ENABLE`/`DISABLE TRIGGER`) | Constraint validation scans the table at a snapshot. Concurrent DML can insert violating rows after the scan but before enforcement begins. For triggers, concurrent DML using a stale catalog does not fire newly added or enabled triggers. |
+
+Most schema-only DDLs complete quickly. The operations in the table above copy or validate data, and they are not safe to overlap with DML on the same relation.
+
+### How to avoid these issues
+
+Pause DML on the affected relation until the DDL completes, or enable {{<tags/feature/tp idea="1114">}}[table-level locking](../../explore/transactions/explicit-locking/#table-level-locks) (available in v2025.1.1.0 and later). Table-level locks are disabled by default.
+
+For `ALTER TABLE ADD CONSTRAINT`, you can add the constraint as `NOT VALID` and validate it in a second step. This is safe even without table locking:
+
+```sql
+ALTER TABLE ... ADD CONSTRAINT ... NOT VALID;
+ALTER TABLE ... VALIDATE CONSTRAINT ...;
+```
+
+For `ALTER TABLE ... ATTACH PARTITION`, first add CHECK constraints on the existing partitions that exclude the newly attached range. That guarantees no rows are present in, or can be inserted into, that range on the existing partitions before you attach the new partition.
 
 ## Concurrent DDL during a DDL operation
 
