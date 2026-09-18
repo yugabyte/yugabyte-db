@@ -108,9 +108,10 @@ class ClusterAdminCli {
   };
 
   // Scans raw argv for --help/-h/--helpshort and for a leading `help` operation before the flag
-  // parse, so every help surface answers even when the parse would fail on a malformed
-  // --flagfile, an unparsable flag value, or an unknown flag. Returns nullopt when help was not
-  // requested.
+  // parse, so those surfaces answer even when the parse would fail on a malformed --flagfile, an
+  // unparsable flag value, or an unknown flag. The surfaces gflags renders (--helpfull,
+  // --helpmatch, --helpon, --helppackage) are not scanned and still die with the parse. Returns
+  // nullopt when help was not requested.
   std::optional<HelpRequest> ScanForHelpRequest(int argc, char** argv) const;
   void PrintHelpRequest(const HelpRequest& request, const std::string& prog_name,
                         std::ostream& out);
@@ -127,8 +128,9 @@ class ClusterAdminCli {
       const Command& command, const CLIArguments& command_args, const std::string& program_name);
   std::string GetArgumentExpressions(const std::string& usage_arguments);
   // Returns the command names to suggest for an operation that did not match any registered
-  // command, or an empty vector when there is no good suggestion. Commands that the operation is a
-  // prefix of are preferred; otherwise the closest commands by edit distance are returned.
+  // command, or an empty vector when there is no good suggestion. Three tiers, first non-empty
+  // wins: commands the operation is a prefix of; the closest commands by edit distance; then
+  // SuggestByNameTokens() for abbreviations like "list_server".
   std::vector<std::string> GetSuggestedCommands(const std::string& op) const;
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;

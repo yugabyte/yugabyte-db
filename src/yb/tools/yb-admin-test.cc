@@ -339,9 +339,8 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   ASSERT_STR_NOT_CONTAINS(output, "Argument definitions:");
   ASSERT_STR_NOT_CONTAINS(output, "Flags from");
   ASSERT_STR_NOT_CONTAINS(output, "yb-admin_cli.cc:");
-  // google::ProgramUsage() emits this when SetUsageMessage() has not been called. Any path that
-  // prints usage before SetUsage() runs shows it as the entire message -- see the
-  // --init_master_addrs test below.
+  // google::ProgramUsage() emits this when SetUsageMessage() has not been called; SetUsage() runs
+  // at the top of Run() and main() guards on IsUsageMessageSet(), so no path should print it.
   ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
   ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
 
@@ -350,11 +349,9 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   ASSERT_LE(std::count(output.begin(), output.end(), '\n'), 25);
 }
 
-// A malformed --init_master_addrs must be reported on its own terms. The flag is read in Run()
-// before SetUsage() has been called, so returning InvalidArgument here makes main() print an unset
-// google::ProgramUsage() -- the user's entire error message becomes "Warning: SetUsageMessage()
-// never called". A value that splits to nothing ("," -- ParseStrings uses SkipEmpty) used to index
-// an empty vector and crash (#33435).
+// A malformed --init_master_addrs must be reported on its own terms: returning InvalidArgument
+// would make main() answer with the 22-line overview. A value that splits to nothing ("," --
+// ParseStrings uses SkipEmpty) used to index an empty vector and crash (#33435).
 TEST_F(AdminCliTest, MalformedInitMasterAddrs) {
   const auto exe_path = GetAdminToolPath();
   std::string output;
@@ -367,8 +364,8 @@ TEST_F(AdminCliTest, MalformedInitMasterAddrs) {
         ToStringVector(exe_path, "--init_master_addrs", bad_value, "list_tables"), &output,
         &error))
         << "--init_master_addrs=" << bad_value << " unexpectedly succeeded";
-    // Naming the flag proves we took the targeted path: a crash prints no such line, and the
-    // pre-SetUsage InvalidArgument path printed only the gflags warning.
+    // Naming the flag proves we took the targeted path: a crash prints no such line, and an
+    // InvalidArgument return would print main()'s overview instead.
     ASSERT_STR_CONTAINS(error, "Invalid --init_master_addrs");
     ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
     ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
