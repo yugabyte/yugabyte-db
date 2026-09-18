@@ -656,8 +656,9 @@ TEST_F(AdminCliTest, TokenMatchSuggestions) {
       "compact_table", "list_all_masters", "list_all_tablet_servers", "list_tables",
       "list_tablet_server_log_locations", "list_tablet_servers", "master_leader_stepdown"};
 
-  // "server" covers both "servers" and "server"; names with an uncovered token like "masters"
-  // are excluded. list_tablet_servers wins the ranking with one uncovered token ("tablet").
+  // "server" covers both "servers" and "server". list_all_masters drops out because the typed
+  // token "server" covers none of its tokens; an uncovered *name* token only costs rank, which is
+  // why list_tablet_servers still wins with "tablet" uncovered.
   const std::vector<std::string> expected = {
       "list_tablet_servers", "list_all_tablet_servers", "list_tablet_server_log_locations"};
   ASSERT_EQ(SuggestByNameTokens("list_server", names, 5), expected);
