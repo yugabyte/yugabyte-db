@@ -894,13 +894,13 @@ NextCopyFromRawFieldsInternal(CopyFromState cstate, char ***fields, int *nfields
  * 'values' and 'nulls' arrays must be the same length as columns of the
  * relation passed to BeginCopyFrom. This function fills the arrays.
  *
- * 'skip_row' is used to specify whether we should skip format checking for
- * this row. In particular, if 'skip_row' is true, we will not raise error
+ * 'yb_skip_row' is used to specify whether we should skip format checking for
+ * this row. In particular, if 'yb_skip_row' is true, we will not raise error
  * upon reading an invalid row.
  */
 bool
 NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
-			 Datum *values, bool *nulls, bool skip_row)
+			 Datum *values, bool *nulls, bool yb_skip_row)
 {
 	TupleDesc	tupDesc;
 	AttrNumber	num_phys_attrs,
@@ -909,12 +909,24 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 	int		   *defmap = cstate->defmap;
 	ExprState **defexprs = cstate->defexprs;
 
+	/* YB: skipped rows pass NULL values/nulls; binary falls through */
+	if (yb_skip_row && cstate->opts.format != COPY_FORMAT_BINARY)
+	{
+		char	  **field_strings;
+		int			fldct;
+
+		return NextCopyFromRawFields(cstate, &field_strings, &fldct);
+	}
+
 	tupDesc = RelationGetDescr(cstate->rel);
 	num_phys_attrs = tupDesc->natts;
 
 	/* Initialize all values for row to NULL */
-	MemSet(values, 0, num_phys_attrs * sizeof(Datum));
-	MemSet(nulls, true, num_phys_attrs * sizeof(bool));
+	if (!yb_skip_row)			/* YB: they are NULL for a skipped row */
+	{
+		MemSet(values, 0, num_phys_attrs * sizeof(Datum));
+		MemSet(nulls, true, num_phys_attrs * sizeof(bool));
+	}							/* YB */
 	MemSet(cstate->defaults, false, num_phys_attrs * sizeof(bool));
 
 	/* Get one row from source */
@@ -922,13 +934,13 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 		return false;
 
 	/*
-	 * YB_TODO_PG19MERGE: YB added skip_row parameter to NextCopyFrom to skip
-	 * format checking for invalid rows. PG19 refactored row parsing into
-	 * CopyFromOneRow callbacks. Port skip_row logic into the callback
+	 * YB_TODO_PG19MERGE: YB added the yb_skip_row parameter to NextCopyFrom
+	 * to skip format checking for invalid rows. PG19 refactored row parsing
+	 * into CopyFromOneRow callbacks. Port yb_skip_row logic into the callback
 	 * architecture.
 	 */
 #if 0
-	if (!skip_row)
+	if (!yb_skip_row)
 	{
 		MemSet(values, 0, num_phys_attrs * sizeof(Datum));
 		MemSet(nulls, true, num_phys_attrs * sizeof(bool));
@@ -947,7 +959,7 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 			return false;
 
 		/* YB: if the row is skipped, ignore all the format checking */
-		if (skip_row)
+		if (yb_skip_row)
 			return true;
 
 		/* check for overflowing fields */

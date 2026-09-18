@@ -136,7 +136,7 @@ extern CopyFromState BeginCopyFrom(ParseState *pstate, Relation rel, Node *where
 								   bool is_program, copy_data_source_cb data_source_cb, List *attnamelist, List *options);
 extern void EndCopyFrom(CopyFromState cstate);
 extern bool NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
-						 Datum *values, bool *nulls, bool skip_row);
+						 Datum *values, bool *nulls, bool yb_skip_row);
 extern bool NextCopyFromRawFields(CopyFromState cstate,
 								  char ***fields, int *nfields);
 extern void CopyFromErrorCallback(void *arg);

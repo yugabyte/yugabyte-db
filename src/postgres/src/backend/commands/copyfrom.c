@@ -1305,7 +1305,8 @@ CopyFrom(CopyFromState cstate)
 	/* Skip num_initial_skipped_rows. */
 	for (uint64 i = 0; i < cstate->opts.num_initial_skipped_rows; i++)
 	{
-		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */ );
+		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL,
+									   true /* yb_skip_row */ );
 		if (!has_more_tuples)
 			break;
 	}
@@ -1366,7 +1367,7 @@ yb_process_more_batches:
 		/* Directly store the values/nulls array in the slot */
 		has_more_tuples = NextCopyFrom(cstate, econtext, myslot->tts_values,
 									   myslot->tts_isnull,
-									   false /* skip_row */ );
+									   false /* yb_skip_row */ );
 		if (!has_more_tuples)
 			break;
 
