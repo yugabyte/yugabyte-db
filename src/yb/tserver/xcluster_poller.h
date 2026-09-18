@@ -110,10 +110,12 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
-  void StoreReplicationError(ReplicationErrorPb error) EXCLUDES(replication_error_mutex_);
+  void StoreReplicationError(ReplicationErrorPb error, const std::string& error_detail = {})
+      EXCLUDES(replication_error_mutex_);
   // Stores a generic SYSTEM_ERROR if the current error is OK or uninitialized. Does not overwrite
   // a more specific error that has already been set.
   void StoreNOKReplicationError() EXCLUDES(replication_error_mutex_);
+  void StoreDdlQueueReplicationError(const Status& status) EXCLUDES(replication_error_mutex_);
   void ClearReplicationError() EXCLUDES(replication_error_mutex_);
   void TEST_IncrementNumSuccessfulWriteRpcs();
   void ApplyChangesCallback(XClusterOutputClientResponse&& response);
@@ -194,6 +196,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::mutex replication_error_mutex_;
   ReplicationErrorPb previous_replication_error_ GUARDED_BY(replication_error_mutex_) =
       ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
+  std::string previous_replication_error_detail_ GUARDED_BY(replication_error_mutex_);
 
   PollStatsHistory poll_stats_history_;
 

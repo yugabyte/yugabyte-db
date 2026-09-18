@@ -850,6 +850,7 @@ void XClusterTargetManager::StoreReplicationStatus(
             stream_tablet_status.error(), ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED);
         tablet_status_map->consumer_term = stream_tablet_status.consumer_term();
         tablet_status_map->error = stream_tablet_status.error();
+        tablet_status_map->error_detail = stream_tablet_status.error_detail();
         VLOG_WITH_FUNC(2) << "Storing error for replication group: " << replication_group_id
                           << ", consumer table: " << consumer_table_id
                           << ", tablet: " << producer_tablet_id
@@ -936,8 +937,13 @@ Status XClusterTargetManager::PopulateReplicationGroupErrors(
 
     // Map from error to list of producer tablet IDs/Pollers reporting them.
     std::unordered_map<ReplicationErrorPb, std::vector<TabletId>> errors;
+    // First non-empty detail reported for each error.
+    std::unordered_map<ReplicationErrorPb, std::string> error_details;
     for (const auto& [tablet_id, error_info] : tablet_error_map) {
       errors[error_info.error].push_back(tablet_id);
+      if (!error_info.error_detail.empty()) {
+        error_details.try_emplace(error_info.error, error_info.error_detail);
+      }
     }
 
     if (errors.empty()) {
@@ -962,8 +968,12 @@ Status XClusterTargetManager::PopulateReplicationGroupErrors(
       } else {
         // Only include the first 20 tablet IDs to limit response size.
         // VLOG(4) will write all tablet to the log.
-        resp_error->set_error_detail(
-            Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
+        auto detail =
+            Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20));
+        if (auto* reported_detail = FindOrNull(error_details, error_pb)) {
+          detail += Format(". $0", *reported_detail);
+        }
+        resp_error->set_error_detail(detail);
       }
 
       if (VLOG_IS_ON(4)) {

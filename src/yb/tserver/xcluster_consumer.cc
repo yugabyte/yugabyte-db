@@ -841,8 +841,9 @@ void XClusterConsumer::AddSafeTimePublishCallback(std::function<void()> callback
 }
 
 void XClusterConsumer::StoreReplicationError(
-    const XClusterPollerId& poller_id, ReplicationErrorPb error) {
-  error_collector_.StoreError(poller_id, error);
+    const XClusterPollerId& poller_id, ReplicationErrorPb error,
+    const std::string& error_detail) {
+  error_collector_.StoreError(poller_id, error, error_detail);
   if (error != ReplicationErrorPb::REPLICATION_OK &&
       error != ReplicationErrorPb::REPLICATION_PAUSED) {
     metric_replication_error_count_->Increment();
@@ -875,6 +876,9 @@ void XClusterConsumer::PopulateMasterHeartbeatRequest(
         stream_tablet_status->set_producer_tablet_id(std::move(producer_tablet_id));
         stream_tablet_status->set_consumer_term(error_info.consumer_term);
         stream_tablet_status->set_error(error_info.error);
+        if (!error_info.error_detail.empty()) {
+          stream_tablet_status->set_error_detail(error_info.error_detail);
+        }
       }
     }
   }
