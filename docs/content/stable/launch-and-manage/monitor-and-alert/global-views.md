@@ -120,20 +120,6 @@ ORDER BY 1;
 
 A global view whose source view comes from an extension disappears with the extension. For example, `DROP EXTENSION pg_stat_statements CASCADE` drops `gv$pg_stat_statements` and `pg_stat_statements_with_server_uuid` along with it.
 
-## Create a user-defined global view
-
-To wrap a `pg_catalog` view that isn't in the default list, a superuser (or a role with EXECUTE on the function) can call `yb_create_global_view`:
-
-```plpgsql
-SELECT yb_create_global_view('public', 'pg_stat_statements_info');
-```
-
-This creates `public.pg_stat_statements_info_with_server_uuid` and `public.gv$pg_stat_statements_info`, and grants SELECT on both to `pg_read_all_stats`.
-
-The function always reads the source view from `pg_catalog`. You can place the wrapper objects in any schema except `pg_catalog` (creating objects in `pg_catalog` is rejected after cluster initialization). The source must be a plain view with no dropped columns.
-
-EXECUTE on `yb_create_global_view` is revoked from PUBLIC.
-
 ## Best practices
 
 - Filter before you aggregate.
