@@ -41,6 +41,7 @@ import {
   isAfterNewExperiencePopoverDismissed,
   useAfterNewExperiencePopover
 } from '../popovers/AfterNewExperiencePopover';
+import { YBEarlyAccessTag } from '@app/redesign/components';
 import BoltIcon from '@app/redesign/assets/what-changed/bolt.svg';
 import InfoIcon from '@app/redesign/assets/info.svg';
 
@@ -65,7 +66,10 @@ const BannerGradientText = styled(Typography)(() => ({
   backgroundImage: 'linear-gradient(-34deg, #EF5824 11%, #ED35C5 40.5%, #7879F1 98.9%)',
   WebkitBackgroundClip: 'text',
   backgroundClip: 'text',
-  color: 'transparent'
+  color: 'transparent',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px'
 }));
 
 const BannerRow = styled(Box)(() => ({
@@ -113,7 +117,10 @@ const BodyText = styled(Typography)(({ theme }) => ({
   fontSize: 13,
   fontWeight: 500,
   lineHeight: '16px',
-  color: theme.palette.grey[600]
+  color: theme.palette.grey[600],
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px'
 }));
 
 const SeeWhatsChangedLink = styled(Link)(({ theme }) => ({
@@ -260,11 +267,12 @@ export const OnBoardingBanner: FC = () => {
     syncOnboardingNewExperienceEnabled(isFeatureEnabled);
   }, [globalRuntimeConfigQuery.isSuccess, isFeatureEnabled]);
 
-  // Feature + for-all: dismissable "in use" banner for everyone.
-  // Otherwise: opt-in toggle banner for SuperAdmin only.
+  // Only when ENABLE_V2_EDIT_UNIVERSE_UI is on.
+  // Feature + for-all: "in use" banner for everyone; otherwise SuperAdmin toggle banner.
   // Hide while Edit Placement / Universe Form fullscreen flows are open.
   const isVisible =
     globalRuntimeConfigQuery.isSuccess &&
+    isFeatureEnabled &&
     !isFullscreenOverlayOpen &&
     (isEnabledForAll ? !isBannerDismissed : isSuperAdmin);
 
@@ -447,6 +455,7 @@ export const OnBoardingBanner: FC = () => {
                 <CompactMessageGroup>
                   <BannerGradientText component="span">
                     {t('usingNewExperienceMessage')}
+                    <YBEarlyAccessTag />
                   </BannerGradientText>
                   <span ref={seeWhatsChangedAnchorRef}>
                     <SeeWhatsChangedLink
@@ -487,7 +496,10 @@ export const OnBoardingBanner: FC = () => {
                 <VerticalDivider orientation="vertical" flexItem />
                 <MessageGroup>
                   {enabled ? (
-                    <BodyText>{t('enabledMessage')}</BodyText>
+                    <BodyText>
+                      {t('enabledMessage')}
+                      <YBEarlyAccessTag />
+                    </BodyText>
                   ) : (
                     <BannerGradientText component="span">
                       {t('availableMessage')}
