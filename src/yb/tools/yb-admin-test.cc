@@ -405,7 +405,7 @@ TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
     error.clear();
     SCOPED_TRACE(help_flag);
     ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, help_flag), &output, &error));
-    ASSERT_STR_CONTAINS(output, "administer a YugabyteDB cluster");
+    ASSERT_STR_CONTAINS(output, "administer a YugabyteDB universe");
     ASSERT_STR_CONTAINS(output, "Get help:");
     ASSERT_STR_CONTAINS(output, "Common global flags:");
     ASSERT_STR_NOT_CONTAINS(output, "Flags from");
@@ -446,7 +446,7 @@ TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
   // overview as its header instead of the SetUsageMessage warning.
   ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "--helpfull"), &output, &error));
   ASSERT_STR_CONTAINS(output, "Flags from");
-  ASSERT_STR_CONTAINS(output, "administer a YugabyteDB cluster");
+  ASSERT_STR_CONTAINS(output, "administer a YugabyteDB universe");
   ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
   ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
 }
