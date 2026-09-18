@@ -7,6 +7,7 @@
 \i :filename
 
 CREATE INDEX NONCONCURRENTLY bkt_tbl_expr_idx ON bkt_tbl ((yb_hash_code(r3, r2, r4, r5, r1) % 3) ASC, r1, r2, r3, r4, r5);
+ANALYZE bkt_tbl;
 
 CREATE ROLE regress_merge_scan_rls_user;
 GRANT SELECT ON bkt_tbl TO regress_merge_scan_rls_user;

@@ -4438,24 +4438,39 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 -- No order
 -- Merge scan should not be used.
+-- Third hint is to use the expression index, which the first two do not choose
+-- because a sequential scan is cheaper for an unordered scan of it.
 \set query 'SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5'
-:explain2
-                                                                           QUERY PLAN                                                                            
------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\set hint3 '/*+IndexScan(r5n r5n_expr_r2_r3_r4_idx) Set(yb_max_merge_scan_streams 64)*/'
+:explain3
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=5 loops=1)
+   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
+         Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
+         Rows Removed by Filter: 60
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 3
-         Storage Table Rows Scanned: 5
-         Storage Index Read Requests: 1
-         Storage Index Read Ops: 6
-         Storage Index Rows Scanned: 25
-(11 rows)
+         Storage Table Read Ops: 8
+         Storage Table Rows Scanned: 1092
+(9 rows)
+
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+         Output: n, r5, r3, r1, r2, r4
+         Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
+         Rows Removed by Filter: 60
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 8
+         Storage Table Rows Scanned: 1092
+(9 rows)
 
                                                                            QUERY PLAN                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4665,32 +4680,8 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Secondary index scan VS merge PK scan
--- Third hint is to use the PK index as the second hint ends up using the
--- expression index.
 \set query 'SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) = 4 ORDER BY r2, r3, r4, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_merge_scan_streams 64)*/'
-:explain3run3
-                                                                        QUERY PLAN                                                                         
------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))), r2, r3, r4, n, r1
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))), r2, r3, r4, n, r1
-         Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
-         Presorted Key: r5n.r2, r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=7 loops=1)
-               Output: (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), r2, r3, r4, n, r1
-               Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = '4'::numeric)
-               Storage Filter: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 768
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 768
-(17 rows)
-
+:explain2run2
                                                                         QUERY PLAN                                                                         
 -----------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4753,40 +4744,52 @@ SPLIT AT VALUES (
         4 |  0 |  0 |  4 | 64004 |  4
 (5 rows)
 
- ?column? | r2 | r3 | r4 |   n   | r1 
-----------+----+----+----+-------+----
-        4 |  0 |  0 |  4 | 14003 |  3
-        4 |  0 |  0 |  4 | 24002 |  2
-        4 |  0 |  0 |  4 | 34002 |  2
-        4 |  0 |  0 |  4 | 44004 |  4
-        4 |  0 |  0 |  4 | 64004 |  4
-(5 rows)
-
 -- Merge secondary index scan VS merge PK scan
--- Third hint is to use the PK index as the second hint ends up using the
--- expression index.
+-- Third hint is to use the expression index as the second hint ends up using
+-- the PK index.
 \set query 'SELECT r2, r3, r4, n, r1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE r1 IN (1, 2, 3, 4) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (1, 2, 3, 4) ORDER BY r2, r3, r4, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_merge_scan_streams 64)*/'
+\set hint3 '/*+IndexScan(r5n r5n_expr_r2_r3_r4_idx) Set(yb_max_merge_scan_streams 64)*/'
 :explain3run3
-                                                                                QUERY PLAN                                                                                 
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                              QUERY PLAN                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, n, r1, ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)))
    ->  Sort (actual rows=5 loops=1)
          Output: r2, r3, r4, n, r1, ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)))
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Sort Method: top-N heapsort
-         ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=858 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=858 loops=1)
                Output: r2, r3, r4, n, r1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))
-               Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
-               Storage Filter: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Storage Table Read Requests: 7
-               Storage Table Read Ops: 29
-               Storage Table Rows Scanned: 2124
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 7
-               Storage Index Rows Scanned: 2124
-(16 rows)
+               Index Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
+               Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
+               Rows Removed by Filter: 1165
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 7
+               Storage Table Rows Scanned: 2023
+(14 rows)
+
+                                                                              QUERY PLAN                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, r3, r4, n, r1, ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)))
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r2, r3, r4, n, r1, ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)))
+         Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
+         Presorted Key: r5n.r2, r5n.r3, r5n.r4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
+               Output: r2, r3, r4, n, r1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))
+               Index Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
+               Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
+               Merge Stream Key: r5n.r1
+               Merge Streams: 4
+               Merge Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
+               Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
+               Rows Removed by Filter: 12
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 1619
+(19 rows)
 
                                                                                 QUERY PLAN                                                                                 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4812,29 +4815,6 @@ SPLIT AT VALUES (
                Storage Index Read Ops: 8
                Storage Index Rows Scanned: 1709
 (21 rows)
-
-                                                                              QUERY PLAN                                                                               
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: r2, r3, r4, n, r1, ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)))
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: r2, r3, r4, n, r1, ((GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)))
-         Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
-         Presorted Key: r5n.r2, r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
-               Output: r2, r3, r4, n, r1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))
-               Index Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
-               Merge Stream Key: r5n.r1
-               Merge Streams: 4
-               Merge Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
-               Rows Removed by Filter: 12
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 5
-               Storage Table Rows Scanned: 1619
-(19 rows)
 
  r2 | r3 | r4 |   n   | r1 | ?column? 
 ----+----+----+-------+----+----------
@@ -4875,6 +4855,7 @@ SPLIT AT VALUES (
     (2, -2),
     (2, -2, -2),
     (3));
+ANALYZE r5n;
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3, -r4, n LIMIT 5'
 :explain2run2
@@ -5072,6 +5053,7 @@ SPLIT AT VALUES (
     (2, 2, 2, 2),
     (2, 2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 -- No order
 -- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
