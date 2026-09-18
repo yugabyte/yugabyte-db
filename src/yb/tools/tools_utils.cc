@@ -28,8 +28,11 @@ namespace yb::tools {
 
 // Return a secure context if needed, otherwise nullptr.
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContextIfNeeded(
-    rpc::MessengerBuilder& messenger_builder) {
-  auto certs_dir_name = FLAGS_certs_dir_name;
+    rpc::MessengerBuilder& messenger_builder, const std::string& certs_dir) {
+  auto certs_dir_name = certs_dir;
+  if (certs_dir_name.empty()) {
+    certs_dir_name = FLAGS_certs_dir_name;
+  }
   if (certs_dir_name.empty()) {
     certs_dir_name = FLAGS_certs_dir;
   }

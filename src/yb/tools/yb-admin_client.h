@@ -154,6 +154,11 @@ class ClusterAdminClient {
   // If certs_dir is non-empty, caller will init the yb_client_.
   ClusterAdminClient(std::string addrs, MonoDelta timeout);
 
+  // Takes certificates from certs_dir instead of --certs_dir_name. Required when addrs names a
+  // universe other than the one this tool was pointed at, since that universe may have its own
+  // certificate authority.
+  ClusterAdminClient(std::string addrs, MonoDelta timeout, std::string certs_dir);
+
   ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout);
 
   virtual ~ClusterAdminClient();
@@ -581,10 +586,14 @@ class ClusterAdminClient {
 
   // Discovers a replication group's source and table pairs from this target, then verifies every
   // pair. Slice outcomes and the final summary are printed as JSON records.
+  //
+  // source_certs_dir names the certificates for reaching the source universe; empty falls back to
+  // the certificate flags, which is only correct when both universes share a certificate authority.
   Status VerifyXClusterGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
       const GroupVerifyOptions& options,
-      const std::unordered_set<TableId>& skip_source_table_ids);
+      const std::unordered_set<TableId>& skip_source_table_ids,
+      const std::string& source_certs_dir);
 
   // Every user table and index in the namespace that owns `table_id`, for expanding a colocation
   // parent into the tables worth verifying: the parent holds no user rows, only a dummy
@@ -686,6 +695,8 @@ class ClusterAdminClient {
   std::string master_addr_list_;
   HostPort init_master_addr_;
   const MonoDelta timeout_;
+  // Empty means the --certs_dir_name and --certs_dir flags decide.
+  const std::string certs_dir_;
   HostPort leader_addr_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;

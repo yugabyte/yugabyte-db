@@ -82,6 +82,12 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
+DEFINE_NON_RUNTIME_string(source_certs_dir_name, "",
+    "Directory with certificates for connecting to the source universe, used by the "
+    "verify_xcluster_* commands. Defaults to --certs_dir_name, which is only correct when both "
+    "universes share a certificate authority; otherwise name the directory holding the source's "
+    "certificates, which xCluster keeps at <certs_for_cdc_dir>/<replication_group_id> on the "
+    "target's nodes.");
 
 #define REGISTER_COMMAND(command_name) \
   Register(#command_name, command_name##_args, command_name##_action)
@@ -3105,7 +3111,8 @@ Status verify_xcluster_slice_action(
   // continuation key that only compares correctly once encoded. A bad range surfaces as a kError
   // result rather than a CLI argument error.
   ClusterAdminClient source_client(
-      source_master_addresses, MonoDelta::FromMilliseconds(FLAGS_timeout_ms));
+      source_master_addresses, MonoDelta::FromMilliseconds(FLAGS_timeout_ms),
+      FLAGS_source_certs_dir_name);
   RETURN_NOT_OK_PREPEND(
       source_client.Init(),
       Format("Unable to connect to source masters at [$0]", source_master_addresses));
@@ -3155,7 +3162,7 @@ Status verify_xcluster_group_action(
     }
   }
   return client->VerifyXClusterGroup(
-      xcluster::ReplicationGroupId(args[0]), options, skip_tables);
+      xcluster::ReplicationGroupId(args[0]), options, skip_tables, FLAGS_source_certs_dir_name);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";
