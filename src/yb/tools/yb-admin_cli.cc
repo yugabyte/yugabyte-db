@@ -755,8 +755,9 @@ void ClusterAdminCli::PrintHelpRequest(
   std::vector<std::pair<std::string, std::string>> own_flags;
   size_t width = 0;
   for (const auto& info : all_flags) {
-    // The tool's own flags live in yb-admin_cli.cc, yb-admin_client.cc, and tools_utils.cc
-    // (--certs_dir_name, --client_node_name).
+    // The tool's own flags live in the yb-admin_*.cc files -- the prefix match is load-bearing,
+    // not shorthand for a fixed list: yb-admin_util.cc defines --yb_admin_force_use_private_ip,
+    // which belongs on this surface -- plus tools_utils.cc (--certs_dir_name, --client_node_name).
     const auto basename = BaseName(info.filename);
     if (!boost::starts_with(basename, "yb-admin") && basename != "tools_utils.cc") {
       continue;

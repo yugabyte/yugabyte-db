@@ -3129,7 +3129,9 @@ class ControlScript(object):
         # block (#33433).
         if out:
           Output.print_out(out)
-        if 0 != ret_code:
+        # Guarded on err as well: yb-admin can exit non-zero with stdout-only output (usage
+        # errors), and make_red("") would print a bare red block -- the symptom above.
+        if 0 != ret_code and err:
           Output.log(err)
           Output.print_out(Output.make_red(err))
 
