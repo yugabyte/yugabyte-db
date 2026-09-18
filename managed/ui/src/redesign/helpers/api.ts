@@ -940,11 +940,6 @@ class ApiService {
     return axios.post(requestUrl, payload).then((res) => res.data);
   };
 
-  retryTask = (taskUuid: string) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}/retry`;
-    return axios.post(requestUrl).then((response: any) => response.data);
-  };
-
   rollbackTask = (taskUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}/rollback`;
     return axios.post(requestUrl).then((response: any) => response.data);

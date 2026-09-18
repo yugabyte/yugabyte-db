@@ -547,7 +547,7 @@ export const ApiPermissionMap = {
     },
     RETRY_TASKS: {
         requestType: ApiRequestType.POST,
-        endpoint: '/tasks/$tUUID<[^/]+>/retry'
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/tasks/$tUUID<[^/]+>/retry'
     },
     ROLLBACK_TASKS: {
         requestType: ApiRequestType.POST,
