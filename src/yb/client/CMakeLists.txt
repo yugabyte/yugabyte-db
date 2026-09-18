@@ -48,6 +48,7 @@ set(CLIENT_SRCS
   meta_data_cache.cc
   namespace_alterer.cc
   permissions.cc
+  request_id_allocator.cc
   session.cc
   schema.cc
   stateful_services/stateful_service_client_base.cc
@@ -142,6 +143,7 @@ ADD_YB_TEST(ql-map-test)
 ADD_YB_TEST(ql-tablet-test)
 ADD_YB_TEST(ql-transaction-test)
 ADD_YB_TEST(ql-stress-test)
+ADD_YB_TEST(request_id_allocator-test)
 ADD_YB_TEST(seal-txn-test)
 ADD_YB_TEST(snapshot-txn-test)
 ADD_YB_TEST(snapshot_schedule-test)
