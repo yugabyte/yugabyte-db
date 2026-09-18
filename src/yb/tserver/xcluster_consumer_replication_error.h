@@ -42,7 +42,9 @@ class XClusterConsumerReplicationErrorCollector {
   void AddPoller(const XClusterPollerId& poller_id) EXCLUDES(mutex_);
   void RemovePoller(const XClusterPollerId& poller_id) EXCLUDES(mutex_);
 
-  void StoreError(const XClusterPollerId& poller_id, ReplicationErrorPb error) EXCLUDES(mutex_);
+  void StoreError(
+      const XClusterPollerId& poller_id, ReplicationErrorPb error,
+      const std::string& error_detail = {}) EXCLUDES(mutex_);
 
   void TransitionErrorsFromSendingToSent() EXCLUDES(mutex_);
 
@@ -53,6 +55,7 @@ class XClusterConsumerReplicationErrorCollector {
 
   struct ReplicationError {
     ReplicationErrorPb error = ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
+    std::string error_detail;
     // No need to send UNINITIALIZED error to master.
     XClusterReplicationErrorSendState send_state = XClusterReplicationErrorSendState::kSent;
   };
