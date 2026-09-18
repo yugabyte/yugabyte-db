@@ -23,7 +23,8 @@ SUBDIRS	    = \
 	table \
 	tablesample \
 	transam \
-	yb_access \
+	yb_lsm \
+	yb_scan \
 	ybgin
 
 include $(top_srcdir)/src/backend/common.mk

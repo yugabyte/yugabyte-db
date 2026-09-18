@@ -22,13 +22,13 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
-#include "access/yb_scan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "executor/nodeYbBitmapIndexscan.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "utils/memutils.h"
+#include "utils/rel.h"
 
 static void yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node);
 

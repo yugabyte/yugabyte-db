@@ -14,7 +14,7 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid_d.h"

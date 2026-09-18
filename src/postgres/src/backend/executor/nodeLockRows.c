@@ -30,7 +30,7 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_lockrows.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
 static bool

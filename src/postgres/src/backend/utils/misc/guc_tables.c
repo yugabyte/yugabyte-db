@@ -110,7 +110,8 @@
 #endif
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
+#include "access/yb_scan_core.h"
 #include "commands/copy.h"
 #include "commands/explain.h"
 #include "commands/explain_state.h"
