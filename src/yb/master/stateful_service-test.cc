@@ -52,7 +52,8 @@ TEST_F(StatefulServiceTest, TestCreateStatefulService) {
   ASSERT_EQ(tablets.size(), 1);
 
   // Validate the tablet cannot be split.
-  ASSERT_NOK(master->tablet_split_manager().ValidateSplitCandidateTable(service_table));
+  ASSERT_NOK(master->tablet_split_manager().ValidateSplitCandidateTable(
+      service_table, /* indexed_table= */ nullptr));
 }
 }  // namespace master
 }  // namespace yb

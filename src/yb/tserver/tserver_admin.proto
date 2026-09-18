@@ -486,6 +486,13 @@ service TabletServerAdminService {
     option (yb.rpc.send_metadata) = true;
   }
 
+  // Activates or releases the index-backfill write-ID ordering generation on an index tablet
+  // (request carries ChangeMetadataRequestPB.index_backfill_ordering_generation).
+  rpc UpdateIndexBackfillOrderingGeneration(tablet.ChangeMetadataRequestPB)
+      returns (ChangeMetadataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
+
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
