@@ -192,6 +192,9 @@ typedef enum HintKeyword
 	HINT_KEYWORD_UNRECOGNIZED
 } HintKeyword;
 
+/* YB: no join-method hint applies, so the yb_prefer_bnl coupling does not. */
+#define YB_HINT_KEYWORD_NONE HINT_KEYWORD_UNRECOGNIZED
+
 #define SCAN_HINT_ACCEPTS_INDEX_NAMES(kw) \
 	(kw == HINT_KEYWORD_INDEXSCAN ||			\
 	 kw == HINT_KEYWORD_INDEXSCANREGEXP ||		\
@@ -3854,7 +3857,13 @@ get_current_join_mask(void)
 		mask |= ENABLE_HASHJOIN;
 	if (enable_memoize)
 		mask |= ENABLE_MEMOIZE;
-	if (yb_enable_batchednl)
+
+	/*
+	 * YB: Mirror the batched nested loop's availability rule in
+	 * standard_planner: yb_prefer_bnl keeps it available wherever a plain
+	 * nestloop is allowed, even with yb_enable_batchednl off.
+	 */
+	if (yb_enable_batchednl || (yb_prefer_bnl && enable_nestloop))
 		mask |= YB_ENABLE_BATCHEDNL;
 
 	return mask;
@@ -4024,15 +4033,32 @@ setup_scan_method_enforcement(RelOptInfo *rel,
 
 static void
 set_join_config_options(JoinPathExtraData *extra,
-						unsigned char enforce_mask)
+						unsigned char enforce_mask,
+						HintKeyword ybKeyword)
 {
 	unsigned char mask;
 
 	if (enforce_mask == ENABLE_NESTLOOP || enforce_mask == ENABLE_MERGEJOIN ||
-		enforce_mask == ENABLE_HASHJOIN)
+		enforce_mask == ENABLE_HASHJOIN || enforce_mask == YB_ENABLE_BATCHEDNL)
 		mask = enforce_mask;
 	else
 		mask = enforce_mask & current_hint_state->init_join_mask;
+
+	/*
+	 * YB: yb_prefer_bnl ties the batched nested loop to the plain one, so a
+	 * hint naming the plain form decides the batched form too.  A hint that
+	 * names the batched form itself is left alone.  This has to run after the
+	 * mask above is settled: folding it into enforce_mask would give NestLoop
+	 * two bits, which no longer matches the single-method test and would send
+	 * the hint through init_join_mask instead of overriding it.
+	 */
+	if (yb_prefer_bnl)
+	{
+		if (ybKeyword == HINT_KEYWORD_NONESTLOOP)
+			mask &= ~YB_ENABLE_BATCHEDNL;
+		else if (ybKeyword == HINT_KEYWORD_NESTLOOP)
+			mask |= YB_ENABLE_BATCHEDNL;
+	}
 
 	extra->pgs_mask &= ~PGS_JOIN_ANY;
 	extra->pgs_mask |= PGS_FOREIGNJOIN;
@@ -4046,6 +4072,9 @@ set_join_config_options(JoinPathExtraData *extra,
 
 	if (mask & ENABLE_HASHJOIN)
 		extra->pgs_mask |= PGS_HASHJOIN;
+
+	if (mask & YB_ENABLE_BATCHEDNL)
+		extra->pgs_mask |= YB_PGS_BATCHEDNL;
 }
 
 /*
@@ -5611,11 +5640,13 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			continue;
 
 		/*
-		 * YB: For negation join-method hints (NoNestLoop, NoBatchedNL,
-		 * NoMergeJoin, NoHashJoin) register the prohibited join method for
-		 * this relid set.  The YB core planner consults root->ybProhibitedJoins
-		 * when generating join paths.  This is how BatchedNestLoop enforcement
-		 * is done, since it has no PGS_* bit in JoinPathExtraData->pgs_mask.
+		 * YB: A negation join-method hint (NoNestLoop, NoYbBatchedNL,
+		 * NoMergeJoin, NoHashJoin) leaves the corresponding path disabled
+		 * through extra->pgs_mask, which keeps it out of the plan on cost.
+		 * Register the method here as well: ybFindProhibitedJoin clears
+		 * Path.ybIsHinted, so a join the Leading hint reaches but whose only
+		 * surviving method is prohibited does not count as hinted when
+		 * standard_join_search prunes the level.
 		 */
 		if (IsYugaByteEnabled())
 		{
@@ -5623,27 +5654,6 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 			if (ybJoinTag != 0)
 				ybAddProhibitedJoin(root, ybJoinTag,
-									bms_copy(hint->joinrelids));
-
-			/*
-			 * BatchedNestLoop is a NestLoop variant that has no PGS_* bit in
-			 * JoinPathExtraData->pgs_mask, so its enforcement piggybacks on
-			 * the prohibited-join channel:
-			 *   - NoNestLoop with yb_prefer_bnl on also prohibits BNL, since
-			 *     BNL is a NestLoop subtype.
-			 *   - A positive NestLoop hint with yb_prefer_bnl off prohibits
-			 *     BNL so that only a plain nested loop is considered.
-			 * (The NoBatchedNL and positive BatchedNL cases are already
-			 * covered by ybIsNegationJoinHint above and by pgs_mask disabling
-			 * the other join methods, respectively.)
-			 */
-			if (yb_prefer_bnl &&
-				hint->base.hint_keyword == HINT_KEYWORD_NONESTLOOP)
-				ybAddProhibitedJoin(root, T_YbBatchedNestLoop,
-									bms_copy(hint->joinrelids));
-			else if (!yb_prefer_bnl &&
-					 hint->base.hint_keyword == HINT_KEYWORD_NESTLOOP)
-				ybAddProhibitedJoin(root, T_YbBatchedNestLoop,
 									bms_copy(hint->joinrelids));
 		}
 
@@ -6075,16 +6085,19 @@ pg_hint_plan_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 		if (join_hint->inner_nrels == 0 || bms_equal(join_hint->inner_joinrelids, innerrel->relids))
 		{
 			join_hint->base.state = HINT_STATE_USED;
-			set_join_config_options(extra, join_hint->enforce_mask);
+			set_join_config_options(extra, join_hint->enforce_mask,
+									join_hint->base.hint_keyword /* YB */ );
 		}
 		else
 		{
-			set_join_config_options(extra, DISABLE_ALL_JOIN);
+			set_join_config_options(extra, DISABLE_ALL_JOIN,
+									YB_HINT_KEYWORD_NONE);
 		}
 	}
 	else if (current_hint_state && current_hint_state->deny_all_joins)
 	{
-		set_join_config_options(extra, DISABLE_ALL_JOIN);
+		set_join_config_options(extra, DISABLE_ALL_JOIN,
+								YB_HINT_KEYWORD_NONE);
 	}
 
 	if (memoize_hint)
