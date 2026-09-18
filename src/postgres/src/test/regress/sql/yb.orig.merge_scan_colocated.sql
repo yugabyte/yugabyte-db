@@ -307,6 +307,10 @@
 \set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 
 -- #30096: Merge scan shouldn't be used in a parallel scan.
+-- Explain without ANALYZE because a parallel query does not necessarily get
+-- the workers the planner asked for, so the per worker row counts, loop
+-- counts, and sort memory that ANALYZE prints vary from run to run.
+\set explain 'EXPLAIN (VERBOSE, COSTS OFF)'
 \set query ':explain :Q SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5;'
 \set Q3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 0)*/'
 \set Q4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/'
@@ -317,6 +321,7 @@
 \i :run_query
 \unset Q3
 \unset Q4
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 --
 -- Secondary index
