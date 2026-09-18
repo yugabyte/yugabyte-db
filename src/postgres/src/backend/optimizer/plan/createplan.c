@@ -358,7 +358,8 @@ static Group *make_group(List *tlist, List *qual, int numGroupCols,
 						 Plan *lefttree);
 static Unique *make_unique_from_sortclauses(Plan *lefttree, List *distinctList);
 static Unique *make_unique_from_pathkeys(Plan *lefttree,
-										 List *pathkeys, int numCols);
+										 List *pathkeys, int numCols,
+										 Relids yb_relids);
 static Gather *make_gather(List *qptlist, List *qpqual,
 						   int nworkers, int rescan_param, bool single_copy, Plan *subplan);
 static SetOp *make_setop(SetOpCmd cmd, SetOpStrategy strategy, Plan *lefttree,
@@ -2733,6 +2734,9 @@ create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path, int flag
 	Unique	   *plan;
 	Plan	   *subplan;
 
+	/* YB declarations */
+	Relids		yb_relids = best_path->subpath->parent->relids;
+
 	/*
 	 * Unique doesn't project, so tlist requirements pass through; moreover we
 	 * need grouping columns to be labeled.
@@ -2742,7 +2746,8 @@ create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path, int flag
 
 	plan = make_unique_from_pathkeys(subplan,
 									 best_path->path.pathkeys,
-									 best_path->numkeys);
+									 best_path->numkeys,
+									 yb_relids);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
@@ -9262,9 +9267,20 @@ make_unique_from_sortclauses(Plan *lefttree, List *distinctList)
 
 /*
  * as above, but use pathkeys to identify the sort columns and semantics
+ *
+ * YB: 'yb_relids' is the set of rels scanned by 'lefttree', passed on so that
+ * find_ec_member_matching_expr() also considers child equivalence members of
+ * those rels. YB puts a Unique node directly above a baserel's distinct index
+ * scan (see yb_create_distinct_index_path); when that baserel is an appendrel
+ * child, its pathkeys are canonicalized against the parent appendrel's
+ * equivalence classes, in which the member matching the child's targetlist is a
+ * child member. PG's own callers build this node over a whole scan/join or
+ * upper relation, never over a single appendrel child, so a non-child member
+ * always matches there and the relids make no difference.
  */
 static Unique *
-make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols)
+make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols,
+						  Relids yb_relids)
 {
 	Unique	   *node = makeNode(Unique);
 	Plan	   *plan = &node->plan;
@@ -9327,7 +9343,7 @@ make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols)
 			foreach(j, plan->targetlist)
 			{
 				tle = (TargetEntry *) lfirst(j);
-				em = find_ec_member_matching_expr(ec, tle->expr, NULL);
+				em = find_ec_member_matching_expr(ec, tle->expr, yb_relids);
 				if (em)
 				{
 					/* found expr already in tlist */
