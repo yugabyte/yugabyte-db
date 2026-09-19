@@ -42,6 +42,13 @@ type: docs
     </a>
   </li>
   <li>
+    <a href="#oci" class="nav-link" id="oci-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="oci" aria-selected="false">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
+  <li>
     <a href="#k8s" class="nav-link" id="k8s-tab" data-bs-toggle="tab"
       role="tab" aria-controls="k8s" aria-selected="false">
       <i class="fa-regular fa-dharmachakra"></i>
@@ -84,6 +91,16 @@ Linux OS root permissions are required for the server, see [Servers for YBA](../
 When installing YugabyteDB Anywhere on an Azure VM, no cloud permissions are required.
 
 If you attach a Managed Identity (IAM role) or Service Principal with the appropriate permissions to the VM instance where YugabyteDB Anywhere will be running, you can use the YugabyteDB Anywhere instance's Managed Identity or Service Principal when setting up node servers, key management services, and backup storage. Refer to [Permissions to deploy nodes](../cloud-permissions-nodes-azure/), [Permissions to use encryption at rest](../cloud-permissions-ear/), and [Permissions to back up and restore](../cloud-permissions-storage/).
+
+Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
+
+  </div>
+
+  <div id="oci" class="tab-pane fade" role="tabpanel" aria-labelledby="oci-tab">
+
+When installing YugabyteDB Anywhere on an OCI compute instance, no cloud permissions are required.
+
+If you assign the instance to a dynamic group with the appropriate permissions, you can use instance principal when setting up node servers, Object Storage backups, and OCI Vault. Refer to [Permissions to deploy nodes](../cloud-permissions-nodes-oci/), [Permissions to back up and restore](../cloud-permissions-storage/), and [Permissions to use encryption at rest](../cloud-permissions-ear/).
 
 Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
 
