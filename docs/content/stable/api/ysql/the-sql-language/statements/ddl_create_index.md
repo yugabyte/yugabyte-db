@@ -49,10 +49,12 @@ If the table is colocated, its index is also colocated; if the table is not colo
 
 ### Partitioned indexes
 
-Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
+Creating an index on a partitioned table automatically creates a corresponding index for every partition in that partition's tablespace. Indexes automatically created when you create or attach a partition also use the partition's tablespace, regardless of the parent index's tablespace or `default_tablespace`. Existing matching indexes reused during these operations retain their tablespaces.
+
+You can create an index on each partition individually in the following cases:
 
 - The indexes need to be created [CONCURRENTLY](#concurrently): concurrent builds for indexes on partitioned tables aren't supported.
-- [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used and you want to create the index separately on each partition to customize the tablespace in which each index is created.
+- You want an index in a different tablespace from its partition, for example, to customize index placement in a [geo-partitioned deployment](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/).
 
 #### Creating indexes concurrently on partitioned tables
 
