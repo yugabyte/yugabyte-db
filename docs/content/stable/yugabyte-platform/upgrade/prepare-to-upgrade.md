@@ -82,7 +82,7 @@ YugabyteDB Anywhere v2025.2 and later require universes have node agent running 
 
 If any universe nodes require an update to node agent, YugabyteDB Anywhere displays a banner on the **Dashboard** to that effect.
 
-You can manually update a universe to node agent by navigating to the universe and clicking **Actions > More > Install Node Agent**. Starting in v2026.1.2.0, you can instead click **Actions > More > Reprovision Universe Nodes**, which updates node provisioning and migrates nodes to node agent and user-level systemd in a single rolling operation. See [Reprovision universe nodes](../../manage-deployments/reprovision-nodes/).
+You can manually update a universe to node agent by navigating to the universe and clicking **Actions > More > Install Node Agent**.
 
 If you want YugabyteDB Anywhere to automatically update universes requiring node agent, on the banner, click **Automatically Install Node Agents**. YugabyteDB Anywhere will then attempt to update universe nodes to use node agent in the background. If it is unable to update a universe, click **View Node Agents** on the banner to display the **Node Agents** list, where you can identify problem nodes. Make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by clicking **Actions>Reinstall Node Agent** for the node in the **Node Agents** list.
 
