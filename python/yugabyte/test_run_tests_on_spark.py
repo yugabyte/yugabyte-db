@@ -60,7 +60,8 @@ def make_attempts(base: str, num_repetitions: int) -> List[test_descriptor.TestD
     return [base_descriptor.with_attempt_index(i) for i in range(1, num_repetitions + 1)]
 
 
-def make_result(descriptor_str: str, exit_code: int = 0) -> yb_dist_tests.TestResult:
+def make_result(descriptor_str: str, exit_code: int = 0,
+                skipped: bool = False) -> yb_dist_tests.TestResult:
     """A minimal TestResult carrying only the fields the re-run orchestration reads."""
     return yb_dist_tests.TestResult(
         test_descriptor=test_descriptor.TestDescriptor(descriptor_str),
@@ -69,7 +70,8 @@ def make_result(descriptor_str: str, exit_code: int = 0) -> yb_dist_tests.TestRe
         failed_without_output=False,
         artifact_paths=None,
         artifact_copy_result=None,
-        spark_error_copy_result=None)
+        spark_error_copy_result=None,
+        skipped=skipped)
 
 
 def results_for(
@@ -1671,3 +1673,197 @@ def test_baseline_cancellation_does_not_stop_the_diffs_resubmission(
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
     # The diff's own group was never cancelled.
     assert rts.FAILED_TESTS_ON_DIFF_JOB_GROUP not in rts.g_cancelled_job_groups
+
+
+# -------------------------------------------------------------------------------------------------
+# run_new_test_repetitions(): which tests get the extra runs.
+#
+# The selection decides what an integration lane spends extra test time on, and a wrong answer is
+# not a wrong number but a flood: every test of the lane read as "new" would repeat the whole lane.
+# So each guard that narrows the set is pinned here, with Spark and CSI faked out.
+# -------------------------------------------------------------------------------------------------
+
+def make_args(**overrides: Any) -> Any:
+    """main()'s parsed arguments, as far as run_new_test_repetitions reads them."""
+    args = dict(new_test_repetitions=20, num_repetitions=1, test_list=None, ignore_list=None,
+                max_tests=None, test_filter_re=None, test_conf=None)
+    args.update(overrides)
+    return types.SimpleNamespace(**args)
+
+
+def capture_submissions(monkeypatch: pytest.MonkeyPatch,
+                        known: Any) -> List[Any]:
+    """
+    Fake out the previous launch's test list and the Spark job, and record every submission as
+    (descriptors, rerun, env_vars).
+    """
+    submissions: List[Any] = []
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig,
+            env_vars: Any = None,
+            **kwargs: Any) -> List[yb_dist_tests.TestResult]:
+        # Its own Spark job group, so the failure monitor cancels only this job and its
+        # cancellation cannot be mistaken for the main pass's.
+        assert kwargs.get('job_group') == rts.NEW_TESTS_ON_DIFF_JOB_GROUP
+        submissions.append((list(pending), rerun, env_vars))
+        return results_for(pending)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts.csi_report, "previous_launch_unique_ids", lambda: known)
+    return submissions
+
+
+def test_only_new_and_passing_tests_are_repeated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    New is "the previous launch of this lane did not report it". Of those, only the ones that
+    passed here are repeated: a new test that already failed is re-run by --fail_repetitions, and
+    repeating only the passing ones is what makes retry_kind=new_test_repetition mean "the first
+    attempt passed".
+    """
+    # What the previous launch of the lane reported. The Gone ones are tests it ran that this
+    # build no longer has, which is why its list can be longer than this run's.
+    known = {"tests-x/a-test:::A.Old", "tests-x/a-test:::A.OldFlaky",
+             "tests-x/a-test:::A.Gone1", "tests-x/a-test:::A.Gone2"}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [
+        make_result("tests-x/a-test:::A.Old"),
+        make_result("tests-x/a-test:::A.OldFlaky", exit_code=1),
+        make_result("tests-x/a-test:::A.New"),
+        make_result("tests-x/a-test:::A.NewBroken", exit_code=1),
+    ]
+
+    rts.run_new_test_repetitions(
+        make_args(new_test_repetitions=20), FAKE_CONF, results, FAKE_ENV, False)
+
+    assert len(submissions) == 1
+    descriptors, rerun, env_vars = submissions[0]
+    # 19 more runs of the one new test that passed, numbered from 2 so they do not collide with
+    # the main pass's own attempt.
+    assert descriptor_strs(descriptors) == {
+        "tests-x/a-test:::A.New:::attempt_%d" % i for i in range(2, 21)
+    }
+    # Not a fail repetition: the kind those report would say this test's first attempt failed.
+    assert rerun is False
+    # The main pass's environment, which carries the CSI suite ids the workers report into, plus
+    # the marker that makes these executions report as new-test repetitions.
+    assert env_vars == dict(FAKE_ENV, YB_CSI_NEW_TEST='1')
+
+
+def test_a_new_test_that_skipped_itself_is_not_repeated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A test that skips itself (GTEST_SKIP, a platform gate) exits 0 and is reported to CSI as
+    skipped. It is not a pass: repeating it would hang executions of nothing on a skipped item
+    while the tag told readers its first attempt passed.
+    """
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [make_result(uid) for uid in sorted(known)] + [
+        make_result("tests-x/a-test:::A.NewSkipped", skipped=True),
+        make_result("tests-x/a-test:::A.New")]
+
+    rts.run_new_test_repetitions(make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV,
+                                 False)
+
+    [(descriptors, _, _)] = submissions
+    assert descriptor_strs(descriptors) == {
+        "tests-x/a-test:::A.New:::attempt_2", "tests-x/a-test:::A.New:::attempt_3"}
+
+
+def test_two_results_for_one_test_repeat_it_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Spark task that reported and was then resubmitted leaves two results for one test."""
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [make_result(uid) for uid in sorted(known)] + [
+        make_result("tests-x/a-test:::A.New"), make_result("tests-x/a-test:::A.New")]
+
+    rts.run_new_test_repetitions(make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV,
+                                 False)
+
+    [(descriptors, _, _)] = submissions
+    assert len(descriptors) == 2
+
+
+def test_nothing_is_repeated_without_a_previous_launch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No baseline, no notion of new: the first launch of a lane must not repeat all 12k tests."""
+    submissions = capture_submissions(monkeypatch, None)
+
+    rts.run_new_test_repetitions(
+        make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_a_short_previous_launch_is_not_a_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A launch that ended early reported a fraction of its tests, and every test it never reached
+    would read as new. Below NEW_TEST_MIN_KNOWN_RATIO of this run's tests, it is not used.
+    """
+    results = [make_result("tests-x/a-test:::A.T%d" % i) for i in range(100)]
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(50)}
+    submissions = capture_submissions(monkeypatch, known)
+
+    rts.run_new_test_repetitions(make_args(), FAKE_CONF, results, FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_too_many_new_tests_are_sampled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    One source change can create hundreds of new test names (a parameterized instantiation, a
+    renamed binary). Past NEW_TEST_LIMIT a sample of that size is repeated, not all of them.
+    """
+    results = [make_result("tests-x/a-test:::A.T%d" % i) for i in range(1200)]
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(1100)}
+    submissions = capture_submissions(monkeypatch, known)
+
+    rts.run_new_test_repetitions(
+        make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV, False)
+
+    descriptors = submissions[0][0]
+    repeated = set(td.descriptor_str_without_attempt_index for td in descriptors)
+    assert len(repeated) == rts.NEW_TEST_LIMIT
+    assert len(descriptors) == rts.NEW_TEST_LIMIT * 2
+    assert repeated.isdisjoint(known)
+
+
+@pytest.mark.parametrize('args', [
+    make_args(new_test_repetitions=0),    # off
+    make_args(new_test_repetitions=1),    # one run is what the main pass already did
+    make_args(num_repetitions=5),         # every test is already being repeated
+    make_args(test_list='/tmp/rerun_list.txt'),    # a re-run of named tests, not the lane's pass
+    make_args(ignore_list='/tmp/ignore_list.txt'),
+    make_args(max_tests=100),             # a sample of the lane, so "not run before" means nothing
+    make_args(test_filter_re='A.*'),
+    make_args(test_conf='/tmp/test_conf.json'),
+])
+def test_partial_runs_repeat_nothing(monkeypatch: pytest.MonkeyPatch, args: Any) -> None:
+    """
+    Only a full pass of the lane over its own test list can tell a new test from one this run was
+    never going to execute. Every other shape of run repeats nothing, and asks CSI nothing.
+    """
+    def fail_if_called() -> Any:
+        raise AssertionError("the previous launch must not be queried for a partial run")
+
+    submissions = capture_submissions(monkeypatch, {"tests-x/a-test:::A.Old"})
+    monkeypatch.setattr(rts.csi_report, "previous_launch_unique_ids", fail_if_called)
+
+    rts.run_new_test_repetitions(
+        args, FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_a_cancelled_main_pass_repeats_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The main pass was cancelled at the failure threshold, so this run's results are a partial
+    picture of the lane and the tests it never reached are not evidence of anything.
+    """
+    submissions = capture_submissions(monkeypatch, {"tests-x/a-test:::A.Old"})
+
+    rts.run_new_test_repetitions(
+        make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, True)
+
+    assert submissions == []
