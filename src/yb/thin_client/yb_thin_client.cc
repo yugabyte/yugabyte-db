@@ -80,27 +80,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 
-// Collect stack traces through (llvm-)libunwind rather than glibc backtrace().
-//
-// The default is false outside TSAN builds (see use_libunwind_for_stack_trace_collection in
-// util/stack_trace.cc), which routes collection through the system libgcc unwinder. That is not
-// safe for a shared library embedded in a foreign process: our ~1.3 MB .eh_frame is registered
-// with the HOST's libgcc via __register_frame_info, and libgcc sorts a registered object's FDEs
-// lazily on first lookup -- a ~260 KiB malloc made while holding its object_mutex. If the host's
-// allocator unwinds from inside malloc (jemalloc with heap profiling, a leak checker), that
-// nested unwind re-enters _Unwind_Find_FDE and blocks on the mutex the same thread already holds.
-// The thread deadlocks and ybthin_client_create never returns (#33916).
-//
-// libunwind keeps its own FDE cache and never takes libgcc's lock, and it is statically linked
-// into this .so.
-//
-// This is a trade-off, not a free win. The false default has two reasons, not one: BOLT-ed release
-// binaries, which a client .so is not, and #32197 -- a still-open SIGSEGV inside libunwind's
-// DwarfInstructions while collecting a trace from a signal handler. That path is reachable here in
-// principle: Messenger::Shutdown -> DisableAndWaitForOps constructs a LongOperationTracker(1s),
-// and a shutdown exceeding it would DumpThreadStack, which collects from a signal handler. So this
-// trades a deadlock seen on roughly 1 in 8 process starts for a crash that needs a slow shutdown
-// to reach at all. Sanitizer builds are excluded below, where libunwind is known to fault.
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
 
 using yb::DataType;
@@ -777,16 +756,26 @@ ybthin_status ybthin_client_create(
     const char* const* tserver_addrs, size_t n_addrs, const ybthin_tls_opts* tls,
     const ybthin_pool_opts* pool, uint32_t rpc_timeout_ms, uint32_t num_reactors,
     ybthin_client** out) {
-  // Must happen before anything creates a thread: Thread::Create warms up the stack trace library
-  // on first use, and that warm-up is what trips the libgcc deadlock described above.
+  // Collect stack traces through (llvm-)libunwind rather than glibc backtrace(). Must precede any
+  // thread creation: Thread::Create warms up the stack trace library on first use, and that
+  // warm-up is what trips the deadlock.
   //
-  // Assigned unconditionally rather than through std::call_once: the write is idempotent, and a
-  // once-flag would make it fire only for the first client in a process -- wrong for any caller
-  // that restores flags between clients, and untestable.
+  // The glibc path is unsafe for a .so embedded in a foreign process: our ~1.3 MB .eh_frame is
+  // registered with the HOST's libgcc, which sorts a registered object's FDEs lazily inside a
+  // ~260 KiB malloc made while holding object_mutex. A host allocator that unwinds from inside
+  // that malloc re-enters _Unwind_Find_FDE and blocks on the mutex the same thread holds, so
+  // ybthin_client_create never returns (#33916). libunwind keeps its own FDE cache, never takes
+  // that lock, and is already statically linked here.
   //
-  // Sanitizer builds keep their default. There libunwind segfaults in DwarfInstructions when it
-  // unwinds a thread the signal interrupted inside the sanitizer runtime, which is why the default
-  // is off for them; a shim in a sanitized host should not have that forced on.
+  // The cost is #32197, the single reason the non-sanitizer default is false: libunwind SIGSEGVs
+  // when it collects in a BOLT-ed binary. Any collection is exposed, not just the one behind
+  // LongOperationTracker, so this forecloses BOLT here -- yb_release does not pass --bolt, so
+  // nothing regresses today.
+  //
+  // Assigned unconditionally, not via std::call_once: the write is idempotent, and a once-flag
+  // would fire only for the first client in a process -- wrong for a caller that restores flags
+  // between clients, and untestable. Sanitizer builds keep their default, where libunwind faults
+  // in DwarfInstructions unwinding a thread interrupted inside the sanitizer runtime.
   if (!yb::IsSanitizer()) {
     FLAGS_use_libunwind_for_stack_trace_collection = true;
   }
