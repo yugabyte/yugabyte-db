@@ -138,6 +138,8 @@ yugabyte=# SELECT * FROM t;
 
 For detailed information on the COPY FROM command, refer to the [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/) statement reference.
 
+If you create the table and load it in the same transaction (for example, `CREATE TABLE AS`, or `CREATE TABLE` followed by `COPY` in a transaction block), YugabyteDB can skip the provisional-write step. See [Faster writes to new tables](../../../explore/transactions/new-table-writes/).
+
 #### Error handling
 
 If the `COPY FROM` command fails during the process, you should try rerunning it. However, you don't have to rerun the entire file. `COPY FROM` imports data into rows individually, starting from the top of the file. So if you know that some of the rows have been successfully imported prior to the failure, you can safely ignore those rows by adding the `SKIP` parameter.

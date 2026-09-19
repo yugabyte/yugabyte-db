@@ -675,6 +675,36 @@ Default: `20000`
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
+#### Faster writes to new tables
+
+To try the optimization, see [Faster writes to new tables](../../../explore/transactions/new-table-writes/). For write-path details, see [Skip intents optimization](../../../architecture/transactions/skip-intents/).
+
+##### yb_enable_new_relation_fastpath_write
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2337">}}
+Default: `on`
+{{% /tags/wrap %}}
+
+Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
+
+Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it inside a transaction block, or after the first query of a transaction has run.
+
+Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
+
+##### yb_enable_new_relation_fastpath_write_in_txn_blocks
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2337">}}
+Default: `off`
+{{% /tags/wrap %}}
+
+Extends [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) to explicit transaction blocks. Requires that setting to be on, [transactional DDL](../../../explore/transactions/transactional-ddl/) to be enabled, and [Read Committed isolation](../../../explore/transactions/isolation-levels/#read-committed-isolation).
+
+Do not enable this setting through [ysql_pg_conf_csv](#ysql-pg-conf-csv) while transactional DDL is off: the setting reads back as on, but writes continue on the normal path and no error is reported. Use the [--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks](#ysql-yb-enable-new-relation-fastpath-write-in-txn-blocks) flag instead, which is validated at startup.
+
+Can be set using the [--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks](#ysql-yb-enable-new-relation-fastpath-write-in-txn-blocks) flag.
+
 #### Bucket-based index scan optimization
 
 ##### yb_enable_derived_equalities
@@ -2661,7 +2691,30 @@ Enables concurrent replication of multiple write operations in a transaction. Wr
 
 Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
 
-##### --use_cgroups_cpu
+##### --ysql_yb_enable_new_relation_fastpath_write
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2337">}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) configuration parameter. Enables faster writes into tables that the same transaction created or rebuilt.
+
+See also the `yb_enable_new_relation_fastpath_write` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+##### --ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2337">}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write_in_txn_blocks](#yb-enable-new-relation-fastpath-write-in-txn-blocks) configuration parameter. Extends the new-table write optimization to explicit transaction blocks.
+
+This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
+See also the `yb_enable_new_relation_fastpath_write_in_txn_blocks` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
