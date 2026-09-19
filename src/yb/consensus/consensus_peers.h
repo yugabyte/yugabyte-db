@@ -59,6 +59,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/semaphore.h"
@@ -278,6 +279,11 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // on a per tserver level
   MultiRaftHeartbeatBatcherPtr multi_raft_batcher_;
 
+  // Set once the proxy moves to another of the peer's addresses. The batcher is shared and
+  // keyed by the address it was built for, so it stays behind and heartbeats go through the
+  // proxy instead.
+  std::atomic<bool> batcher_address_stale_{false};
+
   // Thread pool used to construct requests to this peer.
   ThreadPoolToken* raft_pool_token_;
 
@@ -338,6 +344,14 @@ class PeerProxy {
     LOG(DFATAL) << "Not implemented";
   }
 
+  // Moves to another of the addresses the peer registered, after the one in use could not be
+  // connected to, and reports whether there was one. A proxy that reaches its peer some other
+  // way than by one of its registered addresses has none to move to, which is the answer this
+  // default gives, as PeerProxyFactory::messenger does for a factory that has no messenger.
+  virtual bool FailToNextAddress() {
+    return false;
+  }
+
   virtual ~PeerProxy() {}
 };
 
@@ -359,7 +373,7 @@ class PeerProxyFactory {
 // PeerProxy implementation that does RPC calls
 class RpcPeerProxy : public PeerProxy {
  public:
-  RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy);
+  RpcPeerProxy(rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from);
 
   virtual void UpdateAsync(const LWConsensusRequestPB* request,
                            RequestTriggerMode trigger_mode,
@@ -387,11 +401,30 @@ class RpcPeerProxy : public PeerProxy {
                                        rpc::RpcController* controller,
                                        const rpc::ResponseCallback& callback) override;
 
+  bool FailToNextAddress() override EXCLUDES(mutex_);
+
+  // The address the current proxy was built on.
+  HostPort TEST_HostPort() const EXCLUDES(mutex_);
+
   virtual ~RpcPeerProxy();
 
  private:
-  HostPort hostport_;
-  ConsensusServiceProxyPtr consensus_proxy_;
+  // The proxy for the address currently in use. Returned by value so a call already in
+  // flight keeps its proxy alive across a move to another address.
+  std::shared_ptr<ConsensusServiceProxy> proxy() const EXCLUDES(mutex_);
+
+  // Builds the proxy for the first address of the peer that has not failed, and reports
+  // whether there was one.
+  bool BuildProxyUnlocked() REQUIRES(mutex_);
+
+  rpc::ProxyCache* const proxy_cache_;
+  const RaftPeerPB peer_pb_;
+  const CloudInfoPB from_;
+
+  mutable rw_spinlock mutex_;
+  FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
+  HostPort hostport_ GUARDED_BY(mutex_);
+  std::shared_ptr<ConsensusServiceProxy> consensus_proxy_ GUARDED_BY(mutex_);
 };
 
 // PeerProxyFactory implementation that generates RPCPeerProxies

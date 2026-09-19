@@ -210,7 +210,9 @@ Heartbeater::Impl::Impl(
     const TabletServerOptions& opts, TabletServer& server,
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
     : server_(server),
-      finder_(server.messenger(), server.proxy_cache(), opts.GetMasterAddresses()),
+      finder_(
+          server.messenger(), server.proxy_cache(), opts.GetMasterAddresses(),
+          server.MakeCloudInfoPB()),
       poller_(std::make_unique<HeartbeatPoller>(server_, finder_, std::move(data_providers))),
       poll_scheduler_(finder_, *poller_.get()) {
   auto master_addresses = CHECK_NOTNULL(finder_.get_master_addresses());
