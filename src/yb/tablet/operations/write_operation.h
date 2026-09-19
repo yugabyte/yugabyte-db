@@ -107,6 +107,8 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   // Aborts the mvcc transaction.
   Status DoAborted(const Status& status) override;
 
+  Status ValidateLeaderOpId(const OpId& op_id) const override;
+
   HybridTime WriteHybridTime() const override;
 
   AsyncWriteCallback async_write_callback_;
