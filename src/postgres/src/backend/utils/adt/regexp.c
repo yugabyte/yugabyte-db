@@ -128,8 +128,7 @@ typedef struct YbReCacheInfo
 static void
 YbFreeRe(cached_re_str *re)
 {
-	pg_regfree(&re->cre_re);
-	free(re->cre_pat);
+	MemoryContextDelete(re->cre_context);
 }
 
 static void
