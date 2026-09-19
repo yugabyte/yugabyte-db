@@ -21,6 +21,12 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     icon="fa-thin fa-bandage">}}
 
   {{<index/item
+    title="Reprovision universe nodes"
+    body="Re-apply OS-level provisioning and migrate legacy nodes to node agent."
+    href="reprovision-nodes/"
+    icon="fa-thin fa-arrows-rotate">}}
+
+  {{<index/item
     title="Upgrade database"
     body="Upgrade YugabyteDB software powering your universes."
     href="upgrade-software/"
