@@ -706,6 +706,8 @@ Refer to [import data](../../reference/data-migration/import-data/) for more inf
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB database cluster.
 
+To speed up the CDC phase on write-heavy tables with unique indexes, see [Improve import CDC streaming performance](../../reference/performance/#improve-import-cdc-streaming-performance).
+
 Some important metrics such as the number of events, ingestion rate, and so on, is displayed during the CDC phase similar to the following:
 
 ```output

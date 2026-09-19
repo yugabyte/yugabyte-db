@@ -221,10 +221,11 @@ import-data:
   cdc-partition-key:
 ```
 
-| Global strategy for all tables on how CDC events are partitioned across parallel channels. Supported values:
-<ul><li><code>auto</code> (default): Automatically pick `pk` or `table` per table (for example, expression unique-index tables use `table`).</li>
-<li><code>pk</code>: Partition CDC events by primary key.</li>
-<li><code>table</code>: Partition CDC events by table (all events for a table share one channel).</li></ul> |
+| Global strategy for all tables on how CDC events are partitioned across parallel channels. Strategy is one of the following:
+
+- `auto` (default): Automatically pick `pk` or `table` per table (for example, expression unique-index tables use `table`).
+- `pk`: Partition CDC events by primary key.
+- `table`: Partition CDC events by table (all events for a table share one channel). |
 
 | --cdc-partition-key-overrides |
 
@@ -239,7 +240,7 @@ import-data:
 - `table`: Partition CDC events by table (all events for a table share one channel). Example: `public.orders:table`
 - `(col1,col2)`: Partition CDC events by the given column values (immutable columns), in the form `(col1,col2)`. Example: `public.payments:(customer_id,region)`
 
-Unlisted tables keep the global `--cdc-partition-key`. |
+Unlisted tables keep the global `--cdc-partition-key`. For how to choose a strategy, see [Improve import CDC streaming performance](../../performance/#improve-import-cdc-streaming-performance). |
 
 | -e, --export-dir |
 
