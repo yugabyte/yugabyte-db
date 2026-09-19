@@ -302,3 +302,39 @@ SELECT relname, attname, reltuples, stadistinct, stanullfrac
 (21 rows)
 
 DROP TABLE t_part;
+-- pg_stat_user_tables last_analyze vs last_autoanalyze.
+-- Manual ANALYZE updates last_analyze; YB auto-analyze (simulated via the
+-- internal-connection GUC) updates last_autoanalyze.
+CREATE TABLE pgstat_analyze_stats (k int PRIMARY KEY);
+SELECT last_analyze IS NOT NULL AS has_last_analyze,
+       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+       analyze_count, autoanalyze_count
+  FROM pg_stat_user_tables WHERE relname = 'pgstat_analyze_stats';
+ has_last_analyze | has_last_autoanalyze | analyze_count | autoanalyze_count 
+------------------+----------------------+---------------+-------------------
+ f                | f                    |             0 |                 0
+(1 row)
+
+ANALYZE pgstat_analyze_stats;
+SELECT last_analyze IS NOT NULL AS has_last_analyze,
+       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+       analyze_count, autoanalyze_count
+  FROM pg_stat_user_tables WHERE relname = 'pgstat_analyze_stats';
+ has_last_analyze | has_last_autoanalyze | analyze_count | autoanalyze_count 
+------------------+----------------------+---------------+-------------------
+ t                | f                    |             1 |                 0
+(1 row)
+
+SET yb_use_internal_auto_analyze_service_conn = true;
+ANALYZE pgstat_analyze_stats;
+RESET yb_use_internal_auto_analyze_service_conn;
+SELECT last_analyze IS NOT NULL AS has_last_analyze,
+       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+       analyze_count, autoanalyze_count
+  FROM pg_stat_user_tables WHERE relname = 'pgstat_analyze_stats';
+ has_last_analyze | has_last_autoanalyze | analyze_count | autoanalyze_count 
+------------------+----------------------+---------------+-------------------
+ t                | t                    |             1 |                 1
+(1 row)
+
+DROP TABLE pgstat_analyze_stats;

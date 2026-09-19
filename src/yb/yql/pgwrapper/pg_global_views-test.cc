@@ -1021,6 +1021,48 @@ TEST_F(PgBuiltinGlobalViewsTest, TestSimpleGvs) {
   ASSERT_OK(VerifyTserverUuidsInView("pg_stat_user_indexes"));
 }
 
+// last_autoanalyze is local to the postgres that ran ANALYZE. Confirm
+// gv$pg_stat_user_tables surfaces another tserver's timestamp so operators
+// do not have to find the node that ran it.
+TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatUserTablesLastAutoanalyze) {
+  ASSERT_GE(GetNumTabletServers(), 2);
+  constexpr auto kTable = "gv_pgstat_analyze_tbl";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTable));
+
+  auto conn_ts1 = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(1)));
+  const auto ts1_uuid = ASSERT_RESULT(conn_ts1.FetchRow<Uuid>(
+      "SELECT yb_get_local_tserver_uuid()"));
+  ASSERT_OK(conn_ts1.Execute("SET yb_use_internal_auto_analyze_service_conn = true"));
+
+  const auto fetch_ts1_stats = [&]() {
+    return conn_->FetchRow<std::optional<MonoDelta>, std::optional<MonoDelta>, PGUint64>(Format(
+        "SELECT last_analyze, last_autoanalyze, autoanalyze_count "
+        "FROM gv$$pg_stat_user_tables WHERE relname = '$0' AND server_uuid = '$1'",
+        kTable, ts1_uuid.ToString()));
+  };
+
+  ASSERT_OK(conn_ts1.ExecuteFormat("ANALYZE $0", kTable));
+
+  auto local_last_autoanalyze = ASSERT_RESULT((conn_->FetchRow<std::optional<MonoDelta>>(Format(
+      "SELECT last_autoanalyze FROM pg_stat_user_tables WHERE relname = '$0'",
+      kTable))));
+  ASSERT_FALSE(local_last_autoanalyze.has_value());
+
+  auto [last_analyze1, last_autoanalyze1, count1] = ASSERT_RESULT(fetch_ts1_stats());
+  ASSERT_FALSE(last_analyze1.has_value());
+  ASSERT_TRUE(last_autoanalyze1.has_value());
+  ASSERT_EQ(count1, 1);
+
+  SleepFor(100ms);
+  ASSERT_OK(conn_ts1.ExecuteFormat("ANALYZE $0", kTable));
+
+  auto [last_analyze2, last_autoanalyze2, count2] = ASSERT_RESULT(fetch_ts1_stats());
+  ASSERT_FALSE(last_analyze2.has_value());
+  ASSERT_TRUE(last_autoanalyze2.has_value());
+  ASSERT_GT(*last_autoanalyze2, *last_autoanalyze1);
+  ASSERT_EQ(count2, 2);
+}
+
 TEST_F(PgBuiltinGlobalViewsTest, TestGvYbTerminatedQueries) {
   constexpr auto kSleepDuration = 5 * kTimeMultiplier;
   for (int i = 0; i < GetNumTabletServers(); ++i) {
