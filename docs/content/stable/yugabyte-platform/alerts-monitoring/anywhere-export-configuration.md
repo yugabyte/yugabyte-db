@@ -27,7 +27,7 @@ To export either metrics or logs from a universe:
 
     While the connection is active, metrics or logs are automatically streamed to the tool.
 
-To be able to export logs from Kubernetes universes, ensure the OpenTelemetry Operator is installed. Refer to [OpenTelemetry Operator for Kubernetes](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) in the OpenTelemetry documentation. Metrics export is not supported on Kubernetes.
+To export logs or metrics from Kubernetes universes, install the [OpenTelemetry Operator](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started). Metrics export on Kubernetes requires YugabyteDB v2026.1.2.0 or later; see [Kubernetes limitations](../anywhere-metrics-export/#limitations).
 
 ## Available integrations
 
@@ -201,11 +201,7 @@ You can reuse the same OTLP telemetry provider for [database audit logging](../u
 
 #### Prerequisites
 
-- Enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`) to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-
-    If the flag is false, any REST API create and delete requests for OTLP telemetry providers return HTTP 400 with:
-
-    `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
+- In versions earlier than v2026.1.2.0, enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`) to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Starting in v2026.1.2.0, OTLP is enabled by default.
 
 - A reachable OTLP-compatible receiver and credentials if required (Basic Auth username and password, or a bearer token).
 
@@ -240,7 +236,7 @@ Concrete endpoint URLs and auth schemes vary by OTLP backend; consult your recei
 
 - Per-signal endpoint overrides (`logsEndpoint`, `metricsEndpoint`) are allowed only when **Protocol** is **HTTP**. A gRPC provider that sets either field is rejected.
 - For the **HTTP** protocol, when log export is enabled the OpenTelemetry Collector appends `/v1/logs` to the configured endpoint. Configure the endpoint without that suffix unless you use the explicit **Logs Endpoint** override.
-- Kubernetes support follows the same rules as the rest of YugabyteDB Anywhere OpenTelemetry export: [metrics export](../anywhere-metrics-export/#limitations) is not supported on Kubernetes; [log export](../universe-logging/#prerequisites) on Kubernetes requires the [OpenTelemetry Operator](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) on the cluster.
+- Kubernetes support follows the same rules as the rest of YugabyteDB Anywhere OpenTelemetry export. See [metrics export limitations](../anywhere-metrics-export/#limitations) and [log export prerequisites](../universe-logging/#prerequisites).
 
 #### REST API configuration
 
