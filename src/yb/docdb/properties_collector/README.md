@@ -187,11 +187,34 @@ The distributions do not aggregate this way. Bucket-wise merging is exact, but a
 shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per tablet against
 ~250 bytes for the scalars, so tablet-level distributions are built on demand instead.
 
+## Prometheus gauges
+
+`SstStatsMetrics` exports the aggregate as `docdb_sst_*` tablet-entity gauges, pulled on scrape:
+`total_entries`, `tombstone_entries`, `shadowed_entries`, `repackable_entries`, `dead_rows`,
+`dead_row_entries`, `reclaimable_entries`, `reclaimable_bytes`, `files_without_stats`,
+`files_with_partial_stats`, and `stats_available`. They take the default `kSum` aggregation, so the
+table- and server-level rollups add up like the other docdb tablet metrics; table-level visibility
+additionally needs the name to match the scrape's `priority_regex`
+(`prometheus_metric_filter.cc`), which defaults to `.*` but is narrowed by some deployments.
+
+Additive scalars only: this metrics system exports no bucket vectors, so nothing here carries a
+distribution. The age bands the aggregate does carry are rendered on the tablet status page only,
+and the per-file chain and stretch distributions stay in the SST properties.
+
+Two cases report zero rather than a number: every gauge before the tablet's first resync, when the
+aggregate holds only the files the listener happened to see, and the two derived gauges while any
+covered file is partial, when their chain identities do not hold. Neither zero is distinguishable
+from a measured zero on its own, which is what `stats_available` (0 until the first resync, 1
+after) and `files_with_partial_stats` are for: gate alerts and ratios on those two rather than
+reading a bare zero as a measurement.
+
+Nothing inside the server reads these. They exist for operators: dashboards, alerting, and tuning
+thresholds before the trigger ships.
+
 ## Boundaries
 
-This component produces the per-file record and the per-tablet sum of it. The rest is separate: the
-`docdb_sst_*` Prometheus gauges for humans (additive scalars only; this metrics system exports no
-bucket vectors), and a full-compaction trigger clause that reads the aggregate directly. Every
+This component produces the per-file record, the per-tablet sum of it, and the gauges over that
+sum. The full-compaction trigger clause that reads the aggregate directly is separate. Every
 consumer must account for **coverage**: files that predate the collector or whose properties cannot
 be read carry no statistics, and a ratio over them silently reads near zero. The latter contribute
 to the uncovered file count, but their entry and raw-byte counts are unknown.
