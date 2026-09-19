@@ -1777,6 +1777,21 @@ WARNING:  unused hints, and/or hints causing errors, exist
  Generated hints: /*+ SeqScan(tab) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (5 rows)
 
+-- Parallel zeros partial seqscans on a non-inh rel.  That must not hide
+-- NoSeqScan: still no valid path.
+/*+ NoSeqScan(tab) Parallel(tab 2) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
+WARNING:  hinting led to no path being found for relation "tab"
+WARNING:  no valid access method found for relation "tab"
+WARNING:  unused hints, and/or hints causing errors, exist
+                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on t2 tab
+         Storage Filter: (b2 < 10)
+         Partial Aggregate: true
+ Generated hints: /*+ SeqScan(tab) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+(5 rows)
+
 -- No plan can be found using the hint. Should generate warnings.
 /*+ set(enable_seqscan off) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 WARNING:  no valid access method found for relation "tab"
@@ -1982,6 +1997,63 @@ WARNING:  unused hints, and/or hints causing errors, exist
  Generated hints: /*+ SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (4 rows)
 
+-- Hard Parallel on a partitioned table disables non-partial paths on the
+-- inheritance parent but leaves hinted partial paths.  Should not warn that
+-- hinting found no path.
+set pg_hint_plan.yb_enable_internal_hint_test to off;
+set yb_enable_base_scans_cost_model to on;
+set yb_enable_parallel_append to on;
+set parallel_setup_cost to 0;
+set parallel_tuple_cost to 0;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Append
+               ->  Noop Aggregate
+                     ->  Seq Scan on prt1_p1 prt1_1
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Seq Scan on prt1_p2 prt1_2
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Seq Scan on prt1_p3 prt1_3
+                           Partial Aggregate: true
+(13 rows)
+
+reset parallel_setup_cost;
+reset parallel_tuple_cost;
+-- Without cheap parallel costs the serial Append is chosen.  Hard Parallel
+-- is not used as intended.
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+WARNING:  Parallel hint not used as intended: Parallel(prt1 2 hard)
+WARNING:  unused hints, and/or hints causing errors, exist
+                  QUERY PLAN                  
+----------------------------------------------
+ Finalize Aggregate
+   ->  Append
+         ->  Noop Aggregate
+               ->  Seq Scan on prt1_p1 prt1_1
+                     Partial Aggregate: true
+         ->  Noop Aggregate
+               ->  Seq Scan on prt1_p2 prt1_2
+                     Partial Aggregate: true
+         ->  Noop Aggregate
+               ->  Seq Scan on prt1_p3 prt1_3
+                     Partial Aggregate: true
+(11 rows)
+
+set pg_hint_plan.yb_bad_hint_mode to error;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+WARNING:  Parallel hint not used as intended: Parallel(prt1 2 hard)
+WARNING:  unused hints, and/or hints causing errors, exist
+ERROR:  errors found in hints, will fail
+set pg_hint_plan.yb_bad_hint_mode to warn;
+reset yb_enable_base_scans_cost_model;
+reset yb_enable_parallel_append;
+set pg_hint_plan.yb_enable_internal_hint_test to on;
 -- Use bad name 't22' in hint. Should get warnings and whatever plan was found without the bad leading hint.
 /*+ Leading(((((t5 t4) t1) t3) t22)) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;
 WARNING:  unused hint: Leading(((((t5 t4) t1) t3) t22))
