@@ -35,6 +35,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -86,6 +87,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 
 DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(quick_leader_election_on_create);
+DECLARE_bool(TEST_fail_operation_added_to_leader);
 DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
 DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
@@ -289,13 +291,13 @@ class TabletPeerTest : public YBTabletTest {
     AddTestRowDelete(delete_counter_++, write_req);
   }
 
-  void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+  Status ExecuteWriteAndReturnStatus(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     auto arena = SharedThreadSafeArena();
     auto& resp = *arena->NewArenaObject<tserver::LWWriteResponsePB>();
     auto& lw_req = *arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        ASSERT_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, &resp);
+        VERIFY_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, &resp);
     query->set_client_request(lw_req);
 
     CountDownLatch rpc_latch(1);
@@ -303,8 +305,11 @@ class TabletPeerTest : public YBTabletTest {
 
     tablet_peer->WriteAsync(std::move(query));
     rpc_latch.Wait();
-    CHECK(!resp.has_error())
-        << "\nResp:\n" << resp.ShortDebugString() << "Req:\n" << req.ShortDebugString();
+    return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
+  }
+
+  void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+    CHECK_OK(ExecuteWriteAndReturnStatus(tablet_peer, req));
   }
 
   template<class Callback>
@@ -383,6 +388,44 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
+
+// When Operation::AddedToLeader fails (e.g. the tablet is acquired while it shuts down), the
+// Raft index allocated for the operation must be rolled back, exactly like the
+// AddPendingOperation failure path right after it. Without the rollback the index is silently
+// skipped: the log ends before it while the next replicate is assigned a later one.
+TEST_F(TabletPeerTest, PendingStateCleanedUpWhenAddedToLeaderFails) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
+  // Let the leader-election no-op commit so the OpId comparisons below are stable.
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        const auto committed_op_id = consensus->GetLastCommittedOpId();
+        return committed_op_id.index > 0 &&
+               committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
+      },
+      MonoDelta::FromSeconds(5), "leader-election no-op to commit"));
+  const auto initial_op_id = consensus->GetLastCommittedOpId();
+
+  // The write is rejected after its Raft index was allocated but before any WAL append or
+  // pending-operation side effects.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_operation_added_to_leader) = true;
+  WriteRequestPB req;
+  GenerateSequentialInsertRequest(&req);
+  const auto status = ExecuteWriteAndReturnStatus(tablet_peer_.get(), req);
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "simulated AddedToLeader failure");
+  ASSERT_EQ(initial_op_id, consensus->GetLastCommittedOpId());
+  ASSERT_EQ(initial_op_id, tablet_peer_->log()->GetLatestEntryOpId());
+
+  // With the injection removed, the next write succeeds and reuses the rejected index.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_operation_added_to_leader) = false;
+  WriteRequestPB retry_req;
+  GenerateSequentialInsertRequest(&retry_req);
+  ASSERT_OK(ExecuteWriteAndReturnStatus(tablet_peer_.get(), retry_req));
+  ASSERT_EQ(initial_op_id.index + 1, consensus->GetLastCommittedOpId().index);
+  ASSERT_EQ(consensus->GetLastCommittedOpId(), tablet_peer_->log()->GetLatestEntryOpId());
+}
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
 TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
