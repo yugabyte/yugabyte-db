@@ -77,23 +77,17 @@ static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
 int
 compare_path_costs(Path *path1, Path *path2, CostSelector criterion)
 {
-	/* Number of disabled nodes, if different, trumps all else. */
-	if (unlikely(path1->disabled_nodes != path2->disabled_nodes))
-	{
-		if (path1->disabled_nodes < path2->disabled_nodes)
-			return -1;
-		else
-			return +1;
-	}
-
+	/*
+	 * YB: A hinted path, or one whose parallelism was forced, wins over a path
+	 * that is neither, whatever it costs -- and that has to be settled ahead of
+	 * the disabled-node count below.  A join order or method the user asked for
+	 * is often reachable only through nodes the enable_* GUCs disable, so the
+	 * hinted path tends to carry the larger count; letting the count decide
+	 * first answers the hint with a plan it forbids, and says nothing.
+	 */
 	if (IsYugaByteEnabled() && path1->parent != NULL && path2->parent != NULL &&
 		path1->parent->reloptkind == path2->parent->reloptkind)
 	{
-		/*
-		 * A hinted path should always 'win' over an unhinted one, regardless of cost. Need
-		 * to check in case an estimated cost exceeds a disabled cost. Also may need this if forcing
-		 * parallelism.
-		 */
 		if (path1->ybHasHintedUid && !(path2->ybHasHintedUid))
 		{
 			return -1;
@@ -113,6 +107,15 @@ compare_path_costs(Path *path1, Path *path2, CostSelector criterion)
 		{
 			return 1;
 		}
+	}
+
+	/* Number of disabled nodes, if different, trumps all else. */
+	if (unlikely(path1->disabled_nodes != path2->disabled_nodes))
+	{
+		if (path1->disabled_nodes < path2->disabled_nodes)
+			return -1;
+		else
+			return +1;
 	}
 
 	if (criterion == STARTUP_COST)
@@ -222,23 +225,13 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 #define CONSIDER_PATH_STARTUP_COST(p)  \
 	((p)->param_info == NULL ? (p)->parent->consider_startup : (p)->parent->consider_param_startup)
 
-	/* Number of disabled nodes, if different, trumps all else. */
-	if (unlikely(path1->disabled_nodes != path2->disabled_nodes))
-	{
-		if (path1->disabled_nodes < path2->disabled_nodes)
-			return COSTS_BETTER1;
-		else
-			return COSTS_BETTER2;
-	}
-
+	/*
+	 * YB: ranked ahead of the disabled-node count for the reason given in
+	 * compare_path_costs.
+	 */
 	if (IsYugaByteEnabled() && path1->parent != NULL && path2->parent != NULL &&
 		path1->parent->reloptkind == path2->parent->reloptkind)
 	{
-		/*
-		 * A hinted path should always 'win' over an unhinted one, regardless of cost. Need
-		 * to check in case an estimated cost exceeds a disabled cost. Also may need this if forcing
-		 * parallelism.
-		 */
 		if (path1->ybHasHintedUid && !(path2->ybHasHintedUid))
 		{
 			return COSTS_BETTER1;
@@ -258,6 +251,15 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 		{
 			return COSTS_BETTER2;
 		}
+	}
+
+	/* Number of disabled nodes, if different, trumps all else. */
+	if (unlikely(path1->disabled_nodes != path2->disabled_nodes))
+	{
+		if (path1->disabled_nodes < path2->disabled_nodes)
+			return COSTS_BETTER1;
+		else
+			return COSTS_BETTER2;
 	}
 
 	/*
