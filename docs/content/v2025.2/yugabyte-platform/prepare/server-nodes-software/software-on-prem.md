@@ -147,12 +147,6 @@ The following options are used for logging the provisioning itself.
 | `logging directory` | Set the directory where node provisioning log files will be stored. |
 | `logging file` | Name of the node provisioning log file. |
 
-To following option is for using custom certificates with node agents (v2025.2.6.1 and later):
-
-| Option | Value |
-| :--- | :--- |
-| `certificate_name` | The certificate name as entered when adding the certificate to YugabyteDB Anywhere. For more information, refer to [Rotate node agent certificates](../../../security/enable-encryption-in-transit/rotate-certificates/#rotate-node-agent-certificates). |
-
 ### Run the provisioning script
 
 Run the script either as a root user, or via sudo as follows:

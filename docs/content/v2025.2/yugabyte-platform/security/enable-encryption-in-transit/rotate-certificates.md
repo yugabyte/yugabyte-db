@@ -137,13 +137,13 @@ To rotate root certificates for a universe, do the following:
 
 ### Rotate node agent certificates
 
-By default, node agents use [automatically generated certificates](../auto-certificate/) to encrypt communication with YugabyteDB Anywhere.
+By default, node agents use a YugabyteDB Anywhere-generated self-signed root CA certificate to encrypt communication. Node agent also supports [self-signed](../add-certificate-self/) and, for on-premises providers only, [CA-signed](../add-certificate-ca/) certificates.
 
-If you need to use custom certificates with node agents, do the following:
+To use your own custom certificates with node agents requires the following:
 
-1. Add your certificates to YugabyteDB Anywhere. Node agent supports [self-signed](../add-certificate-self/) and [CA-signed](../add-certificate-ca/) certificates.
-1. Set the **Use Universe Certificates in Node Agent Installation** Provider Runtime Configuration option (config key `yb.node_agent.use_universe_certificates_on_install`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/).
-1. For on-premises providers, set the `certificate_name` option in the provisioning script configuration file to the name of the certificate as entered for Step 1. Refer to [Automatically provision database nodes for on-premises providers](../../../prepare/server-nodes-software/software-on-prem/#modify-the-configuration-file).
+- Node-to-node encryption in transit is enabled. Refer to [Enable encryption in transit](../#enable-encryption-in-transit).
+- The **Use Universe Certificates in Node Agent Installation** Provider Runtime Configuration option (config key `yb.node_agent.use_universe_certificates_on_install`) is set to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). When this option is true, node agent installs triggered by YugabyteDB Anywhere tasks use the universe's node-to-node certificate.
+- For on-premises providers, during provisioning, set the `certificate_name` option in the provisioning script configuration file to the name of the certificate you added to YugabyteDB Anywhere for node-to-node encryption in transit. Refer to [Automatically provision database nodes for on-premises providers](../../../prepare/server-nodes-software/software-on-prem/#modify-the-configuration-file).
 
 For existing universes, to update universe nodes to use the certificate, do the following:
 
