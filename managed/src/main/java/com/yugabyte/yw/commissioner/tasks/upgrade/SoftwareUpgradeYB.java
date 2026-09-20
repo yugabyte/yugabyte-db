@@ -316,6 +316,11 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           log.info("YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
           createRollbackYsqlMajorVersionCatalogUpgradeTask();
           rollbackMaster = true;
+        } else if (catalogUpgradeState.equals(
+            YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
+          // Abort after last master (or .pgpass deleted on failure): all masters are PG15 but
+          // catalog is still PENDING. Roll masters back so CREATE USER DDLs are allowed.
+          rollbackMaster = true;
         }
       } else if (softwareUpgradeHelper.isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
           universe, "15")) {
