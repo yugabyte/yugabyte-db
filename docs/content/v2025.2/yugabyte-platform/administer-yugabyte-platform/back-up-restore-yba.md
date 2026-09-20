@@ -1,7 +1,7 @@
 ---
 title: Back up and restore YugabyteDB Anywhere
 headerTitle: Back up and restore YugabyteDB Anywhere
-description: Use a script to back up and restore YugabyteDB Anywhere.
+description: Back up and restore YugabyteDB Anywhere from the Admin UI.
 headcontent: Back up your YugabyteDB Anywhere installation
 linkTitle: Back up YugabyteDB Anywhere
 tags:
@@ -37,6 +37,7 @@ You can also perform backups on demand.
 
 - Automatic backups are not compatible with [high availability](../high-availability/).
 - Automatic backups do not include universe Prometheus data or locally stored YugabyteDB releases.
+- Automatic backups retain only the 3 most recent copies in storage. Older backups are more likely to be inconsistent with the current state of your universes.
 
 ## Prerequisites
 
@@ -105,7 +106,7 @@ To create a one-time backup:
 
 When restoring YugabyteDB Anywhere (for example, after the loss of the node running YugabyteDB Anywhere):
 
-1. Create an fresh YugabyteDB Anywhere installation, either on the existing node after it is recovered, or on a new node.
+1. Create a fresh YugabyteDB Anywhere installation, either on the existing node after it is recovered, or on a new node.
 1. Using the new YugabyteDB Anywhere instance, restore from the most recent backup.
 
 When doing a restore, YugabyteDB Anywhere performs the following checks:

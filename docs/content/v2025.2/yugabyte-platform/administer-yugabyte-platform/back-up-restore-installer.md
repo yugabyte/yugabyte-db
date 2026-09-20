@@ -40,7 +40,7 @@ type: docs
   </li>
 </ul>
 
-Your YugabyteDB Anywhere installation includes provider configurations, KMS configurations, certificates, users, roles, and other components required for managing YugabyteDB universes.
+YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 If you installed YugabyteDB Anywhere using [YBA installer](../../install-yugabyte-platform/install-software/installer/), use the [yba-ctl](../../install-yugabyte-platform/install-software/installer/#download-yba-installer) CLI to back up and restore your YugabyteDB Anywhere installation. The CLI executes the `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 

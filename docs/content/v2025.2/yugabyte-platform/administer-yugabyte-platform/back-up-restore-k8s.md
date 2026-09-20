@@ -82,7 +82,7 @@ You can back up the YugabyteDB Anywhere server as follows:
     ./yb_platform_backup.sh create --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
     ```
 
-    *backup* is the command to run the backup of the YugabyteDB Anywhere server.
+    *create* is the command to run the backup of the YugabyteDB Anywhere server.
 
     *output_path* specifies the location for the output backup archive.
 
@@ -98,7 +98,7 @@ You can back up the YugabyteDB Anywhere server as follows:
 
 1. Upload the backup file to your preferred storage location, and delete it from the local disk.
 
-## Restore a YugabyteDB Anywhere server
+## Restore YugabyteDB Anywhere
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
 
