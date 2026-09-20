@@ -1355,9 +1355,9 @@ SELECT yb_hash_code(110359), yb_hash_code(262095);
 INSERT INTO test_31027 VALUES (110359, 1, 10), (110359, 2, 20), (262095, 1, 11), (262095, 2, 21);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using test_31027_pkey on test_31027 (actual rows=2 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Index Scan using test_31027_pkey on test_31027 (actual rows=2.00 loops=1)
    Index Cond: (h = 110359)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -1373,9 +1373,9 @@ SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using test_31027_pkey on test_31027 (actual rows=2 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Index Scan using test_31027_pkey on test_31027 (actual rows=2.00 loops=1)
    Index Cond: (h = 262095)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -1391,9 +1391,9 @@ SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT yb_hash_code(h), * FROM test_31027 WHERE h IN (110359, 262095);
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using test_31027_pkey on test_31027 (actual rows=4 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Index Scan using test_31027_pkey on test_31027 (actual rows=4.00 loops=1)
    Index Cond: (h = ANY ('{110359,262095}'::integer[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -1412,9 +1412,9 @@ SELECT yb_hash_code(h), * FROM test_31027 WHERE h IN (110359, 262095);
 set yb_allow_dockey_bounds to false;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using test_31027_pkey on test_31027 (actual rows=2 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Index Scan using test_31027_pkey on test_31027 (actual rows=2.00 loops=1)
    Index Cond: (h = 110359)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -1430,9 +1430,9 @@ SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using test_31027_pkey on test_31027 (actual rows=2 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Index Scan using test_31027_pkey on test_31027 (actual rows=2.00 loops=1)
    Index Cond: (h = 262095)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -1448,9 +1448,9 @@ SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT yb_hash_code(h), * FROM test_31027 WHERE h IN (110359, 262095);
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using test_31027_pkey on test_31027 (actual rows=4 loops=1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Index Scan using test_31027_pkey on test_31027 (actual rows=4.00 loops=1)
    Index Cond: (h = ANY ('{110359,262095}'::integer[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
