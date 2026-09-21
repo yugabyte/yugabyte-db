@@ -15,7 +15,7 @@ cascade:
     feature: early-access
 ---
 
-Resource Governance for multitenancy CPU isolation treats each YSQL database in a universe as a tenant, enforcing per-database CPU limits on each node. This provides predictable performance isolation across tenants, preventing noisy-neighbor problems and acting as insurance against rare incidents such as bugs and runaway workloads.
+Resource Governance isolates CPU across YSQL databases on a shared cluster, treating each database in a universe as a tenant and enforcing per-database CPU limits on each node. This provides predictable performance isolation across tenants, preventing noisy-neighbor problems and acting as insurance against rare incidents such as bugs and runaway workloads.
 
 The feature is built on [Linux control groups (cgroups)](https://man7.org/linux/man-pages/man7/cgroups.7.html). When enabled, the YB-TServer creates and manages a cgroup hierarchy, assigns threads and thread pools that do work for a specific database to per-database cgroups, and lets the Linux scheduler enforce the configured CPU limits.
 
