@@ -226,7 +226,7 @@ Force quoting of all identifiers. This option is recommended when dumping a data
 
 #### --restrict-key=*restrict_key*
 
-Use the given string as the key for the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict-key) and [`\unrestrict`](../../api/ysqlsh-meta-commands/#unrestrict-restrict-key) meta-commands that bracket the dump, instead of generating a random one. The key must be non-empty and contain only letters and digits.
+Use the given string as the key for the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict) and [`\unrestrict`](../../api/ysqlsh-meta-commands/#unrestrict-restrict) meta-commands that bracket the dump, instead of generating a random one. The key must be non-empty and contain only letters and digits.
 
 Each run otherwise generates a fresh random key, so two dumps of the same database are never byte-identical. Use this option when a workflow compares or checksums dump files.
 
@@ -329,7 +329,7 @@ The dump file produced by ysql_dump does not contain the statistics used by the 
 
 Because ysql_dump is used to transfer data to newer versions of YugabyteDB, the output of ysql_dump can be expected to load into YugabyteDB versions newer than the ysql_dump version. ysql_dump can also dump from YugabyteDB servers older than its own version. However, ysql_dump cannot dump from YugabyteDB servers newer than its own major version; it will refuse to even try, rather than risk making an invalid dump. Also, it is not guaranteed that the ysql_dump output can be loaded into a server of an older major version — not even if the dump was taken from a server of that version. Loading a dump file into an older server may require manual editing of the dump file to remove syntax not understood by the older server. Use of the [--quote-all-identifiers](#quote-all-identifiers) option is recommended in cross-version cases, as it can prevent problems arising from varying reserved-word lists in different YugabyteDB versions.
 
-Restoring a plain-text dump also depends on the version of ysqlsh used to replay it, separately from the server version. Dumps taken with ysql_dump 2025.2.7.0, 2026.1.2.0, or later begin with the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict-key) meta-command, which earlier versions of ysqlsh do not recognize. Replay such a dump with ysqlsh from the same or a later version.
+Restoring a plain-text dump also depends on the version of ysqlsh used to replay it, separately from the server version. Dumps taken with ysql_dump 2025.2.7.0, 2026.1.2.0, or later begin with the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict) meta-command, which earlier versions of ysqlsh do not recognize. Replay such a dump with ysqlsh from the same or a later version.
 
 With an earlier ysqlsh, the outcome depends on `ON_ERROR_STOP`. Under `ysqlsh -v ON_ERROR_STOP=1` the restore stops at that line, before creating anything. Without it, ysqlsh reports `invalid command \restrict`, skips the line, and loads the rest of the dump normally: every object and row arrives, because the errors refer only to the bracketing commands. The restore is complete, but it ran without the meta-command protection those commands provide.
 

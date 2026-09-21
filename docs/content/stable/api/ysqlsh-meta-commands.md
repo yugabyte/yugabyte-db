@@ -650,7 +650,7 @@ With a parameter, turns displaying of how long each SQL statement takes `on` or 
 
 ##### \unrestrict *restrict_key*
 
-Leaves restricted mode, if the key matches the one given to [`\restrict`](#restrict-restrict-key). Unlike most meta-commands, the argument is not subject to backquote expansion.
+Leaves restricted mode, if the key matches the one given to [`\restrict`](#restrict-restrict). Unlike most meta-commands, the argument is not subject to backquote expansion.
 
 ##### \unset *name*
 
