@@ -2579,7 +2579,7 @@ Default: `128`
 
 The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
-### Multitenancy (resource governor) flags
+### Multitenancy (Resource Governance) flags
 
 These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. The feature relies on Linux cgroups and requires operating system setup before it can be enabled. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
 
