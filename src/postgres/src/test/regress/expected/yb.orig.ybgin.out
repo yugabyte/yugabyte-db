@@ -458,8 +458,9 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
+         Disabled: true
          Storage Filter: (j ? 'aaa'::text)
-(4 rows)
+(5 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
                      QUERY PLAN                     
@@ -467,8 +468,9 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
+         Disabled: true
          Storage Filter: (j ?| '{ggg,eee}'::text[])
-(4 rows)
+(5 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
                      QUERY PLAN                     
@@ -476,8 +478,9 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
  Sort
    Sort Key: i
    ->  Seq Scan on jsonbs
+         Disabled: true
          Storage Filter: (j ?& '{aaa,eee}'::text[])
-(4 rows)
+(5 rows)
 
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
@@ -641,9 +644,10 @@ $$ AS query \gset
 -------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on partial
+         Disabled: true
          Storage Filter: (v @@ '''b'''::tsquery)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT $$
 :P SELECT count(*) FROM partial WHERE v @@ 'c';
@@ -701,9 +705,10 @@ $$ AS query \gset
 ----------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on partial
+         Disabled: true
          Storage Filter: (j @? '$."g"[*]?(@ == "h")'::jsonpath)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 SELECT $$
 :P SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];

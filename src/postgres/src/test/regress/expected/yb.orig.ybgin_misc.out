@@ -360,8 +360,9 @@ EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Seq Scan on vectors
+   Disabled: true
    Storage Filter: ((v @@ '''a'''::tsquery) OR (v @@ '''c'''::tsquery))
-(2 rows)
+(3 rows)
 
 SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
  i |                  v                   
