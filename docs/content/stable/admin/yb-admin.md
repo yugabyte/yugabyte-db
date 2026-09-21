@@ -2885,7 +2885,7 @@ yb-admin \
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default is `localhost:7100`.
 * *source-table-id*, *target-table-id*: UUIDs of the two tables to compare, obtained from [list_tables](#list-tables) on each universe.
 * *source-master-addresses*: Comma-separated list of source YB-Master hosts and ports.
-* *read-ht*: Positive hybrid timestamp to read both sides at. Omit it to use the target's xCluster safe time.
+* *read-ht*: Positive hybrid timestamp to read both sides at. Omit it to use the target's xCluster safe time, or pass an empty string (`""`) to omit it while supplying later positional arguments. Unlike [get_table_hash](#get-table-hash), `0` is rejected.
 * *start-key-hex*, *end-key-hex*: Key range to compare, in the same form as [get_table_hash](#get-table-hash). Omit both to compare the whole table.
 * *max-rows*: Maximum source rows in the slice. The target is hashed through the same exclusive end. Default is `0`; `0` means unlimited.
 
@@ -2938,7 +2938,7 @@ A *read-ht* ahead of the target's xCluster safe time is reported `kTryAgain` wit
 * `source`, `target`: each carries `xor_hash`, `row_count`, and `read_ht`, and appears only if that side hashed successfully. `hash_scheme_version` is present only when that side actually hashed a tablet.
 * `detail`: the reason for a result other than `kMatch`.
 
-`kTryAgain` means the slice reached no verdict because a replica was behind, the read time fell outside history retention, or an RPC timed out. `kError` covers other tool or cluster failures. Bound retries of `kTryAgain`; timeouts can also mean an unavailable server.
+`kTryAgain` means the slice reached no verdict because a replica was behind, the read time fell outside history retention, or an RPC timed out. `kError` covers other tool or cluster failures, except when `detail` ends in `hash=kDiverged`: the rows disagreed, but the closing catalog re-read failed, so the divergence could not be confirmed. Bound retries of `kTryAgain`; timeouts can also mean an unavailable server.
 
 The exit status is 0 when the command produces an outcome, including `kDiverged`; read `result` rather than relying on `$?`. [verify_xcluster_group](#verify-xcluster-group) exits nonzero unless its summary is `kMatch`.
 
@@ -2946,7 +2946,7 @@ The exit status is 0 when the command produces an outcome, including `kDiverged`
 
 `hash_scheme_version` names the algorithm a side hashed under. Two hashes are comparable only when the versions are equal; under different schemes the same rows hash to unrelated values, so a mid-upgrade skew produces `kError`, never `kDiverged`. Version `0` means a YB-TServer too old to report a scheme, and also produces `kError` even when both sides report `0` and agree, because that hash carries too little identity to establish a match. Re-run once both universes are on the same scheme.
 
-`kSchemaMismatch` covers catalog differences that affect the rows read or their encoding: column IDs and types, key and hash-key membership, nullability, static-column status, sorting type, partitioning version, and default TTL. It does not compare the missing value recorded for `ADD COLUMN ... DEFAULT`; compare that catalog value before concluding that a resulting `kDiverged` means rows were lost.
+`kSchemaMismatch` covers catalog differences that affect the rows read or their encoding: column IDs and types, key and hash-key membership, nullability, static-column status, sorting type, partitioning version, and default TTL. A schema fetch that fails as not found lands here too, so a table dropped or renamed on one side reports `kSchemaMismatch` rather than `kError`. It does not compare the missing value recorded for `ADD COLUMN ... DEFAULT`; compare that catalog value before concluding that a resulting `kDiverged` means rows were lost.
 
 **Paging a large slice**
 
