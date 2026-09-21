@@ -25,6 +25,7 @@ from yugabyte.common_util import (
     get_compiler_type_from_build_root,
     YB_SRC_ROOT,
 )
+from yugabyte.dep_graph_common import DYLIB_SUFFIX
 from yugabyte.optional_components import OptionalComponents
 
 from typing import Dict, Any, Optional, cast, List
@@ -151,9 +152,10 @@ class ReleaseUtil:
         seed_executables = cast(List[str], self.release_manifest['bin'])
         if is_macos():
             # This replicates the solution that made the macOS build work prior to D25109.
-            # This may have unintended side effects of copying Postgres libraries to the "bin"
+            # This may have unintended side effect of copying loadable Postgres modules to the
+            # "bin" directory. libpq-style linkable libraries are explictly excluded from the "bin"
             # directory. A proper solution will be implemented in a future diff.
-            seed_executables.append('$BUILD_ROOT/postgres/lib/*.so')
+            seed_executables.append(f'$BUILD_ROOT/postgres/lib/*{DYLIB_SUFFIX}')
         return seed_executables
 
     def expand_value(self, old_value: str) -> str:

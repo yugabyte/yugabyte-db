@@ -5,7 +5,7 @@ import logging
 import os
 import shutil
 import stat
-import glob
+import struct
 
 from argparse import ArgumentParser
 
@@ -14,6 +14,13 @@ from yugabyte.command_util import run_program
 from yugabyte.common_util import get_thirdparty_dir
 
 from typing import List, Dict, Optional, Tuple
+
+# Mach-O header constants (see <mach-o/loader.h>).
+_MH_MAGIC = 0xfeedface
+_MH_CIGAM = 0xcefaedfe
+_MH_MAGIC_64 = 0xfeedfacf
+_MH_CIGAM_64 = 0xcffaedfe
+_MH_BUNDLE = 8
 
 
 def add_common_arguments(parser: ArgumentParser) -> None:
@@ -37,6 +44,32 @@ def find_library_by_glob(glob_pattern: str) -> str:
     if not os.path.exists(lib_path):
         raise IOError("Library does not exist: %s" % lib_path)
     return lib_path
+
+
+def is_mach_o_bundle(path: str) -> bool:
+    """
+    Return True if path is a Mach-O bundle (MH_BUNDLE).
+
+    Postgres loadable modules such as auto_explain on Darwin are linked with -bundle
+    (Mach-O filetype MH_BUNDLE) while linkable libraries such as libpq are linked with -dynamiclib
+    (Mach-O filetype MH_DYLIB).
+    """
+    try:
+        with open(path, 'rb') as f:
+            header = f.read(16)
+    except OSError:
+        return False
+    if len(header) < 16:
+        return False
+    magic = struct.unpack('<I', header[:4])[0]
+    if magic in (_MH_MAGIC, _MH_MAGIC_64):
+        endian = '<'
+    elif magic in (_MH_CIGAM, _MH_CIGAM_64):
+        endian = '>'
+    else:
+        return False
+    filetype = struct.unpack(endian + 'IIII', header)[3]
+    return filetype == _MH_BUNDLE
 
 
 class MacLibraryPackager:
@@ -102,6 +135,13 @@ class MacLibraryPackager:
                 raise IOError("No files found matching the pattern '{}'".format(
                     seed_executable_glob))
             for executable in glob_results:
+                # postgres/lib/*.dylib matches both:
+                #  - loadable modules (MH_BUNDLE, e.g. auto_explain.dylib) and
+                #  - linkable libraries (MH_DYLIB, e.g. libpq.5.dylib).
+                # Only loadable modules should be seeded into bin/. Seeding linkable libraries
+                # collides with lib/<name>/ dirs created while fixing dependency load paths.
+                if 'postgres/lib/' in executable and not is_mach_o_bundle(executable):
+                    continue
                 shutil.copy(executable, dst_bin_dir)
 
         extra_postgres_libs_dir_glob = os.path.join(
