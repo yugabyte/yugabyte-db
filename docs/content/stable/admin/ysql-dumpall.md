@@ -157,12 +157,6 @@ Do not dump the contents of unlogged tables. This option has no effect on whethe
 
 Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from the ysql_dumpall version, or when the output is intended to be loaded into a server of a different major version. By default, ysql_dumpall quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using `--quote-all-identifiers` prevents such issues, at the price of a harder-to-read dump script.
 
-#### --restrict-key=*restrict_key*
-
-Use the given string as the key for the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict-key) and [`\unrestrict`](../../api/ysqlsh-meta-commands/#unrestrict-restrict-key) meta-commands that bracket the dump, instead of generating a random one. The key must be non-empty and contain only letters and digits.
-
-Each run otherwise generates a fresh random key, so two dumps of the same database are never byte-identical. Use this option when a workflow compares or checksums dump files.
-
 #### --use-set-session-authorization
 
 Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWNER` statements to determine object ownership. This makes the dump more standards compatible, but depending on the history of the objects in the dump, might not restore properly.
