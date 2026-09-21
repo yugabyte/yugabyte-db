@@ -601,6 +601,7 @@ build_index_pathkeys(PlannerInfo *root,
 	int			yb_merge_scan_cardinality = 1;
 	PathKey	   *yb_pathkey = NULL;
 	List	   *yb_const_cols = NIL;
+	int			yb_gap_cut = -1;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -711,6 +712,17 @@ build_index_pathkeys(PlannerInfo *root,
 			else if (yb_merge_scan_stream_cols &&
 					 EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass))
 				yb_const_cols = lappend_int(yb_const_cols, i);
+			/*
+			 * YB: A redundancy without a constant (c1 = c2) is a filter, not
+			 * a bind.  A merge scan may sort past it only if the filter runs
+			 * within each stream before the merge; else remember where to cut
+			 * the merge scan's pathkeys, see below.
+			 */
+			else if (yb_merge_scan_stream_cols && yb_gap_cut < 0 &&
+					 i >= index->nhashcolumns &&
+					 !yb_merge_scan_gap_covered(root, index, i,
+												cpathkey->pk_eclass))
+				yb_gap_cut = list_length(retval);
 		}
 		else
 		{
@@ -743,6 +755,20 @@ build_index_pathkeys(PlannerInfo *root,
 		/* YB: For later use in creating a UpperUniquePath node. */
 		if (i == yb_distinct_prefixlen)
 			*yb_distinct_nkeys = list_length(retval);
+	}
+
+	/*
+	 * YB: For merge scan, cut the pathkeys at the first gap whose filter does
+	 * not run within each stream, so that no merge sort key forms past it.
+	 * The pathkeys built without merge scan keep the gap, since a single
+	 * stream filters before it emits.
+	 */
+	if (yb_merge_scan_stream_cols && *yb_merge_scan_stream_cols != NIL &&
+		yb_gap_cut >= 0)
+	{
+		retval = list_truncate(retval, yb_gap_cut);
+		if (*yb_distinct_nkeys > yb_gap_cut)
+			*yb_distinct_nkeys = -1;
 	}
 
 	/*
