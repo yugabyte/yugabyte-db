@@ -1030,6 +1030,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .applyToMasters()
         .addTasks(TaskType.SaveSoftwareUpgradeProgress)
         .addTasks(TaskType.UpdateSoftwareUpdatePrevConfig)
+        .addTasks(TaskType.ManageCatalogUpgradeSuperUser)
         .addTasks(TaskType.RunYsqlMajorVersionCatalogUpgrade)
         .addTasks(TaskType.ManageCatalogUpgradeSuperUser)
         .addTasks(TaskType.SaveSoftwareUpgradeProgress)
