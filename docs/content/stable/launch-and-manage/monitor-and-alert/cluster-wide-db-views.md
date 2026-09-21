@@ -14,8 +14,6 @@ tags:
   feature: tech-preview
 rightNav:
   hideH4: true
-aliases:
-  - /stable/launch-and-manage/monitor-and-alert/global-views/
 ---
 
 [Cluster-wide database views](../../../explore/observability/cluster-wide-db-views/) provide cluster-wide counterparts of per-node statistics views. Each `gv$<view_name>` foreign table in `pg_catalog` returns the union of that view's rows from every live YB-TServer, with a `server_uuid` column identifying the source node.

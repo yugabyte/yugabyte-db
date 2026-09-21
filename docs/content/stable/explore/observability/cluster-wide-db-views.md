@@ -12,8 +12,6 @@ menu:
 type: docs
 tags:
   feature: tech-preview
-aliases:
-  - /stable/explore/observability/global-views/
 ---
 
 YugabyteDB's statistics and monitoring views are per node. [`pg_stat_activity`](../pg-stat-activity/) shows the backends on the node you happen to be connected to, [`pg_stat_statements`](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) accumulates counters for queries that ran on that node, and [Active Session History](../active-session-history/) samples only that node's sessions. Answering a cluster-wide question ("which node is running the slowest query right now?", "how many total calls has this statement taken across the cluster?") has meant connecting to every node in turn and stitching the results together by hand.
