@@ -847,6 +847,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                     // and dropping them would generate stale/incorrect master addresses.
                     mergedAz.masterStsIndex = az.masterStsIndex;
                     mergedAz.tsStsIndex = az.tsStsIndex;
+                    // addPlacementZone does not set leaderPreference, so rankings would
+                    // otherwise reset to 0.
+                    mergedAz.leaderPreference = az.leaderPreference;
                   });
         }
         return result;
