@@ -42,14 +42,15 @@ class PgHintTableTest : public LibPqTestBase {
   }
 
   // The query ID is determined via a fingerprint of the query's post-rewrite AST.
-  // We don't expect this to change between runs--the only way this could happen is if the
-  // OID of pg_class or pg_attribute were to change.
+  // We don't expect this to change between runs, but it does change whenever upstream
+  // alters what the jumble covers, so it has to be recomputed on a major-version merge.
+  // Recompute with: EXPLAIN (VERBOSE, FORMAT JSON) <query>, and read "Query Identifier".
   static const std::string query;
   static const std::string explain_query;
-  static constexpr int64_t query_id = 3737126150833151274;
+  static constexpr int64_t query_id = 2986800428567352605;
 
   static const std::string query_with_param;
-  static constexpr int64_t query_with_param_id = -76397991979668011;
+  static constexpr int64_t query_with_param_id = 352084127023756444;
 
   Result<PGConn> ConnectWithHintTable() {
     auto conn = VERIFY_RESULT(Connect());
