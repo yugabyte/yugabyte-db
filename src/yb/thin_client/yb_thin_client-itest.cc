@@ -45,7 +45,6 @@
 #include "yb/util/slice.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -1286,39 +1285,21 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ybthin_client_destroy(client);
 }
 
-// ybthin_client_create must switch stack trace collection to libunwind.
-//
-// The default outside sanitizer builds is glibc backtrace(), which unwinds through the host
-// process's libgcc. This .so registers ~1.3 MB of .eh_frame with that libgcc, and libgcc sorts a
-// registered object's FDEs lazily inside a malloc made while holding its object_mutex -- so a host
-// whose allocator unwinds from inside malloc (jemalloc heap profiling, a leak checker) deadlocks
-// against itself and ybthin_client_create never returns (#33916). libunwind keeps its own FDE
-// cache and never takes that lock.
-//
-// Reproducing the deadlock needs such a host, so this asserts the condition that prevents it. The
-// flag is cleared first so the assertion cannot pass on a value some earlier client left behind:
-// YBTest's FlagSaver restores flags per test, but a caller running several clients in one process
-// gets no such reset, which is why the shim assigns unconditionally rather than once per process.
-TEST_F(PgThinClientTest, ClientCreateSelectsLibunwindForStackTraces) {
-  if (yb::IsSanitizer()) {
-    GTEST_SKIP() << "sanitizer builds keep the default; libunwind faults there";
-  }
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_libunwind_for_stack_trace_collection) = false;
-
+// ybthin_client_create must switch stack trace collection to libunwind (#33916). Two clients in one
+// process, so a write that fires only once per process cannot pass.
+TEST_F(
+    PgThinClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ClientCreateSelectsLibunwindForStackTraces)) {
   const auto addr = TServerAddr();
   const char* addrs[] = {addr.c_str()};
 
-  // Twice, in one process: a once-per-process write would satisfy the first and not the second.
   for (int attempt = 0; attempt < 2; ++attempt) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_libunwind_for_stack_trace_collection) = false;
     ybthin_client* client = nullptr;
     auto st = ybthin_client_create(
-        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
-        /* num_reactors= */ 0, &client);
+        addrs, /* n_addrs= */ 1, /* tls= */ nullptr, /* pool= */ nullptr,
+        /* rpc_timeout_ms= */ 60000, /* num_reactors= */ 0, &client);
     ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
-    ASSERT_TRUE(FLAGS_use_libunwind_for_stack_trace_collection)
-        << "attempt " << attempt << ": ybthin_client_create must force libunwind; leaving glibc "
-        << "backtrace() in place deadlocks a host that unwinds from inside malloc (#33916)";
+    ASSERT_TRUE(FLAGS_use_libunwind_for_stack_trace_collection) << "attempt " << attempt;
     ybthin_client_destroy(client);
   }
 }

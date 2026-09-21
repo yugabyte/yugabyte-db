@@ -756,26 +756,16 @@ ybthin_status ybthin_client_create(
     const char* const* tserver_addrs, size_t n_addrs, const ybthin_tls_opts* tls,
     const ybthin_pool_opts* pool, uint32_t rpc_timeout_ms, uint32_t num_reactors,
     ybthin_client** out) {
-  // Collect stack traces through (llvm-)libunwind rather than glibc backtrace(). Must precede any
-  // thread creation: Thread::Create warms up the stack trace library on first use, and that
-  // warm-up is what trips the deadlock.
+  // Collect stack traces through libunwind rather than glibc backtrace(), before any thread is
+  // created (Thread::Create warms up the stack trace library on first use).
   //
-  // The glibc path is unsafe for a .so embedded in a foreign process: our ~1.3 MB .eh_frame is
-  // registered with the HOST's libgcc, which sorts a registered object's FDEs lazily inside a
-  // ~260 KiB malloc made while holding object_mutex. A host allocator that unwinds from inside
-  // that malloc re-enters _Unwind_Find_FDE and blocks on the mutex the same thread holds, so
-  // ybthin_client_create never returns (#33916). libunwind keeps its own FDE cache, never takes
-  // that lock, and is already statically linked here.
+  // glibc's unwinder is unsafe for a .so in a foreign process: our .eh_frame is registered with the
+  // HOST's libgcc, which sorts its FDEs lazily inside a malloc held under object_mutex. A host
+  // allocator that unwinds from inside that malloc deadlocks against itself, and
+  // ybthin_client_create never returns (#33916). libunwind has its own FDE cache.
   //
-  // The cost is #32197, the single reason the non-sanitizer default is false: libunwind SIGSEGVs
-  // when it collects in a BOLT-ed binary. Any collection is exposed, not just the one behind
-  // LongOperationTracker, so this forecloses BOLT here -- yb_release does not pass --bolt, so
-  // nothing regresses today.
-  //
-  // Assigned unconditionally, not via std::call_once: the write is idempotent, and a once-flag
-  // would fire only for the first client in a process -- wrong for a caller that restores flags
-  // between clients, and untestable. Sanitizer builds keep their default, where libunwind faults
-  // in DwarfInstructions unwinding a thread interrupted inside the sanitizer runtime.
+  // The trade: libunwind can SIGSEGV collecting a trace in a BOLT-ed binary (#32197), so this gives
+  // up BOLT for this .so. yb_release does not pass --bolt. Sanitizer builds keep the default.
   if (!yb::IsSanitizer()) {
     FLAGS_use_libunwind_for_stack_trace_collection = true;
   }
