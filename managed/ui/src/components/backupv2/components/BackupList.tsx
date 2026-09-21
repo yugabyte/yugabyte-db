@@ -31,7 +31,8 @@ import {
   convertBackupToFormValues,
   DATE_FORMAT,
   ENTITY_NOT_AVAILABLE,
-  isBackupPITREnabled
+  isBackupPITREnabled,
+  isEncryptedBackup
 } from '../common/BackupUtils';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
@@ -686,7 +687,7 @@ export const BackupList: FC<BackupListOptions> = ({
             dataFormat={(hasIncrementalBackups) =>
               hasIncrementalBackups ? 'Present' : 'Not Present'
             }
-            width="20%"
+            width="11%"
           >
             Incremental
             <br />
@@ -695,7 +696,7 @@ export const BackupList: FC<BackupListOptions> = ({
           <TableHeaderColumn
             dataField="backupType"
             dataFormat={(backupType) => TableTypeLabel[backupType]}
-            width="10%"
+            width="9%"
           >
             API Type
           </TableHeaderColumn>
@@ -745,7 +746,7 @@ export const BackupList: FC<BackupListOptions> = ({
                   </YBTooltip>
                 );
               }}
-              width="10%"
+              width="11%"
               dataSort
             >
               Point-in-Time
@@ -764,12 +765,23 @@ export const BackupList: FC<BackupListOptions> = ({
             }}
             width="12%"
           >
-            Roles and Grants
+            Roles and
+            <br />
+            Grants
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="kmsConfigUUID"
+            dataFormat={(_, row: IBackup) =>
+              isEncryptedBackup(row.commonBackupInfo) ? 'Encrypted' : 'Not Encrypted'
+            }
+            width="12%"
+          >
+            Encryption
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="createTime"
             dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
-            width="20%"
+            width="19%"
             dataSort
           >
             Created At
@@ -777,7 +789,7 @@ export const BackupList: FC<BackupListOptions> = ({
           <TableHeaderColumn
             dataField="expiryTime"
             dataFormat={(time) => (time ? ybFormatDate(time) : "Won't Expire")}
-            width="20%"
+            width="19%"
           >
             Expiration
           </TableHeaderColumn>

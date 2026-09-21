@@ -11,7 +11,7 @@ import React, { useState } from 'react';
 import moment from 'moment';
 import { useSelector } from 'react-redux';
 import { keyBy, mapValues, capitalize, lowerCase, find, flatMap } from 'lodash';
-import { Backup_Options_Type, Backup_States, CustomerConfig, IBackup, IUniverse } from './IBackup';
+import { Backup_Options_Type, Backup_States, CustomerConfig, IBackup, ICommonBackupInfo, IUniverse } from './IBackup';
 import { Alert } from 'react-bootstrap';
 import { TableType } from '../../../redesign/helpers/dtos';
 import { RunTimeConfig } from '../../../redesign/features/universe/universe-form/utils/dto';
@@ -297,3 +297,7 @@ export const BACKUP_WITH_IMMUTABLE_STORAGE_MSG = () => (
     </span>
   </span>
 );
+
+export const isEncryptedBackup = (backup?: ICommonBackupInfo | null): boolean => {
+  return !!backup?.kmsConfigUUID;
+};
