@@ -2095,7 +2095,7 @@ TEST_F(PgCatalogVersionTest, AnalyzeSingleTable) {
   auto result = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
   LOG(INFO) << "result:\n" << result;
-  const string expected = Format("$0, 2, 792", yugabyte_db_oid);
+  const string expected = Format("$0, 2, 816", yugabyte_db_oid);
   ASSERT_EQ(result, expected);
 }
 
@@ -2111,7 +2111,7 @@ TEST_F(PgCatalogVersionTest, AnalyzeTwoTables) {
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
   LOG(INFO) << "result:\n" << result;
   const string expected = IsTransactionalDdlEnabled()
-      ? Format("$0, 2, 792; $0, 3, 624", yugabyte_db_oid)
+      ? Format("$0, 2, 816; $0, 3, 600", yugabyte_db_oid)
       : Format("$0, 2, 1416", yugabyte_db_oid);
   ASSERT_EQ(result, expected);
 }
@@ -2125,17 +2125,17 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
   LOG(INFO) << "result:\n" << result;
   string expected = IsTransactionalDdlEnabled()
-      ? "$0, 2, 120; $0, 3, 768; $0, 4, 624; $0, 5, 720; "
-        "$0, 6, 792; $0, 7, 504; $0, 8, 96; $0, 9, 600; $0, 10, 192; "
-        "$0, 11, 168; $0, 12, 216; $0, 13, 528; $0, 14, 96; $0, 15, 216; "
-        "$0, 16, 144; $0, 17, 144; $0, 18, 624; $0, 19, 192; $0, 20, 168; "
+      ? "$0, 2, 120; $0, 3, 768; $0, 4, 600; $0, 5, 720; "
+        "$0, 6, 816; $0, 7, 504; $0, 8, 168; $0, 9, 648; $0, 10, 192; "
+        "$0, 11, 192; $0, 12, 216; $0, 13, 528; $0, 14, 96; $0, 15, 216; "
+        "$0, 16, 144; $0, 17, 144; $0, 18, 672; $0, 19, 192; $0, 20, 168; "
         "$0, 21, 96; $0, 22, 504; $0, 23, 216; $0, 24, 96; $0, 25, 216; "
         "$0, 26, 360; $0, 27, 192; $0, 28, 120; $0, 29, 192; $0, 30, 72; "
-        "$0, 31, 120; $0, 32, 264; $0, 33, 168; $0, 34, 144; $0, 35, 192; "
+        "$0, 31, 120; $0, 32, 288; $0, 33, 288; $0, 34, 144; $0, 35, 192; "
         "$0, 36, 120; $0, 37, 96; $0, 38, 120; $0, 39, 216; $0, 40, 96; "
         "$0, 41, 48; $0, 42, 240; $0, 43, 168; $0, 44, 120; $0, 45, 120; "
         "$0, 46, 96"
-      : "$0, 2, 11064";
+      : "$0, 2, 11400";
   expected = Format(expected, yugabyte_db_oid);
   if (result != expected) {
     LOG(INFO) << ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
@@ -2701,7 +2701,7 @@ COMMIT;
 
   // version 2 messages.
   auto result2 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 2)));
-  ASSERT_EQ(result2.size(), 144U);
+  ASSERT_EQ(result2.size(), 48U);
 
   // version 3 messages.
   auto result3 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 3)));
@@ -2709,7 +2709,7 @@ COMMIT;
 
   // version 4 messages.
   auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
-  ASSERT_EQ(result4.size(), 144U);
+  ASSERT_EQ(result4.size(), 48U);
 
   // version 5 messages.
   auto result5 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 5)));
@@ -3155,11 +3155,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
               << ", get_schema_count_before: " << get_schema_count_before
               << ", get_schema_count_after: " << get_schema_count_after;
     if (i == 0) {
-      ASSERT_EQ(open_table_count_after - open_table_count_before, 143);
-      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 734);
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 146);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 737);
     } else {
-      ASSERT_EQ(open_table_count_after - open_table_count_before, 638);
-      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 834);
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 641);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 837);
     }
   }
 }
