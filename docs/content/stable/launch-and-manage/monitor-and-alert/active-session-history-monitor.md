@@ -246,7 +246,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 Note that the following limitations are subject to change.
 
-- ASH is available per node and is not aggregated across the cluster. To query ASH samples across every live YB-TServer, see [Global views](../../../explore/observability/global-views/) (`gv$yb_active_session_history`).
+- ASH is available per node and is not aggregated across the cluster. To query ASH samples across every live YB-TServer, see [Cluster-wide database views](../../../explore/observability/cluster-wide-db-views/) (`gv$yb_active_session_history`).
 - ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
 - ASH is available for queries and a few background activities like compaction and flushes. ASH support for other background activities will be added in future releases.
 

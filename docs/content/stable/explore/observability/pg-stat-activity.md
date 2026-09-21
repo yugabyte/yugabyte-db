@@ -208,7 +208,7 @@ yugabyte=# SELECT datname, pid, application_name, state, query, xact_start
 
 ## Learn more
 
-- Refer to [Global views](../global-views/) to query `pg_stat_activity` across every live YB-TServer from a single session (`gv$pg_stat_activity`).
+- Refer to [Cluster-wide database views](../cluster-wide-db-views/) to query `pg_stat_activity` across every live YB-TServer from a single session (`gv$pg_stat_activity`).
 - Refer to [Get query statistics using pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) to track planning and execution of all the SQL statements.
 - Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
 - Refer to [Analyze queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.

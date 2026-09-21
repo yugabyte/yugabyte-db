@@ -39,9 +39,9 @@ type: indexpage
     icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
-    title="Global views"
+    title="Cluster-wide database views"
     body="Query per-node statistics views across every live YB-TServer from a single YSQL session."
-    href="global-views/"
+    href="cluster-wide-db-views/"
     icon="fa-thin fa-layer-group">}}
 
   {{<index/item

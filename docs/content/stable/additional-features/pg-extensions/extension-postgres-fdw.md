@@ -15,10 +15,10 @@ aliases:
 
 The [postgres_fdw](https://www.postgresql.org/docs/15/postgres-fdw.html) module provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL or YugabyteDB servers.
 
-In v2026.1.2 and later, the extension is installed into `pg_catalog` during cluster initialization (and on upgrade) so [global views](../../../explore/observability/global-views/) can be created by default. `CREATE EXTENSION postgres_fdw` is still harmless if you run it:
+In v2026.1.2 and later, the extension is installed into `pg_catalog` during cluster initialization (and on upgrade) so [cluster-wide database views](../../../explore/observability/cluster-wide-db-views/) can be created by default. `CREATE EXTENSION IF NOT EXISTS postgres_fdw` is harmless if you run it; if the extension is already installed, it reports `NOTICE:  extension "postgres_fdw" already exists, skipping`:
 
 ```plpgsql
-CREATE EXTENSION postgres_fdw;
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
 ```
 
 To connect to a remote PostgreSQL database, create a foreign server object. Specify the connection information (except the username and password) using the `OPTIONS` clause:
@@ -71,13 +71,13 @@ NOTICE:  no server_type specified. Defaulting to PostgreSQL.
 HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 ```
 
-`federatedYugabyteDB` doesn't take `host`, `dbname`, or `port`, and doesn't need `CREATE USER MAPPING` because the target nodes come from the cluster's own tablet server list and each node is reached over an internal connection. YugabyteDB creates one such server, `yb_global_views_server`, and uses it for [global views](../../../explore/observability/global-views/). You don't need to create this server yourself; it is equivalent to:
+`federatedYugabyteDB` doesn't take `host`, `dbname`, or `port`, and doesn't need `CREATE USER MAPPING` because the target nodes come from the cluster's own tablet server list and each node is reached over an internal connection. YugabyteDB creates one such server, `yb_global_views_server`, and uses it for [cluster-wide database views](../../../explore/observability/cluster-wide-db-views/). You don't need to create this server yourself; it is equivalent to:
 
 ```plpgsql
 CREATE SERVER yb_global_views_server FOREIGN DATA WRAPPER postgres_fdw
     OPTIONS (server_type 'federatedYugabyteDB');
 ```
 
-{{<lead link="../../../explore/observability/global-views">}}
-To query per-node statistics views across every live YB-TServer from a single session, see [Global views](../../../explore/observability/global-views).
+{{<lead link="../../../explore/observability/cluster-wide-db-views">}}
+To query per-node statistics views across every live YB-TServer from a single session, see [Cluster-wide database views](../../../explore/observability/cluster-wide-db-views).
 {{</lead>}}

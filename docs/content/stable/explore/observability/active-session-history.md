@@ -35,7 +35,7 @@ To run ASH queries, regardless of whether you are using YSQL or YCQL, the YSQL A
 - How to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash)
 - See [Monitor with Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/) for information on YSQL views, query identifiers, and wait events that are exposed via active sessions captured by ASH.
 - ASH [limitations](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#limitations)
-- To query ASH samples across every live YB-TServer from a single session, see [Global views](../global-views/) (`gv$yb_active_session_history`)
+- To query ASH samples across every live YB-TServer from a single session, see [Cluster-wide database views](../cluster-wide-db-views/) (`gv$yb_active_session_history`)
 
 ## Examples
 

@@ -1,22 +1,24 @@
 ---
-title: Query cluster-wide statistics with global views
-headerTitle: Global views
-linkTitle: Global views
+title: Cluster-wide database views
+headerTitle: Cluster-wide database views
+linkTitle: Cluster-wide views
 description: Query per-node statistics views across every live tablet server from a single YSQL session.
 headcontent: Query cluster-wide counterparts of per-node statistics views
 menu:
   stable:
-    identifier: global-views
+    identifier: cluster-wide-db-views
     parent: explore-observability
     weight: 295
 type: docs
 tags:
   feature: tech-preview
+aliases:
+  - /stable/explore/observability/global-views/
 ---
 
 YugabyteDB's statistics and monitoring views are per node. [`pg_stat_activity`](../pg-stat-activity/) shows the backends on the node you happen to be connected to, [`pg_stat_statements`](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) accumulates counters for queries that ran on that node, and [Active Session History](../active-session-history/) samples only that node's sessions. Answering a cluster-wide question ("which node is running the slowest query right now?", "how many total calls has this statement taken across the cluster?") has meant connecting to every node in turn and stitching the results together by hand.
 
-Global views remove that step. Each per-node view has a cluster-wide counterpart named `gv$<view_name>`, in `pg_catalog`, that returns the union of that view's rows from every live YB-TServer. A `server_uuid` column on each row identifies which node it came from, so a single session can aggregate, filter, and join across the whole cluster:
+Cluster-wide database views remove that step. Each per-node view has a cluster-wide counterpart named `gv$<view_name>`, in `pg_catalog`, that returns the union of that view's rows from every live YB-TServer. A `server_uuid` column on each row identifies which node it came from, so a single session can aggregate, filter, and join across the whole cluster:
 
 ```plpgsql
 SELECT server_uuid, count(*) AS active_backends
@@ -25,15 +27,15 @@ WHERE state = 'active'
 GROUP BY server_uuid;
 ```
 
-Global views are {{<tags/feature/tp idea="2134">}} and available in v2026.1.2 and later. They are read-only, and they are built on [postgres_fdw](../../../additional-features/pg-extensions/extension-postgres-fdw/), so you query them with ordinary SQL: WHERE, GROUP BY, ORDER BY, joins, and subqueries all work.
+Cluster-wide database views are {{<tags/feature/tp idea="2134">}} and available in v2026.1.2 and later. They are read-only, and they are built on [postgres_fdw](../../../additional-features/pg-extensions/extension-postgres-fdw/), so you query them with ordinary SQL: WHERE, GROUP BY, ORDER BY, joins, and subqueries all work.
 
-When you query a global view, the planner expands it into one scan per live YB-TServer, each node runs the corresponding local view, and the coordinating node unions the results.
+When you query a cluster-wide database view, the planner expands it into one scan per live YB-TServer, each node runs the corresponding local view, and the coordinating node unions the results.
 
 ## Configuration and usage
 
-- How to [enable global views](../../../launch-and-manage/monitor-and-alert/global-views/#enable-global-views)
-- See [Monitor with Global views](../../../launch-and-manage/monitor-and-alert/global-views/) for privileges, the default `gv$` views, user-defined views, and best practices
-- Global views [limitations](../../../launch-and-manage/monitor-and-alert/global-views/#limitations)
+- How to [enable cluster-wide database views](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#enable-cluster-wide-database-views)
+- See [Monitor with Cluster-wide database views](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/) for privileges, the default `gv$` views, and best practices
+- Cluster-wide database views [limitations](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#limitations)
 
 ## Examples
 
@@ -83,7 +85,7 @@ GROUP BY wait_event_component, wait_event
 ORDER BY samples DESC;
 ```
 
-That `now()` predicate runs on the node you are connected to, not on the remote nodes, so every sample in every node's buffer crosses the network first. To push the time filter down, evaluate `now()` once and send the result as a constant. In ysqlsh, `\gset` captures it into a variable:
+That `now()` predicate runs on the node you are connected to, not on the remote nodes, so every sample in every node's buffer crosses the network first. {{<issue 30964>}} will push `now()` down automatically; until then, evaluate `now()` once and send the result as a constant. In ysqlsh, `\gset` captures it into a variable:
 
 ```sql
 SELECT now() - interval '10 minutes' AS cutoff \gset
@@ -124,7 +126,7 @@ LIMIT 20;
 
 ## Learn more
 
-- [Monitor with Global views](../../../launch-and-manage/monitor-and-alert/global-views/)
+- [Monitor with Cluster-wide database views](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/)
 - [Active Session History](../active-session-history/)
 - [pg_stat_activity](../pg-stat-activity/)
 - [pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/)
