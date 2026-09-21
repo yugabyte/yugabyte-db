@@ -333,6 +333,45 @@ TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
   VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
 }
 
+TEST_F(PgDdlAtomicityTest, MasterCrashDuringCreateTableWithUniqueConstraint) {
+  const std::string kTable = "unique_constraint_crash_test";
+  const std::string kUniqueIndex = kTable + "_col_key";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  // Fail the statement before the master is restarted so the restarted master rolls back
+  // an already-aborted transaction.
+  ASSERT_OK(conn.Execute("SET statement_timeout = '15s'"));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_crash_before_add_index_info_to_table", "true"));
+  ASSERT_NOK(conn.ExecuteFormat("CREATE TABLE $0 (col TEXT UNIQUE, value TEXT)", kTable));
+
+  ASSERT_EQ(cluster_->master_daemons().size(), 1);
+  auto* master = cluster_->master_daemons()[0];
+  ASSERT_OK(WaitFor(
+      [&]() { return !master->IsProcessAlive(); }, MonoDelta::FromSeconds(30),
+      "Wait for master to crash"));
+
+  RestartMaster();
+
+  // The DDL transaction is aborted, so rollback must remove both the table and the unique
+  // constraint index created by the same statement, and no DocDB record for either may keep
+  // the DDL verifier state.
+  VerifyTableNotExists(client.get(), kDatabase, kTable, 40);
+  VerifyTableNotExists(client.get(), kDatabase, kUniqueIndex, 40);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (const auto& yb_table_name : VERIFY_RESULT(client->ListTables(kTable))) {
+      auto info = VERIFY_RESULT(client->GetYBTableInfoById(
+          yb_table_name.table_id(), /*include_hidden=*/true));
+      if (info.ysql_ddl_txn_verifier_state.has_value()) {
+        LOG(INFO) << yb_table_name.table_name() << " still has ysql_ddl_txn_verifier_state";
+        return false;
+      }
+    }
+    return true;
+  }, MonoDelta::FromSeconds(120), "Wait for DDL verifier state to be cleared"));
+}
+
 // Class for sanity test.
 class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
