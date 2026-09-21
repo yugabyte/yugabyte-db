@@ -516,6 +516,10 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     // Calculate the current state and goal state and their difference (in terms of adds / removes).
     // We currently only use this to provide an estimate of the time it will take to balance the
     // cluster; it is not used in the algorithm below.
+    //
+    // The estimate does not account for per-block max_num_replicas: the goal distribution may
+    // place slack replicas in a block beyond its maximum, so the estimated number of moves can be
+    // low when maximums are binding.
     TsTableLoadMap current_loads;
     TSDescriptorVector valid_ts_descs;
     for (auto& ts_uuid : state_->sorted_load_) {

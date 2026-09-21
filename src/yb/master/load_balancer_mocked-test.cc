@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include <numeric>
 #include <set>
 
 #include <gflags/gflags_declare.h>
@@ -1265,31 +1264,6 @@ TEST_F(OptimalLoadDistributionTest, Slack) {
   map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
       ts_descs, replication_info.live_replicas(), current_load, 6));
   ASSERT_OK(AssertLoadDistribution(ts_descs, map, {4, 4, 6, 4}));
-}
-
-TEST_F(OptimalLoadDistributionTest, MaxNumReplicas) {
-  auto ts_descs = SetupTservers(3);
-  ts_descs.push_back(SetupTS("3333", "a"));
-  ts_descs.push_back(SetupTS("4444", "b"));
-  ts_descs.push_back(SetupTS("5555", "c"));
-  auto replication_info = GetReplicationInfo({"a", "b", "c"});
-  replication_info.mutable_live_replicas()->set_num_replicas(5);
-  for (auto& block : *replication_info.mutable_live_replicas()->mutable_placement_blocks()) {
-    block.set_max_num_replicas(2);
-  }
-
-  const auto distribution = ASSERT_RESULT(CalculateOptimalLoadDistribution(
-      ts_descs, replication_info.live_replicas(), {}, /* num_tablets */ 2));
-  ASSERT_EQ(std::accumulate(
-                distribution.begin(), distribution.end(), 0uz,
-                [](size_t total, const auto& entry) { return total + entry.second; }),
-            10);
-  for (const auto& [first, second] :
-       {std::pair(0, 3), std::pair(1, 4), std::pair(2, 5)}) {
-    ASSERT_LE(distribution.at(ts_descs[first]->permanent_uuid()) +
-                  distribution.at(ts_descs[second]->permanent_uuid()),
-              4);
-  }
 }
 
 TEST_F(OptimalLoadDistributionTest, SlackManyTservers) {

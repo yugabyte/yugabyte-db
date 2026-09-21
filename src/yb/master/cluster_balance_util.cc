@@ -14,9 +14,6 @@
 #include "yb/master/cluster_balance_util.h"
 
 #include <algorithm>
-#include <limits>
-#include <queue>
-#include <tuple>
 
 #include "yb/gutil/map-util.h"
 
@@ -1135,27 +1132,16 @@ Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
         valid_tservers.size(), placement_info.num_replicas());
   }
 
-  const bool has_explicit_max = std::ranges::any_of(
-      placement_info.placement_blocks(),
-      [](const auto& block) { return block.has_max_num_replicas(); });
-
   // Find the (unique) placement block that each tserver belongs to.
   TServerAndLoadVector optimal_load_distribution;
-  std::vector<size_t> tserver_block_indexes;
-  std::vector<size_t> remaining_block_capacities;
   size_t slack = placement_info.num_replicas() * num_tablets;
   for (auto& block : placement_info.placement_blocks()) {
     auto block_replicas = block.min_num_replicas() * num_tablets;
     slack -= block_replicas;
-    const auto block_index = remaining_block_capacities.size();
-    remaining_block_capacities.push_back(
-        (GetEffectiveMaxNumReplicas(block, placement_info.num_replicas()) -
-         block.min_num_replicas()) * num_tablets);
     auto start_idx = optimal_load_distribution.size();
     for (const auto& ts : valid_tservers) {
       if (ts->MatchesCloudInfo(block.cloud_info())) {
         optimal_load_distribution.emplace_back(ts->permanent_uuid(), 0);
-        tserver_block_indexes.push_back(block_index);
       }
     }
     auto end_idx = optimal_load_distribution.size();
@@ -1173,7 +1159,7 @@ Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
   }
 
   // If there is slack, spread it across the least loaded tservers.
-  if (slack > 0 && !has_explicit_max) {
+  if (slack > 0) {
     // Sort tservers by increasing load.
     std::sort(optimal_load_distribution.begin(), optimal_load_distribution.end(),
         [](const auto& a, const auto& b) { return a.second < b.second; });
@@ -1217,36 +1203,6 @@ Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
     // tserver i-1. Otherwise, we would have stopped earlier. So the minimum loads are still
     // respected.
     DistributeReplicas(current_loads, optimal_load_distribution, 0, i, prefix_load + slack);
-  } else if (slack > 0) {
-    // With explicit per-block maximums, the water-filling above cannot be applied directly
-    // because a block may run out of capacity before the load levels out. Instead, distribute
-    // slack one replica at a time onto the least loaded tserver (breaking ties towards higher
-    // current load, which minimizes moves) whose block still has capacity and which has fewer
-    // replicas than there are tablets.
-    using Candidate = std::tuple<size_t, size_t, size_t>;
-    std::priority_queue<Candidate, std::vector<Candidate>, std::greater<Candidate>> candidates;
-    for (size_t i = 0; i != optimal_load_distribution.size(); ++i) {
-      candidates.emplace(
-          optimal_load_distribution[i].second,
-          std::numeric_limits<size_t>::max() -
-              FindWithDefault(current_loads, optimal_load_distribution[i].first, 0),
-          i);
-    }
-    while (slack > 0 && !candidates.empty()) {
-      const auto [load, current_load_rank, index] = candidates.top();
-      candidates.pop();
-      const auto block_index = tserver_block_indexes[index];
-      if (remaining_block_capacities[block_index] == 0 || load >= num_tablets) {
-        continue;
-      }
-      ++optimal_load_distribution[index].second;
-      --remaining_block_capacities[block_index];
-      --slack;
-      candidates.emplace(load + 1, current_load_rank, index);
-    }
-    if (slack > 0) {
-      return STATUS(InvalidArgument, "Placement maximums cannot accommodate all tablet replicas");
-    }
   }
 
   TsTableLoadMap result;
