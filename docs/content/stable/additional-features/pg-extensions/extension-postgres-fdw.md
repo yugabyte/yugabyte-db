@@ -55,21 +55,23 @@ You can execute `SELECT` statements on the foreign tables to access the data in 
 | `yugabyteDB` | The remote server is another YugabyteDB cluster. Rows are identified by `ybctid`. |
 | `federatedYugabyteDB` | There is no remote server. Each foreign table is read from every node of the local cluster. |
 
-Set it when you create the server. For another YugabyteDB cluster:
+Set the option when you create the server.
+
+For example, create a server for a remote YugabyteDB cluster:
 
 ```plpgsql
 CREATE SERVER my_server FOREIGN DATA WRAPPER postgres_fdw
     OPTIONS (server_type 'yugabyteDB', host 'host_ip', dbname 'external_db', port 'port_number');
 ```
 
-The value is case-insensitive. Leaving it out selects `postgreSQL` and reports it:
+The value is case-insensitive. If you don't specify a server, the system defaults to `postgreSQL` and reports the following:
 
 ```output
 NOTICE:  no server_type specified. Defaulting to PostgreSQL.
 HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 ```
 
-`federatedYugabyteDB` works differently from the other two. The server takes no `host`, `dbname`, or `port`, and needs no `CREATE USER MAPPING`, because the target nodes come from the cluster's own tablet server list and each node is reached over an internal connection. YugabyteDB creates one such server, `yb_global_views_server`, and uses it for [global views](../../../explore/observability/global-views/). You don't need to create this server yourself; it is equivalent to:
+`federatedYugabyteDB` doesn't take `host`, `dbname`, or `port`, and doesn't need `CREATE USER MAPPING` because the target nodes come from the cluster's own tablet server list and each node is reached over an internal connection. YugabyteDB creates one such server, `yb_global_views_server`, and uses it for [global views](../../../explore/observability/global-views/). You don't need to create this server yourself; it is equivalent to:
 
 ```plpgsql
 CREATE SERVER yb_global_views_server FOREIGN DATA WRAPPER postgres_fdw
