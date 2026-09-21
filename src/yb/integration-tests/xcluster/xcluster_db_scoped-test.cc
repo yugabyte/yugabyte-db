@@ -208,8 +208,8 @@ class XClusterDBScopedAutomaticModeTest : public XClusterDBScopedTest {
 
 // Both universes run TLS, and CreateReplicationFromCheckpoint stages the source's certificates
 // under <certs_for_cdc_dir>/<replication_group_id>, which is the directory an operator names to
-// --source_certs_dir_name. Both universes here share one certificate authority, so a test wanting
-// the source to reject the connection names test_certs/CA2 instead.
+// --xcluster_source_certs_dir_name. Both universes here share one certificate authority, so a
+// test wanting the source to reject the connection names test_certs/CA2 instead.
 class XClusterDBScopedAutomaticModeTlsTest : public XClusterDBScopedAutomaticModeTest {
  public:
   void SetUp() override {
@@ -478,9 +478,9 @@ TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupRejectsLegacyMaster
   ASSERT_STR_CONTAINS(run.error, "upgrade the target masters");
 }
 
-// Every other verify test runs both universes without TLS, where --source_certs_dir_name has no
-// observable effect. Only here does naming the source's certificates decide whether the source
-// connection is established at all.
+// Every other verify test runs both universes without TLS, where
+// --xcluster_source_certs_dir_name has no observable effect. Only here does naming the source's
+// certificates decide whether the source connection is established at all.
 TEST_F(XClusterDBScopedAutomaticModeTlsTest, VerifyXClusterGroupUsesSourceCertsDir) {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
@@ -492,7 +492,7 @@ TEST_F(XClusterDBScopedAutomaticModeTlsTest, VerifyXClusterGroupUsesSourceCertsD
 
   auto out = ASSERT_RESULT(CallAdminVec(
       {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
-       "--certs_dir_name", GetCertsDir(), "--source_certs_dir_name", SourceCertsDir(),
+       "--certs_dir_name", GetCertsDir(), "--xcluster_source_certs_dir_name", SourceCertsDir(),
        "verify_xcluster_group", kReplicationGroupId.ToString()}));
   LOG(INFO) << "verify_xcluster_group output: " << out;
   JsonDocument doc;
@@ -504,7 +504,7 @@ TEST_F(XClusterDBScopedAutomaticModeTlsTest, VerifyXClusterGroupUsesSourceCertsD
   // these certificates, so the target is still reached and the failure names the source.
   auto rejected = RunAdminKeepingOutput(
       {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
-       "--certs_dir_name", GetCertsDir(), "--source_certs_dir_name", OtherCaCertsDir(),
+       "--certs_dir_name", GetCertsDir(), "--xcluster_source_certs_dir_name", OtherCaCertsDir(),
        "--yb_client_admin_rpc_timeout_sec", "10",
        "verify_xcluster_group", kReplicationGroupId.ToString()});
   ASSERT_NOK(rejected.status);

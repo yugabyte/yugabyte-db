@@ -82,7 +82,7 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
-DEFINE_NON_RUNTIME_string(source_certs_dir_name, "",
+DEFINE_NON_RUNTIME_string(xcluster_source_certs_dir_name, "",
     "Directory with certificates for connecting to the source universe, used by the "
     "verify_xcluster_* commands. Empty falls back to --certs_dir_name and then --certs_dir, which "
     "name this universe's certificates and are only correct when both universes share a "
@@ -3113,7 +3113,7 @@ Status verify_xcluster_slice_action(
   // result rather than a CLI argument error.
   ClusterAdminClient source_client(
       source_master_addresses, MonoDelta::FromMilliseconds(FLAGS_timeout_ms),
-      FLAGS_source_certs_dir_name);
+      FLAGS_xcluster_source_certs_dir_name);
   RETURN_NOT_OK_PREPEND(
       source_client.Init(),
       Format("Unable to connect to source masters at [$0]", source_master_addresses));
@@ -3163,7 +3163,8 @@ Status verify_xcluster_group_action(
     }
   }
   return client->VerifyXClusterGroup(
-      xcluster::ReplicationGroupId(args[0]), options, skip_tables, FLAGS_source_certs_dir_name);
+      xcluster::ReplicationGroupId(args[0]), options, skip_tables,
+      FLAGS_xcluster_source_certs_dir_name);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";
