@@ -8411,12 +8411,19 @@ YBHasProcessableAbortInterrupt()
  * client_connection_check_interval and records the loss so that the next
  * ProcessInterrupts() call terminates the backend.
  *
- * Runs in the middle of a pggate call, so it must not ereport(ERROR): the
- * longjmp would skip C++ frames.
+ * Runs in the middle of a pggate call, whose C++ frames own the RPC state
+ * (a stack latch the reactor will count down, a held mutex), so an ERROR must
+ * not longjmp out of here. pq_check_connection() raises one only if
+ * epoll/kqueue syscalls fail; that is swallowed and treated as "still
+ * connected", the probe simply runs again at the next interval.
  */
 bool
 YbClientConnectionLost(void)
 {
+	uint32		saved_wait_event_info;
+	MemoryContext oldcontext;
+	volatile bool connected = true;
+
 	if (ClientConnectionLost)
 		return true;
 
@@ -8432,7 +8439,28 @@ YbClientConnectionLost(void)
 	if (!WaitEventSetCanReportClosed())
 		return false;
 
-	if (pq_check_connection())
+	/*
+	 * WaitEventSetWait() reports its own (empty) wait event and clears it on
+	 * exit, which would wipe the WaitingOnTServer event pggate published for
+	 * the blocked RPC from pg_stat_activity and ASH for the rest of the wait.
+	 */
+	saved_wait_event_info = *my_wait_event_info;
+	oldcontext = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		connected = pq_check_connection();
+	}
+	PG_CATCH();
+	{
+		MemoryContextSwitchTo(oldcontext);
+		FlushErrorState();
+	}
+	PG_END_TRY();
+
+	*(volatile uint32 *) my_wait_event_info = saved_wait_event_info;
+
+	if (connected)
 		return false;
 
 	ClientConnectionLost = true;

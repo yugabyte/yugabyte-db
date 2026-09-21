@@ -14,11 +14,13 @@
 #include <signal.h>
 
 #include <chrono>
+#include <string>
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
@@ -26,21 +28,25 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_uint32(pg_client_connection_check_interval_ms);
-DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
+DECLARE_bool(TEST_pause_get_lock_status);
 
 using namespace std::literals;
 
 namespace yb::pgwrapper {
 namespace {
 
-constexpr auto kCheckIntervalMs = 500;
-// Long enough that a backend which only notices the disconnect when the RPC completes would
-// still be alive at every assertion below, short enough not to stall cluster shutdown: the
-// tserver handler keeps sleeping after the backend is gone.
-constexpr auto kStuckRpcMs = 15000;
+constexpr uint32_t kCheckIntervalMs = 500;
+// pg_stat_activity.wait_event values pggate publishes while blocked (ASH is on by default): sync
+// RPCs report the former, a Perform reading a user table the latter.
+constexpr auto kSyncRpcWaitEvent = "WaitingOnTServer";
+constexpr auto kTableReadWaitEvent = "TableRead";
 
 bool ProcessAlive(int pid) {
   return kill(pid, 0) == 0 || errno != ESRCH;
+}
+
+MonoDelta CheckIntervals(int count) {
+  return MonoDelta::FromMilliseconds(kCheckIntervalMs * count * kTimeMultiplier);
 }
 
 } // namespace
@@ -62,9 +68,11 @@ class PgClientDisconnectTest : public PgMiniTestBase {
   }
 
   // Opens a raw libpq connection, sends `query` without waiting for the result and returns the
-  // connection once its backend is executing. The caller ends the client by destroying the
-  // returned connection while the backend is still blocked.
-  Result<PGConnPtr> StartBlockedQuery(PGConn& control_conn, const std::string& query) {
+  // connection once its backend is blocked in pggate on the tserver. The caller ends the client
+  // by destroying the returned connection while the backend is still blocked.
+  Result<PGConnPtr> StartBlockedQuery(
+      PGConn& control_conn, const std::string& query,
+      const std::string& wait_event = kSyncRpcWaitEvent) {
     const auto settings = MakeConnSettings();
     const auto conn_str = Format(
         "host=$0 port=$1 user=$2", settings.host, settings.port, PGConnSettings::kDefaultUser);
@@ -75,28 +83,35 @@ class PgClientDisconnectTest : public PgMiniTestBase {
     }
     const auto pid = PQbackendPID(conn.get());
     RETURN_NOT_OK(WaitFor(
-        [&control_conn, pid]() -> Result<bool> {
-          return control_conn.FetchRow<bool>(Format(
-              "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid = $0 AND state = 'active')",
-              pid));
+        [&control_conn, pid, &wait_event]() -> Result<bool> {
+          return VERIFY_RESULT(WaitEvent(control_conn, pid)) == wait_event;
         },
-        10s * kTimeMultiplier, "Backend started executing"));
-    // Let the backend reach the blocking wait in pggate.
-    SleepFor(1s * kTimeMultiplier);
+        10s * kTimeMultiplier, "Backend blocked on tserver"));
     return conn;
+  }
+
+  static Result<std::string> WaitEvent(PGConn& control_conn, int pid) {
+    return control_conn.FetchRow<std::string>(Format(
+        "SELECT coalesce(wait_event, '') FROM pg_stat_activity WHERE pid = $0", pid));
   }
 
   static Status WaitForBackendExit(int pid) {
     return WaitFor(
-        [pid] { return !ProcessAlive(pid); },
-        MonoDelta::FromMilliseconds(kCheckIntervalMs * 10 * kTimeMultiplier),
-        Format("Backend $0 exited", pid));
+        [pid] { return !ProcessAlive(pid); }, CheckIntervals(10), Format("Backend $0 exited", pid));
+  }
+
+  // Blocks GetLockStatus (pg_locks goes through DoSyncRPC) on the tserver until the returned
+  // guard releases it. Unlike a fixed delay, the RPC cannot complete on its own and let the
+  // backend notice the disconnect through the old path, whatever the build's timing.
+  static auto PauseSyncRpc() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = true;
+    return ScopeExit([] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = false; });
   }
 };
 
-// Sync RPC path: pg_locks goes through DoSyncRPC(GetLockStatus), which the tserver delays.
+// Sync RPC path.
 TEST_F(PgClientDisconnectTest, DisconnectDuringSyncRpc) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_get_locks_status_ms) = kStuckRpcMs;
+  auto pause = PauseSyncRpc();
 
   auto control_conn = ASSERT_RESULT(Connect());
   auto blocked_conn = ASSERT_RESULT(StartBlockedQuery(control_conn, "SELECT * FROM pg_locks"));
@@ -118,8 +133,8 @@ TEST_F(PgClientDisconnectTest, DisconnectDuringPerform) {
   ASSERT_OK(locker.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(locker.Fetch("SELECT * FROM t WHERE k = 1 FOR UPDATE"));
 
-  auto blocked_conn = ASSERT_RESULT(
-      StartBlockedQuery(control_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
+  auto blocked_conn = ASSERT_RESULT(StartBlockedQuery(
+      control_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE", kTableReadWaitEvent));
   const auto pid = PQbackendPID(blocked_conn.get());
   ASSERT_TRUE(ProcessAlive(pid));
 
@@ -130,6 +145,26 @@ TEST_F(PgClientDisconnectTest, DisconnectDuringPerform) {
   ASSERT_OK(locker.Execute("UPDATE t SET v = 2 WHERE k = 1"));
   ASSERT_OK(locker.CommitTransaction());
   ASSERT_EQ(ASSERT_RESULT(control_conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 2);
+}
+
+// A connected client must not be disturbed by the periodic probe: the backend stays blocked and
+// keeps reporting the tserver wait event. The probe runs WaitEventSetWait(), which clears the
+// backend's wait event unless it is restored.
+TEST_F(PgClientDisconnectTest, ConnectedClientKeepsWaitEvent) {
+  auto pause = PauseSyncRpc();
+
+  auto control_conn = ASSERT_RESULT(Connect());
+  auto blocked_conn = ASSERT_RESULT(StartBlockedQuery(control_conn, "SELECT * FROM pg_locks"));
+  const auto pid = PQbackendPID(blocked_conn.get());
+
+  SleepFor(CheckIntervals(4));
+  ASSERT_TRUE(ProcessAlive(pid));
+  ASSERT_EQ(ASSERT_RESULT(WaitEvent(control_conn, pid)), kSyncRpcWaitEvent);
+
+  // Releasing the RPC lets the query complete normally.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = false;
+  PGResultPtr result(PQgetResult(blocked_conn.get()));
+  ASSERT_EQ(PQresultStatus(result.get()), PGRES_TUPLES_OK) << PQerrorMessage(blocked_conn.get());
 }
 
 class PgClientDisconnectCheckDisabledTest : public PgClientDisconnectTest {
@@ -143,14 +178,14 @@ class PgClientDisconnectCheckDisabledTest : public PgClientDisconnectTest {
 TEST_F_EX(
     PgClientDisconnectTest, DisconnectNotDetectedWhenDisabled,
     PgClientDisconnectCheckDisabledTest) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_get_locks_status_ms) = kStuckRpcMs;
+  auto pause = PauseSyncRpc();
 
   auto control_conn = ASSERT_RESULT(Connect());
   auto blocked_conn = ASSERT_RESULT(StartBlockedQuery(control_conn, "SELECT * FROM pg_locks"));
   const auto pid = PQbackendPID(blocked_conn.get());
 
   blocked_conn.reset();
-  SleepFor(MonoDelta::FromMilliseconds(kCheckIntervalMs * 6 * kTimeMultiplier));
+  SleepFor(CheckIntervals(6));
   ASSERT_TRUE(ProcessAlive(pid));
 }
 
