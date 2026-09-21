@@ -1044,6 +1044,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
+			.ClientConnectionLost = &YbClientConnectionLost,
 			.IsInParallelMode = &IsInParallelMode,
 		};
 

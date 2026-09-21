@@ -562,5 +562,6 @@ extern PGDLLIMPORT Oid YbDatabaseIdForNewObjectId;
 extern PGDLLIMPORT bool MyColocatedDatabaseLegacy;
 extern PGDLLIMPORT bool YbTablegroupCatalogExists;
 extern PGDLLIMPORT bool YbLoginProfileCatalogsExist;
+extern bool YbClientConnectionLost(void);
 
 #endif							/* MISCADMIN_H */

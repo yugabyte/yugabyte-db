@@ -902,6 +902,10 @@ void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
 
 bool YBCHasProcessableAbortInterrupt();
 
+// Asks postgres whether the client connection is gone. Only meaningful on the postgres main
+// thread while a statement is executing.
+bool YBCIsClientConnectionLost();
+
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.
 

@@ -8402,6 +8402,44 @@ YBHasProcessableAbortInterrupt()
 	return false;
 }
 
+/*
+ * YbClientConnectionLost:
+ *
+ * Called by pggate while the backend is blocked waiting on a tserver reply,
+ * where no CHECK_FOR_INTERRUPTS() runs and the client socket is never touched.
+ * Probes the socket the way ProcessInterrupts() does for
+ * client_connection_check_interval and records the loss so that the next
+ * ProcessInterrupts() call terminates the backend.
+ *
+ * Runs in the middle of a pggate call, so it must not ereport(ERROR): the
+ * longjmp would skip C++ frames.
+ */
+bool
+YbClientConnectionLost(void)
+{
+	if (ClientConnectionLost)
+		return true;
+
+	/*
+	 * Same preconditions as the CheckClientConnectionPending branch of
+	 * ProcessInterrupts(). Background and parallel workers have no client
+	 * socket. Idle sessions detect disconnects via ReadCommand() themselves.
+	 */
+	if (!IsUnderPostmaster || !MyProcPort || DoingCommandRead ||
+		whereToSendOutput != DestRemote)
+		return false;
+
+	if (!WaitEventSetCanReportClosed())
+		return false;
+
+	if (pq_check_connection())
+		return false;
+
+	ClientConnectionLost = true;
+	InterruptPending = true;
+	return true;
+}
+
 long
 YbGetCatCacheRefreshes()
 {
