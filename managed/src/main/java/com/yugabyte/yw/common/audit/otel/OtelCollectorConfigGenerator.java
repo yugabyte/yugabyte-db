@@ -1061,6 +1061,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.AUDIT_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL,
             transformName,
+            logLinePrefix,
             null,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1078,6 +1079,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.QUERY_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_QUERY_YSQL,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1105,6 +1107,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.MASTER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_MASTER,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1122,6 +1125,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.TSERVER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_TSERVER,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1140,6 +1144,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.YSQL_CONN_MGR_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL_CONN_MGR,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1158,6 +1163,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.CONTROLLER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_CONTROLLER,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1193,6 +1199,7 @@ public class OtelCollectorConfigGenerator {
       ExportType exportType,
       String receiverName,
       String transformName,
+      String logLinePrefix,
       BatchedLogsExporterConfig batchConfig,
       Map<String, String> additionalTags,
       List<Object> secretEnv,
@@ -1202,6 +1209,14 @@ public class OtelCollectorConfigGenerator {
     String exporterName = appendExporterConfig(tp, cfg, attrs, exportType);
     addK8sCommonRequiredAttributes(
         attrs, universe, podPlacement, tp, logExportPurposeSuffix(exportType));
+    // Namespace the receiver-parsed attributes the same way the VM path does - the sidecar runs the
+    // same receivers, so without this K8s records reach the exporter with un-prefixed pgaudit and
+    // log-prefix attribute names (PLAT-22327).
+    addLogPayloadRenameActions(
+        attrs,
+        ExportType.AUDIT_LOGS.equals(exportType),
+        !ExportType.MASTER_LOGS.equals(exportType) && !ExportType.TSERVER_LOGS.equals(exportType),
+        logExportRegexResult(exportType, logLinePrefix));
     // Merge telemetry-provider tags + the exporter config's additionalTags (parity with VM).
     addCommonAdditionalAttributes(attrs, tp, additionalTags);
     attrs.add(new OtelCollectorConfigFormat.AttributeAction("host", "${POD_NAME}", "upsert", null));
@@ -2789,6 +2804,25 @@ public class OtelCollectorConfigGenerator {
     addCommonRequiredAttributes(
         attributeActions, nodeName, nodeDetails, universe, telemetryProvider, purposeSuffix);
 
+    addLogPayloadRenameActions(
+        attributeActions, includeAuditType, includePgAuditFields, regexResult);
+
+    // Override or add tags from the exporter config and additional tags from the log config
+    // payload.
+    addCommonAdditionalAttributes(attributeActions, telemetryProvider, additionalTags);
+  }
+
+  /**
+   * Namespaces the attributes the filelog receiver parses out of the log line itself (pgaudit CSV
+   * fields, log_level, and the log_line_prefix tokens) under "yugabyte.". Shared by the VM and K8s
+   * config builders: the attribute names a record arrives with must not depend on which provider
+   * the universe runs on.
+   */
+  private void addLogPayloadRenameActions(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      boolean includeAuditType,
+      boolean includePgAuditFields,
+      AuditLogRegexGenerator.LogRegexResult regexResult) {
     // Rename the common attributes to organise under the key yugabyte.
     List<RenamePair> commonRenamePairs = new ArrayList<RenamePair>();
     commonRenamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
@@ -2819,10 +2853,6 @@ public class OtelCollectorConfigGenerator {
                   new RenamePair(token.getAttributeName(), token.getYugabyteAttributeName());
               attributeActions.addAll(rp.getRenameAttributeActions());
             });
-
-    // Override or add tags from the exporter config and additional tags from the log config
-    // payload.
-    addCommonAdditionalAttributes(attributeActions, telemetryProvider, additionalTags);
   }
 
   private String appendExporterConfig(

@@ -8,19 +8,27 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -29,6 +37,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.ebean.DB;
 import java.time.Duration;
 import java.time.Instant;
@@ -37,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -44,6 +56,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.YBClient;
 import play.libs.Json;
@@ -54,6 +67,9 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   Universe universe;
   CustomerTaskManager taskManager;
   YBClient mockClient;
+
+  // Shared exporter uuid so a retried config can be matched back to what was persisted.
+  private static final UUID TELEMETRY_EXPORTER_UUID = UUID.randomUUID();
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
@@ -310,6 +326,168 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
       // mismatch); only an unmapped task type is the defect under test.
       return e.getMessage() != null && e.getMessage().contains("Invalid task type");
     }
+  }
+
+  // The switch in retryCustomerTask is the only place a typed params object is rebuilt from the
+  // persisted JSON, and a wrong case still submits a task - just one configured from another task
+  // type's params - so assert the type and that the config survives the round trip.
+  @Test
+  public void testRetryConfigureExportTelemetryConfigSubmitsTelemetryParams() {
+    for (TaskType taskType :
+        List.of(
+            TaskType.ConfigureExportTelemetryConfig,
+            TaskType.KubernetesConfigureExportTelemetryConfig)) {
+      Universe target =
+          taskType == TaskType.KubernetesConfigureExportTelemetryConfig
+              ? createKubernetesUniverse("k8s-telemetry-" + UUID.randomUUID())
+              : ModelFactory.createUniverse("telemetry-" + UUID.randomUUID(), customer.getId());
+      JsonNode taskParams = exportTelemetryConfigTaskParams(target);
+      UUID failedTaskUUID =
+          createFailedUniverseTask(
+                  target,
+                  taskType,
+                  CustomerTask.TaskType.ConfigureExportTelemetryConfig,
+                  taskParams)
+              .getTaskUUID();
+      markUniverseUpdatingTask(target, failedTaskUUID);
+      UUID retryTaskUUID = UUID.randomUUID();
+      persistTaskInfoPlaceholder(retryTaskUUID, taskType);
+      when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+      when(mockCommissioner.submit(eq(taskType), any())).thenReturn(retryTaskUUID);
+
+      CustomerTask retryTask = taskManager.retryCustomerTask(customer.getUuid(), failedTaskUUID);
+
+      ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+      verify(mockCommissioner).submit(eq(taskType), paramsCaptor.capture());
+      assertTrue(
+          taskType + " must be retried with ExportTelemetryConfigParams",
+          paramsCaptor.getValue() instanceof ExportTelemetryConfigParams);
+      ExportTelemetryConfigParams retried = (ExportTelemetryConfigParams) paramsCaptor.getValue();
+      assertNotNull(retried.getQueryLogConfig());
+      assertEquals(
+          TELEMETRY_EXPORTER_UUID,
+          retried.getQueryLogConfig().getUniverseLogsExporterConfig().get(0).getExporterUuid());
+      // modifiedExportTypes drives which sections the retried task reconfigures; losing it turns
+      // the retry into a no-op.
+      assertEquals(List.of(ExportType.QUERY_LOGS), retried.getModifiedExportTypes());
+      assertEquals(failedTaskUUID, retried.getPreviousTaskUUID());
+      assertEquals(retryTaskUUID, retryTask.getTaskUUID());
+    }
+  }
+
+  // Regression: the ModifyQueryLoggingConfig case fell through into ModifyMetricsExportConfig, so
+  // the retry discarded the QueryLogConfigParams it had just parsed and submitted the task with
+  // MetricsExportConfigParams instead.
+  @Test
+  public void testRetryModifyQueryLoggingConfigSubmitsQueryLogParams() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = queryLogConfigTaskParams(universe);
+    UUID failedTaskUUID =
+        createFailedUniverseTask(
+                universe,
+                TaskType.ModifyQueryLoggingConfig,
+                CustomerTask.TaskType.ModifyQueryLoggingConfig,
+                taskParams)
+            .getTaskUUID();
+    markUniverseUpdatingTask(universe, failedTaskUUID);
+    UUID retryTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(retryTaskUUID, TaskType.ModifyQueryLoggingConfig);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.ModifyQueryLoggingConfig), any()))
+        .thenReturn(retryTaskUUID);
+
+    taskManager.retryCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ModifyQueryLoggingConfig), paramsCaptor.capture());
+    assertTrue(
+        "ModifyQueryLoggingConfig must be retried with QueryLogConfigParams",
+        paramsCaptor.getValue() instanceof QueryLogConfigParams);
+    QueryLogConfigParams retried = (QueryLogConfigParams) paramsCaptor.getValue();
+    assertNotNull(retried.queryLogConfig);
+    assertEquals(
+        TELEMETRY_EXPORTER_UUID,
+        retried.queryLogConfig.getUniverseLogsExporterConfig().get(0).getExporterUuid());
+  }
+
+  private QueryLogConfig queryLogConfig() {
+    UniverseQueryLogsExporterConfig exporterConfig = new UniverseQueryLogsExporterConfig();
+    exporterConfig.setExporterUuid(TELEMETRY_EXPORTER_UUID);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setExportActive(true);
+    queryLogConfig.setUniverseLogsExporterConfig(List.of(exporterConfig));
+    return queryLogConfig;
+  }
+
+  private JsonNode exportTelemetryConfigTaskParams(Universe universe) {
+    ExportTelemetryConfigParams params = new ExportTelemetryConfigParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.clusters = universe.getUniverseDetails().clusters;
+    params.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+    params.setTelemetryConfig(TelemetryConfig.builder().queryLogConfig(queryLogConfig()).build());
+    params.setModifiedExportTypes(List.of(ExportType.QUERY_LOGS));
+    return Json.toJson(params);
+  }
+
+  private JsonNode queryLogConfigTaskParams(Universe universe) {
+    QueryLogConfigParams params = new QueryLogConfigParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.clusters = universe.getUniverseDetails().clusters;
+    params.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    params.queryLogConfig = queryLogConfig();
+    return Json.toJson(params);
+  }
+
+  // Creates a failed universe task (TaskInfo in Failure state) plus its CustomerTask row.
+  private CustomerTask createFailedUniverseTask(
+      Universe universe,
+      TaskType taskInfoType,
+      CustomerTask.TaskType customerTaskType,
+      JsonNode taskParams) {
+    TaskInfo taskInfo = new TaskInfo(taskInfoType, null);
+    UUID taskUUID = UUID.randomUUID();
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskParams(taskParams);
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    taskInfo.save();
+    return CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        customerTaskType,
+        universe.getName());
+  }
+
+  private Universe createKubernetesUniverse(String name) {
+    Universe k8sUniverse =
+        ModelFactory.createUniverse(name, customer.getId(), CloudType.kubernetes);
+    k8sUniverse.updateConfig(Map.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    k8sUniverse.save();
+    return k8sUniverse;
+  }
+
+  /** Persists a TaskInfo row so CustomerTask.create can satisfy the task_uuid FK. */
+  private void persistTaskInfoPlaceholder(UUID taskUUID, TaskType taskType) {
+    TaskInfo taskInfo = new TaskInfo(taskType, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskParams(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Created);
+    taskInfo.save();
+  }
+
+  /** Retry eligibility requires the failed task to still hold the universe lock. */
+  private void markUniverseUpdatingTask(Universe universe, UUID taskUUID) {
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().updatingTaskUUID = taskUUID;
+          u.getUniverseDetails().updateInProgress = false;
+        });
   }
 
   @Test
