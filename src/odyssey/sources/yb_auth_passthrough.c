@@ -239,24 +239,24 @@ static void yb_client_exit_mid_passthrough(od_server_t *server,
 }
 
 /*
- * TODO (vikram.damle) (#29176): Merge this function with the copy defined in backend.c
- * This will merge when auth passthrough flow is merged with auth backend.
+ * YB: The reported GUCs are collected into a single buffer and written once
+ * instead of one write per ParameterStatus packet, which saves a trip through
+ * the poller per packet.
  */
-
-static inline int
-yb_send_parameter_status_auth_passthrough(od_io_t *io, char *name, int name_len,
-					  char *value, int value_len)
+static inline int yb_flush_guc_batch(od_client_t *client,
+				     machine_msg_t **batch)
 {
-	machine_msg_t *msg = kiwi_be_write_parameter_status(
-		NULL, name, name_len, value, value_len);
-	if (msg == NULL) {
-		return -1;
+	if (*batch == NULL)
+		return 0;
+	return od_write(&client->io, batch);
+}
+
+static inline void yb_discard_guc_batch(machine_msg_t **batch)
+{
+	if (*batch != NULL) {
+		machine_msg_free(*batch);
+		*batch = NULL;
 	}
-	int rc = od_write(io, &msg);
-	if (rc != 0) {
-		return -1;
-	}
-	return 0;
 }
 
 static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
@@ -564,6 +564,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 	od_router_t *router = global->router;
 	kiwi_be_type_t type;
 	machine_msg_t *msg;
+	machine_msg_t *guc_batch = NULL;
 	int rc = -1;
 	int rc_auth = -1;
 
@@ -592,6 +593,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 					 "read error from server: %s",
 					 od_io_error(&server->io));
 				server->offline = 1;
+				yb_discard_guc_batch(&guc_batch);
 				return -1;
 			}
 		}
@@ -609,9 +611,21 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				od_frontend_fatal(
 					client, KIWI_PROTOCOL_VIOLATION,
 					"Unable to allocate the shared memory segment");
+				yb_discard_guc_batch(&guc_batch);
 				return -1;
 			}
 #endif
+			/*
+			 * The control backend is drained at this point, so failing the
+			 * client write here cannot leave it desynced.
+			 */
+			if (rc_auth != 0) {
+				yb_discard_guc_batch(&guc_batch);
+			} else if (yb_flush_guc_batch(client, &guc_batch) != 0) {
+				od_error(&instance->logger, "auth", NULL, server,
+					 "Unable to send ParameterStatus packets to client");
+				rc_auth = -1;
+			}
 			machine_msg_free(msg);
 			return rc_auth;
 
@@ -627,7 +641,12 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				/*
 				 * The notice packet does not contains any client id and
 				 * thus it is required to forward this notice packet to the client
+				 * Flush the batch first to keep the packets in
+				 * the order the backend produced them.
 				 */
+				if (rc_auth == 0 &&
+				    yb_flush_guc_batch(client, &guc_batch) != 0)
+					rc_auth = -1;
 				rc = od_write(&client->io, &msg);
 				if (rc < 0)
 					rc_auth = -1;
@@ -654,6 +673,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			 * Mark it to be discarded.
 			 */
 			server->offline = 1;
+			yb_discard_guc_batch(&guc_batch);
 			return -1;
 		case YB_CONN_MGR_PARAMETER_STATUS: {
 			char *name;
@@ -717,28 +737,33 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			if (rc_auth == 0) {
 				if (flags & YB_PARAM_STATUS_REPORT_ENABLED) {
 					/* We only care about forwarding report enabled variables */
-					int rc =
-						yb_send_parameter_status_auth_passthrough(
-							&client->io, name,
-							name_len, value,
-							value_len);
-					if (rc != 0) {
+					/*
+					 * Held separately because the append leaves the
+					 * batch untouched when it fails.
+					 */
+					machine_msg_t *appended;
+
+					appended = kiwi_be_write_parameter_status(
+						guc_batch, name, name_len,
+						value, value_len);
+					if (appended == NULL) {
 						od_error(
 							&instance->logger,
 							"auth", NULL, server,
-							"Unable to send ParameterStatus for GUC %.*s to client, will drain remaining control backend packets",
+							"Unable to buffer ParameterStatus for GUC %.*s to client, will drain remaining control backend packets",
 							name_len, name);
 						/*
-						 * The client socket is broken. Do not abort
-						 * here: continue receiving msgs to drain the remaining
-						 * ParameterStatus/ReadyForQuery packets from the
-						 * control backend so it stays synchronized for the
-						 * next auth. Stop forwarding PS packets to the dead client.
+						 * Do not abort here: continue receiving msgs to drain
+						 * the remaining ParameterStatus/ReadyForQuery packets
+						 * from the control backend so it stays synchronized
+						 * for the next auth.
 						 */
+						yb_discard_guc_batch(&guc_batch);
 						rc_auth = -1;
 						machine_msg_free(msg);
 						continue;
 					}
+					guc_batch = appended;
 				}
 
 				if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
@@ -763,6 +788,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			/* Physical connection is broken, no need to wait for readyForQuery pkt */
 			machine_msg_free(msg);
 			server->offline = 1;
+			yb_discard_guc_batch(&guc_batch);
 			return -1;
 		default:
 			od_error(
@@ -776,6 +802,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			 * it may never send an RFQ.
 			 */
 			server->offline = 1;
+			yb_discard_guc_batch(&guc_batch);
 			return -1;
 		}
 	}
