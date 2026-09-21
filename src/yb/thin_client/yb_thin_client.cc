@@ -764,8 +764,8 @@ ybthin_status ybthin_client_create(
   // allocator that unwinds from inside that malloc deadlocks against itself, and
   // ybthin_client_create never returns (#33916). libunwind has its own FDE cache.
   //
-  // The trade: libunwind can SIGSEGV collecting a trace in a BOLT-ed binary (#32197), so this gives
-  // up BOLT for this .so. yb_release does not pass --bolt. Sanitizer builds keep the default.
+  // The trade: libunwind can SIGSEGV collecting a trace in a BOLT-ed binary, so this gives up BOLT
+  // for this .so. yb_release does not pass --bolt. Sanitizer builds keep the default.
   if (!yb::IsSanitizer()) {
     FLAGS_use_libunwind_for_stack_trace_collection = true;
   }
