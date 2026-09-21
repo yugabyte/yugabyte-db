@@ -52,6 +52,7 @@
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_pg_cron);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
@@ -1943,11 +1944,12 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpWithDdlQueueStepdowns)
     return safe_time_batch;
   };
 
-  // Keep track of the number of times ddl_queue bumps the safe time.
-  int ddl_queue_safe_time_bumps = 0;
+  // Keep track of the commit times ddl_queue bumps the safe time to.
+  std::set<HybridTime> bumped_commit_times;
   SyncPoint::GetInstance()->SetCallBack(
-      "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped",
-      [&ddl_queue_safe_time_bumps](void* _) { ddl_queue_safe_time_bumps++; });
+      "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped", [&bumped_commit_times](void* arg) {
+        bumped_commit_times.insert(*static_cast<HybridTime*>(arg));
+      });
   SyncPoint::GetInstance()->EnableProcessing();
 
   // Start with replication paused so we can accumulate some pending DDLs.
@@ -2008,12 +2010,11 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpWithDdlQueueStepdowns)
   auto safe_time_batch_after_resume = ASSERT_RESULT(get_and_verify_safe_time_batch(
       /*expected_size=*/0, /*expected_has_apply_safe_time=*/false));
 
-  // We only start bumping the safe time after the restart.
-  // After the restart, we first process the batch in replicated_ddls, which has 3 DDLs. However, we
-  // don't update the checkpoint, so the next GetChanges still requests the same first 3 DDLs + the
-  // next 2 new DDLs. Thus we have 5 bumps in the next round (note that we will not rerun those
-  // first 3 DDLs though).
-  ASSERT_EQ(ddl_queue_safe_time_bumps, 8);
+  // We only start bumping the safe time after the restart. Each of the 5 DDLs should have had the
+  // safe time bumped to its commit time. Count distinct commit times since the first 3 may be
+  // bumped again: after the restart we process the batch in replicated_ddls but do not update the
+  // checkpoint, so the next GetChanges returns those 3 DDLs again along with the 2 new ones.
+  ASSERT_EQ(bumped_commit_times.size(), 5);
 }
 
 TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
@@ -2071,6 +2072,79 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+}
+
+// Regression test for #31395. When a batch fails partway through, the safe time has already been
+// bumped past the processed commit times, so the target can compact away their history. Retries
+// must skip those commit times instead of reading ddl_queue at them.
+TEST_F(XClusterDDLReplicationTest, RetryPartialBatchAfterHistoryCutoff) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  const auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
+
+  // Keep the failing DDL retrying quickly for the whole test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 10;
+
+  // Fail the third DDL of the batch, once the first two have run and the safe time has been bumped
+  // past them.
+  std::atomic<int> ddl_queue_safe_time_bumps{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped", [&ddl_queue_safe_time_bumps](void*) {
+        if (++ddl_queue_safe_time_bumps == 2) {
+          ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+        }
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  // Pause replication so that all three DDLs land in the same batch.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+  const std::vector<TableName> table_names = {"table_1", "table_2"};
+  for (const auto& table_name : table_names) {
+    ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", table_name));
+    ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", table_name));
+  }
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN v int", table_names[0]));
+
+  // Ensure we have all 3 commit_times in the batch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+  xcluster::SafeTimeBatch safe_time_batch;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        safe_time_batch = VERIFY_RESULT(FetchSafeTimeBatchFromReplicatedDdls());
+        return safe_time_batch.commit_times.size() == 3 && safe_time_batch.IsComplete();
+      },
+      kTimeout, "Wait for the DDL batch to be persisted"));
+  ASSERT_GE(safe_time_batch.apply_safe_time, *safe_time_batch.commit_times.rbegin());
+  const auto first_commit_time = *safe_time_batch.commit_times.begin();
+
+  // Run the batch: the first two DDLs succeed and the third fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+  ASSERT_OK(WaitForSafeTime(namespace_id, first_commit_time));
+
+  // Move the history cutoff up to the published safe time, which is past the first commit time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+
+  // Wait for two failures so that at least one attempt started after the compaction.
+  StringWaiterLogSink failed_ddl_log_sink("Failed DDL operation as requested");
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return failed_ddl_log_sink.GetEventCount() >= 2; }, kTimeout,
+      "Wait for the failing DDL to be retried"));
+
+  // Let the third DDL through and verify the batch completes without hitting kSnapshotTooOld error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(table_names));
+  ASSERT_TRUE(ASSERT_RESULT(FetchSafeTimeBatchFromReplicatedDdls()).commit_times.empty());
 }
 
 TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {

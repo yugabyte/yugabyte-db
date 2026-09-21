@@ -137,7 +137,10 @@ class XClusterDDLQueueHandler {
   Status ProcessManualExecutionQuery(const XClusterDDLQueryInfo& query_info);
 
   virtual Status InitPGConnection();
+  // Safe time excluding ddl_queue table.
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
+  // Safe time of the namespace including the ddl_queue table.
+  virtual Result<HybridTime> GetPublishedXClusterSafeTime();
 
   virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
       const HybridTime& commit_time);
