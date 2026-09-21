@@ -208,9 +208,24 @@ void XClusterPoller::CompleteShutdown() {
   DCHECK(shutdown_);
   VLOG_WITH_PREFIX_AND_FUNC(2) << "Begin";
 
+  if (ddl_queue_handler_ && active_ddl_queue_handler_calls_ > 0) {
+    // DDLQueueHandlerCallScope completes the shutdown once ddl_queue handler finishes its work.
+    LOG_WITH_PREFIX(INFO)
+        << "DDL queue handler is running, it will complete the shutdown once done";
+    return;
+  }
+
   // Wait for tasks that started before shutdown to complete. We release mutex as new tasks acquire
   // it before checking for shutdown.
   { std::lock_guard l(data_mutex_); }
+
+  DoCompleteShutdown();
+}
+
+void XClusterPoller::DoCompleteShutdown() {
+  if (shutdown_completed_.exchange(true)) {
+    return;
+  }
 
   if (output_client_) {
     output_client_->CompleteShutdown();
@@ -223,6 +238,23 @@ void XClusterPoller::CompleteShutdown() {
   XClusterAsyncExecutor::CompleteShutdown();
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "End";
+}
+
+XClusterPoller::DDLQueueHandlerCallScope::DDLQueueHandlerCallScope(XClusterPoller& poller)
+    : poller_(poller) {
+  DCHECK(poller_.ddl_queue_handler_);
+  ++poller_.active_ddl_queue_handler_calls_;
+}
+
+XClusterPoller::DDLQueueHandlerCallScope::~DDLQueueHandlerCallScope() {
+  --poller_.active_ddl_queue_handler_calls_;
+
+  // Load shutdown_ before the count: a call that starts after we load shutdown_ is guaranteed to
+  // see it set and return before touching the handler.
+  if (poller_.shutdown_ && poller_.active_ddl_queue_handler_calls_ == 0) {
+    LOG(INFO) << poller_.LogPrefix() << "DDL queue handler finished, completing shutdown";
+    poller_.DoCompleteShutdown();
+  }
 }
 
 std::string XClusterPoller::LogPrefix() const {
@@ -333,12 +365,14 @@ void XClusterPoller::DoPoll() {
   }
 
   if (ddl_queue_handler_) {
+    DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     if (op_id_.index() == 0 && op_id_.term() == 0) {
       // This a new ddl_queue poller, so need to first process anything currently in the DDL queue.
       // This is needed to ensure that we don't miss any DDLs that were already in the queue when
       // the last poller was stopped.
       auto ddl_queue_status = ddl_queue_handler_->ProcessPendingBatchIfExists();
+      RETURN_WHEN_OFFLINE;
       if (!ddl_queue_status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
                                  << ddl_queue_status.ToString();
@@ -452,6 +486,8 @@ void XClusterPoller::DoPoll() {
 Status XClusterPoller::DoPausePoller() {
   DCHECK(is_stream_paused_);
   if (ddl_queue_handler_) {
+    DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
+    SCHECK(!IsOffline(), ShutdownInProgress, "Poller is offline");
     // Before pausing, ensure that we've updated the safe time to include the last executed DDL.
     RETURN_NOT_OK_PREPEND(
         ddl_queue_handler_->UpdateSafeTimeForPause(),
@@ -614,8 +650,10 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
   DCHECK(response.get_changes_response);
 
   if (ddl_queue_handler_) {
+    DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     auto s = ddl_queue_handler_->ProcessGetChangesResponse(response);
+    RETURN_WHEN_OFFLINE;
     if (!s.ok()) {
       if (s.IsTryAgain()) {
         // The handler will return try again when waiting for safe time to catch up, so can log

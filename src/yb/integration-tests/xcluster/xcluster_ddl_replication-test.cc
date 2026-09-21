@@ -31,10 +31,13 @@
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_status.h"
 
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -47,6 +50,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_pg_cron);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(replication_failure_delay_exponent);
@@ -141,6 +145,23 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
   Result<HybridTime> GetXClusterSafeTime() {
     return consumer_client()->GetXClusterSafeTimeForNamespace(
         VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
+  }
+
+  Result<int64_t> CountConsumerTableColumns(
+      const std::vector<std::string>& table_names, const std::string& schema_name = "public") {
+    return consumer_conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_name IN ($0) AND table_schema = '$1'",
+        TableNamesSqlList(table_names), schema_name));
+  }
+
+  std::string TableNamesSqlList(const std::vector<std::string>& table_names) {
+    std::string in_clause;
+    for (size_t i = 0; i < table_names.size(); ++i) {
+      if (i > 0) in_clause += ",";
+      in_clause += "'" + table_names[i] + "'";
+    }
+    return in_clause;
   }
 };
 
@@ -2126,6 +2147,127 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
   propagation_timeout_ = original_propagation_timeout;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+}
+
+// #33736: moving the ddl_queue leader during a DDL batch must not block the old leader's consumer.
+TEST_F(XClusterDDLReplicationTest, DDLQueueLeaderMoveDuringDDLBatch) {
+  const auto kTableName = "test_table";
+
+  // Using rf3 to move the ddl_queue leader between tservers.
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 3;
+  ASSERT_OK(SetUpClusters(params));
+  // The test moves the ddl_queue leader itself, keep the load balancer from moving it back.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+  ASSERT_OK(consumer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(
+      consumer_cluster_.client_->GetTabletsFromTableId(ddl_queue_table.table_id(), 1, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto ddl_queue_tablet_id = tablets[0].tablet_id();
+
+  auto get_ddl_queue_poller = [&ddl_queue_tablet_id](tserver::TabletServer* tserver)
+      -> std::shared_ptr<tserver::XClusterPoller> {
+    auto* xcluster_consumer = tserver->GetXClusterConsumer();
+    if (!xcluster_consumer) {
+      return nullptr;
+    }
+    for (const auto& poller : xcluster_consumer->TEST_ListPollers()) {
+      if (poller->GetConsumerTabletInfo().tablet_id == ddl_queue_tablet_id) {
+        return poller;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto old_leader_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(consumer_cluster(), ddl_queue_tablet_id));
+  const auto old_leader_uuid = old_leader_peer->permanent_uuid();
+  tserver::TabletServer* old_leader_tserver = nullptr;
+  std::string new_leader_uuid;
+  for (const auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+    if (mini_tserver->server()->permanent_uuid() == old_leader_uuid) {
+      old_leader_tserver = mini_tserver->server();
+    } else if (new_leader_uuid.empty()) {
+      new_leader_uuid = mini_tserver->server()->permanent_uuid();
+    }
+  }
+  ASSERT_NE(old_leader_tserver, nullptr);
+  ASSERT_FALSE(new_leader_uuid.empty());
+
+  int64_t old_leader_term = 0;
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        auto poller = get_ddl_queue_poller(old_leader_tserver);
+        if (!poller) {
+          return false;
+        }
+        old_leader_term = poller->GetLeaderTerm();
+        return true;
+      },
+      kTimeout, "Wait for the ddl_queue poller on the old leader"));
+
+  // Block the handler right after it executes the first DDL of the batch.
+  auto& sync_point = *SyncPoint::GetInstance();
+  auto sync_point_cleanup = ScopeExit([&sync_point] {
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+  });
+  std::atomic<int> ddl_processed_count{0};
+  sync_point.SetCallBack(
+      "XClusterDDLQueueHandler::DDLQueryProcessed", [&ddl_processed_count](void*) {
+        if (ddl_processed_count.fetch_add(1) == 0) {
+          TEST_SYNC_POINT("DDLQueueLeaderMoveDuringDDLBatch::FirstDDLProcessed");
+        }
+      });
+  sync_point.LoadDependency(
+      {{.predecessor = "DDLQueueLeaderMoveDuringDDLBatch::Continue",
+        .successor = "DDLQueueLeaderMoveDuringDDLBatch::FirstDDLProcessed"}});
+  sync_point.EnableProcessing();
+
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN a text", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN b text", kTableName));
+  ASSERT_OK(LoggedWaitFor(
+      [&ddl_processed_count] { return ddl_processed_count.load() >= 1; }, kTimeout,
+      "Wait for the handler to execute the first DDL"));
+
+  // Move the leader away while the handler is blocked. The old poller is dropped.
+  ASSERT_OK(TransferLeadership(consumer_cluster(), ddl_queue_tablet_id, new_leader_uuid));
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        auto poller = get_ddl_queue_poller(old_leader_tserver);
+        return !poller || poller->GetLeaderTerm() > old_leader_term;
+      },
+      kTimeout, "Wait for the old ddl_queue poller to be removed"));
+
+  // Move the leader back. The old leader must start a new poller while the old one is still busy.
+  ASSERT_OK(TransferLeadership(consumer_cluster(), ddl_queue_tablet_id, old_leader_uuid));
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        auto poller = get_ddl_queue_poller(old_leader_tserver);
+        return poller && poller->GetLeaderTerm() > old_leader_term;
+      },
+      kTimeout, "Wait for a new ddl_queue poller on the old leader"));
+  // The new pollers could not get the advisory lock, so only the old handler ran any DDL.
+  ASSERT_EQ(ddl_processed_count.load(), 1);
+
+  // Release the old handler; the new poller takes over once the advisory lock is freed.
+  TEST_SYNC_POINT("DDLQueueLeaderMoveDuringDDLBatch::Continue");
+  sync_point.DisableProcessing();
+  sync_point.ClearAllCallBacks();
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(CountConsumerTableColumns({kTableName})), 3);
 }
 
 TEST_F(XClusterDDLReplicationTest, HandleEarlierApplySafeTime) {
