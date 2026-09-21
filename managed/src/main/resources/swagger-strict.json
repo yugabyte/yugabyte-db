@@ -6303,6 +6303,10 @@
           "description" : "Mount roots",
           "type" : "string"
         },
+        "physicalCloud" : {
+          "description" : "For an on-prem node, the cloud the node physically runs on",
+          "type" : "string"
+        },
         "private_dns" : {
           "description" : "The node's private DNS",
           "type" : "string"
