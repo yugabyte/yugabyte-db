@@ -99,9 +99,9 @@ bool CompareListTabletServersEntries(
 }  // namespace
 
 bool IsUnsupportedRpcError(const Status& s) {
-  // Messenger::QueueInboundCall() answers a call it cannot route with ERROR_NO_SUCH_METHOD when the
-  // service is registered but the method is not, and ERROR_NO_SUCH_SERVICE when the service itself
-  // is absent. A cluster that predates the operation produces one or the other depending on whether
+  // Messenger::Handle() answers a call it cannot route with ERROR_NO_SUCH_METHOD when the service
+  // is registered but the method is not, and ERROR_NO_SUCH_SERVICE when the service itself is
+  // absent. A cluster that predates the operation produces one or the other depending on whether
   // the RPC was added to an existing service, so both carry the framing RunCommand() applies.
   //
   // Read the code off the Status rather than matching Status::ToString(): OutboundCall::SetFailed()
