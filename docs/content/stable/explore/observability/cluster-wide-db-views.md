@@ -129,3 +129,4 @@ LIMIT 20;
 - [pg_stat_activity](../pg-stat-activity/)
 - [pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/)
 - [postgres_fdw extension](../../../additional-features/pg-extensions/extension-postgres-fdw/)
+- [YFTT: Cluster-Wide DB Observability Views](https://www.youtube.com/live/KYQtbx3D9-w)

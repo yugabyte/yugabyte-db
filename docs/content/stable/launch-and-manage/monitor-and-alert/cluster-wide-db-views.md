@@ -176,3 +176,4 @@ A cluster-wide database view whose source view comes from an extension disappear
 ## Learn more
 
 - Cluster-wide database views [examples](../../../explore/observability/cluster-wide-db-views/#examples)
+- [YFTT: Cluster-Wide DB Observability Views](https://www.youtube.com/live/KYQtbx3D9-w)
