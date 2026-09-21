@@ -102,27 +102,6 @@ coordinates. A merged chunk derives a new scale, so decoding `int8` would feed a
 values into a fresh quantization and lose a little more on every merge. The `float16` copy
 round-trips exactly, making a vector a fixed point across arbitrarily many compactions.
 
-## Index size and memory footprint
-
-Halving the coordinate bytes halves what the index costs on disk and in the block cache. Measured
-file sizes for 1M vectors at 768 dimensions (from a single-node `ef_search=200` run, not the
-RF1/RF3 runs above):
-
-| encoding | record | vs `float32` | index size | records per fixed cache budget |
-|---|---|---|---|---|
-| `float32` | 3092 | 1.00x | 3.19 GB | 1.00x |
-| `float16` | 1556 | 0.50x | **1.65 GB** | **1.99x** |
-
-The file ratio is 0.52x rather than 0.50x because the graph and aux data do not shrink. That is
-the whole of the discrepancy: 1M records account for 3.09 GB at `float32` and 1.56 GB at
-`float16`, leaving ~0.10 GB of neighbour lists and aux entries unchanged, and 1.56 + 0.10 = 1.65 GB
-is what was measured. So the on-disk saving is predicted by the record layout alone -- there is no
-second effect to account for.
-
-The block cache holds records, so the same budget keeps ~2x as many vectors resident. That matters
-more than the disk saving: at 1M x 768d a `float32` index does not fit a typical cache, and the
-traversal is what pays for the misses.
-
 ## Chunk format
 
 Each chunk records its own encoding in its footer, under a serialization version:
