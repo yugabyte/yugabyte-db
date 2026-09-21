@@ -33,11 +33,16 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/json_document.h"
+#include "yb/util/path_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_bool(allow_insecure_connections);
+DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(TEST_return_legacy_universe_replication_info);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
@@ -199,6 +204,29 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 class XClusterDBScopedAutomaticModeTest : public XClusterDBScopedTest {
  public:
   bool UseAutomaticMode() override { return true; }
+};
+
+// Both universes run TLS, and CreateReplicationFromCheckpoint stages the source's certificates
+// under <certs_for_cdc_dir>/<replication_group_id>, which is the directory an operator names to
+// --source_certs_dir_name. Both universes here share one certificate authority, so a test wanting
+// the source to reject the connection names test_certs/CA2 instead.
+class XClusterDBScopedAutomaticModeTlsTest : public XClusterDBScopedAutomaticModeTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = GetCertsDir();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_for_cdc_dir) =
+        JoinPathSegments(FLAGS_certs_dir, "xCluster");
+    XClusterDBScopedAutomaticModeTest::SetUp();
+  }
+
+  std::string SourceCertsDir() const {
+    return JoinPathSegments(FLAGS_certs_for_cdc_dir, kReplicationGroupId.ToString());
+  }
+
+  std::string OtherCaCertsDir() const { return JoinPathSegments(GetCertsDir(), "CA2"); }
 };
 
 TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
@@ -448,6 +476,39 @@ TEST_F(XClusterDBScopedAutomaticModeTest, VerifyXClusterGroupRejectsLegacyMaster
   ASSERT_NOK(run.status);
   ASSERT_STR_CONTAINS(run.error, "does not report structured source master addresses");
   ASSERT_STR_CONTAINS(run.error, "upgrade the target masters");
+}
+
+// Every other verify test runs both universes without TLS, where --source_certs_dir_name has no
+// observable effect. Only here does naming the source's certificates decide whether the source
+// connection is established at all.
+TEST_F(XClusterDBScopedAutomaticModeTlsTest, VerifyXClusterGroupUsesSourceCertsDir) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const uint32_t kNumRows = 10;
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table_));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto out = ASSERT_RESULT(CallAdminVec(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "--certs_dir_name", GetCertsDir(), "--source_certs_dir_name", SourceCertsDir(),
+       "verify_xcluster_group", kReplicationGroupId.ToString()}));
+  LOG(INFO) << "verify_xcluster_group output: " << out;
+  JsonDocument doc;
+  auto summary = ASSERT_RESULT(doc.Parse(JsonLines(out).back()));
+  ASSERT_EQ(ASSERT_RESULT(summary["result"].GetString()), "kMatch");
+  ASSERT_GE(ASSERT_RESULT(summary["tables"].GetInt32()), 1);
+
+  // The same sweep against an unrelated certificate authority. Only the source connection carries
+  // these certificates, so the target is still reached and the failure names the source.
+  auto rejected = RunAdminKeepingOutput(
+      {GetAdminToolPath(), "--master_addresses", consumer_cluster()->GetMasterAddresses(),
+       "--certs_dir_name", GetCertsDir(), "--source_certs_dir_name", OtherCaCertsDir(),
+       "--yb_client_admin_rpc_timeout_sec", "10",
+       "verify_xcluster_group", kReplicationGroupId.ToString()});
+  ASSERT_NOK(rejected.status);
+  ASSERT_STR_CONTAINS(rejected.error, "Unable to connect to source masters");
 }
 
 // Pair discovery from a group id needs a real group, so it can only be tested here.

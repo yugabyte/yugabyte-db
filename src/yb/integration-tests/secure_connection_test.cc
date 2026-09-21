@@ -192,6 +192,16 @@ TEST_F_EX(SecureConnectionTest, ClientCertificates, SecureConnectionWithClientCe
   ASSERT_NOK(CreateBadClient());
 }
 
+// A context cannot present a client certificate when it was given no node name to load one by.
+// The cross-universe xCluster clients pass an empty name deliberately, so this combination is
+// reachable from --node_to_node_encryption_use_client_certificates, not just from miswiring.
+TEST(SecureContextTest, ClientCertificatesRequireNodeName) {
+  auto context =
+      rpc::CreateSecureContext(GetCertsDir(), rpc::UseClientCerts::kTrue, /*node_name=*/"");
+  ASSERT_NOK(context);
+  ASSERT_STR_CONTAINS(context.status().ToString(), "without a node name");
+}
+
 class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 100;
