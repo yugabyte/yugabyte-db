@@ -12,6 +12,7 @@ import static com.yugabyte.yw.models.configs.validators.ConfigDataValidator.fiel
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_GCS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
@@ -46,7 +47,10 @@ import com.google.cloud.storage.StorageException;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
@@ -1326,6 +1330,48 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       {"qwe@asd.com,qweqwe", "invalid email address qweqwe"},
       {"qwe@asd.com,qwe1@asd.com", null}
     };
+  }
+
+  @Test
+  public void testValidateConfig_SkipValidationRuntimeConfig() {
+    ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(true);
+    CustomerConfig config = createS3Config("test");
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(PlatformServiceException.class));
+
+    setSkipValidation(true);
+
+    customerConfigValidator.validateConfig(config);
+  }
+
+  @Test
+  public void testValidateConfig_SkipValidationKeepsNameConflictCheck() {
+    setSkipValidation(true);
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.createNfsStorageConfig(customer, "TEST_NFS");
+
+    CustomerConfig duplicate =
+        new CustomerConfig()
+            .setCustomerUUID(customer.getUuid())
+            .setName(NAME_NFS)
+            .setConfigName("TEST_NFS")
+            .setType(ConfigType.STORAGE)
+            .setData(Json.newObject().put(BACKUP_LOCATION_FIELDNAME, "/foo/bar"));
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(duplicate),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\"configName\":[\"Configuration TEST_NFS already exists\"]}"));
+  }
+
+  private void setSkipValidation(boolean value) {
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.skipCustomerConfigValidation.getKey(), String.valueOf(value));
   }
 
   private CustomerConfig createConfig(ConfigType type, String name, ObjectNode data) {

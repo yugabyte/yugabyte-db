@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.OCIUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Schedule;
@@ -31,10 +32,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
+@Slf4j
 @Singleton
 public class CustomerConfigValidator extends BaseBeanValidator {
 
@@ -103,6 +106,11 @@ public class CustomerConfigValidator extends BaseBeanValidator {
    * <p>The URLs validation allows empty scheme. In such case the check is made with DEFAULT_SCHEME
    * added before the URL.
    *
+   * <p>{@link GlobalConfKeys#skipCustomerConfigValidation} skips the checks above, as an escape
+   * hatch for storage that YBA itself cannot reach. Still enforced: the config name conflict, the
+   * read-only backup location, and that the payload deserializes - none of which an escape hatch
+   * could help with.
+   *
    * @param customerConfig
    */
   public void validateConfig(CustomerConfig customerConfig) {
@@ -130,7 +138,18 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       }
     }
 
+    // Runs ahead of the skip below: a payload we cannot deserialize is broken whatever the
+    // storage looks like, and persisting it only moves the failure to backup time.
     CustomerConfigData data = customerConfig.getDataObject();
+
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.skipCustomerConfigValidation)) {
+      log.warn(
+          "Skipping validation of customer config {} as {} is set",
+          configName,
+          GlobalConfKeys.skipCustomerConfigValidation.getKey());
+      return;
+    }
+
     beanValidator.validate(data, "data");
     ConfigDataValidator validator = validators.get(data.getClass());
     if (validator != null) {
