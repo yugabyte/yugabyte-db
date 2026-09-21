@@ -336,7 +336,7 @@ process_plain_files()
   if [ $non_gz_file_count -gt 1 ]; then
     if [ $allowed_disk_usage_kb -gt 0 ]; then
       delete_or_gzip_files $log_dir "$log_regex" "$log_regex" \
-        $permitted_disk_usage_plain_kb "gzip" "$archive_fn" "$audit_dir"
+        $allowed_disk_usage_kb "gzip" "$archive_fn" "$audit_dir"
     else
       files_to_gzip=$(eval "$find_non_gz_files" | head -n$(($non_gz_file_count - 1)))
       for file in $files_to_gzip; do

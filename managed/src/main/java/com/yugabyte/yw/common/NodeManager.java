@@ -2239,20 +2239,18 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          if (taskParam.checkVolumesAttached) {
-            UniverseDefinitionTaskParams.Cluster cluster =
-                universe.getCluster(taskParam.placementUuid);
+          if (taskParam.shouldCheckVolumeAttached()) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
+            UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+            DeviceInfo deviceInfo = null;
             if (node != null
                 && cluster != null
-                && cluster.userIntent.getDeviceInfoForNode(node) != null
-                && provider.getCloudCode() != Common.CloudType.onprem) {
+                && provider.getCloudCode() != Common.CloudType.onprem
+                && (deviceInfo = cluster.userIntent.getDeviceInfoForNode(node)) != null) {
               commandArgs.add("--num_volumes");
-              commandArgs.add(
-                  String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
+              commandArgs.add(String.valueOf(deviceInfo.numVolumes));
             }
-          }
-          if ("stop".equalsIgnoreCase(taskParam.command)) {
+          } else if ("stop".equalsIgnoreCase(taskParam.command)) {
             if (taskParam.deconfigure) {
               commandArgs.add("--deconfigure");
             }

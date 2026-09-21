@@ -11,6 +11,7 @@ import (
 	"node-agent/app/scheduler"
 	pb "node-agent/generated/service"
 	"node-agent/util"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -251,8 +252,15 @@ func (m *TaskManager) Subscribe(
 				result, err := tInfo.future.Get()
 				if err != nil {
 					exitCode = 1
-					if status, ok := err.(*util.StatusError); ok {
-						exitCode = status.Code()
+					// Try to get the exit code from the error.
+					var statusErr *util.StatusError
+					if errors.As(err, &statusErr) {
+						exitCode = statusErr.Code()
+					} else {
+						var exitErr *exec.ExitError
+						if errors.As(err, &exitErr) {
+							exitCode = exitErr.ExitCode()
+						}
 					}
 					callbackData := &TaskCallbackData{
 						State:    tInfo.future.State(),

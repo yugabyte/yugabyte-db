@@ -3170,7 +3170,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
-    params.checkVolumesAttached = processType == ServerType.TSERVER && command.equals("start");
     params.useSystemd = userIntent.useSystemd;
     if (paramsCustomizer != null) {
       paramsCustomizer.accept(params);

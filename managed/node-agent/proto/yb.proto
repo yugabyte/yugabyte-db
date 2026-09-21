@@ -92,7 +92,10 @@ message ServerControlInput {
     string serverName = 2;
     string serverHome = 3;
     bool deconfigure = 4;
-    uint32 numVolumes = 5;
+    // When true, run the CSP /mnt/dN data-volume attachment check.
+    bool checkDataVolumes = 5;
+    // Absolute mount paths to wait for / verify before START (cloud: /mnt/dN).
+    repeated string mountPoints = 6;
 }
 
 message ServerControlOutput {
@@ -157,6 +160,11 @@ message ConfigureServerInput {
     repeated string mountPoints = 4;
     uint32 numCoresToKeep = 5;
     bool configureCgroup = 6;
+    optional bool acceptableClockSkewWaitEnabled = 7;
+    optional double acceptableClockSkewSec = 8;
+    optional uint32 acceptableClockSkewMaxTries = 9;
+    // When true, bake the CSP /mnt/dN data-volume attachment check into scripts.
+    bool checkDataVolumes = 10;
 }
 
 message ConfigureServerOutput {

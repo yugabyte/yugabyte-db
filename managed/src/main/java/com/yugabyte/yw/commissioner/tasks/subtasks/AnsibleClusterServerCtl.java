@@ -52,13 +52,24 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public String command;
     public int sleepAfterCmdMills = 0;
     public boolean isIgnoreError = false;
-    public boolean checkVolumesAttached = false;
     // Set it to deconfigure the server like deleting the conf file.
     public boolean deconfigure = false;
     // Skip stopping processes if VM is paused.
     public boolean skipStopForPausedVM = false;
     // Make best effort to flush tablets before stopping tserver.
     public boolean flushTabletsOnStopTserver = false;
+
+    /**
+     * Check if the volume attached check is needed for this task. This is needed for start command
+     * of tserver and master.
+     *
+     * @return true if volume attached check is needed, false otherwise.
+     */
+    public boolean shouldCheckVolumeAttached() {
+      return "start".equalsIgnoreCase(command)
+          && (ServerType.TSERVER.name().equalsIgnoreCase(process)
+              || ServerType.MASTER.name().equalsIgnoreCase(process));
+    }
   }
 
   @Override
