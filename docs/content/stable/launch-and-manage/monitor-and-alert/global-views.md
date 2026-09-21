@@ -87,7 +87,9 @@ The `server_uuid` column is the first column of every global view and is not pre
 
 ## Views created by default
 
-A global view is created for each of the per-node views below. To list what a cluster actually has:
+A global view is created for each of the following per-node views.
+
+To list the views that a cluster actually has:
 
 ```plpgsql
 SELECT relname AS global_view
@@ -132,13 +134,13 @@ A global view whose source view comes from an extension disappears with the exte
 
     ```plpgsql
     SELECT * FROM gv$pg_stat_activity
-    WHERE server_uuid = '19e489ef-49db-4d47-afda-3bb039ff970a'::uuid;
+    WHERE server_uuid = '19e489ef49db4d47afda3bb039ff970a';
     ```
 
     ```plpgsql
     SELECT * FROM gv$pg_stat_activity
-    WHERE server_uuid IN ('19e489ef-49db-4d47-afda-3bb039ff970a'::uuid,
-                          'b0125150-aeae-4dcd-83a4-c87c29de743a'::uuid);
+    WHERE server_uuid IN ('19e489ef49db4d47afda3bb039ff970a',
+                          'b0125150aeae4dcd83a4c87c29de743a');
     ```
 
     Other shapes still return the right answer, but the filter is applied after the rows arrive, so every node is queried. A UUID that reaches the query as a parameter is one of those. Prepared statements and PL/pgSQL functions produce exactly that, so inline the UUID when the pruning matters. EXPLAIN shows the difference: one Foreign Scan per node that survives the filter. {{<issue 32660>}} widens the set of shapes that prune.
