@@ -321,6 +321,13 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
   return query_info;
 }
 
+// The safe time is only bumped past a commit time after its DDLs have run. History at or below the
+// safe time may be compacted away, so reading ddl_queue there would fail with kSnapshotTooOld.
+bool IsCommitTimeAlreadyProcessed(
+    const HybridTime& commit_time, const HybridTime& published_safe_time) {
+  return !published_safe_time.is_special() && commit_time <= published_safe_time;
+}
+
 }  // namespace
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
@@ -377,6 +384,8 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       safe_time_ht, apply_safe_time, TryAgain,
       "Waiting for other pollers to catch up to safe time");
 
+  const auto published_safe_time = VERIFY_RESULT(GetPublishedXClusterSafeTime());
+
   HybridTime last_commit_time_processed = safe_time_batch_->last_commit_time_processed;
   // For each commit time in order, we read the ddl_queue table and process the entries at that
   // time. This ensures that we process all of the DDLs in commit order. We use the ddl_end_time to
@@ -389,6 +398,15 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     }
 
     // TODO(Transactional DDLs): Could detect these here and run them in a transaction.
+
+    if (IsCommitTimeAlreadyProcessed(commit_time, published_safe_time)) {
+      VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Skipping commit time " << commit_time
+                          << " which is at or below the published safe time "
+                          << published_safe_time;
+      last_commit_time_processed = commit_time;
+      continue;
+    }
+
     // TODO(#20928): Make these calls async.
     for (const auto& query_info : VERIFY_RESULT(GetQueriesToProcess(commit_time))) {
       if (query_info.is_manual_execution) {
@@ -440,7 +458,9 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     // time is caught up.
     VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Bumping safe time to " << commit_time;
     update_safe_time_func_(commit_time);
-    TEST_SYNC_POINT("XClusterDDLQueueHandler::DdlQueueSafeTimeBumped");
+    auto bumped_commit_time = commit_time;
+    TEST_SYNC_POINT_CALLBACK(
+        "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped", &bumped_commit_time);
   }
 
   SCHECK(
@@ -671,6 +691,14 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
   return local_client_->GetXClusterSafeTimeForNamespace(
       target_namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
+}
+
+Result<HybridTime> XClusterDDLQueueHandler::GetPublishedXClusterSafeTime() {
+  auto safe_time = xcluster_context_.GetSafeTime(target_namespace_id_);
+  if (!safe_time.ok() && safe_time.status().IsTryAgain()) {
+    return HybridTime::kInvalid;
+  }
+  return VERIFY_RESULT(std::move(safe_time)).value_or(HybridTime::kInvalid);
 }
 
 // Fetch all DDL entries from ddl_queue at the specified commit_time that have not yet been
@@ -938,6 +966,7 @@ Status XClusterDDLQueueHandler::UpdateSafeTimeForPause() {
   RETURN_NOT_OK(ReloadSafeTimeBatchFromTableIfRequired());
 
   auto max_commit_time = safe_time_batch_->last_commit_time_processed;
+  const auto published_safe_time = VERIFY_RESULT(GetPublishedXClusterSafeTime());
 
   for (const auto& commit_time : safe_time_batch_->commit_times) {
     if (safe_time_batch_->apply_safe_time.is_valid() &&
@@ -946,10 +975,12 @@ Status XClusterDDLQueueHandler::UpdateSafeTimeForPause() {
       break;
     }
 
-    auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
-    if (!queries.empty()) {
-      // Unprocessed DDL found.
-      break;
+    if (!IsCommitTimeAlreadyProcessed(commit_time, published_safe_time)) {
+      auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
+      if (!queries.empty()) {
+        // Unprocessed DDL found.
+        break;
+      }
     }
     if (!max_commit_time.is_valid() || commit_time > max_commit_time) {
       max_commit_time = commit_time;

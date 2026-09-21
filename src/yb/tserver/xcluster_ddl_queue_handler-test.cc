@@ -95,6 +95,8 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace() override { return safe_time_ht_; }
 
+  Result<HybridTime> GetPublishedXClusterSafeTime() override { return HybridTime::kInvalid; }
+
   Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
       const HybridTime& commit_time) override {
     get_rows_to_process_calls_++;
