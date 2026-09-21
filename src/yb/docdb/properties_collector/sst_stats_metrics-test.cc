@@ -35,7 +35,7 @@ METRIC_DECLARE_gauge_uint64(docdb_sst_reclaimable_entries);
 METRIC_DECLARE_gauge_uint64(docdb_sst_reclaimable_bytes);
 METRIC_DECLARE_gauge_uint64(docdb_sst_files_without_stats);
 METRIC_DECLARE_gauge_uint64(docdb_sst_files_with_partial_stats);
-METRIC_DECLARE_gauge_uint64(docdb_sst_stats_available);
+METRIC_DECLARE_gauge_uint64(docdb_sst_tablets_without_stats);
 
 // The gauges are tablet-entity metrics and MetricEntity::CheckInstantiation enforces that, but the
 // prototype that names the tablet entity lives in yb_tablet, which this test does not link. A
@@ -139,9 +139,11 @@ TEST_F(SstStatsMetricsTest, ReportsNothingBeforeFirstResync) {
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_entries), 0);
   EXPECT_EQ(Read(METRIC_docdb_sst_files_without_stats), 0);
   // The one gauge that tells those zeros apart from measured ones.
-  EXPECT_EQ(Read(METRIC_docdb_sst_stats_available), 0);
+  EXPECT_EQ(Read(METRIC_docdb_sst_tablets_without_stats), 1);
 }
 
+// The writer aggregates every tablet-entity metric; the only choice is sum versus max. kMax on any
+// of these would silently turn a total into a per-tablet worst case.
 TEST_F(SstStatsMetricsTest, UsesSumAggregation) {
   for (const auto* prototype : {
            &METRIC_docdb_sst_total_entries,
@@ -154,7 +156,7 @@ TEST_F(SstStatsMetricsTest, UsesSumAggregation) {
            &METRIC_docdb_sst_reclaimable_bytes,
            &METRIC_docdb_sst_files_without_stats,
            &METRIC_docdb_sst_files_with_partial_stats,
-           &METRIC_docdb_sst_stats_available,
+           &METRIC_docdb_sst_tablets_without_stats,
        }) {
     EXPECT_EQ(prototype->aggregation_function(), AggregationFunction::kSum);
   }
@@ -176,7 +178,7 @@ TEST_F(SstStatsMetricsTest, ReportsAggregateAfterResync) {
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_bytes), 200);
   EXPECT_EQ(Read(METRIC_docdb_sst_files_without_stats), 0);
   EXPECT_EQ(Read(METRIC_docdb_sst_files_with_partial_stats), 0);
-  EXPECT_EQ(Read(METRIC_docdb_sst_stats_available), 1);
+  EXPECT_EQ(Read(METRIC_docdb_sst_tablets_without_stats), 0);
   // Derived: chain_entries - num_subdoc_keys and num_subdoc_keys - num_rows over the sum.
   EXPECT_EQ(Read(METRIC_docdb_sst_shadowed_entries), 1120 - 400);
   EXPECT_EQ(Read(METRIC_docdb_sst_repackable_entries), 400 - 160);
