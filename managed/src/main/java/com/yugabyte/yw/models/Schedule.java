@@ -958,7 +958,7 @@ public class Schedule extends Model {
             .expiryTimeUnit(params.expiryTimeUnit)
             .parallelism(params.parallelism)
             .pointInTimeRestoreEnabled(params.enablePointInTimeRestore)
-            .useRoles(params.getUseRoles)
+            .useRoles(params.getUseRoles())
             .build();
     return backupInfo;
   }
