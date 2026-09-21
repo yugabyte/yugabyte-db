@@ -143,6 +143,10 @@ HybridTime WriteOperation::WriteHybridTime() const {
   return Operation::WriteHybridTime();
 }
 
+HybridTime WriteOperation::WriteFence() const {
+  return HybridTime::FromPB(request()->ignore_after_hybrid_time());
+}
+
 bool IsTxnAborted(const Status& status) {
   auto txn_error = TransactionError::ValueFromStatus(status);
   return txn_error == TransactionErrorCode::kDeadlock ||

@@ -107,9 +107,11 @@ class MvccManager {
   // OpId is being passed for the ease of debugging.
   void AddFollowerPending(HybridTime ht, const OpId& op_id) EXCLUDES(mutex_);
 
-  // Adds leader operation and returns its time.
+  // Adds leader operation and returns its time.  If write_fence is valid and the chosen time is
+  // not before it, adds nothing and returns Expired with TabletServerErrorPB::WRITE_FENCE_EXPIRED.
   // OpId is being passed for the ease of debugging.
-  HybridTime AddLeaderPending(const OpId& op_id) EXCLUDES(mutex_);
+  Result<HybridTime> AddLeaderPending(
+      const OpId& op_id, HybridTime write_fence = HybridTime::kInvalid) EXCLUDES(mutex_);
 
   // Notifies that operation with appropriate time was replicated.
   // It should be first operation in queue.

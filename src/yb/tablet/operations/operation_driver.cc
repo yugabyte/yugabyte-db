@@ -210,7 +210,12 @@ Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_o
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 
-  RETURN_NOT_OK(operation_->AddedToLeader(op_id, committed_op_id));
+  if (auto s = operation_->AddedToLeader(op_id, committed_op_id); !s.ok()) {
+    // Consensus rolls the op id back and the operation was never added as pending; a valid op id
+    // here would make HandleFailure report it as having been.
+    op_id_copy_.store(OpId(), boost::memory_order_release);
+    return s;
+  }
   SET_WAIT_STATUS(Raft_WaitingForReplication);
 
   StartOperation();

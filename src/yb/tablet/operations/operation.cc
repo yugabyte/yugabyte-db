@@ -130,7 +130,7 @@ Status Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) 
   HybridTime hybrid_time;
   auto tablet = VERIFY_RESULT(tablet_safe());
   if (use_mvcc()) {
-    hybrid_time = tablet->mvcc_manager()->AddLeaderPending(op_id);
+    hybrid_time = VERIFY_RESULT(tablet->mvcc_manager()->AddLeaderPending(op_id, WriteFence()));
   } else {
     hybrid_time = tablet->clock()->Now();
   }

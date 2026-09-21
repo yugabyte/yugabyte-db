@@ -57,6 +57,7 @@ DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_string(certs_dir);
 DECLARE_string(TEST_public_hostname_suffix);
+DECLARE_int32(TEST_inject_mvcc_delay_before_add_leader_pending_ms);
 
 namespace yb::pgwrapper {
 
@@ -1414,8 +1415,24 @@ TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
   ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
                    "SELECT count(*) FROM fenced WHERE k = 3")));
 
-  // A leaked entry from the fenced round at k = 1 never drains, so this would never hold. Waiting
-  // rather than sampling absorbs the cluster's unrelated background writes.
+  // The fence is judged against the hybrid time the op is assigned, not against an earlier clock
+  // reading: a write admitted inside its fence that stalls before choosing its hybrid time until
+  // the fence has passed must still be rejected.
+  constexpr int kNearFenceMs = 500;
+  const auto near_future = HybridTime::FromMicros(
+      static_cast<uint64_t>(GetCurrentTimeMicros()) + kNearFenceMs * 1000ULL).ToPB();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_before_add_leader_pending_ms) =
+      4 * kNearFenceMs;
+  const auto stalled = upsert(4, near_future);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_before_add_leader_pending_ms) = 0;
+  ASSERT_EQ(stalled, YBTHIN_FENCED)
+      << "a write whose fence passes before its hybrid time is chosen must be rejected";
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 4")))
+      << "a fenced write must not take effect";
+
+  // A leaked entry from a fenced round never drains, so this would never hold.  Waiting rather than
+  // sampling absorbs the cluster's unrelated background writes.
   ASSERT_OK(WaitFor(
       [this]() -> Result<bool> {
         for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {

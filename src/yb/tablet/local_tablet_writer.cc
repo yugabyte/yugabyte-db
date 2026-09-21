@@ -87,7 +87,7 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
   auto state = down_cast<WriteOperation*>(operation.get());
   OpId op_id(term, Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
 
-  auto hybrid_time = tablet_->mvcc_manager()->AddLeaderPending(op_id);
+  auto hybrid_time = CHECK_RESULT(tablet_->mvcc_manager()->AddLeaderPending(op_id));
   state->set_hybrid_time(hybrid_time);
 
   // Create a "fake" OpId and set it in the Operation for anchoring.
