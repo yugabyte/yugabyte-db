@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -51,6 +52,7 @@
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
+#include "yb/docdb/properties_collector/sst_stats_collector.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/walltime.h"
@@ -263,11 +265,82 @@ string AgeBandsToHtml(const docdb::AgeBandCounts& counts) {
   return result;
 }
 
-// The per-tablet aggregate of what the SST statistics collector recorded in each file. Raw numbers
-// only: the distributions the collector also records are not in the aggregate, and rendering them
-// is tracked separately.
+// "p50 / p95 / p99" of a length distribution. Each is the lower bound of the bucket the quantile
+// falls in, so all three read low: within 12.5% of the true value below the overflow bucket, and
+// unbounded inside it, which is the case rendered with a ">=".
+string QuantilesToHtml(const docdb::ExponentialHistogram& hist) {
+  if (hist.Empty()) {
+    return "-";
+  }
+  const auto overflow_min =
+      docdb::ExponentialHistogram::BucketLowerBound(docdb::ExponentialHistogram::kNumBuckets - 1);
+  const auto quantile = [&hist, overflow_min](double q) {
+    const auto value = hist.QuantileLowerBound(q);
+    return value >= overflow_min ? Format("&ge;$0", value) : AsString(value);
+  };
+  return Format("$0 / $1 / $2", quantile(0.5), quantile(0.95), quantile(0.99));
+}
+
+// One live SST of the regular DB with what the collector left in its properties block.
+struct SstFileStats {
+  string name;
+  int level = 0;
+  uint64_t size_bytes = 0;
+  std::optional<docdb::SstStats> stats;
+  // Why stats is unset: NotFound for a file carrying no collector properties -- written before
+  // --docdb_enable_sst_stats_collector, or a properties block that could not be read -- and
+  // anything else for properties that would not parse.
+  Status unmeasured;
+};
+
+// Reads every live file's properties block, so the cost grows with the file count. On demand only:
+// the periodic path is SstStatsAggregator, which keeps the additive scalars and not these.
+Result<std::vector<SstFileStats>> ReadSstFileStats(const tablet::TabletPtr& tablet) {
+  // Held across both reads so that a truncate or a snapshot restore cannot replace regular_db_
+  // between them. This flavor does not prevent RocksDB shutdown from starting, which can still
+  // fail either read.
+  auto scoped_operation = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  auto* db = tablet->regular_db();
+  SCHECK(db, IllegalState, "No regular DB to read SST statistics from");
+
+  std::vector<rocksdb::LiveFileMetaData> live_files;
+  db->GetLiveFilesMetaData(&live_files);
+  rocksdb::TablePropertiesCollection properties;
+  // kSkip: an unreadable properties block costs that one file's statistics, not the whole page.
+  RETURN_NOT_OK(
+      db->GetPropertiesOfAllTables(&properties, rocksdb::TablePropertiesErrorHandling::kSkip));
+
+  std::vector<SstFileStats> files;
+  files.reserve(live_files.size());
+  for (const auto& live_file : live_files) {
+    auto& file = files.emplace_back();
+    file.name = live_file.Name();
+    file.level = live_file.level;
+    file.size_bytes = live_file.total_size;
+    const auto it = properties.find(live_file.BaseFilePath());
+    if (it == properties.end()) {
+      file.unmeasured = STATUS(NotFound, "No properties read for this file");
+      continue;
+    }
+    auto parsed = docdb::SstStatsFromProperties(it->second->user_collected_properties);
+    if (parsed.ok()) {
+      file.stats = std::move(*parsed);
+    } else {
+      file.unmeasured = std::move(parsed.status());
+    }
+  }
+  return files;
+}
+
+// The per-tablet aggregate of what the SST statistics collector recorded in each file. Scalars
+// only: the aggregate does not carry the collector's distributions, which /sst-stats reads per
+// file instead.
 void DumpSstStats(const tablet::TabletPeerPtr& peer, std::stringstream* output) {
   *output << "<h2>SST Statistics</h2>\n";
+  *output << Format(
+      "<p><a href=\"/sst-stats?id=$0\">Per-file distributions and age bands</a></p>\n",
+      UrlEncodeToString(peer->tablet_id()));
   auto tablet = peer->shared_tablet_maybe_null();
   // Held across the Get() below: a truncate or a snapshot restore concurrent with this request
   // replaces the tablet's aggregator.
@@ -325,6 +398,130 @@ void DumpSstStats(const tablet::TabletPeerPtr& peer, std::stringstream* output) 
   *output << "</table>\n";
 }
 
+// The collector's five distributions and its age bands, which live in each SST's properties block
+// and nowhere else: the tablet aggregate keeps only the additive scalars and Prometheus carries no
+// bucket vectors (properties_collector/README.md, "The tablet aggregate").
+void HandleSstStatsPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  *output << "<h1>SST Statistics for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>\n";
+
+  auto tablet = peer->shared_tablet_maybe_null();
+  if (tablet == nullptr) {
+    *output << "<p>Tablet is not running.</p>\n";
+    return;
+  }
+  const auto files_result = ReadSstFileStats(tablet);
+  if (!files_result.ok()) {
+    *output << "<p>" << EscapeForHtmlToString(files_result.status().ToString()) << "</p>\n";
+    return;
+  }
+  const auto& files = *files_result;
+  if (files.empty()) {
+    *output << "<p>The tablet has no live SST files.</p>\n";
+    return;
+  }
+
+  // Merging buckets is exact, but each file contributes its own chains and stretches: a row
+  // written across three files is three chains here, not one, and a run of reclaimable entries
+  // split by a file boundary is two stretches. Tablet-wide lengths are therefore lower bounds.
+  docdb::SstStats merged;
+  size_t measured_files = 0;
+  size_t partial_files = 0;
+  for (const auto& file : files) {
+    if (!file.stats) {
+      continue;
+    }
+    const auto& stats = *file.stats;
+    ++measured_files;
+    partial_files += stats.chain_valid ? 0 : 1;
+    merged.row_chain_hist.Merge(stats.row_chain_hist);
+    merged.row_chain_bytes_hist.Merge(stats.row_chain_bytes_hist);
+    merged.stretch_hist.Merge(stats.stretch_hist);
+    merged.stretch_entries_hist.Merge(stats.stretch_entries_hist);
+    merged.stretch_bytes_hist.Merge(stats.stretch_bytes_hist);
+    merged.max_row_chain = std::max(merged.max_row_chain, stats.max_row_chain);
+    merged.max_stretch = std::max(merged.max_stretch, stats.max_stretch);
+    for (size_t band = 0; band != docdb::AgeBands::kNumBands; ++band) {
+      merged.droppable_age_entries[band] += stats.droppable_age_entries[band];
+      merged.droppable_age_bytes[band] += stats.droppable_age_bytes[band];
+    }
+  }
+
+  if (measured_files == 0) {
+    *output << "<p>No live SST file of this tablet carries collector statistics. A file written "
+               "while --docdb_enable_sst_stats_collector was unset carries none, and the flag is "
+               "unset by default.</p>\n";
+    return;
+  }
+
+  *output << "<p>Read from each live SST's properties block on request, so this page costs one "
+             "properties read per file. Every quantile is the lower bound of its bucket and so "
+             "reads low, by up to 12.5% -- or without limit for a value shown as &ge;1048576, the "
+             "overflow bucket. All five distributions bucket by <em>length</em> and differ only in "
+             "what weighs each sample, so a byte-weighted quantile is still a length: \"95% of "
+             "bytes sit in chains no longer than this\". The totals merge buckets exactly, but "
+             "each file contributes its own chains and stretches, so a row written across several "
+             "files counts once per file.</p>\n";
+
+  HtmlPrintHelper html_print_helper(*output);
+
+  *output << "<h2>Tablet totals</h2>\n";
+  auto totals = html_print_helper.CreateTablePrinter("sst_stats_totals", {"Statistic", "Value"});
+  totals.AddRow("Files measured", Format("$0 of $1", measured_files, files.size()));
+  if (partial_files > 0) {
+    // Chain tracking stopped at the first key it could not parse, so these files' chain and
+    // stretch counts are truncated and everything derived from them reads low.
+    totals.AddRow("Files with partial chain statistics", AsString(partial_files));
+  }
+  totals.AddRow("Row chain length, by rows", QuantilesToHtml(merged.row_chain_hist));
+  totals.AddRow("Row chain length, by bytes", QuantilesToHtml(merged.row_chain_bytes_hist));
+  totals.AddRow("Stretch length, by stretches", QuantilesToHtml(merged.stretch_hist));
+  totals.AddRow("Stretch length, by entries", QuantilesToHtml(merged.stretch_entries_hist));
+  totals.AddRow("Stretch length, by bytes", QuantilesToHtml(merged.stretch_bytes_hist));
+  totals.AddRow("Longest row chain / stretch",
+                Format("$0 / $1", merged.max_row_chain, merged.max_stretch));
+  totals.AddRow("Reclaimable entries by age", AgeBandsToHtml(merged.droppable_age_entries));
+  totals.AddRow("Reclaimable bytes by age", AgeBandsToHtml(merged.droppable_age_bytes));
+  totals.Print();
+
+  *output << "<h2>Per file</h2>\n";
+  auto per_file = html_print_helper.CreateTablePrinter(
+      "sst_stats_files",
+      {"File", "Level", "Size", "Entries", "Rows", "Reclaimable entries", "Reclaimable bytes",
+       "Row chain length by rows", "Stretch length by entries", "Longest row chain",
+       "Longest stretch", "Chain statistics"});
+  for (const auto& file : files) {
+    auto& row = per_file.AddRow();
+    row.AddColumns(EscapeForHtmlToString(file.name), file.level, file.size_bytes);
+    if (!file.stats) {
+      row.AddColumns("-", "-", "-", "-", "-", "-", "-", "-",
+                     EscapeForHtmlToString(file.unmeasured.ToString()));
+      continue;
+    }
+    const auto& stats = *file.stats;
+    row.AddColumns(
+        stats.total_entries, stats.num_rows, stats.reclaimable_entries, stats.reclaimable_bytes,
+        QuantilesToHtml(stats.row_chain_hist), QuantilesToHtml(stats.stretch_entries_hist),
+        stats.max_row_chain, stats.max_stretch, stats.chain_valid ? "complete" : "partial");
+  }
+  per_file.Print();
+
+  *output << "<h2>Per file, reclaimable by age</h2>\n";
+  auto per_file_ages = html_print_helper.CreateTablePrinter(
+      "sst_stats_file_ages", {"File", "Entries by age", "Bytes by age"});
+  for (const auto& file : files) {
+    if (!file.stats) {
+      continue;
+    }
+    per_file_ages.AddRow(
+        EscapeForHtmlToString(file.name), AgeBandsToHtml(file.stats->droppable_age_entries),
+        AgeBandsToHtml(file.stats->droppable_age_bytes));
+  }
+  per_file_ages.Print();
+}
+
 void HandleTabletPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
@@ -350,6 +547,7 @@ void HandleTabletPage(
       {"log-anchors", "Tablet Log Anchors"},
       {"transactions", "Transactions"},
       {"rocksdb", "RocksDB" },
+      {"sst-stats", "SST Statistics"},
       {"waitqueue", "Wait Queue"},
       {"sharedlockmanager", "In-Memory Locks"},
       {"preparer", "Preparer"}};
@@ -606,6 +804,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
   RegisterTabletPathHandler(server, tserver_, "/transactions", &HandleTransactionsPage);
   RegisterTabletPathHandler(server, tserver_, "/rocksdb", &HandleRocksDBPage);
+  RegisterTabletPathHandler(server, tserver_, "/sst-stats", &HandleSstStatsPage);
   RegisterTabletPathHandler(server, tserver_, "/waitqueue", &HandleWaitQueuePage);
   RegisterTabletPathHandler(server, tserver_, "/sharedlockmanager", &HandleInMemoryLocksPage);
   RegisterTabletPathHandler(server, tserver_, "/preparer", &HandlePreparerPage);

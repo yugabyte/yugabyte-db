@@ -185,7 +185,10 @@ event -- DB open, remote bootstrap, snapshot restore, split inheritance.
 
 The distributions do not aggregate this way. Bucket-wise merging is exact, but a set of files that
 shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per tablet against
-~250 bytes for the scalars, so tablet-level distributions are built on demand instead.
+~250 bytes for the scalars, so tablet-level distributions are built on demand instead: the tablet's
+`/sst-stats` page reads every live file's properties block per request and merges what it finds.
+Its merged lengths are per file -- a row written across three files is three chains there, not one
+-- so they read low.
 
 ## Boundaries
 
