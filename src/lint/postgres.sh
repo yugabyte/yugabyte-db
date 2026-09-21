@@ -330,7 +330,8 @@ if [[ "$1" == src/postgres/third-party-extensions/* ]]; then
 fi
 
 # Naming
-if [[ "$1" =~ /[^/]+yb[^/]+\.[ch]$ &&
+if [[ ! "$1" =~ /yb[^/]+\.[ch]$ &&
+      "$1" =~ /[^/]+yb[^/]+\.[ch]$ &&
       ! "$1" =~ /pg_yb[^/]+\.[ch]$ &&
       "$1" != */pg_verifybackup.c ]]; then
   echo 'error:bad_yb_nonprefix_filename:'\

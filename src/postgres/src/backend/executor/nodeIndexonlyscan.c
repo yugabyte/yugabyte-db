@@ -47,7 +47,6 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
 #include "catalog/yb_type.h"
 #include "pg_yb_utils.h"
 
