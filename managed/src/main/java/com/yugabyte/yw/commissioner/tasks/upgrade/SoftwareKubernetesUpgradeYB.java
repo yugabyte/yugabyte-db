@@ -119,6 +119,12 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   YsqlMajorCatalogUpgradeState
                       .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK)) {
                 catalogUpgradeCompleted = true;
+              } else if (requireAdditionalSuperUserForCatalogUpgrade
+                  && state.equals(
+                      YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
+                // Abort after last master (or .pgpass deleted on failure): all masters are PG15
+                // but catalog is still PENDING. Roll masters back so CREATE USER DDLs are allowed.
+                rollbackMasters = true;
               } else {
                 log.info(
                     "YSQL catalog upgrade is in a pending state. Proceeding with all upgrade"
