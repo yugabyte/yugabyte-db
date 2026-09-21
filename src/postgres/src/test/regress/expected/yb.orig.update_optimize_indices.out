@@ -91,6 +91,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = 
 ---------------------------------------------------------
  Update on pkey_only_table (actual rows=0.00 loops=1)
    ->  Result pkey_only_table (actual rows=1.00 loops=1)
+         Replaces: Aggregate
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -99,7 +100,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = 
  Storage Write Requests: 1
  Storage Flush Requests: 1
  Transaction: Fast Path
-(10 rows)
+(11 rows)
 
 -- Setting index column in the update should trigger a read, but no update of the index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1 WHERE h = 1;

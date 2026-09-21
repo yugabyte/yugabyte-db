@@ -2212,7 +2212,7 @@ order by i0.f1, x;
                                  Output: i2.q1, i2.q2
                                  ->  Seq Scan on public.int8_tbl i2
                                        Output: i2.q1, i2.q2
-                                       Filter: (123 = i2.q2)
+                                       Storage Filter: (123 = i2.q2)
 (26 rows)
 
 select * from
@@ -2311,14 +2311,14 @@ select * from
 full join
   (select * from (values(456,2)) w(v1,v2) join int8_tbl i82 on q2=v1) ss2
 on true;
-              QUERY PLAN              
---------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Merge Full Join
    ->  Seq Scan on int8_tbl i81
-         Filter: (q2 = 123)
+         Storage Filter: (q2 = 123)
    ->  Materialize
          ->  Seq Scan on int8_tbl i82
-               Filter: (q2 = 456)
+               Storage Filter: (q2 = 456)
 (6 rows)
 
 select * from

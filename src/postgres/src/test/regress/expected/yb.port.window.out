@@ -2893,16 +2893,18 @@ select f1, sum(f1) over (partition by f1 order by f2
                          range between 1 preceding and 1 following)
 from t1 where f1 = f2
 ORDER by 1,2;
-              QUERY PLAN               
----------------------------------------
- Sort
-   Sort Key: f1, (sum(f1) OVER (?))
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Incremental Sort
+   Sort Key: f1, (sum(f1) OVER w1)
+   Presorted Key: f1
    ->  WindowAgg
+         Window: w1 AS (PARTITION BY f1 ORDER BY f2 RANGE BETWEEN '1'::bigint PRECEDING AND '1'::bigint FOLLOWING)
          ->  Sort
                Sort Key: f1
                ->  Seq Scan on t1
                      Filter: (f1 = f2)
-(7 rows)
+(9 rows)
 
 select f1, sum(f1) over (partition by f1 order by f2
                          range between 1 preceding and 1 following)
@@ -2945,16 +2947,18 @@ select f1, sum(f1) over (partition by f1 order by f2
                          groups between 1 preceding and 1 following)
 from t1 where f1 = f2
 ORDER by 1,2;
-              QUERY PLAN               
----------------------------------------
- Sort
-   Sort Key: f1, (sum(f1) OVER (?))
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
+ Incremental Sort
+   Sort Key: f1, (sum(f1) OVER w1)
+   Presorted Key: f1
    ->  WindowAgg
+         Window: w1 AS (PARTITION BY f1 ORDER BY f2 GROUPS BETWEEN '1'::bigint PRECEDING AND '1'::bigint FOLLOWING)
          ->  Sort
                Sort Key: f1
                ->  Seq Scan on t1
                      Filter: (f1 = f2)
-(7 rows)
+(9 rows)
 
 select f1, sum(f1) over (partition by f1 order by f2
                          groups between 1 preceding and 1 following)

@@ -448,19 +448,22 @@ select * from (
   group by grouping sets(1, 2)
 ) ss
 where x = 1 and q1 = 123;
-                 QUERY PLAN                 
---------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Subquery Scan on ss
    Output: ss.x, ss.q1, ss.sum
    Filter: ((ss.x = 1) AND (ss.q1 = 123))
    ->  GroupAggregate
          Output: (1), i1.q1, sum(i1.q2)
-         Group Key: 1
+         Group Key: (1)
          Sort Key: i1.q1
            Group Key: i1.q1
-         ->  Seq Scan on public.int8_tbl i1
-               Output: 1, i1.q1, i1.q2
-(10 rows)
+         ->  Sort
+               Output: (1), i1.q1, i1.q2
+               Sort Key: (1)
+               ->  Seq Scan on public.int8_tbl i1
+                     Output: 1, i1.q1, i1.q2
+(13 rows)
 
 select * from (
   select 1 as x, q1, sum(q2)
@@ -565,27 +568,29 @@ explain (costs off)
                          QUERY PLAN                         
 ------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan using tenk1_unique1 on tenk1
                  Index Cond: (unique1 IS NOT NULL)
-(5 rows)
+(6 rows)
 
 -- Views with GROUPING SET queries
 CREATE VIEW gstest_view AS select a, b, grouping(a,b), sum(c), count(*), max(c)
   from gstest2 group by rollup ((a,b,c),(c,d));
 NOTICE:  view "gstest_view" will be a temporary view
+DETAIL:  It depends on temporary table gstest2.
 select pg_get_viewdef('gstest_view'::regclass, true);
-                                pg_get_viewdef                                 
--------------------------------------------------------------------------------
-  SELECT gstest2.a,                                                           +
-     gstest2.b,                                                               +
-     GROUPING(gstest2.a, gstest2.b) AS "grouping",                            +
-     sum(gstest2.c) AS sum,                                                   +
-     count(*) AS count,                                                       +
-     max(gstest2.c) AS max                                                    +
-    FROM gstest2                                                              +
-   GROUP BY ROLLUP((gstest2.a, gstest2.b, gstest2.c), (gstest2.c, gstest2.d));
+            pg_get_viewdef             
+---------------------------------------
+  SELECT a,                           +
+     b,                               +
+     GROUPING(a, b) AS "grouping",    +
+     sum(c) AS sum,                   +
+     count(*) AS count,               +
+     max(c) AS max                    +
+    FROM gstest2                      +
+   GROUP BY ROLLUP((a, b, c), (c, d));
 (1 row)
 
 -- Nested queries with 3 or more levels of nesting
@@ -742,15 +747,18 @@ select a, b, sum(v.x)
 -- Test reordering of grouping sets
 explain (costs off)
 select * from gstest1 group by grouping sets((a,b,v),(v)) order by v,b,a;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- GroupAggregate
-   Group Key: "*VALUES*".column3, "*VALUES*".column2, "*VALUES*".column1
-   Group Key: "*VALUES*".column3
-   ->  Sort
-         Sort Key: "*VALUES*".column3, "*VALUES*".column2, "*VALUES*".column1
-         ->  Values Scan on "*VALUES*"
-(6 rows)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Incremental Sort
+   Sort Key: "*VALUES*".column3, "*VALUES*".column2, "*VALUES*".column1
+   Presorted Key: "*VALUES*".column3
+   ->  GroupAggregate
+         Group Key: "*VALUES*".column3, "*VALUES*".column2, "*VALUES*".column1
+         Group Key: "*VALUES*".column3
+         ->  Sort
+               Sort Key: "*VALUES*".column3, "*VALUES*".column2, "*VALUES*".column1
+               ->  Values Scan on "*VALUES*"
+(9 rows)
 
 -- Agg level check. This query should error out.
 select (select grouping(a,b) from gstest2) from gstest2 group by a,b;
@@ -822,16 +830,18 @@ select a,count(*) from gstest2 group by rollup(a) having a is distinct from 1 or
 
 explain (costs off)
   select a,count(*) from gstest2 group by rollup(a) having a is distinct from 1 order by a;
-            QUERY PLAN            
-----------------------------------
- GroupAggregate
-   Group Key: a
-   Group Key: ()
-   Filter: (a IS DISTINCT FROM 1)
-   ->  Sort
-         Sort Key: a
-         ->  Seq Scan on gstest2
-(7 rows)
+               QUERY PLAN               
+----------------------------------------
+ Sort
+   Sort Key: a
+   ->  GroupAggregate
+         Group Key: a
+         Group Key: ()
+         Filter: (a IS DISTINCT FROM 1)
+         ->  Sort
+               Sort Key: a
+               ->  Seq Scan on gstest2
+(9 rows)
 
 select v.c, (select count(*) from gstest2 group by () having v.c)
   from (values (false),(true)) v(c) order by v.c;
@@ -1413,8 +1423,9 @@ explain (costs off)
                  QUERY PLAN                  
 ---------------------------------------------
  Sort
-   Sort Key: (sum((sum(c))) OVER (?)), a, b
+   Sort Key: (sum((sum(c))) OVER w1), a, b
    ->  WindowAgg
+         Window: w1 AS (ORDER BY a, b)
          ->  Sort
                Sort Key: a, b
                ->  MixedAggregate
@@ -1423,7 +1434,7 @@ explain (costs off)
                      Hash Key: b
                      Group Key: ()
                      ->  Seq Scan on gstest2
-(11 rows)
+(12 rows)
 
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
@@ -1771,15 +1782,14 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
         QUERY PLAN         
 ---------------------------
  GroupAggregate
-   Group Key: $2
-   InitPlan 1 (returns $1)
+   InitPlan expr_2
      ->  Result *RESULT*_1
-   InitPlan 3 (returns $2)
+   InitPlan expr_3
      ->  Result *RESULT*_2
    ->  Result *RESULT*_3
-   SubPlan 2
+   SubPlan expr_1
      ->  Result *RESULT*
-(9 rows)
+(8 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
  grouping 

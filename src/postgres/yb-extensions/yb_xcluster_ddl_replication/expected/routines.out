@@ -54,7 +54,7 @@ SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 -- Check for invalid roles.
 SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'invalid';
-ERROR:  invalid value for parameter "yb_xcluster_ddl_replication.test_replication_role_override": "invalid"
+ERROR:  invalid value for parameter "yb_xcluster_ddl_replication.TEST_replication_role_override": "invalid"
 HINT:  Available values: , NONE, SOURCE, TARGET.
 SELECT yb_xcluster_ddl_replication.get_replication_role();
  get_replication_role 
@@ -83,7 +83,7 @@ SELECT yb_xcluster_ddl_replication.get_replication_role();
 -- get_replication_role can.
 SET SESSION AUTHORIZATION testuser;
 SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'target';
-ERROR:  permission denied to set parameter "yb_xcluster_ddl_replication.test_replication_role_override"
+ERROR:  permission denied to set parameter "yb_xcluster_ddl_replication.TEST_replication_role_override"
 SELECT yb_xcluster_ddl_replication.get_replication_role();
  get_replication_role 
 ----------------------

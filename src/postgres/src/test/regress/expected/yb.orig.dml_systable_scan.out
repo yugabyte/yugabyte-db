@@ -155,10 +155,10 @@ EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE 
 
 -- Test null mixed with valid (existing) options.
 /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
- oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | daticulocale | datcollversion |               datacl                
------+-----------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+-------------+--------------+----------------+-------------------------------------
-   4 | template0 |     10 |        6 | c              | t             | f            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
-   1 | template1 |     10 |        6 | c              | t             | t            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
+ oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | dathasloginevt | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | datlocale | daticurules | datcollversion |               datacl                
+-----+-----------+--------+----------+----------------+---------------+--------------+----------------+--------------+--------------+------------+---------------+------------+-------------+-----------+-------------+----------------+-------------------------------------
+   4 | template0 |     10 |        6 | c              | t             | f            | f              |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |           |             |                | {=c/postgres,postgres=CTc/postgres}
+   1 | template1 |     10 |        6 | c              | t             | t            | f              |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |           |             |                | {=c/postgres,postgres=CTc/postgres}
 (2 rows)
 
 -- Test null(s) mixed with invalid (existing) options.

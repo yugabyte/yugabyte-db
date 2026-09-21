@@ -283,8 +283,9 @@ ERROR:  different vector dimensions 10 and 3
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on items
+         Disabled: true
          Partial Aggregate: true
-(3 rows)
+(4 rows)
 
 DROP INDEX items_embedding_idx;
 -- Dummy implementation, should only provide Exact ANN within a tablet.
@@ -361,14 +362,14 @@ INSERT INTO vec1 SELECT '[1, 1, 1]'::vector(3) FROM generate_series(1, 5);
 CREATE TABLE vec2 (embedding vector(3));
 INSERT INTO vec2 SELECT '[1, 1, 1]'::vector(3) FROM generate_series(1, 2);
 EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
-               QUERY PLAN                
------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Limit
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Limit
            ->  Seq Scan on vec2
    ->  Index Scan using vec1_idx on vec1
-         Order By: (embedding <-> $0)
+         Order By: (embedding <-> (InitPlan expr_1).col1)
 (6 rows)
 
 SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
@@ -380,14 +381,14 @@ SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LI
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
-               QUERY PLAN                
------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Limit
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Limit
            ->  Seq Scan on vec2
    ->  Index Scan using vec1_idx on vec1
-         Order By: (embedding <-> $0)
+         Order By: (embedding <-> (InitPlan expr_1).col1)
 (6 rows)
 
 SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;

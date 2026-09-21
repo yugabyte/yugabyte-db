@@ -556,8 +556,9 @@ update some_tab set a = a + 1 where false;
  Update on public.some_tab
    ->  Result some_tab
          Output: (some_tab.a + 1), NULL::oid, NULL::record, NULL::bytea
+         Replaces: Scan on some_tab
          One-Time Filter: false
-(4 rows)
+(5 rows)
 
 update some_tab set a = a + 1 where false;
 explain (verbose, costs off)
@@ -568,8 +569,9 @@ update some_tab set a = a + 1 where false returning b, a;
    Output: some_tab.b, some_tab.a
    ->  Result some_tab
          Output: (some_tab.a + 1), NULL::oid, NULL::record, NULL::bytea
+         Replaces: Scan on some_tab
          One-Time Filter: false
-(5 rows)
+(6 rows)
 
 update some_tab set a = a + 1 where false returning b, a;
  b | a 
@@ -675,8 +677,9 @@ explain update parted_tab set a = 2 where false;
 ------------------------------------------------------------
  Update on parted_tab  (cost=0.00..0.00 rows=0 width=0)
    ->  Result parted_tab  (cost=0.00..0.00 rows=0 width=68)
+         Replaces: Scan on parted_tab
          One-Time Filter: false
-(3 rows)
+(4 rows)
 
 drop table parted_tab;
 -- Check UPDATE with multi-level partitioned inherited target
@@ -785,7 +788,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  ff1    | integer |           |          | 
 Check constraints:
     "p2chk" CHECK (ff1 > 10)
-Inherits: p1
+Inherits:
+    p1
 
 -- Test that child does not override inheritable constraints of the parent
 create table c2 (constraint p2chk check (ff1 > 10) no inherit) inherits (p1);	--fails
@@ -977,8 +981,9 @@ create table c2(f3 int) inherits(p1,p2);
  f3     | integer |           |          | 
 Check constraints:
     "p2_f2_check" CHECK (f2 > 0)
-Inherits: p1,
-          p2
+Inherits:
+    p1
+    p2
 
 create table c3 (f4 int) inherits(c1,c2);
 NOTICE:  merging multiple inherited definitions of column "f1"
@@ -994,8 +999,9 @@ NOTICE:  merging multiple inherited definitions of column "f3"
  f4     | integer |           |          | 
 Check constraints:
     "p2_f2_check" CHECK (f2 > 0)
-Inherits: c1,
-          c2
+Inherits:
+    c1
+    c2
 
 drop table p1 cascade;
 NOTICE:  drop cascades to 3 other objects
@@ -1016,7 +1022,8 @@ alter table pp1 add column a1 int check (a1 > 0);
  a1     | integer |           |          | 
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
-Inherits: pp1
+Inherits:
+    pp1
 
 create table cc2(f4 float) inherits(pp1,cc1);
 NOTICE:  merging multiple inherited definitions of column "f1"
@@ -1032,8 +1039,9 @@ NOTICE:  merging multiple inherited definitions of column "a1"
  f4     | double precision |           |          | 
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
-Inherits: pp1,
-          cc1
+Inherits:
+    pp1
+    cc1
 
 alter table pp1 add column a2 int check (a2 > 0);
 NOTICE:  merging definition of column "a2" for child "cc2"
@@ -1051,8 +1059,9 @@ NOTICE:  merging constraint "pp1_a2_check" with inherited definition
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
     "pp1_a2_check" CHECK (a2 > 0)
-Inherits: pp1,
-          cc1
+Inherits:
+    pp1
+    cc1
 
 drop table pp1 cascade;
 NOTICE:  drop cascades to 2 other objects
@@ -1077,8 +1086,9 @@ ALTER TABLE inhts RENAME d TO dd;
  b      | integer |           |          |         | plain   |              | 
  c      | integer |           |          |         | plain   |              | 
  dd     | integer |           |          |         | plain   |              | 
-Inherits: inht1,
-          inhs1
+Inherits:
+    inht1
+    inhs1
 
 DROP TABLE inhts;
 -- Test for renaming in diamond inheritance
@@ -1097,8 +1107,9 @@ ALTER TABLE inht1 RENAME aa TO aaa;
  x      | integer |           |          |         | plain   |              | 
  y      | integer |           |          |         | plain   |              | 
  z      | integer |           |          |         | plain   |              | 
-Inherits: inht2,
-          inht3
+Inherits:
+    inht2
+    inht3
 
 CREATE TABLE inhts (d int) INHERITS (inht2, inhs1);
 NOTICE:  merging multiple inherited definitions of column "b"
@@ -1114,8 +1125,9 @@ ERROR:  cannot rename inherited column "b"
  x      | integer |           |          |         | plain   |              | 
  c      | integer |           |          |         | plain   |              | 
  d      | integer |           |          |         | plain   |              | 
-Inherits: inht2,
-          inhs1
+Inherits:
+    inht2
+    inhs1
 
 WITH RECURSIVE r AS (
   SELECT 'inht1'::regclass AS inhrelid
@@ -1186,6 +1198,8 @@ Indexes:
     "test_primary_constraints_pkey" PRIMARY KEY, lsm (id ASC)
 Referenced by:
     TABLE "test_foreign_constraints" CONSTRAINT "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
+Not-null constraints:
+    "test_primary_constraints_id_not_null" NOT NULL "id"
 
 \d+ test_foreign_constraints
                          Table "public.test_foreign_constraints"
@@ -1194,7 +1208,8 @@ Referenced by:
  id1    | integer |           |          |         | plain   |              | 
 Foreign-key constraints:
     "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
-Child tables: test_foreign_constraints_inh
+Child tables:
+    test_foreign_constraints_inh
 
 ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
 \d+ test_foreign_constraints
@@ -1202,14 +1217,16 @@ ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  id1    | integer |           |          |         | plain   |              | 
-Child tables: test_foreign_constraints_inh
+Child tables:
+    test_foreign_constraints_inh
 
 \d+ test_foreign_constraints_inh
                        Table "public.test_foreign_constraints_inh"
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  id1    | integer |           |          |         | plain   |              | 
-Inherits: test_foreign_constraints
+Inherits:
+    test_foreign_constraints
 
 DROP TABLE test_foreign_constraints_inh;
 DROP TABLE test_foreign_constraints;
@@ -1466,19 +1483,19 @@ insert into inhpar select x, x::text from generate_series(1,5) x;
 insert into inhcld select x::text, x from generate_series(6,10) x;
 explain (verbose, costs off)
 update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
  Update on public.inhpar i
    Update on public.inhpar i_1
    Update on public.inhcld i_2
    ->  Result i
-         Output: $2, $3, (SubPlan 1 (returns $2,$3)), i.tableoid, i.*, i.ybctid
+         Output: (SubPlan multiexpr_1).col1, (SubPlan multiexpr_1).col2, (rescan SubPlan multiexpr_1), i.tableoid, i.*, i.ybctid
          ->  Append
                ->  Seq Scan on public.inhpar i_1
                      Output: i_1.f1, i_1.f2, i_1.tableoid, i_1.*, i_1.ybctid
                ->  Seq Scan on public.inhcld i_2
                      Output: i_2.f1, i_2.f2, i_2.tableoid, i_2.*, i_2.ybctid
-         SubPlan 1 (returns $2,$3)
+         SubPlan multiexpr_1
            ->  Limit
                  Output: (i.f1), (((i.f2)::text || '-'::text))
                  ->  Seq Scan on public.int4_tbl
@@ -1514,21 +1531,21 @@ alter table inhpar attach partition inhcld2 for values from (5) to (100);
 insert into inhpar select x, x::text from generate_series(1,10) x;
 explain (verbose, costs off)
 update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
  Update on public.inhpar i
    Update on public.inhcld1 i_1
    Update on public.inhcld2 i_2
    ->  Append
          ->  Seq Scan on public.inhcld1 i_1
-               Output: $2, $3, (SubPlan 1 (returns $2,$3)), i_1.tableoid, i_1.*, i_1.ybctid
-               SubPlan 1 (returns $2,$3)
+               Output: (SubPlan multiexpr_1).col1, (SubPlan multiexpr_1).col2, (rescan SubPlan multiexpr_1), i_1.tableoid, i_1.*, i_1.ybctid
+               SubPlan multiexpr_1
                  ->  Limit
                        Output: (i_1.f1), (((i_1.f2)::text || '-'::text))
                        ->  Seq Scan on public.int4_tbl
                              Output: i_1.f1, ((i_1.f2)::text || '-'::text)
          ->  Seq Scan on public.inhcld2 i_2
-               Output: $2, $3, (SubPlan 1 (returns $2,$3)), i_2.tableoid, i_2.*, i_2.ybctid
+               Output: (SubPlan multiexpr_1).col1, (SubPlan multiexpr_1).col2, (rescan SubPlan multiexpr_1), i_2.tableoid, i_2.*, i_2.ybctid
 (13 rows)
 
 update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
@@ -1753,11 +1770,12 @@ explain (costs off) select * from range_list_parted where a between 3 and 23 and
 
 /* Should select no rows because range partition key cannot be null */
 explain (costs off) select * from range_list_parted where a is null;
-        QUERY PLAN        
---------------------------
+              QUERY PLAN               
+---------------------------------------
  Result range_list_parted
+   Replaces: Scan on range_list_parted
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 /* Should only select rows from the null-accepting partition */
 explain (costs off) select * from range_list_parted where b is null;

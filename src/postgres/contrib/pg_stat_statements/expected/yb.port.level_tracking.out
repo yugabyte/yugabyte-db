@@ -167,7 +167,7 @@ EXPLAIN (COSTS OFF) UPDATE stats_track_tab SET x = 1 WHERE x = 1;
 -----------------------------------
  Update on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
 EXPLAIN (COSTS OFF) DELETE FROM stats_track_tab;
@@ -276,7 +276,7 @@ EXPLAIN (COSTS OFF) UPDATE stats_track_tab SET x = 1 WHERE x = 1;
 -----------------------------------
  Update on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
 EXPLAIN (COSTS OFF) DELETE FROM stats_track_tab;
@@ -431,7 +431,7 @@ EXPLAIN (COSTS OFF) UPDATE stats_track_tab SET x = 1 WHERE x = 1\; EXPLAIN (COST
 -----------------------------------
  Update on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
             QUERY PLAN             
@@ -451,7 +451,7 @@ EXPLAIN (COSTS OFF) DELETE FROM stats_track_tab\; EXPLAIN (COSTS OFF) DELETE FRO
 -----------------------------------
  Delete on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
 EXPLAIN (COSTS OFF) INSERT INTO stats_track_tab VALUES ((1))\; EXPLAIN (COSTS OFF) INSERT INTO stats_track_tab VALUES (1), (2);
@@ -570,7 +570,7 @@ EXPLAIN (COSTS OFF) UPDATE stats_track_tab SET x = 1 WHERE x = 1\; EXPLAIN (COST
 -----------------------------------
  Update on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
             QUERY PLAN             
@@ -590,7 +590,7 @@ EXPLAIN (COSTS OFF) DELETE FROM stats_track_tab\; EXPLAIN (COSTS OFF) DELETE FRO
 -----------------------------------
  Delete on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
 EXPLAIN (COSTS OFF) INSERT INTO stats_track_tab VALUES ((1))\; EXPLAIN (COSTS OFF) INSERT INTO stats_track_tab VALUES ((1), (2));
@@ -675,7 +675,7 @@ EXPLAIN (COSTS OFF) WITH a AS (SELECT 4) UPDATE stats_track_tab SET x = 1 WHERE 
 -----------------------------------
  Update on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
 EXPLAIN (COSTS OFF) WITH a AS (SELECT 4) DELETE FROM stats_track_tab;
@@ -752,7 +752,7 @@ EXPLAIN (COSTS OFF) WITH a AS (SELECT 4) UPDATE stats_track_tab SET x = 1 WHERE 
 -----------------------------------
  Update on stats_track_tab
    ->  Seq Scan on stats_track_tab
-         Filter: (x = 1)
+         Storage Filter: (x = 1)
 (3 rows)
 
 EXPLAIN (COSTS OFF) WITH a AS (SELECT 4) DELETE FROM stats_track_tab;

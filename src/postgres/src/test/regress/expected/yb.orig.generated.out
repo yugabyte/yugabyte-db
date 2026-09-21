@@ -43,6 +43,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
 ------------------------------------------------
  Update on t0_gen (actual rows=0.00 loops=1)
    ->  Result t0_gen (actual rows=1.00 loops=1)
+         Replaces: Aggregate
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -51,13 +52,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
  Storage Write Requests: 1
  Storage Flush Requests: 1
  Transaction: Fast Path
-(10 rows)
+(11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int WHERE k = 2;
                    QUERY PLAN                   
 ------------------------------------------------
  Update on t0_gen (actual rows=0.00 loops=1)
    ->  Result t0_gen (actual rows=1.00 loops=1)
+         Replaces: Aggregate
          Storage Table Write Requests: 1
          Storage Flush Requests: 1
  Storage Read Requests: 0
@@ -66,7 +68,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int W
  Storage Write Requests: 1
  Storage Flush Requests: 1
  Transaction: Fast Path
-(10 rows)
+(11 rows)
 
 -- Updates involving generated columns should not be eligible for single-row optimization
 -- and should not be pushed down.

@@ -123,10 +123,12 @@ SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, i
 (1 row)
 
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
-         pg_get_constraintdef          | conname  | conkey 
----------------------------------------+----------+--------
- PRIMARY KEY (c1, c2) INCLUDE (c3, c4) | covering | {1,2}
-(1 row)
+         pg_get_constraintdef          |     conname     | conkey 
+---------------------------------------+-----------------+--------
+ PRIMARY KEY (c1, c2) INCLUDE (c3, c4) | covering        | {1,2}
+ NOT NULL c1                           | tbl_c1_not_null | {1}
+ NOT NULL c2                           | tbl_c2_not_null | {2}
+(3 rows)
 
 -- ensure that constraint works
 INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
@@ -198,10 +200,12 @@ SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, i
 (1 row)
 
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
-         pg_get_constraintdef          | conname  | conkey 
----------------------------------------+----------+--------
- PRIMARY KEY (c1, c2) INCLUDE (c3, c4) | tbl_pkey | {1,2}
-(1 row)
+         pg_get_constraintdef          |     conname     | conkey 
+---------------------------------------+-----------------+--------
+ NOT NULL c1                           | tbl_c1_not_null | {1}
+ NOT NULL c2                           | tbl_c2_not_null | {2}
+ PRIMARY KEY (c1, c2) INCLUDE (c3, c4) | tbl_pkey        | {1,2}
+(3 rows)
 
 -- ensure that constraint works
 INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;

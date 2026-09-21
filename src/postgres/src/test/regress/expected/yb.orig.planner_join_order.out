@@ -214,7 +214,7 @@ EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t
    ->  Sort
          Sort Key: t2.val
          ->  YB Batched Nested Loop Join
-               Join Filter: (t3.id = t2.id)
+               Join Filter: (t2.id = t3.id)
                ->  Seq Scan on t_10000 t3
                      Storage Filter: (id < 10)
                ->  Index Scan using t_1000_pkey on t_1000 t2

@@ -170,7 +170,7 @@ EXPLAIN (ANALYZE, DIST, COMMIT, SUMMARY OFF, COSTS OFF) INSERT INTO t_test VALUE
 (4 rows)
 
 -- Commit stats should also respect the format option.
-EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF, FORMAT JSON) INSERT INTO t_test VALUES (11, 11, 11);
+EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF, BUFFERS OFF, FORMAT JSON) INSERT INTO t_test VALUES (11, 11, 11);
                        QUERY PLAN                        
 ---------------------------------------------------------
  [                                                      +
@@ -182,23 +182,25 @@ EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF, FORMAT JSON) INSERT INTO t_test VALUE
        "Async Capable": false,                          +
        "Relation Name": "t_test",                       +
        "Alias": "t_test",                               +
-       "Actual Rows": 0,                                +
+       "Actual Rows": 0.00,                             +
        "Actual Loops": 1,                               +
+       "Disabled": false,                               +
        "Plans": [                                       +
          {                                              +
            "Node Type": "Result *RESULT*",              +
            "Parent Relationship": "Outer",              +
            "Parallel Aware": false,                     +
            "Async Capable": false,                      +
-           "Actual Rows": 1,                            +
+           "Actual Rows": 1.00,                         +
            "Actual Loops": 1,                           +
+           "Disabled": false,                           +
            "Storage Table Write Requests": 1            +
          }                                              +
        ]                                                +
      },                                                 +
      "Triggers": [                                      +
        {                                                +
-         "Trigger Name": "RI_ConstraintTrigger_c_16402",+
+         "Trigger Name": "RI_ConstraintTrigger_c_16405",+
          "Constraint Name": "t_test_p1_fk_fkey",        +
          "Relation": "t_test",                          +
          "Calls": 1                                     +

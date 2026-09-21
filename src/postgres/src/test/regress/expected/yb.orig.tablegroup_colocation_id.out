@@ -166,11 +166,12 @@ EXPLAIN (COSTS OFF) SELECT v2 FROM tg1_table1 WHERE v2 IN (1, 2, 4);
 EXPLAIN (COSTS OFF) SELECT *  FROM tg1_table1 WHERE v1 IN (1, 2, 4) ORDER BY v1, v2, v3;
                        QUERY PLAN                       
 --------------------------------------------------------
- Sort
+ Incremental Sort
    Sort Key: v1, v2, v3
+   Presorted Key: v1
    ->  Index Scan using tg1_table1_v1_idx on tg1_table1
          Index Cond: (v1 = ANY ('{1,2,4}'::integer[]))
-(4 rows)
+(5 rows)
 
 EXPLAIN (COSTS OFF) SELECT *  FROM tg1_table1 WHERE v2 IN (1, 2, 4) ORDER BY v1, v2, v3;
                        QUERY PLAN                       
