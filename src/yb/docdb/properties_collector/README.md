@@ -192,21 +192,26 @@ shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per
 `SstStatsMetrics` exports the aggregate as `docdb_sst_*` tablet-entity gauges, pulled on scrape:
 `total_entries`, `tombstone_entries`, `shadowed_entries`, `repackable_entries`, `dead_rows`,
 `dead_row_entries`, `reclaimable_entries`, `reclaimable_bytes`, `files_without_stats`,
-`files_with_partial_stats`, and `stats_available`. They take the default `kSum` aggregation, so the
-table- and server-level rollups add up like the other docdb tablet metrics; table-level visibility
-additionally needs the name to match the scrape's `priority_regex`
-(`prometheus_metric_filter.cc`), which defaults to `.*` but is narrowed by some deployments.
+`files_with_partial_stats`, and `tablets_without_stats`.
+
+No scrape shows a per-tablet value. `MetricEntity` labels a tablet-entity metric with the table
+rather than the tablet, and `PrometheusWriter::WriteSingleEntry` sums the tablets into a series per
+table, a series for the whole server, or both, depending on which filter the scrape selects
+(`prometheus_metric_filter.cc`): the default v1 gates table level on `priority_regex` and drops the
+server-level series once table level applies, while v2 gates the two levels independently and can
+emit both. Every gauge here is additive by construction for that reason, and a per-tablet flag
+would be meaningless under the sum.
 
 Additive scalars only: this metrics system exports no bucket vectors, so nothing here carries a
 distribution. The age bands the aggregate does carry are rendered on the tablet status page only,
 and the per-file chain and stretch distributions stay in the SST properties.
 
-Two cases report zero rather than a number: every gauge before the tablet's first resync, when the
-aggregate holds only the files the listener happened to see, and the two derived gauges while any
-covered file is partial, when their chain identities do not hold. Neither zero is distinguishable
-from a measured zero on its own, which is what `stats_available` (0 until the first resync, 1
-after) and `files_with_partial_stats` are for: gate alerts and ratios on those two rather than
-reading a bare zero as a measurement.
+Two cases contribute zero rather than a number: every gauge for a tablet before its first resync,
+when the aggregate holds only the files the listener happened to see, and the two derived gauges
+while any covered file is partial, when their chain identities do not hold. The sum hides both --
+one unmeasured tablet in a table reads as a smaller total, not as a gap -- which is what
+`tablets_without_stats` and `files_with_partial_stats` are for: gate alerts and ratios on those two
+rather than reading a total as complete.
 
 Nothing inside the server reads these. They exist for operators: dashboards, alerting, and tuning
 thresholds before the trigger ships.

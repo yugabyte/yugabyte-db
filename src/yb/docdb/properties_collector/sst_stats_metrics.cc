@@ -20,16 +20,20 @@
 
 #include "yb/util/metrics.h"
 
-// Definitions: properties_collector/README.md, "Vocabulary". The default kSum aggregation provides
-// table- and server-level rollups. Table-level visibility also depends on priority_regex.
+// Definitions: properties_collector/README.md, "Vocabulary". No scrape shows a per-tablet value:
+// MetricEntity labels a tablet-entity metric with the table rather than the tablet, and
+// PrometheusWriter::WriteSingleEntry sums the tablets into one series per table or one for the
+// whole server, or both, depending on the filter the scrape selects. Every description below is
+// therefore a value summed over the tablets in that scope, and nothing here may be a per-tablet
+// flag. Table-level visibility additionally depends on the scrape's metric filter.
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_total_entries,
     "DocDB SST Total Entries", yb::MetricUnit::kEntries,
-    "Number of entries measured in the tablet's live SST files, counting every version of every "
-    "key. Files without statistics are excluded.");
+    "Number of entries measured in live SST files, counting every version of every key. Files "
+    "without statistics are excluded.");
 
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_tombstone_entries,
     "DocDB SST Tombstone Entries", yb::MetricUnit::kEntries,
-    "Number of tombstone entries measured in the tablet's live SST files.");
+    "Number of tombstone entries measured in live SST files.");
 
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_shadowed_entries,
     "DocDB SST Shadowed Entries", yb::MetricUnit::kEntries,
@@ -64,25 +68,27 @@ METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_reclaimable_bytes,
 
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_files_without_stats,
     "DocDB SST Files Without Statistics", yb::MetricUnit::kFiles,
-    "Number of the tablet's live SST files carrying no statistics, because they were written "
-    "before the collector was enabled or their properties could not be read. The other "
-    "docdb_sst_* gauges measure the remaining files only, so a ratio built from them reads low "
-    "while this is non-zero.");
+    "Number of live SST files carrying no statistics, because they were written before the "
+    "collector was enabled or their properties could not be read. The other docdb_sst_* gauges "
+    "measure the remaining files only, so a ratio built from them reads low while this is "
+    "non-zero.");
 
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_files_with_partial_stats,
     "DocDB SST Files With Partial Statistics", yb::MetricUnit::kFiles,
-    "Number of the tablet's measured live SST files whose chain statistics came out incomplete "
-    "because a key did not parse. These files are measured, so they are not counted in "
+    "Number of measured live SST files whose chain statistics came out incomplete because a key "
+    "did not parse. These files are measured, so they are not counted in "
     "docdb_sst_files_without_stats, but their chain and garbage counters are lower bounds.");
 
-// Every other gauge here reports zero when the tablet has not been measured as a whole, which is
-// indistinguishable from a real zero. This one is that distinction, so it is the one gauge that
-// must report before the first resync.
-METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_stats_available,
-    "DocDB SST Statistics Available", yb::MetricUnit::kUnits,
-    "1 once the tablet's whole live file set has been measured, 0 until then. Every other "
-    "docdb_sst_* gauge reads zero while this is 0, so gate alerts and ratios on it instead of "
-    "reading those zeros as measurements.");
+// Every other gauge here contributes zero for a tablet that has not been measured as a whole, and
+// that zero is indistinguishable from a real one. This gauge carries the distinction, so it is the
+// one gauge that must report before the first resync. It counts unmeasured tablets rather than
+// flagging measured ones because the writer sums it: a sum of "measured" flags needs a tablet count
+// to divide by and no metric here carries one, while a sum of unmeasured tablets is read directly.
+METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_tablets_without_stats,
+    "DocDB SST Tablets Without Statistics", yb::MetricUnit::kUnits,
+    "Number of tablets whose live SST files have never been measured as a whole, each of which "
+    "contributes zero to every other docdb_sst_* gauge. Gate alerts and ratios on this being zero "
+    "rather than reading those contributions as measurements.");
 
 namespace yb::docdb {
 
@@ -129,8 +135,8 @@ struct SstStatsMetrics::MetricInfos {
         [](const Snapshot& s) { return s.aggregate.uncovered_files; } },
       { METRIC_docdb_sst_files_with_partial_stats,
         [](const Snapshot& s) { return s.aggregate.partial_files; } },
-      { METRIC_docdb_sst_stats_available,
-        [](const Snapshot& s) -> uint64_t { return s.last_resync_micros != 0 ? 1 : 0; },
+      { METRIC_docdb_sst_tablets_without_stats,
+        [](const Snapshot& s) -> uint64_t { return s.last_resync_micros == 0 ? 1 : 0; },
         /* needs_resync = */ false },
   };
 };
