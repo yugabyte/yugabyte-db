@@ -61,6 +61,7 @@ DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -325,6 +326,49 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(status_future.get());
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
+}
+
+// A DDL blocked on a conflicting object lock used to fail with a transport timeout naming neither
+// the lock nor the holder. This only happens with lock_timeout at its default of 0; setting it arms
+// postgres' timer, which already reports the conflict correctly, so the test shortens the fallback
+// deadline instead.
+class PgObjectLocksTestShortDeadline : public PgObjectLocksTestRF1 {
+ protected:
+  // Reproducing the field failure needs the shared memory exchange, off by default on macOS.
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+  }
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = 1000;
+    PgObjectLocksTestRF1::SetUp();
+  }
+};
+
+TEST_F_EX(PgObjectLocksTestRF1, DdlBlockedOnObjectLockReportsLockConflict,
+          PgObjectLocksTestShortDeadline) {
+  CreateTestTable();
+
+  auto blocker = ASSERT_RESULT(Connect());
+  ASSERT_OK(blocker.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker.Execute("LOCK TABLE test IN SHARE UPDATE EXCLUSIVE MODE"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Setting lock_timeout would arm postgres' timer directly and hide the bug.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW lock_timeout")), "0");
+
+  const auto start = MonoTime::Now();
+  const auto status = conn.Execute("DROP TABLE test");
+  const auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "DROP TABLE returned after " << elapsed << ": " << status;
+
+  ASSERT_NOK(status);
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(60) * kTimeMultiplier);
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "canceling statement due to lock timeout (pgsql error 55P03)");
+
+  ASSERT_OK(blocker.CommitTransaction());
 }
 
 TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {

@@ -2334,6 +2334,10 @@ void YBCSetLockTimeout(int lock_timeout_ms, void* extra) {
   pgapi->SetLockTimeout(lock_timeout_ms);
 }
 
+int32_t YBCGetDefaultRpcTimeoutMs() {
+  return narrow_cast<int32_t>(DefaultRpcTimeout().ToMilliseconds());
+}
+
 void YBCSetTimeout(int timeout_ms) {
   if (!pgapi || timeout_ms <= 0) {
     return;
