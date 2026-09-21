@@ -44,7 +44,7 @@ The connector is *backward compatible only*; a connector release supports the Yu
 
 Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
-{{<tags/feature/ea idea="2809">}}Starting in v2026.1.2, the gRPC connector supports Kafka Connect 3.9.2 and 4.3.1. For other Kafka Connect versions, you can rely on Kafka's backward-compatibility guarantees. These Kafka Connect version updates currently apply only to the gRPC connector.
+{{<tags/feature/ea idea="2809">}}Starting in v2026.1.2, the gRPC connector supports Kafka Connect 3.9.2 and 4.3.1. For other Kafka Connect versions, you can rely on Kafka's backward-compatibility guarantees. These Kafka Connect version updates currently apply _only_ to the gRPC connector.
 
 {{< warning title="YugabyteDB v2026.1.2.0 and later" >}}
 
