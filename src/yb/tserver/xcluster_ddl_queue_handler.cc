@@ -58,6 +58,14 @@ DEFINE_RUNTIME_uint64(xcluster_ddl_queue_analyze_mutation_count, 1000000000000,
     "covers tables of up to ten trillion rows with the default scale factor of 0.1. Note that "
     "this does not bypass the auto analyze cooldown for the table.");
 
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_terminate_backend_new_conn_timeout_ms, 5000,
+    "Timeout for opening the Postgres connection used to terminate the backend running a "
+    "replicated DDL.");
+
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_terminate_backend_min_query_running_time_ms, 1000,
+    "Only terminate the Postgres backend of a paused xCluster ddl_queue poller if its current "
+    "query has been running for at least this long.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -381,6 +389,58 @@ XClusterDDLQueueHandler::XClusterDDLQueueHandler(
 
 XClusterDDLQueueHandler::~XClusterDDLQueueHandler() {}
 
+bool XClusterDDLQueueHandler::HasDdlInFlight() const {
+  return ddl_in_flight_.load(std::memory_order_acquire);
+}
+
+void XClusterDDLQueueHandler::KillPgConnection() {
+  if (!ddl_in_flight_.load(std::memory_order_acquire)) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no DDL in flight, nothing to terminate";
+    return;
+  }
+
+  // Open a separate short-lived connection to issue the terminate.
+  const auto deadline =
+      CoarseMonoClock::Now() +
+      MonoDelta::FromMilliseconds(FLAGS_xcluster_ddl_queue_terminate_backend_new_conn_timeout_ms);
+  auto conn = connect_to_pg_func_(namespace_name_, deadline);
+  if (!conn.ok()) {
+    // Will retry on the consumer's next pass.
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Failed to connect to PostgreSQL to terminate the backend: " << conn.status();
+    return;
+  }
+
+  // Read the flag and the pid together, after the connection is open.
+  if (!ddl_in_flight_.load(std::memory_order_acquire)) {
+    return;
+  }
+  auto pid = pg_backend_pid_.load(std::memory_order_acquire);
+  if (pid == 0) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no backend pid recorded, nothing to terminate";
+    return;
+  }
+
+  auto terminated = pgwrapper::TryTerminateBackendWithRunningQuery(
+      *conn, static_cast<int>(pid),
+      FLAGS_xcluster_ddl_queue_terminate_backend_min_query_running_time_ms);
+  if (!terminated.ok()) {
+    // Will retry on the consumer's next pass.
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Failed to terminate PostgreSQL backend " << pid << ": " << terminated.status();
+    return;
+  }
+  if (!*terminated) {
+    VLOG_WITH_PREFIX(1) << "PostgreSQL backend " << pid
+                        << " is not running a long query or has already exited";
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Terminated PostgreSQL backend " << pid
+                        << " to abort a replicated DDL, since replication has been paused";
+  pg_backend_pid_.compare_exchange_strong(pid, 0);
+}
+
 void XClusterDDLQueueHandler::Shutdown() {
   if (pg_conn_ && FLAGS_ysql_yb_enable_advisory_locks &&
       FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
@@ -436,6 +496,7 @@ Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& co
       LOG_WITH_PREFIX(WARNING)
           << "Failed to ABORT transactional DDL batch, dropping connection: " << abort_status;
       pg_conn_.reset();
+      pg_backend_pid_.store(0, std::memory_order_release);
     }
   });
 
@@ -492,6 +553,12 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     //    We need to wait until we get a safe apply time before processing this batch.
     return Status::OK();
   }
+
+  // Marks this handler as processing the DDL batch, so that a pause can terminate the backend if
+  // the batch cannot complete.
+  ddl_in_flight_.store(true, std::memory_order_release);
+  auto ddl_in_flight_clearer =
+      ScopeExit([this] { ddl_in_flight_.store(false, std::memory_order_release); });
 
   SCHECK(
       !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
@@ -834,12 +901,14 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_ && pg_conn_->ConnStatus() != CONNECTION_OK) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
         << "Dropping unhealthy PostgreSQL connection (status " << pg_conn_->ConnStatus()
         << "), will reconnect";
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_) {
     return Status::OK();
@@ -861,7 +930,12 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 
   RETURN_NOT_OK(RunDdlQueueHandlerPrepareQueries(pg_conn.get()));
 
+  // Record the backend pid now, while the connection is idle. It cannot be fetched later from
+  // another thread wanting to terminate a stuck DDL, since the connection will be busy by then.
+  const auto backend_pid = static_cast<uint32_t>(pg_conn->BackendPID());
+
   pg_conn_ = std::move(pg_conn);
+  pg_backend_pid_.store(backend_pid, std::memory_order_release);
   return Status::OK();
 }
 

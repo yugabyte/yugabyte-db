@@ -34,6 +34,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_source_manager.h"
@@ -53,6 +54,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
@@ -78,6 +80,8 @@ DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
 DECLARE_bool(xcluster_ddl_queue_enable_transactional_ddl);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
+DECLARE_bool(xcluster_kill_ddl_queue_pg_connection_on_pause);
+DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(xcluster_enable_target_applied_filter);
@@ -6992,6 +6996,244 @@ TEST_F(XClusterWalAnchorStreamTxnBlockTest, AnchorsHeldPerTableInTransactionBloc
     ASSERT_OK(WaitForTargetDeletionMarkerCleared(target_table_id));
     ASSERT_OK(WaitForWalUnpinned(source_table_id));
   }
+}
+
+// Covers the interaction between a replicated CREATE TABLE that is waiting for the xCluster safe
+// time to advance and a pause of the replication group. Pausing is the first step of failover, and
+// it waits for every poller to report that it has stopped -- but in automatic DDL mode the
+// ddl_queue poller is pinned inside the very DDL that is waiting here, so the two wait on each
+// other. xcluster_kill_ddl_queue_pg_connection_on_pause breaks the cycle by terminating the
+// backend running the DDL.
+class XClusterDDLReplicationStuckCreateTablePauseTest : public XClusterDDLReplicationTest {
+ protected:
+  static constexpr auto kStuckTableName = "table_stuck_in_create";
+
+  void SetUp() override {
+    TEST_SETUP_SUPER(XClusterDDLReplicationTest);
+    // Default is one hour. Shrink it so that the run where the create is left to time out on its
+    // own stays within the test harness timeout.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_automatic_target_create_table_ddl_rpc_timeout_sec) =
+        60 * kTimeMultiplier;
+  }
+
+  // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
+  // the master waits for the pause to finish using the RPC's client deadline.
+  Status SetReplicationEnabled(bool is_enabled, MonoDelta timeout) {
+    master::SetUniverseReplicationEnabledRequestPB req;
+    master::SetUniverseReplicationEnabledResponsePB resp;
+    req.set_replication_group_id(kReplicationGroupId.ToString());
+    req.set_is_enabled(is_enabled);
+    master::MasterReplicationProxy proxy(
+        &consumer_client()->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    RETURN_NOT_OK(proxy.SetUniverseReplicationEnabled(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
+  // Leaves a replicated CREATE TABLE parked in AddTableToXClusterTargetTask's safe time wait, with
+  // the ddl_queue poller pinned inside the DDL.
+  void WedgeReplicatedCreateTable() {
+    // Block all replication so the source's DDL does not reach the target yet.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "CREATE TABLE $0(key int PRIMARY KEY, val int)", kStuckTableName));
+
+    // Lag only the new table's tablets. ddl_queue keeps flowing, so the target runs the replicated
+    // CREATE TABLE, but the new table's tablets never report a safe time. The target master's
+    // AddTableToXClusterTargetTask then parks in WaitForXClusterSafeTimeCaughtUp, and the ddl_queue
+    // poller stays pinned inside the CREATE TABLE that is waiting on it.
+    auto stuck_table = ASSERT_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", kStuckTableName));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> stuck_tablets;
+    ASSERT_OK(producer_client()->GetTabletsFromTableId(stuck_table.table_id(), 0, &stuck_tablets));
+    std::string stuck_tablet_filter;
+    for (const auto& tablet : stuck_tablets) {
+      if (!stuck_tablet_filter.empty()) {
+        stuck_tablet_filter += ",";
+      }
+      stuck_tablet_filter += tablet.tablet_id();
+    }
+    ASSERT_FALSE(stuck_tablet_filter.empty());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
+        stuck_tablet_filter;
+
+    // Wait until the target master is parked in the safe time wait.
+    ASSERT_OK(StringWaiterLogSink("Waiting for xCluster safe time").WaitFor(kTimeout));
+  }
+};
+
+// Terminating the ddl_queue handler's Postgres backend releases a poller that is pinned inside a
+// replicated DDL, so the pause -- and therefore a failover -- can complete instead of waiting for
+// the create table timeout.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesStuckDdlBackend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  // The pause must complete well inside the create's own timeout, which is what it would otherwise
+  // have to wait for.
+  // All log sinks must exist before the pause: the terminate, the resulting DDL failure and the
+  // master task ending can all happen while SetReplicationEnabled is still blocked waiting for the
+  // poller to report paused.
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink ddl_aborted_log("Error when running DDL");
+  // The task id sits between the two parts of interest, so match with a regex rather than a
+  // substring. RegexWaiterLogSink uses regex_match, so the pattern has to cover the whole line.
+  RegexWaiterLogSink add_table_task_failed_log(".*AddTableToXClusterTargetTask.*Task failed.*");
+  RegexWaiterLogSink add_table_task_ended_log(".*AddTableToXClusterTargetTask.*Task ended.*");
+
+  // Without the fix, SetReplicationEnabled will fail
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+
+  // The stuck create was aborted rather than left waiting for its own timeout.
+  ASSERT_OK(ddl_aborted_log.WaitFor(kTimeout));
+
+  // The master side stops too: the aborted DDL rolls back and drops the half-built table, and
+  // closing the table aborts its pending tasks ("Table closing"), which ends
+  // AddTableToXClusterTargetTask. After EndTask the task is in a terminal state, so
+  // WaitForXClusterSafeTimeCaughtUp cannot be scheduled again -- any further attempt would log
+  // "Task already ended" instead of running.
+  ASSERT_OK(add_table_task_failed_log.WaitFor(kTimeout));
+  ASSERT_OK(add_table_task_ended_log.WaitFor(kTimeout));
+}
+
+// A ddl_queue tablet leader change while a replicated DDL is stuck leaves the old poller behind
+// until the DDL finishes. The pause must still complete, which requires killing that poller's
+// backend too.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesOrphanedPollerBackend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  // A forced step down re-elects the leader with a new term, which makes the consumer replace the
+  // poller. The old poller is inside the stuck DDL, so its shutdown is deferred.
+  StringWaiterLogSink shutdown_deferred_log(
+      "DDL queue handler is running, it will complete the shutdown once done");
+  ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
+  ASSERT_OK(shutdown_deferred_log.WaitFor(kTimeout));
+
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink shutdown_completed_log("DDL queue handler finished, completing shutdown");
+
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+  ASSERT_OK(shutdown_completed_log.WaitFor(kTimeout));
+}
+
+// A replicated DROP TABLE blocks on the target while the target master removes the table from
+// replication, which includes deleting its stream on the source.
+class XClusterDDLReplicationStuckDropTablePauseTest
+    : public XClusterDDLReplicationStuckCreateTablePauseTest {
+ protected:
+  static constexpr auto kDroppedTableName = "table_stuck_in_drop";
+};
+
+TEST_F(XClusterDDLReplicationStuckDropTablePauseTest, PauseTerminatesStuckDropTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, val int)", kDroppedTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Hold replication while the source runs its own DROP TABLE, so that only the target's
+  // replicated DROP TABLE reaches the sync point registered below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP TABLE $0", kDroppedTableName));
+
+  // Stall the target master's DeleteTable right before it removes the table from replication.
+  CountDownLatch drop_stalled(1), release_drop(1);
+  SyncPoint::GetInstance()->SetCallBack(
+      "DeleteTableInternal::FailAfterTableMarkedInSysCatalog", [&](void*) {
+        drop_stalled.CountDown();
+        release_drop.Wait();
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto release = ScopeExit([&] {
+    release_drop.CountDown();
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_TRUE(drop_stalled.WaitFor(kTimeout));
+
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink ddl_aborted_log("Error when running DDL");
+
+  // Without the fix, SetReplicationEnabled will fail.
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+  ASSERT_OK(ddl_aborted_log.WaitFor(kTimeout));
+
+  // Let the stalled DeleteTable finish, then resume and check replication picks back up.
+  release_drop.CountDown();
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kDroppedTableName))));
+
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
+}
+
+// A replicated CREATE INDEX blocks on the target while the target master's
+// AddTableToXClusterTargetTask fetches the index's stream checkpoint from the source.
+class XClusterDDLReplicationStuckCreateIndexPauseTest
+    : public XClusterDDLReplicationStuckCreateTablePauseTest {
+ protected:
+  static constexpr auto kIndexedTableName = "table_for_stuck_index";
+};
+
+TEST_F(XClusterDDLReplicationStuckCreateIndexPauseTest, PauseTerminatesStuckCreateIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, val int)", kIndexedTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Hold replication while the source runs its own CREATE INDEX, so that only the target's
+  // replicated CREATE INDEX reaches the sync point registered below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX ON $0(val)", kIndexedTableName));
+
+  // Make the target master's task never return from its call to the source.
+  SyncPoint::GetInstance()->SetCallBack(
+      "AddTableToXClusterTargetTask::RunInternal::BeforeBootstrap",
+      [](void* abandon_task) { *static_cast<bool*>(abandon_task) = true; });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto clear = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+  StringWaiterLogSink task_stuck_log("Task will be stuck");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(task_stuck_log.WaitFor(kTimeout));
+
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink ddl_aborted_log("Error when running DDL");
+
+  // Without the fix, SetReplicationEnabled will fail.
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+  ASSERT_OK(ddl_aborted_log.WaitFor(kTimeout));
 }
 
 }  // namespace yb

@@ -228,6 +228,10 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::unordered_map<xcluster::ProducerTabletInfo, std::shared_ptr<XClusterPoller>>
       pollers_map_ GUARDED_BY(pollers_map_mutex_);
 
+  // Removed from pollers_map_ with shutdown still waiting on a replicated DDL. Only accessed from
+  // RunThread.
+  std::vector<std::shared_ptr<XClusterPoller>> ddl_queue_pollers_with_deferred_shutdown_;
+
   std::unique_ptr<ThreadPool> thread_pool_;
   std::unique_ptr<rpc::Rpcs> rpcs_;
 
