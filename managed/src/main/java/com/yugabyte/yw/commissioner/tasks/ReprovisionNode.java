@@ -114,7 +114,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
           && !isUniverseManuallyProvisioned) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)
+        createYNPProvisioningTask(universe, nodeCollection, p -> p.isDataPresent = true)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
       createInstallNodeAgentTasks(universe, nodeCollection)

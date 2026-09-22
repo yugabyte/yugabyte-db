@@ -387,7 +387,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         boolean isYbPrebuiltImage =
             !shouldInstallDbSoftware(
                 universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
-        createYNPProvisioningTask(universe, nodeList, isYbPrebuiltImage)
+        createYNPProvisioningTask(
+                universe,
+                nodeList,
+                p -> {
+                  p.isYbPrebuiltImage = isYbPrebuiltImage;
+                  p.isDataPresent = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
       createInstallNodeAgentTasks(universe, nodeList)
