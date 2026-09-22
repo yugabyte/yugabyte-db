@@ -53,6 +53,9 @@ constexpr uint32_t kCheckIntervalMs = 500;
 // RPCs report the former, a Perform reading a user table the latter.
 constexpr auto kSyncRpcWaitEvent = "WaitingOnTServer";
 constexpr auto kTableReadWaitEvent = "TableRead";
+constexpr auto kCommitWaitEvent = "TransactionCommit";
+// Upstream wait event of pg_sleep().
+constexpr auto kPgSleepWaitEvent = "PgSleep";
 
 bool ProcessAlive(int pid) {
   return kill(pid, 0) == 0 || errno != ESRCH;
@@ -61,6 +64,35 @@ bool ProcessAlive(int pid) {
 MonoDelta CheckIntervals(int count) {
   return MonoDelta::FromMilliseconds(kCheckIntervalMs * count * kTimeMultiplier);
 }
+
+// Holds a tserver RPC handler at its "<rpc>:Proceed" sync point until destroyed, so the backend
+// that issued the RPC stays blocked in pggate for as long as the test needs. `rpc` names a pair
+// of TEST_SYNC_POINTs "<rpc>:Start" / "<rpc>:Proceed" in pg_client_session.cc.
+class RpcHold {
+ public:
+  explicit RpcHold(const std::string& rpc)
+      : reached_(rpc + ":TestReached"), release_(rpc + ":TestRelease") {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+    sync_point_.LoadDependency({{rpc + ":Start", reached_}, {release_, rpc + ":Proceed"}});
+    sync_point_.EnableProcessing();
+  }
+
+  ~RpcHold() {
+    TEST_SYNC_POINT(release_);
+    sync_point_.DisableProcessing();
+    sync_point_.ClearTrace();
+  }
+
+  // Returns once the tserver has entered the held handler.
+  void WaitReached() {
+    TEST_SYNC_POINT(reached_);
+  }
+
+ private:
+  SyncPoint& sync_point_ = *SyncPoint::GetInstance();
+  const std::string reached_;
+  const std::string release_;
+};
 
 } // namespace
 
@@ -139,10 +171,19 @@ class PgClientDisconnectTest : public PgMiniTestBase {
     return true;
   }
 
-  static Result<PGResultPtr> FetchRaw(PGconn* conn, const std::string& query) {
+  static Result<PGResultPtr> ExecRaw(PGconn* conn, const std::string& query) {
     PGResultPtr result(PQexec(conn, query.c_str()));
-    SCHECK_EQ(
-        PQresultStatus(result.get()), PGRES_TUPLES_OK, IllegalState, PQerrorMessage(conn));
+    const auto status = PQresultStatus(result.get());
+    SCHECK(
+        status == PGRES_TUPLES_OK || status == PGRES_COMMAND_OK, IllegalState,
+        PQerrorMessage(conn));
+    return result;
+  }
+
+  // Collects the single result of a query sent with PQsendQuery.
+  static PGResultPtr GetRawResult(PGconn* conn) {
+    PGResultPtr result(PQgetResult(conn));
+    EXPECT_EQ(PQgetResult(conn), nullptr) << "Unexpected extra result";
     return result;
   }
 
@@ -226,11 +267,6 @@ TEST_F_EX(
 // a sync point while the backend waits for it on a condition variable.
 TEST_F(PgClientDisconnectTest, DisconnectDuringBigResponseFetch) {
   const std::string kQuery = "SELECT v FROM t WHERE k = 1";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
-  auto& sync_point = *SyncPoint::GetInstance();
-  sync_point.LoadDependency({
-      {"PgClientSession::FetchData:Start", "PgClientDisconnectTest::FetchDataReached"},
-      {"PgClientDisconnectTest::ReleaseFetchData", "PgClientSession::FetchData:Proceed"}});
 
   auto control_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(control_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v TEXT)"));
@@ -242,7 +278,7 @@ TEST_F(PgClientDisconnectTest, DisconnectDuringBigResponseFetch) {
   // only FetchData the tserver sees is the one for the query under test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_big_shared_memory_segment_session_expiration_time_ms) = 1000;
   auto blocked_conn = ASSERT_RESULT(ConnectRaw());
-  ASSERT_OK(FetchRaw(blocked_conn.get(), kQuery));
+  ASSERT_OK(ExecRaw(blocked_conn.get(), kQuery));
   const auto pid = PQbackendPID(blocked_conn.get());
   ASSERT_OK(WaitEvent(control_conn, pid));
 
@@ -252,17 +288,11 @@ TEST_F(PgClientDisconnectTest, DisconnectDuringBigResponseFetch) {
   ASSERT_OK(WaitFor(
       [this] { return BigSharedMemorySegmentsIdle(); }, 10s * kTimeMultiplier,
       "Big shared memory segments released"));
-  sync_point.EnableProcessing();
-  auto release = ScopeExit([&sync_point] {
-    TEST_SYNC_POINT("PgClientDisconnectTest::ReleaseFetchData");
-    sync_point.DisableProcessing();
-    sync_point.ClearTrace();
-  });
 
+  RpcHold hold("PgClientSession::FetchData");
   ASSERT_OK(SendQueryAndWaitForBlock(
       control_conn, blocked_conn.get(), kQuery, kTableReadWaitEvent));
-  // The backend is now waiting for the FetchData RPC the tserver is holding.
-  TEST_SYNC_POINT("PgClientDisconnectTest::FetchDataReached");
+  hold.WaitReached();
   ASSERT_TRUE(ProcessAlive(pid));
 
   blocked_conn.reset();
@@ -287,6 +317,54 @@ TEST_F(PgClientDisconnectTest, ConnectedClientKeepsWaitEvent) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = false;
   PGResultPtr result(PQgetResult(blocked_conn.get()));
   ASSERT_EQ(PQresultStatus(result.get()), PGRES_TUPLES_OK) << PQerrorMessage(blocked_conn.get());
+}
+
+// The probe must never let a postgres ERROR escape into pggate, and when it contains one it must
+// leave postgres in the state it found: interrupt holdoff counters (COMMIT holds interrupts around
+// its RPC), the published wait event, and working interrupt processing afterwards. After a
+// failure the probe stays off, since the wait set it uses may be inconsistent.
+TEST_F(PgClientDisconnectTest, ProbeFailureIsContained) {
+  auto control_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(control_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+
+  auto conn = ASSERT_RESULT(ConnectRaw());
+  const auto pid = PQbackendPID(conn.get());
+  ASSERT_OK(ExecRaw(conn.get(), "SET yb_test_fail_client_connection_check = true"));
+  ASSERT_OK(ExecRaw(conn.get(), "BEGIN"));
+  ASSERT_OK(ExecRaw(conn.get(), "INSERT INTO t VALUES (1, 1)"));
+
+  {
+    RpcHold hold("PgClientSession::FinishTransaction");
+    ASSERT_OK(SendQueryAndWaitForBlock(control_conn, conn.get(), "COMMIT", kCommitWaitEvent));
+    hold.WaitReached();
+    // Several probes run and fail while the commit is held.
+    SleepFor(CheckIntervals(3));
+    ASSERT_TRUE(ProcessAlive(pid));
+    ASSERT_EQ(ASSERT_RESULT(WaitEvent(control_conn, pid)), kCommitWaitEvent);
+  }
+  // CommitTransaction() runs its RPC under HOLD_INTERRUPTS(); a zeroed holdoff count trips the
+  // assertion in RESUME_INTERRUPTS() and kills the backend here.
+  auto result = GetRawResult(conn.get());
+  ASSERT_EQ(PQresultStatus(result.get()), PGRES_COMMAND_OK) << PQerrorMessage(conn.get());
+  ASSERT_EQ(ASSERT_RESULT(control_conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 1);
+
+  // Interrupts still get processed (a wrapped-around holdoff count would suppress them).
+  ASSERT_OK(ExecRaw(conn.get(), "SET yb_test_fail_client_connection_check = false"));
+  ASSERT_OK(SendQueryAndWaitForBlock(
+      control_conn, conn.get(), "SELECT pg_sleep(60)", kPgSleepWaitEvent));
+  ASSERT_TRUE(ASSERT_RESULT(control_conn.FetchRow<bool>(
+      Format("SELECT pg_cancel_backend($0)", pid))));
+  result = GetRawResult(conn.get());
+  ASSERT_EQ(PQresultStatus(result.get()), PGRES_FATAL_ERROR);
+  ASSERT_STR_CONTAINS(PQerrorMessage(conn.get()), "canceling statement due to user request");
+
+  // The probe stays disabled for this backend, even with the failure injection off.
+  auto pause = PauseSyncRpc();
+  ASSERT_OK(SendQueryAndWaitForBlock(
+      control_conn, conn.get(), "SELECT * FROM pg_locks", kSyncRpcWaitEvent));
+  conn.reset();
+  SleepFor(CheckIntervals(6));
+  ASSERT_TRUE(ProcessAlive(pid));
 }
 
 class PgClientDisconnectCheckDisabledTest : public PgClientDisconnectTest {

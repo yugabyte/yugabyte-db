@@ -2299,6 +2299,8 @@ bool		yb_test_invalidate_relcache_in_planner = false;
 
 bool		yb_test_fail_next_inc_catalog_version = false;
 
+bool		yb_test_fail_client_connection_check = false;
+
 double		yb_test_ybgin_disable_cost_factor = 2.0;
 
 char	   *yb_test_block_index_phase = "";
