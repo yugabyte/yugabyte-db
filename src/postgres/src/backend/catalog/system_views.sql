@@ -1509,7 +1509,7 @@ CREATE VIEW pg_stat_progress_copy AS
                       WHEN 3 THEN 'PIPE'
                       WHEN 4 THEN 'CALLBACK'
                       END AS "type",
-        CASE S.param7 WHEN 0 THEN 'IN PROGRESS'
+        CASE S.param8 WHEN 0 THEN 'IN PROGRESS'
                       WHEN 1 THEN 'ERROR'
                       WHEN 2 THEN 'SUCCESS'
                       END AS yb_status,
