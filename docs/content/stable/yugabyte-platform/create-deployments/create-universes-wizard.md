@@ -127,7 +127,13 @@ Specify the instance to use for the universe nodes:
 
 - Select the **Instance Type** to use for the nodes in the universe.
 - Specify the number and size of the storage volumes.
-- Select the storage type (AWS, GCP, Azure, or OCI only).
+- Select the **Storage Type** (GCP, Azure, or OCI only). Available options depend on the provider:
+
+  - **GCP**: Persistent, Local Scratch, Hyperdisk Balanced, or Hyperdisk Extreme.
+  - **Azure**: Standard, Premium, PremiumV2, or Ultra.
+  - **OCI**: Balanced, Higher Performance, or Lower Cost. The default is Balanced.
+
+    NVMe (local disk) instance types are not supported. Choose a remote block-volume instance type.
 
 #### Additional AWS fields
 
