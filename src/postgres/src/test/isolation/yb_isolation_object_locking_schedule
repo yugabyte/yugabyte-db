@@ -1,5 +1,6 @@
 test: yb.orig.concurrent_ddls_read_latest_cat_version
 test: yb.orig.concurrent_ddls
+test: yb.orig.concurrent_drop_dependent_objects
 test: yb.orig.avoid_stale_catalog_reads-1
 test: yb.orig.avoid_stale_catalog_reads-2
 test: yb.orig.avoid_stale_catalog_reads-3
