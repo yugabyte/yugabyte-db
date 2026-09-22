@@ -65,8 +65,20 @@
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
 
+// SimSIMD keys each target family off the corresponding -march macro, and x86-64 builds at
+// -march=ivybridge (top-level CMakeLists.txt), so no AVX-512 family enables itself. Forcing one
+// on is safe: every kernel carries its own target attribute so it compiles under the baseline,
+// and simsimd_capabilities() dispatches on CPUID, so a kernel the host cannot run is never
+// called.
+//
+// ICE is needed because SimSIMD has no *_i8_skylake -- without it the int8 ladder drops from
+// AVX-512 to 256-bit Haswell kernels. cos/l2sq/dot_i8_ice accumulate into int32 exactly as the
+// Haswell kernels do, so results are bit-identical. See
+// architecture/design/docdb-vector-index-quantization.md.
 #define SIMSIMD_TARGET_HASWELL 1
 #define SIMSIMD_TARGET_SKYLAKE 1
+#define SIMSIMD_TARGET_ICE 1
+
 #endif
 
 // Getting these errors with both Clang and GCC on Linux, as well as with in an x86_64 build with
