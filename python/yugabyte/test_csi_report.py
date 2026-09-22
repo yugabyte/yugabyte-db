@@ -11,12 +11,13 @@
 # under the License.
 
 """
-Unit tests for csi_report: the no-op behavior when CSI is not configured, and the query retries.
+Unit tests for csi_report's behavior when CSI is not configured.
 
-Holding a launch id is not evidence that there is a server to talk to: YB_CSI_LID can be set while
-CSI_SERVER/CSI_TOKEN are not. Every entry point must then no-op rather than build
-'https:///api/v2/' and raise InvalidURL('No host supplied') - which is how an unconfigured CSI once
-aborted a whole test run.
+Holding a launch id is not evidence that there is a server to talk to: launch_qid(), create_suite()
+and close_item() take the launch as a parameter so the baseline tests can report to their own
+launch, so a caller can have one while CSI_SERVER/CSI_TOKEN are unset. Every entry point must then
+no-op rather than build 'https:///api/v2/' and raise InvalidURL('No host supplied') - which is how
+an unconfigured CSI once aborted a whole test run.
 """
 
 import json
@@ -55,17 +56,18 @@ def test_configured_needs_both_server_and_token(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_launch_qid_is_a_no_op() -> None:
-    assert csi_report.launch_qid() == ''
+    assert csi_report.launch_qid(launch='some-launch-uuid') == ''
 
 
 def test_create_suite_returns_the_var_name_with_no_value() -> None:
     assert csi_report.create_suite(
         qid='', suite_name='C++', parent='', method='Requested', planned=1, reps=1,
-        time_sec=0.0) == ('YB_CSI_C++', '')
+        time_sec=0.0, launch='some-launch-uuid') == ('YB_CSI_C++', '')
 
 
 def test_close_item_is_a_no_op() -> None:
-    assert csi_report.close_item('some-suite-uuid', 0.0, '', []) == ''
+    assert csi_report.close_item(
+        'some-suite-uuid', 0.0, '', [], launch='some-launch-uuid') == ''
 
 
 def test_create_test_is_a_no_op() -> None:
@@ -75,6 +77,10 @@ def test_create_test_is_a_no_op() -> None:
 
 def test_upload_log_is_a_no_op() -> None:
     assert csi_report.upload_log('some-suite-uuid', 0.0, ['/nonexistent/log']) == 0
+
+
+def test_test_ids_in_launches_is_a_no_op() -> None:
+    assert csi_report.test_ids_in_launches('launch_type:baseline_test_run') == set()
 
 
 # ---------------------------------------------------------------------------------------------
@@ -142,7 +148,7 @@ def test_update_replaces_only_the_current_method_key(
     monkeypatch.setattr(csi_report.requests, 'put', fake_put)
 
     csi_report.create_suite(qid='1', suite_name='C++', parent='', method=method,
-                            planned=planned, reps=1, time_sec=0.0)
+                            planned=planned, reps=1, time_sec=0.0, launch='a-launch-uuid')
 
     assert len(put_bodies) == 1
     assert put_bodies[0]['attributes'] == expected_attributes
@@ -202,7 +208,7 @@ def test_transient_failure_is_retried_then_succeeds(
         monkeypatch: pytest.MonkeyPatch, no_sleep: None, transient: Any) -> None:
     """
     A 5xx and a dropped connection are the same thing to a query: try again. Returning None here
-    instead would report 'nothing measured yet' and cost a redundant re-measurement.
+    instead would report 'nothing run yet' and cost a redundant run on the baseline.
     """
     ok = FakeResponse(200)
     calls = fake_get(monkeypatch, [transient, ok])
@@ -257,6 +263,81 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_classify_execution(rerun: bool, attempt: int, reps: str, attempt_index: int,
                             expected: Any) -> None:
     assert csi_report.classify_execution(rerun, attempt, reps, attempt_index) == expected
+
+
+def test_test_ids_in_launches_reads_every_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A page size limits the response, not what matches, so both queries have to page to the end.
+    Reading only the first page drops test ids silently and the caller runs those tests again - the
+    expensive direction, since each repeated test costs baseline_repetitions runs.
+    """
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'dbft')
+
+    # Two pages of launches; the launch on each page has two pages of items.
+    launch_pages = {
+        '1': {'content': [{'id': 11}], 'page': {'totalPages': 2}},
+        '2': {'content': [{'id': 22}], 'page': {'totalPages': 2}},
+    }
+    item_pages = {
+        (11, '1'): {'content': [{'uniqueId': 'a'}], 'page': {'totalPages': 2}},
+        (11, '2'): {'content': [{'uniqueId': 'b'}], 'page': {'totalPages': 2}},
+        (22, '1'): {'content': [{'uniqueId': 'c'}], 'page': {'totalPages': 2}},
+        (22, '2'): {'content': [{'uniqueId': 'd'}], 'page': {'totalPages': 2}},
+    }
+
+    class FakeResponse:
+        def __init__(self, payload: Any) -> None:
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self) -> Any:
+            return self._payload
+
+    def fake_get(url: str, headers: Any = None, params: Any = None) -> Any:
+        if url.endswith('/launch'):
+            return FakeResponse(launch_pages[params['page.number']])
+        return FakeResponse(item_pages[(params['filter.eq.launchId'], params['page.number'])])
+
+    monkeypatch.setattr(csi_report.requests, 'get', fake_get)
+
+    assert csi_report.test_ids_in_launches('launch_type:baseline_test_run') == {'a', 'b', 'c', 'd'}
+
+
+def test_test_ids_in_launches_asks_only_for_tests_that_reached_a_verdict(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A launch finished while a peer is still reporting leaves that peer's items INTERRUPTED. Reading
+    those back as already run would inherit a truncated sample as a complete one, permanently - the
+    next diff would skip exactly the tests whose data is missing. The status filter is what keeps
+    them eligible, so assert it is on the wire rather than trusting the server to be asked nicely.
+    """
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'dbft')
+
+    item_queries: List[Any] = []
+
+    class FakeResponse:
+        def __init__(self, payload: Any) -> None:
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self) -> Any:
+            return self._payload
+
+    def fake_get(url: str, headers: Any = None, params: Any = None) -> Any:
+        if url.endswith('/launch'):
+            return FakeResponse({'content': [{'id': 11}], 'page': {'totalPages': 1}})
+        item_queries.append(params)
+        return FakeResponse({'content': [{'uniqueId': 'a'}], 'page': {'totalPages': 1}})
+
+    monkeypatch.setattr(csi_report.requests, 'get', fake_get)
+
+    assert csi_report.test_ids_in_launches('launch_type:baseline_test_run') == {'a'}
+    assert len(item_queries) == 1
+    assert item_queries[0]['filter.in.status'] == 'PASSED,FAILED'
 
 
 # ---------------------------------------------------------------------------------------------

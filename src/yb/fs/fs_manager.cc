@@ -71,6 +71,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/string_util.h"
 
 DEFINE_UNKNOWN_bool(enable_data_block_fsync, true,
@@ -131,17 +132,6 @@ const char *FsManager::kWalFileNamePrefix = "wal";
 const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
-const char *FsManager::kDefaultStorageTier = "ssd";
-
-const std::vector<std::string>& FsManager::ValidStorageTiers() {
-  static const std::vector<std::string> kTiers = {"ssd", "hdd"};
-  return kTiers;
-}
-
-bool FsManager::IsValidStorageTier(const std::string& tier) {
-  const auto& tiers = ValidStorageTiers();
-  return std::find(tiers.begin(), tiers.end(), tier) != tiers.end();
-}
 
 namespace {
 
@@ -161,12 +151,12 @@ std::pair<std::string, std::string> ParseDataDirSpec(const std::string& spec) {
   // no colon, return the path and default tier
   auto pos = spec.rfind(':');
   if (pos == std::string::npos) {
-    return {spec, FsManager::kDefaultStorageTier};
+    return {spec, kDefaultStorageTier};
   }
   // colon exists but no tier, return the path and default tier
   std::string tier = spec.substr(pos + 1);
   if (tier.empty()) {
-    return {spec.substr(0, pos), FsManager::kDefaultStorageTier};
+    return {spec.substr(0, pos), kDefaultStorageTier};
   }
   return {spec.substr(0, pos), tier};
 }
@@ -203,7 +193,7 @@ FsManagerOpts::FsManagerOpts()
     // default tier ("ssd"), else failover to the next tier in ValidStorageTiers().
     std::vector<std::string> selected_wal_paths;
     selected_wal_paths.reserve(parsed_data_tokens.size());
-    for (const auto& tier_name : FsManager::ValidStorageTiers()) {
+    for (const auto& tier_name : ValidStorageTiers()) {
       for (const auto& [path, tier] : parsed_data_tokens) {
         if (tier == tier_name) {
           selected_wal_paths.push_back(path);

@@ -19,7 +19,7 @@ Clusters [replicated across regions](../../create-clusters-topology/#replicate-a
 
 ## Preferred region
 
-You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.
+You can optionally designate one region in the cluster as preferred. Preferred ranking pins tablet leaders to that region so it handles reads and writes from clients. It does not change replica placement.
 
 Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred region.
 
@@ -93,7 +93,7 @@ To create a cluster that is resilient to _two zone outages_, click **Advanced Op
 - the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For AWS clusters, choose a separate VPC for each region. For GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 - The number of nodes to deploy in the regions. Each region has the same number of nodes.
 
-**Preferred region**: Optionally, assign one region as [preferred](#preferred-region) to handle all reads and writes.
+**Preferred region**: Optionally, assign one region as [preferred](#preferred-region) to pin tablet leaders for reads and writes.
 
 **Node size**: Enter the number of virtual CPUs per node, disk size per node (in GB), and disk input output (I/O) operations per second (IOPS) per node (AWS only). You must choose the regions before you can set the node size.
 

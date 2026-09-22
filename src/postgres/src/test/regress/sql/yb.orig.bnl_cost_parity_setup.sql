@@ -13,11 +13,16 @@ drop database if exists bnl_cost_parity_test with (force);
 -- colocated (ce.rC, ce.s) tables.
 create database bnl_cost_parity_test with colocation = true;
 -- Turn the non-deterministic-field guard OFF so EXPLAIN (DEBUG, DIST) emits the
--- storage read-request and rocksdb seek/next counters we compare against the
--- cost ranking.  These counters are deterministic; the wall-clock timings are
--- not and are never printed (see join_costs / the test for details).
+-- storage read-request and rows-scanned counters we compare against the cost
+-- ranking (plus the rocksdb seek/next counters join_costs keeps for manual
+-- inspection).  The compared counters are deterministic; wall-clock timings
+-- and the layout-sensitive rocksdb counters are not and are never printed
+-- (see join_costs / the test for details).
 alter database bnl_cost_parity_test set yb_explain_hide_non_deterministic_fields = off;
 alter database bnl_cost_parity_test set yb_enable_cbo = on;
+-- 78ab6ade00d68e0919866b52292c1cd65b9b2d58 (#19494) moved BNL preference to
+-- the hints; off so they pin.
+alter database bnl_cost_parity_test set yb_prefer_bnl = false;
 -- Keep plan shapes stable: no parallelism, and let the cost hints pick the
 -- join method rather than the executor's parallel machinery.
 alter database bnl_cost_parity_test set max_parallel_workers_per_gather = 0;
@@ -75,12 +80,6 @@ alter table ce.r alter column e set statistics 10000;
 create table ce.rC (like ce.r including constraints including indexes including statistics)
     with (colocation = on);
 insert into ce.rC select * from ce.r;
-
-create statistics ce_r_b_e_mod100 on ((b % 100)), ((e % 100)) from ce.r;
-alter statistics ce_r_b_e_mod100 set statistics 10000;
-
-create statistics ce_rc_b_e_mod100 on ((b % 100)), ((e % 100)) from ce.rC;
-alter statistics ce_rc_b_e_mod100 set statistics 10000;
 
 analyze ce.r;
 analyze ce.rC;
@@ -156,16 +155,19 @@ insert into methods values
     (1, 'BNL', 'Leading((s r)) YbBatchedNL(s r)',                    'Batched Nested Loop'),
     (2, 'HJ',  'Leading((s r)) HashJoin(s r)',                       'Hash Join'),
     (3, 'MJ',  'Leading((s r)) MergeJoin(s r)',                      'Merge Join'),
-    (4, 'NL',  'Leading((s r)) NestLoop(s r) Set(yb_bnl_batch_size 1)', 'Nested Loop');
+    (4, 'NL',  'Leading((s r)) NestLoop(s r)',                       'Nested Loop');
 
 -- Run a single base query with the supplied hint comment under
--- EXPLAIN (FORMAT JSON, ANALYZE, DEBUG, DIST, SUMMARY ON) and return the plan
--- tree.  DEBUG+DIST add the per-node storage read-request counters and the
--- query-level "Read Metrics" (rocksdb seeks/nexts); SUMMARY ON adds the
--- query-level "Storage Read Requests"/"Storage Rows Scanned" aggregates.
+-- EXPLAIN (FORMAT JSON) and return the plan tree.  With exec (the default)
+-- the query is executed (ANALYZE, DEBUG, DIST, SUMMARY ON): DEBUG+DIST add
+-- the per-node storage read-request counters and the query-level
+-- "Read Metrics" (rocksdb seeks/nexts); SUMMARY ON adds the query-level
+-- "Storage Read Requests"/"Storage Rows Scanned" aggregates.  With
+-- exec = false the query is only planned.
 -- The hint MUST precede EXPLAIN so pg_hint_plan reads it.
 drop function if exists explain_join_json cascade;
-create function explain_join_json(hint text, query_sql text)
+create function explain_join_json(hint text, query_sql text,
+                                  exec boolean default true)
 returns jsonb
 language plpgsql as
 $$
@@ -173,7 +175,9 @@ declare
     j jsonb;
 begin
     execute '/*+ ' || hint || ' */ '
-        || 'explain (format json, analyze, debug, dist, summary on) '
+        || 'explain (format json'
+        || case when exec then ', analyze, debug, dist, summary on' else '' end
+        || ') '
         || query_sql
     into j;
     return j;
@@ -235,10 +239,38 @@ begin
 end;
 $$;
 
+-- join_plans: plan shape and costs from a plain EXPLAIN -- nothing is
+-- executed.  Feeds the up-front plan validation (method_ok / leading_ok), so
+-- hint failures surface without paying a run of every (query, method) pair.
+drop view if exists join_plans cascade;
+create view join_plans as
+select
+    q.qid,
+    q.descr,
+    m.mid,
+    m.label,
+    join_node->>'Node Type'                              join_node_type,
+    side_alias(join_node->'Plans'->0)                    outer_alias,
+    side_alias(join_node->'Plans'->1)                    inner_alias,
+    (root->>'Startup Cost')::float8                      startup_cost,
+    (root->>'Total Cost')::float8                        total_cost,
+    (root->>'Plan Rows')::float8                         plan_rows,
+    join_family(join_node->>'Node Type') = m.label       method_ok,
+    side_alias(join_node->'Plans'->0) = 's'
+        and side_alias(join_node->'Plans'->1) = 'r'      leading_ok
+from
+    queries q,
+    methods m,
+    lateral explain_join_json(m.hint, q.query, false) plan,
+    lateral (select plan->0->'Plan') r0(root),
+    lateral (
+        select jsonb_path_query_first(
+            plan, 'strict $.**{0 to last} ? (@."Node Type" like_regex "(Join|Nested Loop)")')
+    ) jn(join_node);
+
 -- join_costs: for every (query, method) pair, run the hinted EXPLAIN ANALYZE,
 -- then surface
 --   * the root-node cost (what the planner compares, and what a LIMIT adjusts),
---   * the realized join node type and outer/inner aliases (plan validation),
 --   * the deterministic run-time work the plan actually did:
 --       read_reqs    -- query-level "Storage Read Requests" (DocDB RPCs; the
 --                       dominant latency factor and our execution-time proxy)
@@ -250,6 +282,8 @@ $$;
 --                       read_reqs.
 -- Wall-clock timings (Actual Total Time / Execution Time) are intentionally not
 -- surfaced: they are non-deterministic and must not enter the golden output.
+-- The plans are the same ones join_plans validated: planning is deterministic
+-- and both views issue the identically hinted statement.
 drop view if exists join_costs cascade;
 create view join_costs as
 select
@@ -257,9 +291,6 @@ select
     q.descr,
     m.mid,
     m.label,
-    join_node->>'Node Type'                              join_node_type,
-    side_alias(join_node->'Plans'->0)                    outer_alias,
-    side_alias(join_node->'Plans'->1)                    inner_alias,
     (root->>'Startup Cost')::float8                      startup_cost,
     (root->>'Total Cost')::float8                        total_cost,
     (root->>'Plan Rows')::float8                         plan_rows,
@@ -272,20 +303,13 @@ select
         + coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_prev')::float8, 0)
                                                          nexts,
     reads.table_reads,
-    reads.index_reads,
-    join_family(join_node->>'Node Type') = m.label       method_ok,
-    side_alias(join_node->'Plans'->0) = 's'
-        and side_alias(join_node->'Plans'->1) = 'r'      leading_ok
+    reads.index_reads
 from
     queries q,
     methods m,
     lateral explain_join_json(m.hint, q.query) plan,
     lateral (select plan->0)         s0(summary),
     lateral (select plan->0->'Plan') r0(root),
-    lateral (
-        select jsonb_path_query_first(
-            plan, 'strict $.**{0 to last} ? (@."Node Type" like_regex "(Join|Nested Loop)")')
-    ) jn(join_node),
     lateral (
         -- Sum read requests over every scan node (those carry "Relation Name"),
         -- scaling each per-loop counter by its Actual Loops to get plan totals.

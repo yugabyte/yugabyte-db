@@ -449,9 +449,13 @@ public class SessionController extends AbstractPlatformController {
     Users user = Users.getByEmail(email);
     // Block local SuperAdmin accounts from using the SSO callback; SSO-provisioned SuperAdmin
     // users (for example via OIDC group mapping) must still be able to sign in via SSO.
+    // Resolved through role bindings, not users.role: that column stays at its original value for a
+    // SuperAdmin granted via setRoleBindings, so reading it would let such a user through here and
+    // findUserByEmailOrCreateNewUser would then recompute their role and rebuild their bindings,
+    // silently costing them SuperAdmin. UserType is checked first as it needs no query.
     if (user != null
-        && user.getRole().equals(Users.Role.SuperAdmin)
-        && UserType.local.equals(user.getUserType())) {
+        && UserType.local.equals(user.getUserType())
+        && roleBindingUtil.isSuperAdmin(user)) {
       throw new PlatformServiceException(FORBIDDEN, "SuperAdmin is not allowed login via SSO!");
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {

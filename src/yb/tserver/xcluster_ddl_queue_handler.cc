@@ -70,6 +70,10 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_before_incremental_safe_t
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_ddl, false,
     "Whether the ddl_queue handler should fail the ddl command that it executes.");
 
+DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
+    "If non-empty, the ddl_queue handler fails only the ddl commands whose query contains this "
+    "substring.");
+
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 
@@ -327,6 +331,13 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
   return query_info;
 }
 
+// The safe time is only bumped past a commit time after its DDLs have run. History at or below the
+// safe time may be compacted away, so reading ddl_queue there would fail with kSnapshotTooOld.
+bool IsCommitTimeAlreadyProcessed(
+    const HybridTime& commit_time, const HybridTime& published_safe_time) {
+  return !published_safe_time.is_special() && commit_time <= published_safe_time;
+}
+
 }  // namespace
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
@@ -472,6 +483,8 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       safe_time_ht, apply_safe_time, TryAgain,
       "Waiting for other pollers to catch up to safe time");
 
+  const auto published_safe_time = VERIFY_RESULT(GetPublishedXClusterSafeTime());
+
   HybridTime last_commit_time_processed = safe_time_batch_->last_commit_time_processed;
   // For each commit time in order, we read the ddl_queue table and process the entries at that
   // time. This ensures that we process all of the DDLs in commit order. We use the ddl_end_time to
@@ -481,6 +494,14 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       // Ignore commit times that are greater than the apply safe time. These remaining commit times
       // will be moved to the next batch.
       break;
+    }
+
+    if (IsCommitTimeAlreadyProcessed(commit_time, published_safe_time)) {
+      VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Skipping commit time " << commit_time
+                          << " which is at or below the published safe time "
+                          << published_safe_time;
+      last_commit_time_processed = commit_time;
+      continue;
     }
 
     // TODO(#20928): Make these calls async.
@@ -506,7 +527,9 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     // time is caught up.
     VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Bumping safe time to " << commit_time;
     update_safe_time_func_(commit_time);
-    TEST_SYNC_POINT("XClusterDDLQueueHandler::DdlQueueSafeTimeBumped");
+    auto bumped_commit_time = commit_time;
+    TEST_SYNC_POINT_CALLBACK(
+        "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped", &bumped_commit_time);
   }
 
   SCHECK(
@@ -572,7 +595,10 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
     setup_query << Format("SET $0 = $1;", name, pgwrapper::PqEscapeLiteral(value));
   }
 
-  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
+  const auto& fail_ddl_matching = FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching;
+  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl ||
+      (!fail_ddl_matching.empty() &&
+       query_info.query.find(fail_ddl_matching) != std::string::npos)) {
     setup_query << "SET yb_test_fail_next_ddl TO 1;";
   }
 
@@ -609,15 +635,26 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
     original_failed_status_ = s;
   }
 
+  if (IsDdlReplicationPausedDueToStuckDdl()) {
+    return PausedStatus();
+  }
   return s;
 }
 
+bool XClusterDDLQueueHandler::IsDdlReplicationPausedDueToStuckDdl() const {
+  return num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl;
+}
+
+Status XClusterDDLQueueHandler::PausedStatus() const {
+  return original_failed_status_.CloneAndPrepend(Format(
+      "DDL replication is paused due to repeated failures ($0 retries). Manual fix is "
+      "required, followed by a leader stepdown of the target's ddl_queue tablet leader. ",
+      num_fails_for_this_ddl_));
+}
+
 Status XClusterDDLQueueHandler::CheckForFailedQuery() {
-  if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
-    return original_failed_status_.CloneAndPrepend(Format(
-        "DDL replication is paused due to repeated failures ($0 retries). Manual fix is "
-        "required, followed by a leader stepdown of the target's ddl_queue tablet leader. ",
-        num_fails_for_this_ddl_));
+  if (IsDdlReplicationPausedDueToStuckDdl()) {
+    return PausedStatus();
   }
   return Status::OK();
 }
@@ -720,6 +757,14 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
   return local_client_->GetXClusterSafeTimeForNamespace(
       target_namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
+}
+
+Result<HybridTime> XClusterDDLQueueHandler::GetPublishedXClusterSafeTime() {
+  auto safe_time = xcluster_context_.GetSafeTime(target_namespace_id_);
+  if (!safe_time.ok() && safe_time.status().IsTryAgain()) {
+    return HybridTime::kInvalid;
+  }
+  return VERIFY_RESULT(std::move(safe_time)).value_or(HybridTime::kInvalid);
 }
 
 // Fetch all DDL entries from ddl_queue at the specified commit_time that have not yet been
@@ -987,6 +1032,7 @@ Status XClusterDDLQueueHandler::UpdateSafeTimeForPause() {
   RETURN_NOT_OK(ReloadSafeTimeBatchFromTableIfRequired());
 
   auto max_commit_time = safe_time_batch_->last_commit_time_processed;
+  const auto published_safe_time = VERIFY_RESULT(GetPublishedXClusterSafeTime());
 
   for (const auto& commit_time : safe_time_batch_->commit_times) {
     if (safe_time_batch_->apply_safe_time.is_valid() &&
@@ -995,10 +1041,12 @@ Status XClusterDDLQueueHandler::UpdateSafeTimeForPause() {
       break;
     }
 
-    auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
-    if (!queries.empty()) {
-      // Unprocessed DDL found.
-      break;
+    if (!IsCommitTimeAlreadyProcessed(commit_time, published_safe_time)) {
+      auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
+      if (!queries.empty()) {
+        // Unprocessed DDL found.
+        break;
+      }
     }
     if (!max_commit_time.is_valid() || commit_time > max_commit_time) {
       max_commit_time = commit_time;

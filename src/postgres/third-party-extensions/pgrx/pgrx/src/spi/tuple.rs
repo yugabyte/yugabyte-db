@@ -108,7 +108,7 @@ impl<'conn> SpiTupleTable<'conn> {
     ///
     /// # Errors
     ///
-    /// If the specified ordinal is out of bounds an [`SpiError::SpiError(SpiError::NoAttribute)`] is returned
+    /// If the specified ordinal is out of bounds an [`SpiErrorCodes::NoAttribute`] is returned
     /// If we have no backing tuple table an [`SpiError::NoTupleTable`] is returned
     ///
     /// # Panics
@@ -141,7 +141,7 @@ impl<'conn> SpiTupleTable<'conn> {
     ///
     /// # Errors
     ///
-    /// If the specified name is invalid an [`SpiError::SpiError(SpiError::NoAttribute)`] is returned
+    /// If the specified name is invalid an [`SpiErrorCodes::NoAttribute`] is returned
     /// If we have no backing tuple table an [`SpiError::NoTupleTable`] is returned
     pub fn get_by_name<T: IntoDatum + FromDatum, S: AsRef<str>>(
         &self,
@@ -156,7 +156,7 @@ impl<'conn> SpiTupleTable<'conn> {
     ///
     /// # Errors
     ///
-    /// If the specified ordinal is out of bounds an [`SpiError::SpiError(SpiError::NoAttribute)`] is returned
+    /// If the specified ordinal is out of bounds an [`SpiErrorCodes::NoAttribute`] is returned
     /// If we have no backing tuple table an [`SpiError::NoTupleTable`] is returned
     pub fn get_datum_by_ordinal(&self, ordinal: usize) -> SpiResult<Option<pg_sys::Datum>> {
         self.check_ordinal_bounds(ordinal)?;
@@ -171,11 +171,7 @@ impl<'conn> SpiTupleTable<'conn> {
             let mut is_null = false;
             let datum = pg_sys::SPI_getbinval(heap_tuple, tupdesc, ordinal as _, &mut is_null);
 
-            if is_null {
-                Ok(None)
-            } else {
-                Ok(Some(datum))
-            }
+            if is_null { Ok(None) } else { Ok(Some(datum)) }
         }
     }
 
@@ -183,7 +179,7 @@ impl<'conn> SpiTupleTable<'conn> {
     ///
     /// # Errors
     ///
-    /// If the specified name is invalid an [`SpiError::SpiError(SpiError::NoAttribute)`] is returned
+    /// If the specified name is invalid an [`SpiErrorCodes::NoAttribute`] is returned
     /// If we have no backing tuple table an [`SpiError::NoTupleTable`] is returned
     pub fn get_datum_by_name<S: AsRef<str>>(&self, name: S) -> SpiResult<Option<pg_sys::Datum>> {
         self.get_datum_by_ordinal(self.column_ordinal(name)?)
@@ -224,7 +220,7 @@ impl<'conn> SpiTupleTable<'conn> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SpiError(SpiError::NoAttribute)`] if the specified ordinal value is out of bounds
+    /// Returns [`SpiErrorCodes::NoAttribute`] if the specified ordinal value is out of bounds
     /// If we have no backing tuple table an [`SpiError::NoTupleTable`] is returned
     ///
     /// # Panics
@@ -253,7 +249,7 @@ impl<'conn> SpiTupleTable<'conn> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::SpiError(SpiError::NoAttribute)`] if the specified column name isn't found
+    /// Returns [`SpiErrorCodes::NoAttribute`] if the specified column name isn't found
     /// If we have no backing tuple table an [`SpiError::NoTupleTable`] is returned
     ///
     /// # Panics
@@ -375,7 +371,7 @@ impl<'conn> SpiHeapTupleData<'conn> {
     ///
     /// # Errors
     ///
-    /// If the specified ordinal is out of bounds an [`SpiError::SpiError(SpiError::NoAttribute)`] is returned
+    /// If the specified ordinal is out of bounds an [`SpiErrorCodes::NoAttribute`] is returned
     pub fn get_datum_by_ordinal(&self, ordinal: usize) -> SpiResult<&SpiHeapTupleDataEntry<'conn>> {
         // Wrapping because `self.entries.get(...)` will bounds check.
         let index = ordinal.wrapping_sub(1);
@@ -386,7 +382,7 @@ impl<'conn> SpiHeapTupleData<'conn> {
     ///
     /// # Errors
     ///
-    /// If the specified name isn't valid an [`SpiError::SpiError(SpiError::NoAttribute)`] is returned
+    /// If the specified name isn't valid an [`SpiErrorCodes::NoAttribute`] is returned
     ///
     /// # Panics
     ///
@@ -426,7 +422,7 @@ impl<'conn> SpiHeapTupleData<'conn> {
     ///
     /// # Errors
     ///
-    /// If the specified name isn't valid an [`SpiError::SpiError(SpiError::NoAttribute)`] is returned
+    /// If the specified name isn't valid an [`SpiErrorCodes::NoAttribute`] is returned
     ///
     /// # Panics
     ///

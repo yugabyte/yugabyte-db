@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
@@ -35,7 +36,12 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
       LoggerFactory.getLogger(TestPgParallelReadIsolation.class);
   private static final String COLOCATED_DB = "codb";
   private static final String MAIN_TABLE = "foo";
-  private static final int NUM_ROWS = 100000;
+  // Under sanitizers the full-size table keeps ~1GB per tserver resident in the colocated
+  // tablet's memtable and intents.  Several copies of the test running in parallel then exhaust
+  // the host, starving reactor threads past the consensus stuck-RPC threshold, which FATALs the
+  // daemons.  Row count does not affect what any of the tests here assert: parallelism is forced
+  // via yb_parallel_range_rows, which yields the same two workers for either size.
+  private static final int NUM_ROWS = BuildTypeUtil.nonSanitizerVsSanitizer(100000, 10000);
 
   @Override
   protected Map<String, String> getTServerFlags() {

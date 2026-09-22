@@ -1,0 +1,26 @@
+title: TaskExecutorShutdownStatus
+description: |
+  Current shutdown status of the YBA task executor.
+type: object
+properties:
+  is_shutdown_initiated:
+    description: |
+      True if the task executor has been signaled to shut down.
+    type: boolean
+    example: false
+    readOnly: true
+  is_shutdown_complete:
+    description: |
+      True if application shutdown hooks have finished after the task
+      executor drained.
+    type: boolean
+    example: false
+    readOnly: true
+  num_running_tasks:
+    description: |
+      Number of parent tasks still registered with the executor.
+    type: integer
+    format: int32
+    example: 0
+    readOnly: true
+x-yba-api-visibility: internal

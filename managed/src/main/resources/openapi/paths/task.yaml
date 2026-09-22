@@ -40,6 +40,120 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+/task-executor/shutdown:
+  get:
+    operationId: getShutdownStatus
+    summary: Get task executor shutdown status
+    description: |
+      Returns whether task-executor shutdown has been initiated, whether
+      application shutdown has completed after draining, and how many parent
+      tasks are still running.
+    tags:
+      - Task
+    responses:
+      '200':
+        $ref: "../components/responses/TaskExecutorShutdownStatusResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      noAuthz: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: internal
+  post:
+    operationId: shutdownTaskExecutor
+    summary: Shut down the task executor
+    description: |
+      Signals the commissioner task executor to shut down. In-flight tasks are
+      aborted after abort_time_seconds. This call does not wait for tasks to
+      finish.
+    tags:
+      - Task
+    requestBody:
+      $ref: "../components/requestBodies/TaskExecutorShutdownReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/TaskExecutorShutdownResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: PlatformInstance
+      auditTargetId: 'null'
+      auditActionType: Stop
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: SUPER_ADMIN_ACTIONS
+        resourceLocation:
+          path: customers
+          sourceType: REQUEST_CONTEXT
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/tasks/{tUUID}/retry':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: tUUID
+      in: path
+      description: Task UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: retryTask
+    summary: Retry a failed task
+    description: |
+      Queues a retry of a previously failed, retry-capable Universe or Provider task.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Task
+    requestBody:
+      $ref: "../components/requestBodies/TaskRetryReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: CustomerTask
+      auditTargetId: tUUID.toString()
+      auditActionType: Retry
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: task_params_universe_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.TaskInfo.class
+          identifier: tasks
+          columnName: uuid
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/tasks/{tUUID}/rollback':
   parameters:
     - name: cUUID

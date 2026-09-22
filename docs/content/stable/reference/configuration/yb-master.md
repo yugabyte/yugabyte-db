@@ -2050,11 +2050,11 @@ Default: `300000`
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
-### Multitenancy (resource governor) flags
+### Multitenancy (Resource Governance) flags
 
 These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
 
-For information on other resource governor configuration flags, see the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governor-flags).
+For information on other Resource Governance configuration flags, see the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governance-flags).
 
 ##### --enable_qos
 

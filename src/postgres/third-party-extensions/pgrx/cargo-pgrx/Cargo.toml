@@ -10,18 +10,18 @@
 
 [package]
 name = "cargo-pgrx"
-version = "0.14.1"
-authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
-license = "MIT"
+version = "0.18.1"
+authors.workspace = true
+license.workspace = true
 description = "Cargo subcommand for 'pgrx' to make Postgres extension development easy"
-homepage = "https://github.com/pgcentralfoundation/pgrx/"
-repository = "https://github.com/pgcentralfoundation/pgrx/"
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/cargo-pgrx"
 categories = ["development-tools::cargo-plugins", "command-line-utilities", "database"]
 keywords = ["database", "postgres", "postgresql", "extension"]
 readme = "README.md"
 exclude = ["*.png"]
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 pgrx-pg-config.workspace = true
@@ -37,33 +37,40 @@ toml.workspace = true
 toml_edit.workspace = true
 
 clap = { version = "4.4.2", features = ["env", "suggestions", "cargo", "derive", "wrap_help"] }
-jobslot = "0.2.20" # as seen in gmake -j{N}
-semver = "1.0.26" # checking pgrx versions match
-tempfile = "3.19.1"
+# Keep the resolver off is-terminal 0.4.7, which pulls rustix 0.37 and breaks
+# current nightly via rustc_attrs.
+is-terminal = "=0.4.17"
+jobslot = "0.2.24" # as seen in gmake -j{N}
+semver = "1.0.28" # checking pgrx versions match
+tempfile = "3.27.0"
 
 # emit better diagnostics
-color-eyre = "0.6.3"
+color-eyre = "0.6.5"
 eyre.workspace = true
 owo-colors.workspace = true
 tracing = "0.1"
 tracing-error = "0.2.1"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # for downloading/unpacking things from the Postgres file servers
-bzip2 = "0.5.2"
+bzip2 = "0.6.1"
 env_proxy = "0.4.1"
 serde.workspace = true
-serde-xml-rs = "0.6.0"
-tar = "0.4.44"
-ureq = { version = "3.0.10", default-features = false, features = ["gzip"] }
+serde_json.workspace = true
+serde-xml-rs = "0.8.2"
+tar = "0.4.46"
+ureq = { version = "3.3.0", default-features = false, features = ["gzip", "platform-verifier", "rustls"] }
 url.workspace = true
-zip-extract = "0.2.2"
+which = "8.0.2"
+zip = "8.6.0"
+postgres = { version = "0.19.13", features = ["with-serde_json-1", "with-uuid-1"] }
+uuid = { version = "1.23.2", features = ["v4"] }
 
 # SQL schema generation
 proc-macro2.workspace = true
 quote.workspace = true
 [dependencies.object]
-version = "0.36.7"
+version = "0.39.1"
 default-features = false
 features = [
     "read_core", "std", # we use object read-only and like having actual errors
@@ -73,10 +80,11 @@ features = [
 
 [features]
 default = ["rustls"]
-native-tls = ["ureq/native-tls"]
+native-tls = ["ureq/native-tls", "ureq/platform-verifier"]
 rustls = [
     "ureq/rustls",
-    "ureq/native-tls" # induces rustls to use the OS-level root of trust
+    "ureq/native-tls", # induces rustls to use the OS-level root of trust
+    "ureq/platform-verifier" # use platform certificate store for validation
 ]
 
 [lints.clippy]

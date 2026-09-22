@@ -4,8 +4,6 @@ headerTitle: Operator High Availability
 description: Extend YBA High Availability to synchronize Kubernetes Operator custom resources across clusters
 headcontent: Synchronize operator-managed resources for high availability
 linkTitle: Operator HA
-tags:
-    feature: early-access
 menu:
   stable_yugabyte-platform:
     identifier: platform-operator-high-availability
@@ -14,7 +12,7 @@ menu:
 type: docs
 ---
 
-{{<tags/feature/ea idea="2460">}}YugabyteDB Anywhere (YBA) Operator high availability (HA) extends [YBA HA](../high-availability/) to synchronize Kubernetes Operator custom resources (CRs) and their associated secrets between active and standby YBA instances. This ensures that a standby YBA instance can resume management of operator-controlled universes after a failover, without requiring you to manually recreate CRs or secrets.
+YugabyteDB Anywhere (YBA) Operator high availability (HA) extends [YBA HA](../high-availability/) to synchronize Kubernetes Operator custom resources (CRs) and their associated secrets between active and standby YBA instances. This ensures that a standby YBA instance can resume management of operator-controlled universes after a failover, without requiring you to manually recreate CRs or secrets.
 
 Operator HA uses the same asynchronous backup and restore mechanism as YBA HA. Operator resources are included in the backups and restored automatically when a standby instance is promoted. In addition, improvements to YBA HA are automatically inherited by the operator, providing a unified experience for both platform state and operator-managed Kubernetes resources.
 

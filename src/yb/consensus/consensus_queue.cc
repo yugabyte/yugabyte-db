@@ -267,12 +267,11 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
       << queue_state_.ToString();
   CheckPeersInActiveConfigIfLeaderUnlocked();
 
-  // Reset last communication time with all peers to reset the clock on the
-  // failure timeout.
-  MonoTime now(MonoTime::Now());
+  // Leases are per leadership term. last_successful_communication_time is not: SetLeaderMode also
+  // runs on every config change, and restarting the failure clock there would make a dead follower
+  // look live again (blocking eviction and stepdown). Newly tracked peers already start at Now().
   for (const PeersMap::value_type& entry : peers_map_) {
     entry.second->ResetLeaderLeases();
-    entry.second->last_successful_communication_time = now;
   }
 }
 
@@ -1924,6 +1923,18 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
         peer_uuid, queue_state_.majority_replicated_op_id, peer->last_received);
   }
   return peer_can_be_leader;
+}
+
+bool PeerMessageQueue::IsPeerLive(const std::string& peer_uuid) const {
+  std::lock_guard lock(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  // Untracked peers are treated as live so a just-added PRE_VOTER cannot race past this check
+  // before the queue starts tracking it.
+  if (peer == nullptr) {
+    return true;
+  }
+  return MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time).ToSeconds() <=
+         FLAGS_follower_unavailable_considered_failed_sec;
 }
 
 OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {

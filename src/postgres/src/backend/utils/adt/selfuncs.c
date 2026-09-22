@@ -216,6 +216,25 @@ static bool get_actual_variable_endpoint(Relation heapRel,
 										 Datum *endpointDatum);
 static RelOptInfo *find_join_input_rel(PlannerInfo *root, Relids relids);
 
+/* YB declarations */
+static Selectivity yb_conditioned_cmp_selectivity(PlannerInfo *root,
+												  Oid opfamily,
+												  Oid collation,
+												  int cmpstrategy,
+												  Node *var,
+												  Oid vartype,
+												  Const *bound,
+												  List *baserestrictinfo);
+static void yb_clamp_scansel_by_other_side_bounds(PlannerInfo *root,
+												  Oid collation,
+												  Oid opfamily,
+												  VariableStatData *scanvar,
+												  Node *scanexpr,
+												  Oid scanvartype,
+												  VariableStatData *boundvar,
+												  bool clamp_end,
+												  Selectivity *fraction);
+
 
 /*
  *		eqsel			- Selectivity of "=" for any data types.
@@ -3129,6 +3148,21 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 		*rightend = selec;
 
 	/*
+	 * YB: range bounds enforced by the other input's baserestrictinfo are
+	 * hard limits on where the merge can stop, unlike the statistical
+	 * extrema above; fold them in before deciding which estimate to believe.
+	 */
+	if (!isgt)
+	{
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &leftvar, left, op_lefttype,
+											  &rightvar, true, leftend);
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &rightvar, right, op_righttype,
+											  &leftvar, true, rightend);
+	}
+
+	/*
 	 * Only one of the two "end" fractions can really be less than 1.0;
 	 * believe the smaller estimate and reset the other one to exactly 1.0. If
 	 * we get exactly equal estimates (as can easily happen with self-joins),
@@ -3157,6 +3191,17 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 						  leftmin, op_lefttype);
 	if (selec != DEFAULT_INEQ_SEL)
 		*rightstart = selec;
+
+	/* YB: likewise, enforced lower bounds raise the start fractions. */
+	if (!isgt)
+	{
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &leftvar, left, op_lefttype,
+											  &rightvar, false, leftstart);
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &rightvar, right, op_righttype,
+											  &leftvar, false, rightstart);
+	}
 
 	/*
 	 * Only one of the two "start" fractions can really be more than zero;
@@ -8438,7 +8483,6 @@ yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
 	Oid			outertype;
 	Oid			innertype;
 	Oid			innerltop;
-	Oid			cmpop;
 	bool		isgt;
 	VariableStatData innervardata;
 	Datum		innermin;
@@ -8447,11 +8491,6 @@ yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
 	int16		typlen;
 	bool		typbyval;
 	Const	   *boundconst;
-	Expr	   *cmpexpr;
-	List	   *condclauses;
-	Selectivity sel_restrict;
-	Selectivity sel_cond;
-	Selectivity result;
 
 	if (!is_opclause(clause))
 		return -1.0;
@@ -8494,13 +8533,6 @@ yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
 	if (!OidIsValid(innerltop))
 		return -1.0;
 
-	/* "outer < bound" (ASC) / "outer > bound" (DESC): leading-mismatch test. */
-	cmpop = get_opfamily_member(opfamily, outertype, innertype,
-								isgt ? BTGreaterStrategyNumber :
-								BTLessStrategyNumber);
-	if (!OidIsValid(cmpop))
-		return -1.0;
-
 	examine_variable(root, innervar, 0, &innervardata);
 	if (!get_variable_range(root, &innervardata, innerltop, collation,
 							&innermin, &innermax))
@@ -8515,30 +8547,259 @@ yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
 						   false, typbyval);
 	ReleaseVariableStats(innervardata);
 
-	/* Outer var on the left, the inner bound on the right. */
+	/*
+	 * Leading-mismatch fraction: P(outer < inner_min | outer restrictions)
+	 * for ASC (outer > inner_max for DESC).
+	 */
+	return yb_conditioned_cmp_selectivity(root, opfamily, collation,
+										  isgt ? BTGreaterStrategyNumber :
+										  BTLessStrategyNumber,
+										  outervar, outertype, boundconst,
+										  outer_baserestrictinfo);
+}
+
+/*
+ * yb_join_key_bound_from_rinfo
+ *	  If 'rinfo' is an enforced range restriction "var OP Const" (or
+ *	  commuted) on 'varnode', with OP in the merge ordering's operator
+ *	  family 'opfamily' and comparing under its collation 'collation',
+ *	  return the bound Const when it caps the requested side: upper
+ *	  (<, <=, =) when 'upper' is true, lower (>, >=, =) otherwise.
+ *	  '*strict' is set to true for < / >.
+ */
+static Const *
+yb_join_key_bound_from_rinfo(RestrictInfo *rinfo, Node *varnode,
+							 Oid opfamily, Oid collation, bool upper,
+							 bool *strict)
+{
+	OpExpr	   *opclause;
+	Node	   *arg1;
+	Node	   *arg2;
+	Const	   *bound;
+	bool		varonleft;
+	int			strategy;
+
+	if (rinfo->pseudoconstant || !IsA(rinfo->clause, OpExpr))
+		return NULL;
+	opclause = (OpExpr *) rinfo->clause;
+	if (list_length(opclause->args) != 2)
+		return NULL;
+
+	arg1 = (Node *) linitial(opclause->args);
+	while (arg1 && IsA(arg1, RelabelType))
+		arg1 = (Node *) ((RelabelType *) arg1)->arg;
+	arg2 = (Node *) lsecond(opclause->args);
+	while (arg2 && IsA(arg2, RelabelType))
+		arg2 = (Node *) ((RelabelType *) arg2)->arg;
+
+	if (arg1 && arg2 && equal(arg1, varnode) && IsA(arg2, Const))
+	{
+		varonleft = true;
+		bound = (Const *) arg2;
+	}
+	else if (arg1 && arg2 && equal(arg2, varnode) && IsA(arg1, Const))
+	{
+		varonleft = false;
+		bound = (Const *) arg1;
+	}
+	else
+		return NULL;
+
+	if (bound->constisnull)
+		return NULL;
+
+	/*
+	 * The comparison has to sort the way the merge does: another collation
+	 * orders the same values differently, so its bound says nothing about
+	 * where the merge may start or stop.
+	 */
+	if (opclause->inputcollid != collation)
+		return NULL;
+
+	/*
+	 * Interpret the operator in the merge ordering's opfamily; operators
+	 * from other families need not agree with the sort order.
+	 */
+	strategy = get_op_opfamily_strategy(opclause->opno, opfamily);
+	if (strategy == InvalidStrategy)
+		return NULL;
+	if (!varonleft)
+		strategy = BTMaxStrategyNumber + 1 - strategy;	/* commute */
+
+	switch (strategy)
+	{
+		case BTLessStrategyNumber:
+		case BTLessEqualStrategyNumber:
+			if (!upper)
+				return NULL;
+			*strict = (strategy == BTLessStrategyNumber);
+			break;
+		case BTGreaterStrategyNumber:
+		case BTGreaterEqualStrategyNumber:
+			if (upper)
+				return NULL;
+			*strict = (strategy == BTGreaterStrategyNumber);
+			break;
+		default:				/* BTEqualStrategyNumber bounds both sides */
+			*strict = false;
+			break;
+	}
+
+	return bound;
+}
+
+/*
+ * yb_scansel_baserel_var
+ *	  Peel RelabelType from a VariableStatData's expression, returning NULL
+ *	  unless its relation is a base relation, i.e. one whose
+ *	  baserestrictinfo clauses are enforced at its scan.
+ */
+static Node *
+yb_scansel_baserel_var(VariableStatData *vardata)
+{
+	Node	   *node;
+
+	if (vardata->rel == NULL || vardata->rel->relid == 0 ||
+		(vardata->rel->reloptkind != RELOPT_BASEREL &&
+		 vardata->rel->reloptkind != RELOPT_OTHER_MEMBER_REL))
+		return NULL;
+
+	node = vardata->var;
+	while (node && IsA(node, RelabelType))
+		node = (Node *) ((RelabelType *) node)->arg;
+	return node;
+}
+
+/*
+ * yb_conditioned_cmp_selectivity
+ *	  P(var CMP bound | baserestrictinfo): selectivity of comparing 'var'
+ *	  against the Const 'bound' with the opfamily operator for 'cmpstrategy',
+ *	  conditioned on the variable's relation restrictions.
+ *
+ * clauselist_selectivity() range-merges the comparison with restrictions on
+ * the same column, so a restriction implying (or contradicting) the
+ * comparison yields ~1 (~0) instead of double-counting it; with no
+ * restrictions this is the plain comparison selectivity.  Callers ensure
+ * 'var' has usable statistics.  Returns -1.0 when the opfamily has no
+ * (vartype, boundtype) operator or the restrictions are estimated
+ * impossible.
+ */
+static Selectivity
+yb_conditioned_cmp_selectivity(PlannerInfo *root, Oid opfamily, Oid collation,
+							   int cmpstrategy, Node *var, Oid vartype,
+							   Const *bound, List *baserestrictinfo)
+{
+	Oid			cmpop;
+	Expr	   *cmpexpr;
+	List	   *condclauses;
+	Selectivity sel_restrict;
+	Selectivity sel_cond;
+	Selectivity result;
+
+	cmpop = get_opfamily_member(opfamily, vartype, bound->consttype,
+								cmpstrategy);
+	if (!OidIsValid(cmpop))
+		return -1.0;
+
 	cmpexpr = make_opclause(cmpop, BOOLOID, false,
-							(Expr *) outervar, (Expr *) boundconst,
+							(Expr *) var, (Expr *) bound,
 							InvalidOid, collation);
 
-	sel_restrict = clauselist_selectivity(root, outer_baserestrictinfo,
-										  0, JOIN_INNER, NULL);
+	/*
+	 * Both estimates must come from the same model for their ratio to be a
+	 * conditional probability, so extended statistics are kept out of both:
+	 * they apply to a list of two or more RestrictInfos, which the numerator
+	 * and the denominator are not both guaranteed to be.
+	 */
+	sel_restrict = clauselist_selectivity_ext(root, baserestrictinfo,
+											  0, JOIN_INNER, NULL, false);
 	if (sel_restrict <= 0.0)
 		return -1.0;
 
-	/*
-	 * Append the leading-mismatch comparison to the outer restriction so
-	 * clauselist_selectivity() range-merges it with any restriction on the
-	 * same column, then normalize by the restriction's own selectivity to get
-	 * the conditional fraction.  list_copy keeps the caller's list intact.
-	 */
-	condclauses = lappend(list_copy(outer_baserestrictinfo), cmpexpr);
-	sel_cond = clauselist_selectivity(root, condclauses, 0, JOIN_INNER, NULL);
+	/* list_copy keeps the caller's list intact. */
+	condclauses = lappend(list_copy(baserestrictinfo), cmpexpr);
+	sel_cond = clauselist_selectivity_ext(root, condclauses, 0, JOIN_INNER,
+										  NULL, false);
 	list_free(condclauses);
 
 	result = sel_cond / sel_restrict;
-	if (result < 0.0)
-		result = 0.0;
-	if (result > 1.0)
-		result = 1.0;
+	CLAMP_PROBABILITY(result);
 	return result;
+}
+
+/*
+ * yb_clamp_scansel_by_other_side_bounds
+ *	  Tighten a mergejoinscansel fraction using enforced range bounds on the
+ *	  other input's join variable.
+ *
+ * The stock estimate takes the other side's extremum from whole-column
+ * statistics, so a restriction such as "other.k < c" is invisible there and
+ * the scanned side is charged all the way to the statistical maximum even
+ * though the merge is guaranteed to stop at the enforced bound.  Each bound
+ * folds in monotonically (Min into "end" fractions, Max into "start"
+ * fractions) as P(scanvar CMP bound | scanvar's own restrictions), so a
+ * same-column restriction on the scanned side, already reflected in its row
+ * estimate, is not double-counted.  Ascending (!isgt) orders only, where
+ * upper bounds map to scan ends and lower bounds to scan starts.
+ *
+ * 'scanexpr' is the scanned side of the merge clause as the planner built it,
+ * of declared type 'scanvartype'; 'scanvar' holds its statistics, whose var
+ * examine_variable() has stripped of any binary-compatible relabeling.
+ */
+static void
+yb_clamp_scansel_by_other_side_bounds(PlannerInfo *root, Oid collation,
+									  Oid opfamily,
+									  VariableStatData *scanvar,
+									  Node *scanexpr,
+									  Oid scanvartype,
+									  VariableStatData *boundvar,
+									  bool clamp_end,
+									  Selectivity *fraction)
+{
+	Node	   *boundnode;
+	List	   *scanrestrict = NIL;
+	ListCell   *lc;
+
+	boundnode = yb_scansel_baserel_var(boundvar);
+	if (boundnode == NULL)
+		return;
+
+	if (yb_scansel_baserel_var(scanvar) != NULL)
+		scanrestrict = scanvar->rel->baserestrictinfo;
+
+	foreach(lc, boundvar->rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		Const	   *bound;
+		bool		strict;
+		int			cmpstrategy;
+		Selectivity selec;
+
+		bound = yb_join_key_bound_from_rinfo(rinfo, boundnode, opfamily,
+											 collation, clamp_end, &strict);
+		if (bound == NULL)
+			continue;
+
+		/*
+		 * The scan runs until passing the other side's last value (end), or
+		 * skips values below its first one (start): a strict upper bound
+		 * caps the end at P(scanvar < C), a strict lower bound floors the
+		 * start at P(scanvar <= C), and non-strict bounds map the other way
+		 * around.
+		 */
+		cmpstrategy = (strict == clamp_end) ? BTLessStrategyNumber :
+			BTLessEqualStrategyNumber;
+
+		selec = yb_conditioned_cmp_selectivity(root, opfamily, collation,
+											   cmpstrategy,
+											   scanexpr, scanvartype,
+											   bound, scanrestrict);
+		if (selec < 0.0)
+			continue;
+
+		if (clamp_end)
+			*fraction = Min(*fraction, selec);
+		else
+			*fraction = Max(*fraction, selec);
+	}
 }

@@ -134,6 +134,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
@@ -257,6 +258,16 @@ DEFINE_NON_RUNTIME_int32(data_size_metric_updater_interval_sec, 60,
              "The interval time for the data size metric updater background task. "
              "If set to 0, it disables the background task.");
 
+DEFINE_NON_RUNTIME_int32(docdb_sst_stats_resync_interval_sec, 300,
+             "The interval at which each tablet's DocDB SST statistics aggregate is recomputed "
+             "from its whole live file set, correcting for file-set changes that produce no "
+             "RocksDB flush or compaction event (tablet open, remote bootstrap, snapshot restore, "
+             "files inherited by a split). The first pass runs one interval after tserver start; "
+             "a tablet opened later waits until the next pass. Until then, its aggregate covers "
+             "only files written since it opened and no consumer reads it. If set to 0, it "
+             "disables the background task, which leaves the aggregate unusable. Only has an "
+             "effect when --docdb_enable_sst_stats_collector is set.");
+
 DEFINE_UNKNOWN_int32(send_wait_for_report_interval_ms, 60000,
              "The tick interval time to trigger updating all transaction coordinators with wait-for"
              " relationships.");
@@ -331,6 +342,7 @@ DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
 
+DECLARE_bool(docdb_enable_sst_stats_collector);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -495,6 +507,40 @@ void TSTabletManager::VerifyTabletData() {
                        << ": " << s;
         }
       }
+    }
+  }
+}
+
+void TSTabletManager::ResyncSstStats() {
+  if (!sst_stats_resync_pool_) {
+    return;
+  }
+  if (sst_stats_resync_active_.exchange(true)) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300)
+        << "Skipping SST statistics resync: the previous pass is still running";
+    return;
+  }
+  const auto status = sst_stats_resync_pool_->SubmitFunc([this]() {
+    ResyncSstStatsForAllTablets();
+    sst_stats_resync_active_.store(false);
+  });
+  if (!status.ok()) {
+    sst_stats_resync_active_.store(false);
+    YB_LOG_EVERY_N_SECS(WARNING, 60) << "Failed to schedule SST statistics resync: " << status;
+  }
+}
+
+void TSTabletManager::ResyncSstStatsForAllTablets() {
+  for (const TabletPeerPtr& peer : GetTabletPeers()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    // Expected to fail on a tablet that starts shutting down mid-pass; the next pass covers it.
+    const auto status = tablet->ResyncSstStats();
+    if (!status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Failed to resync SST statistics of " << peer->tablet_id() << ": " << status;
     }
   }
 }
@@ -926,6 +972,15 @@ Status TSTabletManager::Init() {
   data_size_metric_updater_ = std::make_unique<rpc::Poller>(
       LogPrefix(), [this]() { return ts_data_size_metrics_->Update(); });
 
+  if (FLAGS_docdb_enable_sst_stats_collector) {
+    RETURN_NOT_OK(ThreadPoolBuilder("sst-stats-resync")
+                      .set_min_threads(1)
+                      .set_max_threads(1)
+                      .Build(&sst_stats_resync_pool_));
+    sst_stats_resync_poller_ = std::make_unique<rpc::Poller>(
+        LogPrefix(), std::bind(&TSTabletManager::ResyncSstStats, this));
+  }
+
   metrics_emitter_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
 
@@ -1014,6 +1069,11 @@ Status TSTabletManager::Start() {
   StartScheduledTask(
       data_size_metric_updater_.get(), "Data size metric updater",
       FLAGS_data_size_metric_updater_interval_sec * 1s);
+  if (sst_stats_resync_poller_) {
+    StartScheduledTask(
+        sst_stats_resync_poller_.get(), "SST statistics resync",
+        FLAGS_docdb_sst_stats_resync_interval_sec * 1s);
+  }
 
   if (waiting_txn_registry_) {
     waiting_txn_registry_poller_->Start(
@@ -2660,6 +2720,10 @@ void TSTabletManager::StartShutdown() {
 
   data_size_metric_updater_->Shutdown();
 
+  if (sst_stats_resync_poller_) {
+    sst_stats_resync_poller_->Shutdown();
+  }
+
   metrics_emitter_->Shutdown();
 
   metrics_cleaner_->Shutdown();
@@ -2730,6 +2794,12 @@ void TSTabletManager::CompleteShutdown() {
 
   if (snapshot_cleanup_pool_) {
     snapshot_cleanup_pool_->Shutdown();
+  }
+
+  // After the poller shut down in StartShutdown, so nothing is submitted behind this; waits for a
+  // sweep already walking the tablet peers.
+  if (sst_stats_resync_pool_) {
+    sst_stats_resync_pool_->Shutdown();
   }
   if (raft_pool_) {
     raft_pool_->Shutdown();
@@ -3408,22 +3478,25 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
 
   // Tiered storage: if a target tier was requested (e.g. from the tablespace's storage_tier),
   // restrict the candidate disks to that tier so the new tablet's home dir (path_id 0) lands
-  // on the right tier. If the tier isn't configured on this node, fall back to all disks rather
-  // than failing tablet creation outright.
+  // on the right tier. Tables with no tablespace preference default to kDefaultStorageTier
+  // ("ssd") rather than load-balancing across every configured disk regardless of tier, so an
+  // hdd disk with fewer tablets doesn't silently steal placement from ssd. If the resolved tier
+  // isn't configured on this node, fall back to all disks rather than failing tablet creation
+  // outright.
   // TODO(TieredStorage): wire up LB detection/reconciliation for tier-violating replicas.
   // For this fallback to be safe long-term, the master's load balancer needs to detect a
   // replica that isn't respecting its tablespace's tier placement and reconcile it
   // (locally via AlterTabletTier, or RBS).
+  const std::string effective_target_tier =
+      target_tier.empty() ? kDefaultStorageTier : target_tier;
   std::vector<string> candidate_dirs = data_root_dirs;
-  if (!target_tier.empty()) {
-    auto tier_dirs = fs_manager->GetDataRootDirsForTier(target_tier);
-    if (tier_dirs.empty()) {
-      LOG(WARNING) << Format(
-          "No data roots configured for target storage tier '$0' on this node; falling back to "
-          "default disk selection for tablet $1", target_tier, tablet_id);
-    } else {
-      candidate_dirs = std::move(tier_dirs);
-    }
+  auto tier_dirs = fs_manager->GetDataRootDirsForTier(effective_target_tier);
+  if (tier_dirs.empty()) {
+    LOG(WARNING) << Format(
+        "No data roots configured for target storage tier '$0' on this node; falling back to "
+        "default disk selection for tablet $1", effective_target_tier, tablet_id);
+  } else {
+    candidate_dirs = std::move(tier_dirs);
   }
 
   // Find the data directory with the least count of tablets for this table.

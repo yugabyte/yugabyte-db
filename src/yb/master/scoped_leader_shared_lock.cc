@@ -102,13 +102,13 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
 }
 
 Status ScopedLeaderSharedLock::Lock() NO_THREAD_SAFETY_ANALYSIS {
-  auto uuid = catalog_->master_->fs_manager()->uuid();
   VLOG(4) << "Locking leader shared lock";
   if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
     // Consensus and other internal fields should not be checked when in shell mode as they may be
     // in transition.
     return STATUS_SUBSTITUTE(IllegalState,
-        "Catalog manager of $0 is in shell mode, not the leader.", uuid);
+        "Catalog manager of $0 is in shell mode, not the leader.",
+        catalog_->master_->instance_pb().permanent_uuid());
   }
 
   // Check if the catalog manager is the leader.

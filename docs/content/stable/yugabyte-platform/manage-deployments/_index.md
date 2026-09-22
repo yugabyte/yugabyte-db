@@ -10,7 +10,10 @@ menu:
     weight: 640
 type: indexpage
 ---
-To see your deployed universes, navigate to **Dashboard** or **Universes**. To view a universe, select it in the list.
+
+Upgrade the database and operating system on universe nodes, troubleshoot and manage nodes, monitor universe tasks, and pause or delete universes.
+
+For scaling and configuration changes, refer to [Scale and edit universes](../scale-deployments/).
 
 {{<index/block>}}
 
@@ -21,22 +24,16 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     icon="fa-thin fa-bandage">}}
 
   {{<index/item
+    title="Reprovision universe nodes"
+    body="Re-apply OS-level provisioning and migrate legacy nodes to node agent."
+    href="reprovision-nodes/"
+    icon="fa-thin fa-arrows-rotate">}}
+
+  {{<index/item
     title="Upgrade database"
     body="Upgrade YugabyteDB software powering your universes."
     href="upgrade-software/"
     icon="fa-thin fa-cloud-plus">}}
-
-  {{<index/item
-    title="Modify a universe"
-    body="Scale and configure universes."
-    href="edit-universe/"
-    icon="fa-thin fa-pen">}}
-
-  {{<index/item
-    title="Pause, resume, and delete universes"
-    body="Pause or delete a universe that is not needed."
-    href="delete-universe/"
-    icon="fa-thin fa-traffic-light-go">}}
 
   {{<index/item
     title="Troubleshoot and manage nodes"
@@ -44,16 +41,16 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     href="remove-nodes/"
     icon="fa-thin fa-wrench">}}
 
-   {{<index/item
+  {{<index/item
     title="Monitor tasks"
-    body="Monitor and manage tasks."
+    body="Monitor and manage universe tasks."
     href="retry-failed-task/"
     icon="fa-thin fa-magnifying-glass">}}
 
   {{<index/item
-    title="xCluster Replication"
-    body="Replicate data between independent YugabyteDB universes."
-    href="xcluster-replication/"
-    icon="fa-thin fa-clouds">}}
+    title="Pause, resume, and delete universes"
+    body="Pause or delete a universe that is not needed."
+    href="delete-universe/"
+    icon="fa-thin fa-traffic-light-go">}}
 
 {{</index/block>}}

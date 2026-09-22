@@ -15,36 +15,28 @@
 > to the `pgrx` framework and very subject to change between versions. While you may use this, please do it with caution.
 
 */
-use crate::pgrx_sql::PgrxSql;
-use crate::to_sql::ToSqlFn;
 use crate::SqlGraphEntity;
-
+use crate::pgrx_sql::PgrxSql;
 /// Represents configuration options for tuning the SQL generator.
 ///
 /// When an item that can be rendered to SQL has these options at hand, they should be
 /// respected. If an item does not have them, then it is not expected that the SQL generation
 /// for those items can be modified.
 ///
-/// The default configuration has `enabled` set to `true`, and `callback` to `None`, which indicates
-/// that the default SQL generation behavior will be used. These are intended to be mutually exclusive
-/// options, so `callback` should only be set if generation is enabled.
+/// The default configuration has `enabled` set to `true`, which indicates that the default SQL
+/// generation behavior will be used.
 ///
 /// When `enabled` is false, no SQL is generated for the item being configured.
 ///
-/// When `callback` has a value, the corresponding `ToSql` implementation should invoke the
-/// callback instead of performing their default behavior.
 #[derive(Default, Clone)]
-pub struct ToSqlConfigEntity {
+pub struct ToSqlConfigEntity<'a> {
     pub enabled: bool,
-    pub callback: Option<ToSqlFn>,
-    pub content: Option<&'static str>,
+    pub content: Option<&'a str>,
 }
-impl ToSqlConfigEntity {
-    /// Helper used to implement traits (`Eq`, `Ord`, etc) despite `ToSqlFn` not
-    /// having an implementation for them.
+impl ToSqlConfigEntity<'_> {
     #[inline]
-    fn fields(&self) -> (bool, Option<&str>, Option<usize>) {
-        (self.enabled, self.content, self.callback.map(|f| f as usize))
+    fn fields(&self) -> (bool, Option<&str>) {
+        (self.enabled, self.content)
     }
     /// Given a SqlGraphEntity, this function converts it to SQL based on the current configuration.
     ///
@@ -57,11 +49,9 @@ impl ToSqlConfigEntity {
     /// ```
     pub fn to_sql(
         &self,
-        entity: &SqlGraphEntity,
-        context: &PgrxSql,
+        entity: &SqlGraphEntity<'_>,
+        context: &PgrxSql<'_>,
     ) -> Option<eyre::Result<String>> {
-        use eyre::{eyre, WrapErr};
-
         if !self.enabled {
             return Some(Ok(format!(
                 "\n\
@@ -86,60 +76,36 @@ impl ToSqlConfigEntity {
             )));
         }
 
-        if let Some(callback) = self.callback {
-            let content = callback(entity, context)
-                .map_err(|e| eyre!(e))
-                .wrap_err("Failed to run specified `#[pgrx(sql = path)] function`");
-            return match content {
-                Ok(content) => {
-                    let module_pathname = &context.get_module_pathname();
-
-                    let content = content.replace("@MODULE_PATHNAME@", module_pathname);
-
-                    Some(Ok(format!(
-                        "\n\
-                        {sql_anchor_comment}\n\
-                        {content}\
-                    ",
-                        content = content,
-                        sql_anchor_comment = entity.sql_anchor_comment(),
-                    )))
-                }
-                Err(e) => Some(Err(e)),
-            };
-        }
-
         None
     }
 }
 
-impl std::cmp::PartialOrd for ToSqlConfigEntity {
+impl std::cmp::PartialOrd for ToSqlConfigEntity<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
-impl std::cmp::Ord for ToSqlConfigEntity {
+impl std::cmp::Ord for ToSqlConfigEntity<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.fields().cmp(&other.fields())
     }
 }
-impl std::cmp::PartialEq for ToSqlConfigEntity {
+impl std::cmp::PartialEq for ToSqlConfigEntity<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.fields() == other.fields()
     }
 }
-impl std::cmp::Eq for ToSqlConfigEntity {}
-impl std::hash::Hash for ToSqlConfigEntity {
+impl std::cmp::Eq for ToSqlConfigEntity<'_> {}
+impl std::hash::Hash for ToSqlConfigEntity<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.fields().hash(state);
     }
 }
-impl std::fmt::Debug for ToSqlConfigEntity {
+impl std::fmt::Debug for ToSqlConfigEntity<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let (enabled, content, callback) = self.fields();
+        let (enabled, content) = self.fields();
         f.debug_struct("ToSqlConfigEntity")
             .field("enabled", &enabled)
-            .field("callback", &callback)
             .field("content", &content)
             .finish()
     }

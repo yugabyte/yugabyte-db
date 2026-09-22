@@ -64,7 +64,7 @@ public class PlatformScheduler {
               // unable to run their cached plans, and queries in flight hold the locks its
               // DROP SCHEMA waits for.
               shouldRun =
-                  !shutdownHookHandler.isShutdown()
+                  !shutdownHookHandler.isShutdownInitiated()
                       && !HighAvailabilityConfig.isSwitchOverInProgress()
                       && (runOnFollower || !HighAvailabilityConfig.isFollower())
                       && isRunning.compareAndSet(false, true);
@@ -74,7 +74,7 @@ public class PlatformScheduler {
                 runnable.run();
               } finally {
                 isRunning.set(false);
-                if (shutdownHookHandler.isShutdown()) {
+                if (shutdownHookHandler.isShutdownInitiated()) {
                   synchronized (lock) {
                     lock.notify();
                   }

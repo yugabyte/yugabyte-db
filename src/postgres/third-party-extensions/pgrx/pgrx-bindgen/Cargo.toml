@@ -1,9 +1,9 @@
 [package]
 name = "pgrx-bindgen"
 description = "additional bindgen support for pgrx"
-version = "0.14.1"
-edition = "2021"
-license = "MIT"
+version = "0.18.1"
+edition.workspace = true
+license.workspace = true
 homepage = "https://github.com/pgcentralfoundation/pgrx"
 repository = "https://github.com/pgcentralfoundation/pgrx"
 documentation = "https://docs.rs/pgrx-bindgen"
@@ -17,8 +17,8 @@ regex.workspace = true
 syn.workspace = true
 walkdir.workspace = true
 
-bindgen = { version = "0.71.1", default-features = false, features = ["experimental", "runtime"] }
+bindgen = { version = "0.72.1", default-features = false, features = ["experimental", "runtime"] }
 clang-sys = { version = "1", features = ["clang_6_0", "runtime"] }
-quote = "1.0.40"
-shlex = "1.3" # shell lexing, also used by many of our deps
+quote = "1.0.45"
+shlex = "2.0" # shell lexing, also used by many of our deps
 cc = "1.2"
