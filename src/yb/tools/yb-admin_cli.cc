@@ -540,7 +540,7 @@ std::vector<std::string> ClusterAdminCli::GetSuggestedCommands(const std::string
   }
 
   // Last resort: an abbreviation like "list_server" is neither a prefix of any command nor within
-  // the edit-distance tolerance of one (distance 7 to "list_tablet_servers"), so match the
+  // the edit-distance tolerance of one (distance 8 to "list_tablet_servers"), so match the
   // operation's '_'-separated tokens against each command's instead.
   constexpr size_t kMaxTokenSuggestions = 5;
   std::vector<std::string> visible_names;
