@@ -1468,6 +1468,7 @@ void Tablet::RegularDbFilesChanged() {
 void Tablet::SetCleanupPool(
     ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
   snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+  vector_indexes_->SetScheduler(scheduler);
 
   if (!transaction_participant_) {
     return;
@@ -1808,6 +1809,11 @@ void Tablet::CompleteShutdown() {
       << "CompleteShutdown called without a preceding StartShutdown";
 
   snapshots_->CompleteShutdown();
+
+  // Final, unlike the vector index shutdown below, which a truncate or a restore also runs before
+  // re-opening the storages.
+  vector_indexes_->StopBackfillRetry();
+
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
@@ -1885,6 +1891,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
   };
 
   op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
+
+  // Blocking operations stay unavailable until that pause is released, so a test can park a task
+  // that acquires one, e.g. a vector index backfill, until here to make it fail with TryAgain.
+  TEST_SYNC_POINT("Tablet::StartShutdownStorages:BlockingPaused");
 
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
