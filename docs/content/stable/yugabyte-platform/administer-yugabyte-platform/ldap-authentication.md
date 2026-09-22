@@ -249,6 +249,8 @@ To map groups to roles, on the **Groups** tab, do the following:
 
 #### Assign SuperAdmin via group mapping
 
+Available in YugabyteDB Anywhere v2026.1.2.0 or later.
+
 By default, you can't assign the SuperAdmin role to an LDAP group or via role bindings to LDAP users. To allow this, set the **Allow SuperAdmin in LDAP/OIDC group and user role mappings** Global Runtime Configuration option (config key `yb.security.allow_superadmin_user_group_mapping`) to true. Refer to [Manage runtime configuration settings](../manage-runtime-config/). Only a Super Admin can change this global setting, and only a Super Admin can assign the SuperAdmin role when the setting is enabled.
 
 Keep this setting disabled unless you require SuperAdmin access for LDAP users. Prefer mapping a dedicated LDAP group to SuperAdmin rather than assigning the role broadly.
