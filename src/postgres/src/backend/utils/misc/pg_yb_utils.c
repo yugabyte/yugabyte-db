@@ -9363,12 +9363,12 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 		if (tablet->is_hash_partitioned)
 		{
 			values[6] =
-				UInt16GetDatum(YBCDecodeMultiColumnHashLeftBound(tablet_descriptor->partition_key_start,
-																 tablet_descriptor->partition_key_start_len));	/* start_hash is
+				Int32GetDatum(YBCDecodeMultiColumnHashLeftBound(tablet_descriptor->partition_key_start,
+																tablet_descriptor->partition_key_start_len));	/* start_hash is
 																												 * inclusive */
 			values[7] =
-				UInt16GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
-																  tablet_descriptor->partition_key_end_len) + 1);	/* end_hash is exclusive */
+				Int32GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
+																 tablet_descriptor->partition_key_end_len) + 1);	/* end_hash is exclusive */
 			nulls[10] = true;
 			nulls[11] = true;
 		}
