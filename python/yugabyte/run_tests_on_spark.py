@@ -138,9 +138,10 @@ REPEAT_FAILURE_LIMIT = 50
 # than the lane they ride on. Past the limit a sample of this size is repeated.
 NEW_TEST_LIMIT = 50
 
-# Least share of this build's tests the previous launch of the lane has to have reported for its
-# test list to be used as the baseline for "new". A launch that ended early reports a fraction of
-# its tests, and every test it never reached would otherwise read as new.
+# Least share of this build's tests the known-test list (--known_test_list) has to cover for it to
+# be used as the baseline for "new". The pipeline writes the list from the previous launch of the
+# lane; one that ended early reported a fraction of its tests, and every test it never reached
+# would otherwise read as new.
 NEW_TEST_MIN_KNOWN_RATIO = 0.9
 
 # The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
@@ -1986,6 +1987,14 @@ def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
 # failures do not touch the exit code, and any error in this function is logged and dropped, so a
 # lane that would have passed still passes.
 #
+# "Has not run before" is answered by the pipeline, not by this process: csi/lib.groovy in
+# jenkins-helpers reads the previous launch of the lane from CSI (the same name and version
+# attribute, completed, every planned test reported) and writes its tests' uniqueIds, one per
+# line, to a file the build passes here as --known_test_list, the way rerun_list.txt reaches
+# --test_list. No file means no comparable previous launch (or an older pipeline), and nothing is
+# repeated. Every CSI read for this feature lives in the pipeline, beside the other reads of launch
+# history; the harness only writes to CSI, as it always has.
+#
 # main_pass_cancelled is whether the main pass's Spark job group was cancelled, read right after
 # that pass: the re-run jobs that follow keep their own groups in the same set.
 def run_new_test_repetitions(args: argparse.Namespace,
@@ -2006,10 +2015,14 @@ def run_new_test_repetitions(args: argparse.Namespace,
         logging.info("New-test repetitions: skipped, the main pass was cancelled")
         return
 
-    known = csi_report.previous_launch_unique_ids()
-    if known is None:
-        logging.info("New-test repetitions: skipped, no previous launch of this lane to compare "
-                     "against")
+    if not args.known_test_list:
+        logging.info("New-test repetitions: skipped, no known-test list was passed (the pipeline "
+                     "writes one only when the lane has a comparable previous launch)")
+        return
+    known = load_known_test_list(args.known_test_list)
+    if not known:
+        logging.info("New-test repetitions: skipped, the known-test list %s is empty",
+                     args.known_test_list)
         return
     if len(known) < NEW_TEST_MIN_KNOWN_RATIO * len(results):
         logging.info("New-test repetitions: skipped, the previous launch reported %d tests "
@@ -2083,6 +2096,21 @@ def run_new_test_repetitions(args: argparse.Namespace,
             # this build.
             logging.info("New test failed %d of its %d runs in this build: %s",
                          num_failures, reps, test_descriptor.descriptor_str_without_attempt_index)
+
+
+# The tests the previous launch of this lane reported, as the pipeline wrote them: one uniqueId
+# per line, which is the descriptor string without an attempt index (csi_report.create_test sets
+# the item's uniqueId to exactly that), so the comparison is on the raw string and no descriptor
+# is parsed or reconstructed.
+def load_known_test_list(path: str) -> Set[str]:
+    known: Set[str] = set()
+    with open(path, 'r') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if line:
+                known.add(line)
+    logging.info("Loaded %d known tests from %s", len(known), path)
+    return known
 
 
 def skip_disabled_tests(test_descriptors: List[yb_dist_tests.TestDescriptor],
@@ -2177,8 +2205,14 @@ def main() -> None:
                         help='Total number of times to run a test that is new on this lane: after '
                              'the main pass, every test that this lane has not run before and '
                              'that passed here is run this many times minus one more. 0 or 1 '
-                             'disables it. Requires CSI, which supplies the previous launch of '
-                             'the lane the new tests are new against.')
+                             'disables it. Needs --known_test_list to say which tests the lane '
+                             'has run before.')
+    parser.add_argument('--known_test_list',
+                        help='A file path with the tests the previous launch of this lane '
+                             'reported, one uniqueId (descriptor without attempt index) per '
+                             'line, written by the pipeline from CSI. The baseline '
+                             '--new_test_repetitions calls a test new against; without it '
+                             'nothing is repeated.')
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')

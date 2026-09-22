@@ -1686,7 +1686,8 @@ def test_baseline_cancellation_does_not_stop_the_diffs_resubmission(
 def make_args(**overrides: Any) -> Any:
     """main()'s parsed arguments, as far as run_new_test_repetitions reads them."""
     args = dict(new_test_repetitions=20, num_repetitions=1, test_list=None, ignore_list=None,
-                max_tests=None, test_filter_re=None, test_conf=None)
+                max_tests=None, test_filter_re=None, test_conf=None,
+                known_test_list='/tmp/known_list.txt')
     args.update(overrides)
     return types.SimpleNamespace(**args)
 
@@ -1694,8 +1695,8 @@ def make_args(**overrides: Any) -> Any:
 def capture_submissions(monkeypatch: pytest.MonkeyPatch,
                         known: Any) -> List[Any]:
     """
-    Fake out the previous launch's test list and the Spark job, and record every submission as
-    (descriptors, rerun, env_vars).
+    Fake out the known-test list the pipeline wrote and the Spark job, and record every submission
+    as (descriptors, rerun, env_vars).
     """
     submissions: List[Any] = []
 
@@ -1712,7 +1713,7 @@ def capture_submissions(monkeypatch: pytest.MonkeyPatch,
         return results_for(pending)
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
-    monkeypatch.setattr(rts.csi_report, "previous_launch_unique_ids", lambda: known)
+    monkeypatch.setattr(rts, "load_known_test_list", lambda path: known)
     return submissions
 
 
@@ -1723,8 +1724,9 @@ def test_only_new_and_passing_tests_are_repeated(monkeypatch: pytest.MonkeyPatch
     repeating only the passing ones is what makes retry_kind=new_test_repetition mean "the first
     attempt passed".
     """
-    # What the previous launch of the lane reported. The Gone ones are tests it ran that this
-    # build no longer has, which is why its list can be longer than this run's.
+    # What the previous launch of the lane reported, as the pipeline wrote it. The Gone ones are
+    # tests it ran that this build no longer has, which is why its list can be longer than this
+    # run's.
     known = {"tests-x/a-test:::A.Old", "tests-x/a-test:::A.OldFlaky",
              "tests-x/a-test:::A.Gone1", "tests-x/a-test:::A.Gone2"}
     submissions = capture_submissions(monkeypatch, known)
@@ -1786,14 +1788,39 @@ def test_two_results_for_one_test_repeat_it_once(monkeypatch: pytest.MonkeyPatch
     assert len(descriptors) == 2
 
 
-def test_nothing_is_repeated_without_a_previous_launch(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No baseline, no notion of new: the first launch of a lane must not repeat all 12k tests."""
-    submissions = capture_submissions(monkeypatch, None)
+def test_nothing_is_repeated_without_a_known_test_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    No baseline, no notion of new: the first launch of a lane must not repeat all 12k tests. The
+    pipeline writes no list when the lane has no comparable previous launch, and an older pipeline
+    writes none at all, so the flag is simply absent.
+    """
+    submissions = capture_submissions(monkeypatch, {"tests-x/a-test:::A.Old"})
+
+    rts.run_new_test_repetitions(
+        make_args(known_test_list=None), FAKE_CONF, [make_result("tests-x/a-test:::A.New")],
+        FAKE_ENV, False)
+
+    assert submissions == []
+
+
+def test_an_empty_known_test_list_repeats_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty file is not "no tests are known": it would make every test read as new."""
+    submissions = capture_submissions(monkeypatch, set())
 
     rts.run_new_test_repetitions(
         make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, False)
 
     assert submissions == []
+
+
+def test_load_known_test_list_reads_one_unique_id_per_line(tmp_path: Any) -> None:
+    """The file is what csi/lib.groovy writes: uniqueIds one per line, possibly with blank lines."""
+    path = tmp_path / "known_list.txt"
+    path.write_text("tests-x/a-test:::A.Old\n\n  tests-x/a-test:::A.Other  \n"
+                    "org.yb.SomeTest#testIt\n")
+
+    assert rts.load_known_test_list(str(path)) == {
+        "tests-x/a-test:::A.Old", "tests-x/a-test:::A.Other", "org.yb.SomeTest#testIt"}
 
 
 def test_a_short_previous_launch_is_not_a_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1842,13 +1869,13 @@ def test_too_many_new_tests_are_sampled(monkeypatch: pytest.MonkeyPatch) -> None
 def test_partial_runs_repeat_nothing(monkeypatch: pytest.MonkeyPatch, args: Any) -> None:
     """
     Only a full pass of the lane over its own test list can tell a new test from one this run was
-    never going to execute. Every other shape of run repeats nothing, and asks CSI nothing.
+    never going to execute. Every other shape of run repeats nothing, and reads no list.
     """
-    def fail_if_called() -> Any:
-        raise AssertionError("the previous launch must not be queried for a partial run")
+    def fail_if_called(path: str) -> Any:
+        raise AssertionError("the known-test list must not be read for a partial run")
 
     submissions = capture_submissions(monkeypatch, {"tests-x/a-test:::A.Old"})
-    monkeypatch.setattr(rts.csi_report, "previous_launch_unique_ids", fail_if_called)
+    monkeypatch.setattr(rts, "load_known_test_list", fail_if_called)
 
     rts.run_new_test_repetitions(
         args, FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, False)
