@@ -58,18 +58,19 @@ v2026.1.2.0 introduces a new and improved user experience with many usability en
   >}}
 
   {{< sections/3-box-card
+    title="Scale and edit universes"
+    description="Scale horizontally and vertically, edit flags, tags, and Kubernetes overrides."
+    buttonText="Manage"
+    buttonUrl="scale-deployments/"
+  >}}
+
+  {{< sections/3-box-card
     title="Manage universes"
-    description="Modify universes and their nodes, upgrade YugabyteDB software."
+    description="Upgrade the database, patch the OS, and troubleshoot nodes."
     buttonText="Manage"
     buttonUrl="manage-deployments/"
   >}}
 
-  {{< sections/3-box-card
-    title="Back up universes"
-    description="Configure storage, back up and restore universe data."
-    buttonText="Back up"
-    buttonUrl="back-up-restore-universes/"
-  >}}
 {{< /sections/3-boxes >}}
 
 ## Additional resources
