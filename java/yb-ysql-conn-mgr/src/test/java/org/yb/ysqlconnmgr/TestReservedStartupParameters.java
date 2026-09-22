@@ -16,8 +16,6 @@ package org.yb.ysqlconnmgr;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Map;
@@ -25,7 +23,6 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.RequiresLinux;
@@ -48,6 +45,7 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     {"yb_ycm_internal_is_control_conn", "1"},
     {"yb_ycm_internal_auth_remote_host", "192.0.2.1"},
     {"yb_ycm_internal_logical_conn_type", "E"},
+    {"yb_ycm_internal_client_cert", "1"},
     {"yb_ycm_internal_future_parameter", "1"},
     {"yb_ycm_internal_client_addr", "192.168.1.1"},
     {"yb_ycm_internal_client_port", "9432"},
@@ -57,11 +55,6 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     // Required for TLS connections to resolve correctly in the test environment;
     // certificates are issued for IP addresses, not hostnames.
     useIpWithCertificate = true;
-  }
-
-  private static String certsDir() {
-    FileSystem fs = FileSystems.getDefault();
-    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   @Override

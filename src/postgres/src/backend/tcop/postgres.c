@@ -7714,6 +7714,7 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					MyProcPort->yb_is_auth_passthrough_req = true;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
+					MyProcPort->yb_forwarded_cert_parse_failed = false;
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
@@ -7757,7 +7758,14 @@ PostgresMain(const char *dbname, const char *username)
 					 * NULL before that
 					 */
 					MyProcPort->authn_id = NULL;
-
+#ifdef USE_SSL
+					/*
+					 * YB: Reset the TLS connection state of the logical connection.
+					 * This is to avoid the certificate of the previous client getting used
+					 * by the next client if it throws an error during authentication.
+					 */
+					be_tls_close(MyProcPort);
+#endif
 					/*
 					 * HARD Code connection type between client and
 					 * ysql_conn_mgr to AF_INET (only supported) for
@@ -7778,6 +7786,8 @@ PostgresMain(const char *dbname, const char *username)
 
 					/* Start authentication */
 					{
+						int			rc;
+
 						start_xact_command();
 						/*
 						 * Parse input to populate MyProcPort with new client
@@ -7786,9 +7796,22 @@ PostgresMain(const char *dbname, const char *username)
 						 * between conn mgr and the control backend is already
 						 * done during control backend startup.
 						 */
-						YbProcessStartupPacket(MyProcPort,
-											   true /* ssl_done */ ,
-											   true /* gss_done */ );
+						rc = YbProcessStartupPacket(MyProcPort,
+													true /* ssl_done */ ,
+													true /* gss_done */ );
+						/*
+						 * YB: Unlike auth failure (WARNING, keep alive), a
+						 * startup-packet STATUS_ERROR leaves the wire
+						 * desynced. Kill this control backend and don't send
+						 * any message to client, read ProcessStartupPacket
+						 * description. It has already logged the reason.
+						 */
+						if (rc != STATUS_OK)
+						{
+							if (whereToSendOutput == DestRemote)
+								whereToSendOutput = DestNone;
+							proc_exit(0);
+						}
 
 						YbLogAuthPassthroughConnReceived(MyProcPort);
 
@@ -7836,10 +7859,24 @@ PostgresMain(const char *dbname, const char *username)
 					 * transaction MemoryContext which has been free'd now
 					 */
 
+#ifdef USE_SSL
+
+					/*
+					 * Drop the certificate of the client that just
+					 * authenticated. This control backend is reused for the
+					 * next client, and its own connection to the conn mgr is an
+					 * unauthenticated unix socket with no certificate of its
+					 * own, so leaving this set would let one client's identity
+					 * be seen while authenticating another.
+					 */
+					be_tls_close(MyProcPort);
+#endif
+
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
+					MyProcPort->yb_forwarded_cert_parse_failed = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;

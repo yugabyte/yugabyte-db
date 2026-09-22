@@ -52,7 +52,10 @@
 #include <openssl/x509v3.h>
 
 /* YB includes */
-#ifdef YB_CONN_MGR
+#include "common/base64.h"
+#ifndef YB_CONN_MGR
+#include "yb_ysql_conn_mgr_helper.h"
+#else
 #include <assert.h>
 #endif
 
@@ -179,6 +182,9 @@ static bool ssl_is_server_start;
 
 static int	ssl_protocol_version_to_openssl(int v);
 static const char *ssl_protocol_version_to_string(int v);
+
+/* YB declarations */
+static int	yb_be_tls_set_peer_cert_info(Port *port);
 
 /* ------------------------------------------------------------ */
 /*						 Public interface						*/
@@ -546,8 +552,13 @@ be_tls_destroy(void)
 	ssl_loaded_verify_locations = false;
 }
 
+/*
+ * YB: If yb_b64_client_cert_of_logical_conn is set, then we came for validating/
+ * parsing the certificate of the logical connection created to conn mgr. Skip TLS
+ * handshake as it has already been established with connection manager.
+ */
 int
-be_tls_open_server(Port *port)
+be_tls_open_server(Port *port, const char *yb_b64_client_cert_of_logical_conn)
 {
 	int			r;
 	int			err;
@@ -555,8 +566,89 @@ be_tls_open_server(Port *port)
 	unsigned long ecode;
 	bool		give_proto_hint;
 
-	Assert(!port->ssl);
+	Assert(yb_b64_client_cert_of_logical_conn || !port->ssl);
 	Assert(!port->peer);
+
+	/*
+	 * YB: Under Connection Manager the handshake happened at the conn mgr,
+	 * which forwarded the leaf certificate in the startup packet.
+	 */
+	if (yb_b64_client_cert_of_logical_conn != NULL)
+	{
+		int b64len;
+		int derlen;
+		int bufsize;
+		unsigned char *der;
+		const unsigned char *p;
+		X509	   *cert;
+
+		if (!port->yb_is_ssl_enabled_in_logical_conn)
+		{
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("could not accept SSL connection: logical connection is not encrypted")));
+			return -1;
+		}
+
+		b64len = strlen(yb_b64_client_cert_of_logical_conn);
+		bufsize = pg_b64_dec_len(b64len);
+		der = palloc(bufsize);
+		derlen = pg_b64_decode(yb_b64_client_cert_of_logical_conn, b64len, (char *) der, bufsize);
+		if (derlen < 0)
+		{
+			pfree(der);
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("failed to decode peer certificate encoded in Base64 by Connection Manager")));
+			return -1;
+		}
+
+		p = der;
+		cert = d2i_X509(NULL, &p, derlen);
+		if (cert == NULL)
+		{
+			pfree(der);
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("failed to parse peer certificate forwarded by Connection Manager")));
+			return -1;
+		}
+		if (p != der + derlen)
+		{
+			pfree(der);
+			X509_free(cert);
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("trailing bytes after peer certificate forwarded by Connection Manager")));
+			return -1;
+		}
+		pfree(der);
+
+		/*
+		 * Leave port->ssl and port->ssl_in_use unset: the TLS session
+		 * belongs to the connection manager, and this backend's own
+		 * connection to it is an unencrypted unix socket. pg_stat_ssl
+		 * therefore continues to report no SSL here (TODO: GH#20144).
+		 * Setting ssl_in_use on physical conn which is unix socket
+		 * would be incorrect and can cause pgstat_bestart() to do
+		 * segfaults.
+		 */
+		port->peer = cert;
+		if (yb_be_tls_set_peer_cert_info(port) < 0)
+		{
+			/*
+			 * Own the X509 we allocated on the error path so callers that
+			 * don't (or one day won't) invoke be_tls_close() on failure
+			 * don't leak it or observe stale peer state on the Port.
+			 */
+			X509_free(port->peer);
+			port->peer = NULL;
+			return -1;
+		}
+		return 0;
+	}
+
+	Assert(!port->ssl);
 
 	if (!SSL_context)
 	{
@@ -709,12 +801,20 @@ aloop:
 	/* Get client certificate, if available. */
 	port->peer = SSL_get_peer_certificate(port->ssl);
 
+	return yb_be_tls_set_peer_cert_info(port);
+}
+
+static int
+yb_be_tls_set_peer_cert_info(Port *port)
+{
 	/* and extract the Common Name and Distinguished Name from it. */
 	port->peer_cn = NULL;
 	port->peer_dn = NULL;
 	port->peer_cert_valid = false;
 	if (port->peer != NULL)
 	{
+		/* YB: outer int r stayed with be_tls_open_server; this block was factored out */
+		int			r;
 		int			len;
 		X509_NAME  *x509name = X509_get_subject_name(port->peer);
 		char	   *peer_dn;
@@ -837,6 +937,12 @@ be_tls_close(Port *port)
 		pfree(port->peer_dn);
 		port->peer_dn = NULL;
 	}
+	/*
+	 * YB: Auth pass through in conn mgr needs to reset it's
+	 * all states.
+	 */
+	if (YbIsClientYsqlConnMgr())
+		port->peer_cert_valid = false;
 }
 
 ssize_t
