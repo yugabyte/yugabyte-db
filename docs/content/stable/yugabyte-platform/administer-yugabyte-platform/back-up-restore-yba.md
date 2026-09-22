@@ -37,7 +37,7 @@ You can also perform backups on demand.
 
 - Automatic backups are not compatible with [high availability](../high-availability/).
 - Automatic backups do not include universe Prometheus data or locally stored YugabyteDB releases.
-- Automatic backups retain only the 3 most recent copies in storage. Older backups are more likely to be inconsistent with the current state of your universes.
+- By default, automatic backups retain the 5 most recent copies. Note that older backups are more likely to be inconsistent with the current state of your universes.
 
 ## Prerequisites
 
