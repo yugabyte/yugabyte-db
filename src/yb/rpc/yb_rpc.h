@@ -34,6 +34,7 @@
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/ev_util.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/size_literals.h"
@@ -199,6 +200,16 @@ class YBInboundCall : public InboundCall {
 
   virtual Status ParseParam(RpcCallParams* params);
 
+  // Creates a server-side trace span, from the inbound RequestHeader's trace_context (remote)
+  // or the outbound call's context via `traceparent` (local). No-op when no parent or tracing is
+  // off.
+  void CreateServerSpan(
+      std::optional<opentelemetry::trace::SpanContext> traceparent = std::nullopt);
+
+  const opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>& server_span() const {
+    return span_;
+  }
+
   size_t ObjectSize() const override { return sizeof(*this); }
 
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
@@ -230,6 +241,12 @@ class YBInboundCall : public InboundCall {
 
   // The header of the incoming call. Set by ParseFrom()
   ParsedRequestHeader header_;
+
+  // Parent span context parsed from the inbound trace_context header field, if present.
+  std::optional<opentelemetry::trace::SpanContext> parent_span_context_;
+
+  // Server-side distributed-trace span for this call.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> span_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;
