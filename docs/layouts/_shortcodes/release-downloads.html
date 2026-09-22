@@ -2,13 +2,18 @@
 Renders the per-release header (build, licenses, downloads) for a YugabyteDB or YBA release.
 
 Parameters:
-  version  - full 4-part version, e.g. "2026.1.0.0"
-  build    - build tag without the "b" prefix, e.g. "115"
-  type     - "ybdb" (default) or "yba"
+  version   - full 4-part version, e.g. "2026.1.0.0"
+  build     - build tag without the "b" prefix, e.g. "115"
+  type      - "ybdb" (default) or "yba"
+  macos-x86 - optional "true" or "false" override for the YBDB macOS x86 tab.
+              Default: included for versions before 2026.1.2.0; omitted from
+              2026.1.2.0 onward (macOS x86 packages are no longer published).
 
 Usage:
   {{< release-downloads version="2026.1.0.0" build="115" >}}
+  {{< release-downloads version="2026.1.2.0" build="137" >}}
   {{< release-downloads version="2026.1.0.0" build="115" type="yba" >}}
+  {{< release-downloads version="2025.2.7.0" build="1" macos-x86="false" >}}
 */}}
 
 {{- .Page.Scratch.Add "releaseDownloadTabOrdinal" 1 -}}
@@ -27,10 +32,29 @@ Usage:
 {{- $headerMd := printf "**Build:** `%s`\n\n**Third-party licenses:** [YugabyteDB](%s), [YugabyteDB Anywhere](%s)\n\n**%s**" $bver $ybdbLicense $ybaLicense $dlLabel -}}
 {{ $headerMd | .Page.RenderString }}
 
+{{- /* macOS x86 YBDB packages stop at 2026.1.2.0. Packed int: M*1e6 + m*1e4 + p*100 + r. */ -}}
+{{- $includeMacX86 := true -}}
+{{- $macosX86Param := .Get "macos-x86" -}}
+{{- if eq $macosX86Param "false" -}}
+  {{- $includeMacX86 = false -}}
+{{- else if eq $macosX86Param "true" -}}
+  {{- $includeMacX86 = true -}}
+{{- else -}}
+  {{- $vparts := split $version "." -}}
+  {{- if ge (len $vparts) 4 -}}
+    {{- $vnum := add (add (add (mul (int (index $vparts 0)) 1000000) (mul (int (index $vparts 1)) 10000)) (mul (int (index $vparts 2)) 100)) (int (index $vparts 3)) -}}
+    {{- if ge $vnum 2026010200 -}}
+      {{- $includeMacX86 = false -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
 {{- $tabs := slice -}}
 {{- if eq $type "ybdb" -}}
-{{- $tabs = slice
-  (dict "header" `<i class='fa-brands fa-apple' aria-hidden='true'></i> x86` "body" (printf "wget %s/yugabyte-%s-darwin-x86_64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-darwin-x86_64-tar.gz.sha) *yugabyte-%s-darwin-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
+{{- if $includeMacX86 -}}
+{{- $tabs = $tabs | append (dict "header" `<i class='fa-brands fa-apple' aria-hidden='true'></i> x86` "body" (printf "wget %s/yugabyte-%s-darwin-x86_64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-darwin-x86_64-tar.gz.sha) *yugabyte-%s-darwin-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver)) -}}
+{{- end -}}
+{{- $tabs = $tabs | append
   (dict "header" `<i class='fa-brands fa-apple' aria-hidden='true'></i> ARM` "body" (printf "wget %s/yugabyte-%s-darwin-arm64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-darwin-arm64-tar.gz.sha) *yugabyte-%s-darwin-arm64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
   (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> x86` "body" (printf "wget %s/yugabyte-%s-linux-x86_64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-linux-x86_64-tar.gz.sha) *yugabyte-%s-linux-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
   (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> ARM` "body" (printf "wget %s/yugabyte-%s-el8-aarch64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-el8-aarch64-tar.gz.sha) *yugabyte-%s-el8-aarch64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
