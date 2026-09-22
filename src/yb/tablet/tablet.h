@@ -61,6 +61,8 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/types.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/mvcc.h"
@@ -799,7 +801,7 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(ThreadPool* thread_pool);
+  void SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* scheduler);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
