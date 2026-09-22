@@ -86,14 +86,16 @@ public class TestPgConnection extends BasePgSQLTest {
   private int getRemainingAvailableConnections() throws Exception {
     try (Connection conn = createConnection()) {
       Statement stmt = conn.createStatement();
-      ResultSet result = stmt.executeQuery("SELECT COUNT(*) FROM pg_stat_activity");
+      // Only client backends occupy a ysql_max_connections slot. Auxiliary processes
+      // (checkpointer, the ASH collector, the io workers) show up in pg_stat_activity
+      // but are sized separately, so counting them here would undershoot the limit.
+      ResultSet result = stmt.executeQuery(
+          "SELECT COUNT(*) FROM pg_stat_activity WHERE backend_type = 'client backend'");
       result.next();
       int count = result.getInt("count");
       conn.close();
-      // +3: one for the connection we have just closed, one for the checkpointer process,
-      // one for ASH collector process (which appears in pg_stat_activity but does not
-      // count towards ysql_max_connections).
-      return MAX_CONNECTIONS - count + 3;
+      // +1 for the connection we have just closed.
+      return MAX_CONNECTIONS - count + 1;
     }
   }
 
