@@ -18,6 +18,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
 #include "yb/consensus/metadata.pb.h"
@@ -334,9 +335,10 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
 
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint; // can only be used when versions is not empty.
+  HybridTime read_ht;
   auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
       FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
-      &versions, &fingerprint);
+      &versions, &fingerprint, &read_ht);
   if (!s.ok() || versions.empty()) {
     LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
                  << s.ToUserMessage();
@@ -357,6 +359,9 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
   }
 
   auto* const mutable_version_data = resp.mutable_db_catalog_version_data();
+  if (read_ht.is_valid()) {
+    mutable_version_data->set_catalog_versions_read_time(read_ht.ToUint64());
+  }
   for (const auto& it : versions) {
     auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
     catalog_version->set_db_oid(it.first);

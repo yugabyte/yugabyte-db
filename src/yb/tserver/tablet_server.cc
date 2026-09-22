@@ -46,6 +46,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/common_util.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -249,7 +250,9 @@ DEPRECATE_FLAG(uint32, ysql_min_new_version_ignored_count, "2026_05");
 
 DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_min_seconds, 30,
     "Minimum duration in seconds that a tserver may receive only older per-db catalog versions "
-    "(without ever seeing an advance) from the master before crashing itself to resync. A "
+    "(without ever seeing an advance) from the master before crashing itself to resync. The "
+    "duration is how far the master's pg_yb_catalog_version read time advances, not the "
+    "tserver's own elapsed time, so a master that cannot read that table does not consume it. A "
     "random per-episode threshold is picked from [min, min + "
     "ysql_stale_catalog_version_random_extra_seconds]. Replaces the count-based check "
     "controlled by ysql_min_new_version_ignored_count, which was sensitive to heartbeat "
@@ -1421,8 +1424,12 @@ Status TabletServer::SetTserverCatalogMessageList(
       existing_entry.last_breaking_version = new_catalog_version;
     }
     UpdateCatalogVersionsFingerprintUnlocked();
-    // Track the time the entry was updated so we can alert if master is stale.
+    // Track the time the entry was updated so we can alert if master is stale. Reset as a set:
+    // SetYsqlDBCatalogVersionsUnlocked() reads stale_since_read_ht for any episode whose
+    // stale_since it finds, so leaving one behind without the other invites a measurement
+    // against a baseline from an episode that already ended.
     existing_entry.stale_since = MonoTime();
+    existing_entry.stale_since_read_ht = HybridTime::kInvalid;
     existing_entry.stale_fatal_threshold = MonoDelta();
     shm_index = existing_entry.shm_index;
     CHECK(shm_index >= 0 &&
@@ -1618,6 +1625,12 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   std::unordered_map<uint32_t, uint64_t> db_oids_updated;
   std::unordered_set<uint32_t> db_oids_deleted;
   bool has_stale_new_version = false;
+  // Invalid when the sender reports no read time: a pre-upgrade master, or one of the senders
+  // that has none to report (the DDL-commit broadcast, which sets
+  // ignore_catalog_version_staleness_check and so never reaches the check below anyway).
+  const auto master_read_ht = db_catalog_version_data.has_catalog_versions_read_time()
+      ? HybridTime(db_catalog_version_data.catalog_versions_read_time())
+      : HybridTime::kInvalid;
   for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
     const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
     const uint32_t db_oid = db_catalog_version.db_oid();
@@ -1652,6 +1665,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
                      .last_breaking_version = new_breaking_version,
                      .shm_index = -1,
                      .stale_since = MonoTime(),
+                     .stale_since_read_ht = HybridTime::kInvalid,
                      .stale_fatal_threshold = MonoDelta()})));
     bool row_inserted = it.second;
     bool row_updated = false;
@@ -1663,6 +1677,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         existing_entry.last_breaking_version = new_breaking_version;
         // Advance ends any current stale episode.
         existing_entry.stale_since = MonoTime();
+        existing_entry.stale_since_read_ht = HybridTime::kInvalid;
         existing_entry.stale_fatal_threshold = MonoDelta();
         row_updated = true;
         db_oids_updated.insert({db_oid, new_version});
@@ -1680,24 +1695,56 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
           // be sent at different frequency during full reports.
           if (!existing_entry.stale_since.Initialized()) {
             existing_entry.stale_since = MonoTime::Now();
+            existing_entry.stale_since_read_ht = master_read_ht;
             existing_entry.stale_fatal_threshold =
                 MonoDelta::FromSeconds(RandomUniformInt<uint32_t>(
                     FLAGS_ysql_stale_catalog_version_min_seconds,
                     FLAGS_ysql_stale_catalog_version_min_seconds +
                         FLAGS_ysql_stale_catalog_version_random_extra_seconds));
           }
-          const auto stale_for = MonoTime::Now() - existing_entry.stale_since;
+          const auto elapsed = MonoTime::Now() - existing_entry.stale_since;
+          // Measure the episode by how far the master's snapshot has advanced, not by our own
+          // clock: a master that cannot read pg_yb_catalog_version keeps reporting the snapshot
+          // it already had, and that gap means it has not looked yet, not that we disagree.
+          // An old master reports no read time, so fall back to the wall clock.
+          MonoDelta stale_for = elapsed;
+          if (master_read_ht.is_valid() && existing_entry.stale_since_read_ht.is_valid()) {
+            const auto snapshot_advance =
+                master_read_ht.PhysicalDiff(existing_entry.stale_since_read_ht);
+            // stale_since_read_ht came from whichever master was leader when the episode began,
+            // so a leader change can make master_read_ht older than it. Clamped for the log
+            // below; a negative stale_for is already under the threshold, so the 'fatal' decision
+            // below is unaffected.
+            stale_for = std::max(MonoDelta::kZero, snapshot_advance);
+          }
           const bool fatal = stale_for >= existing_entry.stale_fatal_threshold;
           // Because the session that executes the DDL sets its incremented new version in the
           // local tserver before the master sees it, brief master-side lag is expected and is
           // logged as a WARNING. Persistent lag (over the per-episode threshold) is treated as
           // a real divergence and we crash to resync.
-          (fatal ? LOG(FATAL) : LOG(WARNING))
-              << "Ignoring ysql db " << db_oid << " catalog version update: new version too old. "
-              << "New: " << new_version << ", Old: " << existing_entry.current_version
-              << ", stale_for: " << stale_for
-              << ", threshold: " << existing_entry.stale_fatal_threshold
-              << ", debug_id: " << debug_id;
+          const auto msg = Format(
+              "Ignoring ysql db $0 catalog version update: new version too old. New: $1, "
+              "Old: $2, stale_for: $3, threshold: $4, elapsed: $5, master_read_ht: $6, "
+              "debug_id: $7",
+              db_oid, new_version, existing_entry.current_version, stale_for,
+              existing_entry.stale_fatal_threshold, elapsed, master_read_ht, debug_id);
+          if (fatal) {
+            LOG(FATAL) << msg;
+          } else {
+            // Throttled because the crash used to bound this: an episode ran for at most the
+            // threshold. A master that never reads again now keeps one open indefinitely, and
+            // one line per heartbeat forever would bury everything else in the log.
+            YB_LOG_EVERY_N_SECS(WARNING, 10) << msg;
+          }
+          // Under the old wall-clock rule this tserver would have aborted by now. Say why it
+          // did not, or the WARNING above reads as an ordinary lag rather than a master outage.
+          if (!fatal && elapsed >= existing_entry.stale_fatal_threshold) {
+            YB_LOG_EVERY_N_SECS(WARNING, 60)
+                << "Master catalog versions snapshot for db " << db_oid << " has not advanced in "
+                << elapsed << " (read time " << existing_entry.stale_since_read_ht
+                << "); not counting it against the staleness threshold. The master is likely "
+                << "unable to read pg_yb_catalog_version.";
+          }
         }
       } else {
         // It is possible to have same current_version but a newer last_breaking_version.
@@ -1729,6 +1776,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         }
         // Master sent us the version we already have, so end the staleness check window
         existing_entry.stale_since = MonoTime();
+        existing_entry.stale_since_read_ht = HybridTime::kInvalid;
         existing_entry.stale_fatal_threshold = MonoDelta();
       }
     } else {
