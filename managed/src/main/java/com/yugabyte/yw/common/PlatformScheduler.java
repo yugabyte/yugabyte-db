@@ -60,7 +60,7 @@ public class PlatformScheduler {
             synchronized (lock) {
               // Synchronized block in shutdown and this should be serialized.
               shouldRun =
-                  !shutdownHookHandler.isShutdown()
+                  !shutdownHookHandler.isShutdownInitiated()
                       && (runOnFollower || !HighAvailabilityConfig.isFollower())
                       && isRunning.compareAndSet(false, true);
             }
@@ -69,7 +69,7 @@ public class PlatformScheduler {
                 runnable.run();
               } finally {
                 isRunning.set(false);
-                if (shutdownHookHandler.isShutdown()) {
+                if (shutdownHookHandler.isShutdownInitiated()) {
                   synchronized (lock) {
                     lock.notify();
                   }

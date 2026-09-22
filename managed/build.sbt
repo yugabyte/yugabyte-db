@@ -147,6 +147,7 @@ javacOptions ++= Seq("-source", "17", "-target", "17")
 
 // This is for dev-mode server. In dev-mode, the play server is started before the files are compiled.
 // Hence, the application files are not available in the path. For prod, It is in reference.conf file.
+PlayKeys.devSettings += "play.pekko.dev-mode.pekko.coordinated-shutdown.phases.before-service-unbind.timeout" -> "150s"
 PlayKeys.devSettings += "play.pekko.dev-mode.pekko.coordinated-shutdown.phases.service-requests-done.timeout" -> "150s"
 
 Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"

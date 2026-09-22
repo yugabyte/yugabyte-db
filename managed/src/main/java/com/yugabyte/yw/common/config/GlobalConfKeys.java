@@ -2386,4 +2386,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum number of lines to buffer in memory for node agent describe output",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> taskExecutorShutdownMaxWaitTime =
+      new ConfKeyInfo<>(
+          "yb.task_executor.shutdown_max_wait_time",
+          ScopeType.GLOBAL,
+          "Task Executor Shutdown Max Wait Time",
+          "Maximum time to wait for task executor to shutdown gracefully before forcefully"
+              + " terminating it",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
