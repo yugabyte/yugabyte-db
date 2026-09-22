@@ -37,6 +37,16 @@ YugabyteDB Anywhere v2026.1 and later requires Python v3.10-3.13. If you are run
 
 In addition, both python and python3 must symbolically link to Python 3. Refer to [Prerequisites to deploy YBA on a VM](../../prepare/server-yba/).
 
+## Kubernetes installations
+
+Starting in YugabyteDB Anywhere v2026.1.2, YugabyteDB Anywhere Docker images are STIG-compliant and hardened, and run as a non-root user by default.
+
+If your non-OpenShift Kubernetes installation does not pin a user in `securityContext`, upgrading to v2026.1.2 or later migrates the YugabyteDB Anywhere pods to a non-root user.
+
+To keep running as root on a non-OpenShift installation, set `securityContext.runAsUser` to `0` in your Helm values before you upgrade. See [Run containers as non-root](../../install-yugabyte-platform/install-software/kubernetes/#run-containers-as-non-root).
+
+This does not apply to OpenShift. OpenShift always runs containers as non-root and enforces that policy itself, not through `securityContext`.
+
 ## cron-based universes
 
 cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.

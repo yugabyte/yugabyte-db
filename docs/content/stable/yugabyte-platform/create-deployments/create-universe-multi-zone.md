@@ -218,6 +218,8 @@ leader_lease_duration_ms=6000
 
 For Kubernetes universes, you can optionally set Helm chart overrides when creating the universe. Refer to [Configure Kubernetes overrides](../../scale-deployments/edit-helm-overrides/).
 
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default. To keep running as root on a non-OpenShift universe, set a Helm override. Refer to [Run as root](../../scale-deployments/edit-helm-overrides/#run-as-root).
+
 ### User Tags
 
 The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. You can define these tags when you create a new universe, as well as modify or delete tags of an existing universe. Refer to [Create and edit instance tags](../../scale-deployments/instance-tags/). (Not applicable to Kubernetes.)
