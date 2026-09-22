@@ -16,7 +16,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM in_pk_simple WHERE v IN (10, 20, 30);
                       QUERY PLAN                       
 -------------------------------------------------------
- Seq Scan on in_pk_simple (actual rows=3 loops=1)
+ Seq Scan on in_pk_simple (actual rows=3.00 loops=1)
    Storage Filter: (v = ANY ('{10,20,30}'::integer[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -25,9 +25,9 @@ SELECT * FROM in_pk_simple WHERE v IN (10, 20, 30);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM in_pk_simple WHERE h IN (10, 20, 30);
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3.00 loops=1)
    Index Cond: (h = ANY ('{10,20,30}'::integer[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -45,9 +45,9 @@ SELECT * FROM in_pk_simple WHERE h IN (10, 20, 30) ORDER BY h;
 PREPARE simple_select(int, int, int) AS SELECT * FROM in_pk_simple WHERE h IN ($1, $2, $3);
 SET plan_cache_mode = force_custom_plan;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE simple_select(10, 20, 30);
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3.00 loops=1)
    Index Cond: (h = ANY ('{10,20,30}'::integer[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -56,9 +56,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE simple_selec
 
 SET plan_cache_mode = force_generic_plan;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE simple_select(10, 20, 30);
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3 loops=1)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3.00 loops=1)
    Index Cond: (h = ANY (ARRAY[$1, $2, $3]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -75,10 +75,10 @@ EXECUTE simple_select(10, 20, 30);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 UPDATE in_pk_simple SET v = 123456789 WHERE h IN (10, 20, 30);
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on in_pk_simple (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on in_pk_simple (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3.00 loops=1)
          Index Cond: (h = ANY ('{10,20,30}'::integer[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -99,10 +99,10 @@ PREPARE simple_update(int, int, int, int) AS
     UPDATE in_pk_simple SET v = $1 WHERE h IN ($2, $3, $4);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE simple_update(123456789, 10, 20, 30);
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Update on in_pk_simple (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on in_pk_simple (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3.00 loops=1)
          Index Cond: (h = ANY (ARRAY[$2, $3, $4]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -120,10 +120,10 @@ SELECT * FROM in_pk_simple WHERE v = 123456789 ORDER BY h;
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 DELETE FROM in_pk_simple WHERE h IN (10, 20, 30);
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Delete on in_pk_simple (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Delete on in_pk_simple (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3.00 loops=1)
          Index Cond: (h = ANY ('{10,20,30}'::integer[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -140,10 +140,10 @@ SELECT count(*) FROM in_pk_simple;
 INSERT INTO in_pk_simple SELECT i, i FROM unnest(ARRAY[10, 20, 30]) i;
 PREPARE simple_delete(int, int, int) AS DELETE FROM in_pk_simple WHERE h IN ($1, $2, $3);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE simple_delete(10, 20, 30);
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Delete on in_pk_simple (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Delete on in_pk_simple (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_simple_pkey on in_pk_simple (actual rows=3.00 loops=1)
          Index Cond: (h = ANY (ARRAY[$1, $2, $3]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -171,7 +171,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM in_pk_hash2_range WHERE h1 IN (1, 2) AND h2 IN (3, 4) AND r IN (5, 6);
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
- Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8 loops=1)
+ Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8.00 loops=1)
    Index Cond: ((h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])) AND (r = ANY ('{5,6}'::integer[])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -199,7 +199,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE hash2_range_select(1, 2, 3, 4, 5, 6);
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
- Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8 loops=1)
+ Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8.00 loops=1)
    Index Cond: ((h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])) AND (r = ANY ('{5,6}'::integer[])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -211,7 +211,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE hash2_range_select(1, 2, 3, 4, 5, 6);
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
- Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8 loops=1)
+ Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8.00 loops=1)
    Index Cond: ((h1 = ANY (ARRAY[$1, $2])) AND (h2 = ANY (ARRAY[$3, $4])) AND (r = ANY (ARRAY[$5, $6])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -235,8 +235,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 UPDATE in_pk_hash2_range SET v = 123456789 WHERE h1 IN (1, 2) AND h2 IN (3, 4) AND r IN (5, 6);
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
- Update on in_pk_hash2_range (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8 loops=1)
+ Update on in_pk_hash2_range (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8.00 loops=1)
          Index Cond: ((h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])) AND (r = ANY ('{5,6}'::integer[])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -264,8 +264,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE hash2_range_update(123456789, 1, 2, 3, 4, 5, 6);
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Update on in_pk_hash2_range (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8 loops=1)
+ Update on in_pk_hash2_range (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8.00 loops=1)
          Index Cond: ((h1 = ANY (ARRAY[$2, $3])) AND (h2 = ANY (ARRAY[$4, $5])) AND (r = ANY (ARRAY[$6, $7])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -290,8 +290,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 DELETE FROM in_pk_hash2_range WHERE h1 IN (1, 2) AND h2 IN (3, 4) AND r IN (5, 6);
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
- Delete on in_pk_hash2_range (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8 loops=1)
+ Delete on in_pk_hash2_range (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8.00 loops=1)
          Index Cond: ((h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])) AND (r = ANY ('{5,6}'::integer[])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -314,8 +314,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE hash2_range_delete(1, 2, 3, 4, 5, 6);
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Delete on in_pk_hash2_range (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8 loops=1)
+ Delete on in_pk_hash2_range (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_hash2_range_pkey on in_pk_hash2_range (actual rows=8.00 loops=1)
          Index Cond: ((h1 = ANY (ARRAY[$1, $2])) AND (h2 = ANY (ARRAY[$3, $4])) AND (r = ANY (ARRAY[$5, $6])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -344,7 +344,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM in_pk_reordered WHERE h2 IN (3, 4) AND h3 IN (5, 6) AND h1 IN (1, 2);
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
- Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8 loops=1)
+ Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8.00 loops=1)
    Index Cond: ((h3 = ANY ('{5,6}'::integer[])) AND (h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -372,7 +372,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE reordered_select(3, 4, 5, 6, 1, 2);
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
- Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8 loops=1)
+ Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8.00 loops=1)
    Index Cond: ((h3 = ANY ('{5,6}'::integer[])) AND (h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -384,7 +384,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE reordered_select(3, 4, 5, 6, 1, 2);
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
- Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8 loops=1)
+ Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8.00 loops=1)
    Index Cond: ((h3 = ANY (ARRAY[$3, $4])) AND (h1 = ANY (ARRAY[$5, $6])) AND (h2 = ANY (ARRAY[$1, $2])))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -408,8 +408,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 UPDATE in_pk_reordered SET v = 123456789 WHERE h2 IN (3, 4) AND h3 IN (5, 6) AND h1 IN (1, 2);
                                                           QUERY PLAN                                                           
 -------------------------------------------------------------------------------------------------------------------------------
- Update on in_pk_reordered (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8 loops=1)
+ Update on in_pk_reordered (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8.00 loops=1)
          Index Cond: ((h3 = ANY ('{5,6}'::integer[])) AND (h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -437,8 +437,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE reordered_update(123456789, 3, 4, 5, 6, 1, 2);
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
- Update on in_pk_reordered (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8 loops=1)
+ Update on in_pk_reordered (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8.00 loops=1)
          Index Cond: ((h3 = ANY (ARRAY[$4, $5])) AND (h1 = ANY (ARRAY[$6, $7])) AND (h2 = ANY (ARRAY[$2, $3])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -463,8 +463,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 DELETE FROM in_pk_reordered WHERE h2 IN (3, 4) AND h3 IN (5, 6) AND h1 IN (1, 2);
                                                           QUERY PLAN                                                           
 -------------------------------------------------------------------------------------------------------------------------------
- Delete on in_pk_reordered (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8 loops=1)
+ Delete on in_pk_reordered (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8.00 loops=1)
          Index Cond: ((h3 = ANY ('{5,6}'::integer[])) AND (h1 = ANY ('{1,2}'::integer[])) AND (h2 = ANY ('{3,4}'::integer[])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -487,8 +487,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE reordered_delete(3, 4, 5, 6, 1, 2);
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
- Delete on in_pk_reordered (actual rows=0 loops=1)
-   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8 loops=1)
+ Delete on in_pk_reordered (actual rows=0.00 loops=1)
+   ->  Index Scan using in_pk_reordered_pkey on in_pk_reordered (actual rows=8.00 loops=1)
          Index Cond: ((h3 = ANY (ARRAY[$3, $4])) AND (h1 = ANY (ARRAY[$5, $6])) AND (h2 = ANY (ARRAY[$1, $2])))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 2
@@ -515,7 +515,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM in_sidx WHERE v IN (10, 20, 30);
                       QUERY PLAN                       
 -------------------------------------------------------
- Seq Scan on in_sidx (actual rows=3 loops=1)
+ Seq Scan on in_sidx (actual rows=3.00 loops=1)
    Storage Filter: (v = ANY ('{10,20,30}'::integer[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
@@ -524,9 +524,9 @@ SELECT * FROM in_sidx WHERE v IN (10, 20, 30);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM in_sidx WHERE i IN (10, 20, 30);
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Index Scan using in_sidx_i_idx on in_sidx (actual rows=3 loops=1)
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Index Scan using in_sidx_i_idx on in_sidx (actual rows=3.00 loops=1)
    Index Cond: (i = ANY ('{10,20,30}'::integer[]))
    Storage Table Read Requests: 2
    Storage Table Read Ops: 2
@@ -547,9 +547,9 @@ SELECT * FROM in_sidx WHERE i IN (10, 20, 30) ORDER BY h;
 PREPARE sidx_select(int, int, int) AS SELECT * FROM in_sidx WHERE i IN ($1, $2, $3);
 SET plan_cache_mode = force_custom_plan;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE sidx_select(10, 20, 30);
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Index Scan using in_sidx_i_idx on in_sidx (actual rows=3 loops=1)
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Index Scan using in_sidx_i_idx on in_sidx (actual rows=3.00 loops=1)
    Index Cond: (i = ANY ('{10,20,30}'::integer[]))
    Storage Table Read Requests: 2
    Storage Table Read Ops: 2
@@ -561,9 +561,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE sidx_select(
 
 SET plan_cache_mode = force_generic_plan;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE sidx_select(10, 20, 30);
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Index Scan using in_sidx_i_idx on in_sidx (actual rows=3 loops=1)
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Index Scan using in_sidx_i_idx on in_sidx (actual rows=3.00 loops=1)
    Index Cond: (i = ANY (ARRAY[$1, $2, $3]))
    Storage Table Read Requests: 2
    Storage Table Read Ops: 2
@@ -583,10 +583,10 @@ EXECUTE sidx_select(10, 20, 30);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 UPDATE in_sidx SET v = 123456789 WHERE i IN (10, 20, 30);
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Update on in_sidx (actual rows=0 loops=1)
-   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Update on in_sidx (actual rows=0.00 loops=1)
+   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3.00 loops=1)
          Index Cond: (i = ANY ('{10,20,30}'::integer[]))
          Storage Table Read Requests: 2
          Storage Table Read Ops: 2
@@ -610,10 +610,10 @@ UPDATE in_sidx SET v = h WHERE i IN (10, 20, 30);
 PREPARE sidx_update(int, int, int, int) AS UPDATE in_sidx SET v = $1 WHERE i IN ($2, $3, $4);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE sidx_update(123456789, 10, 20, 30);
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Update on in_sidx (actual rows=0 loops=1)
-   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Update on in_sidx (actual rows=0.00 loops=1)
+   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3.00 loops=1)
          Index Cond: (i = ANY (ARRAY[$2, $3, $4]))
          Storage Table Read Requests: 2
          Storage Table Read Ops: 2
@@ -635,10 +635,10 @@ SELECT * FROM in_sidx WHERE v = 123456789 ORDER BY h;
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 DELETE FROM in_sidx WHERE i IN (10, 20, 30);
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Delete on in_sidx (actual rows=0 loops=1)
-   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Delete on in_sidx (actual rows=0.00 loops=1)
+   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3.00 loops=1)
          Index Cond: (i = ANY ('{10,20,30}'::integer[]))
          Storage Table Read Requests: 2
          Storage Table Read Ops: 2
@@ -660,10 +660,10 @@ SELECT count(*) FROM in_sidx;
 INSERT INTO in_sidx SELECT i, i, i FROM unnest(ARRAY[10, 20, 30]) i;
 PREPARE sidx_delete(int, int, int) AS DELETE FROM in_sidx WHERE i IN ($1, $2, $3);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE sidx_delete(10, 20, 30);
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Delete on in_sidx (actual rows=0 loops=1)
-   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Delete on in_sidx (actual rows=0.00 loops=1)
+   ->  Index Scan using in_sidx_i_idx on in_sidx (actual rows=3.00 loops=1)
          Index Cond: (i = ANY (ARRAY[$1, $2, $3]))
          Storage Table Read Requests: 2
          Storage Table Read Ops: 2
@@ -693,9 +693,9 @@ INSERT INTO in_eq_pk_hash2
 SELECT h1, h2, h1 * 10000 + h2 FROM generate_series(0, 29) h1, generate_series(0, 29) h2;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM in_eq_pk_hash2 WHERE h1 IN (1, 2, 3) AND h2 = 4;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3.00 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3}'::integer[])) AND (h2 = 4))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -714,9 +714,9 @@ PREPARE in_eq_select(int, int, int, int) AS
     SELECT * FROM in_eq_pk_hash2 WHERE h1 IN ($1, $2, $3) AND h2 = $4;
 SET plan_cache_mode = force_custom_plan;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE in_eq_select(1, 2, 3, 4);
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3.00 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3}'::integer[])) AND (h2 = 4))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -725,9 +725,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE in_eq_select
 
 SET plan_cache_mode = force_generic_plan;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE in_eq_select(1, 2, 3, 4);
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3.00 loops=1)
    Index Cond: ((h1 = ANY (ARRAY[$1, $2, $3])) AND (h2 = $4))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
@@ -744,10 +744,10 @@ EXECUTE in_eq_select(1, 2, 3, 4);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 UPDATE in_eq_pk_hash2 SET v = 123456789 WHERE h1 IN (1, 2, 3) AND h2 = 4;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Update on in_eq_pk_hash2 (actual rows=0 loops=1)
-   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3 loops=1)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Update on in_eq_pk_hash2 (actual rows=0.00 loops=1)
+   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3.00 loops=1)
          Index Cond: ((h1 = ANY ('{1,2,3}'::integer[])) AND (h2 = 4))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -768,10 +768,10 @@ PREPARE in_eq_update(int, int, int, int, int) AS
     UPDATE in_eq_pk_hash2 SET v = $1 WHERE h1 IN ($2, $3, $4) AND h2 = $5;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXECUTE in_eq_update(123456789, 1, 2, 3, 4);
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Update on in_eq_pk_hash2 (actual rows=0 loops=1)
-   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3 loops=1)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Update on in_eq_pk_hash2 (actual rows=0.00 loops=1)
+   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3.00 loops=1)
          Index Cond: ((h1 = ANY (ARRAY[$2, $3, $4])) AND (h2 = $5))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -789,10 +789,10 @@ SELECT * FROM in_eq_pk_hash2 WHERE v = 123456789 ORDER BY h1;
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 DELETE FROM in_eq_pk_hash2 WHERE h1 IN (1, 2, 3) AND h2 = 4;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Delete on in_eq_pk_hash2 (actual rows=0 loops=1)
-   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3 loops=1)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Delete on in_eq_pk_hash2 (actual rows=0.00 loops=1)
+   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3.00 loops=1)
          Index Cond: ((h1 = ANY ('{1,2,3}'::integer[])) AND (h2 = 4))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -810,10 +810,10 @@ INSERT INTO in_eq_pk_hash2 SELECT h1, 4, h1 * 10000 + 4 FROM unnest(ARRAY[1, 2, 
 PREPARE in_eq_delete(int, int, int, int) AS
     DELETE FROM in_eq_pk_hash2 WHERE h1 IN ($1, $2, $3) AND h2 = $4;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE in_eq_delete(1, 2, 3, 4);
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Delete on in_eq_pk_hash2 (actual rows=0 loops=1)
-   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3 loops=1)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Delete on in_eq_pk_hash2 (actual rows=0.00 loops=1)
+   ->  Index Scan using in_eq_pk_hash2_pkey on in_eq_pk_hash2 (actual rows=3.00 loops=1)
          Index Cond: ((h1 = ANY (ARRAY[$1, $2, $3])) AND (h2 = $4))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
