@@ -373,7 +373,7 @@ YugabyteDB can run on a number of public clouds.
 ### Amazon Web Services (AWS)
 
 - Use the M [instance family](https://aws.amazon.com/ec2/instance-types/).
-- Recommended type is M6i. Use the higher CPU instance types especially for large YSQL workloads.
+- Recommended type is M8i (supported in v2026.1.2 or later). Use the higher CPU instance types especially for large YSQL workloads.
 - Use gp3 EBS (SSD) disks that are at least 250GB in size, larger if more IOPS are needed.
   - Scale up the IOPS as you scale up the size of the disk.
   - In YugabyteDB testing, gp3 EBS SSDs provide the best performance for a given cost among the various EBS disk options.

@@ -64,7 +64,7 @@ Full move applies to universes that YugabyteDB Anywhere manages via Helm charts.
 
 {{< /tabpane >}}
 
-Monitor the **Edit Kubernetes Universe** task on the universe [Tasks](../retry-failed-task/) page.
+Monitor the **Edit Kubernetes Universe** task on the universe [Tasks](../../manage-deployments/retry-failed-task/) page.
 
 To change other Helm chart settings (resources, labels, and so on) without changing storage class or volume count, use [Edit Kubernetes overrides](../edit-helm-overrides/) instead.
 
@@ -195,7 +195,7 @@ spec:
         storageClass: vk-standard
 ```
 
-Apply changes with `kubectl apply` to the `YBUniverse` resource. The Operator reconciles the universe and runs the full move workflow. Monitor tasks in YugabyteDB Anywhere on the universe [Tasks](../retry-failed-task/) page.
+Apply changes with `kubectl apply` to the `YBUniverse` resource. The Operator reconciles the universe and runs the full move workflow. Monitor tasks in YugabyteDB Anywhere on the universe [Tasks](../../manage-deployments/retry-failed-task/) page.
 
 ## Batch pod moves
 
