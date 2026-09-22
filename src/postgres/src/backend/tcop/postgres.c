@@ -8481,7 +8481,11 @@ YbClientConnectionLost(void)
 		InterruptHoldoffCount = saved_interrupt_holdoff_count;
 		QueryCancelHoldoffCount = saved_query_cancel_holdoff_count;
 		probe_disabled = true;
-		elog(LOG, "client connection check failed, disabling it for this backend");
+		/*
+		 * Not elog(): errfinish() ends with CHECK_FOR_INTERRUPTS() even for
+		 * LOG, and a pending cancel would longjmp out of here after all.
+		 */
+		YBC_LOG_WARNING("client connection check failed, disabling it for this backend");
 	}
 	PG_END_TRY();
 

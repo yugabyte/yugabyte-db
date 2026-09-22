@@ -329,11 +329,17 @@ TEST_F(PgClientDisconnectTest, ProbeFailureIsContained) {
 
   auto conn = ASSERT_RESULT(ConnectRaw());
   const auto pid = PQbackendPID(conn.get());
-  ASSERT_OK(ExecRaw(conn.get(), "SET yb_test_fail_client_connection_check = true"));
   ASSERT_OK(ExecRaw(conn.get(), "BEGIN"));
   ASSERT_OK(ExecRaw(conn.get(), "INSERT INTO t VALUES (1, 1)"));
+  // Armed right before COMMIT, so no earlier wait can consume the one-shot failure: the first
+  // probe that fails is the one under COMMIT's HOLD_INTERRUPTS().
+  ASSERT_OK(ExecRaw(conn.get(), "SET yb_test_fail_client_connection_check = true"));
 
   {
+    // The hold applies to every session's FinishTransaction, including the control connection's
+    // autocommit when table locking makes read-only transactions commit through the tserver.
+    // Keep the control connection in one explicit transaction for the duration.
+    ASSERT_OK(control_conn.Execute("BEGIN"));
     RpcHold hold("PgClientSession::FinishTransaction");
     ASSERT_OK(SendQueryAndWaitForBlock(control_conn, conn.get(), "COMMIT", kCommitWaitEvent));
     hold.WaitReached();
@@ -342,6 +348,7 @@ TEST_F(PgClientDisconnectTest, ProbeFailureIsContained) {
     ASSERT_TRUE(ProcessAlive(pid));
     ASSERT_EQ(ASSERT_RESULT(WaitEvent(control_conn, pid)), kCommitWaitEvent);
   }
+  ASSERT_OK(control_conn.Execute("COMMIT"));
   // CommitTransaction() runs its RPC under HOLD_INTERRUPTS(); a zeroed holdoff count trips the
   // assertion in RESUME_INTERRUPTS() and kills the backend here.
   auto result = GetRawResult(conn.get());
@@ -365,6 +372,52 @@ TEST_F(PgClientDisconnectTest, ProbeFailureIsContained) {
   conn.reset();
   SleepFor(CheckIntervals(6));
   ASSERT_TRUE(ProcessAlive(pid));
+}
+
+// Long enough that a test can observe the blocked backend and act (send a cancel) before the
+// first probe runs.
+class PgClientDisconnectSlowCheckTest : public PgClientDisconnectTest {
+ protected:
+  uint32_t CheckIntervalMs() const override {
+    return kSlowCheckIntervalMs;
+  }
+
+  static constexpr uint32_t kSlowCheckIntervalMs = 5000 * kTimeMultiplier;
+};
+
+// A probe failure while a cancel is already pending: anything in the containment path that
+// processes interrupts (elog() does, via errfinish()) would raise the cancel as an ERROR and
+// longjmp out of pggate with the RPC still outstanding. The cancel must instead take effect only
+// once the RPC completes, as it does today, and the session stays usable.
+TEST_F_EX(
+    PgClientDisconnectTest, ProbeFailureWithPendingCancel, PgClientDisconnectSlowCheckTest) {
+  auto pause = PauseSyncRpc();
+
+  auto control_conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(ConnectRaw());
+  const auto pid = PQbackendPID(conn.get());
+  ASSERT_OK(ExecRaw(conn.get(), "SET yb_test_fail_client_connection_check = true"));
+  const auto rpc_started = MonoTime::Now();
+  ASSERT_OK(SendQueryAndWaitForBlock(
+      control_conn, conn.get(), "SELECT * FROM pg_locks", kSyncRpcWaitEvent));
+
+  ASSERT_TRUE(ASSERT_RESULT(control_conn.FetchRow<bool>(
+      Format("SELECT pg_cancel_backend($0)", pid))));
+  // The cancel must be pending when the first probe runs, i.e. arrive within the first interval.
+  ASSERT_LT(
+      (MonoTime::Now() - rpc_started).ToMilliseconds(), kSlowCheckIntervalMs / 2)
+      << "Test too slow to send the cancel before the first probe";
+  // Let the first probe run and fail with QueryCancelPending set. The backend must still be
+  // blocked afterwards.
+  SleepFor(MonoDelta::FromMilliseconds(kSlowCheckIntervalMs * 3 / 2));
+  ASSERT_TRUE(ProcessAlive(pid));
+  ASSERT_EQ(ASSERT_RESULT(WaitEvent(control_conn, pid)), kSyncRpcWaitEvent);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = false;
+  auto result = GetRawResult(conn.get());
+  ASSERT_EQ(PQresultStatus(result.get()), PGRES_FATAL_ERROR);
+  ASSERT_STR_CONTAINS(PQerrorMessage(conn.get()), "canceling statement due to user request");
+  ASSERT_OK(ExecRaw(conn.get(), "SELECT 1"));
 }
 
 class PgClientDisconnectCheckDisabledTest : public PgClientDisconnectTest {
