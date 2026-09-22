@@ -69,7 +69,7 @@ v2025.2 does not support legacy node provisioning. Before upgrading to 2025.2, b
 
 {{< /warning >}}
 
-To upgrade a running on-premises universe to automatic provisioning, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later) or follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
+To upgrade a running on-premises universe to automatic provisioning, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
 
 ### Transparent hugepages
 

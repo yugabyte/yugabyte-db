@@ -3,7 +3,7 @@ title: Reprovision universe nodes
 headerTitle: Reprovision universe nodes
 linkTitle: Reprovision nodes
 description: Re-run node provisioning on existing universe nodes using YNP.
-headcontent: Re-apply OS-level settings and migrate nodes off legacy provisioning
+headcontent: Re-apply OS-level settings and reinstall node agent
 menu:
   stable_yugabyte-platform:
     identifier: reprovision-nodes
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Starting in YugabyteDB Anywhere v2026.1.2.0, you can re-run node provisioning on an existing universe so OS-level settings match what the current YugabyteDB Anywhere expects. For universes still on [legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/), the action also migrates the nodes to use [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/), including [node agent](/stable/faq/yugabyte-platform/#what-is-a-node-agent) and user-level systemd.
+Starting in YugabyteDB Anywhere v2026.1.2.0, you can re-run node provisioning on an existing universe so OS-level settings match what the current YugabyteDB Anywhere expects.
 
 Your data is preserved. Only the OS and node agent layers are reprovisioned; database software and data volumes remain untouched.
 
@@ -25,12 +25,9 @@ The action applies the following OS settings:
 
 ## When to reprovision
 
-YugabyteDB Anywhere surfaces when reprovisioning would help:
+YugabyteDB Anywhere surfaces when reprovisioning would help, via health checks that report OS-setting drift on a node. For example, a process-limit or open-file warning, THP flagged as misconfigured, or a clock/NTP synchronization issue.
 
-- A banner indicates that universe nodes need to migrate to node agent or off legacy provisioning.
-- Health checks report OS-setting drift on a node. For example, a process-limit or open-file warning, THP flagged as misconfigured, or a clock/NTP synchronization issue.
-
-The action is always available on supported universes (the same as **Reinstall Node Agent**). Run it when YugabyteDB Anywhere indicates one of the above, or when you want to apply current OS settings. This is not a prerequisite for upgrading to v2025.2; treat it like a patch to keep database nodes updated.
+The action is always available on supported universes (the same as **Reinstall Node Agent**). Run it when YugabyteDB Anywhere indicates, or when you want to apply current OS settings. Treat it like a patch to keep database nodes updated.
 
 Reprovisioning performs a rolling restart, the same as a node resize or VM image upgrade. Perform it during a low-traffic period and avoid scheduled backup windows.
 

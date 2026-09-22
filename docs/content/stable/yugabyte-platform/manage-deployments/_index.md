@@ -25,7 +25,7 @@ For scaling and configuration changes, refer to [Scale and edit universes](../sc
 
   {{<index/item
     title="Reprovision universe nodes"
-    body="Re-apply OS-level provisioning and migrate legacy nodes to node agent."
+    body="Re-apply OS-level provisioning and reinstall node agent."
     href="reprovision-nodes/"
     icon="fa-thin fa-arrows-rotate">}}
 
