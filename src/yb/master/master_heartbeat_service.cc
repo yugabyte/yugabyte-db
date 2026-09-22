@@ -1085,7 +1085,19 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
 
   // Update the table state if all its tablets are now running.
   for (auto& [table_id, tablets] : new_running_tablets) {
-    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
+    const auto& table_info = table_info_map[table_id];
+    catalog_manager_->SchedulePostTabletCreationTasks(table_info, epoch, tablets);
+
+    // If this is a transaction status tablet, we need to bump the transaction table versions so
+    // that tservers update their cache of usable status tablets to include this tablet.
+    // We do one incrment per status tablet here for easier testing even though one increment total
+    // is sufficient. Transaction status creations are rare, so this should not be an issue.
+    if (table_info->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+      WARN_NOT_OK(
+          catalog_manager_->IncrementTransactionTablesVersion(),
+          "Failed to increment transaction status version, transaction status tablet may not be "
+          "usable until next increment");
+    }
   }
 
   // Update the relevant tablet entries in system.partitions.

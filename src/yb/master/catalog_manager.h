@@ -2976,6 +2976,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
+  bool CheckTransactionStatusTabletUsable(const TabletInfoPtr& tablet);
+
   // Get tablet ids of the global transaction status table.
   Status GetGlobalTransactionStatusTablets(
       GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
