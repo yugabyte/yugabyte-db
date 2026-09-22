@@ -256,6 +256,8 @@ To customize the [ports used for the universe](../../prepare/networking/), enter
 
 For Kubernetes universes, you can optionally set Helm chart overrides when creating the universe. Refer to [Configure Kubernetes overrides](../../scale-deployments/edit-helm-overrides/).
 
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default. To keep running as root on a non-OpenShift universe, set a Helm override. Refer to [Run as root](../../scale-deployments/edit-helm-overrides/#run-as-root).
+
 ## Examine the universe
 
 After the universe is ready, its **Overview** tab should appear similar to the following illustration:
