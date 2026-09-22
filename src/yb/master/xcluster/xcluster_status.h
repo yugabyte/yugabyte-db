@@ -69,6 +69,7 @@ class XClusterOutboundReplicationGroupTableStatus : public XClusterOutboundTable
   }
   bool is_checkpointing = false;
   bool is_part_of_initial_bootstrap = false;
+  bool is_wal_anchor = false;
 };
 
 struct XClusterOutboundReplicationGroupNamespaceStatus {

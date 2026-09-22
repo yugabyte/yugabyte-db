@@ -41,9 +41,11 @@ export const TaskType = {
 };
 export const TargetType = {
   UNIVERSE: 'Universe',
+  CLUSTER: 'Cluster',
   BACKUP: 'Backup',
   GFlags: 'GFlags'
 };
+export type TargetType = (typeof TargetType)[keyof typeof TargetType];
 
 export const ServerType = {
   MASTER: 'MASTER',

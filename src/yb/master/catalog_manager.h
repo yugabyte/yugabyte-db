@@ -1361,7 +1361,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
 
-  Status ShouldSplitValidCandidate(
+  Result<SplitPhase> ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
   Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) override;

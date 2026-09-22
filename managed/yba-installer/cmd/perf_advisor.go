@@ -380,6 +380,12 @@ func (perf PerfAdvisor) PreUpgrade() error              { return nil }
 func (perf PerfAdvisor) Upgrade() error {
 	log.Info("Starting Perf Advisor upgrade")
 	perf.perfAdvisorDirectories = newPerfAdvisorDirectories(perf.version)
+	// Before the template, which renders this into overrides.properties: FixConfigValues does not
+	// run on upgrade, so a config predating the key would render empty and then disagree with the
+	// keystore ensurePerfAdvisorTLSKeystore builds below - "MAC calculation failed" on every start.
+	if _, err := common.EnsureGeneratedPassword("perfAdvisor.tls.keystorePassword"); err != nil {
+		return err
+	}
 	if err := template.GenerateTemplate(perf); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.

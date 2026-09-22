@@ -2150,8 +2150,9 @@ TEST_F(PgDdlAtomicityTest, DdlCommitWithLostResponseAndLeaderChange) {
   SleepFor(2s * kTimeMultiplier);
 
   // Step down transaction status tablet leaders to force retries to reach a new leader.
-  // Some step-downs may fail transiently (e.g. a peer still in PRE_VOTER state during
-  // bootstrap), which is fine: we just need at least one leadership change.
+  // Some step-downs may fail transiently (e.g. a live PRE_VOTER still bootstrapping, or the
+  // nominated peer is not caught up yet), which is fine: we just need at least one leadership
+  // change.
   int stepped_down = 0;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     auto tablets = ASSERT_RESULT(cluster_->GetTablets(cluster_->tablet_server(i)));

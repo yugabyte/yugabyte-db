@@ -496,6 +496,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   void TestAddRemoveServer(PeerMemberType member_type);
   void TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType member_type);
   void TestRemoveTserverInTransitionSucceeds(PeerMemberType member_type);
+  void TestStepDownWhenServerInTransition(PeerMemberType member_type);
 
   // Drives the phantom-acknowledgement scenario end to end. Defined near the test that uses it,
   // at the bottom of this file.
@@ -1427,6 +1428,106 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(PeerMemberType me
   LOG(INFO) << "Removing tserver with uuid " << tservers[2]->uuid();
   ASSERT_OK(RemoveServer(
       initial_leader, tablet_id_, tservers[2], std::nullopt, MonoDelta::FromSeconds(10)));
+}
+
+// A live PRE_VOTER/PRE_OBSERVER may still be in remote bootstrap, so stepdown must wait. Once that
+// peer is unreachable for follower_unavailable_considered_failed_sec, it must not block transfer.
+void RaftConsensusITest::TestStepDownWhenServerInTransition(PeerMemberType member_type) {
+  ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
+              member_type == PeerMemberType::PRE_OBSERVER);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  const int kUnavailableSec = 5;
+  vector<string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+    "--TEST_skip_change_role"s,
+    "--evict_failed_followers=false"s,
+    // Validator requires follower_unavailable >= heartbeat * missed_periods (6s under TSAN).
+    "--raft_heartbeat_interval_ms=500"s,
+    Format("--follower_unavailable_considered_failed_sec=$0", kUnavailableSec),
+  };
+  vector<string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+    "--use_create_table_leader_hint=false"s,
+  };
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
+
+  TServerDetails* initial_leader = tservers[0];
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  ASSERT_OK(StartElection(initial_leader, tablet_id_, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, initial_leader, tablet_id_, timeout));
+
+  const string initial_leader_uuid = initial_leader->uuid();
+  const string new_leader_uuid = tservers[1]->uuid();
+  const string extra_voter_uuid = tservers[2]->uuid();
+
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, timeout));
+  tablet_servers_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  initial_leader = tablet_servers_[initial_leader_uuid].get();
+  TServerDetails* tserver_to_add = tablet_servers_[cluster_->tablet_server(3)->uuid()].get();
+  auto active_tablet_servers = CreateTabletServerMapUnowned(
+      tablet_servers_, {tserver_to_add->uuid()});
+
+  // TEST_skip_change_role keeps this peer in PRE_VOTER/PRE_OBSERVER after ADD_SERVER commits.
+  ASSERT_OK(AddServer(
+      initial_leader, tablet_id_, tserver_to_add, member_type, std::nullopt, timeout));
+  ASSERT_OK(WaitForServersToAgree(
+      MonoDelta::FromSeconds(60), active_tablet_servers, tablet_id_, /* minimum_index = */ 2));
+  ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(1, initial_leader, tablet_id_, timeout,
+                                                 member_type));
+
+  TabletServerErrorPB error;
+  Status s = LeaderStepDown(
+      initial_leader, tablet_id_, tablet_servers_[new_leader_uuid].get(), timeout,
+      /* disable_graceful_transition = */ false, &error);
+  ASSERT_TRUE(s.IsIllegalState()) << s;
+  ASSERT_EQ(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN, error.code());
+
+  cluster_->tablet_server(3)->Shutdown();
+
+  // Config change re-enters LEADER mode. Must not restart the dead PRE_* liveness clock.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        TabletServerErrorPB::Code remove_error = TabletServerErrorPB::UNKNOWN_ERROR;
+        auto status = RemoveServer(
+            initial_leader, tablet_id_, tablet_servers_[extra_voter_uuid].get(), std::nullopt,
+            timeout, &remove_error, /* retry = */ false);
+        if (status.ok()) {
+          return true;
+        }
+        if (remove_error == TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
+          return false;
+        }
+        return status;
+      },
+      30s * kTimeMultiplier, "remove extra voter after transitioning peer became unreachable"));
+  active_tablet_servers.erase(extra_voter_uuid);
+  ASSERT_OK(WaitForServersToAgree(
+      MonoDelta::FromSeconds(60), active_tablet_servers, tablet_id_, /* minimum_index = */ 3));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        TabletServerErrorPB stepdown_error;
+        auto status = LeaderStepDown(
+            initial_leader, tablet_id_, tablet_servers_[new_leader_uuid].get(), timeout,
+            /* disable_graceful_transition = */ false, &stepdown_error);
+        if (status.ok()) {
+          return true;
+        }
+        if (stepdown_error.code() == TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
+          return false;
+        }
+        return status;
+      },
+      30s * kTimeMultiplier, "stepdown after transitioning peer became unreachable"));
+  TServerDetails* new_leader = nullptr;
+  ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, timeout, &new_leader));
+  ASSERT_EQ(new_leader_uuid, new_leader->uuid());
 }
 
 // Test that the leader doesn't crash if one of its followers has
@@ -3311,6 +3412,14 @@ TEST_F(RaftConsensusITest, TestRemoveTserverSucceedsWhenVoterInTransition) {
 
 TEST_F(RaftConsensusITest, TestRemoveTserverSucceedsWhenObserverInTransition) {
   TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType::PRE_OBSERVER);
+}
+
+TEST_F(RaftConsensusITest, TestStepDownWhenVoterInTransition) {
+  TestStepDownWhenServerInTransition(PeerMemberType::PRE_VOTER);
+}
+
+TEST_F(RaftConsensusITest, TestStepDownWhenObserverInTransition) {
+  TestStepDownWhenServerInTransition(PeerMemberType::PRE_OBSERVER);
 }
 
 TEST_F(RaftConsensusITest, TestRemovePreObserverServerSucceeds) {

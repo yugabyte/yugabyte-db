@@ -76,6 +76,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -599,7 +600,7 @@ Status KvStoreInfo::LoadFromPB(
     if (tier_paths.empty()) {
       tier_paths.push_back({
           .path_id = 0,
-          .tier    = FsManager::kDefaultStorageTier,
+          .tier    = kDefaultStorageTier,
           .path    = rocksdb_dir,
       });
     }
@@ -832,7 +833,7 @@ std::vector<TierPathInfo> BuildTierPaths(
   const auto& roots_by_tier = fs_manager->GetDataRootsByTier();
 
   // Identify the home tier by finding which tier's roots contain home_data_root.
-  std::string home_tier(FsManager::kDefaultStorageTier);
+  std::string home_tier(kDefaultStorageTier);
   for (const auto& [tier, roots] : roots_by_tier) {
     if (std::find(roots.begin(), roots.end(), home_data_root) != roots.end()) {
       home_tier = tier;

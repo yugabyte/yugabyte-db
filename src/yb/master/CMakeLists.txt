@@ -160,6 +160,7 @@ set(MASTER_SRCS
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
   xcluster/xcluster_universe_replication_alter_helper.cc
+  xcluster/xcluster_wal_anchor_deletion_task.cc
   xcluster_consumer_registry_service.cc
   xcluster_rpc_tasks.cc
   xrepl_catalog_manager.cc

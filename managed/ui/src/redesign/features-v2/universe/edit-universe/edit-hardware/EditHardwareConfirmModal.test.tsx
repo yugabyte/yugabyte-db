@@ -431,11 +431,9 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
-  it('routes K8s custom-resource edits through edit-universe with tserver and master specs', async () => {
+  it('routes K8s CPU/mem changes through edit-universe as smart resize (not full move)', async () => {
     mockState.settings = k8sSettings();
-    mockState.strategy = 'migrate';
-    // Even if API were to return SMART_RESIZE, K8s must force migrate/edit-universe.
-    mockState.resizeOptions = [ResizeUpdateOption.SMART_RESIZE, ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'rolling';
 
     renderModal(makeK8sUniverse(true));
     await submitAndConfirm();
@@ -454,18 +452,134 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.checkMutate).not.toHaveBeenCalled();
   });
 
-  it('forces edit-universe for K8s even when confirm strategy is rolling', async () => {
+  it('rejects migrate for K8s CPU/mem changes (not full move)', async () => {
     mockState.settings = k8sSettings();
-    mockState.strategy = 'rolling';
-    mockState.resizeOptions = [ResizeUpdateOption.SMART_RESIZE];
+    mockState.strategy = 'migrate';
 
     renderModal(makeK8sUniverse(true));
     await submitAndConfirm();
 
-    // K8s effective options are FULL_MOVE only → rolling is rejected.
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
     expect(mockState.editMutate).not.toHaveBeenCalled();
     expect(mockState.toastError).toHaveBeenCalled();
+    expect(mockState.checkMutate).not.toHaveBeenCalled();
+  });
+
+  it('uses resize-nodes for K8s volume-size increase only (rolling)', async () => {
+    mockState.settings = k8sSettings({
+      tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 },
+      masterK8SNodeResourceSpec: { cpuCoreCount: 1, memoryGib: 2 },
+      deviceInfo: {
+        volumeSize: 200,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageClass: 'standard',
+        storageType: null
+      },
+      masterDeviceInfo: {
+        volumeSize: 100,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageClass: 'standard',
+        storageType: null
+      }
+    });
+    mockState.strategy = 'rolling';
+
+    renderModal(makeK8sUniverse(true));
+    await submitAndConfirm();
+
+    expect(mockState.checkMutate).not.toHaveBeenCalled();
+    expect(mockState.editMutate).not.toHaveBeenCalled();
+    const payload = getFirstResizePayload();
+    expect(payload.node_spec.storage_spec.volume_size).toBe(200);
+  });
+
+  it('rejects migrate for K8s volume-size increase only (not full move)', async () => {
+    mockState.settings = k8sSettings({
+      tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 },
+      masterK8SNodeResourceSpec: { cpuCoreCount: 1, memoryGib: 2 },
+      deviceInfo: {
+        volumeSize: 200,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageClass: 'standard',
+        storageType: null
+      },
+      masterDeviceInfo: {
+        volumeSize: 100,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageClass: 'standard',
+        storageType: null
+      }
+    });
+    mockState.strategy = 'migrate';
+
+    renderModal(makeK8sUniverse(true));
+    await submitAndConfirm();
+
+    expect(mockState.checkMutate).not.toHaveBeenCalled();
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+    expect(mockState.editMutate).not.toHaveBeenCalled();
+    expect(mockState.toastError).toHaveBeenCalled();
+  });
+
+  it('rejects rolling for K8s numVolumes change (full move only)', async () => {
+    mockState.settings = k8sSettings({
+      tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 },
+      masterK8SNodeResourceSpec: { cpuCoreCount: 1, memoryGib: 2 },
+      deviceInfo: {
+        volumeSize: 100,
+        numVolumes: 2,
+        diskIops: null,
+        throughput: null,
+        storageClass: 'standard',
+        storageType: null
+      }
+    });
+    mockState.strategy = 'rolling';
+
+    renderModal(makeK8sUniverse(true));
+    await submitAndConfirm();
+
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+    expect(mockState.editMutate).not.toHaveBeenCalled();
+    expect(mockState.toastError).toHaveBeenCalled();
+  });
+
+  it('uses edit-universe migrate for K8s storage class change (full move)', async () => {
+    mockState.settings = k8sSettings({
+      tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 },
+      masterK8SNodeResourceSpec: { cpuCoreCount: 1, memoryGib: 2 },
+      deviceInfo: {
+        volumeSize: 100,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageClass: 'fast',
+        storageType: null
+      },
+      masterDeviceInfo: {
+        volumeSize: 100,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageClass: 'standard',
+        storageType: null
+      }
+    });
+    mockState.strategy = 'migrate';
+
+    renderModal(makeK8sUniverse(true));
+    await submitAndConfirm();
+
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+    expect(getFirstEditPayload().node_spec.storage_spec.storage_class).toBe('fast');
   });
 
   it('routes K8s master-only edits with the master change and unchanged tserver fallback', async () => {
@@ -473,7 +587,7 @@ describe('EditHardwareConfirmModal payloads', () => {
       tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 },
       masterK8SNodeResourceSpec: { cpuCoreCount: 2.5, memoryGib: 3 }
     });
-    mockState.strategy = 'migrate';
+    mockState.strategy = 'rolling';
 
     renderModal(makeK8sUniverse(true), { mode: 'master' });
     await submitAndConfirm();
@@ -494,7 +608,7 @@ describe('EditHardwareConfirmModal payloads', () => {
       tserverK8SNodeResourceSpec: { cpuCoreCount: 3, memoryGib: 5 },
       masterK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 3 }
     });
-    mockState.strategy = 'migrate';
+    mockState.strategy = 'rolling';
 
     renderModal(makeK8sUniverse(true), { mode: 'tserver' });
     await submitAndConfirm();
@@ -565,7 +679,7 @@ describe('EditHardwareConfirmModal payloads', () => {
 
   it('keeps geo-partitioned K8s hardware edits cluster-level only', async () => {
     mockState.settings = k8sSettings();
-    mockState.strategy = 'migrate';
+    mockState.strategy = 'rolling';
 
     renderModal(makeGeoK8sUniverse(true), { mode: 'tserver' });
     await submitAndConfirm();
@@ -588,7 +702,7 @@ describe('EditHardwareConfirmModal payloads', () => {
     mockState.settings = k8sSettings({
       tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 }
     });
-    mockState.strategy = 'migrate';
+    mockState.strategy = 'rolling';
 
     renderModal(makeK8sUniverseWithReadReplica(true), {
       mode: 'readReplica',

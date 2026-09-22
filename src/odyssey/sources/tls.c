@@ -141,6 +141,8 @@ machine_tls_t *od_tls_frontend(od_config_listen_t *config)
 int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 			   od_config_listen_t *config, machine_tls_t *tls)
 {
+	od_instance_t *instance = client->global->instance;
+
 	if (client->startup.is_ssl_request) {
 		od_debug(logger, "tls", client, NULL, "ssl request");
 
@@ -195,6 +197,28 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 			return -1;
 		}
 		client->startup.yb_ssl_established = 1;
+
+		/*
+		 * YB: Capture the client's leaf certificate right after the
+		 * handshake, at the same point PostgreSQL reads it in
+		 * be_tls_open_server(). A certificate that was presented but
+		 * cannot be read is fatal there, so it is fatal here too.
+		 */
+		if (instance->config.yb_cert_auth) {
+			if (yb_machine_io_get_peer_cert_der(
+				    client->io.io, &client->yb_client_cert_der,
+				    &client->yb_client_cert_der_len) == -1) {
+				od_error(logger, "tls", client, NULL,
+					 "failed to read client certificate: %s",
+					 od_io_error(&client->io));
+				return -1;
+			}
+			if (client->yb_client_cert_der != NULL)
+				od_debug(logger, "tls", client, NULL,
+					 "client certificate captured, %d bytes",
+					 client->yb_client_cert_der_len);
+		}
+
 		od_debug(logger, "tls", client, NULL, "ok");
 		return 0;
 	}

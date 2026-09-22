@@ -255,6 +255,22 @@ func TestSplitString(t *testing.T) {
 	t.Logf("Output: %s", output)
 }
 
+func TestBase64Encode(t *testing.T) {
+	values := map[string]any{
+		"value": "/mnt/d0;$(touch /tmp/unsafe)",
+	}
+	filename := writeTestTemplate(t, "{{ value | base64_encode }}")
+	defer os.Remove(filename)
+	output, err := ResolveTemplate(context.TODO(), values, filename)
+	if err != nil {
+		t.Fatalf("Failed to render template: %v", err)
+	}
+	const expectedOutput = "L21udC9kMDskKHRvdWNoIC90bXAvdW5zYWZlKQ=="
+	if output != expectedOutput {
+		t.Fatalf("Unexpected output: %s, found %s", expectedOutput, output)
+	}
+}
+
 func TestCustomBooleanTestFunc(t *testing.T) {
 	testValues := []struct {
 		Input          map[string]any

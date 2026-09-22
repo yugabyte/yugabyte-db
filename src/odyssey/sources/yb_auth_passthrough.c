@@ -143,6 +143,16 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 			YB_NAME_AND_SIZEOF(YB_YCM_LOGICAL_CONN_TYPE));
 	yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
 
+	/* forward the client certificate, so that Postgres can read CN/DN. */
+	int yb_client_cert_len = 0;
+	char *yb_client_cert = yb_encode_client_cert(client, &yb_client_cert_len);
+	if (yb_client_cert != NULL) {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_CERT));
+		yb_kiwi_set_fe_arg(&argv[argc++], yb_client_cert,
+				   yb_client_cert_len);
+	}
+
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("replication"));
@@ -171,6 +181,8 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 	msg = kiwi_fe_write_startup_message(NULL, argc, argv);
 	free(argv);
 	argv = NULL;
+	if (yb_client_cert != NULL)
+		free(yb_client_cert);
 
 	if (msg == NULL)
 		return -1;

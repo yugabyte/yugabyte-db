@@ -49,6 +49,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -1224,6 +1225,26 @@ TEST_F(ConsensusQueueTest, MajorityWatermarkIgnoresWatermarksCarriedByFailedResp
   SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(5), 0);
   queue_->ResponseFromPeer(kPeerUuid, response);
   ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(5));
+}
+
+TEST_F(ConsensusQueueTest, SetLeaderModeDoesNotResetPeerLiveness) {
+  auto raft_config = BuildRaftConfigPBForTests(2);
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  TrackPeer(*queue_, kPeerUuid);
+  ASSERT_TRUE(queue_->IsPeerLive(kPeerUuid));
+
+  SleepFor(MonoDelta::FromMilliseconds(50));
+  const auto before =
+      queue_->GetTrackedPeerForTests(kPeerUuid).last_successful_communication_time;
+
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  const auto after =
+      queue_->GetTrackedPeerForTests(kPeerUuid).last_successful_communication_time;
+  ASSERT_EQ(before, after);
+  ASSERT_TRUE(queue_->IsPeerLive(kPeerUuid));
 }
 
 } // namespace yb::consensus

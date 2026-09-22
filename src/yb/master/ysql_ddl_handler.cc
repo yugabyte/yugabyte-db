@@ -594,12 +594,18 @@ Status CatalogManager::ClearYsqlDdlTxnState(
     RemoveDdlTxnVerifierStateFromIndex(pb, rollback_till_ddl_state_index);
   }
 
+  const bool xcluster_has_pending_wal_anchor_deletion =
+      pb.has_xcluster_pending_wal_anchor_deletion_source_table_id();
+
   RETURN_NOT_OK(sys_catalog_->Upsert(txn_data.epoch, txn_data.table));
   if (RandomActWithProbability(
       FLAGS_TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification)) {
     return STATUS(InternalError, "Injected random failure for testing.");
   }
   txn_data.write_lock.Commit();
+  if (xcluster_has_pending_wal_anchor_deletion) {
+    GetXClusterManager()->MarkWalAnchorDeletionPending(txn_data.table->id());
+  }
   if (final_cleanup) {
     RemoveDdlTransactionState(txn_data.table->id(), {txn_data.ddl_txn_id});
   } else {

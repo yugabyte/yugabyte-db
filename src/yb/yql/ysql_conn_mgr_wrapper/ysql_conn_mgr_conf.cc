@@ -37,6 +37,7 @@
 DECLARE_bool(logtostderr);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 DECLARE_bool(ysql_conn_mgr_use_auth_backend);
+DECLARE_bool(ysql_conn_mgr_cert_auth);
 DECLARE_bool(ysql_conn_mgr_enable_multi_route_pool);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
@@ -386,6 +387,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
+    {"{%yb_cert_auth%}", BoolToString(FLAGS_ysql_conn_mgr_cert_auth)},
     {"{%yb_client_login_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_auth_msg_timeout)},
     {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
     {"{%cache_coroutine%}", std::to_string(FLAGS_ysql_conn_mgr_cache_coroutine)},

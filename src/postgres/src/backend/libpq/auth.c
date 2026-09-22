@@ -476,6 +476,14 @@ ClientAuthentication(Port *port)
 
 	bool		yb_auth_passthrough = YbIsAuthPassthroughInProgress(port);
 
+	/*
+	 * YB: True when the client reached us through the connection manager, so
+	 * that the TLS session, and with it the client certificate, belongs to the
+	 * conn mgr rather than to this backend.
+	 */
+	bool		yb_auth_via_conn_mgr = YbIsClientYsqlConnMgr() &&
+		(yb_auth_passthrough || yb_is_auth_backend);
+
 	/* Auth Passthrough can be enabled only for Ysql Connection Manager */
 	if (yb_auth_passthrough)
 		Assert(YbIsClientYsqlConnMgr());
@@ -509,30 +517,37 @@ ClientAuthentication(Port *port)
 						"authentication method is yb-tserver-key")));
 
 	/*
+	 * YB: Reject unconditionally if the cert forwarded by logical connection
+	 * via conn mgr failed to parse in be_tls_open_server(). Upstream drops the TLS
+	 * session for bad cert; on the AP path, the TLS session lives at the conn mgr,
+	 * so the equivalent fail-close has to happen here.
+	 */
+	if (port->yb_forwarded_cert_parse_failed)
+	{
+		auth_failed(port, STATUS_ERROR,
+					"could not parse client certificate forwarded by the connection manager",
+					false /* yb_role_is_locked_out */ );
+		return;
+	}
+
+	/*
 	 * This is the first point where we have access to the hba record for the
 	 * current connection, so perform any verifications based on the hba
 	 * options field that should be done *before* the authentication here.
 	 */
 	if (port->hba->clientcert != clientCertOff)
 	{
-		if (YbIsClientYsqlConnMgr() &&
-			(yb_auth_passthrough == true || yb_is_auth_backend == true))
-		{
-			/*
-			 * Ysql Connection Manager does not know what is the
-			 * authentication type of a client, if authentication type is cert,
-			 * a FATAL packet is sent back to the Ysql Connection Manager.
-			 */
-			auth_failed(port, status,
-						"cert authentication is not supported with connection "
-						"manager",
-						false);
-			return;
-		}
-
-
-		/* If we haven't loaded a root certificate store, fail */
-		if (!secure_loaded_verify_locations())
+		/*
+		 * If we haven't loaded a root certificate store, fail.
+		 *
+		 * YB: Under Connection Manager the client's TLS session terminates at
+		 * the conn mgr, which verified the certificate against its own root
+		 * store and forwarded the leaf so that the identity can be derived
+		 * here. This backend's own root store is therefore irrelevant, and
+		 * requiring one would break cert auth on deployments that only
+		 * configure TLS on the conn mgr.
+		 */
+		if (!yb_auth_via_conn_mgr && !secure_loaded_verify_locations())
 			ereport(FATAL,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("client certificates can only be checked if a root certificate store is available")));
@@ -544,9 +559,20 @@ ClientAuthentication(Port *port)
 		 * already if it didn't verify ok.
 		 */
 		if (!port->peer_cert_valid)
-			ereport(FATAL,
+		{
+			if (yb_auth_passthrough)
+			{
+				YbSendFatalForLogicalConnectionPacket();
+				port->yb_has_auth_passthrough_finished = true;
+			}
+
+			ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("connection requires a valid client certificate")));
+
+			/* YB: not FATAL with conn mgr. Use above method to signal failure. */
+			return;
+		}
 	}
 
 	/*
@@ -3054,7 +3080,7 @@ CheckCertAuth(Port *port)
 	int			status_check_usermap = STATUS_ERROR;
 	char	   *peer_username = NULL;
 
-	Assert(port->ssl);
+	Assert(port->ssl || port->yb_is_ssl_enabled_in_logical_conn);
 
 	/* select the correct field to compare */
 	switch (port->hba->clientcertname)

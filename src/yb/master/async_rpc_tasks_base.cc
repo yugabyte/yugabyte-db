@@ -267,9 +267,13 @@ MonitoredTaskState RetryingRpcTask::AbortAndReturnPrevState(
     }
     prev_state = state();
   }
+  // Whichever thread moved the task to its terminal state unregisters it, so do not unregister it
+  // here. Doing so would block on unregister_mutex_ until that thread is done, and that thread may
+  // be waiting for a catalog lock held by this one: DeleteTable aborts the table tasks while
+  // holding the table write lock, which an index backfill chunk takes in its unregister callback.
+  // It would also run the task's unregister callbacks a second time.
   VLOG_WITH_PREFIX_AND_FUNC(1)
       << "Already terminated, prev state: " << AsString(prev_state);
-  UnregisterAsyncTask();
   return prev_state;
 }
 

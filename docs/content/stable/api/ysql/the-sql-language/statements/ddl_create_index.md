@@ -478,3 +478,9 @@ DROP INDEX
 [tablet-splitting]: ../../../../../architecture/docdb-sharding/tablet-splitting
 [yb-master]: ../../../../../reference/configuration/yb-master/
 [yb-tserver]: ../../../../../reference/configuration/yb-tserver/
+
+## See also
+
+- [ALTER INDEX](../ddl_alter_index)
+- [DROP INDEX](../ddl_drop_index)
+- [Faster writes to new tables](../../../../../explore/transactions/new-table-writes/)

@@ -1244,6 +1244,19 @@ class AzureCloudAdmin():
                 json.dump(vms, writefile)
         return
 
+    def _get_yb_data_disk_lun_indexes(self, vm):
+        """Return YBA-created data disk LUNs in their original attachment order."""
+        disk_pattern = re.compile(r"^{}-Disk-(\d+)$".format(re.escape(vm.name)))
+        indexed_luns = []
+        for disk in vm.storage_profile.data_disks:
+            if not disk.name:
+                continue
+            match = disk_pattern.match(disk.name)
+            if match and disk.lun is not None:
+                indexed_luns.append((int(match.group(1)), disk.lun))
+        indexed_luns.sort(key=lambda item: item[0])
+        return [lun for _, lun in indexed_luns]
+
     def get_host_info(self, vm_name, get_all=False, node_uuid=None):
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
@@ -1275,12 +1288,14 @@ class AzureCloudAdmin():
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
         instance_state = self.extract_vm_instance_state(vm.instance_view)
         is_running = True if instance_state == "running" else False
+        lun_indexes = self._get_yb_data_disk_lun_indexes(vm)
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": host_node_uuid,
                 "universe_uuid": universe_uuid, "instance_state": instance_state,
-                "is_running": is_running, "root_volume": root_volume}
+                "is_running": is_running, "root_volume": root_volume,
+                "lun_indexes": lun_indexes}
 
     def get_dns_client(self, subscription_id):
         if self.dns_client is None:
