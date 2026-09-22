@@ -227,7 +227,7 @@ docker exec -it yugabytedb-node1 bin/yb-admin \
     set_preferred_zones gcp.us-east1.us-east1-a:1 gcp.us-central1.us-central1-a:2 gcp.us-west2.us-west2-a:3
 ```
 
-The `set_preferred_zones` command allows defining a preferred region/zone using a priority-based approach. The US East region is the preferred one because its priority is set to `1`. If that region becomes unavailable, then the US Central region becomes the next preferred one, provided its priority is set to `2`.
+The `set_preferred_zones` command ranks tablet-leader preference by zone. US East is rank 1; if that zone is unavailable, US Central (rank 2) is next.
 
 {{< tip title="Design Patterns for Global Applications" >}}
 There is no one-size-fits-all solution for multi-region deployments, whether with YugabyteDB or any other distributed database. However, you can choose from several [design patterns for global applications](../../../build-global-apps/#design-patterns) and configure your database to best suit your multi-region application workloads.

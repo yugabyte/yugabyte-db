@@ -11,7 +11,7 @@ use libflate::gzip::{Decoder, Encoder};
 use pgrx::prelude::*;
 use std::io::{Read, Write};
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 /// gzip bytes.  Postgres will automatically convert `text`/`varchar` data into `bytea`
 #[pg_extern]

@@ -188,6 +188,12 @@ typedef struct Port
 	bool		yb_is_ssl_enabled_in_logical_conn;
 
 	/*
+	 * YB: Set when a client certificate forwarded by the connection manager
+	 * (yb_ycm_internal_client_cert) fails to parse in be_tls_open_server().
+	 */
+	bool		yb_forwarded_cert_parse_failed;
+
+	/*
 	 * YB: W3C traceparent from the "yb_dist_traceparent" startup-packet param
 	 * (set by the tserver). Root span for backend init; read in InitPostgres.
 	 * NULL when absent.
@@ -297,9 +303,10 @@ extern int	be_tls_init(bool isServerStart);
 extern void be_tls_destroy(void);
 
 /*
- * Attempt to negotiate SSL connection.
+ * YB: Attempt to negotiate SSL connection. If yb_b64_client_cert_of_logical_conn is set,
+ * then only validate/parse the certificate of the logical connection created to conn mgr.
  */
-extern int	be_tls_open_server(Port *port);
+extern int	be_tls_open_server(Port *port, const char *yb_b64_client_cert_of_logical_conn);
 
 /*
  * Close SSL connection.

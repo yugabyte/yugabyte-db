@@ -1,0 +1,6 @@
+SELECT range.range(10, 101);
+  range   
+----------
+ [10,101)
+(1 row)
+

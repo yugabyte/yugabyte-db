@@ -72,7 +72,7 @@ impl SpiCursor<'_> {
     /// Fetch up to `count` rows from the cursor, moving forward
     ///
     /// If `fetch` runs off the end of the available rows, an empty [`SpiTupleTable`] is returned.
-    pub fn fetch(&mut self, count: libc::c_long) -> SpiResult<SpiTupleTable> {
+    pub fn fetch(&mut self, count: libc::c_long) -> SpiResult<SpiTupleTable<'_>> {
         // SAFETY: no concurrent access
         unsafe {
             pg_sys::SPI_tuptable = std::ptr::null_mut();

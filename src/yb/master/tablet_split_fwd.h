@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -23,6 +24,8 @@ class TabletSplitManager;
 struct SplitTabletIds;
 
 YB_STRONGLY_TYPED_BOOL(ManualSplit);
+
+YB_DEFINE_ENUM(SplitPhase, (kLow)(kHigh)(kFinal));
 
 } // namespace master
 } // namespace yb

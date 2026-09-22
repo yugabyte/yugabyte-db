@@ -4117,7 +4117,8 @@ _outYbMergeScanInfo(StringInfo str, const YbMergeScanInfo *node)
 }
 
 static void
-_outYbMergeScanStreamColInfo(StringInfo str, const YbMergeScanStreamColInfo *node)
+_outYbMergeScanStreamColInfo(StringInfo str,
+							 const YbMergeScanStreamColInfo *node)
 {
 	WRITE_NODE_TYPE("YBMERGESCANSTREAMCOLINFO");
 

@@ -39,6 +39,12 @@ type: indexpage
     icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
+    title="Cluster-wide database views"
+    body="Query per-node statistics views across every live YB-TServer from a single YSQL session."
+    href="cluster-wide-db-views/"
+    icon="fa-thin fa-layer-group">}}
+
+  {{<index/item
     title="YSQL Distributed Tracing"
     body="Export OpenTelemetry traces for YSQL query execution and view them in Jaeger or other backends."
     href="ysql-distributed-tracing/"

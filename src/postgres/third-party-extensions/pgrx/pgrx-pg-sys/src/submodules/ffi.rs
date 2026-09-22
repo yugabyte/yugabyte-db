@@ -30,18 +30,18 @@ mod cee_scape {
     where
         F: for<'a> FnOnce(&'a SigJmpBufFields) -> c_int,
     {
-        extern "C-unwind" {
+        unsafe extern "C-unwind" {
             fn call_closure_with_sigsetjmp(
                 savemask: c_int,
                 closure_env_ptr: *mut c_void,
-                closure_code: extern "C-unwind" fn(
+                closure_code: unsafe extern "C-unwind" fn(
                     jbuf: *const SigJmpBufFields,
                     env_ptr: *mut c_void,
                 ) -> c_int,
             ) -> c_int;
         }
 
-        extern "C-unwind" fn call_from_c_to_rust<F>(
+        unsafe extern "C-unwind" fn call_from_c_to_rust<F>(
             jbuf: *const SigJmpBufFields,
             closure_env_ptr: *mut c_void,
         ) -> c_int
@@ -66,7 +66,7 @@ mod cee_scape {
     }
 }
 
-use cee_scape::{call_with_sigsetjmp, SigJmpBufFields};
+use cee_scape::{SigJmpBufFields, call_with_sigsetjmp};
 
 /**
 Given a closure that is assumed to be a wrapped Postgres `extern "C-unwind"` function, [pg_guard_ffi_boundary]
@@ -154,6 +154,7 @@ pub unsafe fn pg_guard_ffi_boundary<T, F: FnOnce() -> T>(f: F) -> T {
     unsafe { pg_guard_ffi_boundary_impl(f) }
 }
 
+#[allow(clippy::missing_transmute_annotations)]
 #[inline(always)]
 #[track_caller]
 unsafe fn pg_guard_ffi_boundary_impl<T, F: FnOnce() -> T>(f: F) -> T {
@@ -207,29 +208,44 @@ unsafe fn pg_guard_ffi_boundary_impl<T, F: FnOnce() -> T>(f: F) -> T {
             // copy out the fields we need to support pgrx' error handling
             let level = errdata.elevel.into();
             let sqlerrcode = errdata.sqlerrcode.into();
-            let message = errdata
-                .message
-                .is_null()
-                .then(|| String::from("<null error message>"))
-                .unwrap_or_else(|| CStr::from_ptr(errdata.message).to_string_lossy().to_string());
-            let detail = errdata.detail.is_null().then_some(None).unwrap_or_else(|| {
-                Some(CStr::from_ptr(errdata.detail).to_string_lossy().to_string())
-            });
-            let hint = errdata.hint.is_null().then_some(None).unwrap_or_else(|| {
-                Some(CStr::from_ptr(errdata.hint).to_string_lossy().to_string())
-            });
-            let funcname = errdata.funcname.is_null().then_some(None).unwrap_or_else(|| {
-                Some(CStr::from_ptr(errdata.funcname).to_string_lossy().to_string())
-            });
-            let file =
-                errdata.filename.is_null().then(|| String::from("<null filename>")).unwrap_or_else(
-                    || CStr::from_ptr(errdata.filename).to_string_lossy().to_string(),
-                );
+            let message = if errdata.message.is_null() {
+                String::from("<null error message>")
+            } else {
+                CStr::from_ptr(errdata.message).to_string_lossy().to_string()
+            };
+            let domain = if errdata.domain.is_null() {
+                None
+            } else {
+                { Some(CStr::from_ptr(errdata.domain).to_string_lossy().to_string()) }
+            };
+            let detail = if errdata.detail.is_null() {
+                None
+            } else {
+                { Some(CStr::from_ptr(errdata.detail).to_string_lossy().to_string()) }
+            };
+            let hint = if errdata.hint.is_null() {
+                None
+            } else {
+                { Some(CStr::from_ptr(errdata.hint).to_string_lossy().to_string()) }
+            };
+            let funcname = if errdata.funcname.is_null() {
+                None
+            } else {
+                { Some(CStr::from_ptr(errdata.funcname).to_string_lossy().to_string()) }
+            };
+            let file = if errdata.filename.is_null() {
+                String::from("<null filename>")
+            } else {
+                CStr::from_ptr(errdata.filename).to_string_lossy().to_string()
+            };
             let line = errdata.lineno as _;
 
-            // clean up after ourselves by freeing the result of [CopyErrorData] and restoring
-            // Postgres' understanding of where its next longjmp should go
+            // clean up after ourselves by freeing the result of [CopyErrorData], flushing the
+            // Postgres error state (so the original error no longer occupies a slot on Postgres'
+            // fixed-size errordata[] stack), and restoring Postgres' understanding of where its
+            // next longjmp should go
             pg_sys::FreeErrorData(errdata_ptr);
+            pg_sys::FlushErrorState();
             pg_sys::PG_exception_stack = prev_exception_stack;
             pg_sys::error_context_stack = prev_error_context_stack;
 
@@ -239,9 +255,10 @@ unsafe fn pg_guard_ffi_boundary_impl<T, F: FnOnce() -> T>(f: F) -> T {
                 level,
                 inner: ErrorReport {
                     sqlerrcode,
-                    message,
+                    message: message.into(),
                     detail,
                     hint,
+                    domain,
                     location: ErrorReportLocation { file, funcname, line, col: 0, backtrace: None },
                 },
             }))

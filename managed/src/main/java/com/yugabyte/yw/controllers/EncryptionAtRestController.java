@@ -295,6 +295,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All the below fields are non editable
         List<String> nonEditableFields =
             Arrays.asList(
+                GcpKmsAuthConfigField.GCP_PROJECT_ID.fieldName,
                 GcpKmsAuthConfigField.LOCATION_ID.fieldName,
                 GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
                 GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName,
@@ -440,6 +441,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All these fields must be kept the same from the old authConfig (if it has)
         List<String> nonEditableFields =
             Arrays.asList(
+                GcpKmsAuthConfigField.GCP_PROJECT_ID.fieldName,
                 GcpKmsAuthConfigField.LOCATION_ID.fieldName,
                 GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
                 GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName,
@@ -450,12 +452,24 @@ public class EncryptionAtRestController extends AuthenticatedController {
             formData.set(field, authConfig.get(field));
           }
         }
-        // GCP_CONFIG field can change. If no config is specified, use the same old one.
-        if (!formData.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
-            && authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)) {
-          formData.set(
-              GcpKmsAuthConfigField.GCP_CONFIG.fieldName,
-              authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName));
+        // Credentials are editable. A request that names an auth mode (GCP_CONFIG or
+        // USE_GCP_IAM) switches to it; one that names neither keeps the stored mode. The merged
+        // formData replaces the stored authConfig wholesale, so a switch to the host identity must
+        // not carry the old key file along.
+        boolean requestNamesAuth =
+            formData.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+                || formData.has(GcpKmsAuthConfigField.USE_GCP_IAM.fieldName);
+        if (!requestNamesAuth) {
+          for (String field :
+              Arrays.asList(
+                  GcpKmsAuthConfigField.GCP_CONFIG.fieldName,
+                  GcpKmsAuthConfigField.USE_GCP_IAM.fieldName)) {
+            if (authConfig.has(field)) {
+              formData.set(field, authConfig.get(field));
+            }
+          }
+        } else if (GcpEARServiceUtil.isUseGcpIam(formData)) {
+          formData.remove(GcpKmsAuthConfigField.GCP_CONFIG.fieldName);
         }
         LOG.info("Added all required fields to the formData to be edited");
         break;
@@ -580,16 +594,23 @@ public class EncryptionAtRestController extends AuthenticatedController {
       checkIfKMSConfigExists(customerUUID, formData);
       // Validating the KMS Provider config details.
       validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
-      UUID taskUUID =
-          kmsConfigHelper.createKMSConfig(
+      YBPTask task =
+          kmsConfigHelper.submitCreateKMSConfig(
               customerUUID, Enum.valueOf(KeyProvider.class, keyProvider), formData);
       LOG.info(
-          "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
+          "Saved task uuid "
+              + task.taskUUID
+              + " in customer tasks table for customer: "
+              + customerUUID);
 
       auditService()
           .createAuditEntryWithReqBody(
-              request, Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, taskUUID);
-      return new YBPTask(taskUUID).asResult();
+              request,
+              Audit.TargetType.KMSConfig,
+              task.resourceUUID.toString(),
+              Audit.ActionType.Create,
+              task.taskUUID);
+      return task.asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }

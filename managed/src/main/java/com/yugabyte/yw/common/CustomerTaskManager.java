@@ -1043,6 +1043,7 @@ public class CustomerTaskManager {
                 "Cannot retry modifying query logging task as YSQL major upgrade is in progress.");
           }
         }
+        break;
       case ModifyMetricsExportConfig:
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;

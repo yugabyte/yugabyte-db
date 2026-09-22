@@ -659,7 +659,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->indexorderbyorig,
 								  rtoffset, NUM_EXEC_QUAL(plan));
 				yb_fix_merge_scan_stream_conds(root, splan->yb_merge_scan_info,
-										rtoffset, NUM_EXEC_QUAL(plan));
+											   rtoffset, NUM_EXEC_QUAL(plan));
 			}
 			break;
 		case T_IndexOnlyScan:
@@ -1467,7 +1467,7 @@ set_indexonlyscan_references(PlannerInfo *root,
 	plan->indextlist = fix_scan_list(root, plan->indextlist,
 									 rtoffset, NUM_EXEC_TLIST((Plan *) plan));
 	yb_fix_merge_scan_stream_conds(root, plan->yb_merge_scan_info,
-							rtoffset, NUM_EXEC_QUAL((Plan *) plan));
+								   rtoffset, NUM_EXEC_QUAL((Plan *) plan));
 
 	pfree(index_itlist);
 
@@ -3761,8 +3761,8 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 
 /*
  * yb_fix_merge_scan_stream_conds
- *		Do set_plan_refs processing on the merge scan stream key conditions
- *		of an index scan.
+ *		Do set_plan_refs processing on the merge scan stream key conditions of
+ *		an index scan.
  *
  * These are the scalar array ops the planner pinned as merge scan stream keys
  * and the equality index conditions of the single-value stream key columns

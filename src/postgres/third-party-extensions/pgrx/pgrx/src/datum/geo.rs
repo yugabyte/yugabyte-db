@@ -7,7 +7,7 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::{pg_sys, FromDatum, IntoDatum, PgMemoryContexts};
+use crate::{FromDatum, IntoDatum, PgMemoryContexts, pg_sys};
 
 impl FromDatum for pg_sys::BOX {
     unsafe fn from_polymorphic_datum(
@@ -70,5 +70,37 @@ impl IntoDatum for pg_sys::Point {
 
     fn type_oid() -> pg_sys::Oid {
         pg_sys::POINTOID
+    }
+}
+
+impl FromDatum for pg_sys::CIRCLE {
+    unsafe fn from_polymorphic_datum(
+        datum: pg_sys::Datum,
+        is_null: bool,
+        _: pg_sys::Oid,
+    ) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if is_null {
+            None
+        } else {
+            let the_box = datum.cast_mut_ptr::<pg_sys::CIRCLE>();
+            Some(the_box.read())
+        }
+    }
+}
+
+impl IntoDatum for pg_sys::CIRCLE {
+    fn into_datum(mut self) -> Option<pg_sys::Datum> {
+        unsafe {
+            let ptr = PgMemoryContexts::CurrentMemoryContext
+                .copy_ptr_into(&mut self, std::mem::size_of::<pg_sys::CIRCLE>());
+            Some(ptr.into())
+        }
+    }
+
+    fn type_oid() -> pg_sys::Oid {
+        pg_sys::CIRCLEOID
     }
 }

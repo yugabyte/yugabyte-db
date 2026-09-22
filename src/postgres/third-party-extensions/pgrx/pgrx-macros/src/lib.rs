@@ -11,26 +11,28 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use std::collections::HashSet;
+use std::ffi::CString;
 
 use proc_macro2::Ident;
-use quote::{format_ident, quote, ToTokens};
+use quote::{ToTokens, format_ident, quote};
 use syn::spanned::Spanned;
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Item, ItemImpl};
+use syn::{Attribute, Data, DeriveInput, Item, ItemImpl, parse_macro_input};
 
 use operators::{deriving_postgres_eq, deriving_postgres_hash, deriving_postgres_ord};
 use pgrx_sql_entity_graph as sql_gen;
 use sql_gen::{
-    parse_extern_attributes, CodeEnrichment, ExtensionSql, ExtensionSqlFile, ExternArgs,
-    PgAggregate, PgCast, PgExtern, PostgresEnum, Schema,
+    CodeEnrichment, ExtensionSql, ExtensionSqlFile, ExternArgs, PgAggregate, PgCast, PgExtern,
+    PostgresEnum, Schema, parse_extern_attributes,
 };
 
 mod operators;
+mod pg_bench;
 mod rewriter;
 
 /// Declare a function as `#[pg_guard]` to indicate that it is called from a Postgres `extern "C-unwind"`
 /// function so that Rust `panic!()`s (and Postgres `elog(ERROR)`s) will be properly handled by `pgrx`
 #[proc_macro_attribute]
-pub fn pg_guard(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn pg_guard(attr: TokenStream, item: TokenStream) -> TokenStream {
     // get a usable token stream
     let ast = parse_macro_input!(item as syn::Item);
 
@@ -40,7 +42,7 @@ pub fn pg_guard(_attr: TokenStream, item: TokenStream) -> TokenStream {
         Item::ForeignMod(block) => Ok(rewriter::extern_block(block)),
 
         // process top-level functions
-        Item::Fn(func) => rewriter::item_fn_without_rewrite(func),
+        Item::Fn(func) => rewriter::item_fn_without_rewrite(func, attr),
         unknown => Err(syn::Error::new(
             unknown.span(),
             "#[pg_guard] can only be applied to extern \"C-unwind\" blocks and top-level functions",
@@ -73,24 +75,19 @@ pub fn pg_test(attr: TokenStream, item: TokenStream) -> TokenStream {
         Item::Fn(mut func) => {
             // Here we need to break out attributes into test and non-test attributes,
             // so the generated #[test] attributes are in the appropriate place.
-            let mut test_attributes = Vec::new();
-            let mut non_test_attributes = Vec::new();
-
-            for attribute in func.attrs.iter() {
-                if let Some(ident) = attribute.path().get_ident() {
-                    let ident_str = ident.to_string();
-
-                    if ident_str == "ignore" || ident_str == "should_panic" {
-                        test_attributes.push(attribute.clone());
-                    } else {
-                        non_test_attributes.push(attribute.clone());
-                    }
-                } else {
-                    non_test_attributes.push(attribute.clone());
-                }
-            }
+            let (test_attributes, non_test_attributes) =
+                func.attrs.into_iter().partition::<Vec<Attribute>, _>(|attr| {
+                    attr.path()
+                        .get_ident()
+                        .is_some_and(|ident| ident == "ignore" || ident == "should_panic")
+                });
 
             func.attrs = non_test_attributes;
+
+            // Save the original ident -- the Rust #[test] function keeps the full
+            // name (Rust has no identifier length limit) so test output is readable.
+            let original_ident = func.sig.ident.clone();
+            maybe_shorten_pg_test_ident(&mut func.sig.ident);
 
             stream.extend(proc_macro2::TokenStream::from(pg_extern(
                 attr,
@@ -103,7 +100,7 @@ pub fn pg_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             };
 
             let sql_funcname = func.sig.ident.to_string();
-            let test_func_name = format_ident!("pg_{}", func.sig.ident);
+            let test_func_name = format_ident!("pg_{}", original_ident);
 
             let attributes = func.attrs;
             let mut att_stream = proc_macro2::TokenStream::new();
@@ -138,11 +135,46 @@ pub fn pg_test(attr: TokenStream, item: TokenStream) -> TokenStream {
                 "#[pg_test] can only be applied to top-level functions",
             )
             .into_compile_error()
-            .into()
+            .into();
         }
     }
 
     stream.into()
+}
+
+/// If `ident` is too long for PostgreSQL's NAMEDATALEN (64 bytes, so 63 usable characters),
+/// replace it with a shortened form: `t{N}_{truncated_original}` where N is a monotonic
+/// counter that guarantees uniqueness within a compilation.
+fn maybe_shorten_pg_test_ident(ident: &mut syn::Ident) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    // Matches pgrx_sql_entity_graph::ident_is_acceptable_to_postgres
+    const POSTGRES_IDENTIFIER_MAX_LEN: usize = 64;
+
+    let original = ident.to_string();
+    if original.len() < POSTGRES_IDENTIFIER_MAX_LEN {
+        return;
+    }
+
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let prefix = format!("t{n}_");
+    let name_budget = (POSTGRES_IDENTIFIER_MAX_LEN - 1) - prefix.len();
+
+    // Truncate at a UTF-8 char boundary (idents are ASCII in practice, but be correct).
+    let mut byte_end = name_budget.min(original.len());
+    while !original.is_char_boundary(byte_end) {
+        byte_end -= 1;
+    }
+    let shortened = format!("{prefix}{}", &original[..byte_end]);
+    *ident = syn::Ident::new(&shortened, ident.span());
+}
+
+/// `#[pg_bench]` functions are in-process Criterion-driven benchmarks that run inside Postgres
+/// during `cargo pgrx bench`.
+#[proc_macro_attribute]
+pub fn pg_bench(attr: TokenStream, item: TokenStream) -> TokenStream {
+    pg_bench::pg_bench(attr, item)
 }
 
 /// Associated macro for `#[pg_test]` to provide context back to your test framework to indicate
@@ -491,6 +523,7 @@ Optionally accepts the following attributes:
 * `stable`: Corresponds to [`STABLE`](https://www.postgresql.org/docs/current/sql-createfunction.html).
 * `volatile`: Corresponds to [`VOLATILE`](https://www.postgresql.org/docs/current/sql-createfunction.html).
 * `raw`: Corresponds to [`RAW`](https://www.postgresql.org/docs/current/sql-createfunction.html).
+* `support`: Corresponds to [`SUPPORT`](https://www.postgresql.org/docs/current/sql-createfunction.html) and is the Rust path to a function to act as the SUPPORT function
 * `security_definer`: Corresponds to [`SECURITY DEFINER`](https://www.postgresql.org/docs/current/sql-createfunction.html)
 * `security_invoker`: Corresponds to [`SECURITY INVOKER`](https://www.postgresql.org/docs/current/sql-createfunction.html)
 * `parallel_safe`: Corresponds to [`PARALLEL SAFE`](https://www.postgresql.org/docs/current/sql-createfunction.html).
@@ -698,7 +731,7 @@ fn impl_postgres_enum(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
     stream.extend(quote! {
         impl ::pgrx::datum::FromDatum for #enum_ident {
             #[inline]
-            unsafe fn from_polymorphic_datum(datum: ::pgrx::pg_sys::Datum, is_null: bool, typeoid: ::pgrx::pg_sys::Oid) -> Option<#enum_ident> {
+            unsafe fn from_polymorphic_datum(datum: ::pgrx::pg_sys::Datum, is_null: bool, _typeoid: ::pgrx::pg_sys::Oid) -> Option<#enum_ident> {
                 if is_null {
                     None
                 } else {
@@ -724,7 +757,7 @@ fn impl_postgres_enum(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             type As<'dat> = #enum_ident #generics where Self: 'dat;
             #[inline]
             unsafe fn unbox<'dat>(d: ::pgrx::datum::Datum<'dat>) -> Self::As<'dat> where Self: 'dat {
-                Self::from_datum(::core::mem::transmute(d), false).unwrap()
+                <Self as ::pgrx::datum::FromDatum>::from_datum(::core::mem::transmute(d), false).unwrap()
             }
         }
 
@@ -781,6 +814,7 @@ Optionally accepts the following attributes:
 
 * `inoutfuncs(some_in_fn, some_out_fn)`: Define custom in/out functions for the type.
 * `pgvarlena_inoutfuncs(some_in_fn, some_out_fn)`: Define custom in/out functions for the `PgVarlena` of this type.
+* `pg_binary_protocol`: Use the binary protocol for this type.
 * `pgrx(alignment = "<align>")`: Derive Postgres alignment from Rust type. One of `"on"`, or `"off"`.
 * `sql`: Same arguments as [`#[pgrx(sql = ..)]`](macro@pgrx).
 */
@@ -789,6 +823,7 @@ Optionally accepts the following attributes:
     attributes(
         inoutfuncs,
         pgvarlena_inoutfuncs,
+        pg_binary_protocol,
         bikeshed_postgres_type_manually_impl_from_into_datum,
         requires,
         pgrx
@@ -806,6 +841,9 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
     let has_lifetimes = generics.lifetimes().next();
     let funcname_in = Ident::new(&format!("{name}_in").to_lowercase(), name.span());
     let funcname_out = Ident::new(&format!("{name}_out").to_lowercase(), name.span());
+    let funcname_recv = Ident::new(&format!("{name}_recv").to_lowercase(), name.span());
+    let funcname_send = Ident::new(&format!("{name}_send").to_lowercase(), name.span());
+
     let mut args = parse_postgres_type_args(&ast.attrs);
     let mut stream = proc_macro2::TokenStream::new();
 
@@ -821,11 +859,13 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             return Err(syn::Error::new(
                 ast.span(),
                 "#[derive(PostgresType)] can only be applied to structs or enums",
-            ))
+            ));
         }
     }
 
-    if args.is_empty() {
+    if !args.contains(&PostgresTypeAttribute::InOutFuncs)
+        && !args.contains(&PostgresTypeAttribute::PgVarlenaInOutFuncs)
+    {
         // assume the user wants us to implement the InOutFuncs
         args.insert(PostgresTypeAttribute::Default);
     }
@@ -908,7 +948,7 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
                             memory_context.switch_to(|_| {
                                 // this gets the varlena Datum copied into this memory context
                                 let varlena = ::pgrx::pg_sys::pg_detoast_datum_copy(datum.cast_mut_ptr());
-                                Self::from_datum(varlena.into(), is_null)
+                                <Self as ::pgrx::datum::FromDatum>::from_datum(varlena.into(), is_null)
                             })
                         }
                     }
@@ -937,14 +977,14 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
     if args.contains(&PostgresTypeAttribute::Default) {
         stream.extend(quote! {
             #[doc(hidden)]
-            #[::pgrx::pgrx_macros::pg_extern(immutable,parallel_safe)]
+            #[::pgrx::pgrx_macros::pg_extern(immutable, parallel_safe)]
             pub fn #funcname_in #generics(input: Option<&#lifetime ::core::ffi::CStr>) -> Option<#name #generics> {
                 use ::pgrx::inoutfuncs::json_from_slice;
                 input.map(|cstr| json_from_slice(cstr.to_bytes()).ok()).flatten()
             }
 
             #[doc(hidden)]
-            #[::pgrx::pgrx_macros::pg_extern (immutable,parallel_safe)]
+            #[::pgrx::pgrx_macros::pg_extern (immutable, parallel_safe)]
             pub fn #funcname_out #generics(input: #name #generics) -> ::pgrx::ffi::CString {
                 use ::pgrx::inoutfuncs::json_to_vec;
                 let mut bytes = json_to_vec(&input).unwrap();
@@ -959,7 +999,7 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             #[::pgrx::pgrx_macros::pg_extern(immutable,parallel_safe)]
             pub fn #funcname_in #generics(input: Option<&::core::ffi::CStr>) -> Option<#name #generics> {
                 input.map_or_else(|| {
-                    for m in <#name as ::pgrx::inoutfuncs::InOutFuncs>::NULL_ERROR_MESSAGE {
+                    if let Some(m) = <#name as ::pgrx::inoutfuncs::InOutFuncs>::NULL_ERROR_MESSAGE {
                         ::pgrx::pg_sys::error!("{m}");
                     }
                     None
@@ -982,7 +1022,7 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             #[::pgrx::pgrx_macros::pg_extern(immutable,parallel_safe)]
             pub fn #funcname_in #generics(input: Option<&::core::ffi::CStr>) -> Option<::pgrx::datum::PgVarlena<#name #generics>> {
                 input.map_or_else(|| {
-                    for m in <#name as ::pgrx::inoutfuncs::PgVarlenaInOutFuncs>::NULL_ERROR_MESSAGE {
+                    if let Some(m) = <#name as ::pgrx::inoutfuncs::PgVarlenaInOutFuncs>::NULL_ERROR_MESSAGE {
                         ::pgrx::pg_sys::error!("{m}");
                     }
                     None
@@ -1000,14 +1040,64 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
         });
     }
 
-    let sql_graph_entity_item = sql_gen::PostgresTypeDerive::from_derive_input(ast)?;
+    if args.contains(&PostgresTypeAttribute::PgBinaryProtocol) {
+        // At this time, the `PostgresTypeAttribute` does not impact the way we generate
+        // the `recv` and `send` functions.
+        stream.extend(quote! {
+            #[doc(hidden)]
+            #[::pgrx::pgrx_macros::pg_extern(immutable, strict, parallel_safe)]
+            pub fn #funcname_recv #generics(
+                mut internal: ::pgrx::datum::Internal,
+            ) -> #name #generics {
+                let buf = unsafe { internal.get_mut::<::pgrx::pg_sys::StringInfoData>().unwrap() };
+
+                let mut serialized = ::pgrx::StringInfo::new();
+
+                serialized.push_bytes(&[0u8; ::pgrx::pg_sys::VARHDRSZ]); // reserve space for the header
+                serialized.push_bytes(unsafe {
+                    core::slice::from_raw_parts(
+                        buf.data as *const u8,
+                        buf.len as usize
+                    )
+                });
+
+                let size = serialized.len();
+                let varlena = serialized.into_char_ptr();
+
+                unsafe{
+                    ::pgrx::set_varsize_4b(varlena as *mut ::pgrx::pg_sys::varlena, size as i32);
+                    buf.cursor = buf.len;
+                    ::pgrx::datum::cbor_decode(varlena as *mut ::pgrx::pg_sys::varlena)
+                }
+            }
+            #[doc(hidden)]
+            #[::pgrx::pgrx_macros::pg_extern(immutable, strict, parallel_safe)]
+            pub fn #funcname_send #generics(input: #name #generics) -> Vec<u8> {
+                use ::pgrx::datum::{FromDatum, IntoDatum};
+                let Some(datum): Option<::pgrx::pg_sys::Datum> = input.into_datum() else {
+                    ::pgrx::error!("Datum of type `{}` is unexpectedly NULL.", stringify!(#name));
+                };
+                unsafe {
+                    let Some(serialized): Option<Vec<u8>> = FromDatum::from_datum(datum, false) else {
+                        ::pgrx::error!("Failed to CBOR-serialize Datum to type `{}`.", stringify!(#name));
+                    };
+                    serialized
+                }
+            }
+        });
+    }
+
+    let sql_graph_entity_item = sql_gen::PostgresTypeDerive::from_derive_input(
+        ast,
+        args.contains(&PostgresTypeAttribute::PgBinaryProtocol),
+    )?;
     sql_graph_entity_item.to_tokens(&mut stream);
 
     Ok(stream)
 }
 
 /// Derives the `GucEnum` trait, so that normal Rust enums can be used as a GUC.
-#[proc_macro_derive(PostgresGucEnum, attributes(hidden))]
+#[proc_macro_derive(PostgresGucEnum, attributes(name, hidden))]
 pub fn postgres_guc_enum(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
 
@@ -1015,88 +1105,119 @@ pub fn postgres_guc_enum(input: TokenStream) -> TokenStream {
 }
 
 fn impl_guc_enum(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    let mut stream = proc_macro2::TokenStream::new();
+    use std::str::FromStr;
+    use syn::parse::Parse;
 
-    // validate that we're only operating on an enum
-    let enum_data = match ast.data {
-        Data::Enum(e) => e,
-        _ => {
-            return Err(syn::Error::new(
-                ast.span(),
-                "#[derive(PostgresGucEnum)] can only be applied to enums",
-            ))
+    enum GucEnumAttribute {
+        Name(CString),
+        Hidden(bool),
+    }
+
+    impl GucEnumAttribute {
+        fn is_guc_enum_attribute(attribute: &str) -> bool {
+            matches!(attribute, "name" | "hidden")
         }
-    };
-    let enum_name = ast.ident;
-    let enum_len = enum_data.variants.len();
-
-    let mut from_match_arms = proc_macro2::TokenStream::new();
-    for (idx, e) in enum_data.variants.iter().enumerate() {
-        let label = &e.ident;
-        let idx = idx as i32;
-        from_match_arms.extend(quote! { #idx => #enum_name::#label, })
-    }
-    from_match_arms.extend(quote! { _ => panic!("Unrecognized ordinal ")});
-
-    let mut ordinal_match_arms = proc_macro2::TokenStream::new();
-    for (idx, e) in enum_data.variants.iter().enumerate() {
-        let label = &e.ident;
-        let idx = idx as i32;
-        ordinal_match_arms.extend(quote! { #enum_name::#label => #idx, });
     }
 
-    let mut build_array_body = proc_macro2::TokenStream::new();
-    for (idx, e) in enum_data.variants.iter().enumerate() {
-        let label = e.ident.to_string();
-        let mut hidden = false;
-
-        for att in e.attrs.iter() {
-            let att = quote! {#att}.to_string();
-            if att == "# [hidden]" {
-                hidden = true;
-                break;
+    impl Parse for GucEnumAttribute {
+        fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+            let ident: Ident = input.parse()?;
+            let _: syn::token::Eq = input.parse()?;
+            match ident.to_string().as_str() {
+                "name" => input.parse::<syn::LitCStr>().map(|val| Self::Name(val.value())),
+                "hidden" => input.parse::<syn::LitBool>().map(|val| Self::Hidden(val.value())),
+                x => Err(syn::Error::new(input.span(), format!("unknown attribute {x}"))),
             }
         }
-
-        build_array_body.extend(quote! {
-            ::pgrx::pgbox::PgBox::<_, ::pgrx::pgbox::AllocatedByPostgres>::with(&mut slice[#idx], |v| {
-                v.name = ::pgrx::memcxt::PgMemoryContexts::TopMemoryContext.pstrdup(#label);
-                v.val = #idx as i32;
-                v.hidden = #hidden;
-            });
-        });
     }
 
-    stream.extend(quote! {
-        impl ::pgrx::guc::GucEnum<#enum_name> for #enum_name {
-            fn from_ordinal(ordinal: i32) -> #enum_name {
+    // validate that we're only operating on an enum
+    let Data::Enum(data) = ast.data.clone() else {
+        return Err(syn::Error::new(
+            ast.span(),
+            "#[derive(PostgresGucEnum)] can only be applied to enums",
+        ));
+    };
+    let ident = ast.ident.clone();
+    let mut config = Vec::new();
+    for (index, variant) in data.variants.iter().enumerate() {
+        let default_name = CString::from_str(&variant.ident.to_string())
+            .expect("the identifier contains a null character.");
+        let default_val = index as i32;
+        let default_hidden = false;
+        let mut name = None;
+        let mut hidden = None;
+
+        for attr in variant.attrs.iter() {
+            if let Some(ident) = attr.path().get_ident()
+                && GucEnumAttribute::is_guc_enum_attribute(&ident.to_string())
+            {
+                let pair: GucEnumAttribute = syn::parse2(attr.meta.to_token_stream())?;
+                match pair {
+                    GucEnumAttribute::Name(value) => {
+                        if name.replace(value).is_some() {
+                            return Err(syn::Error::new(ast.span(), "too many #[name] attributes"));
+                        }
+                    }
+                    GucEnumAttribute::Hidden(value) => {
+                        if hidden.replace(value).is_some() {
+                            return Err(syn::Error::new(
+                                ast.span(),
+                                "too many #[hidden] attributes",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        let ident = variant.ident.clone();
+        let name = name.unwrap_or(default_name);
+        let val = default_val;
+        let hidden = hidden.unwrap_or(default_hidden);
+        config.push((ident, name, val, hidden));
+    }
+    let config_idents = config.iter().map(|x| &x.0).collect::<Vec<_>>();
+    let config_names = config.iter().map(|x| &x.1).collect::<Vec<_>>();
+    let config_vals = config.iter().map(|x| &x.2).collect::<Vec<_>>();
+    let config_hiddens = config.iter().map(|x| &x.3).collect::<Vec<_>>();
+
+    Ok(quote! {
+        unsafe impl ::pgrx::guc::GucEnum for #ident {
+            fn from_ordinal(ordinal: i32) -> Self {
                 match ordinal {
-                    #from_match_arms
+                    #(#config_vals => Self::#config_idents,)*
+                    _ => panic!("Unrecognized ordinal"),
                 }
             }
 
             fn to_ordinal(&self) -> i32 {
-                match *self {
-                    #ordinal_match_arms
+                match self {
+                    #(Self::#config_idents => #config_vals,)*
                 }
             }
 
-            unsafe fn config_matrix(&self) -> *const ::pgrx::pg_sys::config_enum_entry {
-                let slice = ::pgrx::memcxt::PgMemoryContexts::TopMemoryContext.palloc0_slice::<::pgrx::pg_sys::config_enum_entry>(#enum_len + 1usize);
-
-                #build_array_body
-
-                slice.as_ptr()
-            }
+            const CONFIG_ENUM_ENTRY: *const ::pgrx::pg_sys::config_enum_entry = [
+                #(
+                    ::pgrx::pg_sys::config_enum_entry {
+                        name: #config_names.as_ptr(),
+                        val: #config_vals,
+                        hidden: #config_hiddens,
+                    },
+                )*
+                ::pgrx::pg_sys::config_enum_entry {
+                    name: core::ptr::null(),
+                    val: 0,
+                    hidden: false,
+                },
+            ].as_ptr();
         }
-    });
-
-    Ok(stream)
+    })
 }
 
 #[derive(Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]
 enum PostgresTypeAttribute {
     InOutFuncs,
+    PgBinaryProtocol,
     PgVarlenaInOutFuncs,
     Default,
     ManualFromIntoDatum,
@@ -1111,6 +1232,9 @@ fn parse_postgres_type_args(attributes: &[Attribute]) -> HashSet<PostgresTypeAtt
         match path.as_str() {
             "inoutfuncs" => {
                 categorized_attributes.insert(PostgresTypeAttribute::InOutFuncs);
+            }
+            "pg_binary_protocol" => {
+                categorized_attributes.insert(PostgresTypeAttribute::PgBinaryProtocol);
             }
             "pgvarlena_inoutfuncs" => {
                 categorized_attributes.insert(PostgresTypeAttribute::PgVarlenaInOutFuncs);
@@ -1211,6 +1335,51 @@ pub fn derive_postgres_hash(input: TokenStream) -> TokenStream {
     deriving_postgres_hash(ast).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
+/// Derives the `ToAggregateName` trait.
+#[proc_macro_derive(AggregateName, attributes(aggregate_name))]
+pub fn derive_aggregate_name(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as syn::DeriveInput);
+
+    impl_aggregate_name(ast).unwrap_or_else(|e| e.into_compile_error()).into()
+}
+
+fn impl_aggregate_name(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let name = &ast.ident;
+
+    let mut custom_name_value: Option<String> = None;
+
+    for attr in &ast.attrs {
+        if attr.path().is_ident("aggregate_name") {
+            let meta = &attr.meta;
+            match meta {
+                syn::Meta::NameValue(syn::MetaNameValue {
+                    value: syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }),
+                    ..
+                }) => {
+                    custom_name_value = Some(s.value());
+                    break;
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        "#[aggregate_name] must be in the form `#[aggregate_name = \"string_literal\"]`",
+                    ));
+                }
+            }
+        }
+    }
+
+    let name_str = custom_name_value.unwrap_or(name.to_string());
+
+    let expanded = quote! {
+        impl ::pgrx::aggregate::ToAggregateName for #name {
+            const NAME: &'static str = #name_str;
+        }
+    };
+
+    Ok(expanded)
+}
+
 /**
 Declare a `pgrx::Aggregate` implementation on a type as able to used by Postgres as an aggregate.
 
@@ -1264,9 +1433,9 @@ Review the `pgrx::trigger_support::PgTrigger` documentation for use.
 pub fn pg_trigger(attrs: TokenStream, input: TokenStream) -> TokenStream {
     fn wrapped(attrs: TokenStream, input: TokenStream) -> Result<TokenStream, syn::Error> {
         use pgrx_sql_entity_graph::{PgTrigger, PgTriggerAttribute};
+        use syn::Token;
         use syn::parse::Parser;
         use syn::punctuated::Punctuated;
-        use syn::Token;
 
         let attributes =
             Punctuated::<PgTriggerAttribute, Token![,]>::parse_terminated.parse(attrs)?;
@@ -1278,4 +1447,60 @@ pub fn pg_trigger(attrs: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     wrapped(attrs, input).unwrap_or_else(|e| e.into_compile_error().into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_name_unchanged() {
+        let mut ident = syn::Ident::new("test_foo", proc_macro2::Span::call_site());
+        let original = ident.to_string();
+        maybe_shorten_pg_test_ident(&mut ident);
+        assert_eq!(ident.to_string(), original);
+    }
+
+    #[test]
+    fn exactly_63_chars_unchanged() {
+        let name = "a".repeat(63);
+        let mut ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+        maybe_shorten_pg_test_ident(&mut ident);
+        assert_eq!(ident.to_string(), name);
+    }
+
+    #[test]
+    fn exactly_64_chars_is_shortened() {
+        let name = "a".repeat(64);
+        let mut ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+        maybe_shorten_pg_test_ident(&mut ident);
+        let result = ident.to_string();
+        assert!(result.len() <= 63, "shortened name is {len} chars: {result}", len = result.len());
+        assert!(result.starts_with('t'), "shortened name should start with 't': {result}");
+    }
+
+    #[test]
+    fn very_long_name_fits_in_63() {
+        let name = "test_that_something_really_important_works_correctly_when_given_a_very_long_input_name";
+        assert!(name.len() > 63);
+        let mut ident = syn::Ident::new(name, proc_macro2::Span::call_site());
+        maybe_shorten_pg_test_ident(&mut ident);
+        let result = ident.to_string();
+        assert_eq!(result.len(), 63, "shortened name should be exactly 63 chars: {result}");
+    }
+
+    #[test]
+    fn different_long_names_get_different_shortened_names() {
+        let name_a = format!("{}{}", "a".repeat(60), "xxxx");
+        let name_b = format!("{}{}", "a".repeat(60), "yyyy");
+        let mut id_a = syn::Ident::new(&name_a, proc_macro2::Span::call_site());
+        let mut id_b = syn::Ident::new(&name_b, proc_macro2::Span::call_site());
+        maybe_shorten_pg_test_ident(&mut id_a);
+        maybe_shorten_pg_test_ident(&mut id_b);
+        assert_ne!(
+            id_a.to_string(),
+            id_b.to_string(),
+            "names differing only in the tail should still get different shortened forms"
+        );
+    }
 }

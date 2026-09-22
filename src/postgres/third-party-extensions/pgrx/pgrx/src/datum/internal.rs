@@ -7,9 +7,9 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::{pg_sys, FromDatum, IntoDatum, PgMemoryContexts};
+use crate::{FromDatum, IntoDatum, PgMemoryContexts, pg_sys};
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 
 /// Represents Postgres' `internal` data type, which is documented as:
@@ -89,7 +89,7 @@ impl Internal {
     /// We cannot guarantee that the contained datum points to memory that is really `T`.  This is
     /// your responsibility.
     #[inline(always)]
-    pub unsafe fn get_mut<T>(&self) -> Option<&mut T> {
+    pub unsafe fn get_mut<T>(&mut self) -> Option<&mut T> {
         self.0.and_then(|datum| (datum.cast_mut_ptr::<T>()).as_mut())
     }
 
@@ -182,14 +182,11 @@ impl IntoDatum for Internal {
 }
 
 unsafe impl SqlTranslatable for crate::datum::Internal {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("internal"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("internal")))
-    }
-    // We don't want to strict upgrade if internal is present.
-    fn optional() -> bool {
-        true
-    }
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(Internal);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> =
+        Ok(SqlMappingRef::literal("internal"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("internal")));
 }

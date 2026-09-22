@@ -7,14 +7,12 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use bindgen::callbacks::{DeriveTrait, EnumVariantValue, ImplementsTrait, MacroParsingBehavior};
+use crate::{detect_pg_config, env_tracked, is_for_release};
 use bindgen::NonCopyUnionStyle;
-use eyre::{eyre, WrapErr};
-use pgrx_pg_config::{
-    is_supported_major_version, PgConfig, PgConfigSelector, PgMinorVersion, PgVersion, Pgrx,
-    SUPPORTED_VERSIONS,
-};
-use quote::{quote, ToTokens};
+use bindgen::callbacks::{DeriveTrait, EnumVariantValue, ImplementsTrait, MacroParsingBehavior};
+use eyre::{WrapErr, eyre};
+use pgrx_pg_config::{PgConfig, PgMinorVersion, PgVersion, Pgrx, SUPPORTED_VERSIONS};
+use quote::{ToTokens, quote};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -54,7 +52,7 @@ impl BindingOverride {
     fn new_from(enum_names: InnerMut<EnumMap>) -> Self {
         // these cause duplicate definition problems on linux
         // see: https://github.com/rust-lang/rust-bindgen/issues/687
-        BindingOverride {
+        Self {
             ignore_macros: HashSet::from_iter([
                 "FP_INFINITE",
                 "FP_NAN",
@@ -161,88 +159,24 @@ pub fn main() -> eyre::Result<()> {
     }
 
     let compile_cshim = env_tracked("CARGO_FEATURE_CSHIM").as_deref() == Some("1");
-
-    let is_for_release =
-        env_tracked("PGRX_PG_SYS_GENERATE_BINDINGS_FOR_RELEASE").as_deref() == Some("1");
-
     let build_paths = BuildPaths::from_env();
 
     eprintln!("build_paths={build_paths:?}");
 
     emit_rerun_if_changed();
 
-    let pg_configs: Vec<(u16, PgConfig)> = if is_for_release {
-        // This does not cross-check config.toml and Cargo.toml versions, as it is release infra.
-        Pgrx::from_config()?.iter(PgConfigSelector::All)
-            .map(|r| r.expect("invalid pg_config"))
-            .map(|c| (c.major_version().expect("invalid major version"), c))
-            .filter_map(|t| {
-                if is_supported_major_version(t.0) {
-                    Some(t)
-                } else {
-                    println!(
-                        "cargo:warning={} contains a configuration for pg{}, which pgrx does not support.",
-                        Pgrx::config_toml()
-                            .expect("Could not get PGRX configuration TOML")
-                            .to_string_lossy(),
-                        t.0
-                    );
-                    None
-                }
-            })
-            .collect()
-    } else {
-        let mut found = Vec::new();
-        for pgver in SUPPORTED_VERSIONS() {
-            if env_tracked(&format!("CARGO_FEATURE_PG{}", pgver.major)).is_some() {
-                found.push(pgver);
-            }
-        }
-        let found_ver = match &found[..] {
-            [ver] => ver,
-            [] => {
-                return Err(eyre!(
-                    "Did not find `pg$VERSION` feature. `pgrx-pg-sys` requires one of {} to be set",
-                    SUPPORTED_VERSIONS()
-                        .iter()
-                        .map(|pgver| format!("`pg{}`", pgver.major))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
-            }
-            versions => {
-                return Err(eyre!(
-                    "Multiple `pg$VERSION` features found.\n`--no-default-features` may be required.\nFound: {}",
-                    versions
-                        .iter()
-                        .map(|version| format!("pg{}", version.major))
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                ))
-            }
-        };
-
-        let found_major = found_ver.major;
-        if let Ok(pg_config) = PgConfig::from_env() {
-            let major_version = pg_config.major_version()?;
-
-            if major_version != found_major {
-                panic!("Feature flag `pg{found_major}` does not match version from the environment-described PgConfig (`{major_version}`)")
-            }
-            vec![(major_version, pg_config)]
-        } else {
-            let specific = Pgrx::from_config()?.get(&format!("pg{}", found_ver.major))?;
-            vec![(found_ver.major, specific)]
-        }
-    };
+    let pg_configs = detect_pg_config()?;
 
     // make sure we're not trying to build any of the yanked postgres versions
     for (_, pg_config) in &pg_configs {
         let version = pg_config.get_version()?;
         if YANKED_POSTGRES_VERSIONS.contains(&version) {
-            panic!("Postgres v{}{} is incompatible with \
+            panic!(
+                "Postgres v{}{} is incompatible with \
                     other versions in this major series and is not supported by pgrx.  Please upgrade \
-                    to the latest version in the v{} series.", version.major, version.minor, version.major);
+                    to the latest version in the v{} series.",
+                version.major, version.minor, version.major
+            );
         }
     }
 
@@ -258,7 +192,7 @@ pub fn main() -> eyre::Result<()> {
                         *pg_major_ver,
                         pg_config,
                         &build_paths,
-                        is_for_release,
+                        is_for_release(),
                         compile_cshim,
                     )
                 })
@@ -274,13 +208,43 @@ pub fn main() -> eyre::Result<()> {
     })?;
 
     if compile_cshim {
-        // compile the cshim for each binding
-        for (_version, pg_config) in pg_configs {
-            build_shim(&build_paths.shim_src, &build_paths.shim_dst, &pg_config)?;
-        }
+        let active_major_version = active_pg_major_version()?;
+        let pg_config = pg_configs
+            .iter()
+            .find(|(major_version, _)| *major_version == active_major_version)
+            .map(|(_, pg_config)| pg_config)
+            .ok_or_else(|| {
+                eyre!("could not find pg_config for active feature pg{active_major_version}")
+            })?;
+        build_shim(&build_paths.shim_src, &build_paths.shim_dst, pg_config)?;
     }
 
     Ok(())
+}
+
+fn active_pg_major_version() -> eyre::Result<u16> {
+    let found = SUPPORTED_VERSIONS()
+        .iter()
+        .filter_map(|pgver| {
+            env_tracked(&format!("CARGO_FEATURE_PG{}", pgver.major)).map(|_| pgver.major)
+        })
+        .collect::<Vec<_>>();
+
+    match &found[..] {
+        [major_version] => Ok(*major_version),
+        [] => Err(eyre!("did not find a pg$VERSION feature while compiling the cshim")),
+        versions => Err(eyre!(
+            "multiple pg$VERSION features found while compiling the cshim: {}",
+            versions.iter().map(|version| format!("pg{version}")).collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
+fn cshim_static_wrapper_name(major_version: u16) -> String {
+    // release builds generate bindings for every supported pg version in one OUT_DIR
+    // bindgen writes the static wrapper as a side file, so a shared name lets the
+    // last writer win and makes the cshim compile the wrong wrapper against this pg_config
+    format!("pgrx-cshim-static-pg{major_version}")
 }
 
 fn emit_rerun_if_changed() {
@@ -556,12 +520,10 @@ fn impl_pg_node(items: &[syn::Item]) -> eyre::Result<proc_macro2::TokenStream> {
         };
 
         // grab the type name of the first field
-        let ty_name = if let syn::Type::Path(p) = &first_field.ty {
-            if let Some(last_segment) = p.path.segments.last() {
-                last_segment.ident.to_string()
-            } else {
-                continue;
-            }
+        let ty_name = if let syn::Type::Path(p) = &first_field.ty
+            && let Some(last_segment) = p.path.segments.last()
+        {
+            last_segment.ident.to_string()
         } else {
             continue;
         };
@@ -637,7 +599,7 @@ struct StructGraph<'a> {
 }
 
 impl<'a> From<&'a [syn::Item]> for StructGraph<'a> {
-    fn from(items: &'a [syn::Item]) -> StructGraph<'a> {
+    fn from(items: &'a [syn::Item]) -> Self {
         let mut descriptors = Vec::new();
 
         // a table mapping struct names to their offset in `descriptors`
@@ -685,19 +647,18 @@ impl<'a> From<&'a [syn::Item]> for StructGraph<'a> {
                 _ => continue,
             };
 
-            if let syn::Type::Path(p) = &first_field.ty {
-                // We should be guaranteed that just extracting the last path
-                // segment is ok because these structs are all from the same module.
-                // (also, they are all generated from C code, so collisions should be
-                //  impossible anyway thanks to C's single shared namespace).
-                if let Some(last_segment) = p.path.segments.last() {
-                    if let Some(parent_offset) = name_tab.get(&last_segment.ident.to_string()) {
-                        // establish the 2-way link
-                        let child_offset = name_tab[&id];
-                        descriptors[child_offset].parent = Some(*parent_offset);
-                        descriptors[*parent_offset].children.push(child_offset);
-                    }
-                }
+            // We should be guaranteed that just extracting the last path
+            // segment is ok because these structs are all from the same module.
+            // (also, they are all generated from C code, so collisions should be
+            //  impossible anyway thanks to C's single shared namespace).
+            if let syn::Type::Path(p) = &first_field.ty
+                && let Some(last_segment) = p.path.segments.last()
+                && let Some(parent_offset) = name_tab.get(&last_segment.ident.to_string())
+            {
+                // establish the 2-way link
+                let child_offset = name_tab[&id];
+                descriptors[child_offset].parent = Some(*parent_offset);
+                descriptors[*parent_offset].children.push(child_offset);
             }
         }
 
@@ -827,37 +788,12 @@ fn run_bindgen(
         .layout_tests(false)
         .default_non_copy_union_style(NonCopyUnionStyle::ManuallyDrop)
         .wrap_static_fns(enable_cshim)
-        .wrap_static_fns_path(out_path.join("pgrx-cshim-static"))
+        .wrap_static_fns_path(out_path.join(cshim_static_wrapper_name(major_version)))
         .wrap_static_fns_suffix("__pgrx_cshim")
         .generate()
         .wrap_err_with(|| format!("Unable to generate bindings for pg{major_version}"))?;
-    let mut binding_str = bindings.to_string();
-    drop(bindings); // So the Rc::into_inner can unwrap
 
-    // FIXME: do this for the Node graph instead of reparsing?
-    let enum_names: EnumMap = Rc::into_inner(enum_names).unwrap().into_inner();
-    binding_str.extend(enum_names.into_iter().flat_map(|(name, variants)| {
-        const MIN_I32: i64 = i32::MIN as _;
-        const MAX_I32: i64 = i32::MAX as _;
-        const MAX_U32: u64 = u32::MAX as _;
-        variants.into_iter().map(move |(variant, value)| {
-            let (ty, value) = match value {
-                EnumVariantValue::Boolean(b) => ("bool", b.to_string()),
-                EnumVariantValue::Signed(v @ MIN_I32..=MAX_I32) => ("i32", v.to_string()),
-                EnumVariantValue::Signed(v) => ("i64", v.to_string()),
-                EnumVariantValue::Unsigned(v @ 0..=MAX_U32) => ("u32", v.to_string()),
-                EnumVariantValue::Unsigned(v) => ("u64", v.to_string()),
-            };
-            format!(
-                r#"
-#[deprecated(since = "0.12.0", note = "you want pg_sys::{module}::{variant}")]
-pub const {module}_{variant}: {ty} = {value};"#,
-                module = &*name, // imprecise closure capture
-            )
-        })
-    }));
-
-    Ok(binding_str)
+    Ok(bindings.to_string())
 }
 
 fn add_blocklists(bind: bindgen::Builder) -> bindgen::Builder {
@@ -897,6 +833,9 @@ fn add_blocklists(bind: bindgen::Builder) -> bindgen::Builder {
         .blocklist_function("raw_expression_tree_walker")
         .blocklist_function("type_is_array")
         .blocklist_function("varsize_any")
+        // we define these ourselves b/c Postgres is schizophrenic about them across versions
+        .blocklist_function("PageValidateSpecialPointer")
+        .blocklist_function("PageIsValid")
         // it's defined twice on Windows, so use PGERROR instead
         .blocklist_item("ERROR")
         // it causes strange linker errors for PostgreSQL 14 on Windows
@@ -924,37 +863,6 @@ fn add_derives(bind: bindgen::Builder) -> bindgen::Builder {
         .derive_partialord(false)
 }
 
-fn env_tracked(s: &str) -> Option<String> {
-    // a **sorted** list of environment variable keys that cargo might set that we don't need to track
-    // these were picked out, by hand, from: https://doc.rust-lang.org/cargo/reference/environment-variables.html
-    const CARGO_KEYS: &[&str] = &[
-        "BROWSER",
-        "DEBUG",
-        "DOCS_RS",
-        "HOST",
-        "HTTP_PROXY",
-        "HTTP_TIMEOUT",
-        "NUM_JOBS",
-        "OPT_LEVEL",
-        "OUT_DIR",
-        "PATH",
-        "PROFILE",
-        "TARGET",
-        "TERM",
-    ];
-
-    let is_cargo_key =
-        s.starts_with("CARGO") || s.starts_with("RUST") || CARGO_KEYS.binary_search(&s).is_ok();
-
-    if !is_cargo_key {
-        // if it's an envar that cargo gives us, we don't want to ask it to rerun build.rs if it changes
-        // we'll let cargo figure that out for itself, and doing so, depending on the key, seems to
-        // cause cargo to rerun build.rs every time, which is terrible
-        println!("cargo:rerun-if-env-changed={s}");
-    }
-    std::env::var(s).ok()
-}
-
 fn target_env_tracked(s: &str) -> Option<String> {
     let target = env_tracked("TARGET").unwrap();
     env_tracked(&format!("{s}_{target}")).or_else(|| env_tracked(s))
@@ -978,11 +886,7 @@ fn find_include(
         .join("") // returning a `/`-ending path
         .display()
         .to_string();
-    if let Some(path) = path.strip_prefix("\\\\?\\") {
-        Ok(path.to_string())
-    } else {
-        Ok(path)
-    }
+    if let Some(path) = path.strip_prefix("\\\\?\\") { Ok(path.to_string()) } else { Ok(path) }
 }
 
 fn pg_target_includes(pg_version: u16, pg_config: &PgConfig) -> eyre::Result<Vec<String>> {
@@ -1006,10 +910,14 @@ fn build_shim(
     pg_config: &PgConfig,
 ) -> eyre::Result<()> {
     let major_version = pg_config.major_version()?;
+    let generated_wrapper = format!("\"{}.c\"", cshim_static_wrapper_name(major_version));
 
     std::fs::copy(shim_src, shim_dst).unwrap();
 
     let mut build = cc::Build::new();
+    // pgrx-cshim.c includes the generated bindgen wrapper through this macro so
+    // each cshim build picks the wrapper that matches its postgres headers
+    build.define("PGRX_CSHIM_STATIC", Some(generated_wrapper.as_str()));
     let compiler = build.get_compiler();
     if compiler.is_like_gnu() || compiler.is_like_clang() {
         build.flag("-ffunction-sections");
@@ -1182,15 +1090,15 @@ fn apply_pg_guard(items: &Vec<syn::Item>) -> eyre::Result<proc_macro2::TokenStre
 
 fn rewrite_c_abi_to_c_unwind(file: &mut syn::File) {
     use proc_macro2::Span;
-    use syn::visit_mut::VisitMut;
     use syn::LitStr;
+    use syn::visit_mut::VisitMut;
     pub struct Visitor {}
     impl VisitMut for Visitor {
         fn visit_abi_mut(&mut self, abi: &mut syn::Abi) {
-            if let Some(name) = &mut abi.name {
-                if name.value() == "C" {
-                    *name = LitStr::new("C-unwind", Span::call_site());
-                }
+            if let Some(name) = &mut abi.name
+                && name.value() == "C"
+            {
+                *name = LitStr::new("C-unwind", Span::call_site());
             }
         }
     }
@@ -1217,7 +1125,7 @@ fn rust_fmt(path: &Path) -> eyre::Result<()> {
             );
 
             for line in rustfmt_output.lines() {
-                println!("cargo:warning={}", line);
+                println!("cargo:warning={line}");
             }
 
             // we won't fail the build because rustfmt failed

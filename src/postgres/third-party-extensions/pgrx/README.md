@@ -13,7 +13,7 @@
 
 `pgrx` is a framework for developing PostgreSQL extensions in Rust and strives to be as idiomatic and safe as possible.
 
-`pgrx` supports Postgres 13 through Postgres 17.
+`pgrx` supports Postgres 13 through Postgres 18.
 
 ## Want to chat with us or get a question answered?
 
@@ -31,7 +31,7 @@
    + `cargo pgrx package`: Create installation packages for your extension
    + More in the [`README.md`](cargo-pgrx/README.md)!
 - **Target Multiple Postgres Versions**
-   + Support from Postgres 13 to Postgres 17 from the same codebase
+   + Support from Postgres 13 to Postgres 18 from the same codebase
    + Use Rust feature gating to use version-specific APIs
    + Seamlessly test against all versions
 - **Automatic Schema Generation**
@@ -53,6 +53,7 @@
 - **Easy Custom Types**
    + `#[derive(PostgresType)]` to use a Rust struct as a Postgres type
       - By default, represented as a CBOR-encoded object in-memory/on-disk, and JSON as human-readable
+      - Supports `#[pg_binary_protocol]` to generate binary protocol send/recv functions
       - Provide custom in-memory/on-disk/human-readable representations
    + `#[derive(PostgresEnum)]` to use a Rust enum as a Postgres enum
    + Composite types supported with the `pgrx::composite_type!("Sample")` macro
@@ -70,7 +71,7 @@
 
 ## System Requirements
 
-PGRX has been tested to work on x86_64⹋ and aarch64⹋ Linux and aarch64 macOS and x86_64⹋ Windows targets.
+PGRX has been tested to work on x86_64 Linux, aarch64 Linux, aarch64 macOS, and x86_64 Windows targets⹋.
 It is currently expected to work on other "Unix" OS with possible small changes, but those remain untested.
 
 - A Rust toolchain: `rustc`, `cargo`, and `rustfmt`. The recommended way to get these is from https://rustup.rs †
@@ -98,17 +99,17 @@ without considerable ongoing technical and financial contributions.
 
 Running PGRX on a Mac requires some additional setup.
 
-The Mac C compiler (clang) and related tools are bundled with [XCode](https://developer.apple.com/xcode/). 
-XCode can be installed from the Mac App Store.
+The Mac C compiler (clang) and related tools are bundled with [Xcode](https://developer.apple.com/xcode/).
+Xcode can be installed from the Mac App Store.
 
-For additional C libraries, it's easiest to use [Homebrew](https://brew.sh/). In particular, 
+For additional C libraries, it's easiest to use [Homebrew](https://brew.sh/). In particular,
 you will probably need these if you don't have them already:
 
 ```zsh
 brew install git icu4c pkg-config
 ```
-The config script that Postgres 17 uses in its build process does not automatically detect 
-the Homebrew install directory. (Earlier versions of Postgres do not have this problem.) 
+The config script that Postgres 17 uses in its build process does not automatically detect
+the Homebrew install directory. (Earlier versions of Postgres do not have this problem.)
 You may see this error:
 
 ```configure: error: ICU library not found```
@@ -119,11 +120,18 @@ export PKG_CONFIG_PATH=/opt/homebrew/opt/icu4c/lib/pkgconfig
 ```
 on the command line before you run ```cargo pgrx init```
 
-Every once in a while, XCode will update itself and move the directory that contains
+#### Troubleshooting
+
+1. Every once in a while, Xcode will update itself and move the directory that contains
 the C compiler. When the Postgres ./config process runs during the build, it grabs the current directory
 and stores it, which means that there will be build errors if you do a full rebuild of your
 project and the old directory has disappeared. The solution is re-run `cargo pgrx init` so the
 Postgres installs get rebuilt.
+
+2.  If a build fails with errors like `unknown type name: uint8_t`:
+    You may be using too-old Xcode. This often happens with an Apple Clang version below 15.
+    This can be fixed by updating Xcode and the command-line tools. You may require an OS update
+    if the Xcode version you must update to does not support your current macOS version.
 
 ### Windows
 
@@ -162,7 +170,7 @@ cd my_extension
 This will create a new directory for the extension crate.
 
 ```
-$ tree 
+$ tree
 .
 ├── Cargo.toml
 ├── my_extension.control
@@ -249,6 +257,7 @@ cargo pgrx init
 | `anyarray`                 | `pgrx::AnyArray`                                        |
 | `anyelement`               | `pgrx::AnyElement`                                      |
 | `box`                      | `pgrx::pg_sys::BOX`                                     |
+| `circle`                   | `pgrx::pg_sys::CIRCLE`                                  |
 | `point`                    | `pgrx::pg_sys::Point`                                   |
 | `tid`                      | `pgrx::pg_sys::ItemPointerData`                         |
 | `cstring`                  | `&core::ffi::CStr`                                      |
@@ -323,9 +332,9 @@ but rather extend additional support for other kinds of Rust code. These are not
 ### "unsafe-postgres": Allow compilation for Postgres forks that have a different ABI
 
 As of Postgres 15, forks are allowed to specify they use a different ABI than canonical Postgres.
-Since pgrx makes countless assumptions about Postgres' internal ABI it is not possible for it to 
+Since pgrx makes countless assumptions about Postgres' internal ABI it is not possible for it to
 guarantee that a compiled pgrx extension will probably execute within such a Postgres fork.  You,
-dear compiler runner, can make this guarantee for yourself by specifying the `unsafe-postgres` 
+dear compiler runner, can make this guarantee for yourself by specifying the `unsafe-postgres`
 feature flag.  Otherwise, a pgrx extension will fail to compile with an error similar to:
 
 ```
@@ -371,7 +380,7 @@ This approach can also be used in extensions to ensure a matching version of `ca
 ## License
 
 ```
-Portions Copyright 2019-2021 ZomboDB, LLC.  
+Portions Copyright 2019-2021 ZomboDB, LLC.
 Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
 Portions Copyright 2023 PgCentral Foundation, Inc.
 

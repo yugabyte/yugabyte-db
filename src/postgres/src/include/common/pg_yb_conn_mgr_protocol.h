@@ -70,3 +70,7 @@ typedef enum YbParseType
 	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_addr"
 #define YB_YCM_CLIENT_PORT \
 	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_port"
+
+/* YB: Startup parameter carrying the base64 encoded client certificate */
+#define YB_YCM_CLIENT_CERT \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_cert"

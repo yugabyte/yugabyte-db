@@ -1,5 +1,5 @@
 comment = 'arrays:  Created by pgrx'
 default_version = '0.1.0'
-module_pathname = '$libdir/datetime'
+module_pathname = 'datetime'
 relocatable = true
 superuser = false

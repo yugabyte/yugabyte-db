@@ -49,6 +49,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ReplayingDecoder;
+import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.Signal;
 
@@ -145,9 +146,6 @@ public class TabletClient extends ReplayingDecoder<Void> {
 
   private final long socketReadTimeoutMs;
 
-  /** When the last RPC was written out, used to filter out spurious idle timeouts. */
-  private volatile long lastSendTimeNanos = System.nanoTime();
-
   public TabletClient(AsyncYBClient client, String uuid) {
     this.ybClient = client;
     this.uuid = uuid;
@@ -199,7 +197,7 @@ public class TabletClient extends ReplayingDecoder<Void> {
   }
 
   private <R> ByteBuf encode(final YRpc<R> rpc) {
-    lastSendTimeNanos = System.nanoTime();
+    rpc.sentAtNanos = System.nanoTime();
     final int rpcid = this.rpcid.incrementAndGet();
     ByteBuf payload;
     final String service = rpc.serviceName();
@@ -744,19 +742,28 @@ public class TabletClient extends ReplayingDecoder<Void> {
   @Override
   public void userEventTriggered(final ChannelHandlerContext ctx, final Object evt)
       throws Exception {
-    if (!(evt instanceof IdleStateEvent)) {
+    if (!(evt instanceof IdleStateEvent)
+            || ((IdleStateEvent) evt).state() != IdleState.ALL_IDLE) {
       super.userEventTriggered(ctx, evt);
       return;
     }
-    // An RPC sent just before the idle deadline must get a full timeout window for its response:
-    // the deadline is computed from the last activity on the connection, so on a long-idle
-    // connection it can expire right after the RPC was written. Ignoring the event postpones the
-    // timeout by another window, so an unresponsive server is still detected.
-    if (System.nanoTime() - lastSendTimeNanos
-            < TimeUnit.MILLISECONDS.toNanos(socketReadTimeoutMs)) {
+    // Only a peer that owes us a response is worth a teardown: nothing outstanding means no RPC to
+    // unblock, and closing the channel races callers that have already taken this client out of
+    // AsyncYBClient's cache. The event fires on the last activity of the connection rather than per
+    // RPC, so age each in-flight RPC on its own send time instead.
+    final long cutoff = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(socketReadTimeoutMs);
+    YRpc<?> overdue = null;
+    for (YRpc<?> rpc : rpcs_inflight.values()) {
+      if (rpc.sentAtNanos - cutoff <= 0) {
+        overdue = rpc;
+        break;
+      }
+    }
+    if (overdue == null) {
       return;
     }
-    LOG.warn(getPeerUuidLoggingString() + "Encountered a read timeout");
+    LOG.warn("{}No response within {} ms for {}",
+        getPeerUuidLoggingString(), socketReadTimeoutMs, overdue);
     // Invalidate all the RPCs right _now_, so that the ReplayingDecoder does not keep decoding
     // while the channel is being closed.
     cleanup(ctx.channel());

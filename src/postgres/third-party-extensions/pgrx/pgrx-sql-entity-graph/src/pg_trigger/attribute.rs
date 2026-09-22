@@ -17,8 +17,9 @@
 */
 use crate::ToSqlConfig;
 
-use syn::parse::{Parse, ParseStream};
 use syn::Token;
+use syn::parse::{Parse, ParseStream};
+use syn::spanned::Spanned;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum PgTriggerAttribute {
@@ -35,14 +36,19 @@ impl Parse for PgTriggerAttribute {
 
                 let _eq: Token![=] = input.parse()?;
                 match input.parse::<ArgValue>()? {
-                    ArgValue::Path(p) => Self::Sql(ToSqlConfig::from(p)),
+                    ArgValue::Path(path) => {
+                        return Err(syn::Error::new(
+                            path.span(),
+                            "expected boolean or string literal",
+                        ));
+                    }
                     ArgValue::Lit(Lit::Bool(b)) => Self::Sql(ToSqlConfig::from(b.value)),
                     ArgValue::Lit(Lit::Str(s)) => Self::Sql(ToSqlConfig::from(s)),
                     ArgValue::Lit(other) => {
                         return Err(syn::Error::new(
                             other.span(),
-                            "expected boolean, path, or string literal",
-                        ))
+                            "expected boolean or string literal",
+                        ));
                     }
                 }
             }

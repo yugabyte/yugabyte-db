@@ -236,6 +236,15 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, full_tls_handshake, true,
     "falls back to the original machinarium-managed SSL_CTX that only honours the "
     "cert/key/CA files derived from certs_for_client_dir.");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, cert_auth, true,
+    "When true, Ysql Connection Manager forwards the leaf certificate presented by the client "
+    "to the backend in the startup packet, so that hba rules that depend on it (cert, "
+    "clientcert=verify-ca, clientcert=verify-full) are evaluated against the real client's "
+    "identity instead of the connection manager's. When false, no certificate is forwarded and "
+    "such rules see a client that presented none. Requires ysql_conn_mgr_full_tls_handshake, "
+    "which is what makes the connection manager verify the client certificate the same way "
+    "PostgreSQL would.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
@@ -273,6 +282,9 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
+
+DEFINE_validator(ysql_conn_mgr_cert_auth,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_full_tls_handshake));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {

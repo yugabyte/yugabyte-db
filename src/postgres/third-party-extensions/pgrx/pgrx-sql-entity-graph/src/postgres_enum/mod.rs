@@ -78,7 +78,7 @@ impl PostgresEnum {
         let data_enum = match derive_input.data {
             syn::Data::Enum(data_enum) => data_enum,
             syn::Data::Union(_) | syn::Data::Struct(_) => {
-                return Err(syn::Error::new(derive_input.ident.span(), "expected enum"))
+                return Err(syn::Error::new(derive_input.ident.span(), "expected enum"));
             }
         };
         Self::new(derive_input.ident, derive_input.generics, data_enum.variants, to_sql_config)
@@ -121,49 +121,67 @@ impl ToEntityGraphTokens for PostgresEnum {
         let (_static_impl_generics, static_ty_generics, static_where_clauses) =
             static_generics.split_for_impl();
 
-        let variants = self.variants.iter().map(|variant| variant.ident.clone());
-        let sql_graph_entity_fn_name = format_ident!("__pgrx_internals_enum_{}", name);
+        let variants =
+            self.variants.iter().map(|variant| variant.ident.clone()).collect::<Vec<_>>();
+        let sql_graph_entity_fn_name = format_ident!("__pgrx_schema_enum_{}", name);
 
         let to_sql_config = &self.to_sql_config;
+        let to_sql_config_len = to_sql_config.section_len_tokens();
+        let variants_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                #( ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#variants)) ),*
+            ])
+        };
+        let payload_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#name))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(file!())
+                + ::pgrx::pgrx_sql_entity_graph::section::u32_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(module_path!())
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#name #static_ty_generics))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(<#name #static_ty_generics as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::TYPE_IDENT)
+                + (#variants_len)
+                + (#to_sql_config_len)
+        };
+        let total_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u32_len() + (#payload_len)
+        };
+        let writer = to_sql_config.section_writer_tokens(quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::EntryWriter::<{ #total_len }>::new()
+                .u32((#payload_len) as u32)
+                .u8(::pgrx::pgrx_sql_entity_graph::section::ENTITY_ENUM)
+                .str(stringify!(#name))
+                .str(file!())
+                .u32(line!())
+                .str(module_path!())
+                .str(stringify!(#name #static_ty_generics))
+                .str(<#name #static_ty_generics as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::TYPE_IDENT)
+                .u32([ #( stringify!(#variants) ),* ].len() as u32)
+                #( .str(stringify!(#variants)) )*
+        });
 
         quote! {
             unsafe impl #staticless_impl_generics ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable for #name #static_ty_generics #static_where_clauses {
-                fn argument_sql() -> core::result::Result<::pgrx::pgrx_sql_entity_graph::metadata::SqlMapping, ::pgrx::pgrx_sql_entity_graph::metadata::ArgumentError> {
-                    Ok(::pgrx::pgrx_sql_entity_graph::metadata::SqlMapping::As(String::from(stringify!(#name))))
-                }
-
-                fn return_sql() -> core::result::Result<::pgrx::pgrx_sql_entity_graph::metadata::Returns, ::pgrx::pgrx_sql_entity_graph::metadata::ReturnsError> {
-                    Ok(::pgrx::pgrx_sql_entity_graph::metadata::Returns::One(::pgrx::pgrx_sql_entity_graph::metadata::SqlMapping::As(String::from(stringify!(#name)))))
-                }
+                const TYPE_IDENT: &'static str = ::pgrx::pgrx_resolved_type!(#name #static_ty_generics);
+                const TYPE_ORIGIN: ::pgrx::pgrx_sql_entity_graph::metadata::TypeOrigin =
+                    ::pgrx::pgrx_sql_entity_graph::metadata::TypeOrigin::ThisExtension;
+                const ARGUMENT_SQL: core::result::Result<
+                    ::pgrx::pgrx_sql_entity_graph::metadata::SqlMappingRef,
+                    ::pgrx::pgrx_sql_entity_graph::metadata::ArgumentError,
+                > = Ok(::pgrx::pgrx_sql_entity_graph::metadata::SqlMappingRef::As(stringify!(#name)));
+                const RETURN_SQL: core::result::Result<
+                    ::pgrx::pgrx_sql_entity_graph::metadata::ReturnsRef,
+                    ::pgrx::pgrx_sql_entity_graph::metadata::ReturnsError,
+                > = Ok(::pgrx::pgrx_sql_entity_graph::metadata::ReturnsRef::One(
+                    ::pgrx::pgrx_sql_entity_graph::metadata::SqlMappingRef::As(stringify!(#name))
+                ));
             }
 
-            #[no_mangle]
-            #[doc(hidden)]
-            #[allow(unknown_lints, clippy::no_mangle_with_rust_abi, nonstandard_style)]
-            pub extern "Rust" fn  #sql_graph_entity_fn_name() -> ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity {
-                extern crate alloc;
-                use alloc::vec::Vec;
-                use alloc::vec;
-                use ::pgrx::datum::WithTypeIds;
-
-                let mut mappings = Default::default();
-                <#name #static_ty_generics as ::pgrx::datum::WithTypeIds>::register_with_refs(&mut mappings, stringify!(#name).to_string());
-                ::pgrx::datum::WithSizedTypeIds::<#name #static_ty_generics>::register_sized_with_refs(&mut mappings, stringify!(#name).to_string());
-                ::pgrx::datum::WithArrayTypeIds::<#name #static_ty_generics>::register_array_with_refs(&mut mappings, stringify!(#name).to_string());
-                ::pgrx::datum::WithVarlenaTypeIds::<#name #static_ty_generics>::register_varlena_with_refs(&mut mappings, stringify!(#name).to_string());
-
-                let submission = ::pgrx::pgrx_sql_entity_graph::PostgresEnumEntity {
-                    name: stringify!(#name),
-                    file: file!(),
-                    line: line!(),
-                    module_path: module_path!(),
-                    full_path: core::any::type_name::<#name #static_ty_generics>(),
-                    mappings: mappings.into_iter().collect(),
-                    variants: vec![ #(  stringify!(#variants)  ),* ],
-                    to_sql_config: #to_sql_config,
-                };
-                ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity::Enum(submission)
-            }
+            ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+                #sql_graph_entity_fn_name,
+                #total_len,
+                #writer.finish()
+            );
         }
     }
 }

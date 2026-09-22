@@ -15,6 +15,7 @@ import { useLocalStorage } from 'react-use';
 import { noop, values } from 'lodash';
 import { makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
+import { OperationBannerVariant, YBOperationBanner } from '@yugabyte-ui-library/core';
 
 import { TASK_SHORT_TIMEOUT } from '@app/components/tasks/constants';
 import { DbUpgradeManagementSidePanel } from '@app/redesign/features/universe/universe-actions/software-upgrade/upgrade-management/DbUpgradeManagementSidePanel';
@@ -35,6 +36,7 @@ import {
   getIsDbUpgradePrecheckTask,
   getIsDbUpgradeRollbackTask,
   getIsDbUpgradeTask,
+  getIsEditUniverseTask,
   isSoftwareUpgradeFailed,
   useIsTaskNewUIEnabled
 } from '../TaskUtils';
@@ -48,10 +50,8 @@ import { DbUpgradeFinalizeTaskBanner } from './clusterBanner/DbUpgradeFinalizeTa
 import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTaskBanner';
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
 import { DbUpgradeTaskBanner } from './clusterBanner/DbUpgradeTaskBanner';
-import {
-  ClusterOperationBanner,
-  ClusterOperationBannerType
-} from './clusterBanner/ClusterOperationBanner';
+import { EditUniverseTaskBanner } from './clusterBanner/EditUniverseTaskBanner';
+import { OperationBannerWaveIcon } from './clusterBanner/operationBannerIcons';
 import { YBButton } from '@app/redesign/components';
 import {
   getUniverseStatus,
@@ -104,17 +104,13 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   const isNewTaskDetailsUIEnabled = useIsTaskNewUIEnabled();
 
   // This query is used to update the redux store with the latest task list.
-  useQuery(
-    taskQueryKey.universe(universeUUID),
-    () => api.fetchCustomerTasks(universeUUID),
-    {
-      enabled: !!universeUUID && isNewTaskDetailsUIEnabled && isCanaryUpgradeEnabled,
-      refetchInterval: TASK_SHORT_TIMEOUT,
-      onSuccess(data) {
-        dispatch(patchTasksForCustomer(universeUUID, data));
-      }
+  useQuery(taskQueryKey.universe(universeUUID), () => api.fetchCustomerTasks(universeUUID), {
+    enabled: !!universeUUID && isNewTaskDetailsUIEnabled && isCanaryUpgradeEnabled,
+    refetchInterval: TASK_SHORT_TIMEOUT,
+    onSuccess(data) {
+      dispatch(patchTasksForCustomer(universeUUID, data));
     }
-  );
+  });
 
   const universeDetailsQuery = useQuery(
     universeQueryKey.detailsV2(universeUUID),
@@ -249,6 +245,9 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
 
   if (isCanaryUpgradeEnabled) {
     if (getIsDbUpgradePrecheckTask(task)) {
+      if (universeUUID && acknowlegedTasks?.[universeUUID] === taskUUID) {
+        return null;
+      }
       return (
         <div className={classes.bannerContainer}>
           <DbUpgradePrecheckTaskBanner
@@ -305,10 +304,15 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
           {universeStatus.state === UniverseState.GOOD && (
             <>
               <div className={classes.bannerContainer}>
-                <ClusterOperationBanner
-                  type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
+                <YBOperationBanner
+                  variant={OperationBannerVariant.Warning}
+                  dense
+                  minHeight={46}
+                  showDivider={false}
+                  iconCircle={false}
+                  icon={<OperationBannerWaveIcon />}
                   title={t('universeActions.dbUpgrade.clusterBanner.finalizeOrRollBack.title')}
-                  actions={
+                  action={
                     <YBButton
                       variant="secondary"
                       size="medium"
@@ -322,7 +326,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
                       )}
                     </YBButton>
                   }
-                  description={t(
+                  message={t(
                     'universeActions.dbUpgrade.clusterBanner.finalizeOrRollBack.description'
                   )}
                 />
@@ -345,6 +349,15 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
 
   if (universeUUID && acknowlegedTasks?.[universeUUID] === taskUUID) {
     return null;
+  }
+
+  // Edit universe tasks own their banner for the whole lifecycle: in progress, success and failure.
+  if (getIsEditUniverseTask(task)) {
+    return (
+      <div className={classes.bannerContainer}>
+        <EditUniverseTaskBanner task={task} universeUuid={universeUUID} onDismiss={hideBanner} />
+      </div>
+    );
   }
 
   return <>{bannerComp(task)}</>;

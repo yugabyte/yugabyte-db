@@ -29,7 +29,7 @@ impl CompositeTypeMacro {
     /// Expands into the implementing type, explicitly eliding the lifetime
     /// if none is actually given.
     pub fn expand_with_lifetime(&self) -> syn::Type {
-        let CompositeTypeMacro { lifetime, span, .. } = self.clone();
+        let Self { lifetime, span, .. } = self.clone();
         let lifetime = lifetime.unwrap_or_else(|| syn::Lifetime::new("'_", span));
         syn::parse_quote! {
             ::pgrx::heap_tuple::PgHeapTuple<#lifetime, ::pgrx::pgbox::AllocatedByRust>

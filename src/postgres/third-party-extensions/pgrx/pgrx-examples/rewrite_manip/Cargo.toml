@@ -1,0 +1,34 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+
+[package]
+name = "rewrite_manip"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["pg17"]
+pg13 = ["pgrx/pg13", "pgrx-tests/pg13"]
+pg14 = ["pgrx/pg14", "pgrx-tests/pg14"]
+pg15 = ["pgrx/pg15", "pgrx-tests/pg15"]
+pg16 = ["pgrx/pg16", "pgrx-tests/pg16"]
+pg17 = ["pgrx/pg17", "pgrx-tests/pg17"]
+pg18 = ["pgrx/pg18", "pgrx-tests/pg18"]
+pg_test = []
+
+[dependencies]
+pgrx = { path = "../../pgrx" }
+
+[dev-dependencies]
+pgrx-tests = { path = "../../pgrx-tests" }

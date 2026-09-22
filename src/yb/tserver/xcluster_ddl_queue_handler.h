@@ -99,6 +99,9 @@ class XClusterDDLQueueHandler {
 
   Status UpdateSafeTimeForPause();
 
+  // Whether this handler is paused due to failing the same DDL too many times.
+  bool IsDdlReplicationPausedDueToStuckDdl() const;
+
   // Fetch the current batch persisted in the replicated_ddls table.
   static Result<xcluster::SafeTimeBatch> FetchSafeTimeBatchFromReplicatedDdls(
       pgwrapper::PGConn* pg_conn);
@@ -126,6 +129,7 @@ class XClusterDDLQueueHandler {
   virtual Status ProcessFailedDDLQuery(const Status& s, const XClusterDDLQueryInfo& query_info);
   // Returns whether we've already failed this query too many times.
   virtual Status CheckForFailedQuery();
+  Status PausedStatus() const;
 
   // Checks replicated_ddls table to see if this DDL has already been processed.
   virtual Result<bool> IsAlreadyProcessed(const XClusterDDLQueryInfo& query_info);
@@ -133,7 +137,10 @@ class XClusterDDLQueueHandler {
   Status ProcessManualExecutionQuery(const XClusterDDLQueryInfo& query_info);
 
   virtual Status InitPGConnection();
+  // Safe time excluding ddl_queue table.
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
+  // Safe time of the namespace including the ddl_queue table.
+  virtual Result<HybridTime> GetPublishedXClusterSafeTime();
 
   virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
       const HybridTime& commit_time);

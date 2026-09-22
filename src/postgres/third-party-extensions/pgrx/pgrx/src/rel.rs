@@ -9,10 +9,10 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Provides a safe wrapper around Postgres' `pg_sys::RelationData` struct
 use crate::{
-    direct_function_call, name_data_to_str, pg_sys, FromDatum, IntoDatum, PgBox, PgTupleDesc,
+    FromDatum, IntoDatum, PgBox, PgTupleDesc, direct_function_call, name_data_to_str, pg_sys,
 };
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 use std::ops::Deref;
 use std::os::raw::c_char;
@@ -23,7 +23,7 @@ macro_rules! pgstat_count_impl {
             if self.should_count_relation() {
                 let info = self.pgstat_info;
 
-                #[cfg(any(feature = "pg16", feature = "pg17"))]
+                #[cfg(any(feature = "pg16", feature = "pg17", feature = "pg18"))]
                 unsafe {
                     (*info).counts.$new_field += 1;
                 }
@@ -191,15 +191,16 @@ impl PgRelation {
 
     /// If this `PgRelation` represents an index, return the `PgRelation` for the heap
     /// relation to which it is attached
-    pub fn heap_relation(&self) -> Option<PgRelation> {
+    ///
+    /// # Safety
+    ///
+    /// This does not perform locking, even though Postgres requires it.
+    /// Callers must first call `with_lock` before calling this.
+    pub unsafe fn heap_relation(&self) -> Option<PgRelation> {
         // SAFETY: we know self.boxed and its members are correct as we created it
         let rd_index: PgBox<pg_sys::FormData_pg_index> =
             unsafe { PgBox::from_pg(self.boxed.rd_index) };
-        if rd_index.is_null() {
-            None
-        } else {
-            Some(unsafe { PgRelation::open(rd_index.indrelid) })
-        }
+        if rd_index.is_null() { None } else { Some(unsafe { PgRelation::open(rd_index.indrelid) }) }
     }
 
     /// Return an iterator of indices, as `PgRelation`s, attached to this relation
@@ -235,7 +236,7 @@ impl PgRelation {
     /// // assert that the tuple descriptor has 12 attributes
     /// assert_eq!(tupdesc.len(), 12);
     /// ```
-    pub fn tuple_desc(&self) -> PgTupleDesc {
+    pub fn tuple_desc(&self) -> PgTupleDesc<'_> {
         PgTupleDesc::from_relation(self)
     }
 
@@ -243,11 +244,7 @@ impl PgRelation {
     pub fn reltuples(&self) -> Option<f32> {
         let reltuples = unsafe { self.boxed.rd_rel.as_ref() }.expect("rd_rel is NULL").reltuples;
 
-        if reltuples == 0f32 {
-            None
-        } else {
-            Some(reltuples)
-        }
+        if reltuples == 0f32 { None } else { Some(reltuples) }
     }
 
     pub fn is_table(&self) -> bool {
@@ -316,7 +313,7 @@ impl PgRelation {
             return true;
         }
 
-        #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17"))]
+        #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"))]
         if self.pgstat_enabled {
             unsafe {
                 pg_sys::pgstat_assoc_relation(self.as_ptr());
@@ -338,7 +335,7 @@ impl PgRelation {
     pub fn count_index_tuples(&mut self, n: i64) {
         if self.should_count_relation() {
             let info = self.pgstat_info;
-            #[cfg(any(feature = "pg16", feature = "pg17"))]
+            #[cfg(any(feature = "pg16", feature = "pg17", feature = "pg18"))]
             unsafe {
                 (*info).counts.tuples_returned += n;
             }
@@ -404,10 +401,11 @@ impl Drop for PgRelation {
 }
 
 unsafe impl SqlTranslatable for PgRelation {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("regclass"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("regclass")))
-    }
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(PgRelation);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> =
+        Ok(SqlMappingRef::literal("regclass"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("regclass")));
 }

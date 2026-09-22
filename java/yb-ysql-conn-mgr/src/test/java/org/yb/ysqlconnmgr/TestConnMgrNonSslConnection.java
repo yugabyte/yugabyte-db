@@ -16,8 +16,6 @@ package org.yb.ysqlconnmgr;
 import static org.yb.AssertionWrappers.fail;
 import static org.yb.AssertionWrappers.assertTrue;
 
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -29,7 +27,6 @@ import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.RequiresLinux;
@@ -51,11 +48,6 @@ public class TestConnMgrNonSslConnection extends BaseYsqlConnMgr {
     // Required for TLS connections to resolve correctly in the test environment;
     // certificates are issued for IP addresses, not hostnames.
     useIpWithCertificate = true;
-  }
-
-  private static String certsDir() {
-    FileSystem fs = FileSystems.getDefault();
-    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   @Override

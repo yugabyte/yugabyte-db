@@ -14,9 +14,10 @@ use pgrx::StringInfo;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
-#[derive(Copy, Clone, PostgresType, Serialize, Deserialize)]
+#[derive(Copy, Clone, PostgresType, Serialize, Deserialize, AggregateName)]
+#[aggregate_name = "DEMOAVG"]
 #[pgvarlena_inoutfuncs]
 #[derive(Default)]
 pub struct IntegerAvgState {
@@ -27,9 +28,9 @@ pub struct IntegerAvgState {
 impl IntegerAvgState {
     #[inline(always)]
     fn state(
-        mut current: <Self as Aggregate>::State,
-        arg: <Self as Aggregate>::Args,
-    ) -> <Self as Aggregate>::State {
+        mut current: <Self as Aggregate<Self>>::State,
+        arg: <Self as Aggregate<Self>>::Args,
+    ) -> <Self as Aggregate<Self>>::State {
         if let Some(arg) = arg {
             current.sum += arg;
             current.n += 1;
@@ -38,7 +39,7 @@ impl IntegerAvgState {
     }
 
     #[inline(always)]
-    fn finalize(current: <Self as Aggregate>::State) -> <Self as Aggregate>::Finalize {
+    fn finalize(current: <Self as Aggregate<Self>>::State) -> <Self as Aggregate<Self>>::Finalize {
         current.sum / current.n
     }
 }
@@ -74,10 +75,9 @@ impl PgVarlenaInOutFuncs for IntegerAvgState {
 // In order to improve the testability of your code, it's encouraged to make this implementation
 // call to your own functions which don't require a PostgreSQL made [`pgrx::pg_sys::FunctionCallInfo`].
 #[pg_aggregate]
-impl Aggregate for IntegerAvgState {
+impl Aggregate<IntegerAvgState> for IntegerAvgState {
     type State = PgVarlena<Self>;
     type Args = pgrx::name!(value, Option<i32>);
-    const NAME: &'static str = "DEMOAVG";
 
     const INITIAL_CONDITION: Option<&'static str> = Some("0,0");
 

@@ -14,6 +14,7 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/client/client.h"
@@ -101,7 +102,7 @@ TEST_F(TServerMetricsHeartbeatDataProviderITest, PathMetricsCarryStorageTier) {
             return false;
           }
           // Default cluster: no labels set, so all tiers should equal the default.
-          if (pm.storage_tier() != FsManager::kDefaultStorageTier) {
+          if (pm.storage_tier() != kDefaultStorageTier) {
             return false;
           }
         }
