@@ -461,9 +461,32 @@ std::string RedactPasswordLiterals(const std::string& operation) {
   std::smatch m;
   while (pos < operation.length() &&
          regex_search(operation.cbegin() + pos, operation.cend(), m, pwd_start_regex)) {
-    // Index of the opening quote of this string literal.
+    // Index of the quote that ends this match.
     const size_t quote_start_idx =
         pos + static_cast<size_t>(m.position()) + static_cast<size_t>(m.length()) - 1;
+
+    // The match only denotes a password clause if that quote *opens* a value. The word can also
+    // appear inside a string literal -- `UPDATE t SET v = 'password = ' WHERE k = 1` -- where the
+    // quote closes that literal instead. `pos` is always outside a literal, since we resume after
+    // a closing quote, so quote parity between `pos` and the match separates the two cases.
+    // Without this check a mis-fired match would swallow the rest of the statement below.
+    bool inside_literal = false;
+    for (size_t i = pos; i < quote_start_idx; ++i) {
+      if (operation[i] == '\'') {
+        if (i + 1 < operation.length() && operation[i + 1] == '\'') {
+          ++i;  // Escaped quote, still inside the literal.
+        } else {
+          inside_literal = !inside_literal;
+        }
+      }
+    }
+    if (inside_literal) {
+      // Not a password clause. Copy through the closing quote and carry on from outside it.
+      result.append(operation, pos, quote_start_idx + 1 - pos);
+      pos = quote_start_idx + 1;
+      continue;
+    }
+
     size_t quote_end_idx = std::string::npos;
     for (auto i = quote_start_idx + 1; i < operation.length(); ++i) {
       if (operation[i] == '\'') {
@@ -494,8 +517,10 @@ std::string RedactPasswordLiterals(const std::string& operation) {
 }
 
 // Replace sensitive information in a CQL command string with <REDACTED> placeholders.
-// We only do this for CREATE/ALTER ROLE, where a password clause is expected; failure paths that
-// have no parse tree to check redact unconditionally via RedactPasswordLiterals instead.
+// This is the success path, and it is the only one that checks the opcode, so only CREATE/ALTER
+// ROLE is touched. Every failure path redacts unconditionally in LogStatementError below, whether
+// or not it has a parse tree -- so a failed statement carrying a password clause is redacted even
+// where the same statement succeeding would not be.
 std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operation) {
   if (tnode.opcode() != TreeNodeOpcode::kPTCreateRole &&
       tnode.opcode() != TreeNodeOpcode::kPTAlterRole) {
@@ -809,11 +834,20 @@ Status AuditLogger::LogStatementError(const std::string& statement,
     error_message = boost::algorithm::join(split, "\n");
   }
 
+  // `error_message` carries the statement as well, not just the error: ProcessContextBase::Error
+  // echoes the offending statement verbatim after the error text, with a caret marker line. The
+  // strip above does not deal with it -- execution failures reach here with
+  // ErrorIsFormatted::kFalse, where the strip does not run at all, and even when it does run it
+  // drops exactly three trailing lines, which removes the echo only for a single-line statement.
+  // Without redacting this field a CREATE ROLE rejected with DUPLICATE_ROLE, or an ALTER ROLE with
+  // ROLE_NOT_FOUND, is audited with its password in cleartext.
+  error_message = RedactPasswordLiterals(error_message);
+
   // For failed requests, we do not log keyspace and scope even if we have them.
-  // Redact here rather than relying on the caller: this overload is also the one used when there
-  // is no parse tree to identify the statement type (syntax errors, failed PREPARE), so without
-  // this a rejected CREATE/ALTER ROLE would be audited with its password in cleartext. Callers
-  // that already obfuscated via ObfuscateOperation are unaffected -- no literal is left to match.
+  // Redact the statement here rather than relying on the caller: every failure path funnels
+  // through this overload, including those with no parse tree to identify the statement type
+  // (syntax errors, failed PREPARE). Callers that already redacted are unaffected -- no literal is
+  // left to match.
   auto entry = VERIFY_RESULT(CreateLogEntry(type,
                                             "" /* keyspace */,
                                             "" /* scope */,
