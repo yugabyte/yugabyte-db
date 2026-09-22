@@ -2730,8 +2730,8 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 						castNode(ScalarArrayOpExpr, info->clause);
 					Const	   *pinned_array =
 						castNode(Const, lsecond(pinned_saop->args));
-					AttrNumber	attnum = ybMergeScanStreamColAttnum(ybScan->index,
-															   info);
+					AttrNumber	attnum =
+						ybMergeScanStreamColAttnum(ybScan->index, info);
 
 					/*
 					 * Compare that the scan key and the pinned SAOP are on the
