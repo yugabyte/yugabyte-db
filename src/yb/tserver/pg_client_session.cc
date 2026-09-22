@@ -2356,6 +2356,9 @@ class PgClientSession::Impl {
   Status FetchData(
       const PgFetchDataRequestPB& req, PgFetchDataResponsePB* resp,
       rpc::RpcContext* context) {
+    // Lets tests hold the fetch while the backend is blocked waiting for it.
+    TEST_SYNC_POINT("PgClientSession::FetchData:Start");
+    TEST_SYNC_POINT("PgClientSession::FetchData:Proceed");
     size_t data_id = req.data_id();
     std::lock_guard lock(pending_data_mutex_);
     if (data_id >= pending_data_.size() || pending_data_[data_id].empty()) {
