@@ -1333,7 +1333,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   }
 
   @Test
-  public void testValidateConfig_SkipValidationRuntimeConfig() {
+  public void testValidateConfig_SkipStorageValidationRuntimeConfig() {
     ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(true);
     CustomerConfig config = createS3Config("test");
 
@@ -1341,14 +1341,45 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         () -> customerConfigValidator.validateConfig(config),
         thrown(PlatformServiceException.class));
 
-    setSkipValidation(true);
+    setSkipStorageValidation(true);
 
     customerConfigValidator.validateConfig(config);
   }
 
   @Test
-  public void testValidateConfig_SkipValidationKeepsNameConflictCheck() {
-    setSkipValidation(true);
+  public void testValidateConfig_SkipStorageValidationKeepsFieldValidation() {
+    setSkipStorageValidation(true);
+    ObjectNode data = Json.newObject();
+    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
+
+    // BACKUP_LOCATION is @NotNull on the data object, so bean validation rejects it even though
+    // the storage validators are disarmed.
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(PlatformServiceException.class));
+  }
+
+  @Test
+  public void testValidateConfig_SkipStorageValidationLeavesNonStorageConfigsAlone() {
+    setSkipStorageValidation(true);
+    ObjectNode data = Json.newObject();
+    data.put("alertingEmail", "qweqwe");
+    CustomerConfig config = createConfig(ConfigType.ALERTS, ALERTS_PREFERENCES, data);
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\""
+                + fieldFullName("alertingEmail")
+                + "\":[\"invalid email address qweqwe\"]}"));
+  }
+
+  @Test
+  public void testValidateConfig_SkipStorageValidationKeepsNameConflictCheck() {
+    setSkipStorageValidation(true);
     Customer customer = ModelFactory.testCustomer();
     ModelFactory.createNfsStorageConfig(customer, "TEST_NFS");
 
@@ -1367,11 +1398,11 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             "errorJson: {\"configName\":[\"Configuration TEST_NFS already exists\"]}"));
   }
 
-  private void setSkipValidation(boolean value) {
+  private void setSkipStorageValidation(boolean value) {
     app.injector()
         .instanceOf(SettableRuntimeConfigFactory.class)
         .globalRuntimeConf()
-        .setValue(GlobalConfKeys.skipCustomerConfigValidation.getKey(), String.valueOf(value));
+        .setValue(GlobalConfKeys.skipStorageConfigValidation.getKey(), String.valueOf(value));
   }
 
   private CustomerConfig createConfig(ConfigType type, String name, ObjectNode data) {

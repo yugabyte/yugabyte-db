@@ -2386,15 +2386,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum number of lines to buffer in memory for node agent describe output",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> skipCustomerConfigValidation =
+  public static final ConfKeyInfo<Boolean> skipStorageConfigValidation =
       new ConfKeyInfo<>(
-          "yb.customer_config.skip_validation",
+          "yb.storage_config.skip_validation",
           ScopeType.GLOBAL,
-          "Skip customer config validation",
-          "Skip validation of the customer config payload on create and edit - for storage"
-              + " configs this is what reaches out to the backup storage to check credentials and"
-              + " bucket access. Escape hatch for storage that YBA itself cannot reach. Config"
-              + " name conflicts and the read-only backup location check are not skipped.",
+          "Skip storage config validation",
+          "Skip the storage config validators that reach out to the backup storage to check"
+              + " credentials and bucket access, on config create and edit. Escape hatch for"
+              + " storage that YBA itself cannot reach. Field level validation, the config name"
+              + " conflict and the read-only backup location check still apply, and non-storage"
+              + " configs are unaffected.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

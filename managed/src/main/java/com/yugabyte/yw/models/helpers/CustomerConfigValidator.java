@@ -106,10 +106,10 @@ public class CustomerConfigValidator extends BaseBeanValidator {
    * <p>The URLs validation allows empty scheme. In such case the check is made with DEFAULT_SCHEME
    * added before the URL.
    *
-   * <p>{@link GlobalConfKeys#skipCustomerConfigValidation} skips the checks above, as an escape
-   * hatch for storage that YBA itself cannot reach. Still enforced: the config name conflict, the
-   * read-only backup location, and that the payload deserializes - none of which an escape hatch
-   * could help with.
+   * <p>{@link GlobalConfKeys#skipStorageConfigValidation} skips the storage checks above, as an
+   * escape hatch for storage that YBA itself cannot reach. It disarms nothing else: field level
+   * validation of the payload still runs, as do the config name conflict and read-only backup
+   * location checks, and non-storage config types are unaffected.
    *
    * @param customerConfig
    */
@@ -138,19 +138,21 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       }
     }
 
-    // Runs ahead of the skip below: a payload we cannot deserialize is broken whatever the
-    // storage looks like, and persisting it only moves the failure to backup time.
     CustomerConfigData data = customerConfig.getDataObject();
+    beanValidator.validate(data, "data");
 
-    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.skipCustomerConfigValidation)) {
+    // Scoped to storage configs, and placed after the checks above: only the storage validators
+    // depend on anything outside YBA, so they are the only ones an unreachable-storage escape
+    // hatch has any business disarming.
+    if (customerConfig.getType() == ConfigType.STORAGE
+        && runtimeConfGetter.getGlobalConf(GlobalConfKeys.skipStorageConfigValidation)) {
       log.warn(
-          "Skipping validation of customer config {} as {} is set",
+          "Skipping validation of storage config {} as {} is set",
           configName,
-          GlobalConfKeys.skipCustomerConfigValidation.getKey());
+          GlobalConfKeys.skipStorageConfigValidation.getKey());
       return;
     }
 
-    beanValidator.validate(data, "data");
     ConfigDataValidator validator = validators.get(data.getClass());
     if (validator != null) {
       validator.validate(data);
