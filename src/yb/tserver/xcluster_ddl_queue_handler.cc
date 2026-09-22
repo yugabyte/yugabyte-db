@@ -356,6 +356,49 @@ XClusterDDLQueueHandler::XClusterDDLQueueHandler(
 
 XClusterDDLQueueHandler::~XClusterDDLQueueHandler() {}
 
+Status XClusterDDLQueueHandler::TerminatePgBackend(uint32_t pid) {
+  // Open a separate short-lived connection to issue the terminate.
+  const auto deadline = CoarseMonoClock::Now() + local_client_->default_rpc_timeout();
+  auto conn = VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline));
+  const auto terminated =
+      VERIFY_RESULT(conn.FetchRow<bool>(Format("SELECT pg_terminate_backend($0)", pid)));
+  if (!terminated) {
+    // pg_terminate_backend returns false when there is no such backend, meaning it had already
+    // exited. That is the outcome we wanted, so it is not an error.
+    VLOG_WITH_PREFIX(1) << "PostgreSQL backend " << pid << " had already exited";
+    return Status::OK();
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Terminated PostgreSQL backend " << pid
+                        << " to abort a replicated DDL, since replication has been paused";
+  return Status::OK();
+}
+
+void XClusterDDLQueueHandler::KillPgConnection() {
+  if (!ddl_in_flight_.load(std::memory_order_acquire)) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no DDL in flight, nothing to terminate";
+    return;
+  }
+
+  const auto pid = pg_backend_pid_.load(std::memory_order_acquire);
+  if (pid == 0) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no backend pid recorded, nothing to terminate";
+    return;
+  }
+
+  auto s = TerminatePgBackend(pid);
+  if (!s.ok()) {
+    // Will retry in next tick automatically
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Failed to terminate PostgreSQL backend " << pid << ": " << s;
+    return;
+  }
+
+  // No DDL is left running on that backend. Clear the pid so we stop retrying; InitPGConnection
+  // rebuilds the connection on next use.
+  pg_backend_pid_.store(0, std::memory_order_release);
+}
+
 void XClusterDDLQueueHandler::Shutdown() {
   if (pg_conn_ && FLAGS_ysql_yb_enable_advisory_locks &&
       FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
@@ -365,6 +408,7 @@ void XClusterDDLQueueHandler::Shutdown() {
     // Alright if we fail here, log an error and wait for the connection to close normally.
     WARN_NOT_OK(s, "Encountered error unlocking advisory lock for xCluster DDL queue handler");
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
 }
 
@@ -466,6 +510,12 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     //    We need to wait until we get a safe apply time before processing this batch.
     return Status::OK();
   }
+
+  // Marks this handler as processing the DDL batch, so that a pause can terminate the backend if
+  // the batch cannot complete.
+  ddl_in_flight_.store(true, std::memory_order_release);
+  auto ddl_in_flight_clearer =
+      ScopeExit([this] { ddl_in_flight_.store(false, std::memory_order_release); });
 
   SCHECK(
       !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
@@ -723,12 +773,14 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_ && pg_conn_->ConnStatus() != CONNECTION_OK) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
         << "Dropping unhealthy PostgreSQL connection (status " << pg_conn_->ConnStatus()
         << "), will reconnect";
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_) {
     return Status::OK();
@@ -750,7 +802,13 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 
   RETURN_NOT_OK(RunDdlQueueHandlerPrepareQueries(pg_conn.get()));
 
+  // Record the backend pid now, while the connection is idle. It cannot be fetched later from
+  // another thread wanting to terminate a stuck DDL, since the connection will be busy by then.
+  const auto backend_pid = VERIFY_RESULT(pg_conn->FetchRow<pgwrapper::PGUint32>(
+      "SELECT pg_catalog.pg_backend_pid()"));
+
   pg_conn_ = std::move(pg_conn);
+  pg_backend_pid_.store(backend_pid, std::memory_order_release);
   return Status::OK();
 }
 

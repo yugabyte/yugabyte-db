@@ -88,6 +88,17 @@ class XClusterDDLQueueHandler {
 
   void Shutdown();
 
+  // Terminates the backend with an in-flight ddl.
+  void KillPgConnection();
+
+ private:
+  // Issues pg_terminate_backend(pid) over a new connection. Returns OK both when the backend was
+  // signalled and when there was no such backend, since either way no DDL is left running on it.
+  // Only a failure to reach Postgres is an error.
+  Status TerminatePgBackend(uint32_t pid);
+
+ public:
+
   // This function is called before the poller calls GetChanges. This will detect if we are in the
   // middle of a executing a DDL batch and complete it.
   Status ProcessPendingBatchIfExists();
@@ -173,6 +184,15 @@ class XClusterDDLQueueHandler {
   client::YBClient* local_client_;
 
   std::unique_ptr<pgwrapper::PGConn> pg_conn_;
+  // Backend pid of pg_conn_, captured when the connection is created. Read from other threads to
+  // terminate a DDL that is blocking the poller, so it cannot be fetched on demand: pg_conn_ is
+  // busy running the DDL at that point. 0 means no connection.
+  std::atomic<uint32_t> pg_backend_pid_{0};
+  // Whether a replicated DDL batch is currently being processed on pg_conn_ (see
+  // ExecuteCommittedDDLs). Only then is there anything worth terminating; killing the connection
+  // at any other time would take down a connection that the handler is using for its own queries,
+  // such as UpdateSafeTimeForPause.
+  std::atomic<bool> ddl_in_flight_{false};
   NamespaceName namespace_name_;
   NamespaceId source_namespace_id_;
   NamespaceId target_namespace_id_;

@@ -62,6 +62,10 @@ DEFINE_RUNTIME_uint32(xcluster_poller_task_delay_considered_stuck_secs, 3600 /* 
     "Maximum amount of time between tasks of a xcluster poller above which it is considered as "
     "stuck.");
 
+DEFINE_RUNTIME_bool(xcluster_kill_ddl_queue_pg_connection_on_pause, true,
+    "If true, kill the pg backend running DDL which was initiated by ddl queue handler "
+    "during pause.");
+
 DEFINE_test_flag(int32, xcluster_simulated_lag_ms, 0,
     "Simulate lag in xcluster replication. Replication is paused if set to -1.");
 DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
@@ -889,6 +893,19 @@ void XClusterPoller::SetPaused(bool is_paused) {
     // Poll. To safely handle the cases where we were paused and unpaused all within the same poll,
     // we simply mark ourself as failed and let the consumer recreate a fresh poller.
     MarkFailed("the stream was unpaused. The poller should be recreated.");
+  }
+
+  // The pause is not complete until every poller reports itself paused, but this poller may be
+  // blocked inside a replicated DDL that can never finish. Abandon that DDL so the poller can
+  // respond. Note this runs on the consumer's poll thread, not on the blocked poller thread.
+  //
+  // This is deliberately level triggered rather than edge triggered: a GetChanges/ApplyChanges
+  // cycle that was already in flight when the pause arrived will still run ExecuteCommittedDDLs,
+  // so a DDL can start *after* the pause flag was set. The consumer calls SetPaused on every
+  // refresh pass, so retrying here aborts that DDL too. The handler itself is the one that knows
+  // whether a DDL is actually executing, and does nothing when there is none.
+  if (is_paused && ddl_queue_handler_ && FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) {
+    ddl_queue_handler_->KillPgConnection();
   }
 }
 
