@@ -547,7 +547,7 @@ export const OnBoardingBanner: FC = () => {
                               t={t}
                               i18nKey="tryItFirstInfoBody"
                               values={{
-                                runtimeConfig: RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
+                                runtimeConfig: RuntimeConfigKey.ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS
                               }}
                               components={{ bold: <TooltipBold /> }}
                             />

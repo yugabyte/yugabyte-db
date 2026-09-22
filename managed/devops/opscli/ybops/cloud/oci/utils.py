@@ -27,6 +27,7 @@ from oci.core import (
     BlockstorageClient,
     ComputeManagementClient,
 )
+from oci.dns import DnsClient
 from oci.identity import IdentityClient
 from oci.core.models import (
     CaptureConsoleHistoryDetails,
@@ -47,6 +48,7 @@ from oci.core.models import (
     UpdateInstanceDetails,
     UpdateInstanceShapeConfigDetails
 )
+from oci.dns.models import RecordDetails, UpdateDomainRecordsDetails
 
 # Sticky launch fields copied from an Instance Configuration when seeding a
 # plain LaunchInstance. YBA-owned fields (shape, image, subnet, metadata, ...)
@@ -238,6 +240,7 @@ class OciCloudAdmin:
         self._network_client = None
         self._blockstorage_client = None
         self._identity_client = None
+        self._dns_client = None
         self._compartment_id = None
 
     @property
@@ -251,6 +254,9 @@ class OciCloudAdmin:
             signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
             return client_class(self.config, signer=signer)
         return client_class(self.config)
+
+    def _list_all(self, list_func, *args, **kwargs):
+        return oci.pagination.list_call_get_all_results(list_func, *args, **kwargs).data
 
     @property
     def compartment_id(self):
@@ -281,6 +287,12 @@ class OciCloudAdmin:
         if self._blockstorage_client is None:
             self._blockstorage_client = self._build_client(BlockstorageClient)
         return self._blockstorage_client
+
+    @property
+    def dns_client(self):
+        if self._dns_client is None:
+            self._dns_client = self._build_client(DnsClient)
+        return self._dns_client
 
     @property
     def identity_client(self):
@@ -342,8 +354,8 @@ class OciCloudAdmin:
 
     def get_shapes(self, compartment_id=None, availability_domain=None):
         comp_id = compartment_id or self.compartment_id
-        shapes = self.compute_client.list_shapes(comp_id, availability_domain=availability_domain)
-        return shapes.data
+        return self._list_all(
+            self.compute_client.list_shapes, comp_id, availability_domain=availability_domain)
 
     def get_instance_types(self, region=None):
         if region:
@@ -366,12 +378,11 @@ class OciCloudAdmin:
 
     def get_images(self, compartment_id=None, operating_system=None, shape=None):
         comp_id = compartment_id or self.compartment_id
-        images = self.compute_client.list_images(
+        return self._list_all(
+            self.compute_client.list_images,
             comp_id,
             operating_system=operating_system,
-            shape=shape
-        )
-        return images.data
+            shape=shape)
 
     def get_app_catalog_image(self, region, listing_id, resource_version=None):
         """Resolve a region-independent PIC listing to the region-specific image OCID."""
@@ -743,17 +754,26 @@ class OciCloudAdmin:
             logging.error(
                 "Instance creation failed partially for {}, cleaning up instance {} "
                 "and {} volume(s)".format(instance_name, instance.id, len(created_volume_ids)))
-            for vol_id in created_volume_ids:
-                try:
-                    self.blockstorage_client.delete_volume(vol_id)
-                except Exception as vol_err:
-                    logging.warning(
-                        "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
             try:
-                self.compute_client.terminate_instance(instance.id)
+                # Detaches and deletes the attached data volumes before terminating.
+                # OCI rejects deleting a volume that is still attached, and instance
+                # termination only detaches data volumes, it does not delete them.
+                self.terminate_instance(instance.id)
             except Exception as term_err:
                 logging.warning(
                     "Failed to cleanup instance {}: {}".format(instance.id, term_err))
+            # Catches volumes that were created but never attached, and any the
+            # termination path could not delete.
+            for vol_id in created_volume_ids:
+                try:
+                    self.delete_volume(vol_id)
+                except oci.exceptions.ServiceError as vol_err:
+                    if vol_err.status != 404:
+                        logging.warning(
+                            "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
+                except Exception as vol_err:
+                    logging.warning(
+                        "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
             raise
 
     def _wait_for_instance_network(self, instance_id, instance_name, region, timeout=120):
@@ -828,11 +848,11 @@ class OciCloudAdmin:
             self.set_region(region)
 
         comp_id = compartment_id or self.compartment_id
-        instances = self.compute_client.list_instances(comp_id)
+        instances = self._list_all(self.compute_client.list_instances, comp_id)
 
         results = []
         subnet_cache = {}
-        for instance in instances.data:
+        for instance in instances:
             if search_pattern and search_pattern not in instance.display_name:
                 continue
 
@@ -949,7 +969,20 @@ class OciCloudAdmin:
 
     def change_instance_type(self, instance_id, new_shape, ocpus=None, memory_in_gbs=None):
         shape_config = None
-        if "Flex" in new_shape and (ocpus or memory_in_gbs):
+        if "Flex" in new_shape:
+            if ocpus is None or memory_in_gbs is None:
+                current_config = getattr(
+                    self.get_instance(instance_id), "shape_config", None)
+                if current_config:
+                    if ocpus is None:
+                        ocpus = getattr(current_config, "ocpus", None)
+                    if memory_in_gbs is None:
+                        memory_in_gbs = getattr(current_config, "memory_in_gbs", None)
+            if ocpus is None or memory_in_gbs is None:
+                raise YBOpsRuntimeError(
+                    "OCPUs and memory are required to change instance {} to Flex shape {} "
+                    "(ocpus={}, memory_in_gbs={})".format(
+                        instance_id, new_shape, ocpus, memory_in_gbs))
             shape_config = UpdateInstanceShapeConfigDetails(
                 ocpus=ocpus,
                 memory_in_gbs=memory_in_gbs
@@ -1008,8 +1041,9 @@ class OciCloudAdmin:
 
     def get_volume_attachments(self, instance_id=None, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
-        return self.compute_client.list_volume_attachments(
-            comp_id, instance_id=instance_id).data
+        return self._list_all(
+            self.compute_client.list_volume_attachments,
+            comp_id, instance_id=instance_id)
 
     def update_volume_size(self, volume_id, new_size_in_gbs):
         from oci.core.models import UpdateVolumeDetails
@@ -1018,7 +1052,8 @@ class OciCloudAdmin:
 
     def list_volumes_by_tags(self, tags, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
-        volumes = self.blockstorage_client.list_volumes(compartment_id=comp_id).data
+        volumes = self._list_all(
+            self.blockstorage_client.list_volumes, compartment_id=comp_id)
         matching_volumes = []
         for volume in volumes:
             if volume.lifecycle_state not in ("AVAILABLE", "PROVISIONING"):
@@ -1044,6 +1079,33 @@ class OciCloudAdmin:
 
         update_details = UpdateInstanceDetails(freeform_tags=current_tags)
         self.compute_client.update_instance(instance_id, update_details)
+
+    def get_dns_zone(self, zone_id):
+        return self.dns_client.get_zone(zone_id).data
+
+    def upsert_dns_record_set(self, zone_id, domain_name_prefix, ip_list):
+        fqdn = "{}.{}".format(domain_name_prefix, self.get_dns_zone(zone_id).name)
+        records = [
+            RecordDetails(domain=fqdn, rtype="A", rdata=ip, ttl=DNS_RECORD_SET_TTL)
+            for ip in ip_list
+        ]
+        logging.info("[app] Setting {} A record(s) on {}".format(len(records), fqdn))
+        self.dns_client.update_domain_records(
+            zone_id, fqdn, UpdateDomainRecordsDetails(items=records))
+
+    def delete_dns_record_set(self, zone_id, domain_name_prefix):
+        try:
+            fqdn = "{}.{}".format(domain_name_prefix, self.get_dns_zone(zone_id).name)
+            logging.info("[app] Deleting records on {}".format(fqdn))
+            self.dns_client.delete_domain_records(zone_id, fqdn)
+        except oci.exceptions.ServiceError as e:
+            # A zone or record that is already gone must not wedge universe destroy.
+            if e.status == 404:
+                logging.warning(
+                    "[app] DNS zone {} or its records for {} not found; "
+                    "nothing to delete".format(zone_id, domain_name_prefix))
+                return
+            raise
 
     def get_console_history(self, instance_id):
         details = CaptureConsoleHistoryDetails(instance_id=instance_id)

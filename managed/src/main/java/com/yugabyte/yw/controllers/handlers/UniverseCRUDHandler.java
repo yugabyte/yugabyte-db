@@ -359,7 +359,16 @@ public class UniverseCRUDHandler {
   private static boolean isSameInstanceTypes(
       UserIntent newIntent, UserIntent currentIntent, Collection<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
-      return Objects.equals(newIntent.getBaseInstanceType(), currentIntent.getBaseInstanceType());
+      Set<UUID> commonProviders = new HashSet<>(newIntent.getAllProviderUUIDs());
+      commonProviders.retainAll(currentIntent.getAllProviderUUIDs());
+      for (UUID providerUUID : commonProviders) {
+        if (!Objects.equals(
+            newIntent.getBaseInstanceType(providerUUID),
+            currentIntent.getBaseInstanceType(providerUUID))) {
+          return false;
+        }
+      }
+      return true;
     }
     for (NodeDetails nodeDetails : nodes) {
       if (!Objects.equals(
@@ -703,8 +712,7 @@ public class UniverseCRUDHandler {
 
   public void setUpXClusterSettings(UniverseDefinitionTaskParams taskParams) {
     taskParams.xClusterInfo.sourceRootCertDirPath =
-        XClusterConfigTaskBase.getProducerCertsDir(
-            taskParams.getPrimaryCluster().userIntent.provider);
+        XClusterConfigTaskBase.getProducerCertsDir(taskParams.getPrimaryCluster().userIntent);
   }
 
   public UUID importUniverse(Customer customer, ImportUniverseTaskParams taskParams) {
@@ -848,6 +856,13 @@ public class UniverseCRUDHandler {
         c.userIntent.providerType =
             Common.CloudType.valueOf(Util.getSingleProvider(c.userIntent).getCode());
       }
+      // Record the intended cross-cloud federated IAM state on the cluster's UserIntent (like
+      // providerType/rootCA), so CreateUniverse and later edit/add-node/replace key off this one
+      // flag. TODO(multi-cloud): resolve per provider for clusters that span multiple clouds.
+      Provider federationProvider =
+          Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+      c.userIntent.setFederationConfigured(
+          CloudInfoInterface.getCrossCloudFederationAudience(federationProvider) != null);
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       // Enforce user tags.

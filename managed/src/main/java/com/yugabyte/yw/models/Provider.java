@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -651,6 +652,20 @@ public class Provider extends Model {
   @JsonIgnore
   public boolean isManualOnprem() {
     return getCloudCode() == CloudType.onprem && getDetails().skipProvisioning;
+  }
+
+  /**
+   * Returns true if this on-prem provider was created by YNP. YNP owns the configuration, the
+   * instance types and the node instances of such providers, so YBA does not let a user change
+   * them.
+   */
+  @JsonIgnore
+  public boolean isYnpManaged() {
+    if (getCloudCode() != CloudType.onprem) {
+      return false;
+    }
+    OnPremCloudInfo onPremCloudInfo = CloudInfoInterface.get(this);
+    return onPremCloudInfo != null && onPremCloudInfo.ynpManaged;
   }
 
   /**

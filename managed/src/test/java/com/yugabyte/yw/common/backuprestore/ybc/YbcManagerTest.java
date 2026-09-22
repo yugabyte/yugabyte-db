@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
@@ -241,8 +242,15 @@ public class YbcManagerTest extends FakeDBApplication {
         u.getNodesInCluster(c.uuid).stream()
             .filter(nD -> nD.isTserver)
             .collect(Collectors.toList());
+    Provider p =
+        Provider.getOrBadRequest(
+            u.getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .maybeGetSingleProviderUUID()
+                .get());
     spyYbcManager.populateControllerThrottleParamsMap(
-        u, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, false /* resetToDefaults */);
+        u, p, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, false /* resetToDefaults */);
     // Assert new values
     assertEquals(123456789l, paramBuilder.getDiskFlags().getDiskReadBytesPerSec());
     assertEquals(5, paramBuilder.getThrottleParams().getMaxConcurrentUploads());
@@ -292,8 +300,15 @@ public class YbcManagerTest extends FakeDBApplication {
         u.getNodesInCluster(c.uuid).stream()
             .filter(nD -> nD.isTserver)
             .collect(Collectors.toList());
+    Provider p =
+        Provider.getOrBadRequest(
+            u.getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .maybeGetSingleProviderUUID()
+                .get());
     spyYbcManager.populateControllerThrottleParamsMap(
-        u, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, true /* resetToDefaults */);
+        u, p, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, true /* resetToDefaults */);
     // Assert new values in builder
     assertEquals(diskReadBytesDefault, paramBuilder.getDiskFlags().getDiskReadBytesPerSec());
     assertEquals(diskWriteBytesDefault, paramBuilder.getDiskFlags().getDiskWriteBytesPerSec());

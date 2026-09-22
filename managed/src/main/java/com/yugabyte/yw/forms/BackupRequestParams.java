@@ -44,6 +44,14 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Storage configuration UUID", required = true)
   public UUID storageConfigUUID;
 
+  // Set by YBA (not the caller) at backup time from the universe's provider, so the backup can be
+  // deleted via cross-cloud federation even after the universe/provider link is gone.
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Cross-cloud federation GCP audience captured at backup time.",
+      hidden = true)
+  public String crossCloudFederationAudience;
+
   @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
 
@@ -195,6 +203,7 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
+    this.crossCloudFederationAudience = backupRequestParams.crossCloudFederationAudience;
     this.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
     this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.backupType = backupRequestParams.backupType;

@@ -53,6 +53,8 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -201,7 +203,8 @@ TabletPeer::TabletPeer(
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
       tablet_splitter_(tablet_splitter),
-      client_future_(client_future) {}
+      client_future_(client_future),
+      data_disk_space_checker_(meta->fs_manager()->env(), meta->data_root_dir()) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard lock(lock_);
@@ -882,7 +885,16 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     disk_size_info.ToPB(status_pb_out);
     // Set hide status of the tablet.
     status_pb_out->set_is_hidden(meta_->hidden());
-    status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
+    status_pb_out->set_rocksdb_parent_data_compacted(meta_->rocksdb_parent_data_compacted());
+    // Reports whether a compaction is still required, not the physical state: with
+    // vector_index_include_into_post_split_compaction off nothing will ever compact
+    // the inherited data, and a consumer waiting on this bit would wait forever.
+    // Left unset when the tablet is not available, so that consumers don't read
+    // an unknown state as compacted.
+    if (tablet) {
+      status_pb_out->set_vector_indexes_parent_data_compacted(
+          !tablet->vector_indexes().PostSplitCompactionRequired());
+    }
     for (const auto& table : meta_->GetAllColocatedTables()) {
       status_pb_out->add_colocated_table_ids(table);
     }
@@ -2037,10 +2049,10 @@ void TabletPeer::MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht) {
 Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
 
 bool TabletPeer::HasSufficientDiskSpaceForWrite() {
-  if (log_) {
-    return log_->HasSufficientDiskSpaceForWrite();
+  if (log_ && !log_->HasSufficientDiskSpaceForWrite()) {
+    return false;
   }
-  return true;
+  return data_disk_space_checker_.HasSufficientDiskSpace();
 }
 
 void TabletPeer::NotifyCommitedAsyncWrites(const OpId& committed_op_id) {

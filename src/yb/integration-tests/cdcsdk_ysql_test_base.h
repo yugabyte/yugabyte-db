@@ -460,7 +460,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<int64> GetChangeRecordCount(
       const xrepl::StreamId& stream_id, const YBTableName& table,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+      std::map<TabletId, CDCSDKCheckpointPB>& tablet_to_checkpoint,
       const int64 expected_total_records, bool explicit_checkpointing_enabled = false,
       std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records = {});
 
@@ -596,7 +596,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
-      int wal_segment_index = 0);
+      int wal_segment_index = 0,
+      int expected_records_count = 0);
 
   Result<GetChangesResponsePB> GetChangesFromCDCWithExplictCheckpoint(
       const xrepl::StreamId& stream_id,

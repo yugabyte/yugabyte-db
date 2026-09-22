@@ -314,29 +314,13 @@ typedef struct YbcPgExecOutParamValue {
 
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
-  // TODO(neil) Move forward_scan flag here.
-  // Scan parameters.
-  // bool is_forward_scan;
-
-  // LIMIT parameters for executing DML read.
-  // - limit_count is the value of SELECT ... LIMIT
-  // - limit_offset is value of SELECT ... OFFSET
-  // - limit_use_default: Although count and offset are pushed down to YugaByte from Postgres,
-  //   they are not always being used to identify the number of rows to be read from DocDB.
-  //   Full-scan is needed when further operations on the rows are not done by YugaByte.
+  // - plan_limit is the limit imposed by the upper plan, most commonly by the Limit node.
   // - out_param is an output parameter of an execution while all other parameters are IN params.
   //
-  //   Examples:
-  //   o WHERE clause is not processed by YugaByte. All rows must be sent to Postgres code layer
-  //     for filtering before LIMIT is applied.
-  //   o ORDER BY clause is not processed by YugaByte. Similarly all rows must be fetched and sent
-  //     to Postgres code layer.
   // For now we only support one rowmark.
 
 #ifdef __cplusplus
-  uint64_t limit_count = 0;
-  uint64_t limit_offset = 0;
-  bool limit_use_default = true;
+  uint64_t plan_limit = 0;
   int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
@@ -353,9 +337,7 @@ typedef struct YbcPgExecParameters {
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
 #else
-  uint64_t limit_count;
-  uint64_t limit_offset;
-  bool limit_use_default;
+  uint64_t plan_limit;
   int rowmark;
   // Cast these *_wait_policy fields to LockWaitPolicy for C use.
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
@@ -389,14 +371,25 @@ typedef struct {
   int collation_id;
 } YbcPgAttrValueDescriptor;
 
+// What the auxiliary value of a wait event holds, see YBCGetWaitEventAuxKind.
+typedef enum {
+  YB_ASH_AUX_NONE = 0,
+  // ash::PggateRPC value.
+  YB_ASH_AUX_PGGATE_RPC,
+  // OID of the relation which is read or written.
+  YB_ASH_AUX_RELATION_OID,
+} YbcAshAuxKind;
+
 typedef struct {
   uint32_t wait_event;
-  uint16_t rpc_code;
+  // Zero when the wait event has no auxiliary value. ash::PggateRPC::kNoRPC and kInvalidOid
+  // are both zero, so zero is also the unset value of either kind.
+  uint32_t aux;
 } YbcWaitEventInfo;
 
 typedef struct {
   uint32_t* wait_event;
-  uint16_t* rpc_code;
+  uint32_t* aux;
 } YbcWaitEventInfoPtr;
 
 typedef struct {
@@ -820,7 +813,9 @@ typedef struct {
   // those RPCs. This will always be 0 for PG samples
   int64_t rpc_request_id;
 
-  // Auxiliary information about the sample.
+  // Auxiliary information about the sample, truncated to 15 characters. A TServer sample
+  // stores a tablet or table id. A PG sample stores the associated info based on the
+  // wait event in string format.
   char aux_info[16];
 
   // 32-bit wait event code of the sample.
@@ -1102,7 +1097,7 @@ typedef struct {
 //   on transaction state (nesting level, savepoints, whether the optimization was already
 //   disabled), so it can turn off partway through a transaction.
 //
-// - read_at_in_txn_limit: this operation must read at the statement's in_txn_limit rather than at
+// - read_at_in_txn_limit: this operation must read at in_txn_limit rather than at
 //   the transaction read time. It depends only on the relation, so it holds for the whole
 //   transaction and stays set after skip_intents turns off. That is the point of keeping it
 //   separate: rows an earlier skip intents write put in the regular db sit above the transaction

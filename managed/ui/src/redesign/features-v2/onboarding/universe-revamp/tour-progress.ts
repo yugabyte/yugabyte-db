@@ -30,7 +30,8 @@ const ALL_MASK = ((1 << TourStep.WhatChanged) - 1) | (1 << TourStep.WhatNewPlace
 type UserRef = { uuid: string; role: string };
 
 let mask = 0;
-let newUiEnabled = false;
+/** null until hydrated from runtime config — "unknown", not "off". */
+let newUiEnabled: boolean | null = null;
 let togglePersistInFlight = false;
 let userRef: UserRef | null = null;
 let onUserUpdate: ((user: unknown) => void) | null = null;
@@ -52,7 +53,9 @@ export function subscribeTourProgressReady(onReady: () => void): () => void {
 
 export const isTourStepDismissed = (step: TourStepBit): boolean => (mask & bit(step)) !== 0;
 
-export const isOnboardingNewExperienceEnabled = (): boolean => newUiEnabled;
+export const isOnboardingNewExperienceEnabled = (): boolean => newUiEnabled === true;
+
+export const isOnboardingNewExperienceHydrated = (): boolean => newUiEnabled !== null;
 
 /**
  * Sync in-memory feature-flag mirror from runtime config (no write).
@@ -94,7 +97,7 @@ export function bindTourProgress(
 /** Call on logout so the next session does not reuse in-memory progress. */
 export function resetTourProgress(): void {
   mask = 0;
-  newUiEnabled = false;
+  newUiEnabled = null;
   userRef = null;
 }
 

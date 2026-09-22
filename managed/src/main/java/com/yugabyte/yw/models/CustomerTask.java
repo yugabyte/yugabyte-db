@@ -201,6 +201,9 @@ public class CustomerTask extends Model {
     @EnumValue("EditKubernetesUniverse")
     EditKubernetesUniverse,
 
+    @EnumValue("RollbackEditKubernetesUniverse")
+    RollbackEditKubernetesUniverse,
+
     @EnumValue("CertsRotate")
     CertsRotate,
 
@@ -430,6 +433,9 @@ public class CustomerTask extends Model {
     @EnumValue("EnableNodeAgent")
     EnableNodeAgent,
 
+    @EnumValue("ManageCrossCloudFederation")
+    ManageCrossCloudFederation,
+
     @EnumValue("Decommission")
     Decommission,
 
@@ -520,6 +526,10 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Kubernetes Overrides" : "Upgrading Kubernetes Overrides";
         case EditKubernetesUniverse:
           return completed ? "Edited Kubernetes Universe" : "Editing Kubernetes Universe";
+        case RollbackEditKubernetesUniverse:
+          return completed
+              ? "Rolled back edit Kubernetes universe"
+              : "Rolling back edit Kubernetes universe";
         case CertsRotate:
           return completed ? "Updated Certificates" : "Updating Certificates";
         case TlsToggle:
@@ -666,6 +676,10 @@ public class CustomerTask extends Model {
           return completed ? "Restored continuous YBA backup" : "Restoring continuous YBA backup";
         case EnableNodeAgent:
           return completed ? "Enabled node agent on" : "Enabling node agent on";
+        case ManageCrossCloudFederation:
+          return completed
+              ? "Updated cross-cloud federated IAM on"
+              : "Updating cross-cloud federated IAM on";
         case CloneNamespace:
           return completed ? "Cloned Namespace" : "Cloning Namespace";
         case UpdateOOMServiceState:

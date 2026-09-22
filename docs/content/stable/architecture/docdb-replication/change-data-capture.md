@@ -49,7 +49,7 @@ The YugabyteDB Debezium connector captures row-level changes in the schemas of a
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. You can specify which tables to include or exclude. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-{{<tags/feature/ea idea="2762">}}In v2026.1.1.0 and later, you can use standard PostgreSQL replication slot commands with the `yb_grpc` output plugin to create gRPC CDC streams.
+{{<tags/feature/ea idea="2762">}}In v2026.1.2.0 and later, you can use standard PostgreSQL replication slot commands with the `yb_grpc` output plugin to create gRPC CDC streams.
 
 Creating a slot returns a user-chosen `slot_name` and a stream UUID (`yb_stream_id` in `pg_replication_slots`) for the connector.
 
@@ -57,7 +57,7 @@ You can also use the legacy [yb-admin](../../../admin/yb-admin/#create-change-da
 
 {{< note title="Note" >}}
 
-For v2026.1.1.0 and later, PostgreSQL replication slot syntax is recommended.
+For v2026.1.2.0 and later, PostgreSQL replication slot syntax is recommended.
 
 {{< /note >}}
 
@@ -73,7 +73,7 @@ gRPC streams carry different metadata depending on how (and when) they were crea
 
 - **PostgreSQL syntax (`yb_grpc`)**: User-provided slot name, `yb_grpc` plugin, a `replica_identity_map`, and a `cdc_state` slot entry. [Before-image](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image) format comes from per-table replica identity (no stream-level `record_type`).
 - **yb-admin `create_change_data_stream`**: Auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. No `replica_identity_map`; before-image format still comes from the stream-level `record_type` passed to yb-admin.
-- **Pre-existing gRPC streams** (created in versions earlier than v2026.1.1.0): On master leader bringup after upgrading to v2026.1.1.0 or later, these streams are automatically backfilled to match the yb-admin shape above: auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. They keep using `record_type` and do **not** receive a `replica_identity_map`.
+- **Pre-existing gRPC streams** (created in versions earlier than v2026.1.2.0): On master leader bringup after upgrading to v2026.1.2.0 or later, these streams are automatically backfilled to match the yb-admin shape above: auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. They keep using `record_type` and do **not** receive a `replica_identity_map`.
 
 | Creation method | Replication slot name | Plugin | `replica_identity_map` | Slot entry in `cdc_state` | Before-image source |
 | :-------------- | :-------------------- | :----- | :--------------------- | :------------------------ | :------------------ |

@@ -169,7 +169,9 @@ static void
 InstrAggYbPgRpcStats(YbPgRpcStats *dst, YbPgRpcStats *add)
 {
 	dst->count += add->count;
+	dst->ops_count += add->ops_count;
 	dst->rows_scanned += add->rows_scanned;
+	dst->rows_received += add->rows_received;
 	dst->wait_time += add->wait_time;
 }
 

@@ -453,6 +453,11 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories(plat.version)
+	// Before the template, for the same reason as in PerfAdvisor.Upgrade: it renders this into
+	// yb-platform.conf, and createPemFormatKeyAndCert below builds the keystore from it.
+	if _, err := common.EnsureGeneratedPassword("platform.keyStorePassword"); err != nil {
+		return err
+	}
 	if err := template.GenerateTemplate(plat); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
@@ -600,6 +605,9 @@ func (plat Platform) FinishReplicatedMigrate() error {
 	return nil
 }
 
+// platformKeystoreAlias is the alias the platform key is stored under in server.bcfks.
+const platformKeystoreAlias = "yugaware"
+
 func createPemFormatKeyAndCert() error {
 	paths := getServerKeyAndCert()
 	keyFile := paths.KeyPath
@@ -649,6 +657,18 @@ func createPemFormatKeyAndCert() error {
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
+	}
+
+	// Called from every install, upgrade, reconfigure and cert-rotation path, so an upgrade is
+	// what moves an existing install off the PEM keystore.
+	keystorePassword, err := common.EnsureGeneratedPassword("platform.keyStorePassword")
+	if err != nil {
+		return err
+	}
+	if err := common.GenerateBCFKSKeystore(
+		certFile, keyFile, common.GetSelfSignedCertsDir(), platformKeystoreAlias,
+		keystorePassword); err != nil {
+		return fmt.Errorf("failed to generate platform BCFKS keystore: %w", err)
 	}
 	return nil
 }

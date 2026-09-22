@@ -196,7 +196,8 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     return kNumMasters;
   }
 
-  std::shared_ptr<client::YBTable> CreateTestTable(const int num_tablets = 0) {
+  std::shared_ptr<client::YBTable> CreateTestTable(
+      const int num_tablets = 0, const client::YBTableName& name = table_name) {
     auto client = CHECK_RESULT(cluster_->CreateClient());
     CHECK_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
 
@@ -210,13 +211,13 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     if (num_tablets) {
       table_creator->num_tablets(num_tablets);
     }
-    CHECK_OK(table_creator->table_name(table_name)
+    CHECK_OK(table_creator->table_name(name)
                  .schema(&schema)
                  .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
                  .Create());
 
     std::shared_ptr<client::YBTable> table;
-    CHECK_OK(client->OpenTable(table_name, &table));
+    CHECK_OK(client->OpenTable(name, &table));
     return table;
   }
 
@@ -268,8 +269,9 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
-  void ExpectLoadDistributionViewTabletsShown(int tablet_count) {
-    // This code expects that we have 3 TServers, 1 table, and RF 3.
+  void ExpectLoadDistributionViewTabletsShown(
+      int tablet_count, const std::string& html_table_name = "test_table") {
+    // This code expects 3 TServers and RF 3. html_table_name need not be the only table.
     int expected_replicas = tablet_count * 3;
 
     faststring result;
@@ -277,14 +279,14 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     const auto webpage = result.ToString();
 
     // Endpoint output includes:
-    //   test_table</a></td><td>1</td><td>1/1</td><td>1/0</td><td>1/0</td></tr></table>
+    //   test_table</a></td><td>1</td><td>1/1</td><td>1/0</td><td>1/0</td></tr>
     //
     // (First # is total number of tablets, later are #peers/#leaders for each TServer.)
     std::string num_cell = "<td>([0-9]+)</td>";
     std::string num_pair_cell = "<td>([0-9]+)/[0-9]+</td>";
     const std::regex regex(
-        "test_table</a></td>" + num_cell + num_pair_cell + num_pair_cell + num_pair_cell +
-        "</tr></table>");
+        html_table_name + "</a></td>" + num_cell + num_pair_cell + num_pair_cell + num_pair_cell +
+        "</tr>");
     std::smatch match;
     std::regex_search(webpage, match, regex);
 
@@ -1811,6 +1813,14 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
       60s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
   faststring out;
   ASSERT_OK(GetUrl("/load-distribution", &out));
+}
+
+TEST_F(MasterPathHandlersItest, LoadDistributionViewTabletCountIsPerTable) {
+  CreateTestTable(2 /* num_tablets */);
+  const client::YBTableName other_table(YQL_DATABASE_CQL, kKeyspaceName, "other_table");
+  CreateTestTable(5 /* num_tablets */, other_table);
+  ExpectLoadDistributionViewTabletsShown(2, "test_table");
+  ExpectLoadDistributionViewTabletsShown(5, "other_table");
 }
 
 TEST_F_EX(

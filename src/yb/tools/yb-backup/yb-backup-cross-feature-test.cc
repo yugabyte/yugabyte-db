@@ -723,6 +723,11 @@ TEST_F_EX(YBBackupTest,
       static_cast<double>(expected_num_tablets) / GetNumTabletServers());
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_shard_count_per_node",
                                        IntToString(low_phase_shard_count_per_node)));
+  // Splitting sizes a tablet by its leader's on-disk SST files. A load balancer leader move can
+  // hand leadership to a replica that was still catching up during the flush below and so flushed
+  // nothing: its data stays in an unflushed memtable, the tablet reports no SST bytes and, with no
+  // further writes to trigger a flush, never becomes a split candidate.
+  ASSERT_OK(cluster_->SetFlagOnMasters("load_balancer_max_concurrent_moves", "0"));
 
   const string table_name = "mytbl";
 

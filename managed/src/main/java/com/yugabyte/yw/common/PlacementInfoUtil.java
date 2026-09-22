@@ -992,11 +992,13 @@ public class PlacementInfoUtil {
                     zonesList.add(placementAZ);
                   });
         } else {
+          // This code path should be accessible for single provider only.
+          UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
           throw new IllegalStateException(
               "Couldn't find "
                   + deltaNodes
                   + " node(s) of type "
-                  + userIntent.getBaseInstanceType()); // TODO
+                  + userIntent.getBaseInstanceType(providerUUID));
         }
       }
       changed = false;
@@ -1016,7 +1018,9 @@ public class PlacementInfoUtil {
   }
 
   public static void validatePartition(
-      UniverseDefinitionTaskParams.PartitionInfo p, boolean geoPartitioned) {
+      UniverseDefinitionTaskParams.PartitionInfo p,
+      boolean geoPartitioned,
+      ClusterType clusterType) {
     if (geoPartitioned) {
       if (StringUtils.isEmpty(p.getName())) {
         throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
@@ -1038,6 +1042,9 @@ public class PlacementInfoUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incorrect replicas for partition " + p.getName() + ": should be non-zero");
     }
+
+    verifyNumNodesAndRF(
+        clusterType, getNodeCountInPlacement(p.getPlacement()), p.getReplicationFactor());
 
     int numberOfReplicas =
         p.getPlacement()
@@ -1085,7 +1092,8 @@ public class PlacementInfoUtil {
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    PlacementInfoUtil.validatePartition(p, cluster.isGeoPartitioned());
+                    PlacementInfoUtil.validatePartition(
+                        p, cluster.isGeoPartitioned(), cluster.clusterType);
                     if (cluster.isGeoPartitioned()) {
                       if (!names.add(p.getName())) {
                         throw new PlatformServiceException(
@@ -1656,8 +1664,10 @@ public class PlacementInfoUtil {
         }
       }
     }
-
-    verifyNumNodesAndRF(oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    if (CollectionUtils.isEmpty(newCluster.getPartitions())) {
+      verifyNumNodesAndRF(
+          oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    }
   }
 
   // Helper API to verify number of nodes and replication factor requirements.
@@ -3037,7 +3047,9 @@ public class PlacementInfoUtil {
     appendAZsForRegions(allAzsInRegions, defaultRegions, azByRegionMap);
 
     if (allAzsInRegions.isEmpty()) {
-      String instanceType = userIntent.getBaseInstanceType();
+      // This code path should be accessible for a single provider only
+      String instanceType =
+          userIntent.getBaseInstanceType(userIntent.maybeGetSingleProviderUUID().get());
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(

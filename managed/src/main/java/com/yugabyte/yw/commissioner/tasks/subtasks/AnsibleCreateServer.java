@@ -79,6 +79,10 @@ public class AnsibleCreateServer extends NodeTaskBase {
     if (skipProvision) {
       log.info("Skipping ansible creation.");
     } else if (instanceExists(taskParams())) {
+      // Reached for onprem, where the node is pre-existing hardware, and also on a public cloud
+      // when onFailure hard rebooted the instance after a recoverable error and retried this
+      // subtask - the destroy that precedes creation does not re-run within a subtask retry. So
+      // this cannot be enforced as an onprem-only path.
       log.info("Waiting for SSH to succeed on existing instance {}", taskParams().nodeName);
       getNodeManager()
           .nodeCommand(NodeManager.NodeCommandType.Wait_For_Connection, taskParams())
@@ -93,36 +97,42 @@ public class AnsibleCreateServer extends NodeTaskBase {
           getNodeManager()
               .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())
               .processErrors();
-      setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
       if (p.getCode().equals(CloudType.azu.name())) {
-        // Parse into a json object.
-        JsonNode jsonNodeTmp = Json.parse(response.message);
-        if (jsonNodeTmp.isArray()) {
-          jsonNodeTmp = jsonNodeTmp.get(0);
-        }
-        final JsonNode jsonNode = jsonNodeTmp;
-        String nodeName = taskParams().nodeName;
-
-        // Update the node details and persist into the DB.
-        UniverseUpdater updater =
-            new UniverseUpdater() {
-              @Override
-              public void run(Universe universe) {
-                // Get the details of the node to be updated.
-                NodeDetails node = universe.getNode(nodeName);
-                JsonNode lunIndexesJson = jsonNode.get("lun_indexes");
-                if (lunIndexesJson != null && lunIndexesJson.isArray()) {
-                  node.cloudInfo.lun_indexes = new Integer[lunIndexesJson.size()];
-                  for (int i = 0; i < lunIndexesJson.size(); i++) {
-                    node.cloudInfo.lun_indexes[i] = lunIndexesJson.get(i).asInt();
-                  }
-                }
-              }
-            };
-        // Save the updated universe object.
-        saveUniverseDetails(updater);
+        persistLunIndexes(response);
       }
+      setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
     }
+  }
+
+  /**
+   * Persists the LUN indexes reported by the Azure create call. Must happen before the node moves
+   * to InstanceCreated: createCreateServerTasks only runs on nodes in Adding state, so a YBA
+   * restart in between would leave the node with no LUN indexes and no subtask that recomputes
+   * them, and the YNP mount module would then have nothing to mount.
+   */
+  private void persistLunIndexes(ShellResponse response) {
+    JsonNode jsonNodeTmp = Json.parse(response.message);
+    if (jsonNodeTmp.isArray()) {
+      jsonNodeTmp = jsonNodeTmp.get(0);
+    }
+    final JsonNode jsonNode = jsonNodeTmp;
+    String nodeName = taskParams().nodeName;
+
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            NodeDetails node = universe.getNode(nodeName);
+            JsonNode lunIndexesJson = jsonNode.get("lun_indexes");
+            if (lunIndexesJson != null && lunIndexesJson.isArray()) {
+              node.cloudInfo.lun_indexes = new Integer[lunIndexesJson.size()];
+              for (int i = 0; i < lunIndexesJson.size(); i++) {
+                node.cloudInfo.lun_indexes[i] = lunIndexesJson.get(i).asInt();
+              }
+            }
+          }
+        };
+    saveUniverseDetails(updater);
   }
 
   @Override

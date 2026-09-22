@@ -1482,6 +1482,54 @@
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/cross-cloud-federation':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: manageCrossCloudFederation
+    summary: Enable or disable cross-cloud federated IAM on a universe
+    description: 'Configures (enable) or tears down (disable) cross-cloud federated IAM on all nodes of an existing universe. On enable, the universe''s provider must have federated IAM enabled with an audience set.'
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCrossCloudFederationReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ManageCrossCloudFederation
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/operator-import/precheck':
   parameters:
     - name: cUUID

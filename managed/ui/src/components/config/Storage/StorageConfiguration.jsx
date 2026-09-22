@@ -211,11 +211,10 @@ class StorageConfiguration extends Component {
         let FIELDS;
         configName = dataPayload['OCI_CONFIGURATION_NAME'];
         dataPayload['BACKUP_LOCATION'] = dataPayload['OCI_BACKUP_LOCATION'];
+        dataPayload['USE_OCI_IAM'] = !!values['USE_OCI_IAM'];
         if (values['USE_OCI_IAM']) {
-          dataPayload['USE_OCI_IAM'] = dataPayload['USE_OCI_IAM'].toString();
           FIELDS = ['BACKUP_LOCATION', 'OCI_REGION', 'OCI_NAMESPACE', 'USE_OCI_IAM'];
         } else {
-          dataPayload['USE_OCI_IAM'] = 'false';
           FIELDS = [
             'BACKUP_LOCATION',
             'OCI_REGION',
@@ -395,7 +394,7 @@ class StorageConfiguration extends Component {
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           OCI_REGION: row.data?.OCI_REGION,
           OCI_NAMESPACE: row.data?.OCI_NAMESPACE,
-          USE_OCI_IAM: row.data?.USE_OCI_IAM,
+          USE_OCI_IAM: storageToggleTrue(row.data?.USE_OCI_IAM),
           OCI_S3_ACCESS_KEY_ID: row.data?.OCI_S3_ACCESS_KEY_ID || '',
           OCI_S3_SECRET_ACCESS_KEY: row.data?.OCI_S3_SECRET_ACCESS_KEY || '',
           OCI_S3_HOST_BASE: row.data?.OCI_S3_HOST_BASE
@@ -437,7 +436,7 @@ class StorageConfiguration extends Component {
       iamRoleEnabled: row.data['IAM_INSTANCE_PROFILE'] || false,
       useGcpIam: row.data['USE_GCP_IAM'] || false,
       useAzureIam: row.data['USE_AZURE_IAM'] || false,
-      useOciIam: row.data['USE_OCI_IAM'] === 'true' || row.data['USE_OCI_IAM'] === true || false,
+      useOciIam: storageToggleTrue(row.data['USE_OCI_IAM']),
       listView: {
         ...this.state.listView,
         [activeTab]: false

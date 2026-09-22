@@ -636,6 +636,12 @@ static const struct config_enum_entry password_encryption_options[] = {
 	{NULL, 0, false}
 };
 
+/*
+ * YB: Conn Mgr mirrors these name to enum mappings in
+ * src/odyssey/third_party/machinarium/sources/yb_pg_tls_link_support.h
+ * (yb_mm_tls_protocol_to_pg_enum).  Keep that copy in sync if this table
+ * or enum ssl_protocol_versions in libpq.h changes.
+ */
 const struct config_enum_entry ssl_protocol_versions_info[] = {
 	{"", PG_TLS_ANY, false},
 	{"TLSv1", PG_TLS1_VERSION, false},
@@ -907,6 +913,7 @@ bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
+static bool yb_conn_mgr_selective_deallocate;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -4207,7 +4214,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_conn_mgr_selective_deallocate", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("Enables connection-manager-aware DEALLOCATE behavior."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -4255,7 +4262,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too."),
-			NULL,
+			gettext_noop("Requires yb_ddl_transaction_block_enabled to be on."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
@@ -18059,12 +18066,52 @@ static bool
 check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
 														  GucSource source)
 {
-	if (*newval && !yb_enable_new_relation_fastpath_write)
+	/*
+	 * yb_enable_new_relation_fastpath_write gates the optimization as a whole,
+	 * and this GUC only widens it to transaction blocks, so a value of on while
+	 * the parent is off is inert rather than unsafe.
+	 *
+	 * Only values supplied once the postmaster has read its configuration are
+	 * rejected, as in the yb_ddl_transaction_block_enabled check below.
+	 * pg_wrapper generates ysql_pg.conf in the data directory, writing the
+	 * ysql_pg_conf_csv entries ahead of the block it derives from the PG gflags,
+	 * and postgres assigns the parameters in the order they appear in that file.
+	 * A cluster that turns the parent off - through ysql_pg_conf_csv, or through
+	 * the ysql_yb_enable_new_relation_fastpath_write gflag, which is the kill
+	 * switch for the optimization as a whole - therefore has the parent assigned
+	 * off before this GUC is assigned on, and rejecting that pair here would
+	 * leave the postmaster refusing to start.
+	 */
+	if (*newval && !yb_enable_new_relation_fastpath_write && source >= PGC_S_CLIENT)
 	{
 		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
 							"when yb_enable_new_relation_fastpath_write is disabled.");
 		return false;
 	}
+
+	/*
+	 * A DDL inside a transaction block can only use the fastpath if it runs in
+	 * the enclosing transaction, which requires transactional DDL. Otherwise
+	 * this GUC would be silently ineffective.
+	 *
+	 * Only values supplied once the postmaster has read its configuration are
+	 * checked: SET, the validation pass of ALTER ROLE/DATABASE ... SET, and
+	 * connection request options. The configuration file is applied in file
+	 * order, and yb_ddl_transaction_block_enabled may be assigned after this
+	 * GUC - pg_wrapper writes ysql_pg_conf_csv entries ahead of the block it
+	 * generates from the PG gflags - so checking there would reject a
+	 * configuration whose final values are valid. The validator on the
+	 * ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks gflag rejects the
+	 * cluster-level combination instead, order-independently; a GUC enabled only
+	 * through ysql_pg_conf_csv is left to no-op silently.
+	 */
+	if (*newval && !yb_ddl_transaction_block_enabled && source >= PGC_S_CLIENT)
+	{
+		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
+							"when yb_ddl_transaction_block_enabled is disabled.");
+		return false;
+	}
+
 	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
 }
 

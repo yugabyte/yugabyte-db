@@ -926,10 +926,11 @@ Status PgSample::SetNextBatchYbctids(const YbcPgExecParameters* exec_params) {
   }
 
   // Set request with the next batch of ybctids to fetch the next batch of rows.
+  // Preserve the ybctid order, it is required for proper sampling.
   SetRequestedYbctids({make_lw_function([it = ybctids.begin() + start_index,
                                          end = ybctids.begin() + index_]() mutable {
     return it != end ? *it++ : Slice();
-  }), index_ - start_index});
+  }), index_ - start_index}, /* keep_order = */ true);
   VLOG_WITH_FUNC(3) << "Fetching " << index_ - start_index << " sampled rows";
   return Status::OK();
 }

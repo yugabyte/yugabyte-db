@@ -101,7 +101,11 @@
     },
     "toast": {
       "dbUpgradeRollbackRequestFailedLabel": "DB upgrade rollback request failed",
-      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed"
+      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed",
+      "retryUniverseUpdateTaskFailedLabel": "Failed to retry universe update task",
+      "retryUniverseUpdateTaskSuccess": "Universe updated",
+      "rollbackUniverseUpdateTaskFailedLabel": "Failed to roll back universe update task",
+      "rollbackUniverseUpdateTaskSuccess": "Universe rolled back to a stable state."
     },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
@@ -1975,6 +1979,7 @@
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "tablePill": {
+            "matview": "Materialized View",
             "unreplicatedTableInReplicatedNamespace": "Unreplicated",
             "droppedOnTarget": "Dropped on Target",
             "eligible": "Eligible",
@@ -3038,8 +3043,10 @@
           "taskAbortFailed": "Task abort failed",
           "taskRetrySuccess": "Task retry started",
           "taskRetryFailed": "Task retry failed",
+          "taskRetryCompleted": "Task retry completed successfully",
           "taskRollbackSuccess": "Task rollback started",
-          "taskRollbackFailed": "Task rollback failed"
+          "taskRollbackFailed": "Task rollback failed",
+          "taskRollbackCompleted": "Task rollback completed successfully"
         }
       },
       "info": {
@@ -3079,6 +3086,24 @@
         "softwareUpgradeFailed": "Software Upgrade Failed",
         "softwareUpgradeFailedText": "To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
         "rollbackUpgrade": "Rollback Upgrade"
+      },
+      "editUniverseTaskBanner": {
+        "inProgress": {
+          "title": "Updating universes...",
+          "description": "Some operations are not available while the operation is in progress."
+        },
+        "succeeded": {
+          "title": "Universe updated."
+        },
+        "failed": {
+          "title": "Failed to update universe."
+        },
+        "actions": {
+          "viewDetails": "View Details",
+          "retry": "Retry",
+          "rollBack": "Roll Back",
+          "rollBackHelperText": "Restores stable state"
+        }
       },
       "simple": {
         "viewDetails": "View Details"
@@ -3912,8 +3937,8 @@
         "title": "General Settings",
         "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
-        "cloudProvider": "Provider",
-        "providerconfiguration": "Provider Configuration",
+        "cloudProvider": "Infrastructure Provider",
+        "providerconfiguration": "Infrastructure Provider Config",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
         "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Integrations → Infrastructure</b>. You may need admin privileges to complete this step.",
         "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
@@ -4246,7 +4271,8 @@
         "pgCompatibility": {
           "label": "Enhanced Postgres Compatibility",
           "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
-          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
+          "YSQLWarn": "Enable YSQL first to use Postgres Compatibility."
         }
       },
       "securitySettings": {
@@ -4480,6 +4506,8 @@
         "clusterId": "Cluster ID",
         "provider": "Provider",
         "providerConfig": "Provider Config",
+        "infrastructureProvider": "Infrastructure Provider",
+        "providerConfiguration": "Infrastructure Provider Config",
         "totalNodes": "Total Nodes",
         "totalPods": "Total Pods",
         "node": "node",
@@ -4499,6 +4527,12 @@
         "cpuArch": "CPU Architecture",
         "linuxVersion": "Linux Version",
         "defaultInstanceType": "Default Instance Type",
+        "instanceType": "Instance Type",
+        "regionsAndPlacement": "Regions and Placement",
+        "hardware": "Hardware",
+        "viewMorePlacement": "View more in Placement page",
+        "viewMoreHardware": "View more in Hardware page",
+        "sameAsPrimaryCluster": "Same as Primary Cluster",
         "region": "Region",
         "az": "AZ",
         "primary": "Primary",
@@ -4543,13 +4577,13 @@
         "noPlacementChanges": "Nothing to update - no placement fields changed.",
         "editPlacementConfirmModal": {
           "title": "Review Changes",
-          "summary": "Summary of instance configuration changes:",
+          "summary": "Summary of placement changes:",
           "current": "Current",
           "new": "New",
-          "faultTolerance": "Fault Tolerance:",
-          "replicationFactor": "Replication Factor:",
-          "totalNodes": "Total Nodes:",
-          "totalPods": "Total Pods:",
+          "faultTolerance": "Resilience :",
+          "replicationFactor": "Replication Factor :",
+          "totalNodes": "Total Nodes :",
+          "totalPods": "Total Pods :",
           "node": "node",
           "pod": "pod",
           "rank": "Rank {{rank}}",
@@ -4588,7 +4622,9 @@
         "memory": "Memory",
         "memoryValue": "{{memory}} GiB",
         "storageClass": "Storage class",
-        "ebsType": "ebs type",
+        "ebsType": "EBS Type",
+        "ssdType": "SSD Type",
+        "storageType": "Storage type",
         "iops": "provisioned IOPS / Node",
         "iopsPod": "provisioned IOPS / Pod",
         "throughput": "provisioned throughput / Node",
@@ -4625,7 +4661,7 @@
           "fasterAndRecommended": "Faster and Recommended",
           "rollingRestartDescription": "No data migration is required. The universe will remain online and available throughout.",
           "rollingRestartRf1Warning": "<strong>Note!</strong> The universe won’t be available for reads and writes during the restart.",
-          "fullMoveInfo": "<strong>Note!</strong> This operation will migrate all data to a new set of nodes with new IP addresses. The universe will remain online and accessible throughout.",
+          "fullMoveInfo": "<strong>Note!</strong> This operation will migrate all data to <strong>a new set of nodes</strong> with new IP addresses. The universe will remain online and accessible throughout.",
           "nonRestartInfo": "<strong>Note!</strong> This operation will resize the current nodes without requiring a restart.",
           "delayBetweenNodes": "Delay between nodes:",
           "seconds": "seconds",

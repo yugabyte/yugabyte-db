@@ -13,6 +13,7 @@
 
 #include "yb/vector_index/vector_lsm.h"
 
+#include <algorithm>
 #include <functional>
 #include <queue>
 #include <thread>
@@ -41,6 +42,7 @@
 #include "yb/util/unique_lock.h"
 
 #include "yb/vector_index/vector_lsm_metadata.h"
+#include "yb/vector_index/vector_payload_map.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
@@ -275,8 +277,8 @@ MonoDelta TEST_sleep_on_merged_chunk_populated;
 
 class VectorLSMFileMetaData final {
  public:
-  explicit VectorLSMFileMetaData(uint64_t serial_no, uint64_t size_on_disk)
-      : serial_no_(serial_no), size_on_disk_(size_on_disk)
+  VectorLSMFileMetaData(uint64_t serial_no, const VectorLSMChunkFileSizes& file_sizes)
+      : serial_no_(serial_no), file_sizes_(file_sizes)
   {}
 
   uint64_t serial_no() const {
@@ -284,7 +286,20 @@ class VectorLSMFileMetaData final {
   }
 
   uint64_t size_on_disk() const {
-    return size_on_disk_;
+    return file_sizes_.index_file;
+  }
+
+  // Size of the vector payload file, 0 when the chunk has no payload file.
+  uint64_t payload_size_on_disk() const {
+    return file_sizes_.payload_file;
+  }
+
+  uint64_t total_size_on_disk() const {
+    return file_sizes_.total();
+  }
+
+  const VectorLSMChunkFileSizes& file_sizes() const {
+    return file_sizes_;
   }
 
   bool IsObsolete() const {
@@ -296,12 +311,12 @@ class VectorLSMFileMetaData final {
   }
 
   std::string ToString() const {
-    return YB_CLASS_TO_STRING(serial_no, size_on_disk);
+    return YB_CLASS_TO_STRING(serial_no, file_sizes);
   }
 
  private:
   const uint64_t serial_no_;
-  const uint64_t size_on_disk_;
+  const VectorLSMChunkFileSizes file_sizes_;
   std::atomic<bool> obsolete_ = { false };
 };
 
@@ -325,15 +340,15 @@ class VectorLSMInsertTask :
     DCHECK(insert_callback);
     DCHECK(!index_);
     DCHECK(!insert_callback_);
-    DCHECK(vectors_.empty());
+    DCHECK(entries_.empty());
 
     index_ = index;
     registry_ = std::move(registry);
     insert_callback_ = std::move(insert_callback);
   }
 
-  void Add(VectorId vector_id, Vector&& vector) {
-    vectors_.emplace_back(vector_id, std::move(vector));
+  void Add(VectorIndexEntry<Vector>&& entry) {
+    entries_.push_back(std::move(entry));
   }
 
   void Run() override {
@@ -347,7 +362,7 @@ class VectorLSMInsertTask :
       std::lock_guard lock(mutex_);
       index_ = nullptr;
       registry = std::move(registry_);
-      vectors_.clear();
+      entries_.clear();
     }
 
     // We are not really interested in the status as it could indicate shutting down
@@ -358,17 +373,16 @@ class VectorLSMInsertTask :
 
   void Search(SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
     SharedLock lock(mutex_);
-    for (const auto& [id, vector] : vectors_) {
-      if (!options.filter(id)) {
+    for (const auto& entry : entries_) {
+      if (!options.filter(entry.vector_id, entry.payload.AsSlice())) {
         continue;
       }
-      auto distance = index_->Distance(query_vector, vector);
-      VectorWithDistance vertex(id, distance);
+      auto distance = index_->Distance(query_vector, entry.vector);
       if (heap.size() < options.max_num_results) {
-        heap.push(vertex);
-      } else if (heap.top() > vertex) {
+        heap.emplace(entry, distance);
+      } else if (heap.top().GreaterThan(distance, entry.vector_id)) {
         heap.pop();
-        heap.push(vertex);
+        heap.emplace(entry, distance);
       }
     }
   }
@@ -376,8 +390,8 @@ class VectorLSMInsertTask :
  protected:
   Status DoInsert() {
     DCHECK(index_);
-    for (const auto& [vector_id, vector] : vectors_) {
-      RETURN_NOT_OK(index_->Insert(vector_id, vector));
+    for (const auto& entry : entries_) {
+      RETURN_NOT_OK(index_->Insert(entry.vector_id, entry.vector, entry.payload.AsSlice()));
     }
     return Status::OK();
   }
@@ -386,7 +400,7 @@ class VectorLSMInsertTask :
   std::shared_ptr<InsertRegistry> registry_;
   VectorIndexPtr index_;
   InsertCallback insert_callback_;
-  std::vector<std::pair<VectorId, Vector>> vectors_;
+  std::vector<VectorIndexEntry<Vector>> entries_;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -717,7 +731,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   }
 
   uint64_t file_size() const {
-    return file ? file->size_on_disk() : 0;
+    return file ? file->total_size_on_disk() : 0;
   }
 
   // Must be triggered under LSM::mutex_ lock to guarantee thread-safety.
@@ -744,6 +758,21 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     added_chunk.set_order_no(order_no);
     user_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
     user_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+  }
+
+  // Hard links all files of this chunk into the specified directory.
+  Status Link(Env& env, const Options& options, const std::string& dir) const {
+    if (!file) {
+      return Status::OK();
+    }
+    const auto serial_no = file->serial_no();
+    const auto src_path = GetChunkPath(options, serial_no);
+    const auto dst_path = GetChunkPath(dir, options.file_extension, serial_no);
+    for (const auto& stored_file : DCHECK_NOTNULL(index.get())->StoredFiles(src_path)) {
+      DCHECK(Slice(stored_file).starts_with(src_path));
+      RETURN_NOT_OK(env.LinkFile(stored_file, dst_path + stored_file.substr(src_path.size())));
+    }
+    return Status::OK();
   }
 
   void MarkObsolete() {
@@ -1192,10 +1221,11 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
     VectorLSMFileMetaDataPtr file;
     VectorIndexPtr index;
     if (chunk_pb.serial_no()) {
-      index = options_.vector_index_traits->Create(FactoryMode::kLoad);
+      index = options_.vector_index_traits->Create(
+          FactoryMode::kLoad, options_.store_vector_payload);
 
-      const auto file_size = VERIFY_RESULT(GetChunkFileSize(chunk_pb.serial_no()));
-      file = CreateVectorLSMFileMetaData(*index, chunk_pb.serial_no(), file_size);
+      const auto file_sizes = VERIFY_RESULT(GetChunkFileSize(chunk_pb.serial_no()));
+      file = CreateVectorLSMFileMetaData(*index, chunk_pb.serial_no(), file_sizes);
     }
 
     auto user_frontiers = options_.frontiers_factory();
@@ -1276,12 +1306,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   RETURN_NOT_OK(env_->CreateDirs(out));
   VectorLSMUpdatePB update;
   for (const auto& chunk : chunks) {
-    if (chunk->file) {
-      const auto serial_no = chunk->file->serial_no();
-      RETURN_NOT_OK(env_->LinkFile(
-          GetChunkPath(options_, serial_no),
-          GetChunkPath(out, options_.file_extension, serial_no)));
-    }
+    RETURN_NOT_OK(chunk->Link(*env_, options_, out));
     chunk->AddToUpdate(update);
   }
 
@@ -1344,12 +1369,12 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
 
   auto tasks_it = tasks.begin();
   size_t index_in_task = 0;
-  for (auto& [vector_id, v] : entries) {
+  for (auto& entry : entries) {
     if (index_in_task++ >= entries_per_task) {
       ++tasks_it;
       index_in_task = 0;
     }
-    tasks_it->Add(vector_id, std::move(v));
+    tasks_it->Add(std::move(entry));
   }
   insert_registry_->ExecuteTasks(tasks);
 
@@ -1541,8 +1566,8 @@ Result<size_t> VectorLSM<Vector, DistanceResult>::TotalEntries() const {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorLSMFileMetaDataPtr VectorLSM<Vector, DistanceResult>::CreateVectorLSMFileMetaData(
-    VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk) {
-  auto* raw_ptr = new VectorLSMFileMetaData(serial_no, size_on_disk);
+    VectorIndex& index, uint64_t serial_no, const VectorLSMChunkFileSizes& sizes) {
+  auto* raw_ptr = new VectorLSMFileMetaData(serial_no, sizes);
   auto ptr = VectorLSMFileMetaDataPtr(raw_ptr, [this](VectorLSMFileMetaData* raw_ptr) {
     std::unique_ptr<VectorLSMFileMetaData> ptr { raw_ptr };
     if (!ptr->IsObsolete()) {
@@ -1567,6 +1592,7 @@ uint64_t VectorLSM<Vector, DistanceResult>::LastSerialNo() const {
   // thread_pool is always set on an opened VectorLSM and cleared in the destructor, so a null value
   // here means a compaction task is dereferencing the VectorLSM after it was destroyed.
   DCHECK_ONLY_NOTNULL(options_.thread_pool);
+
   SharedLock lock(mutex_);
   return last_serial_no_;
 }
@@ -1636,12 +1662,14 @@ auto VectorLSM<Vector, DistanceResult>::SaveIndexToFile(VectorIndex& index, uint
   auto new_index = VERIFY_RESULT(index.SaveToFile(file_path));
   auto& actual_index = new_index ? *new_index : index;
 
-  const auto file_size = VERIFY_RESULT(env_->GetFileSize(file_path));
+  const auto file_sizes = VERIFY_RESULT(GetChunkFileSize(serial_no));
   LOG_WITH_PREFIX(INFO) << Format(
-      "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2, path: $3",
-      serial_no, actual_index.Size(), file_size, file_path);
+      "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2, "
+      "payload file size: $3, path: $4",
+      serial_no, actual_index.Size(), file_sizes.index_file, file_sizes.payload_file, file_path);
 
-  return std::make_pair(CreateVectorLSMFileMetaData(actual_index, serial_no, file_size), new_index);
+  return std::make_pair(
+      CreateVectorLSMFileMetaData(actual_index, serial_no, file_sizes), new_index);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1663,7 +1691,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     const auto flush_start = MonoTime::Now();
     saved = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
     if (metrics_) {
-      metrics_->flush_write_bytes->IncrementBy(saved.first->size_on_disk());
+      metrics_->flush_write_bytes->IncrementBy(saved.first->total_size_on_disk());
       metrics_->flush_us->Increment((MonoTime::Now() - flush_start).ToMicroseconds());
     }
     if (TEST_sleep_after_saving_chunk) {
@@ -1834,8 +1862,22 @@ Status VectorLSM<Vector, DistanceResult>::RollChunk(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Result<uint64_t> VectorLSM<Vector, DistanceResult>::GetChunkFileSize(uint64_t serial_no) const {
-  return env_->GetFileSize(GetChunkPath(options_, serial_no));
+auto VectorLSM<Vector, DistanceResult>::GetChunkFileSize(
+    uint64_t serial_no) const -> Result<VectorLSMChunkFileSizes> {
+  auto chunk_path = GetChunkPath(options_, serial_no);
+  VectorLSMChunkFileSizes result;
+  result.index_file = VERIFY_RESULT(env_->GetFileSize(chunk_path));
+  if (options_.vector_index_traits->StoresPayloadInSeparateFile()) {
+    // The payload file is missing when the chunk has no attached payloads.
+    // TODO(vector_index): a lost payload file looks the same as a chunk without attached
+    // payloads. Record whether the chunk has a payload file in the manifest to tell them apart
+    // on open.
+    auto payload_path = VectorIndexPayloadFilePath(chunk_path);
+    if (env_->FileExists(payload_path)) {
+      result.payload_file = VERIFY_RESULT(env_->GetFileSize(payload_path));
+    }
+  }
+  return result;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1853,7 +1895,8 @@ VectorLSM<Vector, DistanceResult>::CreateVectorIndex(
   auto capacity = std::max(min_vectors, options_.vectors_per_chunk);
   VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
 
-  auto index = options_.vector_index_traits->Create(FactoryMode::kCreate);
+  auto index = options_.vector_index_traits->Create(
+      FactoryMode::kCreate, options_.store_vector_payload);
   RETURN_NOT_OK(index->Reserve(
       capacity, options_.insert_thread_pool->options().max_workers, MaxConcurrentReads(),
       reservation_mode));
@@ -2002,6 +2045,22 @@ uint64_t VectorLSM<Vector, DistanceResult>::OnDiskSize() const {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+std::optional<uint64_t> VectorLSM<Vector, DistanceResult>::MinSerialNo() const {
+  SharedLock lock(mutex_);
+  auto it = std::ranges::min_element(immutable_chunks_, {}, [](const auto& chunk) {
+    return chunk->file ? chunk->file->serial_no() : std::numeric_limits<uint64_t>::max();
+  });
+
+  // Need to check both conditions to exclude the case when the chunk has no file
+  // but was returned by the min_element by max().
+  if (it == immutable_chunks_.end() || !(*it)->file) {
+    return std::nullopt;
+  }
+
+  return (*it)->file->serial_no();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Env* VectorLSM<Vector, DistanceResult>::TEST_GetEnv() const {
   return env_;
 }
@@ -2031,10 +2090,16 @@ size_t VectorLSM<Vector, DistanceResult>::TEST_NextManifestFileNo() const {
 // Get the file size of the chunk with the highest serial number.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 uint64_t VectorLSM<Vector, DistanceResult>::TEST_LatestChunkSize() const {
+  return TEST_LatestChunkFileSizes().total();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+VectorLSMChunkFileSizes VectorLSM<Vector, DistanceResult>::TEST_LatestChunkFileSizes() const {
   SharedLock lock(mutex_);
   CHECK(!immutable_chunks_.empty());
   auto it_chunk = std::ranges::max_element(immutable_chunks_, {}, &ImmutableChunk::serial_no);
-  return (*it_chunk)->file_size();
+  const auto& file = (*it_chunk)->file;
+  return file ? file->file_sizes() : VectorLSMChunkFileSizes();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2145,6 +2210,18 @@ void VectorLSM<Vector, DistanceResult>::DeleteFile(const VectorLSMFileMetaData& 
     LOG_WITH_PREFIX(INFO) << "Deleted file " << path;
   } else {
     LOG_WITH_PREFIX(DFATAL) << "Failed to delete file " << path << ", status: " << status;
+  }
+
+  // Also delete the vector payload file, if the chunk has one (see VectorPayloadMap).
+  if (file.payload_size_on_disk() > 0) {
+    auto payload_path = VectorIndexPayloadFilePath(path);
+    status = env_->DeleteFile(payload_path);
+    if (status.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Deleted file " << payload_path;
+    } else {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Failed to delete file " << payload_path << ", status: " << status;
+    }
   }
 }
 
@@ -2407,7 +2484,7 @@ void PopulateMergeTasks(
       if ((num_remaining == 0) || !source_iterator.Next()) {
         return;
       }
-      tasks_it->Add(source_iterator->first, std::move(source_iterator->second));
+      tasks_it->Add(std::move(*source_iterator).ToOwned());
       ++num_vectors_added_in_task;
       --num_remaining;
     }
@@ -2427,8 +2504,11 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
   using Iterator = typename ImmutableChunkPtrs::const_iterator;
   using ValueType = typename VectorIndex::IteratorValue;
 
-  MergingIterator(const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter)
-      : chunks_(chunks), filter_(filter), outer_it_(chunks_.begin()) {
+  MergingIterator(
+      const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter,
+      StoreVectorPayload store_payload)
+      : chunks_(chunks), filter_(filter), store_payload_(store_payload),
+        outer_it_(chunks_.begin()) {
     // Seed frontiers from the first chunk so the first Merger::ResetFrontiers() call
     // returns them as part of the first output chunk's frontiers.
     ResetFrontiers();
@@ -2532,7 +2612,8 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
     ValueType current_value;
     while (inner_it_ != inner_end_) {
       current_value = *inner_it_;
-      if (filter_.Filter(current_value.first) == storage::FilterDecision::kKeep) {
+      auto decision = filter_.Filter(current_value.vector_id, current_value.payload);
+      if (decision == storage::FilterDecision::kKeep && RestorePayloadIfMissing(current_value)) {
         value_ = std::move(current_value);
         return true;
       }
@@ -2540,6 +2621,27 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
     }
 
     return false;
+  }
+
+  // The entry comes from a chunk written without payloads (e.g. by a version that does not
+  // support them), while the compacted chunk stores payloads. Restore the payload via the merge
+  // filter. Returns false to discard the entry when the payload cannot be restored.
+  bool RestorePayloadIfMissing(ValueType& entry) {
+    if (!store_payload_ || !entry.payload.empty()) {
+      return true;
+    }
+    auto payload = filter_.RestorePayload(entry.vector_id);
+    if (!payload.ok()) {
+      LOG(DFATAL) << "Failed to restore payload for " << entry.vector_id << ": "
+                  << payload.status();
+      return false;
+    }
+    if (payload->empty()) {
+      return false;
+    }
+    restored_payload_ = std::move(*payload);
+    entry.payload = restored_payload_.AsSlice();
+    return true;
   }
 
   // The caller must guarantee that the current outer iterator is valid.
@@ -2557,6 +2659,10 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
 
   const ImmutableChunkPtrs& chunks_;
   VectorLSMMergeFilter& filter_;
+  const StoreVectorPayload store_payload_;
+  // Backing storage for the payload restored for the current value_, valid until the next
+  // InnerNext call, matching the lifetime of the slices in value_.
+  ValueBuffer restored_payload_;
   Iterator outer_it_;
   InnerIterator inner_it_ { nullptr };
   InnerIterator inner_end_ { nullptr };
@@ -2658,7 +2764,8 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     // Adding all input vectors to the target index, filtering outdated vectors out.
     size_t num_vectors_added = 0;
     while ((num_vectors_added < num_vectors_to_merge) && source_iterator.Next()) {
-      RETURN_NOT_OK(target_index->Insert(source_iterator->first, source_iterator->second));
+      RETURN_NOT_OK(target_index->Insert(
+          source_iterator->vector_id, source_iterator->vector, source_iterator->payload));
       ++num_vectors_added;
 
       if (--num_iterations_to_check_shutdown == 0) {
@@ -2778,7 +2885,7 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
       IllegalState, "Vector merge filter factory must be specified");
   auto merge_filter = VERIFY_RESULT(options_.vector_merge_filter_factory());
 
-  MergingIterator merge_iterator(input_chunks, *merge_filter);
+  MergingIterator merge_iterator(input_chunks, *merge_filter, options_.store_vector_payload);
 
   Merger merger(*this, *this->merge_registry_, suspender);
   auto merged_chunks = VERIFY_RESULT(merger.Merge(merge_iterator, max_vectors_per_output_chunk));

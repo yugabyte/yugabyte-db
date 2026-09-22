@@ -70,6 +70,15 @@ public class PerfAdvisorService {
 
   @Transactional
   public PACollector save(PACollector paCollector, boolean force) {
+    return save(paCollector, force, null);
+  }
+
+  /**
+   * @param customerMetadata the body to PUT, for a caller that has already built it and needs to
+   *     know exactly what was sent - see PACollectorSync. Null builds it here.
+   */
+  public PACollector save(
+      PACollector paCollector, boolean force, PerfAdvisorClient.CustomerMetadata customerMetadata) {
     boolean isUpdate = false;
     if (paCollector.getUuid() == null) {
       paCollector.generateUUID();
@@ -93,7 +102,11 @@ public class PerfAdvisorService {
     paCollector.setPaUrl(normalizeUrl(paCollector.getPaUrl()));
     paCollector.setMetricsUrl(normalizeUrl(paCollector.getMetricsUrl()));
     paCollector.setYbaUrl(normalizeUrl(paCollector.getYbaUrl()));
-    client.putCustomerMetadata(paCollector);
+    if (customerMetadata == null) {
+      client.putCustomerMetadata(paCollector);
+    } else {
+      client.putCustomerMetadata(paCollector, customerMetadata);
+    }
     if (isUpdate) {
       paCollector.update();
     } else {
@@ -103,11 +116,21 @@ public class PerfAdvisorService {
   }
 
   public PACollector create(PACollector paCollector) {
+    return create(paCollector, null);
+  }
+
+  /** See {@link #save(PACollector, boolean, PerfAdvisorClient.CustomerMetadata)}. */
+  public PACollector create(
+      PACollector paCollector, PerfAdvisorClient.CustomerMetadata customerMetadata) {
     validate(paCollector);
     paCollector.setPaUrl(normalizeUrl(paCollector.getPaUrl()));
     paCollector.setMetricsUrl(normalizeUrl(paCollector.getMetricsUrl()));
     paCollector.setYbaUrl(normalizeUrl(paCollector.getYbaUrl()));
-    client.putCustomerMetadata(paCollector);
+    if (customerMetadata == null) {
+      client.putCustomerMetadata(paCollector);
+    } else {
+      client.putCustomerMetadata(paCollector, customerMetadata);
+    }
     paCollector.save();
     return paCollector;
   }
@@ -561,7 +584,7 @@ public class PerfAdvisorService {
     }
   }
 
-  private String normalizeUrl(String url) {
+  static String normalizeUrl(String url) {
     if (url.endsWith("/")) {
       return url.substring(0, url.length() - 1);
     }

@@ -17,8 +17,10 @@ enum:
   - TabletMeta
   - YbcLogs
   - NodeAgent
+  - NodeHealthLogs
   - SystemLogs
   - TabletReport
+  - ClusterConfig
   - K8sInfo
   - YbaMetadata
   - PrometheusMetrics
@@ -41,8 +43,10 @@ x-enum-varnames:
   - TabletMeta
   - YbcLogs
   - NodeAgent
+  - NodeHealthLogs
   - SystemLogs
   - TabletReport
+  - ClusterConfig
   - K8sInfo
   - YbaMetadata
   - PrometheusMetrics

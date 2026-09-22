@@ -89,6 +89,8 @@ func (m *InstallNodeAgent) generateProviderPayload(
 					YbHomeDir:          ybHomeDir,
 					UseClockbound:      useClockbound,
 					EnableMultiTenancy: enableMultiTenancy,
+					// YNP owns the configuration of the providers it creates.
+					YnpManaged: true,
 				},
 			},
 		},

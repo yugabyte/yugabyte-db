@@ -48,6 +48,8 @@ DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_ysql);
 
+DECLARE_uint64(object_lock_fastpath_buffer_size);
+
 METRIC_DECLARE_counter(object_locking_lock_acquires);
 METRIC_DECLARE_counter(object_locking_lock_releases);
 METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_acquires);
@@ -76,6 +78,7 @@ constexpr auto kDatabase1 = 1;
 constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
+constexpr auto kObject3 = 3;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
 constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
@@ -1112,6 +1115,43 @@ TEST_F(TSLocalLockManagerTest, TestFastpathReleaseNotBlockedByUnrelatedRelease) 
   // release.
   ASSERT_OK(ReleaseLocksForOwner(kTxn2));
   ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_buffer_size) = 1;
+
+  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+  auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
+
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // Shared memory is at capacity.
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowShare));
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowShare));
+
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject2, TableLockType::ROW_SHARE, /*deadline=*/{}));
+
+  // Shared memory buffer should have been consumed for txn1.
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // Locks were consumed for txn1, fastpath release blocked.
+  ASSERT_FALSE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+  // Locks were not consumed for txn2, fastpath release allowed.
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
 } // namespace yb::tserver

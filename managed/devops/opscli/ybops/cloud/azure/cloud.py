@@ -13,6 +13,8 @@ import logging
 import socket
 import requests
 import os
+import re
+import shlex
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
@@ -284,15 +286,28 @@ class AzureCloud(AbstractCloud):
         remote_shell = RemoteShell(connect_options)
         mount_points = self.get_mount_points_csv(args).split(',')
         for mount_point in mount_points:
-            # need to rescan disks to see changes
-            cmd1 = "df | awk '($6 == \"" + mount_point + "\") {print $1}' | grep -o 'sd\\w*$'"
-            resp = remote_shell.check_exec_command(cmd1)
-            fsname = resp.replace('\n', '')
-            cmd2 = "sudo bash -c 'echo 1 > /sys/class/block/{}/device/rescan' " \
-                "&& sudo fdisk -l /dev/{}".format(fsname, fsname)
-            remote_shell.check_exec_command(cmd2)
+            quoted_mount_point = shlex.quote(mount_point)
+            source = remote_shell.check_exec_command(
+                "findmnt -rn -M {} -o SOURCE".format(quoted_mount_point)).strip()
+            if not source:
+                raise YBOpsRuntimeError(
+                    "Could not find a mounted device for {}".format(mount_point))
+            device_path = remote_shell.check_exec_command(
+                "readlink -f -- {}".format(shlex.quote(source))).strip()
+            device_name = os.path.basename(device_path)
+            if not re.fullmatch(r"(sd[a-z]+|nvme[0-9]+n[0-9]+)", device_name):
+                raise YBOpsRuntimeError(
+                    "Unsupported Azure data disk {} for mount point {}".format(
+                        device_path, mount_point))
+
+            # Both SCSI and NVMe Azure managed disks expose a sysfs rescan entry.
+            rescan_command = \
+                "sudo bash -c 'echo 1 > /sys/class/block/{}/device/rescan' " \
+                "&& sudo fdisk -l /dev/{}".format(device_name, device_name)
+            remote_shell.check_exec_command(rescan_command)
             logging.info("Expanding file system with mount point: {}".format(mount_point))
-            remote_shell.check_exec_command('sudo xfs_growfs {}'.format(mount_point))
+            remote_shell.check_exec_command(
+                'sudo xfs_growfs {}'.format(quoted_mount_point))
 
     def normalize_instance_state(self, instance_state):
         if instance_state:

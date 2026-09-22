@@ -80,7 +80,14 @@ public class TestEvictOnlyFromLargerPool extends BaseYsqlConnMgr {
   private static final int ABS_FLOOR = 30;
 
   private static final int CHURN_MULTIPLIER = 3;
-  private static final int RESERVE_CONNECTIONS = 5;
+  // Held back from ysql_max_connections, on top of the MAX_CONNECTIONS the pooler
+  // gets as its global budget. It has to cover every backend that budget does not
+  // count: PG's superuser_reserved_connections, the tserver's own internal
+  // connections, transient relcache-init backends, and (under sanitizers) backends
+  // that odyssey has closed but which have not finished exiting yet. Sized too
+  // tightly, those collide with the pooler's budget and the churn phase dies with
+  // "sorry, too many clients already" instead of reaching its assertions.
+  private static final int RESERVE_CONNECTIONS = 20;
 
   private static final String METRIC_TABLE_MISSES =
       "yb_ysqlserver_CatalogCacheTableMisses";

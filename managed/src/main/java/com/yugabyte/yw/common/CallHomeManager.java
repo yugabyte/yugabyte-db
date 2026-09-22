@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.operator.OperatorConfig;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -525,9 +524,7 @@ public class CallHomeManager {
           diag.setHealthCheckData(Json.toJson(details.getData()));
         }
       }
-      boolean isK8s =
-          universeResp.universeDetails.delegate.getPrimaryCluster().userIntent.providerType
-              == CloudType.kubernetes;
+      boolean isK8s = Util.isKubernetesBasedUniverse(universeResp.universeDetails.delegate);
       Map<String, Double> metrics = getUniverseMetrics(c, nodePrefix, isK8s, clock.instant());
       diag.setUniverseMetrics(metrics);
 
@@ -536,7 +533,10 @@ public class CallHomeManager {
       for (UniverseDefinitionTaskParams.Cluster cluster :
           universeResp.universeDetails.delegate.clusters) {
         UniverseDefinitionTaskParams.UserIntent intent = cluster.userIntent;
-        InstanceType it = InstanceType.get(UUID.fromString(intent.provider), intent.instanceType);
+        // For now picking only first provider by UUID.
+        UUID providerUUID = intent.getAllProviderUUIDs().stream().sorted().findFirst().get();
+
+        InstanceType it = InstanceType.get(providerUUID, intent.getBaseInstanceType(providerUUID));
         if (it != null) {
           if (it.getNumCores() != null)
             totalCores += (int) Math.round(it.getNumCores() * intent.numNodes);

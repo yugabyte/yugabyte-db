@@ -65,6 +65,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -113,6 +114,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
+          TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
@@ -476,7 +479,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        20,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -511,7 +514,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -564,7 +567,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     }
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(zoneToName.get("az-1"), Arrays.asList("host-n4", "host-n5")));
@@ -665,8 +668,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .forUniverse(universe)
         .setValue(UniverseConfKeys.targetNodeDiskUsagePercentage.getKey(), "0");
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    DeviceInfo deviceInfo = taskParams.getPrimaryCluster().userIntent.deviceInfo;
+    deviceInfo.volumeSize--;
+    deviceInfo.numVolumes++;
+    // Provisioning validates that mount points match the volume count.
+    deviceInfo.mountPoints = ApiUtils.getDummyMountPoints(deviceInfo.numVolumes);
     setDumpEntitiesMock(defaultUniverse, "", false);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
@@ -1249,11 +1255,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .when(mockNodeManager)
         .nodeCommand(any(), any());
     Universe universe = defaultUniverse;
-    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
-    factory
-        .forUniverse(universe)
-        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
-    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    enableManualEditRollback(universe);
     UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
@@ -1275,14 +1277,60 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testCanTaskRollbackFalseAfterCheckpoint() {
+  public void testCanTaskRollbackListingFollowsEditUniverseFlag() {
     clearAbortOrPausePositions();
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
     Universe universe = defaultUniverse;
     factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "false");
     factory
         .forUniverse(universe)
         .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask editCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            taskInfo.getUuid(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Edit,
+            universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertEquals(taskInfo.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    // Same failed-before-checkpoint task: listing hides Rollback while the flag is off.
+    assertFalse(commissioner.canTaskRollback(taskInfo));
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe));
+
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    assertTrue(commissioner.canTaskRollback(taskInfo));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe));
+  }
+
+  @Test
+  public void testCanTaskRollbackFalseAfterCheckpoint() {
+    clearAbortOrPausePositions();
+    Universe universe = defaultUniverse;
+    enableManualEditRollback(universe);
     UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     int markRollbackUnsafePosition =

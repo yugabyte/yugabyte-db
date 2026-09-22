@@ -30,9 +30,9 @@ using vector_index::VectorId;
 using vector_index::ValidDistanceResultType;
 
 template<IndexableVectorType Vector>
-class YbHnswIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
+class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
  public:
-  using ValueType = std::pair<VectorId, Vector>;
+  using ValueType = vector_index::VectorIndexIteratorEntry<Vector>;
   using Base = AbstractIterator<ValueType>;
 
   YbHnswIterator(const hnsw::YbHnsw& hnsw, size_t index)
@@ -46,9 +46,11 @@ class YbHnswIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
   ValueType Dereference() const override {
     const auto* coordinates = cache_.CoordinatesPtr(index_);
     ValueType result;
-    result.first = cache_.GetVectorData(index_);
-    result.second.resize(dimensions_);
-    memcpy(result.second.data(), coordinates, dimensions_ * sizeof(typename Vector::value_type));
+    auto [vector_id, payload] = cache_.GetVectorIdAndPayload(index_);
+    result.vector_id = vector_id;
+    result.vector.resize(dimensions_);
+    memcpy(result.vector.data(), coordinates, dimensions_ * sizeof(typename Vector::value_type));
+    result.payload = payload;
     return result;
   }
 
@@ -82,22 +84,26 @@ class YbHnswIndex :
   }
 
   Status Import(
-      const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path) {
+      const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
+      const vector_index::VectorPayloadMap* payloads) {
     VLOG_WITH_FUNC(3) << "index: " << index.size() << ", path: " << path;
-    return index_.Import(index, path);
+    return index_.Import(index, path, payloads);
   }
 
   Status Import(
-      const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path) {
+      const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
+      const vector_index::VectorPayloadMap* payloads) {
     VLOG_WITH_FUNC(3) << "index: " << index.cur_element_count << ", path: " << path;
-    return index_.Import(index, path);
+    return index_.Import(index, path, payloads);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
+  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> BeginImpl()
+      const override {
     return std::make_unique<YbHnswIterator<Vector>>(index_, 0);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
+  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> EndImpl()
+      const override {
     return std::make_unique<YbHnswIterator<Vector>>(index_, Size());
   }
 
@@ -154,7 +160,7 @@ class YbHnswIndex :
     return index_.Search(query_vector.data(), options, context->context);
   }
 
-  Status DoInsert(VectorId vector_id, const Vector& v) {
+  Status DoInsert(VectorId vector_id, const Vector& v, Slice payload) {
     return STATUS_FORMAT(NotSupported, "DoInsert not implemented");
   }
 
@@ -181,32 +187,34 @@ class YbHnswIndex :
 template <class Vector, class DistanceResult>
 Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache) {
+    const hnsw::BlockCachePtr& block_cache, const vector_index::VectorPayloadMap* payloads) {
   auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
       std::make_unique<hnsw::UsearchMetric>(index.metric()), block_cache);
-  RETURN_NOT_OK(result->Import(index, path));
+  RETURN_NOT_OK(result->Import(index, path, payloads));
   return result;
 }
 
 template <class Vector, class DistanceResult>
 Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+    const vector_index::VectorPayloadMap* payloads) {
   auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
       std::make_unique<hnsw::UsearchMetric>(options.CreateMetric<Vector>()), block_cache);
-  RETURN_NOT_OK(result->Import(index, path));
+  RETURN_NOT_OK(result->Import(index, path, payloads));
   return result;
 }
 
 template
 Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVector, float>(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache);
+    const hnsw::BlockCachePtr& block_cache, const vector_index::VectorPayloadMap* payloads);
 
 template
 Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVector, float>(
     const hnsw::HnswlibIndex<float>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options);
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+    const vector_index::VectorPayloadMap* payloads);
 
 template <class Vector, class DistanceResult>
 vector_index::VectorIndexIfPtr<Vector, DistanceResult> CreateYbHnsw(

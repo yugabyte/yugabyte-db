@@ -23,6 +23,7 @@
 
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
+#include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -72,6 +73,8 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_uint64(object_lock_cleanup_interval_ms);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(TEST_pause_obj_lock_release_before_persist);
+DECLARE_bool(TEST_pause_ysql_lease_refresh_after_epoch_update);
+DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 namespace yb {
 
 namespace {
@@ -1158,6 +1161,91 @@ TEST_F(ObjectLockTest, TServerLeaseExpiresBeforeExclusiveLockRequest) {
   ASSERT_OK(cluster_->mini_tablet_server(idx_to_take_down)->Start());
 }
 
+TEST_F(ObjectLockTest, AcquireBetweenLeaseEpochUpdateAndLockManagerReset) {
+  // ProcessLeaseUpdate publishes lease_epoch_ before swapping TSLocalLockManager. An acquire
+  // from master can pass CheckLocalLeaseEpoch, grant on the old manager, then be dropped when
+  // that manager is replaced.
+  const auto expected_locks = docdb::GetEntriesForLockType(ACCESS_EXCLUSIVE).size();
+  std::vector<uint64_t> old_local_epochs;
+  old_local_epochs.reserve(cluster_->num_tablet_servers());
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    old_local_epochs.push_back(ASSERT_RESULT(ts->server()->GetYSQLLeaseInfo()).lease_epoch);
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = false;
+  auto resume_lease_update = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_ysql_lease_refresh_after_epoch_update) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
+  });
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(WaitForTServerLeaseToExpire(TSUuid(i), kTimeout));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_ysql_lease_refresh_after_epoch_update) = true;
+  StringWaiterLogSink paused_log(
+      "Pausing due to flag TEST_pause_ysql_lease_refresh_after_epoch_update");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
+  ASSERT_OK(paused_log.WaitFor(kTimeout));
+  ASSERT_OK(WaitFor(
+      [this, &old_local_epochs]() -> Result<bool> {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+          auto lease_info = VERIFY_RESULT(
+              cluster_->mini_tablet_server(i)->server()->GetYSQLLeaseInfo());
+          if (!lease_info.is_live || lease_info.lease_epoch <= old_local_epochs[i]) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout, "Wait for tservers to publish the new lease epoch"));
+
+  std::vector<tserver::TSLocalLockManagerPtr> old_lock_managers;
+  old_lock_managers.reserve(cluster_->num_tablet_servers());
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    auto lock_manager = ts->server()->ts_local_lock_manager();
+    ASSERT_NE(lock_manager, nullptr);
+    ASSERT_EQ(lock_manager->TEST_GrantedLocksSize(), 0);
+    old_lock_managers.push_back(std::move(lock_manager));
+  }
+
+  const auto& kSessionHostUuid = TSUuid(0);
+  const auto new_lease_epoch =
+      ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, kSessionHostUuid)).lease_epoch();
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  google::SetVLOGLevel("object_lock_info_manager*", 3);
+  RegexWaiterLogSink acquire_rejected_log(R"#(.*AcquireObjectLock.*SHUTDOWN_IN_PROGRESS.*)#");
+  auto acquire_future = AcquireLockGloballyAsync(
+      &master_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kRelationId, new_lease_epoch, nullptr,
+      std::nullopt, kTimeout);
+  ASSERT_OK(acquire_rejected_log.WaitFor(kTimeout));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_ysql_lease_refresh_after_epoch_update) = false;
+  ASSERT_OK(WaitFor(
+      [this, &old_lock_managers]() -> Result<bool> {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+          auto lock_manager = cluster_->mini_tablet_server(i)->server()->ts_local_lock_manager();
+          if (!lock_manager || lock_manager == old_lock_managers[i] ||
+              !lock_manager->IsBootstrapped()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout, "Wait for tservers to bootstrap the new lock manager"));
+
+  ASSERT_OK(ResolveFutureStatus(acquire_future));
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  ASSERT_EQ(master_local_lock_manager->TEST_GrantedLocksSize(), expected_locks);
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks)
+        << "TS: " << ts->ToString();
+  }
+}
+
 TEST_F(ObjectLockTest, TServerHeldExclusiveLocksReleasedAfterRestart) {
   // Bump up the lease lifetime to verify the lease is lost when a new tserver process registers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 20 * 1000;
@@ -1604,6 +1692,54 @@ TEST_F(ExternalObjectLockTest, TestWaitForLockers) {
   auto num_partitions = ASSERT_RESULT(conn2.FetchRow<int64_t>(
       "SELECT count(*) FROM pg_inherits WHERE inhparent = 'parent_t'::regclass"));
   ASSERT_EQ(num_partitions, 1);
+}
+
+TEST_F(ExternalObjectLockTest, YB_DISABLE_TEST_ON_MACOS(FastpathAvailabilityAfterLeaseExpiration)) {
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", /*tserver_index=*/0));
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", /*tserver_index=*/1));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test0(x INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(x INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test2(x INT)"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test1 IN EXCLUSIVE MODE"));
+
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test2 IN EXCLUSIVE MODE"));
+
+  {
+    auto ts = tablet_server(0);
+    ASSERT_OK(cluster_->SetFlag(ts, "vmodule", "ts_local_lock_manager=2"));
+    LogWaiter log_waiter(ts, "BootstrapDdlObjectLocks: success.");
+    ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+    ASSERT_OK(WaitForTServerLeaseToExpire(ts->uuid(), 10s));
+    ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "true"));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 5)));
+  }
+
+  ASSERT_NOK(conn1.CommitTransaction());
+  ASSERT_OK(conn2.CommitTransaction());
+
+  for (size_t i = 0; i < 3; ++i) {
+    auto ts = tablet_server(i);
+    ASSERT_OK(cluster_->SetFlag(ts, "ysql_log_statement", "all"));
+    ASSERT_OK(cluster_->SetFlag(ts, "vmodule", "object_lock_shared_state=1"));
+
+    LogWaiter log_waiter(ts, "exclusive intents exist, fastpath unusable");
+
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", i));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+    ASSERT_OK(conn.Execute("LOCK TABLE test0 IN ROW SHARE MODE"));
+    EXPECT_NOK(log_waiter.WaitFor(0s));
+    ASSERT_OK(conn.Execute("LOCK TABLE test1 IN ROW SHARE MODE"));
+    EXPECT_NOK(log_waiter.WaitFor(0s));
+    ASSERT_OK(conn.Execute("LOCK TABLE test2 IN ROW SHARE MODE"));
+    EXPECT_NOK(log_waiter.WaitFor(0s));
+
+    ASSERT_OK(conn.CommitTransaction());
+  }
 }
 
 struct IndexPhaseParam {

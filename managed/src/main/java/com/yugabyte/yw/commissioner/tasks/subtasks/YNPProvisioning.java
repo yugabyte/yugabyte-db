@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
@@ -19,8 +21,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +61,76 @@ public class YNPProvisioning extends NodeTaskBase {
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
+  }
+
+  private void validateAzureLunIndexes(NodeDetails node, Integer[] lunIndexes) {
+    Integer expectedLunCount =
+        Objects.requireNonNull(
+            taskParams().deviceInfo.numVolumes,
+            "Number of volumes is required to validate Azure LUN metadata");
+    Set<Integer> uniqueLunIndexes = new HashSet<>();
+    if (lunIndexes == null || lunIndexes.length != expectedLunCount) {
+      throw new IllegalStateException(
+          String.format(
+              "Invalid Azure LUN metadata for node %s: expected %d LUNs, found %s",
+              node.nodeName, expectedLunCount, Arrays.toString(lunIndexes)));
+    }
+    for (Integer lunIndex : lunIndexes) {
+      if (lunIndex == null || lunIndex < 0 || !uniqueLunIndexes.add(lunIndex)) {
+        throw new IllegalStateException(
+            String.format(
+                "Invalid Azure LUN metadata for node %s: LUNs must be unique, non-negative"
+                    + " integers, found %s",
+                node.nodeName, Arrays.toString(lunIndexes)));
+      }
+    }
+  }
+
+  private void ensureAzureLunIndexes(NodeDetails node, Provider provider) {
+    if (provider.getCloudCode() != CloudType.azu) {
+      return;
+    }
+
+    Integer[] lunIndexes = node.cloudInfo.lun_indexes;
+    Optional<List<Map<String, JsonNode>>> instanceDetails =
+        maybeGetInstancesDetails(taskParams(), true /* ensureSingleInstance */);
+    if (instanceDetails.isEmpty()) {
+      throw new IllegalStateException(
+          String.format("Cannot recover Azure LUN metadata: node %s was not found", node.nodeName));
+    }
+    JsonNode lunIndexesNode = instanceDetails.get().get(0).get("lun_indexes");
+    if (lunIndexesNode == null || !lunIndexesNode.isArray()) {
+      throw new IllegalStateException(
+          String.format(
+              "Cannot recover Azure LUN metadata for node %s from its VM attachments",
+              node.nodeName));
+    }
+
+    Integer[] discoveredLunIndexes = new Integer[lunIndexesNode.size()];
+    for (int i = 0; i < lunIndexesNode.size(); i++) {
+      if (!lunIndexesNode.get(i).isIntegralNumber()) {
+        throw new IllegalStateException(
+            String.format(
+                "Cannot recover Azure LUN metadata for node %s: invalid LUN value %s",
+                node.nodeName, lunIndexesNode.get(i)));
+      }
+      discoveredLunIndexes[i] = lunIndexesNode.get(i).asInt();
+    }
+    validateAzureLunIndexes(node, discoveredLunIndexes);
+    if (Arrays.equals(lunIndexes, discoveredLunIndexes)) {
+      return;
+    }
+
+    node.cloudInfo.lun_indexes = discoveredLunIndexes;
+    saveUniverseDetails(
+        universe -> {
+          universe.getNodeOrBadRequest(node.nodeName).cloudInfo.lun_indexes =
+              discoveredLunIndexes.clone();
+        });
+    log.info(
+        "Recovered Azure LUN metadata for node {}: {}",
+        node.nodeName,
+        Arrays.toString(discoveredLunIndexes));
   }
 
   @Override
@@ -104,6 +181,7 @@ public class YNPProvisioning extends NodeTaskBase {
                     .getConfForScope(provider, ProviderConfKeys.ynpProvisionTimeout)
                     .toSeconds())
             .build();
+    ensureAzureLunIndexes(node, provider);
 
     /*
      *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run

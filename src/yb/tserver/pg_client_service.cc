@@ -166,6 +166,10 @@ DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultipl
 DEFINE_test_flag(bool, pause_get_lock_status, false,
     "Whether tservers should pause before sending GetLockStatus requests.");
 
+DEFINE_RUNTIME_int32(db_history_retention_pin_log_interval_sec, 60,
+    "How often a tserver logs the per-database history retention pins held by its "
+    "own PG sessions. 0 disables the logging.");
+
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
@@ -888,6 +892,10 @@ class OpenTableQuery : public OpenTableQueryBase<PgOpenTableRequestPB, PgOpenTab
   }
 };
 
+[[nodiscard]] bool IsPIDExists(pid_t pid) {
+  return !(getsid(pid) == -1 && errno == ESRCH);
+}
+
 }  // namespace
 
 class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistryContext {
@@ -1028,31 +1036,28 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       }
     }
 
-    context->ListenConnectionShutdown([this, session_id, pid = req.pid()]() {
-#if defined(__APPLE__)
-      auto delay = 250ms;
-#else
-      auto delay = RegularBuildVsSanitizers(50ms, 1000ms);
-#endif
-      messenger_.scheduler().Schedule([this, session_id, pid](const Status& status) {
-        if (!status.ok()) {
-          // Task was aborted.
-          return;
-        }
-        CheckSessionShutdown(pid, session_id);
-        // Give some time for process to exit after connection shutdown.
-      }, delay);
+    context->ListenConnectionShutdown([this, session_id, pid = req.pid()] {
+      constexpr auto kCheckTimeout = 1000ms * kTimeMultiplier;
+      ScheduleCheckSessionShutdown(pid, session_id, CoarseMonoClock::Now() + kCheckTimeout);
     });
 
     return session_registry_.Insert(std::move(session_info));
   }
 
-  void CheckSessionShutdown(pid_t pid, int64_t session_id) {
-    auto sid = getsid(pid);
-    if (sid != -1 || errno != ESRCH) {
-      return;
+  void ScheduleCheckSessionShutdown(pid_t pid, int64_t session_id, CoarseTimePoint deadline) {
+    messenger_.scheduler().Schedule([this, session_id, pid, deadline](const Status& status) {
+      if (status.ok()) {
+        CheckSessionShutdown(pid, session_id, deadline);
+      }
+    }, RegularBuildVsSanitizers(50ms, 500ms));
+  }
+
+  void CheckSessionShutdown(pid_t pid, int64_t session_id, CoarseTimePoint deadline) {
+    if (!IsPIDExists(pid)) {
+      session_registry_.Expire(session_id);
+    } else if (deadline > CoarseMonoClock::Now()) {
+      ScheduleCheckSessionShutdown(pid, session_id, deadline);
     }
-    session_registry_.Expire(session_id);
   }
 
   void OpenTable(
@@ -1539,9 +1544,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
       std::visit([&](auto&& old_txns_resp) {
         if (old_txns_resp->has_error()) {
-          // Ignore leadership and NOT_FOUND errors as we broadcast the request to all tservers.
-          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER ||
-              old_txns_resp->error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
+          // The request is broadcast to all tservers, so ignore errors meaning only that this node
+          // cannot serve the status tablet. The status_tablet_ids check below still fails the query
+          // if no node answered for some status tablet.
+          const auto error_code = old_txns_resp->error().code();
+          if (error_code == TabletServerErrorPB::NOT_THE_LEADER ||
+              error_code == TabletServerErrorPB::TABLET_NOT_FOUND ||
+              error_code == TabletServerErrorPB::TABLET_NOT_RUNNING) {
             return;
           }
           const auto& s = StatusFromPB(old_txns_resp->error().status());
@@ -3067,7 +3076,12 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         static_cast<uint64_t>(FLAGS_db_history_retention_pin_min_txn_age_sec) * 1000000;
     const auto now_micros = static_cast<uint64_t>(GetCurrentTimeMicros());
 
-    std::unordered_map<PgOid, HybridTime> result;
+    struct DbPin {
+      HybridTime read_time;
+      pid_t pid;
+    };
+    std::unordered_map<PgOid, DbPin> db_pins;
+
     // Per-session pin HT is an atomic; we best-effort refresh it from the PG-published SHMEM
     // serial under a session try_lock. The snapshot may be slightly stale if a session is busy.
     for (const auto& session_info : session_registry_.Snapshot()) {
@@ -3079,10 +3093,28 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       if (now_micros <= pin_micros || now_micros - pin_micros < min_txn_age_micros) {
         continue;
       }
-      auto [it, inserted] = result.emplace(pin.db_oid, pin.read_time);
-      if (!inserted) {
-        it->second.MakeAtMost(pin.read_time);
+      auto [it, inserted] = db_pins.emplace(pin.db_oid, DbPin{pin.read_time, pin.pid});
+      // Compare explicitly rather than via MakeAtMost so that pid tracks the winning read time.
+      if (!inserted && pin.read_time < it->second.read_time) {
+        it->second = DbPin{pin.read_time, pin.pid};
       }
+    }
+
+    if (!db_pins.empty() && ShouldLogDatabasePins()) {
+      for (const auto& [db_oid, db_pin] : db_pins) {
+        LOG(INFO) << "DB: " << db_oid << " retaining for: "
+                  << MonoDelta::FromMicroseconds(
+                         yb::make_signed(
+                             now_micros - db_pin.read_time.GetPhysicalValueMicros()))
+                         .ToPrettyString()
+                  << " due to pid: " << db_pin.pid;
+      }
+    }
+
+    std::unordered_map<PgOid, HybridTime> result;
+    result.reserve(db_pins.size());
+    for (const auto& [db_oid, db_pin] : db_pins) {
+      result.emplace(db_oid, db_pin.read_time);
     }
     return result;
   }
@@ -3097,6 +3129,17 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
  private:
   client::YBClient& client() { return *client_future_.get(); }
+
+  bool ShouldLogDatabasePins() {
+    const auto interval_sec = FLAGS_db_history_retention_pin_log_interval_sec;
+    if (interval_sec <= 0) {
+      return false;
+    }
+    const auto now = CoarseMonoClock::now();
+    auto next = next_pin_log_time_.load(std::memory_order_acquire);
+    return now >= next && next_pin_log_time_.compare_exchange_strong(
+        next, now + interval_sec * 1s, std::memory_order_acq_rel);
+  }
 
   template <class Req>
   Result<PgClientSessionLocker> GetSession(const Req& req) {
@@ -3249,6 +3292,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
   std::optional<cdc::CDCStateTable> cdc_state_table_;
   PgTxnSnapshotManager txn_snapshot_manager_;
+
+  std::atomic<CoarseTimePoint> next_pin_log_time_{CoarseTimePoint::min()};
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

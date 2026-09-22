@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
@@ -383,6 +384,19 @@ public class BackupGarbageCollector {
       BackupCategory category = backup.getCategory();
       CustomerConfigStorageData configData =
           (CustomerConfigStorageData) customerConfig.getDataObject();
+      // Cross-cloud federation (useGcpIam GCS): stamp the audience so YBA can delete bucket objects
+      // via in-process WIF. Prefer the snapshot on the backup (survives universe + provider
+      // deletion); fall back to the live universe's provider for older backups predating it.
+      if (configData instanceof CustomerConfigStorageGCSData
+          && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
+        String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
+        if (StringUtils.isNotBlank(snapshotAudience)) {
+          ((CustomerConfigStorageGCSData) configData).federationAudience = snapshotAudience;
+        } else {
+          Universe.maybeGet(backup.getUniverseUUID())
+              .ifPresent(u -> backupHelper.applyCrossCloudFederationAudience(configData, u));
+        }
+      }
       if (configData.immutableStorage) {
         log.info(
             "Skipping cloud backup deletion for backup {} as this is immutable storage, will only"
@@ -407,9 +421,9 @@ public class BackupGarbageCollector {
             long sleepTimeInMilliSeconds = 5000;
             while (numRetries < BACKUP_DELETION_MAX_RETRIES_COUNT && !deletedSuccessfully) {
               if (cloudUtil.deleteKeyIfExists(
-                      customerConfig.getDataObject(),
+                      configData,
                       backupLocationsMap.get(YbcBackupUtil.DEFAULT_REGION_STRING).get(0))
-                  && cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocationsMap)) {
+                  && cloudUtil.deleteStorage(configData, backupLocationsMap)) {
                 deletedSuccessfully = true;
               }
               if (!deletedSuccessfully) {

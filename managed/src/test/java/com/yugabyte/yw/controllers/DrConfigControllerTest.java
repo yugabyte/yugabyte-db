@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -26,6 +27,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -33,6 +35,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -46,6 +49,7 @@ import com.yugabyte.yw.forms.DrConfigFailoverForm;
 import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
 import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
+import com.yugabyte.yw.forms.DrConfigSetTablesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
@@ -124,6 +128,10 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   private DrConfigController drConfigController;
 
+  private static String matviewTableId(String namespaceId) {
+    return "matview" + namespaceId;
+  }
+
   private CustomerConfig createData(Customer customer) {
     JsonNode formData =
         Json.parse(
@@ -139,6 +147,11 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   private DrConfigCreateForm createDefaultCreateForm(String name, Collection<String> dbIds)
       throws Exception {
+    return createDefaultCreateForm(name, dbIds, false /* includeMatview */);
+  }
+
+  private DrConfigCreateForm createDefaultCreateForm(
+      String name, Collection<String> dbIds, boolean includeMatview) throws Exception {
     DrConfigCreateForm createForm = new DrConfigCreateForm();
     createForm.name = name;
     createForm.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
@@ -152,7 +165,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
       MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
           MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder()
               .setTableType(TableType.PGSQL_TABLE_TYPE)
-              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
+              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString().replace("-", "")))
               .setName("table_1")
               .setRelationType(RelationType.USER_TABLE_RELATION)
               .setNamespace(
@@ -161,6 +174,20 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
                       .setId(ByteString.copyFromUtf8(namespaceId))
                       .build());
       tableInfoList.add(table1TableInfoBuilder.build());
+      if (includeMatview) {
+        tableInfoList.add(
+            MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder()
+                .setTableType(TableType.PGSQL_TABLE_TYPE)
+                .setId(ByteString.copyFromUtf8(matviewTableId(namespaceId)))
+                .setName("matview_1")
+                .setRelationType(RelationType.MATVIEW_TABLE_RELATION)
+                .setNamespace(
+                    MasterTypes.NamespaceIdentifierPB.newBuilder()
+                        .setName(namespaceId)
+                        .setId(ByteString.copyFromUtf8(namespaceId))
+                        .build())
+                .build());
+      }
     }
 
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
@@ -1182,5 +1209,246 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         new PitrParams(),
         Set.of("db1Id"),
         false);
+  }
+
+  private void enableAutomaticDdlMode(String ybSoftwareVersion) {
+    settableRuntimeConfigFactory
+        .forUniverse(sourceUniverse)
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
+    settableRuntimeConfigFactory
+        .forUniverse(sourceUniverse)
+        .setValue("yb.xcluster.db_scoped.automatic_ddl.creationEnabled", "true");
+    TestHelper.updateUniverseVersion(sourceUniverse, ybSoftwareVersion);
+    TestHelper.updateUniverseVersion(targetUniverse, ybSoftwareVersion);
+  }
+
+  @Test
+  // Automatic mode on a YBDB version that replicates materialized views: the matview in the
+  // requested database is accepted and creation succeeds.
+  public void testCreateAutomaticModeWithMatviewSupportedVersion() throws Exception {
+    enableAutomaticDdlMode(XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_PREVIEW);
+    DrConfigCreateForm data =
+        createDefaultCreateForm("automaticDR", namespaceIds, true /* includeMatview */);
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+
+    assertOk(result);
+    DrConfig drConfig =
+        DrConfig.getBetweenUniverses(
+                sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID())
+            .get(0);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    assertEquals(ConfigType.Db, xClusterConfig.getType());
+    assertTrue(xClusterConfig.isAutomaticDdlMode());
+    assertTrue(
+        XClusterUtil.isMatviewReplicationSupported(
+            true /* automaticDdlMode */, sourceUniverse, targetUniverse));
+    // The matview is part of the tables the config replicates.
+    assertTrue(
+        XClusterConfigTaskBase.getTableIds(
+                XClusterConfigTaskBase.getRequestedTableInfoList(
+                    data.dbs,
+                    XClusterConfigTaskBase.getTableInfoList(mockYBClientService, sourceUniverse),
+                    XClusterUtil.isMatviewReplicationSupported(xClusterConfig)))
+            .contains(matviewTableId(namespaceIds.get(0))));
+  }
+
+  @Test
+  // Automatic mode on a YBDB version that does not replicate materialized views yet: creation of a
+  // database containing a matview still succeeds, and the matview stays out of replication.
+  public void testCreateAutomaticModeWithMatviewUnsupportedVersion() throws Exception {
+    // This version supports automatic DDL but is one build below matview support.
+    enableAutomaticDdlMode("2.29.0.0-b399");
+    DrConfigCreateForm data =
+        createDefaultCreateForm("automaticDR", namespaceIds, true /* includeMatview */);
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+
+    assertOk(result);
+    DrConfig drConfig =
+        DrConfig.getBetweenUniverses(
+                sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID())
+            .get(0);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    assertTrue(xClusterConfig.isAutomaticDdlMode());
+    assertFalse(XClusterUtil.isMatviewReplicationSupported(xClusterConfig));
+    assertFalse(
+        XClusterConfigTaskBase.getTableIds(
+                XClusterConfigTaskBase.getRequestedTableInfoList(
+                    data.dbs,
+                    XClusterConfigTaskBase.getTableInfoList(mockYBClientService, sourceUniverse),
+                    XClusterUtil.isMatviewReplicationSupported(xClusterConfig)))
+            .contains(matviewTableId(namespaceIds.get(0))));
+  }
+
+  @Test
+  // Semi-automatic mode on a YBDB version that replicates materialized views: the matview stays
+  // out of replication, and creation still succeeds.
+  public void testCreateSemiAutomaticModeWithMatview() throws Exception {
+    settableRuntimeConfigFactory
+        .forUniverse(sourceUniverse)
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
+    settableRuntimeConfigFactory
+        .forUniverse(sourceUniverse)
+        .setValue("yb.xcluster.db_scoped.automatic_ddl.creationEnabled", "false");
+    TestHelper.updateUniverseVersion(
+        sourceUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_PREVIEW);
+    TestHelper.updateUniverseVersion(
+        targetUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_PREVIEW);
+    DrConfigCreateForm data =
+        createDefaultCreateForm("semiAutomaticDR", namespaceIds, true /* includeMatview */);
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+
+    assertOk(result);
+    DrConfig drConfig =
+        DrConfig.getBetweenUniverses(
+                sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID())
+            .get(0);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    assertEquals(ConfigType.Db, xClusterConfig.getType());
+    assertFalse(xClusterConfig.isAutomaticDdlMode());
+    assertFalse(XClusterUtil.isMatviewReplicationSupported(xClusterConfig));
+  }
+
+  @Test
+  // Adding a database that contains a materialized view keeps working in automatic mode.
+  public void testSetDatabasesAutomaticModeWithMatview() throws Exception {
+    enableAutomaticDdlMode(XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_PREVIEW);
+    namespaceIds.add(UUID.randomUUID().toString().replace("-", ""));
+
+    DrConfigCreateForm data =
+        createDefaultCreateForm(
+            "automaticDR", Set.of(namespaceIds.get(0)), true /* includeMatview */);
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+    assertOk(result);
+
+    DrConfig drConfig =
+        DrConfig.getBetweenUniverses(
+                sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID())
+            .get(0);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
+
+    DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
+    setDatabasesData.dbs = new HashSet<>(namespaceIds);
+    taskUUID = buildTaskInfo(null, TaskType.EditDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/dr_configs/"
+                + drConfig.getUuid()
+                + "/set_dbs",
+            authToken,
+            Json.toJson(setDatabasesData));
+    assertOk(result);
+  }
+
+  @Test
+  // The DR set tables path (txn/manual mode) rejects materialized views even when both universes
+  // run a YBDB version that replicates them.
+  public void testSetTablesWithMatviewRejected() throws Exception {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "false");
+    TestHelper.updateUniverseVersion(
+        sourceUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_PREVIEW);
+    TestHelper.updateUniverseVersion(
+        targetUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_PREVIEW);
+
+    DrConfigCreateForm data =
+        createDefaultCreateForm("txnDR", namespaceIds, true /* includeMatview */);
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    GetTableSchemaResponse mockTableSchemaResponse =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespaceIds.get(0),
+            "table_1",
+            "000030af000030008000000000004000",
+            null,
+            true,
+            CommonTypes.TableType.PGSQL_TABLE_TYPE,
+            Collections.emptyList(),
+            false);
+    when(mockYBClient.getTableSchemaByUUID(any())).thenReturn(mockTableSchemaResponse);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+    assertOk(result);
+
+    DrConfig drConfig =
+        DrConfig.getBetweenUniverses(
+                sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID())
+            .get(0);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    assertEquals(ConfigType.Txn, xClusterConfig.getType());
+    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
+
+    // Ask for every table of the source universe, which includes the materialized view.
+    DrConfigSetTablesForm setTablesForm = new DrConfigSetTablesForm();
+    setTablesForm.tables =
+        new HashSet<>(
+            XClusterConfigTaskBase.getTableIds(
+                XClusterConfigTaskBase.getTableInfoList(mockYBClientService, sourceUniverse)));
+    assertTrue(setTablesForm.tables.contains(matviewTableId(namespaceIds.get(0))));
+    Result setTablesResult =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    "/api/customers/"
+                        + defaultCustomer.getUuid()
+                        + "/dr_configs/"
+                        + drConfig.getUuid()
+                        + "/set_tables",
+                    authToken,
+                    Json.toJson(setTablesForm)));
+    assertBadRequest(
+        setTablesResult,
+        "Materialized views can be part of replication only for xCluster/DR configs in automatic"
+            + " DDL mode; the following requested tables are materialized views: ["
+            + matviewTableId(namespaceIds.get(0))
+            + "]");
   }
 }

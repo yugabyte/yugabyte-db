@@ -621,7 +621,7 @@ This parameter can only be configured during cluster startup, and adjusting this
 Default: `0`
 {{% /tags/wrap %}}
 
-Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
+Enables [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
 
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
@@ -674,6 +674,47 @@ Default: `20000`
 {{% /tags/wrap %}}
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
+
+##### yb_enable_global_views
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2134">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables querying of [cluster-wide database views](../../../explore/observability/cluster-wide-db-views/) (`gv$<view_name>`), which return per-node statistics from every live YB-TServer. This is a SUSET parameter: a superuser can set it for a session (`SET yb_enable_global_views = on`) or for a role (`ALTER ROLE ... SET yb_enable_global_views = on`). To enable it cluster-wide, set `--ysql_pg_conf_csv=yb_enable_global_views=true` on every YB-TServer.
+
+The `gv$` views always exist in `pg_catalog`; querying one while this parameter is off fails. Querying a cluster-wide database view also requires membership in `pg_read_all_stats`. See [Enable cluster-wide database views](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#enable-cluster-wide-database-views).
+
+#### Faster writes to new tables
+
+To try the optimization, see [Faster writes to new tables](../../../explore/transactions/new-table-writes/). For write-path details, see [Skip intents optimization](../../../architecture/transactions/skip-intents/).
+
+##### yb_enable_new_relation_fastpath_write
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2337">}}
+Default: `on`
+{{% /tags/wrap %}}
+
+Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
+
+Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it inside a transaction block, or after the first query of a transaction has run.
+
+Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
+
+##### yb_enable_new_relation_fastpath_write_in_txn_blocks
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2337">}}
+Default: `off`
+{{% /tags/wrap %}}
+
+Extends [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) to explicit transaction blocks. Requires that setting to be on, [transactional DDL](../../../explore/transactions/transactional-ddl/) to be enabled, and [Read Committed isolation](../../../explore/transactions/isolation-levels/#read-committed-isolation).
+
+Do not enable this setting through [ysql_pg_conf_csv](#ysql-pg-conf-csv) while transactional DDL is off: the setting reads back as on, but writes continue on the normal path and no error is reported. Use the [--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks](#ysql-yb-enable-new-relation-fastpath-write-in-txn-blocks) flag instead, which is validated at startup.
+
+Can be set using the [--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks](#ysql-yb-enable-new-relation-fastpath-write-in-txn-blocks) flag.
 
 #### Bucket-based index scan optimization
 
@@ -2016,10 +2057,12 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+If the value is `-1` (default) or `0`, the thread count is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise). A positive value is used as-is.
 
 ##### --auto_compact_check_interval_sec
 
@@ -2100,6 +2143,123 @@ Default: `50`
 {{% /tags/wrap %}}
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
+
+### Vector Index LSM compaction flags
+
+Use these flags to control background compaction of Vector LSM chunk files used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+
+##### --vector_index_compaction_chunk_max_mem_store_size_mb
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Available in v2026.1.1.0 and later.
+
+Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), there is no limit and a single output chunk is produced. When set to a non-zero value, this flag enables chunked compaction, allowing the output to be split into multiple chunks bounded by the specified memory budget.
+
+This flag takes priority over [`--vector_index_compaction_chunk_max_mem_store_size_percentage`](#vector-index-compaction-chunk-max-mem-store-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
+
+##### --vector_index_compaction_chunk_max_mem_store_size_percentage
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Available in v2026.1.1.0 and later.
+
+Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
+
+This flag is ignored when:
+
+- [`--vector_index_compaction_chunk_max_mem_store_size_mb`](#vector-index-compaction-chunk-max-mem-store-size-mb) is set to a non-zero value
+- Concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`)
+
+When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
+##### --vector_index_num_compactions_limit
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Maximum number of concurrent Vector LSM compactions per tablet server. Set to `0` for no per-tserver limit.
+
+When this flag is not `1` (concurrent compactions are allowed), [`--vector_index_compaction_chunk_max_mem_store_size_percentage`](#vector-index-compaction-chunk-max-mem-store-size-percentage) is ignored. Set an absolute limit with [`--vector_index_compaction_chunk_max_mem_store_size_mb`](#vector-index-compaction-chunk-max-mem-store-size-mb) instead, and account for total memory across concurrent merges.
+
+##### --vector_index_files_number_compaction_trigger
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Number of Vector LSM chunk files that triggers a background compaction.
+
+##### --vector_index_compaction_always_include_size_threshold
+
+{{% tags/wrap %}}
+
+Default: `67108864` (64MB)
+{{% /tags/wrap %}}
+
+Always include Vector LSM chunks of this size or smaller in a compaction by size ratio.
+
+##### --vector_index_compaction_size_ratio_percent
+
+{{% tags/wrap %}}
+
+Default: `20`
+{{% /tags/wrap %}}
+
+Percentage used to decide whether a larger Vector LSM chunk is included in a background compaction by size ratio. A succeeding chunk is included when it is at most this percentage larger than the running total of chunks already picked. For example, with the default of `20`, the next chunk is included if it is at most 20% larger than the running total.
+
+Set to `-100` to disable size-ratio compactions.
+
+Chunks at or below [`--vector_index_compaction_always_include_size_threshold`](#vector-index-compaction-always-include-size-threshold) are always included without applying this check.
+
+##### --vector_index_compaction_size_ratio_min_merge_width
+
+{{% tags/wrap %}}
+
+Default: `4`
+{{% /tags/wrap %}}
+
+Minimum number of Vector LSM chunks in a single background compaction by size ratio. The effective minimum is at least `2`.
+
+##### --vector_index_compaction_size_ratio_max_merge_width
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of Vector LSM chunks in a single background compaction by size ratio. When set to `0` (the default), there is no limit. If you set a value lower than [`--vector_index_compaction_size_ratio_min_merge_width`](#vector-index-compaction-size-ratio-min-merge-width), the minimum merge width is used instead.
+
+##### --vector_index_compaction_size_amp_max_percent
+
+{{% tags/wrap %}}
+
+Default: `200`
+{{% /tags/wrap %}}
+
+Maximum size amplification for Vector LSM background compaction, as a percentage. Size amplification is the total size of newer chunks relative to the earliest on-disk chunk. When newer chunks are at least this percentage of the base chunk size, a size-amplification compaction is triggered. For example, with the default of `200`, compaction is triggered when newer chunks total 200% of the earliest chunk size.
+
+Set to `-1` to disable size-amplification compactions.
+
+Size-amplification compaction is considered before size-ratio compaction when picking chunks for background compaction.
+
+##### --vector_index_compaction_size_amp_max_merge_width
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of Vector LSM chunks in a single background compaction by size amplification. When set to `0` (the default), there is no limit. A size-amplification compaction always includes at least 2 chunks.
 
 ### Concurrency control flags
 
@@ -2460,7 +2620,7 @@ Default: `128`
 
 The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
-### Multitenancy (resource governor) flags
+### Multitenancy (Resource Governance) flags
 
 These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. The feature relies on Linux cgroups and requires operating system setup before it can be enabled. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
 
@@ -2529,6 +2689,16 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
+##### --remote_pg_query_execution_rpc_timeout_ms
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2134">}}
+{{<tags/feature/t-server>}}
+Default: `15000`
+{{% /tags/wrap %}}
+
+Per-node timeout, in milliseconds, for the RPC that carries a [cluster-wide database view](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/) remote query. Runtime-modifiable. A node that exceeds this timeout is skipped with a WARNING, and the query returns rows from the remaining nodes.
+
 ##### --ysql_enable_write_pipelining
 
 {{% tags/wrap %}}
@@ -2542,7 +2712,30 @@ Enables concurrent replication of multiple write operations in a transaction. Wr
 
 Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
 
-##### --use_cgroups_cpu
+##### --ysql_yb_enable_new_relation_fastpath_write
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2337">}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) configuration parameter. Enables faster writes into tables that the same transaction created or rebuilt.
+
+See also the `yb_enable_new_relation_fastpath_write` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+##### --ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2337">}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write_in_txn_blocks](#yb-enable-new-relation-fastpath-write-in-txn-blocks) configuration parameter. Extends the new-table write optimization to explicit transaction blocks.
+
+This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
+See also the `yb_enable_new_relation_fastpath_write_in_txn_blocks` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}

@@ -499,19 +499,63 @@ Status SstFileReader::ReadTableProperties(
 namespace {
 
 void print_help() {
-  fprintf(stderr,
-          "sst_dump [--command=check|scan|check_data_blocks|none|raw] [--verify_checksum] "
-          "--file=data_dir_OR_sst_file"
-          " [--output_format=raw|hex|decoded_regulardb|decoded_intentsdb]"
-          " [--formatter_tablet_metadata=<path_to_tablet_metadata>"
-          " [--input_key_hex]"
-          " [--from=<user_key>]"
-          " [--to=<user_key>]"
-          " [--read_num=NUM]"
-          " [--show_properties]"
-          " [--show_compression_sizes]"
-          " [--show_compression_sizes [--set_block_size=<block_size>]]"
-          " [--skip_uncompress]\n");
+  fputs(R"HELP(usage: sst_dump --file=<data_dir_OR_sst_file> [options]
+
+Dumps or checks one SST file, or every SST file in a directory.
+
+Options selecting what to do:
+  --command=scan|check|check_data_blocks|raw|none   (omitted: same as check)
+  --verify_checksum
+  --skip_uncompress
+  --show_properties
+  --show_compression_sizes [--set_block_size=<block_size>]
+
+Options controlling the output:
+  --output_format=raw|hex|decoded_regulardb|decoded_intentsdb   (default: raw)
+  --formatter_tablet_metadata=<path_to_tablet_metadata>
+
+Options selecting which keys are dumped:
+  --from=<user_key>
+  --to=<user_key>
+  --input_key_hex        (--from and --to are hex encoded)
+  --read_num=<num>
+
+A packed row is stored as one opaque value per row, and the schemas needed to
+decode it live in the tablet's superblock rather than in the SST files.  So to
+decode packed rows with the decoded_* output formats you must also supply:
+  --formatter_tablet_metadata=<path_to_tablet_metadata>
+Without it, packed rows print as PACKED_ROW_V<n>[<schema_version>](<hex>).
+
+Examples:
+  DATA=${HOME}/yugabyte-data/node-1/disk-1
+  TABLE=b5c671290fbc4e7183df9f73caefbe58
+  TABLET=674917ec4f7d438fae9865ef8dad792a
+  TSERVER=${DATA}/yb-data/tserver
+
+  # Dump a tablet's regular DB, decoding packed rows:
+  sst_dump                                                          \
+    --command=scan --output_format=decoded_regulardb                \
+    --formatter_tablet_metadata=${TSERVER}/tablet-meta/${TABLET}    \
+    --file=${TSERVER}/data/rocksdb/table-${TABLE}/tablet-${TABLET}
+
+  # Same for the provisional records (intents) DB:
+  sst_dump                                                                  \
+    --command=scan --output_format=decoded_intentsdb                        \
+    --formatter_tablet_metadata=${TSERVER}/tablet-meta/${TABLET}            \
+    --file=${TSERVER}/data/rocksdb/table-${TABLE}/tablet-${TABLET}.intents
+)HELP", stderr);
+}
+
+// Printed once before dumping when a scan will render decoded rows but we were given no packing
+// schemas, so that a dump full of PACKED_ROW_V1[..](hex) does not read as a broken tool. Goes to
+// stderr because the dump itself goes to stdout, and a redirected dump should stay parseable.
+void PrintMissingTabletMetadataNote() {
+  fputs("NOTE: --formatter_tablet_metadata was not specified, so no packing schemas are "
+        "available\n      and any packed rows will print as "
+        "PACKED_ROW_V<n>[<schema_version>](<hex>). To decode\n      them, pass the tablet's "
+        "superblock, e.g.\n"
+        "      --formatter_tablet_metadata=<data_dir>/yb-data/tserver/tablet-meta/<tablet_id>\n",
+        stderr);
 }
 
 }  // namespace
@@ -606,6 +650,16 @@ int SSTDumpTool::Run(int argc, char** argv) {
   if (dir_or_file == nullptr) {
     print_help();
     exit(1);
+  }
+
+  // Only "scan" prints values: check and an omitted --command pass print_kv=false, raw and
+  // check_data_blocks never reach the formatter, and --show_compression_sizes returns before the
+  // dump. Explaining how packed rows will render when none will be rendered is just noise.
+  const auto prints_decoded_rows = command == "scan" && !show_compression_sizes &&
+                                   (output_format == OutputFormat::kDecodedRegularDB ||
+                                    output_format == OutputFormat::kDecodedIntentsDB);
+  if (prints_decoded_rows && formatter_ && !formatter_->CanDecodePackedRows()) {
+    PrintMissingTabletMetadataNote();
   }
 
   std::vector<std::string> filenames;

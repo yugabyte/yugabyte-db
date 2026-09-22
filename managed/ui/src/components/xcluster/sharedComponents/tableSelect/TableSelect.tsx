@@ -31,7 +31,7 @@ import {
   XClusterConfigType,
   XClusterTableEligibility,
   XCLUSTER_TABLE_INELIGIBLE_STATUSES,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
+  getXClusterUniverseTableFilters
 } from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
@@ -80,6 +80,12 @@ interface CommonTableSelectProps {
   selectionError: { title?: string; body?: string } | null;
   selectionWarning: { title: string; body: string } | null;
   xClusterConfigType: XClusterConfigType;
+  /**
+   * Whether materialized views may be part of this replication config. When set, they are listed
+   * alongside the other tables of their database. Computed by the parent modal because it knows the
+   * config's schema change mode; see `getIsMatviewReplicationSupported`.
+   */
+  isMatviewReplicationSupported: boolean;
 }
 
 export type TableSelectProps =
@@ -177,7 +183,8 @@ export const TableSelect = (props: TableSelectProps) => {
     setSelectedNamespaceUuids,
     selectionError,
     selectionWarning,
-    xClusterConfigType
+    xClusterConfigType,
+    isMatviewReplicationSupported
   } = props;
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
@@ -194,17 +201,18 @@ export const TableSelect = (props: TableSelectProps) => {
     () => api.fetchUniverseNamespaces(sourceUniverseUuid)
   );
 
+  const universeTableFilters = getXClusterUniverseTableFilters(isMatviewReplicationSupported);
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    universeQueryKey.tables(sourceUniverseUuid, universeTableFilters),
     () =>
-      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+      fetchTablesInUniverse(sourceUniverseUuid, universeTableFilters).then(
         (response) => response.data
       )
   );
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(targetUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    universeQueryKey.tables(targetUniverseUuid, universeTableFilters),
     () =>
-      fetchTablesInUniverse(targetUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+      fetchTablesInUniverse(targetUniverseUuid, universeTableFilters).then(
         (response) => response.data
       )
   );

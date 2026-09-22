@@ -666,6 +666,8 @@ class Tablet : public AbstractTablet,
 
   // If true, we should report, in our heartbeat to the master, that loadbalancer moves should be
   // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
+  // Same policy as the split check: vector-index leftover is ignored when
+  // vector_index_require_parent_data_compacted_before_split is false.
   bool ShouldDisableLbMove();
 
   Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
@@ -710,9 +712,12 @@ class Tablet : public AbstractTablet,
 
   // Returns a set of split keys that split the tablet data into split_factor number of
   // approximately even partitions.
-  // - When the split_factor is 2, an approximate middle key is determined.
-  // - When the split_factor is greater than 2 and with hash-partitioning, a placeholder
-  //   logic returns a set of split keys.
+  // - If FLAGS_use_cross_split_key_detection_algorithm is set, DoGetSplitKeysCross is used for
+  //   any split_factor and both hash and range partitioning.
+  // - Otherwise:
+  //   - split_factor == 2: an approximate middle key is determined.
+  //   - split_factor > 2 and hash-partitioning: hash-space arithmetic returns a set of split keys.
+  //   - split_factor > 2 and range-partitioning: not supported.
   Result<SplitKeysData> GetSplitKeys(int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
@@ -744,6 +749,21 @@ class Tablet : public AbstractTablet,
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
+
+  // Aggregate of the regular DB's per-file SST statistics; null unless the collector that produces
+  // them is enabled (--docdb_enable_sst_stats_collector).
+  //
+  // Returns a share of the aggregator rather than a raw pointer: Truncate and snapshot restore
+  // reopen the regular DB on a live tablet and install a new aggregator, and a caller must not be
+  // left reading the old one's mutex after it is freed. Holding the returned pointer keeps that
+  // instance alive; it stops being the tablet's current one, which only costs the caller a stale
+  // reading.
+  std::shared_ptr<docdb::SstStatsAggregator> sst_stats() const EXCLUDES(sst_stats_mutex_);
+
+  // Recomputes the aggregate from the whole live file set, correcting for the file-set changes the
+  // RocksDB listener does not see. Runs on a timer from TSTabletManager; no-op when the collector
+  // is disabled.
+  Status ResyncSstStats();
 
   void ListenNumSSTFilesChanged(std::function<void()> listener);
 
@@ -791,12 +811,8 @@ class Tablet : public AbstractTablet,
   // Flushes this tablet data onto disk before creating sub tablet.
   // Also updates flushed frontier for regular and intents DBs to match split_op_id and
   // split_op_hybrid_time.
-  // In case of error sub-tablet could be partially persisted on disk.
-  // NB! As of now the method is supposed to be used only for creation child tablets during
-  // splitting operation. For any other type of usage, the method must be verified and possibly
-  // updated to correctly handle split_op_id, split_op_hybrid_time, parent_data_compacted
-  // and post_split_compaction_file_number_upper_bound.
-  Result<RaftGroupMetadataPtr> CreateSubtablet(
+  // In case of error the child tablet could be partially persisted on disk.
+  Result<RaftGroupMetadataPtr> CreateSplitChildTablet(
       const TabletId& tablet_id, const dockv::Partition& partition,
       const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
       const HybridTime& split_op_hybrid_time);
@@ -893,7 +909,11 @@ class Tablet : public AbstractTablet,
 
   void InitRocksDBBaseOptions(rocksdb::Options* options);
 
-  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
+  // See docdb::InitRocksDBOptionsWithoutTableFactory vs docdb::InitRocksDBOptions.
+  void InitRocksDBOptionsWithoutTableFactory(
+      rocksdb::Options* options, const std::string& log_prefix);
+  void InitRocksDBOptions(
+      rocksdb::Options* options, const std::string& log_prefix, docdb::StorageDbType db_type);
 
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();
@@ -907,7 +927,8 @@ class Tablet : public AbstractTablet,
   // Triggers a manual compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
-  Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionIfNeeded(
+      rocksdb::CompactionReason reason, IncludeVectorIndexes include_vector_indexes);
 
   // Triggers an admin full compaction on this tablet.
   Status TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options);
@@ -1180,14 +1201,14 @@ class Tablet : public AbstractTablet,
 
   Status TriggerManualCompactionSync(const ManualCompactionOptions& options);
 
-  Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
+  Status TriggerVectorIndexCompactionSync(const ManualCompactionOptions& options);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,
       const rocksdb::CompactRangeOptions& intents_options);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
-  Status OpenDbAndCheckIntegrity(const std::string& db_dir);
+  Status OpenDbAndCheckIntegrity(const std::string& db_dir, docdb::StorageDbType db_type);
 
   // Add or remove restoring operation filter if necessary.
   // If reset_split is true, also reset split state.
@@ -1197,9 +1218,16 @@ class Tablet : public AbstractTablet,
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
-  // Returns true if the tablet was created after a split but it has not yet had data from it's
-  // parent which are now outside of its key range removed.
+  // Split/LB policy: true when this tablet still has parent data that should block a further
+  // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover
+  // counts only when vector_index_include_into_post_split_compaction and
+  // vector_index_require_parent_data_compacted_before_split are both true.
+  // Compaction retry uses NeedPostSplitCompaction() instead, which ignores the require flag.
   bool StillHasOrphanedPostSplitDataAbortable();
+
+  // True when a post-split compaction should be (re)scheduled: split child with RocksDB parent
+  // data still present, or with a vector index post-split compaction still required.
+  bool NeedPostSplitCompaction();
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
@@ -1216,6 +1244,19 @@ class Tablet : public AbstractTablet,
   // hash-based partitions only (to prevent additional memory copying), as partition middle key for
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string* partition_split_key = nullptr) const;
+
+  // Validates a RocksDB-produced candidate split key: rejects meta/internal records, trims to the
+  // DocKey prefix used as a partition boundary, and checks tablet/partition bounds.
+  // On success returns the encoded split key. For hash partitioning, optionally fills
+  // partition_split_key with the hash-code partition key.
+  Result<std::string> ValidateAndEncodeSplitKey(
+      std::string split_key, std::string* partition_split_key = nullptr) const;
+
+  // Returns split_factor - 1 split keys chosen so that each resulting range holds roughly the same
+  // amount of SST data, using RocksDB's Cross()/FindTargetKey() size estimates rather than key
+  // counts. Works for both partitioning schemes and any split_factor. Gated by
+  // FLAGS_use_cross_split_key_detection_algorithm.
+  Result<SplitKeysData> DoGetSplitKeysCross(const int split_factor) const;
 
   // Refer to Tablet::GetSplitKeys(...) for the description.
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
@@ -1475,6 +1516,13 @@ class Tablet : public AbstractTablet,
   std::mutex num_sst_files_changed_listener_mutex_;
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
+
+  // Created in OpenRegularDB when the SST statistics collector is enabled, and from then on
+  // maintained by RegularRocksDbListener. The aggregator locks internally; the mutex here guards
+  // only the pointer, which OpenRegularDB replaces on a truncate or a snapshot restore while
+  // readers are running.
+  mutable std::mutex sst_stats_mutex_;
+  std::shared_ptr<docdb::SstStatsAggregator> sst_stats_ GUARDED_BY(sst_stats_mutex_);
 
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;

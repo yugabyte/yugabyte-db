@@ -288,6 +288,8 @@ interface AWSCloudInfoBase {
   awsAccessKeyID?: string;
   awsAccessKeySecret?: string;
   awsHostedZoneId?: string;
+  enableFederatedIam?: boolean;
+  federatedIamAudience?: string;
 }
 type AWSCloudInfoMutation = AWSCloudInfoBase;
 interface AWSCloudInfo extends AWSCloudInfoBase {

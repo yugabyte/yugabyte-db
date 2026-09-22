@@ -12,7 +12,32 @@
 #
 
 # DocDB-aware RocksDB table-properties collectors. Design: README.md in this directory.
-# The library (yb_docdb_properties_collector) is added by the stacked changes that bring its
-# sources; it sits below yb_docdb, depending only on dockv / common / util / rocksdb.
+# This library sits below yb_docdb (it depends only on dockv / common / util / rocksdb) so that
+# consumers such as the tablet can register collectors without pulling in docdb internals.
 
 set(YB_PCH_PATH ../)
+
+set(DOCDB_PROPERTIES_COLLECTOR_SRCS
+    chain_tracker.cc
+    exponential_histogram.cc
+    sst_stats_aggregator.cc
+    sst_stats_collector.cc
+    )
+
+set(DOCDB_PROPERTIES_COLLECTOR_DEPS
+    rocksdb
+    yb_common
+    yb_dockv
+    yb_util
+    )
+
+ADD_YB_LIBRARY(yb_docdb_properties_collector
+    SRCS ${DOCDB_PROPERTIES_COLLECTOR_SRCS}
+    DEPS ${DOCDB_PROPERTIES_COLLECTOR_DEPS})
+
+set(YB_TEST_LINK_LIBS yb_docdb_properties_collector ${YB_MIN_TEST_LIBS})
+
+ADD_YB_TEST(chain_tracker-test)
+ADD_YB_TEST(exponential_histogram-test)
+ADD_YB_TEST(sst_stats_aggregator-test)
+ADD_YB_TEST(sst_stats_collector-test)

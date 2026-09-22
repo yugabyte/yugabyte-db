@@ -60,19 +60,18 @@ void od_config_init(od_config_t *config)
 
 	/* YB */
 	config->yb_use_auth_backend = true;
+	config->yb_cert_auth = true;
 	config->yb_optimized_extended_query_protocol = true;
 	config->yb_enable_multi_route_pool = true;
 	// Same default as the value of ysql_max_connections.
 	config->yb_ysql_max_connections = 300;
 	config->yb_optimized_session_parameters = true;
 	config->yb_max_pools = YSQL_CONN_MGR_MAX_POOLS;
-	config->yb_enable_prep_stmt_close = true;
 	config->TEST_yb_auth_delay_ms = 0;
 	config->yb_max_prepared_statements = 0;
 	config->yb_tcmalloc_gc_interval = 300;
 	config->yb_enable_parse_queue_tracking = true;
 	config->yb_wait_for_rfq_on_sync = true;
-	config->yb_enable_dealloc_reconciliation = true;
 	config->yb_backend_drain_timeout_ms = 100;
 
 	od_list_init(&config->listen);
@@ -254,6 +253,24 @@ int od_config_validate(od_config_t *config, od_logger_t *logger)
 					 "unknown tls_opts->tls mode");
 				return -1;
 			}
+
+			/*
+			 * YB: the client-facing context is built by Postgres'
+			 * be_tls_init(), which asks for a client certificate but
+			 * never requires one.
+			 * Refuse the modes that promise enforcement, and no plans
+			 * to support these modes in conn mgr as well.
+			 */
+			if (listen->tls_opts->tls_mode ==
+				    OD_CONFIG_TLS_VERIFY_CA ||
+			    listen->tls_opts->tls_mode ==
+				    OD_CONFIG_TLS_VERIFY_FULL) {
+				od_error(
+					logger, "config", NULL, NULL,
+					"listen tls mode \"%s\" is not supported: client certificate verification is not implemented",
+					listen->tls_opts->tls);
+				return -1;
+			}
 		}
 	}
 
@@ -364,6 +381,9 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL, "yb_use_auth_backend     %s",
 	       od_config_yes_no(config->yb_use_auth_backend));
 
+	od_log(logger, "config", NULL, NULL, "yb_cert_auth            %s",
+	       od_config_yes_no(config->yb_cert_auth));
+
 	od_log(logger, "config", NULL, NULL, "yb_optimized_extended_query_protocol %s",
 			od_config_yes_no(config->yb_optimized_extended_query_protocol));
 
@@ -378,9 +398,6 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 
 	od_log(logger, "config", NULL, NULL, "yb_max_pools     %d",
 	       config->yb_max_pools);
-
-	od_log(logger, "config", NULL, NULL, "yb_enable_prep_stmt_close %s",
-	       od_config_yes_no(config->yb_enable_prep_stmt_close));
 
 	od_log(logger, "config", NULL, NULL, "yb_tcmalloc_gc_interval     %d",
 	       config->yb_tcmalloc_gc_interval);
@@ -412,10 +429,6 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL,
 	       "yb_wait_for_rfq_on_sync        %s",
 	       od_config_yes_no(config->yb_wait_for_rfq_on_sync));
-
-	od_log(logger, "config", NULL, NULL,
-	       "yb_enable_dealloc_reconciliation %s",
-	       od_config_yes_no(config->yb_enable_dealloc_reconciliation));
 
 #ifdef USE_SCRAM
 	od_log(logger, "config", NULL, NULL, "SCRAM auth metod:       OK");

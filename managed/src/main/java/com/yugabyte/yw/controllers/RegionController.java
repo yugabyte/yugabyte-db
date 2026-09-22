@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.annotations.BlockYnpManagedProvider;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -136,6 +137,7 @@ public class RegionController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
+  @BlockYnpManagedProvider(operation = "Adding a region")
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Form<RegionFormData> formData =
         formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
@@ -176,6 +178,7 @@ public class RegionController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
+  @BlockYnpManagedProvider(operation = "Adding a region")
   public Result createRegionNew(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
@@ -222,6 +225,7 @@ public class RegionController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
+  @BlockYnpManagedProvider(operation = "Editing a region")
   public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     RegionEditFormData form =
         formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
@@ -261,6 +265,7 @@ public class RegionController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
+  @BlockYnpManagedProvider(operation = "Editing a region")
   public Result editRegionNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -291,6 +296,7 @@ public class RegionController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
+  @BlockYnpManagedProvider(operation = "Deleting a region")
   public Result delete(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Provider.getOrBadRequest(customerUUID, providerUUID);

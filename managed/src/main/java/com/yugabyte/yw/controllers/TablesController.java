@@ -215,7 +215,8 @@ public class TablesController extends AuthenticatedController {
       boolean includeParentTableInfo,
       @Deprecated boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
-      boolean xClusterSupportedOnly) {
+      boolean xClusterSupportedOnly,
+      boolean includeMatviewTables) {
     List<TableInfoForm.TableInfoResp> resp =
         tableHandler.listTables(
             customerUUID,
@@ -223,7 +224,8 @@ public class TablesController extends AuthenticatedController {
             includeParentTableInfo,
             excludeColocatedTables,
             includeColocatedParentTables,
-            xClusterSupportedOnly);
+            xClusterSupportedOnly,
+            includeMatviewTables);
     return PlatformResults.withData(resp);
   }
 

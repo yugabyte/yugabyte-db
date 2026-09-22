@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YnpProviderUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -223,10 +224,10 @@ public class NodeInstanceController extends AuthenticatedController {
   //
   // UserIntent stores two sibling YAML documents (not nested representations):
   //   - universeOverrides: one YAML string for the whole cluster
-  //   - azOverrides: Map<AZ name, YAML string> — per-AZ helm overrides (each AZ may target a
+  //   - azOverrides: Map<AZ name, YAML string> - per-AZ helm overrides (each AZ may target a
   //     different k8s cluster). This is distinct from provider/region/zone OVERRIDES config.
   // For display we deep-merge the two YAML maps at their roots (AZ wins), matching
-  // KubernetesUtil's provider → universe → AZ merge order for the universe/AZ layers.
+  // KubernetesUtil's provider -> universe -> AZ merge order for the universe/AZ layers.
   private String getStoredKubernetesOverrides(Universe universe, String nodeName) {
     try {
       NodeDetails nodeDetails = universe.getNode(nodeName);
@@ -403,6 +404,7 @@ public class NodeInstanceController extends AuthenticatedController {
     Optional<ClientType> clientTypeOp = maybeGetJWTClientType();
     List<String> createdNodeUuids = new ArrayList<>(nodeDataList.size());
     Provider provider = az.getProvider();
+    YnpProviderUtil.checkYnpManagedProvider(provider, request, "Adding a node instance");
     Map<String, NodeInstance> nodes = new HashMap<>();
     for (NodeInstanceData nodeData : nodeDataList) {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
@@ -526,7 +528,7 @@ public class NodeInstanceController extends AuthenticatedController {
             Audit.TargetType.NodeInstance,
             Objects.toString(nodeToBeFound.getNodeUuid(), null),
             Audit.ActionType.Delete);
-    nodeToBeFound.delete();
+    YnpProviderUtil.deleteNodeInstance(provider, nodeToBeFound);
     return YBPSuccess.empty();
   }
 

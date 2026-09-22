@@ -24,6 +24,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_flags.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
@@ -1088,13 +1089,19 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   if (!req.populate_db_catalog_info()) {
     return;
   }
+  // Captured before the read below, and handed to InstallPgCatalogVersionsSnapshot() at the end:
+  // it is what lets that call notice a leader stepdown that reset the cache in between, and
+  // decline rather than repopulating it with pre-stepdown data.
+  const auto cache_generation = catalog_manager_.GetPgCatalogVersionsCacheGeneration();
+
   // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
   // logic on the tserver side expects a full report. Fix it and then optimize the below to only
   // send the catalog version of the db being operated on by the txn.
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint;
-  auto s =
-      catalog_manager_.GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, &fingerprint);
+  HybridTime read_ht;
+  auto s = catalog_manager_.GetYsqlAllDBCatalogVersions(
+      false /* use_cache */, &versions, &fingerprint, &read_ht);
   if (!s.ok()) {
     // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
     LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
@@ -1114,19 +1121,44 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
     catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
   }
 
-  if (!FLAGS_ysql_yb_enable_invalidation_messages) {
-    return;
+  // update_messages distinguishes "leave the messages cache alone" (feature off) from "replace
+  // it", where a nullopt payload marks the messages unavailable so the next refresh re-reads
+  // them. Leaving a valid-but-older messages cache in place while advancing the versions would be
+  // worse than either: RefreshPgCatalogVersionCache decides whether to re-read
+  // pg_yb_invalidation_messages by comparing fingerprints, so it would conclude nothing changed
+  // and never catch the messages up.
+  bool update_messages = false;
+  std::optional<DbOidVersionToMessageListMap> messages;
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
+    update_messages = true;
+    auto inval_messages = catalog_manager_.GetYsqlCatalogInvalationMessages(false /* use_cache */);
+    if (inval_messages.ok()) {
+      messages = std::move(*inval_messages);
+    } else {
+      LOG(WARNING) << "Couldn't populate invalidation messages in lock release request "
+                   << inval_messages.status();
+    }
   }
 
-  // Populate all known invalidation messages
-  Result<DbOidVersionToMessageListMap> inval_messages =
-    catalog_manager_.GetYsqlCatalogInvalationMessages(false /*use_cache*/);
-  if (!inval_messages.ok()) {
-    LOG(WARNING) << "Couldn't populate invalidation messages in lock release request " << s;
+  // Feed the same snapshot into the heartbeat catalog versions cache, before the request above is
+  // sent. That cache is refreshed by a background task which can stall (its thread pool is shared
+  // with DDL verification work), and while it is stalled the broadcast would push tservers past
+  // any version the heartbeat will ever report -- which the tserver's staleness check treats as
+  // divergence and crashes on. Installing here keeps the cache at least as new as anything
+  // broadcast, independently of that task's health.
+  //
+  // `messages` is passed by value, i.e. copied, because the loop below moves it into the request.
+  // Installing after that loop instead would cache empty message lists for real versions, which a
+  // tserver merging them against genuine content reports as a message_list mismatch DFATAL.
+  catalog_manager_.InstallPgCatalogVersionsSnapshot(
+      cache_generation, read_ht, std::move(versions), fingerprint, update_messages, messages);
+
+  if (!messages) {
+    // Feature disabled, or the read above failed. Either way there is nothing to send.
     return;
   }
   auto* const mutable_messages_data = req.mutable_db_catalog_inval_messages_data();
-  for (auto& [db_oid_version, message_list] : *inval_messages) {
+  for (auto& [db_oid_version, message_list] : *messages) {
     auto* const db_inval_messages = mutable_messages_data->add_db_catalog_inval_messages();
     db_inval_messages->set_db_oid(db_oid_version.first);
     db_inval_messages->set_current_version(db_oid_version.second);
@@ -1134,7 +1166,6 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
       db_inval_messages->set_message_list(std::move(*message_list));
     }
   }
-
 }
 
 Status ObjectLockInfoManager::Impl::UnlockObjectSync(

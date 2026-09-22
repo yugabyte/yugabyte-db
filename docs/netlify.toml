@@ -17,6 +17,7 @@
   HUGO_VERSION = "0.154.5"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
+  ONETRUST_API_KEY = "f9a9d3d1-e74a-4e32-8cc4-4f5c343d758b-test"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
@@ -24,6 +25,7 @@
   HUGO_VERSION = "0.154.5"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
+  ONETRUST_API_KEY = "f9a9d3d1-e74a-4e32-8cc4-4f5c343d758b-test"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
@@ -31,6 +33,7 @@
   HUGO_VERSION = "0.154.5"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
+  ONETRUST_API_KEY = "f9a9d3d1-e74a-4e32-8cc4-4f5c343d758b"
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
@@ -1169,6 +1172,8 @@
         ;
 
         connect-src 'self'
+            https://cdn.cookielaw.org/
+            https://geolocation.onetrust.com/
             https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://api.rudderstack.com/
             https://app.clearbit.com/
@@ -1188,30 +1193,12 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
-            https://via.intercom.io
-            https://api.intercom.io
-            https://api.au.intercom.io
-            https://api.eu.intercom.io
-            https://api-iam.intercom.io
-            https://api-iam.eu.intercom.io
-            https://api-iam.au.intercom.io
-            https://api-ping.intercom.io
-            https://nexus-websocket-a.intercom.io
-            wss://nexus-websocket-a.intercom.io
-            https://nexus-websocket-b.intercom.io
-            wss://nexus-websocket-b.intercom.io
-            https://nexus-europe-websocket.intercom.io
-            wss://nexus-europe-websocket.intercom.io
-            https://nexus-australia-websocket.intercom.io
-            wss://nexus-australia-websocket.intercom.io
-            https://uploads.intercomcdn.com
-            https://uploads.intercomcdn.eu
-            https://uploads.au.intercomcdn.com
-            https://uploads.eu.intercomcdn.com
-            https://uploads.intercomusercontent.com
+            https://cdnjs.cloudflare.com/
+            https://cdn.jsdelivr.net/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
+            https://cdn.cookielaw.org/
             https://app.clearbit.com/
             https://cdn.jsdelivr.net/
             https://cdn.madkudu.com/
@@ -1236,9 +1223,6 @@
             https://www.google-analytics.com/
             https://www.googletagmanager.com/
             https://x.clearbitjs.com/
-            https://app.intercom.io
-            https://widget.intercom.io
-            https://js.intercomcdn.com
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1261,14 +1245,13 @@
             https://fonts.gstatic.com
             https://ka-f.fontawesome.com/releases/
             https://use.fontawesome.com
-            https://js.intercomcdn.com
-            https://fonts.intercomcdn.com
         ;
 
         object-src 'none'
         ;
 
         img-src 'self'
+            https://cdn.cookielaw.org/logos/
             https://docs.camunda.org/
             https://docs.yugabyte.com/images/favicon.ico
             https://portal.azure.com/
@@ -1282,30 +1265,6 @@
             https://t2.gstatic.com/faviconV2
             https://t3.gstatic.com/faviconV2
             https://b.6sc.co/
-            https://js.intercomcdn.com
-            https://static.intercomassets.com
-            https://downloads.intercomcdn.com
-            https://downloads.intercomcdn.eu
-            https://downloads.au.intercomcdn.com
-            https://uploads.intercomusercontent.com
-            https://gifs.intercomcdn.com
-            https://video-messages.intercomcdn.com
-            https://messenger-apps.intercom.io
-            https://messenger-apps.eu.intercom.io
-            https://messenger-apps.au.intercom.io
-            https://*.intercom-attachments-1.com
-            https://*.intercom-attachments.eu
-            https://*.au.intercom-attachments.com
-            https://*.intercom-attachments-2.com
-            https://*.intercom-attachments-3.com
-            https://*.intercom-attachments-4.com
-            https://*.intercom-attachments-5.com
-            https://*.intercom-attachments-6.com
-            https://*.intercom-attachments-7.com
-            https://*.intercom-attachments-8.com
-            https://*.intercom-attachments-9.com
-            https://static.intercomassets.eu
-            https://static.au.intercomassets.com
         ;
 
         child-src 'self' 'unsafe-inline'
@@ -1315,8 +1274,6 @@
             https://hcaptcha.com
             https://*.hcaptcha.com
             https://www.youtube.com/
-            https://intercom-sheets.com
-            https://www.intercom-reporting.com
         ;
 
         frame-ancestors 'self'

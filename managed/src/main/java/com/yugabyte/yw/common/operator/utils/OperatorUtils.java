@@ -320,23 +320,88 @@ public class OperatorUtils {
         .map(PlatformInstance::getUuid);
   }
 
-  public Universe getUniverseFromNameAndNamespace(
-      Long customerId, String universeName, String namespace) throws Exception {
+  /**
+   * True once HA has demoted this YBA to standby. The active instance owns the CRs, so a demoted
+   * instance that keeps reconciling fights it over the same Kubernetes cluster. Checked on every CR
+   * event rather than at startup because a role flip does not restart YBA.
+   */
+  public boolean isHaFollower() {
+    return HighAvailabilityConfig.isFollower();
+  }
+
+  /**
+   * Resolves the YBA universe backing a YBUniverse custom resource, given that resource's name and
+   * namespace.
+   *
+   * @param customerId the customer the universe must belong to
+   * @param crName the {@code metadata.name} of the YBUniverse custom resource, as named by the
+   *     {@code universe} field of a dependent resource's spec
+   * @param namespace the namespace holding the custom resource
+   * @return the universe, or null if either the custom resource or its universe does not exist
+   */
+  public Universe getUniverseFromNameAndNamespace(Long customerId, String crName, String namespace)
+      throws Exception {
     KubernetesResourceDetails ybUniverseResourceDetails = new KubernetesResourceDetails();
-    ybUniverseResourceDetails.name = universeName;
+    ybUniverseResourceDetails.name = crName;
     ybUniverseResourceDetails.namespace = namespace;
     YBUniverse ybUniverse = getYBUniverse(ybUniverseResourceDetails);
     if (ybUniverse == null) {
-      log.debug("YBUniverse '{}' not found in namespace '{}'", universeName, namespace);
+      log.debug("YBUniverse '{}' not found in namespace '{}'", crName, namespace);
       return null;
     }
-    String name = YBUniverseReconciler.getUniverseName(ybUniverse);
-    log.debug("Getting universe from name: {}", name);
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, name);
-    if (universe.isPresent()) {
-      return universe.get();
+    return getUniverseFromCr(customerId, ybUniverse).orElse(null);
+  }
+
+  /**
+   * Resolves the YBA universe a YBUniverse custom resource represents, for the dependent resources
+   * - Backup, BackupSchedule, PitrConfig, RestoreJob, DrConfig, SupportBundle - that name a
+   * YBUniverse resource in their spec.
+   *
+   * <p>Resolution order follows YBUniverseReconciler.resolveExistingUniverse: the {@code
+   * yba-resource-id} annotation, then both historical naming schemes. The annotation is the only
+   * link that resolves an imported universe, which keeps the name it already had in YBA while
+   * {@link YBUniverseReconciler#getUniverseName} derives {@code <resourceName>-<hash>} from the
+   * resource metadata.
+   *
+   * <p>Read-only, unlike the reconciler's resolver: it neither annotates the resource nor reports
+   * an ambiguous match, both of which belong to the reconcile that owns the resource. It does scope
+   * the UUID lookup to the requesting customer, which {@link Universe#maybeGet} does not.
+   *
+   * @param customerId the customer the universe must belong to
+   * @param ybUniverse the custom resource to resolve
+   * @return the universe, or empty if no universe matches the custom resource
+   */
+  public static Optional<Universe> getUniverseFromCr(Long customerId, YBUniverse ybUniverse) {
+    if (ybUniverse == null) {
+      return Optional.empty();
     }
-    return null;
+    UUID ybaResourceId = getYbaResourceId(ybUniverse.getMetadata());
+    if (ybaResourceId != null) {
+      Optional<Universe> universe =
+          Universe.maybeGet(ybaResourceId).filter(u -> customerId.equals(u.getCustomerId()));
+      if (universe.isPresent()) {
+        return universe;
+      }
+      // Metadata is non-null here, getYbaResourceId only returns a value when it is set.
+      log.warn(
+          "YBUniverse '{}/{}' is annotated with YBA resource id {}, but no such universe exists for"
+              + " customer {}, falling back to name lookup",
+          ybUniverse.getMetadata().getNamespace(),
+          ybUniverse.getMetadata().getName(),
+          ybaResourceId,
+          customerId);
+    }
+    String metadataName = YBUniverseReconciler.getUniverseName(ybUniverse);
+    log.debug("Getting universe from name: {}", metadataName);
+    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, metadataName);
+    if (universe.isPresent()) {
+      return universe;
+    }
+    String specName = ybUniverse.getSpec() == null ? null : ybUniverse.getSpec().getUniverseName();
+    if (StringUtils.isNotBlank(specName) && !specName.equals(metadataName)) {
+      return Universe.maybeGetUniverseByName(customerId, specName);
+    }
+    return Optional.empty();
   }
 
   public YBUniverse getYBUniverse(KubernetesResourceDetails name) throws Exception {
@@ -1761,12 +1826,18 @@ public class OperatorUtils {
       throw new Exception("No storage config found with name " + crStorageConfig);
     }
 
-    KeyspaceTable kT = new KeyspaceTable();
-    if (((ObjectNode) crParams).has("keyspace")) {
-      kT.keyspace = ((ObjectNode) crParams).get("keyspace").asText();
-      ((ObjectNode) crParams).remove("keyspace");
+    // Omit / blank spec.keyspace means all databases (YSQL) or keyspaces (YCQL)
+    // of backupType. Empty list is a full backup; never emit [{keyspace: null}]
+    // (PLAT-20706 NPE). A named keyspace stays a one-element list.
+    JsonNode keyspaceNode = ((ObjectNode) crParams).remove("keyspace");
+    String keyspace = keyspaceNode == null || keyspaceNode.isNull() ? null : keyspaceNode.asText();
+    if (StringUtils.isNotBlank(keyspace)) {
+      KeyspaceTable kT = new KeyspaceTable();
+      kT.keyspace = keyspace;
+      ((ObjectNode) crParams).set("keyspaceTableList", Json.toJson(kT));
+    } else {
+      ((ObjectNode) crParams).set("keyspaceTableList", Json.newArray());
     }
-    ((ObjectNode) crParams).set("keyspaceTableList", Json.toJson(kT));
 
     ((ObjectNode) crParams).put("universeUUID", universeUUID.toString());
     ((ObjectNode) crParams).put("storageConfigUUID", storageConfigUUID.toString());
@@ -3044,10 +3115,29 @@ public class OperatorUtils {
               .build());
       BackupScheduleSpec spec = new BackupScheduleSpec();
       spec.setStorageConfig(storageConfigName);
-      spec.setUniverse(Universe.getOrBadRequest(ybBackupSchedule.getOwnerUUID()).getName());
+      // spec.universe names the YBUniverse custom resource, not the YBA universe: consumers read
+      // it back through getUniverseFromNameAndNamespace. The two names coincide only for an
+      // imported universe; for an operator-created one the YBA name carries a hash suffix the
+      // resource name lacks.
+      Universe scheduleUniverse = Universe.getOrBadRequest(ybBackupSchedule.getOwnerUUID());
+      KubernetesResourceDetails universeResourceDetails =
+          scheduleUniverse.getUniverseDetails().getKubernetesResourceDetails();
+      if (universeResourceDetails == null) {
+        throw new Exception(
+            String.format(
+                "Universe %s has no Kubernetes resource details, cannot resolve the YBUniverse"
+                    + " custom resource backing backup schedule %s",
+                scheduleUniverse.getName(), name));
+      }
+      spec.setUniverse(universeResourceDetails.name);
       spec.setBackupType(BackupScheduleSpec.BackupType.valueOf(params.backupType.toString()));
       spec.setTableByTableBackup(params.tableByTableBackup);
-      spec.setKeyspace(params.keyspaceTableList.get(0).keyspace);
+      // Full backups (empty keyspaceTableList) omit spec.keyspace so the CR means
+      // all databases/keyspaces of backupType. Do not NPE on get(0).
+      if (CollectionUtils.isNotEmpty(params.keyspaceTableList)
+          && StringUtils.isNotBlank(params.keyspaceTableList.get(0).keyspace)) {
+        spec.setKeyspace(params.keyspaceTableList.get(0).keyspace);
+      }
       spec.setTimeBeforeDelete(params.timeBeforeDelete);
       if (params.cronExpression != null) {
         spec.setCronExpression(params.cronExpression);

@@ -123,6 +123,7 @@
         "(^cmake_modules/FindBoost[.]cmake$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
+        "(^managed/src/main/resources/federation/)",
         "(^src/postgres/)",
         "(^src/yb/integration-tests/.*[.]out$)",
         "(^[.]gitignore$)",

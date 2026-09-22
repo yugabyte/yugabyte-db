@@ -695,6 +695,9 @@ class PgConcurrentCreateOrReplaceCrashTest : public LibPqTestBase {
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
     // DDL savepoint requires transactional DDL, so keep the two flags consistent.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    // ysql_enable_concurrent_ddl requires object locking as a prerequisite, so disable it.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 
   static bool IsBackendCrash(const Status& status) {

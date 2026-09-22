@@ -15,7 +15,7 @@ Positioning references for Rust to SQL mapping support.
 > to the `pgrx` framework and very subject to change between versions. While you may use this, please do it with caution.
 
 */
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::fmt::Display;
 use syn::parse::{Parse, ParseStream};
 
@@ -28,8 +28,8 @@ pub enum PositioningRef {
 impl Display for PositioningRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PositioningRef::FullPath(i) => f.write_str(i),
-            PositioningRef::Name(i) => f.write_str(i),
+            Self::FullPath(i) => f.write_str(i),
+            Self::Name(i) => f.write_str(i),
         }
     }
 }
@@ -48,13 +48,42 @@ impl Parse for PositioningRef {
     }
 }
 
+impl PositioningRef {
+    pub fn section_len_tokens(&self) -> proc_macro2::TokenStream {
+        match self {
+            Self::FullPath(item) | Self::Name(item) => quote! {
+                ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                    + ::pgrx::pgrx_sql_entity_graph::section::str_len(#item)
+            },
+        }
+    }
+
+    pub fn section_writer_tokens(
+        &self,
+        writer: proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        match self {
+            Self::FullPath(item) => quote! {
+                #writer
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::POSITIONING_REF_FULL_PATH)
+                    .str(#item)
+            },
+            Self::Name(item) => quote! {
+                #writer
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::POSITIONING_REF_NAME)
+                    .str(#item)
+            },
+        }
+    }
+}
+
 impl ToTokens for PositioningRef {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let toks = match self {
-            PositioningRef::FullPath(item) => quote! {
+            Self::FullPath(item) => quote! {
                 ::pgrx::pgrx_sql_entity_graph::PositioningRef::FullPath(String::from(#item))
             },
-            PositioningRef::Name(item) => quote! {
+            Self::Name(item) => quote! {
                 ::pgrx::pgrx_sql_entity_graph::PositioningRef::Name(String::from(#item))
             },
         };

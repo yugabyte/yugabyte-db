@@ -28,6 +28,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/ann_methods/index_memory_consumption.h"
 
@@ -35,6 +36,7 @@
 #include "yb/vector_index/index_wrapper_base.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/coordinate_types.h"
+#include "yb/vector_index/vector_payload_map.h"
 #include "yb/vector_index/vectorann_util.h"
 
 namespace unum::usearch {
@@ -77,29 +79,36 @@ index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
 namespace {
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
+class UsearchVectorIterator
+    : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
  public:
-  using IteratorPair = std::pair<VectorId, Vector>;
+  using IteratorEntry = vector_index::VectorIndexIteratorEntry<Vector>;
   using member_citerator_t = typename unum::usearch::index_dense_gt<VectorId>::member_citerator_t;
 
   UsearchVectorIterator(
-      size_t dimensions, member_citerator_t it, const index_dense_gt<VectorId>* index)
-      : dimensions_(dimensions), it_(it), index_(index) {}
+      size_t dimensions, member_citerator_t it, const index_dense_gt<VectorId>* index,
+      const vector_index::VectorPayloadMap* payloads)
+      : dimensions_(dimensions), it_(it), index_(index), payloads_(payloads) {}
 
  protected:
-  IteratorPair Dereference() const override {
+  IteratorEntry Dereference() const override {
     // TODO(vector_index) do it in more efficient way
-    Vector result_vector(dimensions_);
-    index_->get(it_.key(), result_vector.data());
-
-    return IteratorPair(it_.key(), result_vector);
+    auto member = *it_;
+    IteratorEntry result;
+    result.vector_id = member.key;
+    result.vector.resize(dimensions_);
+    index_->get(result.vector_id, result.vector.data());
+    if (payloads_) {
+      result.payload = CHECK_RESULT(payloads_->Get(member.slot));
+    }
+    return result;
   }
 
   void Next() override {
     ++it_;
   }
 
-  bool NotEquals(const AbstractIterator<IteratorPair>& other) const override {
+  bool NotEquals(const AbstractIterator<IteratorEntry>& other) const override {
     const auto* other_iterator = down_cast<const UsearchVectorIterator*>(&other);
     if (!other_iterator) return true;
     return it_ != other_iterator->it_;
@@ -109,19 +118,23 @@ class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
   size_t dimensions_;              // Dimensionality of the vectors
   member_citerator_t it_; // Iterator over the internal Usearch entities
   const index_dense_gt<VectorId>* index_;
+  const vector_index::VectorPayloadMap* payloads_;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class UsearchIndex :
-    public vector_index::IndexWrapperBase<
+    public vector_index::IndexWrapperWithExternalPayload<
         UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
+  using Base = vector_index::IndexWrapperWithExternalPayload<
+      UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult>;
   using IndexImpl = index_dense_gt<VectorId>;
 
   UsearchIndex(
       const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
-      const MemTrackerPtr& mem_tracker)
-      : block_cache_(block_cache),
+      const MemTrackerPtr& mem_tracker, vector_index::StoreVectorPayload store_vector_payload)
+      : Base(store_vector_payload),
+        block_cache_(block_cache),
         dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
         metric_(options.CreateMetric<Vector>()),
@@ -131,19 +144,21 @@ class UsearchIndex :
     consumption_.Init(mem_tracker);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
+  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> BeginImpl()
+      const override {
     return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cbegin(), &index_);
+        dimensions_, index_.cbegin(), &index_, this->payloads());
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
+  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> EndImpl()
+      const override {
     return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cend(), &index_);
+        dimensions_, index_.cend(), &index_, this->payloads());
   }
 
-  Status Reserve(
+  Status DoReserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
-      rocksdb::Cache::ReservationMode reservation_mode) override {
+      rocksdb::Cache::ReservationMode reservation_mode) {
     // Reserve block cache space before allocating the index to reject the operation in
     // strict mode without first allocating the memory it is intended to control.
     RETURN_NOT_OK(this->ReserveBlockCacheSpace(
@@ -175,7 +190,7 @@ class UsearchIndex :
     return Status::OK();
   }
 
-  Status DoInsert(VectorId vector_id, const Vector& v) {
+  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v) {
     // addPoint grows the node and vector tape arenas; the per-thread search contexts buffer
     // does not change, so only the data tracker is updated.
     auto se = UpdateDataConsumptionOnExit();
@@ -183,7 +198,7 @@ class UsearchIndex :
     RSTATUS_DCHECK(
         add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
         add_result.error.release());
-    return Status::OK();
+    return add_result.slot;
   }
 
   size_t Size() const override {
@@ -202,13 +217,13 @@ class UsearchIndex :
     return index_.estimate_num_vectors_for_bytes(bytes_limit);
   }
 
-  Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(
+  Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> DoSaveIndex(
       const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2)
         << path << ", size: " << index_.size() << ", backend: " << HnswBackend_Name(backend_);
     if (backend_ == HnswBackend::YB_HNSW_USEARCH) {
-      return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_);
+      return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_, this->payloads());
     }
     try {
       if (!index_.save(output_file_t(path.c_str()))) {
@@ -220,7 +235,7 @@ class UsearchIndex :
     return nullptr;
   }
 
-  Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
+  Status DoLoadIndex(const std::string& path, size_t max_concurrent_reads) {
     // Loading replaces the index entirely, which can invalidate both data and search context
     // sizes; refresh both children.
     auto se = UpdateAllConsumptionOnExit();
@@ -250,16 +265,25 @@ class UsearchIndex :
       return result_vec;
     }
     SemaphoreLock lock(*search_semaphore_);
+    // Usearch could copy the predicate, so pass a thin lambda over the stateful adapter.
+    vector_index::VectorIdFilterAdapter filter(options.filter, this->payloads());
     auto usearch_results = index_.filtered_search_with_ef(
-        query_vector.data(), options.max_num_results, options.filter, options.ef,
-        IndexImpl::any_thread());
+        query_vector.data(), options.max_num_results,
+        [&filter](const VectorId& vector_id, size_t slot) { return filter(vector_id, slot); },
+        options.ef, IndexImpl::any_thread());
+    RETURN_NOT_OK(filter.status());
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());
     result_vec.reserve(usearch_results.size());
+    const auto* payloads = this->payloads();
     for (size_t i = 0; i < usearch_results.size(); ++i) {
       auto match = usearch_results[i];
-      result_vec.emplace_back(match.member.key, match.distance);
+      ValueBuffer payload;
+      if (payloads) {
+        payload.Assign(VERIFY_RESULT(payloads->Get(match.member.slot)));
+      }
+      result_vec.emplace_back(match.member.key, match.distance, std::move(payload));
     }
     return result_vec;
   }
@@ -356,12 +380,13 @@ class UsearchIndexTraits :
   }
 
   vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
-      vector_index::FactoryMode mode) const override {
+      vector_index::FactoryMode mode,
+      vector_index::StoreVectorPayload store_vector_payload) const override {
     if (backend_ == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
       return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
     }
     return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
-        block_cache_, options_, backend_, mem_tracker_);
+        block_cache_, options_, backend_, mem_tracker_, store_vector_payload);
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -372,6 +397,10 @@ class UsearchIndexTraits :
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
     return IndexImpl::estimate_num_vectors_for_bytes(
         bytes_limit, metric_, CreateIndexDenseConfig(options_));
+  }
+
+  bool StoresPayloadInSeparateFile() const override {
+    return true;
   }
 
  private:

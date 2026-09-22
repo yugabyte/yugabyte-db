@@ -1,7 +1,9 @@
 import Clipboard from 'clipboard';
-import { setCookie } from 'browser-cookie-utils';
+import { setCookie, deleteCookie } from 'browser-cookie-utils';
 
 const $ = window.jQuery;
+
+let activeGroups = window.OnetrustActiveGroups || '';
 let yugabytePageFinderList = [];
 
 /**
@@ -258,10 +260,37 @@ function observeDocsHeaderHeight() {
   }
 }
 
+/**
+ * Delete internal cookies on updating consent.
+ */
+function deleteInternalCookies() {
+  if (activeGroups.indexOf('C0003') === -1) {
+    deleteCookie('leftMenuWidth');
+    deleteCookie('leftMenuShowHide');
+
+    deleteCookie('utm_check');
+    deleteCookie('utm_campaign');
+    deleteCookie('utm_content');
+    deleteCookie('utm_medium');
+    deleteCookie('utm_source');
+    deleteCookie('utm_term');
+  }
+}
+
+window.addEventListener('OneTrustGroupsUpdated', () => {
+  activeGroups = window.OnetrustActiveGroups;
+
+  deleteInternalCookies();
+});
+
 $(document).ready(() => {
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
     $('body').addClass('is-safari');
+  }
+
+  if (activeGroups.indexOf('C0003') === -1) {
+    deleteInternalCookies();
   }
 
   const pageFinderContainer = document.querySelectorAll('.page-finder .finder-panel .inner-container');
@@ -391,7 +420,7 @@ $(document).ready(() => {
       }
 
       $(document).unbind('mousemove');
-      if ($('body').hasClass('dragging')) {
+      if ($('body').hasClass('dragging') && activeGroups.indexOf('C0003') > -1) {
         setCookie('leftMenuWidth', mouseMoveX, {
           timeToLive: 3,
           unit: 'month'
@@ -859,11 +888,13 @@ $(window).resize(() => {
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');
-  setTimeout(() => {
-    setCookie('leftMenuWidth', 300, {
-      timeToLive: 3,
-      unit: 'month'
-    });
-  }, 1000);
+  if (activeGroups.indexOf('C0003') > -1) {
+    setTimeout(() => {
+      setCookie('leftMenuWidth', 300, {
+        timeToLive: 3,
+        unit: 'month'
+      });
+    }, 1000);
+  }
   yugabytePageFinderWidth();
 });

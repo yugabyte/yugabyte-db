@@ -27,7 +27,7 @@ YugabyteDB Anywhere also supports [xCluster](../../architecture/docdb-replicatio
 YBA supports these deployments in the following environments:
 
 - On-premises - YBA can deploy YugabyteDB on VMs or bare metal hosts running various flavors of Linux, with the flexibility required to accommodate organizational security and compliance needs.
-- Public clouds - YBA can deploy cloud-native YugabyteDB clusters in AWS, Azure, and GCP. YBA understands the native instance types, volume types, availability zones, regions, and OS image availability on each cloud, and maps them seamlessly to YugabyteDB's fault tolerance and performance configurations.
+- Public clouds - YBA can deploy cloud-native YugabyteDB clusters in AWS, Azure, GCP, and OCI. YBA understands the native instance types, volume types, availability zones, regions, and OS image availability on each cloud, and maps them seamlessly to YugabyteDB's fault tolerance and performance configurations.
 - Kubernetes - YBA can deploy YugabyteDB in Kubernetes clusters and both map the zones available in a single Kubernetes cluster, and map multiple regions across different Kubernetes clusters to YugabyteDB's fault tolerance capabilities.
 
 ### Additional features
@@ -35,8 +35,8 @@ YBA supports these deployments in the following environments:
 YBA supports the following additional features:
 
 - Encryption in transit, with support for CA and self-signed certificates.
-- Encryption at rest, with integration with major Key Management Services (KMS), including AWS, GCP, Azure, and Hashicorp Vault.
-- Scheduled backups to cloud native storage such as AWS S3, Google GCS, and Azure Storage, as well as to vanilla NFS storage.
+- Encryption at rest, with integration with major Key Management Services (KMS), including AWS, GCP, Azure, OCI Vault, and Hashicorp Vault.
+- Scheduled backups to cloud native storage such as AWS S3, Google GCS, Azure Storage, and OCI Object Storage, as well as to vanilla NFS storage.
 - Alerting and monitoring, using [Prometheus](https://prometheus.io).
 - Integration with LDAP and OIDC for authentication.
 - High availability configuration for fast recovery of YBA in case of an outage.
@@ -80,13 +80,13 @@ YBA uses the cloud configuration information in a provider to deploy and manage 
 YBA supports three major types of provider configurations:
 
 1. On-premises.
-1. Public Cloud (AWS, GCP, or Azure).
+1. Public Cloud (AWS, GCP, Azure, or OCI).
 1. Kubernetes (for example, VMware Tanzu, Red Hat OpenShift, or Managed Kubernetes Service).
 
 | | On-premises | Cloud | Kubernetes |
 | :--- | :--- | :--- | :--- |
 | Advantages | Maximum flexibility | Maximum automation | It's&nbsp;Kubernetes |
-| Platforms | Private cloud, bare metal,<br>AWS, Azure, GCP | AWS, Azure, GCP | Kubernetes |
+| Platforms | Private cloud, bare metal,<br>AWS, Azure, GCP, OCI | AWS, Azure, GCP, OCI | Kubernetes |
 | Permissions for YBA | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
 | Node&nbsp;provisioning | Manually created, with automatic provisioning using a script | Automatically created and provisioned | Via Helm |
 
@@ -105,7 +105,7 @@ With the on-premises provider, after creating VMs manually (that is, outside of 
 
 ### Public cloud
 
-If you are deploying a universe to a public cloud (AWS, Azure, or GCP) and want maximum automation when managing clusters (creating them, scaling them, patching the OS, and so on), use a public cloud provider configuration. This approach does require that you provide YBA with cloud and OS privileges.
+If you are deploying a universe to a public cloud (AWS, Azure, GCP, or OCI) and want maximum automation when managing clusters (creating them, scaling them, patching the OS, and so on), use a public cloud provider configuration. This approach does require that you provide YBA with cloud and OS privileges.
 
 For example:
 
@@ -117,3 +117,93 @@ This approach allows for maximum automation. Also, you do have the option to spe
 ### Kubernetes
 
 If you are deploying a universe to Kubernetes, use a Kubernetes provider.
+
+## New experience
+
+{{<tags/feature/ea idea="285">}}Starting in v2026.1.2.0, YugabyteDB Anywhere features a new and improved experience, with many usability enhancements.
+
+Throughout the documentation, steps that differ between the two UIs are marked as follows:
+
+- {{<tags/ui/new>}} Steps for the new experience
+- {{<tags/ui/classic>}} Steps for the classic UI
+
+### Enable the new experience
+
+While in Early Access, the new experience is not available by default.
+
+To enable the new experience, do the following:
+
+- To enable the experience for Super Admin, set the **Enable new Universe experience** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_new_universe_experience`) to true.
+- To enable the experience for all users, set the **Enable new Universe experience for all users** Global Runtime Configuration option (config key `yb.ui.enable_new_universe_experience_for_all_users`) to true.
+
+Refer to [Manage runtime configuration settings](../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+
+### New and improved
+
+The new experience provides significant enhancements and new features, including: 
+
+- New Universe Configuration Wizard
+
+    Set up and manage universes using a wizard in **Guided** or **Expert** mode to help you build the right topology. In **Guided** mode, choose how resilient you want your universe to be and build from there; **Expert** mode gives you full control over replication factor and per-zone node counts.
+    
+    - [Plan your universe](../create-deployments/create-universes-overview/)
+    - [Create a universe](../create-deployments/create-universes-wizard)
+
+- Preferred availability zone ranking
+
+    You can now rank preferred regions and availability zones to pin tablet leaders and optimize read and write latency.
+    
+    [Learn about preferred regions and zones](../create-deployments/create-universes-overview/#preferred-region)
+
+- Add Read Replica wizard
+
+    Add a read replica to your universe using a new wizard, then edit placement, hardware, and flags independently.
+    
+    [Add a read replica](../create-deployments/read-replicas/)
+
+- Review before you apply
+
+    Placement and hardware changes now provide a summary of current and new values before you confirm. For vertical scaling, choose whether to resize existing nodes (smart resize) or migrate to a new set of nodes.
+    
+    [Scale and edit universes](../scale-deployments/edit-universe/)
+
+- Centralized universe settings
+
+    Access all your universe configuration settings from a single **Settings** tab.
+
+    See [Where did features move](#where-did-features-move).
+
+### Where did features move?
+
+Universes have a new **Settings** tab for all universe configuration settings, organized as follows:
+
+- General: Cluster information
+- Placement: Resilience or replication factor, regions, availability zones, and ranked preferred regions
+- Hardware: Instance types and disk
+- Security: Network access, encryption in transit, and encryption at rest
+- Database: API endpoints and authentication (YSQL/YCQL), additional features, and configuration flags
+- Advanced: Proxy settings, ports, node access, and Kubernetes overrides
+- Logs: Database query and audit log settings
+- Telemetry Export: Log and metrics export
+
+See where features have moved:
+
+| {{<tags/ui/classic>}} | {{<tags/ui/new>}} |
+| :--- | :--- |
+| Edit Universe (Region, AZ, and node placement) | Settings > Placement |
+| Edit Universe (Instance Configuration) | Settings > Hardware |
+| Edit Universe (Place Masters on dedicated nodes) | Settings > Placement > Advanced Placement Options |
+| Edit Universe (User Tags) | Settings > Advanced > User Tags |
+| Add Read Replica / Edit Read Replica | Settings > Placement |
+| Create Universe > Configure Read Replica | Add after creating the universe (Settings > Placement) |
+| Edit Flags | Settings > Database > Advanced Config Flags |
+| Edit Postgres Compatibility | Settings > Database > Features |
+| Connection Pooling | Settings > Database > Features |
+| Edit YSQL / YCQL Configuration | Settings > Database > Interface |
+| Edit Security > Encryption in-Transit | Settings > Security > Encryption in Transit |
+| Edit Security > Encryption at Rest | Settings > Security > Encryption at Rest |
+| Edit Kubernetes Overrides | Settings > Advanced > Helm Overrides |
+| Logs / Enable Database Audit Logging | Settings > Logs |
+| Logs & Metrics Export | Settings > Telemetry Export |
+| Metrics > Export Metrics | Settings > Telemetry Export |

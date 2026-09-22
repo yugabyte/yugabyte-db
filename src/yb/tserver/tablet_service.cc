@@ -226,6 +226,13 @@ DEFINE_test_flag(double, respond_write_with_abort_probability, 0.0,
 
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
+// Lets one tserver stand in for a build that hashes differently, so the mixed-version case is
+// reachable from a test rather than by running two builds.
+DEFINE_test_flag(int32, dump_tablet_data_hash_scheme_version, -1,
+    "Overrides the hash scheme version DumpTabletData reports. -1 reports the real one, 0 leaves "
+    "the field unset as a tserver from before it existed does, and a positive value reports that "
+    "version.");
+
 DECLARE_bool(disable_alter_vs_write_mutual_exclusion);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
@@ -324,16 +331,6 @@ DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
 
 DEFINE_test_flag(uint32, pause_remote_pg_query_execution_ms, 0,
     "Used in tests to sleep before executing a remote PG query.");
-
-#if defined ADDRESS_SANITIZER
-// ASAN tests run on machines with limited disk space, so disable disk full checks.
-constexpr bool kRejectWritesWhenDiskFullDefault = false;
-#else
-constexpr bool kRejectWritesWhenDiskFullDefault = true;
-#endif
-
-DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
-    "Reject incoming writes to the tablet if we are running out of disk space.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
@@ -931,22 +928,21 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
   const auto& index_map = *index_map_result;
+  // For YSQL, take the index info from the request payload and do not consult the tablet's index
+  // map at all.  Correctness of the online index build is enforced on the postgres side through
+  // pg_index, and the permission state the map carries is about to stop reaching YSQL tablets
+  // altogether (#33037).  For YCQL, the tablet's index map is the source of the index info, it
+  // must be at exactly the DO_BACKFILL permission, and the permission checks below still apply.
   std::vector<qlexpr::IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
+    index_ids.push_back(idx.table_id());
+    if (is_pg_table) {
+      indexes_to_backfill.emplace_back(idx);
+      continue;
+    }
     auto result = index_map->FindIndex(idx.table_id());
-    if (result) {
-      const auto* index_info = *result;
-      indexes_to_backfill.push_back(*index_info);
-      index_ids.push_back(index_info->table_id());
-
-      IndexInfoPB idx_info_pb;
-      index_info->ToPB(&idx_info_pb);
-      all_at_backfill &=
-          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
-      all_past_backfill &=
-          idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
-    } else {
+    if (!result) {
       const auto& index_table_id = idx.table_id();
       LOG(INFO) << "index " << index_table_id << " not found in tablet metadata";
       *resp->add_failed_index_ids() = index_table_id;
@@ -958,31 +954,35 @@ void TabletServiceAdminImpl::BackfillIndex(
           TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
       return;
     }
+    indexes_to_backfill.push_back(**result);
+    all_at_backfill &= (*result)->index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+    all_past_backfill &= (*result)->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
   }
 
-  if (!all_at_backfill) {
+  if (!is_pg_table) {
     if (all_past_backfill) {
-      // Change this to see if for all indexes: IndexPermission > DO_BACKFILL.
+      // This is possible if this tablet completed the backfill, but the master failed over before
+      // other tablets could complete.  The new master is redoing the backfill, so it is safe to
+      // ignore this request.
       LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
                    << " after all indexes have moved past DO_BACKFILL. IndexMap is "
                    << AsString(index_map);
-      // This is possible if this tablet completed the backfill. But the master failed over before
-      // other tablets could complete.
-      // The new master is redoing the backfill. We are safe to ignore this request.
       context.RespondSuccess();
       return;
     }
 
-    DCHECK_NE(our_schema_version, their_schema_version);
-    SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS_SUBSTITUTE(
-            InvalidArgument,
-            "Tablet has a different schema $0 vs $1. "
-            "Requested index is not ready to backfill. IndexMap: $2",
-            our_schema_version, their_schema_version, AsString(index_map)),
-        TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-    return;
+    if (!all_at_backfill) {
+      DCHECK_NE(our_schema_version, their_schema_version);
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_SUBSTITUTE(
+              InvalidArgument,
+              "Tablet has a different schema $0 vs $1. "
+              "Requested index is not ready to backfill. IndexMap: $2",
+              our_schema_version, their_schema_version, AsString(index_map)),
+          TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+      return;
+    }
   }
 
   Status backfill_status;
@@ -1326,18 +1326,26 @@ void TabletServiceImpl::VerifyTableRowRange(
 
   const CoarseTimePoint& deadline = context.GetClientDeadline();
 
-  // Wait for SafeTime to get past read_at;
-  const HybridTime read_at(req->read_time());
+  // Wait for SafeTime to get past read_at. Without a caller supplied read time verify as of
+  // MaxGlobalNow() rather than at the replica's current safe time, which only advances as the
+  // leader propagates it and thus may name a snapshot from before writes the caller expects to
+  // verify - e.g. a just completed index backfill, whose rows would then all be reported as
+  // missing. MaxGlobalNow() rather than Now() because this replica's clock may lag the cluster by
+  // up to the max clock skew, and the request is served by any peer, not just the leader.
+  const HybridTime read_at =
+      req->has_read_time() ? HybridTime(req->read_time()) : server_->Clock()->MaxGlobalNow();
   DVLOG(1) << "Waiting for safe time to be past " << read_at;
   const auto safe_time = tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
   DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
-    LOG(DFATAL) << "Could not get a good enough safe time " << safe_time.ToString();
+    // A lagging replica that never reaches read_at before the deadline is an expected outcome, not
+    // an invariant violation.
+    LOG(WARNING) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
     return;
   }
 
-  auto valid_read_at = req->has_read_time() ? read_at : *safe_time;
+  auto valid_read_at = read_at;
   std::string verified_until = "";
   std::unordered_map<TableId, uint64> consistency_stats;
 
@@ -2663,12 +2671,10 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
-  if (FLAGS_reject_writes_when_disk_full) {
-    SCHECK(
-        tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
-        "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
-        tablet.peer->tablet_metadata()->fs_manager()->uuid());
-  }
+  SCHECK(
+      tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
+      "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
+      tablet.peer->tablet_metadata()->fs_manager()->uuid());
 
   // For postgres requests:
   // 1. For non-system catalog tablets: check that the request has a catalog version higher
@@ -4209,17 +4215,34 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
   }
   Slice start_key = req.has_start_key() ? Slice(req.start_key()) : Slice();
   Slice end_key = req.has_end_key() ? Slice(req.end_key()) : Slice();
+  const uint64_t max_rows = req.has_max_rows() ? req.max_rows() : 0;
+  std::string next_key;
   RETURN_NOT_OK(
       tablet::DumpTabletData(
           *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, max_read_time_wait,
-          deadline, xor_hash, row_count, target_table_id, start_key, end_key));
+          deadline, xor_hash, row_count, target_table_id, start_key, end_key, max_rows,
+          &next_key));
   DumpTabletDataResponsePB resp;
   resp.set_row_count(row_count);
   resp.set_xor_hash(xor_hash);
+  // Always sent, so a caller can tell "this server hashes the way I do" from "this server is too
+  // old to say", which differ during a rolling upgrade. A test may alter it to impersonate such a
+  // server; 0 means leave it unset, as that server would.
+  const auto scheme_version_override = FLAGS_TEST_dump_tablet_data_hash_scheme_version;
+  if (scheme_version_override < 0) {
+    resp.set_hash_scheme_version(tablet::kTabletDataHashSchemeVersion);
+  } else if (scheme_version_override > 0) {
+    resp.set_hash_scheme_version(scheme_version_override);
+  }
+  if (!next_key.empty()) {
+    resp.set_next_key(next_key);
+  }
 
   if (file) {
     RETURN_NOT_OK(file->Append(Format("\nRow count: $0\n", row_count)));
     RETURN_NOT_OK(file->Append(Format("XOR hash: $0\n", xor_hash)));
+    RETURN_NOT_OK(
+        file->Append(Format("Hash scheme version: $0\n", tablet::kTabletDataHashSchemeVersion)));
     RETURN_NOT_OK(file->Close());
   }
   return resp;

@@ -116,6 +116,8 @@ export interface AWSProviderEditFormFieldValues {
   dbNodePublicInternetAccess: boolean;
   editAccessKey: boolean;
   editSSHKeypair: boolean;
+  enableFederatedIam: boolean;
+  federatedIamAudience: string;
   enableHostedZone: boolean;
   hostedZoneId: string;
   ntpServers: string[];
@@ -186,6 +188,10 @@ const VALIDATION_SCHEMA = object().shape({
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
+  }),
+  federatedIamAudience: string().when('enableFederatedIam', {
+    is: true,
+    then: string().required('Federated IAM audience is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
@@ -381,6 +387,7 @@ export const AWSProviderEditForm = ({
   ];
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const enableHostedZone = formMethods.watch('enableHostedZone');
+  const enableFederatedIam = formMethods.watch('enableFederatedIam');
   const keyPairManagement = formMethods.watch('sshKeypairManagement');
   const editAccessKey = formMethods.watch('editAccessKey', defaultValues.editAccessKey);
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
@@ -546,6 +553,40 @@ export const AWSProviderEditForm = ({
                     disabled={getIsFieldDisabled(
                       ProviderCode.AWS,
                       'hostedZoneId',
+                      isFormDisabled,
+                      isProviderInUse
+                    )}
+                    fullWidth
+                  />
+                </FormField>
+              )}
+              <FormField>
+                <FieldLabel
+                  infoTitle="Federated IAM"
+                  infoContent="Enable GCS-on-AWS cross-cloud federated IAM for this provider's DB nodes. When on, provide the GCP Workload Identity Federation audience."
+                >
+                  Enable Federated IAM
+                </FieldLabel>
+                <YBToggleField
+                  name="enableFederatedIam"
+                  control={formMethods.control}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AWS,
+                    'enableFederatedIam',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
+                />
+              </FormField>
+              {enableFederatedIam && (
+                <FormField>
+                  <FieldLabel>Federated IAM Audience</FieldLabel>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="federatedIamAudience"
+                    disabled={getIsFieldDisabled(
+                      ProviderCode.AWS,
+                      'federatedIamAudience',
                       isFormDisabled,
                       isProviderInUse
                     )}
@@ -881,6 +922,8 @@ const constructDefaultFormValues = (
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   editAccessKey: false,
   editSSHKeypair: false,
+  enableFederatedIam: !!providerConfig.details.cloudInfo.aws.enableFederatedIam,
+  federatedIamAudience: providerConfig.details.cloudInfo.aws.federatedIamAudience ?? '',
   enableHostedZone: !!providerConfig.details.cloudInfo.aws.awsHostedZoneId,
   hostedZoneId: providerConfig.details.cloudInfo.aws.awsHostedZoneId,
   ntpServers: providerConfig.details.ntpServers,
@@ -971,7 +1014,11 @@ const constructProviderPayload = async (
               ? formValues.secretAccessKey
               : providerConfig.details.cloudInfo.aws.awsAccessKeySecret
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          enableFederatedIam: formValues.enableFederatedIam,
+          ...(formValues.enableFederatedIam && {
+            federatedIamAudience: formValues.federatedIamAudience
+          })
         }
       },
       ntpServers: formValues.ntpServers,

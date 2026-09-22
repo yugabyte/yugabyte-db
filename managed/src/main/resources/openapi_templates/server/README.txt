@@ -96,13 +96,13 @@ Description:
       additionalDetails: Adding this property generates the GFlags additionalDetails to be logged.
           Can be omitted.
 
-4. x-yba-multipart (at operation level)
+4. x-yba-api-multipart (at operation level)
 This is a boolean extension used to trigger the code generation flow for multipart form data manually.
 Added this because code generation in multipart form data was not being triggered automatically based
 on the yamls.
 
 Example:
-x-yba-multipart: true
+x-yba-api-multipart: true
 
 5. x-yba-file-setter (at requestBody level)
 This is a string extension to generate the setter for files in multipart form data. Added because the
@@ -145,3 +145,18 @@ Example (thin split sources — only vendor keys and optional x-data-entities-de
 Thin PagedResp sources declare x-data-container / x-data-item (and optional x-data-entities-description) only;
 openapi/redocly.yaml loads a preprocessor plugin (plugins/x-data-container-expand.cjs) that injects
 allOf + properties.entities $refs in memory during `redocly bundle`, so split YAML is never patched on disk.
+
+9. x-yba-api-stream-response (at operation level)
+Boolean, valid only on an operation whose success response is binary. It makes the generated Go
+client hand the response body back to the caller unread instead of buffering it, so on a JSON
+operation it would drop the response model from the client signature altogether.
+scripts/openapi_process_vendor_ext.py rejects it on a non-binary operation.
+
+The streaming contract also reaches the Stoplight docs and the Java and Python clients, so
+describe it in the operation's "description" in the spec too, not only in these READMEs.
+
+Consumed only by the Go client templates - see client/go/templates/README.txt for the generated
+signature and the caller's obligation to close the body.
+
+Example:
+x-yba-api-stream-response: true

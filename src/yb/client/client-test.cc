@@ -66,6 +66,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
@@ -98,10 +99,12 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -2840,6 +2843,181 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   FlushSessionOrDie(session);
   ASSERT_OK(sync.Wait());
   ASSERT_EQ(attempt_num, 2);
+}
+
+namespace {
+
+constexpr auto kInsertMissingPeersSyncPoint =
+    "MetaCache::DoRefreshTabletInfoWithConsensusInfo:BeforeInsertMissingPeers";
+
+// Builds a TabletConsensusInfoPB from the master's tablet locations, as a tablet server would
+// piggyback onto a response.
+tserver::TabletConsensusInfoPB MakeTabletConsensusInfo(
+    const master::TabletLocationsPB& locations, const std::string& leader_uuid,
+    int64_t committed_op_index) {
+  tserver::TabletConsensusInfoPB info;
+  info.set_tablet_id(locations.tablet_id());
+  auto& consensus_state = *info.mutable_consensus_state();
+  consensus_state.set_current_term(1);
+  consensus_state.set_leader_uuid(leader_uuid);
+  auto& config = *consensus_state.mutable_config();
+  config.set_committed_op_index(committed_op_index);
+  for (const auto& replica : locations.replicas()) {
+    const auto& ts_info = replica.ts_info();
+    auto& peer = *config.add_peers();
+    peer.set_permanent_uuid(ts_info.permanent_uuid());
+    peer.set_member_type(consensus::PeerMemberType::VOTER);
+    *peer.mutable_last_known_private_addr() = ts_info.private_rpc_addresses();
+    *peer.mutable_last_known_broadcast_addr() = ts_info.broadcast_addresses();
+    *peer.mutable_cloud_info() = ts_info.cloud_info();
+  }
+  return info;
+}
+
+struct RefreshBurstResult {
+  int num_accepted = 0;
+  // Number of threads that took the exclusive lock to cache an unknown peer.
+  int num_escalated = 0;
+};
+
+// Hands the same consensus info to num_threads threads and releases them together.
+RefreshBurstResult ApplyConsensusInfoConcurrently(
+    YBClient* client, const tserver::TabletConsensusInfoPB& info, int num_threads) {
+  std::atomic<int> num_accepted{0};
+  std::atomic<int> num_escalated{0};
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->SetCallBack(kInsertMissingPeersSyncPoint, [&num_escalated](void*) {
+    num_escalated.fetch_add(1, std::memory_order_relaxed);
+  });
+  sync_point->EnableProcessing();
+
+  {
+    CountDownLatch start(1);
+    TestThreadHolder threads;
+    for (int i = 0; i != num_threads; ++i) {
+      threads.AddThreadFunctor([client, &info, &num_accepted, &start] {
+        start.Wait();
+        if (client->RefreshTabletInfoWithConsensusInfo(info)) {
+          num_accepted.fetch_add(1, std::memory_order_relaxed);
+        }
+      });
+    }
+    start.CountDown();
+    threads.JoinAll();
+  }
+
+  sync_point->DisableProcessing();
+  sync_point->ClearAllCallBacks();
+  return {
+      .num_accepted = num_accepted.load(std::memory_order_relaxed),
+      .num_escalated = num_escalated.load(std::memory_order_relaxed)};
+}
+
+}  // namespace
+
+// A burst of identical consensus info refreshes should apply exactly once, with the rest
+// discarded without taking the exclusive lock.
+TEST_F(ClientTest, TestMetacachePartialRefreshDiscardsRedundantResponses) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) = true;
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(kPgsqlTableId, 0, &tablets));
+  const auto& locations = tablets.Get(0);
+  const auto& tablet_id = locations.tablet_id();
+
+  // Populates ts_cache_ with an entry for every peer of this tablet.
+  auto remote_tablet =
+      ASSERT_RESULT(GetRemoteTablet(tablet_id, /* use_cache= */ false, client_.get()));
+
+  std::vector<std::string> peer_uuids;
+  for (const auto& replica : locations.replicas()) {
+    peer_uuids.push_back(replica.ts_info().permanent_uuid());
+  }
+  ASSERT_EQ(peer_uuids.size(), 3);
+
+  // Concurrent readers that should never observe the opid index go backwards or the replica list
+  // partially rebuilt.
+  TestThreadHolder readers;
+  for (int i = 0; i != 4; ++i) {
+    readers.AddThreadFunctor([this, &tablet_id, &remote_tablet, &peer_uuids, &readers] {
+      auto last_opid_index = internal::RemoteTablet::kUnknownOpIdIndex;
+      while (!readers.stop_flag().load(std::memory_order_relaxed)) {
+        auto opid_index = client_->GetRaftConfigOpidIndex(tablet_id);
+        ASSERT_GE(opid_index, last_opid_index);
+        last_opid_index = opid_index;
+        ASSERT_EQ(remote_tablet->GetRemoteTabletServers().size(), peer_uuids.size());
+      }
+    });
+  }
+
+  const auto base_opid_index = remote_tablet->raft_config_opid_index();
+  for (size_t round = 0; round != 5; ++round) {
+    const auto& leader_uuid = peer_uuids[round % peer_uuids.size()];
+    const auto opid_index = base_opid_index + 1 + static_cast<int64_t>(round);
+    const auto info = MakeTabletConsensusInfo(locations, leader_uuid, opid_index);
+
+    const auto result =
+        ApplyConsensusInfoConcurrently(client_.get(), info, /* num_threads= */ 16);
+    ASSERT_EQ(result.num_accepted, 1) << "round " << round;
+    ASSERT_EQ(result.num_escalated, 0) << "round " << round;
+
+    ASSERT_EQ(remote_tablet->raft_config_opid_index(), opid_index);
+    ASSERT_EQ(remote_tablet->current_leader_uuid(), leader_uuid);
+    auto* leader = remote_tablet->LeaderTServer();
+    ASSERT_ONLY_NOTNULL(leader);
+    ASSERT_EQ(leader->permanent_uuid(), leader_uuid)
+        << "replicas: " << remote_tablet->ReplicasAsString();
+  }
+
+  readers.Stop();
+}
+
+// A refresh with a previously-unseen peer must escalate to the exclusive lock to cache it, then
+// retry. A burst racing through that path should still apply exactly once.
+TEST_F(ClientTest, TestMetacachePartialRefreshCachesUnknownRaftPeer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) = true;
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(kPgsqlTableId, 0, &tablets));
+  const auto& locations = tablets.Get(0);
+  const auto& tablet_id = locations.tablet_id();
+
+  auto remote_tablet =
+      ASSERT_RESULT(GetRemoteTablet(tablet_id, /* use_cache= */ false, client_.get()));
+
+  const auto& leader_uuid = locations.replicas(0).ts_info().permanent_uuid();
+  const auto opid_index = remote_tablet->raft_config_opid_index() + 1;
+  auto info = MakeTabletConsensusInfo(locations, leader_uuid, opid_index);
+
+  // A peer not in ts_cache_ yet.
+  const std::string kUnknownPeerUuid(32, 'a');
+  auto& config = *info.mutable_consensus_state()->mutable_config();
+  auto unknown_peer = config.peers(0);
+  unknown_peer.set_permanent_uuid(kUnknownPeerUuid);
+  *config.add_peers() = unknown_peer;
+
+  const auto result = ApplyConsensusInfoConcurrently(client_.get(), info, /* num_threads= */ 16);
+  ASSERT_EQ(result.num_accepted, 1);
+  ASSERT_GE(result.num_escalated, 1);
+
+  ASSERT_EQ(remote_tablet->raft_config_opid_index(), opid_index);
+  ASSERT_EQ(remote_tablet->current_leader_uuid(), leader_uuid);
+
+  std::vector<std::string> replica_uuids;
+  for (auto* ts : remote_tablet->GetRemoteTabletServers()) {
+    replica_uuids.push_back(ts->permanent_uuid());
+  }
+  ASSERT_EQ(replica_uuids.size(), locations.replicas_size() + 1);
+  ASSERT_EQ(std::count(replica_uuids.begin(), replica_uuids.end(), kUnknownPeerUuid), 1)
+      << "replicas: " << remote_tablet->ReplicasAsString();
+
+  // The peer is now cached, so this should not need the exclusive lock again.
+  auto next_info = info;
+  next_info.mutable_consensus_state()->mutable_config()->set_committed_op_index(opid_index + 1);
+  const auto next_result =
+      ApplyConsensusInfoConcurrently(client_.get(), next_info, /* num_threads= */ 16);
+  ASSERT_EQ(next_result.num_accepted, 1);
+  ASSERT_EQ(next_result.num_escalated, 0);
 }
 
 // Note: This class has custom initialization for postgres instead of using

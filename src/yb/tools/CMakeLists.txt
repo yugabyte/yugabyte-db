@@ -61,6 +61,7 @@ target_link_libraries(yb-admin
   ${LINK_LIBS})
 
 add_library(yb-admin_lib
+  xcluster_verify.cc
   yb-admin_client.cc
   yb-admin_util.cc)
 target_link_libraries(yb-admin_lib
@@ -243,6 +244,7 @@ ADD_YB_TEST(yb-backup/yb-backup-cross-feature-test)
 ADD_YB_TEST(yb-backup/yb-backup-during-ddl-test)
 ADD_YB_TEST(yb-admin-snapshot-test)
 ADD_YB_TEST(yb-admin-xcluster-test)
+ADD_YB_TEST(xcluster_verify-test)
 ADD_YB_TEST(yb-admin_client-test)
 ADD_YB_TEST(yb-admin-are-nodes-safe-test)
 ADD_YB_TEST(pbc_tools_test)

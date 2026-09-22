@@ -38,6 +38,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -49,6 +50,7 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -57,6 +59,7 @@ using namespace std::literals;
 
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
@@ -94,7 +97,12 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
                                "Allows yb_enable_new_relation_fastpath_write to be applicable "
-                               "inside explicit transaction blocks too.");
+                               "inside explicit transaction blocks too. DDL inside a transaction "
+                               "block can only use the fastpath if the DDL runs in the enclosing "
+                               "transaction, so this flag only takes effect if "
+                               "ysql_yb_ddl_transaction_block_enabled is true.");
+DEFINE_validator(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
 namespace yb::pggate {
 namespace {
@@ -124,7 +132,16 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
   if (!dist_trace::HasActiveContext() || ops.empty()) {
     return;
   }
-  dist_trace::ClearPendingRpcAttrs();
+
+  // Publish the details of the Perform RPC.
+  size_t reads = 0;
+  size_t writes = 0;
+  for (const auto& op : ops) {
+    (op->is_read() ? reads : writes)++;
+  }
+  dist_trace::AddPendingRpcStringAttr("rpc.read_ops", std::to_string(reads));
+  dist_trace::AddPendingRpcStringAttr("rpc.write_ops", std::to_string(writes));
+
   std::string joined_names;
   joined_names.reserve(128);
   std::set<std::string_view> processed;
@@ -853,10 +870,11 @@ Result<FlushFuture> PgSession::FlushOperations(
   // ReadTimeAction helps to determine whether it can safely use the optimization of allowing
   // docdb (which serves the operation) to pick the read time.
 
+  const auto relation_oid = ops.single_relation_oid();
   return FlushFuture{
       VERIFY_RESULT(Perform(
           std::move(ops), { .read_time_action = MakeReadTimeActionForFlush(*pg_txn_manager_) })),
-      *this, metrics_};
+      *this, metrics_, relation_oid};
 }
 
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
@@ -1306,9 +1324,9 @@ Result<PerformFuture> PgSession::RunAsync(
   return DoRunAsync(generator, {}, std::move(cache_options));
 }
 
-PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
+PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux) {
   DCHECK_NE(wait_event, ash::WaitStateCode::kWaitingOnTServer);
-  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
+  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC, aux);
 }
 
 std::string PgSession::LogPrefix() const {

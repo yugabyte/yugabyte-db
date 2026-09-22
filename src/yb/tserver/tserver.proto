@@ -212,7 +212,8 @@ message VerifyTableRowRangeRequestPB {
 
   optional uint32 num_rows = 4;
 
-  // Read time if left empty will be replaced by the earliest safe time to read
+  // Read time if left empty will be replaced by the current cluster-wide maximum hybrid time, so
+  // that everything committed before the request is verified.
   optional fixed64 read_time = 5;
 
   optional fixed64 propagated_hybrid_time = 6;

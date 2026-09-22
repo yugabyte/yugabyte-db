@@ -437,7 +437,7 @@ class ObjectLockManagerImpl {
       REQUIRES(global_mutex_);
   void ConsumePendingSharedLockRequestUnlocked(
       ObjectSharedLockRequest& request) REQUIRES(global_mutex_);
-  void AcquireExclusiveLockIntents(const LockData& data) EXCLUDES(global_mutex_);
+  Status AcquireExclusiveLockIntents(const LockData& data) EXCLUDES(global_mutex_);
   void ReleaseExclusiveLockIntents(const LockStateMap& lockstates_map);
   void ReleaseExclusiveLockIntents(
       std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type);
@@ -685,9 +685,9 @@ void ObjectLockManagerImpl::ConsumePendingSharedLockRequestUnlocked(
   DoLockSingleEntryWithoutConflictCheck(lock_entry, transaction_entry, request.owner);
 }
 
-void ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
+Status ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
   if (!shared_manager_) {
-    return;
+    return Status::OK();
   }
   // Single lock type maps to 1-2 entries.
   boost::container::small_vector<const LockBatchEntry<ObjectLockManager>*, 2> exclusive_locks;
@@ -697,7 +697,16 @@ void ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
     }
   }
   std::lock_guard lock(global_mutex_);
-  shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
+  if (exclusive_locks.empty()) {
+    // If we are not acquiring a lock that needs exclusive lock intents, then we do not conflict
+    // with any fastpath locks and don't need to consume lock requests of other transactions to
+    // handle this acquire.
+    // We still consume requests for this transaction, since we may be in the case where the shared
+    // memory array is at capacity.
+    ConsumePendingSharedLockRequestsUnlocked(data.object_lock_owner.txn_id);
+    return Status::OK();
+  }
+  return shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
       make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
         ConsumePendingSharedLockRequestUnlocked(request);
       }),
@@ -784,7 +793,10 @@ void ObjectLockManagerImpl::Lock(LockData&& data) {
     return;
   }
   if (shared_manager_) {
-    AcquireExclusiveLockIntents(data);
+    if (auto status = AcquireExclusiveLockIntents(data); !status.ok()) {
+      data.callback(status);
+      return;
+    }
     shared_manager_->MarkTServerLoaded(data.object_lock_owner.txn_id);
   }
   DoLock(transaction_entry, std::move(data), IsLockRetry::kFalse);
@@ -1204,9 +1216,6 @@ void ObjectLockManagerImpl::Shutdown() {
   std::vector<std::shared_ptr<WaitForLockersContext>> lock_waiters_trackers;
   {
     std::lock_guard l(global_mutex_);
-    if (shared_manager_) {
-      shared_manager_->Stop();
-    }
     for (auto& [_, entry] : locks_) {
       std::lock_guard obj_lock(entry->mutex);
       auto& index = entry->wait_queue.get<StartUsTag>();
@@ -1239,6 +1248,9 @@ void ObjectLockManagerImpl::Shutdown() {
         << "ref_count of some lock structures is non-zero on shutdown, implies either some "
         << "connections are outstanding or indicates a state corruption of the lock manager.\n"
         << AsString(locks_);
+  }
+  if (shared_manager_) {
+    shared_manager_->Stop();
   }
 }
 

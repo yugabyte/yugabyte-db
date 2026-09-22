@@ -113,6 +113,14 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
     "Set size of per-connection buffer used for io readahead operations in "
     "Ysql Connection Manager");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, cache_coroutine, 256,
+    "Per-worker limit on the number of finished coroutines Ysql Connection Manager keeps for "
+    "reuse. Each client connection runs on a coroutine whose stack is mmap'ed, mprotect'ed and "
+    "munmap'ed, and all three take the process-wide address space lock, so at a high connection "
+    "rate a limit of 0 (no reuse) serializes the workers against each other. The cache does not "
+    "shrink, so a non-zero limit reserves up to ysql_conn_mgr_num_workers * limit stacks for the "
+    "life of the process.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
     "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
 
@@ -141,13 +149,9 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_prep_stmt_close, true,
-    "When enabled, the YSQL Connection Manager forwards Close messages to the backend, which "
-    "drops the prepared statement only if its cached plan is invalid or the connection is sticky; "
-    "valid plans on non-sticky connections are retained for reuse across logical connections. "
-    "When disabled, Close messages are handled as a no-op by the connection manager itself "
-    "and never reach the backend, which can cause errors. "
-    "Requires ysql_conn_mgr_optimized_extended_query_protocol to be enabled.");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
+
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_dealloc_reconciliation, "07_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_deallocate_if_invalid_prep_stmt, "04_2026");
 
@@ -199,12 +203,6 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
     "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
     " can be correctness issues with pipelining.");
 
-DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, enable_dealloc_reconciliation, true,
-    "When enabled, the YSQL Connection Manager tracks prepared statements that have been "
-    "deallocated on the backend in a per-server hashmap and defers evicting them from "
-    "server hashmap till Sync boundary. If set to false, there can be correctness issues "
-    "on sending deallocate and parse for same name of prep stmt within Sync boundary.");
-
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
     "Sampling is disabled if this is set to 0. This flag will only be in effect if "
@@ -229,6 +227,23 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Maximum number of pending TCP connections queued by the kernel on "
     "Connection Manager's listening socket (the backlog argument to listen(2)). "
     "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, full_tls_handshake, true,
+    "When true, Ysql Connection Manager builds its server SSL_CTX via PostgreSQL's "
+    "be_tls_init() so the client-facing TLS handshake honours the full set of "
+    "PostgreSQL SSL GUCs (ssl_ciphers, ssl_min_protocol_version, ssl_ecdh_curve, "
+    "ssl_crl_file, ssl_dh_params_file, etc.). When false, the connection manager "
+    "falls back to the original machinarium-managed SSL_CTX that only honours the "
+    "cert/key/CA files derived from certs_for_client_dir.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, cert_auth, true,
+    "When true, Ysql Connection Manager forwards the leaf certificate presented by the client "
+    "to the backend in the startup packet, so that hba rules that depend on it (cert, "
+    "clientcert=verify-ca, clientcert=verify-full) are evaluated against the real client's "
+    "identity instead of the connection manager's. When false, no certificate is forwarded and "
+    "such rules see a client that presented none. Requires ysql_conn_mgr_full_tls_handshake, "
+    "which is what makes the connection manager verify the client certificate the same way "
+    "PostgreSQL would.");
 
 namespace {
 
@@ -268,11 +283,8 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
-DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
-
-DEFINE_validator(ysql_conn_mgr_enable_dealloc_reconciliation,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_wait_for_rfq_on_sync));
+DEFINE_validator(ysql_conn_mgr_cert_auth,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_full_tls_handshake));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -375,6 +387,10 @@ Status YsqlConnMgrWrapper::Start() {
   }
 
   proc_->SetEnv(YSQL_CONN_MGR_WARMUP_DB, FLAGS_ysql_conn_mgr_warmup_db);
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_FULL_TLS_HANDSHAKE",
+      FLAGS_ysql_conn_mgr_full_tls_handshake ? "true" : "false");
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.

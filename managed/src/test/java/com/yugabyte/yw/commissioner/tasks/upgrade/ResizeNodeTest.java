@@ -19,6 +19,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import api.v2.mappers.UniverseResizeNodeParamsMapper;
+import api.v2.models.ClusterResizeNodeSpec;
+import api.v2.models.ClusterResizeStorageSpec;
+import api.v2.models.PerProcessResizeNodeSpec;
+import api.v2.models.UniverseResizeNodes;
+import api.v2.models.UniverseResizeNodesCluster;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -477,6 +483,57 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .filter(type -> useScratch == (type == PublicCloudConstants.StorageType.Scratch))
         .findFirst()
         .get();
+  }
+
+  @Test
+  public void testResizeIsPossibleWithNestedTserverStorageSpec() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent;
+              userIntent.provider = gcpProvider.getUuid().toString();
+              userIntent.providerType = Common.CloudType.gcp;
+              userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.Persistent;
+              userIntent.deviceInfo.volumeSize = 375;
+              userIntent.deviceInfo.storageClass = "standard";
+            });
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster();
+    createInstanceType(gcpProvider.getUuid(), primaryCluster.userIntent.instanceType);
+
+    // v2 clients send the new volume size both at cluster level and nested under tserver. The
+    // nested spec carries only volumeSize, so it must not erase the universe's storage class.
+    ClusterResizeNodeSpec nodeSpec = new ClusterResizeNodeSpec();
+    nodeSpec.setInstanceType(primaryCluster.userIntent.instanceType);
+    nodeSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(380));
+    PerProcessResizeNodeSpec tserverSpec = new PerProcessResizeNodeSpec();
+    tserverSpec.setInstanceType(primaryCluster.userIntent.instanceType);
+    tserverSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(380));
+    nodeSpec.setTserver(tserverSpec);
+
+    UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
+    resizeCluster.setUuid(primaryCluster.uuid);
+    resizeCluster.setNodeSpec(nodeSpec);
+    UniverseResizeNodes req = new UniverseResizeNodes();
+    req.addClustersItem(resizeCluster);
+
+    UniverseDefinitionTaskParams.Cluster targetCluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            primaryCluster.clusterType, primaryCluster.userIntent.clone());
+    targetCluster.setUuid(primaryCluster.uuid);
+    ResizeNodeParams params = new ResizeNodeParams();
+    params.clusters.add(targetCluster);
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, params);
+
+    assertTrue(
+        ResizeNodeParams.checkResizeIsPossible(
+            primaryCluster.uuid,
+            primaryCluster.userIntent,
+            targetCluster.userIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter()));
   }
 
   private UniverseDefinitionTaskParams.UserIntent createIntent(

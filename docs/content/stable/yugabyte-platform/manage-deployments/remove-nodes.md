@@ -153,25 +153,31 @@ A node status displayed in the UI is not always entirely indicative of the node'
 
 {{< /note >}}
 
-## Start and stop node processes
+## Enter and exit maintenance mode
 
 {{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
 If the universe uses NFS for backup storage, make sure the NFS mount is added to `/etc/fstab` on the node. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
 {{< /warning >}}
 
-### Stop a process
+When performing maintenance on universe nodes, use YugabyteDB Anywhere to stop and start node processes by entering and exiting maintenance mode.
 
-If a node needs to be briefly taken out of service (for example, to perform a quick OS patch), you can click its associated **Actions > Stop Processes**. It is expected that this node will be returned to service soon through the **Actions > Start Processes** operation.
+### Enter maintenance mode
+
+If a node needs to be briefly taken out of service (for example, to perform a quick OS patch), on the **Nodes** tab, click the associated **Actions > Enter Maintenance Mode**.
+
+It is expected that this node will be returned to service soon using **Actions > Exit Maintenance Mode**.
 
 After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
 Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never under-replicated.
 
-In general, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor of 3.
+Typically, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor of 3.
 
-### Start a process
+Note that if you don't exit maintenance mode after a set period of time (15 minutes by default), data will be removed from the node and re-replicated to other nodes (if any) in the same fault domain.
 
-You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
+### Exit maintenance mode
+
+You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Exit Maintenance Mode** corresponding to the node. This returns the node to the Live state.
 
 ## Remove node
 
@@ -232,8 +238,8 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 If a master process is down for more than its [WAL log retention period](../../../reference/configuration/yb-master/#log-min-seconds-to-retain) (defaults to 2 hrs) and then becomes healthy, it will be unable to catch up to its peers. In this scenario, the **Nodes** tab shows that the master is in a healthy state but YugabyteDB Anywhere generates an "under-replicated masters" alert. To fix this situation, do the following:
 
 1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric.
-1. On the **Nodes** page, click the [**Actions > Stop Processes**](#stop-a-process) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
-1. When the "Stop Processes" task completes, click the [**Actions > Start Processes**](#start-a-process) action on the same node.
+1. On the **Nodes** page, click the [**Actions > Enter Maintenance Mode**](#enter-maintenance-mode) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
+1. When the task completes, click the [**Actions > Exit Maintenance Mode**](#exit-maintenance-mode) action on the same node.
 1. Verify that the cluster has an [RF](../../../architecture/key-concepts/#replication-factor-rf) count of healthy masters.
 
 ## Release node instance

@@ -120,6 +120,7 @@ set(DOCDB_DEPS
         PUBLIC vector_index
         PUBLIC yb_ash
         PUBLIC yb_common
+        PUBLIC yb_docdb_properties_collector
         PUBLIC yb_docdb_shared
         PUBLIC yb_dockv
         PUBLIC yb_pggate

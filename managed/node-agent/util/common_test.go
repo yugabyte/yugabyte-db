@@ -55,3 +55,11 @@ func TestRemoveSubfoldersMissingDir(t *testing.T) {
 		t.Fatal("Expected error for missing directory")
 	}
 }
+
+func TestPlatformGetCertificateEndpoint(t *testing.T) {
+	endpoint := PlatformGetCertificateEndpoint("c1234", "my cert/name")
+	expected := "/api/customers/c1234/certificates/my%20cert%2Fname"
+	if endpoint != expected {
+		t.Fatalf("Expected %q, got %q", expected, endpoint)
+	}
+}

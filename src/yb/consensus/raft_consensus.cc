@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <ranges>
 
 #include "yb/common/wire_protocol.h"
 
@@ -222,15 +223,15 @@ DEFINE_NON_RUNTIME_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeader
 
 DEFINE_validator(leader_lease_duration_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        FLAGS_raft_heartbeat_interval_ms < _value,
+        FINAL_FLAG_VALUE(raft_heartbeat_interval_ms) < _value,
         yb::Format("Must be strictly greater than raft_heartbeat_interval_ms: $0",
-            FLAGS_raft_heartbeat_interval_ms)));
+            FINAL_FLAG_VALUE(raft_heartbeat_interval_ms))));
 
 DEFINE_validator(raft_heartbeat_interval_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value < FLAGS_leader_lease_duration_ms,
+        _value < FINAL_FLAG_VALUE(leader_lease_duration_ms),
         yb::Format("Must be strictly less than leader_lease_duration_ms: $0",
-            FLAGS_leader_lease_duration_ms)));
+            FINAL_FLAG_VALUE(leader_lease_duration_ms))));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
@@ -792,24 +793,27 @@ Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
                                      peer_uuid(), tablet_id(), timeout.ToString(), role()));
 }
 
-string RaftConsensus::ServersInTransitionMessage() {
-  string err_msg;
+Status RaftConsensus::CheckNoLiveServersInTransitionUnlocked() {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
   const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
-  auto servers_in_transition = CountServersInTransition(active_config);
-  auto committed_servers_in_transition = CountServersInTransition(committed_config);
-  LOG_WITH_PREFIX(INFO) << Format(
-      "Active config has $0 and committed has $1 servers in transition.", servers_in_transition,
-      committed_servers_in_transition);
-  if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
-    err_msg = Format(
-        "Leader not ready to step down as there are $0 active config peers"
-        " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
-        servers_in_transition, committed_servers_in_transition, active_config.ShortDebugString(),
-        committed_config.ShortDebugString());
-    LOG_WITH_PREFIX(INFO) << err_msg;
+  auto count_live_in_transition = [this](const RaftConfigPB& config) {
+    return std::ranges::count_if(config.peers(), [this](const auto& peer) {
+      return (peer.member_type() == PeerMemberType::PRE_VOTER ||
+              peer.member_type() == PeerMemberType::PRE_OBSERVER) &&
+             queue_->IsPeerLive(peer.permanent_uuid());
+    });
+  };
+  const auto live_active = count_live_in_transition(active_config);
+  const auto live_committed = count_live_in_transition(committed_config);
+  if (live_active == 0 && live_committed == 0) {
+    return Status::OK();
   }
-  return err_msg;
+  return STATUS_FORMAT(
+      IllegalState,
+      "Leader not ready to step down as there are $0 live active config peers"
+      " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
+      live_active, live_committed, active_config.ShortDebugString(),
+      committed_config.ShortDebugString());
 }
 
 Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool graceful) {
@@ -891,12 +895,13 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     return Status::OK();
   }
 
-  // The leader needs to be ready to perform a step down. There should be no PRE_VOTER in both
-  // active and committed configs - ENG-557.
-  const string err_msg = ServersInTransitionMessage();
-  if (!err_msg.empty()) {
+  // Refuse while a live PRE_VOTER/PRE_OBSERVER may still be in remote bootstrap: this leader holds
+  // the WAL anchors, and a successor may have GCed those segments. A lost transitioning peer does
+  // not block; promotion is leader-driven (#29795).
+  if (auto s = CheckNoLiveServersInTransitionUnlocked(); !s.ok()) {
+    LOG_WITH_PREFIX(INFO) << s;
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(STATUS(IllegalState, err_msg), resp->mutable_error()->mutable_status());
+    StatusToPB(s, resp->mutable_error()->mutable_status());
     return Status::OK();
   }
 
@@ -1435,7 +1440,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
     // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
     // the intents flushed_frontier can advance past split_op_id and propagate into the children via
-    // Tablet::CreateSubtablet's RocksDB checkpoint -- breaking bootstrap with
+    // Tablet::CreateSplitChildTablet's RocksDB checkpoint -- breaking bootstrap with
     // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
     OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
@@ -3824,7 +3829,12 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
   }
   if (!status.ok()) {
     // TODO: Do something with the status on failure?
-    LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status << "\n" << GetStackTrace();
+    // Aborted is routine here: rounds are aborted on shutdown and on leader change. Symbolizing a
+    // stack trace can stall the process for minutes under sanitizers, so trace only unexpected
+    // failures, or when verbose logging is requested.
+    const bool with_stack_trace = !status.IsAborted() || VLOG_IS_ON(1);
+    LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status
+                          << (with_stack_trace ? "\n" + GetStackTrace() : std::string());
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {

@@ -84,7 +84,11 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - Log Sequence Number ([LSN](../using-logical-replication/key-concepts/#lsn-type)) Comparisons Across Slots.
 
-    In the case of YugabyteDB, the LSN  does not represent the byte offset of a WAL record. Hence, arithmetic on LSN and any other usages of the LSN making this assumption will not work. Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
+    In YugabyteDB, the LSN  does not represent the byte offset of a WAL record. **So, arithmetic on LSN and any other usages of the LSN making this assumption will not work.** Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
+
+    {{< note title="Note" >}}
+Because LSNs aren't comparable across replication slots, avoid re-using Kafka topics across slots. For more information, see [Avoid reusing Kafka topics across slots](./best-practices/#avoid-reusing-kafka-topics-across-slots).
+    {{< /note >}}
 
 - The following functions are currently unsupported:
 
@@ -99,6 +103,8 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 - Restriction on DDLs
 
     DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
+
+- CDC currently doesn't support [Transactional DDL](../../../explore/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
 
 - There should be a primary key on the table you want to stream the changes from.
 
@@ -124,4 +130,4 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 ### CDC with point-in-time recovery
 
-[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with logical replication configured, you need to create new replication slots after the restore is complete, and start streaming from that point. Creating new slots ensures that you start streaming from the correct checkpoints.
+[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to recover data to a specific point in time. For databases and tables with logical replication configured, you need to create new replication slots after a [Rewind](../../../manage/backup-restore/point-in-time-recovery/rewind/) is complete, and start streaming from that point. Creating new slots ensures that you start streaming from the correct checkpoints.

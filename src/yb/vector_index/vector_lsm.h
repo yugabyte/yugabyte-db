@@ -43,11 +43,23 @@ namespace yb::vector_index {
 class VectorLSMFileMetaData;
 using VectorLSMFileMetaDataPtr = std::shared_ptr<VectorLSMFileMetaData>;
 
-template<IndexableVectorType Vector>
-struct VectorLSMInsertEntry {
-  VectorId vector_id;
-  Vector   vector;
+struct VectorLSMChunkFileSizes {
+  uint64_t index_file = 0;
+
+  // Size of the vector payload file, 0 when the chunk has no payload file.
+  uint64_t payload_file = 0;
+
+  uint64_t total() const {
+    return index_file + payload_file;
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(index_file, payload_file);
+  }
 };
+
+template<IndexableVectorType Vector>
+using VectorLSMInsertEntry = VectorIndexEntry<Vector>;
 
 struct VectorLSMInsertContext {
   const storage::UserFrontiers* frontiers = nullptr;
@@ -71,7 +83,14 @@ class VectorLSMMergeRegistry;
 class VectorLSMMergeFilter {
  public:
   virtual ~VectorLSMMergeFilter() = default;
-  virtual storage::FilterDecision Filter(VectorId vector_id) = 0;
+
+  // payload is attached to the vector, empty when the vector has no payload.
+  virtual storage::FilterDecision Filter(VectorId vector_id, Slice payload) = 0;
+
+  // Returns the payload for a vector kept by Filter when its chunk was written without payloads
+  // while the compacted chunk stores them. The vector is discarded when the returned payload is
+  // empty.
+  virtual Result<ValueBuffer> RestorePayload(VectorId vector_id) = 0;
 };
 using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
 
@@ -94,6 +113,9 @@ struct VectorLSMOptions {
   std::string file_extension;
   MetricEntityPtr metric_entity;
   size_t block_cache_capacity = 0;
+
+  // Whether newly created chunks store payloads attached to vectors, see StoreVectorPayload.
+  vector_index::StoreVectorPayload store_vector_payload = vector_index::StoreVectorPayload::kFalse;
 };
 
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
@@ -163,6 +185,14 @@ class VectorLSM {
   // Returns the total size in bytes of the immutable chunk files currently on disk.
   uint64_t OnDiskSize() const EXCLUDES(mutex_);
 
+  // Returns the minimum serial_no among manifested chunks that have actual data (file != null).
+  // Returns std::nullopt if there are no data chunks.
+  std::optional<uint64_t> MinSerialNo() const EXCLUDES(mutex_);
+
+  // Returns the serial_no that was assigned to the most recently created chunk.
+  // New chunks will get serial_no > this value.
+  uint64_t LastSerialNo() const EXCLUDES(mutex_);
+
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
@@ -171,6 +201,9 @@ class VectorLSM {
 
   // Test helper method to get the size of the latest chunk (highest serial number).
   uint64_t TEST_LatestChunkSize() const;
+
+  // Test helper method to get the file sizes of the latest chunk (highest serial number).
+  VectorLSMChunkFileSizes TEST_LatestChunkFileSizes() const EXCLUDES(mutex_);
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
@@ -236,7 +269,7 @@ class VectorLSM {
   void ReleaseManifestUnlocked() REQUIRES(mutex_);
   Result<WritableFile*> RollManifest() REQUIRES(mutex_);
 
-  Result<uint64_t> GetChunkFileSize(uint64_t serial_no) const;
+  Result<VectorLSMChunkFileSizes> GetChunkFileSize(uint64_t serial_no) const;
 
   // Creates vector index and reserve at least for `min_vectors` entries.
   Result<VectorIndexPtr> CreateVectorIndex(
@@ -249,10 +282,9 @@ class VectorLSM {
 
   // Creates new file metadata for the vector index file and attaches to the one.
   VectorLSMFileMetaDataPtr CreateVectorLSMFileMetaData(
-      VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk);
+      VectorIndex& index, uint64_t serial_no, const VectorLSMChunkFileSizes& sizes);
 
   uint64_t NextSerialNo() EXCLUDES(mutex_);
-  uint64_t LastSerialNo() const EXCLUDES(mutex_);
 
   void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
   void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);

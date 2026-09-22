@@ -718,7 +718,8 @@ YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
-// Set forward/backward scan direction.
+// Set forward/backward scan direction.  Leave it unset when row order does not matter, which lets
+// pggate read tablets in parallel and skip preserving ybctid order.  Cannot be changed once set.
 YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan);
 
 // Set prefix length for distinct index scans.

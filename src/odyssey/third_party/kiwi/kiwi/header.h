@@ -81,7 +81,6 @@ typedef enum {
 	YB_OID_DETAILS = 'O',
 	/* special ParameterStatus, do not forward to client */
 	YB_CONN_MGR_PARAMETER_STATUS = 'r',
-	YB_BE_PARSE_PREPARE_ERROR_RESPONSE = '4',
 	YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME = '5',
 	YB_BE_YB_PARSE_COMPLETE = '6',
 	YB_BE_SYNC_ACK = 'Y',
@@ -189,8 +188,6 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "OidDetails";
 	case YB_CONN_MGR_PARAMETER_STATUS:
 		return "ConnMgrParameterStatus";
-	case YB_BE_PARSE_PREPARE_ERROR_RESPONSE:
-		return "YBParsePrepareErrorResponse";
 	case YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME:
 		return "YBCloseCompletePrepStmtName";
 	case YB_BE_YB_PARSE_COMPLETE:

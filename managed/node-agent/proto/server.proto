@@ -68,6 +68,7 @@ message SubmitTaskRequest {
         DestroyServerInput destroyServerInput = 14;
         YnpPreflightCheckInput ynpPreflightCheckInput = 15;
         RotateSshKeyInput rotateSshKeyInput = 16;
+        ConfigureCloudFederationInput configureCloudFederationInput = 17;
     }
 }
 
@@ -97,6 +98,7 @@ message DescribeTaskResponse {
         DestroyServerOutput destroyServerOutput = 14;
         YnpPreflightCheckOutput ynpPreflightCheckOutput = 15;
         RotateSshKeyOutput rotateSshKeyOutput = 16;
+        ConfigureCloudFederationOutput configureCloudFederationOutput = 17;
     }
 }
 

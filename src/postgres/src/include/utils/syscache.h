@@ -135,63 +135,90 @@ enum SysCacheIdentifier
 #define SysCacheSize (EXTENSIONOID + 1)
 };
 
+/*
+ * The single source of truth for the set of catalog tables that have caches on
+ * them.  Both the YbCatalogCacheTable enum and yb_cache_table_name_table[] in
+ * syscache.c are generated from this list, so a table's enum value and its
+ * name string cannot drift apart.  Keep it that way: the size assertion on
+ * yb_cache_table_name_table[] catches an entry left out of one of the two,
+ * but not one inserted into the middle of one and appended to the end of the
+ * other, which would silently misname every table after the insertion point.
+ *
+ * Each entry carries its own prefix so that one list can generate both
+ * spellings of the enumerator.  A table that has no syscache of its own and is
+ * cached ad hoc instead takes the YbAdhocCacheTable prefix; the only one today
+ * is pg_inherits, whose cache lives in yb_inheritscache.c.  Every other table
+ * takes YbCatalogCacheTable.
+ *
+ * The YbCatalogCacheTable entries are in alphabetical order.  The ad hoc ones
+ * are not, and have to stay at the end of the list, because
+ * YbNumCatalogCacheTables below is defined as the last enumerator plus one.
+ * Getting that wrong is a build failure rather than a latent bug: the size
+ * assertion on yb_cache_table_name_table[] in syscache.c compares that count
+ * against the actual length of this list.
+ */
+#define YB_CATCACHE_TABLE_LIST \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_aggregate) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_am) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_amop) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_amproc) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_attribute) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_auth_members) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_authid) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_cast) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_class) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_collation) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_constraint) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_conversion) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_database) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_default_acl) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_enum) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_event_trigger) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_extension) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_foreign_data_wrapper) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_foreign_server) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_foreign_table) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_index) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_language) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_namespace) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_opclass) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_operator) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_opfamily) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_parameter_acl) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_partitioned_table) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_proc) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_publication) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_publication_namespace) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_publication_rel) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_range) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_replication_origin) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_rewrite) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_sequence) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_statistic) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_statistic_ext) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_statistic_ext_data) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_subscription) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_subscription_rel) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_tablespace) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_transform) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_ts_config) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_ts_config_map) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_ts_dict) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_ts_parser) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_ts_template) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_type) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_user_mapping) \
+	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_yb_tablegroup) \
+	YB_CATCACHE_TABLE_ENTRY(YbAdhocCacheTable, pg_inherits)
+
 typedef enum YbCatalogCacheTable
 {
-	YbCatalogCacheTable_pg_aggregate,
-	YbCatalogCacheTable_pg_am,
-	YbCatalogCacheTable_pg_amop,
-	YbCatalogCacheTable_pg_amproc,
-	YbCatalogCacheTable_pg_attribute,
-	YbCatalogCacheTable_pg_auth_members,
-	YbCatalogCacheTable_pg_authid,
-	YbCatalogCacheTable_pg_cast,
-	YbCatalogCacheTable_pg_class,
-	YbCatalogCacheTable_pg_collation,
-	YbCatalogCacheTable_pg_constraint,
-	YbCatalogCacheTable_pg_conversion,
-	YbCatalogCacheTable_pg_database,
-	YbCatalogCacheTable_pg_default_acl,
-	YbCatalogCacheTable_pg_enum,
-	YbCatalogCacheTable_pg_event_trigger,
-	YbCatalogCacheTable_pg_extension,
-	YbCatalogCacheTable_pg_foreign_data_wrapper,
-	YbCatalogCacheTable_pg_foreign_server,
-	YbCatalogCacheTable_pg_foreign_table,
-	YbCatalogCacheTable_pg_index,
-	YbCatalogCacheTable_pg_language,
-	YbCatalogCacheTable_pg_namespace,
-	YbCatalogCacheTable_pg_opclass,
-	YbCatalogCacheTable_pg_operator,
-	YbCatalogCacheTable_pg_opfamily,
-	YbCatalogCacheTable_pg_parameter_acl,
-	YbCatalogCacheTable_pg_partitioned_table,
-	YbCatalogCacheTable_pg_proc,
-	YbCatalogCacheTable_pg_publication,
-	YbCatalogCacheTable_pg_publication_namespace,
-	YbCatalogCacheTable_pg_publication_rel,
-	YbCatalogCacheTable_pg_range,
-	YbCatalogCacheTable_pg_replication_origin,
-	YbCatalogCacheTable_pg_rewrite,
-	YbCatalogCacheTable_pg_sequence,
-	YbCatalogCacheTable_pg_statistic,
-	YbCatalogCacheTable_pg_statistic_ext,
-	YbCatalogCacheTable_pg_statistic_ext_data,
-	YbCatalogCacheTable_pg_subscription,
-	YbCatalogCacheTable_pg_subscription_rel,
-	YbCatalogCacheTable_pg_tablespace,
-	YbCatalogCacheTable_pg_transform,
-	YbCatalogCacheTable_pg_ts_config,
-	YbCatalogCacheTable_pg_ts_config_map,
-	YbCatalogCacheTable_pg_ts_dict,
-	YbCatalogCacheTable_pg_ts_parser,
-	YbCatalogCacheTable_pg_ts_template,
-	YbCatalogCacheTable_pg_type,
-	YbCatalogCacheTable_pg_user_mapping,
-	YbCatalogCacheTable_pg_yb_tablegroup,
-	YbAdhocCacheTable_pg_inherits
+#define YB_CATCACHE_TABLE_ENTRY(prefix, table) prefix##_##table,
+	YB_CATCACHE_TABLE_LIST
+#undef YB_CATCACHE_TABLE_ENTRY
+} YbCatalogCacheTable;
 
 #define YbNumCatalogCacheTables (YbAdhocCacheTable_pg_inherits + 1)
-} YbCatalogCacheTable;
 
 extern long YbNumCatalogCacheMisses;
 extern long YbNumCatalogCacheTableMisses[];

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
@@ -1539,6 +1540,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Setter
     private boolean cpuCgroupConfigured;
 
+    // Source of truth for whether every node in this universe has cross-cloud federated IAM set up.
+    // Set only after the per-node fan-out succeeds on all nodes, so add-node/edit can key off it,
+    // never leaving the universe in a mixed (some-federated) state.
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. All nodes configured for cross-cloud federated IAM")
+    @Getter
+    @Setter
+    private boolean federationConfigured;
+
     @Getter
     @Setter
     @Nullable
@@ -1650,6 +1661,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.multiTenancy = multiTenancy.clone();
       }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
+      newUserIntent.federationConfigured = federationConfigured;
       if (!CollectionUtils.isEmpty(providerSpecifications)) {
         newUserIntent.providerSpecifications = new ArrayList<>();
         for (ProviderSpecification providerSpecification : providerSpecifications) {
@@ -1686,6 +1698,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public Map<String, String> getInstanceTagsForProvider(UUID providerUUID) {
       return getProviderSpecProperty(providerUUID, spec -> spec.instanceTags, u -> u.instanceTags);
+    }
+
+    public K8SNodeResourceSpec getTserverK8SNodeResourceSpec(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getNodesSpec().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getK8SNodeResourceSpec() : null;
+          },
+          u -> u.tserverK8SNodeResourceSpec);
     }
 
     public void setProviderAccessKey(UUID providerUUID, String newAccessKeyCode) {
@@ -1841,9 +1864,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return serverType;
     }
 
-    @JsonIgnore
-    public String getBaseInstanceType() {
-      return getInstanceType(null);
+    public String getBaseInstanceType(@NotNull UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getNodesSpec().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getInstanceType() : null;
+          },
+          userIntent -> userIntent.instanceType);
     }
 
     public String getInstanceType(@Nullable UUID azUUID) {
@@ -1934,6 +1963,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       JsonNode original = Json.toJson(deviceInfo);
       JsonNode overriden = Json.toJson(overridenDeviceInfo);
+      // deepMerge only skips nulls, but `storageClass` defaults to "" instead of null. Every other
+      // DeviceInfo helper (mergeDeviceInfo/allNull/unsetFields) reads blank as "not overriden", so
+      // drop it here too - otherwise a partially populated override (e.g. the v2 resize API's
+      // per-process storage_spec, which carries only volume size) erases the storage class.
+      if (StringUtils.isBlank(overridenDeviceInfo.storageClass)) {
+        ((ObjectNode) overriden).remove("storageClass");
+      }
       log.trace("Merging device info {} with {}", original, overriden);
       CommonUtils.deepMerge(original, overriden, true);
       log.trace("Device info after merging {}", original);

@@ -175,3 +175,11 @@ enum TSTabletManagerStatePB {
   // switched to MANAGER_QUIESCING post this.
   MANAGER_STARTED_QUIESCING = 4;
 }
+
+// Cluster-wide per-database history retention pins as last received from the master, persisted to
+// local disk so that a restarting tserver can apply them before its first heartbeat response
+// arrives.
+message YsqlDbHistoryRetentionPinsPB {
+  // Map[db_oid] -> oldest read HybridTime that any live transaction in the cluster may still need.
+  map<uint32, fixed64> db_oldest_pinned_read_times = 1;
+}

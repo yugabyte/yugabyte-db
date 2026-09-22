@@ -44,12 +44,17 @@ class CountingVectorIndex : public DocVectorIndex {
   Slice indexed_table_key_prefix() const override { return table_key_prefix_; }
   ColumnId column_id() const override { return column_id_; }
   HybridTime hybrid_time() const override { return HybridTime::kMin; }
+  uint64_t split_generation() const override { return 0; }
   Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) override {
     inserted_entries_ += entries.size();
     return Status::OK();
   }
   size_t inserted_entries() const { return inserted_entries_; }
+
+  // Checked on every VectorIndexesUpdater construction; false keeps the reverse mapping writes
+  // these tests expect.
+  bool StoresYbctid() const override { return false; }
 
   // Unused on the external-apply vector-feed path.
   const TableId& table_id() const override { LOG(FATAL) << "Unexpected call"; }
@@ -85,6 +90,8 @@ class CountingVectorIndex : public DocVectorIndex {
   void CompleteShutdown() override { LOG(FATAL) << "Unexpected call"; }
   bool TEST_HasBackgroundInserts() const override { LOG(FATAL) << "Unexpected call"; }
   size_t TEST_NextManifestFileNo() const override { LOG(FATAL) << "Unexpected call"; }
+
+  bool ComputeParentDataCompacted() const override { return true; }
 
  private:
   const std::string table_key_prefix_;

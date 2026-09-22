@@ -91,6 +91,7 @@
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/spi.h"
 #include "libpq/auth.h"
+#include "libpq/hba.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
@@ -5512,17 +5513,6 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (YBHasSkippedIntentsWrite())
-	{
-		const char *retry_err = ("query layer retry isn't possible because "
-								 "we have skipped intents write");
-
-		edata->message = psprintf("%s (%s)", edata->message, retry_err);
-		if (yb_debug_log_internal_restarts)
-			elog(LOG, "%s", retry_err);
-		return false;
-	}
-
 	if (attempt >= yb_max_query_layer_retries)
 	{
 		const char *retry_err = psprintf("yb_max_query_layer_retries set to %d are exhausted",
@@ -5688,6 +5678,26 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		}
 	}
 
+	/*
+	 * A write that skipped the intents DB cannot be undone by rolling back to
+	 * an internal savepoint or by restarting the transaction, so it blocks a
+	 * retry whatever the statement is. It is checked last because it is a
+	 * property of the transaction rather than of this statement: a statement
+	 * that is already unretriable for a reason of its own - its command tag,
+	 * the retry limit, data already sent to the client - reports that reason,
+	 * which tells the user more than the fastpath write does.
+	 */
+	if (YBHasSkippedIntentsWrite())
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "we have skipped intents write");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
 	return true;
 }
 
@@ -5738,7 +5748,9 @@ static void
 yb_clear_portal_before_restart(Portal portal)
 {
 	Assert(PointerIsValid(portal));
-	Assert(portal->status == PORTAL_FAILED);
+	Assert(!portal->portalPinned);
+	Assert(portal->status != PORTAL_ACTIVE);
+
 	if (yb_debug_log_internal_restarts)
 		elog(LOG, "Restarting portal %s for retry", portal->name);
 
@@ -6997,11 +7009,32 @@ PostgresMain(const char *dbname, const char *username)
 
 			ProcessConfigFile(PGC_SIGHUP);
 
-			if (YbIsAuthPassthroughControlBackend() &&
-				yb_conn_mgr_sighup_had_backend_guc_change)
+			if (YbIsAuthPassthroughControlBackend())
 			{
-				yb_conn_mgr_sighup_logical_client_version++;
-				yb_conn_mgr_sighup_had_backend_guc_change = false;
+				/*
+				 * YB: Unlike regular backends, which authenticate exactly once
+				 * right after fork, the Auth Passthrough control backend
+				 * re-authenticates every logical client over its lifetime. It
+				 * must therefore pick up pg_hba.conf / pg_ident.conf changes on
+				 * SIGHUP the same way the postmaster does; otherwise it keeps
+				 * using the stale rules inherited at fork time. Failures are
+				 * logged and the old rules retained (non-fatal) so a malformed
+				 * file does not tear down the pooler's control backend.
+				 */
+				if (!load_hba(NULL /* yb_validate_conf_file */ ))
+					ereport(LOG,
+					/* translator: %s is a configuration file */
+							(errmsg("%s was not reloaded", "pg_hba.conf")));
+
+				if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
+					ereport(LOG,
+							(errmsg("%s was not reloaded", "pg_ident.conf")));
+
+				if (yb_conn_mgr_sighup_had_backend_guc_change)
+				{
+					yb_conn_mgr_sighup_logical_client_version++;
+					yb_conn_mgr_sighup_had_backend_guc_change = false;
+				}
 			}
 		}
 
@@ -7153,25 +7186,29 @@ PostgresMain(const char *dbname, const char *username)
 					/* YB: The stmt_name is read here for both 'p' and 'P'. */
 					stmt_name = pq_getmsgstring(&input_message);
 
-					if (yb_parse_type == YB_PARSE_FORCE)
+					/*
+					 * YB: Force and Redeploy parse types don't throw an error
+					 * if prepared statement already exists. Also, ForceParse
+					 * will also drop the prepared statement if invalid
+					 */
+					if (stmt_name[0] != '\0' &&
+						(yb_parse_type == YB_PARSE_FORCE ||
+						 yb_parse_type == YB_PARSE_REDEPLOY))
 					{
-						/*
-						 * YB: If the prepared statement already exists on the backend,
-						 * parsing is a no-op: return YbParseComplete and skip re-parsing.
-						 * Otherwise fall through to (re-)create it and return
-						 * YbParseComplete.
-						 */
+						if (yb_parse_type == YB_PARSE_FORCE)
+						{
+							yb_start_xact_command_internal(false /* yb_skip_read_committed_internal_savepoint */ );
+							YbDropProtoPrepStmtIfInvalid(FetchPreparedStatement(stmt_name, false));
+						}
+
 						if (FetchPreparedStatement(stmt_name, false) != NULL)
 						{
 							if (whereToSendOutput == DestRemote)
-							{
 								yb_send_yb_parse_complete(yb_echo, yb_echo_len);
-								pq_flush();
-							}
 							break;
 						}
 						elog(DEBUG1, "prepared statement \"%s\" does not exist, creating it",
-							stmt_name);
+							 stmt_name);
 					}
 
 					query_string = pq_getmsgstring(&input_message);
@@ -7218,17 +7255,6 @@ PostgresMain(const char *dbname, const char *username)
 													  yb_is_dml_command(query_string),
 													  &need_retry);
 						MemoryContextSwitchTo(errorcontext);
-						/*
-						 * YB: Report parse error with the prepared statement name to connection
-						 * manager. This is done so that connection manager can evict the entry
-						 * from the server hashmap as parse has failed. Conn mgr does not record
-						 * any entry for unnamed prepared statement in it's server hashmap.
-						 */
-						if (YbIsClientYsqlConnMgr() && stmt_name[0] != '\0')
-						{
-							pq_puttextmessage('4', stmt_name);
-							pq_flush();
-						}
 						ThrowErrorData(edata);
 
 					}
@@ -7471,17 +7497,7 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						case 'S':
 							if (close_target[0] != '\0')
-							{
-								if (YbIsClientYsqlConnMgr())
-								{
-									/*
-									 * YB: Start a transaction, if not already done, to allow catalog
-									 * cache lookup in YbIsCachedQueryValid()
-									 */
-									yb_start_xact_command_internal(false /* yb_skip_read_committed_internal_savepoint */ );
-								}
-								DropPreparedStatement(close_target, false, YbIsClientYsqlConnMgr());
-							}
+								DropPreparedStatement(close_target, false);
 							else
 							{
 								/* special-case the unnamed statement */
@@ -7707,6 +7723,7 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					MyProcPort->yb_is_auth_passthrough_req = true;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
+					MyProcPort->yb_forwarded_cert_parse_failed = false;
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
@@ -7750,7 +7767,14 @@ PostgresMain(const char *dbname, const char *username)
 					 * NULL before that
 					 */
 					MyProcPort->authn_id = NULL;
-
+#ifdef USE_SSL
+					/*
+					 * YB: Reset the TLS connection state of the logical connection.
+					 * This is to avoid the certificate of the previous client getting used
+					 * by the next client if it throws an error during authentication.
+					 */
+					be_tls_close(MyProcPort);
+#endif
 					/*
 					 * HARD Code connection type between client and
 					 * ysql_conn_mgr to AF_INET (only supported) for
@@ -7771,6 +7795,8 @@ PostgresMain(const char *dbname, const char *username)
 
 					/* Start authentication */
 					{
+						int			rc;
+
 						start_xact_command();
 						/*
 						 * Parse input to populate MyProcPort with new client
@@ -7779,9 +7805,22 @@ PostgresMain(const char *dbname, const char *username)
 						 * between conn mgr and the control backend is already
 						 * done during control backend startup.
 						 */
-						YbProcessStartupPacket(MyProcPort,
-											   true /* ssl_done */ ,
-											   true /* gss_done */ );
+						rc = YbProcessStartupPacket(MyProcPort,
+													true /* ssl_done */ ,
+													true /* gss_done */ );
+						/*
+						 * YB: Unlike auth failure (WARNING, keep alive), a
+						 * startup-packet STATUS_ERROR leaves the wire
+						 * desynced. Kill this control backend and don't send
+						 * any message to client, read ProcessStartupPacket
+						 * description. It has already logged the reason.
+						 */
+						if (rc != STATUS_OK)
+						{
+							if (whereToSendOutput == DestRemote)
+								whereToSendOutput = DestNone;
+							proc_exit(0);
+						}
 
 						YbLogAuthPassthroughConnReceived(MyProcPort);
 
@@ -7811,10 +7850,12 @@ PostgresMain(const char *dbname, const char *username)
 						 */
 						if (!MyProcPort->yb_has_auth_passthrough_finished)
 						{
+							Oid			database_oid;
+
 							YbLogAuthPassthroughConnAuthenticated(MyProcPort);
 
-							if (YbCreateClientId() == 0)
-								YbAuthPassthroughSetupGUCAndReport();
+							if (YbCreateClientId(&database_oid) == 0)
+								YbAuthPassthroughSetupGUCAndReport(database_oid);
 						}
 
 						MyProcPort->yb_has_auth_passthrough_finished = true;
@@ -7827,10 +7868,24 @@ PostgresMain(const char *dbname, const char *username)
 					 * transaction MemoryContext which has been free'd now
 					 */
 
+#ifdef USE_SSL
+
+					/*
+					 * Drop the certificate of the client that just
+					 * authenticated. This control backend is reused for the
+					 * next client, and its own connection to the conn mgr is an
+					 * unauthenticated unix socket with no certificate of its
+					 * own, so leaving this set would let one client's identity
+					 * be seen while authenticating another.
+					 */
+					be_tls_close(MyProcPort);
+#endif
+
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
+					MyProcPort->yb_forwarded_cert_parse_failed = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;

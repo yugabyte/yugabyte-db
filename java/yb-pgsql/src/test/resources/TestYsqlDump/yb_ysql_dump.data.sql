@@ -4286,6 +4286,20 @@ GRANT ALL ON TABLE public.rls_public TO PUBLIC;
 
 
 --
+-- Name: TABLE tbl1; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+\unrestrict test
+\if :use_roles
+\restrict test
+GRANT SELECT ON TABLE public.tbl1 TO "r1
+x";
+\unrestrict test
+\endif
+\restrict test
+
+
+--
 -- Name: TABLE tbl13; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 

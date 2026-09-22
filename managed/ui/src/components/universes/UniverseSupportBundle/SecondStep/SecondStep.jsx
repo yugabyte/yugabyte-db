@@ -118,7 +118,9 @@ export const selectionOptions = [
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
   { label: 'Tablet meta files', value: 'TabletMeta' },
   { label: 'Tablet Report', value: 'TabletReport' },
+  { label: 'Cluster Config', value: 'ClusterConfig' },
   { label: 'Node agent logs', value: 'NodeAgent' },
+  { label: 'Node health check logs', value: 'NodeHealthLogs' },
   { label: 'Core Files', value: 'CoreFiles' },
   { label: 'YB-Controller logs', value: 'YbcLogs' },
   { label: 'Kubernetes Info', value: 'K8sInfo' },
@@ -132,7 +134,8 @@ export const prometheusMetricsOptions = [
   { label: 'Prometheus', value: 'PROMETHEUS' },
   { label: 'TServer Export', value: 'TSERVER_EXPORT' },
   { label: 'YCQL Export', value: 'CQL_EXPORT' },
-  { label: 'YSQL Export', value: 'YSQL_EXPORT' }
+  { label: 'YSQL Export', value: 'YSQL_EXPORT' },
+  { label: 'Kubernetes Containers', value: 'KUBERNETES' }
 ];
 
 const ONE_GB_IN_BYTES = 1_07_37_41_824;

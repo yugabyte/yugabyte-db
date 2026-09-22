@@ -583,6 +583,14 @@ DEFINE_test_flag(int32, delay_split_registration_secs, 0,
 
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 
+DEFINE_test_flag(bool, pause_pg_catalog_versions_cache_refresh, false,
+    "When true, RefreshPgCatalogVersionCache() returns without doing anything, for both its "
+    "periodic caller and the on-demand caller at DDL commit "
+    "(ysql_ddl_handler.cc). TEST_simulate_catalog_version_refresh_failure only stops the "
+    "periodic task, which is not enough to make the cache fall behind: every DDL commit "
+    "refreshes it on demand. Tests that need a cache genuinely behind pg_yb_catalog_version "
+    "must use this flag.");
+
 DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, true,
     "Whether to enable the use of heartbeat catalog versions cache for the "
     "pg_yb_catalog_version table which can help to reduce the number of reads "
@@ -1637,6 +1645,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   auto descs = master_->ts_manager()->GetAllDescriptors();
   for (const auto& ts_desc : descs) {
     ts_desc->set_has_tablet_report(false);
+    ts_desc->ResetYsqlDbPins();
   }
 
   {
@@ -1661,6 +1670,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(master_->ts_manager()->RunLoader(
       master_->MakeCloudInfoPB(), &master_->proxy_cache(), *state));
   RETURN_NOT_OK(Load<ObjectLockLoader>("Object locks", state));
+  RETURN_NOT_OK(RefreshYsqlHistoryRetentionPin());
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(state->epoch.leader_term));
@@ -3084,7 +3094,7 @@ PitrCount CatalogManager::pitr_count() const {
   return sys_catalog_->pitr_count();
 }
 
-Status CatalogManager::ShouldSplitValidCandidate(
+Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
     return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
@@ -3097,7 +3107,7 @@ Status CatalogManager::ShouldSplitValidCandidate(
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($0) < low phase size threshold ($1).",
+    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
         tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
   }
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
@@ -3106,6 +3116,14 @@ Status CatalogManager::ShouldSplitValidCandidate(
   auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
       tablet_info.table(), GetTablespaceManager(),
       ClusterConfig()->LockForRead()->pb.replication_info()));
+
+  // The tablet must have exactly rf running voters and no replica being remote bootstrapped, so
+  // that the split does not copy a bootstrapping peer into the children's Raft configs. Since this
+  // function runs both when a candidate is picked and again in DoSplitTablet right before the
+  // children are registered, a replica add that starts in between is caught as well.
+  RETURN_NOT_OK(CheckLiveReplicasForSplit(
+      tablet_info.id(), *tablet_info.GetReplicaLocations(),
+      CatalogManagerUtil::GetReplicationFactor(table_replication_info)));
 
   // If there is custom placement information present then
   // only count the tservers which the table has access to
@@ -3141,7 +3159,7 @@ Status CatalogManager::ShouldSplitValidCandidate(
           FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
           FLAGS_tablet_split_low_phase_size_threshold_bytes);
     }
-    return Status::OK();
+    return SplitPhase::kLow;
   }
   if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
     if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
@@ -3153,14 +3171,14 @@ Status CatalogManager::ShouldSplitValidCandidate(
           FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
           FLAGS_tablet_split_high_phase_size_threshold_bytes);
     }
-    return Status::OK();
+    return SplitPhase::kHigh;
   }
   if (size <= FLAGS_tablet_force_split_threshold_bytes) {
     return STATUS_FORMAT(IllegalState,
         "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
         tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
   }
-  return Status::OK();
+  return SplitPhase::kFinal;
 }
 
 namespace {
@@ -3442,13 +3460,13 @@ Status CatalogManager::DoSplitTablet(
       // the cluster may have changed, putting us in a new split threshold phase, and it may no
       // longer be a valid candidate. This is not an unexpected error, but we should bail out of
       // splitting this tablet regardless.
-      Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
-      if (!status.ok()) {
+      auto status_and_phase = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
+      if (!status_and_phase.ok()) {
         return STATUS_FORMAT(
             InvalidArgument,
             "Tablet split candidate $0 is no longer a valid split candidate: $1",
             source_tablet_info->tablet_id(),
-            status);
+            status_and_phase.status());
       }
     }
     // After this point, we expect to split the tablet.
@@ -6166,6 +6184,7 @@ std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryTy
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -9843,19 +9862,24 @@ Status CatalogManager::VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns,
               << ", txn_id: " << txn_id;
     metadata.set_state(SysNamespaceEntryPB::DELETING);
     metadata.clear_transaction();
-    // todo(zdrudi): we seem to name squat here. The failed creation of a db is visible to all
-    // clients because the db's name is still in the map, preventing creation of a new db with the
-    // same name. If the async database cleanup fails then we leak the name until restart.  We
-    // should probably remove the name from the map here, but it's not clear what to do with this db
-    // if we restart without committing the write below.
+    // Persist DELETING first. A failed write rolls back the COW state and leaves the maps
+    // unchanged; restart re-enqueues verification from the still-RUNNING catalog entry.
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), ns));
-    // Commit the namespace in-memory state.
     l.Commit();
-    // Async enqueue delete.
+    // PG cannot DROP a database whose CREATE never committed, so a same-name retry must not
+    // wait for async cleanup. Keep the by-id tombstone: copied catalog tables still use this
+    // OID, and PG already retries with the next OID on YB_PG_DUPLICATE_DATABASE.
+    ReleaseNamespaceNameIfOwned(ns);
     RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
         std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, this, ns, epoch)));
   }
   return Status::OK();
+}
+
+Status CatalogManager::TEST_FailNamespacePgVerification(const NamespaceId& ns_id) {
+  auto ns = VERIFY_RESULT(FindNamespaceById(ns_id));
+  return VerifyNamespacePgLayer(
+      ns, TransactionId::Nil(), false /* exists */, GetLeaderEpochInternal());
 }
 
 // Get the information about an in-progress create operation.
@@ -10265,27 +10289,9 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
   TRACE("Committing in-memory state");
   l.Commit();
 
-  // Remove namespace from CatalogManager name mapping.
-  {
-    LockGuard lock(mutex_);
-    auto it = namespace_names_mapper_[database->database_type()].find(database->name());
-    if (it == namespace_names_mapper_[database->database_type()].end()) {
-      // Because we remove YSQL namespaces whose async creation failed from the maps,
-      // for such databases this is an expected error.
-      LOG(WARNING) << Format(
-          "Could not remove namespace from maps, name=$0, id=$1", database->name(), database->id());
-    } else if (it->second->id() == database->id()) {
-      // Sanity check we're not removing the wrong database. We don't enforce name uniqueness for
-      // databases whose creation failed.
-      namespace_names_mapper_[database->database_type()].erase(database->name());
-    } else {
-      LOG(WARNING) << Format(
-          "While removing namespace of type $0 with id $1 and name $2 found a different namespace "
-          "in the names map under the same name, with id $3",
-          YQLDatabase_Name(database->database_type()), database->id(), database->name(),
-          it->second->id());
-    }
-  }
+  // The verification-failure path may already have released this name so a CREATE retry could
+  // proceed. Tolerate that, and do not steal a name now owned by a different namespace.
+  ReleaseNamespaceNameIfOwned(database);
 
   // DROP completed. Return status.
   LOG(INFO) << "Successfully deleted YSQL database " << database->ToString();
@@ -11134,18 +11140,21 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   return Status::OK();
 }
 
-Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
+Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(
+    DbOidToCatalogVersionMap* versions, HybridTime* out_read_ht) {
   // pg_yb_catalog_version exists in every steady-state YSQL-enabled cluster (created during
   // initdb). The only caller that may invoke this before the table exists is the initdb path
   // (Master::get_ysql_db_oid_to_cat_version_info_map), which gates this call on a GetTableInfo
   // check itself. Reading directly here avoids a SharedLock on the catalog manager's main
   // mutex_ on every heartbeat-rate refresh.
-  return sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, versions);
+  return sys_catalog_->ReadYsqlAllDBCatalogVersions(
+      kPgYbCatalogVersionTableId, versions, out_read_ht);
 }
 
 // Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
-    bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
+    bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint,
+    HybridTime* out_read_ht) {
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // Callers that opt into the cache accept stale (but bounded) versions. Today this includes
@@ -11168,7 +11177,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
   }
   // Cannot use cached data, or the cache has never been initialized yet, read
   // from pg_yb_catalog_version table.
-  RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions));
+  RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions, out_read_ht));
   if (fingerprint) {
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(3) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
@@ -11975,38 +11984,48 @@ void CatalogManager::HandleAssignPreparingTablet(const TabletInfoPtr& tablet,
   VLOG(1) << "Assign new tablet " << tablet->ToString();
 }
 
-Status CatalogManager::HandleAssignCreatingTablet(const TabletInfoPtr& tablet,
-                                                  DeferredAssignmentActions* deferred,
-                                                  std::vector<TabletInfoPtr>* new_tablets) {
+bool CatalogManager::ShouldReplaceCreatingTablet(const TabletInfo& tablet) {
   MonoDelta time_since_updated =
-      MonoTime::Now().GetDeltaSince(tablet->last_update_time());
+      MonoTime::Now().GetDeltaSince(tablet.last_update_time());
   int64_t remaining_timeout_ms =
       FLAGS_tablet_creation_timeout_ms - time_since_updated.ToMilliseconds();
 
-  if (tablet->LockForRead()->pb.has_split_parent_tablet_id()) {
-    // No need to recreate post-split tablets, since this is always done on source tablet replicas.
-    VLOG_WITH_FUNC(2) << "Post-split tablet " << AsString(tablet) << " still being created.";
-    return Status::OK();
+  auto lock = tablet.LockForRead();
+  if (lock->pb.state() != SysTabletsEntryPB::CREATING) {
+    return false;
   }
 
-  if (tablet->LockForRead()->pb.created_by_clone()) {
+  if (lock->pb.has_split_parent_tablet_id()) {
+    // No need to recreate post-split tablets, since this is always done on source tablet replicas.
+    VLOG_WITH_FUNC(2) << "Post-split tablet " << tablet.ToString() << " still being created.";
+    return false;
+  }
+
+  if (lock->pb.created_by_clone()) {
     // No need to recreate cloned tablets, since this is always done on source tablet replicas.
-    VLOG_WITH_FUNC(2) << "Cloned tablet " << AsString(tablet) << " still being created.";
-    return Status::OK();
+    VLOG_WITH_FUNC(2) << "Cloned tablet " << tablet.ToString() << " still being created.";
+    return false;
   }
 
   // Skip the tablet if the assignment timeout is not yet expired.
   if (remaining_timeout_ms > 0) {
-    VLOG_WITH_FUNC(2) << "Tablet " << tablet->ToString() << " still being created. "
+    VLOG_WITH_FUNC(2) << "Tablet " << tablet.ToString() << " still being created. "
             << remaining_timeout_ms << "ms remain until timeout.";
-    return Status::OK();
+    return false;
   }
 
+  return true;
+}
+
+Status CatalogManager::HandleAssignCreatingTablet(
+    const TabletInfoPtr& tablet, const TabletInfoPtr& replacement,
+    DeferredAssignmentActions* deferred, TabletInfos* new_tablets) {
   const PersistentTabletInfo& old_info = tablet->metadata().state();
 
   // The "tablet creation" was already sent, but we didn't receive an answer
   // within the timeout. So the tablet will be replaced by a new one.
-  auto replacement = CreateTabletInfo(tablet->table(), old_info.pb.partition());
+  SetupTabletInfo(
+      *replacement, *tablet->table(), old_info.pb.partition(), SysTabletsEntryPB::PREPARING);
   LOG(WARNING) << "Tablet " << tablet->ToString() << " was not created within "
                << "the allowed timeout. Replacing with a new tablet "
                << replacement->tablet_id();
@@ -12099,18 +12118,27 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   RETURN_NOT_OK(InitializeTableLoadState(table_id, ts_descs, &table_load_state));
   table_load_state.SortLoad();
 
-  // Take write locks on all tablets to be processed, and ensure that they are
-  // unlocked at the end of this scope.
+  // Replacements for tablets that timed out in CREATING state are created before any write lock
+  // is taken, so old and new tablets can all be locked in tablet id order, the order
+  // DeleteOrHideTabletsAndSendRequests uses.
+  std::unordered_map<TabletInfo*, TabletInfoPtr> replacements;
+  auto locked_tablets = tablets;
   for (const TabletInfoPtr& tablet : tablets) {
+    if (ShouldReplaceCreatingTablet(*tablet)) {
+      auto replacement = MakeUnlockedTabletInfo(tablet->table());
+      locked_tablets.push_back(replacement);
+      replacements.emplace(tablet.get(), std::move(replacement));
+    }
+  }
+  std::ranges::sort(locked_tablets, std::less<>(), &TabletInfo::tablet_id);
+  for (const TabletInfoPtr& tablet : locked_tablets) {
     tablet->mutable_metadata()->StartMutation();
   }
-  ScopedInfoCommitter<TabletInfo> unlocker_in(&tablets);
+  // Unlocks all tablets, including unused replacements, at the end of this scope.
+  ScopedInfoCommitter<TabletInfo> unlocker(&locked_tablets);
 
-  // Any tablets created by the helper functions will also be created in a
-  // locked state, so we must ensure they are unlocked before we return to
-  // avoid deadlocks.
+  // Replacements added to the table, removed again if the round fails.
   TabletInfos new_tablets;
-  ScopedInfoCommitter<TabletInfo> unlocker_out(&new_tablets);
 
   DeferredAssignmentActions deferred;
 
@@ -12125,9 +12153,15 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
         HandleAssignPreparingTablet(tablet, &deferred);
         break;
 
-      case SysTabletsEntryPB::CREATING:
-        RETURN_NOT_OK(HandleAssignCreatingTablet(tablet, &deferred, &new_tablets));
+      case SysTabletsEntryPB::CREATING: {
+        auto it = replacements.find(tablet.get());
+        if (it != replacements.end()) {
+          auto replacement = std::move(it->second);
+          replacements.erase(it);
+          RETURN_NOT_OK(HandleAssignCreatingTablet(tablet, replacement, &deferred, &new_tablets));
+        }
         break;
+      }
 
       default:
         VLOG_WITH_FUNC(2)
@@ -12135,6 +12169,12 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
             << SysTabletsEntryPB_State_Name(t_state);
         break;
     }
+  }
+
+  // A tablet may have left CREATING state between the check and the write lock.
+  for (const auto& [_, replacement] : replacements) {
+    replacement->mutable_metadata()->AbortMutation();
+    std::erase(locked_tablets, replacement);
   }
 
   // Nothing to do.
@@ -12208,8 +12248,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       }
     }
 
-    unlocker_out.Abort();  // tablet.unlock
-    unlocker_in.Abort();
+    unlocker.Abort();
 
     return s;
   }
@@ -12227,8 +12266,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
-  unlocker_out.Commit();
-  unlocker_in.Commit();
+  unlocker.Commit();
 
   {
     LockGuard lock(mutex_);
@@ -13186,6 +13224,40 @@ void CatalogManager::ResetMetrics() {
   metric_num_tablet_servers_dead_->set_value(0);
 }
 
+// Returns { peer_uuid -> ms since the sys catalog Raft leader last had a successful
+// exchange with that follower }. Only the leader tracks its followers, so this returns
+// an empty map on any other role. The local peer is never included, so the leader has
+// no entry for itself.
+std::unordered_map<std::string, int64_t> CatalogManager::GetMasterFollowerHeartbeatDelaysMs()
+    const {
+  std::unordered_map<std::string, int64_t> result;
+  // Only the leader tracks its followers.
+  if (Role() != PeerRole::LEADER) {
+    return result;
+  }
+  auto tp = tablet_peer();
+  if (!tp) {
+    return result;
+  }
+  auto consensus_result = tp->GetConsensus();
+  if (!consensus_result) {
+    return result;
+  }
+  const auto now = MonoTime::Now();
+  for (const auto& comm_time : (*consensus_result)->GetFollowerCommunicationTimes()) {
+    // last_successful_communication is initialized when the peer starts being tracked,
+    // so a never-reached follower still reports a small (and then growing) delay.
+    // For negative values, set to 0.
+    int64_t delay_ms = comm_time.last_successful_communication
+        ? now.GetDeltaSince(comm_time.last_successful_communication).ToMilliseconds()
+        : 0;
+    if (delay_ms < 0) {
+      delay_ms = 0;
+    }
+    result[comm_time.peer_uuid] = delay_ms;
+  }
+  return result;
+}
 
 std::string CatalogManager::LogPrefix() const {
   if (tablet_peer()) {
@@ -14307,12 +14379,11 @@ void CatalogManager::EnqueuePendingBackfillsAfterLoad() {
 }
 
 void CatalogManager::ResetCachedCatalogVersions() {
-  // We use the refresh mutex_ to serialize on-demand callers from DDL commit
-  // against periodic runs, otherwise we can have catalog version in this cache
-  // go back after a DDL commit (which isn't a critical error but nice to prevent)
-  // or versions get repopulated after a reset from leader stepdown
-  LockGuard refresh_lock(refresh_pg_catalog_versions_cache_mutex_);
   LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+  // Invariant: all the pieces of heartbeat catalog-versions cache state below are reset
+  // together here. They are not independent, and clearing only a subset has already been a bug
+  // once: #33596 left the fingerprint behind, which suppressed the next invalidation-messages
+  // re-read. Any state added to this cache must be reset here too.
   if (heartbeat_pg_catalog_versions_cache_) {
     heartbeat_pg_catalog_versions_cache_->clear();
   }
@@ -14325,24 +14396,89 @@ void CatalogManager::ResetCachedCatalogVersions() {
   // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
   // of pg_yb_invalidation_messages has failed.
   heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
+  // Must also be cleared, or the first install after this reset is rejected as carrying an older
+  // snapshot than the one we just discarded, and the cache stays empty.
+  heartbeat_pg_catalog_versions_cache_read_ht_ = HybridTime::kInvalid;
+  ++heartbeat_pg_catalog_versions_cache_generation_;
   LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-      << "ResetCachedCatalogVersions: cache reset";
+      << "ResetCachedCatalogVersions: cache reset, generation: "
+      << heartbeat_pg_catalog_versions_cache_generation_;
+}
+
+uint64_t CatalogManager::GetPgCatalogVersionsCacheGeneration() const {
+  SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+  return heartbeat_pg_catalog_versions_cache_generation_;
+}
+
+bool CatalogManager::InstallPgCatalogVersionsSnapshot(
+    uint64_t generation, HybridTime read_ht, DbOidToCatalogVersionMap versions,
+    uint64_t fingerprint, bool update_messages,
+    std::optional<DbOidVersionToMessageListMap> messages) {
+  if (!read_ht.is_valid()) {
+    // Callers must pass the read time of an actual read. Installing an invalid one would both
+    // install out of order -- HybridTime::kInvalid is kMax - 1, so it beats every real snapshot
+    // in the comparison below -- and then disarm that comparison for the following install.
+    // Note GetYsqlAllDBCatalogVersions() leaves its out_read_ht untouched on a cache hit, so
+    // only a use_cache=false read supplies a usable one.
+    LOG_WITH_FUNC(DFATAL) << "Refusing to install a catalog versions snapshot with no read time";
+    return false;
+  }
+  LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+  if (generation != heartbeat_pg_catalog_versions_cache_generation_) {
+    // The cache was reset after this snapshot was read, i.e. we lost leadership in between.
+    // Installing now would undo that reset, and the data is from before another master took over.
+    // Logged at INFO, not VLOG: the generation only moves on a leader stepdown, so this fires at
+    // most once per in-flight install per stepdown, and it is what explains a cache that stays
+    // empty across a failover.
+    LOG_WITH_FUNC(INFO) << "Skipping install: cache generation moved from " << generation << " to "
+                        << heartbeat_pg_catalog_versions_cache_generation_;
+    return false;
+  }
+  // The is_valid() test is required, not defensive: HybridTime::kInvalid is kMax - 1, so an unset
+  // heartbeat_pg_catalog_versions_cache_read_ht_ compares as nearly maximal rather than as "older
+  // than everything". Dropping it would reject every install, leaving the cache permanently empty
+  // on a fresh master and after every ResetCachedCatalogVersions(), which are the only two states
+  // where heartbeat_pg_catalog_versions_cache_read_ht_ is invalid.
+  if (heartbeat_pg_catalog_versions_cache_read_ht_.is_valid() &&
+      read_ht <= heartbeat_pg_catalog_versions_cache_read_ht_) {
+    // An equal or newer snapshot is already installed. Dropping this one is what keeps the cache
+    // monotonic, and it is also correct for the caller that broadcast this snapshot to tservers:
+    // what is installed is at least as new, so the cache cannot report below the broadcast.
+    VLOG_WITH_FUNC(2) << "Skipping install of snapshot at " << read_ht << ", cache holds "
+                      << heartbeat_pg_catalog_versions_cache_read_ht_;
+    return false;
+  }
+  heartbeat_pg_catalog_versions_cache_ = std::move(versions);
+  heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
+  heartbeat_pg_catalog_versions_cache_read_ht_ = read_ht;
+  if (update_messages) {
+    // nullopt marks the messages unavailable so the next refresh re-reads them; the versions
+    // above are unaffected, since messages are only an optimization on top of them.
+    heartbeat_pg_inval_messages_cache_ = std::move(messages);
+  }
+  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+      << "InstallPgCatalogVersionsSnapshot: installed snapshot at " << read_ht
+      << ", databases: " << heartbeat_pg_catalog_versions_cache_->size();
+  return true;
 }
 
 bool CatalogManager::RefreshPgCatalogVersionCache() {
-  // We use the refresh mutex_ to serialize on-demand callers from DDL commit
-  // against periodic runs, otherwise we can have catalog version in this cache
-  // go back after a DDL commit (which isn't a critical error but nice to prevent)
-  // or versions get repopulated after a reset from leader stepdown
-  LockGuard refresh_lock(refresh_pg_catalog_versions_cache_mutex_);
+  if (PREDICT_FALSE(FLAGS_TEST_pause_pg_catalog_versions_cache_refresh)) {
+    return false;
+  }
   if (!ysql_manager_->IsPgCatalogVersionsBgTaskRunning()) {
     // This can happen when an on-demand call from ysql_ddl_handler runs
     // while leader stepdown stops the periodic run.
     VLOG_WITH_FUNC(2) << "Skipping refresh: catalog versions bg task not running";
     return false;
   }
+  // Must be captured before the read: nothing serializes this function against a concurrent reset,
+  // so the generation is what lets the install below notice that one happened in between and drop
+  // this snapshot rather than resurrecting a cache that a stepdown deliberately cleared.
+  const auto generation = GetPgCatalogVersionsCacheGeneration();
   DbOidToCatalogVersionMap versions;
-  Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
+  HybridTime read_ht;
+  Status s = GetYsqlAllDBCatalogVersionsImpl(&versions, &read_ht);
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 20) << "Catalog versions refresh failed: " << s.ToString();
     // Keep the existing cache intact; stale data is preferable to forcing every
@@ -14380,32 +14516,20 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     }
   }
 
-  {
-    LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    if (heartbeat_pg_catalog_versions_cache_) {
-      heartbeat_pg_catalog_versions_cache_->swap(versions);
-    } else {
-      heartbeat_pg_catalog_versions_cache_ = std::move(versions);
-    }
-    heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
-    LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-        << "RefreshPgCatalogVersionCache: cache refreshed, databases: "
-        << heartbeat_pg_catalog_versions_cache_->size();
-
-    if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
-      if (messages_refresh_failed) {
-        heartbeat_pg_inval_messages_cache_ = std::nullopt;
-      } else {
-        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
-                          << " catalog inval messages in memory";
-        if (heartbeat_pg_inval_messages_cache_) {
-          heartbeat_pg_inval_messages_cache_->swap(*messages);
-        } else {
-          heartbeat_pg_inval_messages_cache_ = std::move(*messages);
-        }
-      }
-    }
+  const bool update_messages = FLAGS_ysql_yb_enable_invalidation_messages && changed;
+  // Left as nullopt when the messages read failed, which marks them unavailable so the next
+  // refresh retries; the catalog versions are installed either way, since messages are only an
+  // optimization on top of them.
+  std::optional<DbOidVersionToMessageListMap> messages_to_install;
+  if (update_messages && !messages_refresh_failed) {
+    VLOG_WITH_FUNC(2) << "Refreshed " << messages->size() << " catalog inval messages in memory";
+    messages_to_install = std::move(messages);
   }
+  const bool installed = InstallPgCatalogVersionsSnapshot(
+      generation, read_ht, std::move(versions), fingerprint, update_messages,
+      std::move(messages_to_install));
+  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+      << "RefreshPgCatalogVersionCache: cache refreshed, installed: " << installed;
 
   return !messages_refresh_failed;
 }
@@ -14777,6 +14901,25 @@ void CatalogManager::RemoveNamespaceFromMaps(
   if (namespace_ids_map_.erase(ns_id) < 1) {
     LOG(DFATAL) << Format("Could not remove namespace from ids map, id=$1", ns_id);
   }
+}
+
+void CatalogManager::ReleaseNamespaceNameIfOwned(const scoped_refptr<NamespaceInfo>& ns) {
+  LockGuard lock(mutex_);
+  auto& names = namespace_names_mapper_[ns->database_type()];
+  auto it = names.find(ns->name());
+  if (it == names.end()) {
+    LOG(WARNING) << "Namespace name " << ns->name() << " (id " << ns->id()
+                 << ") was already absent from the by-name map";
+    return;
+  }
+  if (it->second->id() != ns->id()) {
+    LOG(WARNING) << Format(
+        "While removing namespace of type $0 with id $1 and name $2 found a different namespace "
+        "in the names map under the same name, with id $3",
+        YQLDatabase_Name(ns->database_type()), ns->id(), ns->name(), it->second->id());
+    return;
+  }
+  names.erase(it);
 }
 
 Status CatalogManager::RegisterFlagCallbacks() {

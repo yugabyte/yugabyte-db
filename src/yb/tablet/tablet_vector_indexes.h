@@ -19,6 +19,8 @@
 
 #include "yb/hnsw/hnsw_fwd.h"
 
+#include "yb/rocksdb/listener.h"
+
 #include "yb/tablet/tablet_component.h"
 #include "yb/tablet/tablet_options.h"
 
@@ -38,10 +40,13 @@ class VectorIndexList {
   explicit VectorIndexList(docdb::DocVectorIndexesPtr list) : list_(std::move(list)) {}
 
   void EnableAutoCompactions();
-  void Compact();
+  void Compact(rocksdb::CompactionReason reason);
   void Flush();
   Status WaitForCompaction();
   Status WaitForFlush();
+  // Returns true if this list is empty or every index has compacted inherited parent data for
+  // its tablet's split_generation.
+  bool ParentDataCompacted() const;
 
   // Returns the total size in bytes occupied on disk by all vector indexes in this list.
   uint64_t OnDiskSize() const;
@@ -112,6 +117,15 @@ class TabletVectorIndexes :
   // postpone tablet splitting until the backfill completes (see GH#32321).
   bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
 
+  // Returns true if there are no vector indexes, or every open vector index has compacted
+  // inherited parent data for its tablet's split_generation.
+  bool ParentDataCompacted() const EXCLUDES(vector_indexes_mutex_);
+
+  // Returns true if a post-split compaction is still required to drop inherited parent data.
+  // Always false when vector_index_include_into_post_split_compaction is off, as in that case no
+  // vector index post-split compaction is ever scheduled.
+  bool PostSplitCompactionRequired() const EXCLUDES(vector_indexes_mutex_);
+
   void LaunchBackfillsIfNecessary();
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
@@ -139,6 +153,9 @@ class TabletVectorIndexes :
   bool has_vector_deletion() {
     return has_vector_deletion_.load();
   }
+
+  // Largest split_generation recorded by InitFrontiers() across open indexes, 0 if none.
+  uint64_t MaxPersistedSplitGeneration() const EXCLUDES(vector_indexes_mutex_);
 
  private:
   void ScheduleBackfill(

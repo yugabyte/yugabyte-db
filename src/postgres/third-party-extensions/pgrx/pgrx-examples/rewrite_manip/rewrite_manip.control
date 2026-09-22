@@ -1,0 +1,6 @@
+comment = 'rewrite_manip:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = 'rewrite_manip'
+relocatable = false
+superuser = false
+schema = 'rewrite_manip'

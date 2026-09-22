@@ -1559,6 +1559,12 @@ setup_auth(FILE *cmdfd)
 		 * ensure passwords are not publicly visible.
 		 */
 		"REVOKE ALL ON pg_authid FROM public;\n\n",
+
+		/*
+		 * YB: The password history table stores password hashes
+		 * and must not be publicly readable.
+		 */
+		"REVOKE ALL ON pg_yb_password_history FROM public;\n\n",
 		NULL
 	};
 

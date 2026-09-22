@@ -179,6 +179,12 @@ public class Util {
    */
   public static final Pattern SHELL_SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9._-]+");
 
+  public static final int POSTGRES_PASSWORD_LENGTH = 20;
+
+  /** Safe-set of characters for generated Postgres passwords. */
+  public static final String POSTGRES_PASSWORD_ALLOWED_CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@^*0123456789";
+
   public static final double EPSILON = 0.000001d;
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
@@ -1094,6 +1100,14 @@ public class Util {
         .collect(Collectors.toSet());
   }
 
+  public static Collection<Provider> getAllProviders(UniverseDefinitionTaskParams taskParams) {
+    return taskParams.clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .distinct()
+        .map(Provider::getOrBadRequest)
+        .collect(Collectors.toSet());
+  }
+
   /**
    * Filling old fields from provider specifications if not present (for compatibility with old UI)
    *
@@ -1380,8 +1394,7 @@ public class Util {
    * @param cluster
    * @return
    */
-  public static Function<NodeDetails, Provider> getProviderGetter(
-      UniverseDefinitionTaskParams.Cluster cluster) {
+  public static Function<NodeDetails, Provider> getProviderGetter(Cluster cluster) {
     // Caching by AZ.
     Map<UUID, Provider> providerMap = new HashMap<>();
     return (n) -> providerMap.computeIfAbsent(n.azUuid, uuid -> getProviderForNode(n, cluster));
@@ -1604,6 +1617,18 @@ public class Util {
 
   public static Provider getProviderByAz(UUID azUuid) {
     return AvailabilityZone.getOrBadRequest(azUuid).getProvider();
+  }
+
+  public static Map<UUID, List<NodeDetails>> splitTserversByProviders(Universe universe) {
+    Map<UUID, List<NodeDetails>> byProvider = new HashMap<>();
+    for (NodeDetails nodeDetails : universe.getTServers()) {
+      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+      UUID providerUUID = cluster.getProviderUUIDForNode(nodeDetails);
+      List<NodeDetails> lst = byProvider.getOrDefault(providerUUID, new ArrayList<>());
+      lst.add(nodeDetails);
+      byProvider.put(providerUUID, lst);
+    }
+    return byProvider;
   }
 
   /**
@@ -1876,9 +1901,8 @@ public class Util {
   }
 
   public static String getPostgresCompatiblePassword() {
-    String allowedCharsInPassword =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@$^*0123456789";
-    return RandomStringUtils.secureStrong().next(20, allowedCharsInPassword);
+    return RandomStringUtils.secureStrong()
+        .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
   }
 
   public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {

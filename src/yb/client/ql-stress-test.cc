@@ -666,7 +666,8 @@ void QLStressTest::VerifyFlushedFrontiers() {
       rocksdb::Options options;
       auto tablet_options = TabletOptions();
       tablet_options.rocksdb_env = db->GetEnv();
-      InitRocksDBOptions(&options, "", "", nullptr, tablet_options);
+      InitRocksDBOptions(
+          &options, "", "", nullptr, tablet_options, docdb::StorageDbType::kRegular);
       std::unique_ptr<rocksdb::DB> checkpoint_db;
       rocksdb::DB* checkpoint_db_raw_ptr = nullptr;
 
@@ -818,10 +819,14 @@ void QLStressTest::AddWriter(
                                    value_prefix = std::move(value_prefix), allow_failures,
                                    txn_manager, transactional_write_probability] {
     auto session = NewSession();
-    session->SetRejectionScoreSource(std::make_shared<RejectionScoreSource>());
     ASSERT_TRUE(txn_manager || transactional_write_probability == 0.0);
 
     while (!stop.load(std::memory_order_acquire)) {
+      // RejectionScoreSource caches one random score per attempt number, so it must be recreated
+      // per write, like the YCQL executor does per statement. A single source shared by the whole
+      // thread pins one score forever, and if none of the writers happens to draw a score above
+      // the SST files soft limit threshold, no write is ever rejected.
+      session->SetRejectionScoreSource(std::make_shared<RejectionScoreSource>());
       YBTransactionPtr txn;
       if (txn_manager && RandomActWithProbability(transactional_write_probability)) {
         txn = std::make_shared<YBTransaction>(txn_manager);

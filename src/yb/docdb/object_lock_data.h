@@ -57,6 +57,8 @@ struct ObjectLockOwner {
 // object/table locks, when a session requests lock(s) on an object oid corresponding to a database
 // oid, an 'ObjectLockPrefix' in formed which is then passed to the ObjectLockManager.
 struct ObjectLockPrefix {
+  ObjectLockPrefix() = default;
+
   ObjectLockPrefix(
       uint32_t database_oid_, uint32_t relation_oid_, uint32_t object_oid_,
       uint32_t object_sub_oid_, dockv::KeyEntryType lock_type_)

@@ -84,12 +84,14 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DEFINE_RUNTIME_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
-             "evicted from the config.");
+             "evicted from the config. This value should match "
+             "log_min_seconds_to_retain.");
 TAG_FLAG(follower_unavailable_considered_failed_sec, advanced);
 DEFINE_validator(follower_unavailable_considered_failed_sec,
   FLAG_DELAYED_COND_VALIDATOR(
-      _value >= FLAGS_raft_heartbeat_interval_ms *
-                static_cast<double>(FLAGS_leader_failure_max_missed_heartbeat_periods) / 1000,
+      _value >= FINAL_FLAG_VALUE(raft_heartbeat_interval_ms) *
+                static_cast<double>(FINAL_FLAG_VALUE(leader_failure_max_missed_heartbeat_periods)) /
+                    1000,
       yb::Format("Must be >= ($0 * $1) / 1000",
                  "raft_heartbeat_interval_ms", "leader_failure_max_missed_heartbeat_periods")));
 
@@ -265,12 +267,11 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
       << queue_state_.ToString();
   CheckPeersInActiveConfigIfLeaderUnlocked();
 
-  // Reset last communication time with all peers to reset the clock on the
-  // failure timeout.
-  MonoTime now(MonoTime::Now());
+  // Leases are per leadership term. last_successful_communication_time is not: SetLeaderMode also
+  // runs on every config change, and restarting the failure clock there would make a dead follower
+  // look live again (blocking eviction and stepdown). Newly tracked peers already start at Now().
   for (const PeersMap::value_type& entry : peers_map_) {
     entry.second->ResetLeaderLeases();
-    entry.second->last_successful_communication_time = now;
   }
 }
 
@@ -1922,6 +1923,18 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
         peer_uuid, queue_state_.majority_replicated_op_id, peer->last_received);
   }
   return peer_can_be_leader;
+}
+
+bool PeerMessageQueue::IsPeerLive(const std::string& peer_uuid) const {
+  std::lock_guard lock(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  // Untracked peers are treated as live so a just-added PRE_VOTER cannot race past this check
+  // before the queue starts tracking it.
+  if (peer == nullptr) {
+    return true;
+  }
+  return MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time).ToSeconds() <=
+         FLAGS_follower_unavailable_considered_failed_sec;
 }
 
 OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {

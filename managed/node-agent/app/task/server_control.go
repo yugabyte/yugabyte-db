@@ -5,12 +5,12 @@ package task
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -46,35 +46,8 @@ func (handler *ServerControlHandler) String() string {
 func (handler *ServerControlHandler) Handle(
 	ctx context.Context,
 ) (*pb.DescribeTaskResponse, error) {
-	if handler.param.GetNumVolumes() > 0 {
-		cmd := "df | awk '{{print $6}}' | egrep '^/mnt/d[0-9]+' | wc -l"
-		util.FileLogger().Infof(ctx, "Running command %v", cmd)
-		cmdInfo, err := module.RunShellCmd(
-			ctx,
-			handler.username,
-			"getNumVolumes",
-			cmd,
-			handler.logOut,
-		)
-		if err != nil {
-			util.FileLogger().Errorf(ctx, "Server control failed in %v - %s", cmd, err.Error())
-			return nil, err
-		}
-		count, err := strconv.Atoi(strings.TrimSpace(cmdInfo.StdOut.String()))
-		if err != nil {
-			util.FileLogger().
-				Errorf(ctx, "Failed to parse output of command %v - %s", cmd, err.Error())
-			return nil, err
-		}
-		if uint32(count) < handler.param.GetNumVolumes() {
-			err = fmt.Errorf(
-				"Not all data volumes attached: needed %d found %d",
-				handler.param.GetNumVolumes(),
-				count,
-			)
-			util.FileLogger().Errorf(ctx, "Volume mount validation failed - %s", err.Error())
-			return nil, err
-		}
+	if err := handler.checkDataVolumes(ctx); err != nil {
+		return nil, err
 	}
 	// Enable linger for user level systemd.
 	yes, _, err := module.IsUserSystemd(handler.username, handler.param.GetServerName())
@@ -123,4 +96,52 @@ func (handler *ServerControlHandler) Handle(
 			ServerControlOutput: &pb.ServerControlOutput{},
 		},
 	}, nil
+}
+
+// checkDataVolumes checks if the data volumes are attached.
+func (handler *ServerControlHandler) checkDataVolumes(ctx context.Context) error {
+	if !handler.param.GetCheckDataVolumes() {
+		return nil
+	}
+	mountPaths := handler.param.GetMountPoints()
+	if len(mountPaths) == 0 {
+		return nil
+	}
+	ybHome := filepath.Dir(handler.param.GetServerHome())
+	binDir := filepath.Join(ybHome, "bin")
+	diskCheckPath := filepath.Join(binDir, "disk-check.sh")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		return err
+	}
+	// Refresh the script as there can be new changes.
+	if _, err := module.CopyFile(
+		ctx,
+		map[string]any{
+			"mount_paths":        strings.Join(mountPaths, " "),
+			"check_data_volumes": true,
+		},
+		filepath.Join(module.ServerTemplateSubpath, "disk-check.sh.j2"),
+		diskCheckPath,
+		fs.FileMode(0755),
+		handler.username,
+	); err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to copy disk-check.sh - %s", err.Error())
+		return err
+	}
+	// Script has retries built in, so we don't need to retry here.
+	util.FileLogger().Infof(ctx, "Running disk checks: %v", diskCheckPath)
+	_, err := module.RunShellCmd(
+		ctx,
+		handler.username,
+		"disk-check",
+		diskCheckPath,
+		handler.logOut,
+	)
+	if err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Server control failed in %v - %s", diskCheckPath, err.Error())
+		return err
+	}
+	return nil
 }

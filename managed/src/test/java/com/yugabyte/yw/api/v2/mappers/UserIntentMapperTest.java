@@ -11,12 +11,15 @@ import static org.junit.Assert.assertTrue;
 import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AvailabilityZoneNodeSpec;
 import api.v2.models.ClusterEditSpec;
+import api.v2.models.ClusterGFlags;
 import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterPerProcessNodeSpec;
+import api.v2.models.ClusterResizeNodeSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -171,8 +174,11 @@ public class UserIntentMapperTest {
     UserIntent userIntent = new UserIntent();
     userIntent.instanceType = "c5.xlarge";
 
+    Map<String, String> masterFlags = Map.of("master-flag", "some");
+    Map<String, String> tserverFlags = Map.of("tserver-flag", "other");
     UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
     resizeCluster.setUuid(UUID.randomUUID());
+    resizeCluster.gflags(new ClusterGFlags().tserver(tserverFlags).master(masterFlags));
     // gflags-only: no node_spec / provider_nodes_specs
 
     UserIntent mapped =
@@ -180,6 +186,29 @@ public class UserIntentMapperTest {
             resizeCluster, userIntent);
 
     assertEquals("c5.xlarge", mapped.instanceType);
+    assertEquals(
+        tserverFlags, mapped.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER));
+    assertEquals(
+        masterFlags, mapped.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER));
+  }
+
+  @Test
+  public void testNoGflagsResizeDoesNotEraseFlags() {
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(Map.of("tserver-flag", "foo"), Map.of("master-flag", "bar"));
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "c5.xlarge";
+    userIntent.specificGFlags = specificGFlags;
+
+    UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
+    resizeCluster.setUuid(UUID.randomUUID());
+    resizeCluster.setNodeSpec(new ClusterResizeNodeSpec().instanceType("c6.large"));
+    UserIntent mapped =
+        UserIntentMapper.INSTANCE.toV1UserIntentFromUniverseResizeNodesCluster(
+            resizeCluster, userIntent);
+
+    assertEquals("c6.large", mapped.instanceType);
+    assertEquals(specificGFlags, mapped.specificGFlags);
   }
 
   @Test

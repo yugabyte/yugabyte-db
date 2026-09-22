@@ -7667,5 +7667,47 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingExpiredTableToVWALWithC
   TestFailureOnAddingUnqualifiedTableToVWAL(true /* add_expired_table */, true /* use_colocated */);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnqualifiedTabletOutsideSlotHashRange) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Two tablets over the full hash space, so the split point is 32768 and each slot below owns
+  // exactly one of them.
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kTableName, 2 /* num_tablets */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_1 =
+      std::make_unique<ReplicationSlotHashRange>(0, 32768);
+  std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_2 =
+      std::make_unique<ReplicationSlotHashRange>(32768, 65536);
+  ASSERT_OK(InitVirtualWAL(stream_id_1, {table.table_id()}, kVWALSessionId1, slot_hash_range_1));
+  ASSERT_OK(InitVirtualWAL(stream_id_2, {table.table_id()}, kVWALSessionId2, slot_hash_range_2));
+
+  // Poll each slot once so the tablet it owns has its active_time moved off the stream creation
+  // time. The active_time of the tablet owned by the other slot is left at the stream creation
+  // time, hence that will be declared not of interest.
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id_1, kVWALSessionId1));
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id_2, kVWALSessionId2));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
+
+  // Re-initialising walks the table's full tablet list again, so slot 1 sees the tablet in slot 2's
+  // range. That tablet is not slot 1's to poll and must not fail its init.
+  ASSERT_OK(DestroyVirtualWAL(kVWALSessionId1));
+  ASSERT_OK(DestroyVirtualWAL(kVWALSessionId2));
+  ASSERT_OK(InitVirtualWAL(stream_id_1, {table.table_id()}, kVWALSessionId1, slot_hash_range_1));
+  ASSERT_OK(InitVirtualWAL(stream_id_2, {table.table_id()}, kVWALSessionId2, slot_hash_range_2));
+}
+
 }  // namespace cdc
 }  // namespace yb

@@ -46,6 +46,7 @@
 #include "optimizer/optimizer.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
+#include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -399,7 +400,7 @@ yb_scan_apply_next_parallel_range(YbcPgStatement handle,
 	 * Parallel scan range is already of limited size, it is
 	 * unlikely to exceed the message size, but may save some RPCs.
 	 */
-	exec_params->limit_use_default = true;
+	exec_params->plan_limit = 0;
 	exec_params->yb_fetch_row_limit = 0;
 	exec_params->yb_fetch_size_limit = 0;
 	return true;
@@ -444,7 +445,7 @@ ybcFetchNextHeapTuple(YbOpaque ybScan, ScanDirection dir)
 				return NULL;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(dir))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(dir))
@@ -561,7 +562,7 @@ ybcFetchNextIndexTuple(YbOpaque ybScan, ScanDirection dir)
 				return NULL;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(dir))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(dir))
@@ -1643,7 +1644,7 @@ YbBindRowComparisonKeys(YbOpaque ybScan, YbScanPlan scan_plan,
 											attnum),
 						   current->sk_collation,
 						   current->sk_argument,
-						   false);
+						   (current->sk_flags & SK_ISNULL) != 0 /* is_null */ );
 
 		/*
 		 * PgGate rejects IS NOT NULL binds on partition columns, and
@@ -2251,6 +2252,20 @@ YbFoldInequalityBound(YbColFoldState *fs, ScanKey key, bool is_lower_bound)
 }
 
 /*
+ * Map a merge scan SAOP column to its bind relation attribute, the same way
+ * ybcSetupScanPlan maps scan keys: the base relation column for a primary key
+ * scan, the index attribute otherwise.
+ */
+static AttrNumber
+ybMergeScanSaopAttnum(Relation index, const YbMergeScanSaopColInfo *info)
+{
+	Assert(index);
+	return (index->rd_index->indisprimary ?
+			index->rd_index->indkey.values[info->indexcol] :
+			info->indexcol + 1);
+}
+
+/*
  * Verify that every index column the planner declared in
  * yb_merge_scan_info->saop_cols got a usable bound condition: a single
  * equality value or a plain scalar IN list.  The merge scan would silently
@@ -2261,22 +2276,12 @@ ybValidateMergeScanBinds(YbOpaque ybScan, YbScanPlan scan_plan,
 						 YbMergeScanInfo *yb_merge_scan_info,
 						 bool is_column_eq_or_in_bound[], int max_idx)
 {
-	Relation	index = ybScan->index;
 	ListCell   *lc;
 
-	Assert(index);
 	foreach(lc, yb_merge_scan_info->saop_cols)
 	{
 		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
-
-		/*
-		 * Map the index column to its bind relation attribute the same way
-		 * ybcSetupScanPlan maps scan keys: the base relation column for a
-		 * primary key scan, the index attribute otherwise.
-		 */
-		AttrNumber	attnum = (index->rd_index->indisprimary ?
-							  index->rd_index->indkey.values[info->indexcol] :
-							  info->indexcol + 1);
+		AttrNumber	attnum = ybMergeScanSaopAttnum(ybScan->index, info);
 		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation,
 											 attnum);
 
@@ -2709,28 +2714,35 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 
 		if (YbIsSearchArray(key))
 		{
-			Datum		this_array_const;
 			ListCell   *lc;
-
-			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
 
 			if (yb_merge_scan_info)
 			{
+				Datum		this_array_const = YbGetArrayConst(&ybScan->keys[i]);
+
 				foreach(lc, yb_merge_scan_info->saop_cols)
 				{
-					ScalarArrayOpExpr *pinned_saop =
-						((YbMergeScanSaopColInfo *) lfirst(lc))->saop;
-					Datum		pinned_array_const =
-						((Const *) lsecond(pinned_saop->args))->constvalue;
+					YbMergeScanSaopColInfo *info =
+						lfirst_node(YbMergeScanSaopColInfo, lc);
+					Const	   *pinned_array =
+						castNode(Const, lsecond(info->saop->args));
+					AttrNumber	attnum = ybMergeScanSaopAttnum(ybScan->index,
+															   info);
 
 					/*
-					 * Direct datum comparison (compared to datumIsEqual) is
-					 * safe because yb_match_in_index_clause and
-					 * ExecIndexBuildScanKeys set pinned_array_const and
-					 * this_array_const, respectively, to the same field in
-					 * memory.
+					 * Compare that the scan key and the pinned SAOP are on the
+					 * same column.  Two different columns can hold equal
+					 * arrays, so comparing the arrays is not enough on its own.
 					 */
-					if (this_array_const == pinned_array_const)
+					if (scan_plan->bind_key_attnums[i] != attnum)
+						continue;
+
+					/*
+					 * Compare the arrays by value rather than by address.
+					 */
+					if (datumIsEqual(this_array_const, pinned_array->constvalue,
+									 pinned_array->constbyval,
+									 pinned_array->constlen))
 					{
 						/*
 						 * If the following check fails, then the bind is not
@@ -4229,7 +4241,7 @@ ybc_heap_getnextslot(TableScanDesc tsdesc, ScanDirection direction,
 				return false;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(direction))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(direction))

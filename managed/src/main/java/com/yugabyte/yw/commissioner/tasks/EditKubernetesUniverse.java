@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -79,11 +80,7 @@ import play.libs.Json;
 @Slf4j
 @Abortable
 @Retryable
-// TODO(PLAT-21484): add @CanRollback here once RollbackEditKubernetesUniverse (PLAT-21484), the
-// state_transition_details safe-window gate (PLAT-21387 / PLAT-21483) and the runtime flag
-// (PLAT-21488) are in place. Bind EditKubernetesUniverse in TaskRollbackModule when those land.
-// Annotating before they exist would surface canRollback=true in the UI/API while the rollback
-// action is not yet implemented.
+@CanRollback
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
@@ -1134,11 +1131,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     UUID clusterUUID =
         isReadOnlyCluster ? taskParams().getReadOnlyClusters().get(0).uuid : primaryCluster.uuid;
-    String providerStr =
+    Provider provider =
         isReadOnlyCluster
-            ? taskParams().getReadOnlyClusters().get(0).userIntent.provider
-            : primaryCluster.userIntent.provider;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerStr));
+            ? Util.getSingleProvider(taskParams().getReadOnlyClusters().get(0))
+            : Util.getSingleProvider(primaryCluster);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     String nodePrefix = taskParams().nodePrefix;
 

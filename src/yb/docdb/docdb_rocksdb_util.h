@@ -15,6 +15,7 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_types.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -149,15 +150,28 @@ void InitRocksDBBaseOptions(
     const tablet::TabletOptions& tablet_options,
     const uint64_t group_no = kDefaultGroupNo);
 
-void InitRocksDBOptionsTableFactory(
-    rocksdb::Options* options, const tablet::TabletOptions& tablet_options,
+// Table factory for a docdb RocksDB instance: tablet block cache, table options from flags, and
+// the docdb-aware bloom filter policy, which is only installed for the regular DB.
+std::shared_ptr<rocksdb::TableFactory> CreateRocksDBTableFactory(
+    const tablet::TabletOptions& tablet_options, StorageDbType db_type, rocksdb::Logger* info_log,
     rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
+
+// Base options plus log prefix and statistics, with options->table_factory left at the RocksDB
+// default. Only for callers that cannot name the DB type: DestroyDB over both DBs, or a tool given
+// an arbitrary path. Everything that opens a known DB uses InitRocksDBOptions.
+void InitRocksDBOptionsWithoutTableFactory(
+    rocksdb::Options* options, const std::string& log_prefix,
+    const TabletId& tablet_id,
+    const std::shared_ptr<rocksdb::Statistics>& statistics,
+    const tablet::TabletOptions& tablet_options,
+    const uint64_t group_no = kDefaultGroupNo);
 
 void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     const TabletId& tablet_id,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
+    StorageDbType db_type,
     rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions(),
     const uint64_t group_no = kDefaultGroupNo);
 

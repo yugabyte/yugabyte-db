@@ -170,6 +170,9 @@ Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
+val bouncyCastleFipsVersion = "2.1.1"
+val bouncyCastleUtilFipsVersion = "2.1.7"
+
 libraryDependencies ++= Seq(
   javaJdbc,
   caffeine,
@@ -192,9 +195,14 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
-  "org.bouncycastle" % "bc-fips" % "2.1.0",
-  "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
-  "org.bouncycastle" % "bctls-fips" % "2.1.20",
+  // bc-fips is the FIPS 140-3 validated module itself, so it tracks the newest *certified*
+  // build rather than the newest published one: 2.1.1 is CMVP certificate #4943 (17 Jan 2025),
+  // while 2.1.2 and 2.1.3 carry no certificate of their own. The rest are outside the validated
+  // boundary and track latest. See the dependencyOverrides below - declaring them is not enough.
+  "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion,
+  "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion,
+  "org.bouncycastle" % "bcpkix-fips" % "2.1.12",
+  "org.bouncycastle" % "bctls-fips" % "2.1.24",
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
   // AWS SDK 2.x dependencies
@@ -250,12 +258,13 @@ libraryDependencies ++= Seq(
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-dns" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % "3.77.2",
-  "org.projectlombok" % "lombok" % "1.18.26",
+  "org.projectlombok" % "lombok" % "1.18.48",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
@@ -304,7 +313,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.3" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.5" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -737,7 +746,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.0",
+    version := "1.0.1",
     target := file("client/java/target/v1"),
   )
 
@@ -753,7 +762,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.3",
+    version := "1.8.5",
     target := file("client/java/target/v2"),
   )
 
@@ -1055,6 +1064,12 @@ runPlatform := {
   )
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
+
+// bcpkix-fips and bctls-fips depend on bcutil-fips by version range, and bcutil-fips depends on
+// bc-fips by range, so a plain declaration loses to the range: a build declaring bc-fips 2.1.0
+// was resolving 2.1.3, an uncertified module. Only an override fixes the FIPS module version.
+dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
+dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.122-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b11"

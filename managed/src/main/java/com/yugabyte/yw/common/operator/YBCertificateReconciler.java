@@ -482,7 +482,7 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
   @Override
   public void run() {
-    informer.addEventHandler(this);
+    informer.addEventHandler(HaAwareResourceEventHandler.wrap(operatorUtils, this));
     informer.run();
   }
 }

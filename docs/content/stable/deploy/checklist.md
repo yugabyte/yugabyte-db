@@ -13,6 +13,12 @@ rightNav:
 type: docs
 ---
 
+{{< page-finder/head text="Plan your deployment" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/create-deployments/create-universes-overview/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-basics/create-clusters-overview/" >}}
+{{< /page-finder/head >}}
+
 A YugabyteDB cluster (also referred to as a [universe](../../architecture/key-concepts/#universe)) consists of two distributed services - the [YB-TServer](../../architecture/yb-tserver/) service and the [YB-Master](../../architecture/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
 
 {{< warning title="Antivirus and endpoint scanning" >}}

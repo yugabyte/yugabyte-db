@@ -466,7 +466,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
   if (is_transactional_snapshot) {
     rocksdb::Options rocksdb_options;
-    tablet().InitRocksDBOptions(&rocksdb_options, LogPrefix());
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
@@ -636,7 +637,8 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
     std::string log_prefix = LogPrefix();
     // Remove ": " to patch suffix.
     log_prefix.erase(log_prefix.size() - 2);
-    tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, log_prefix + " [TMP]: ", docdb::StorageDbType::kRegular);
     rocksdb_options.compaction_style = rocksdb::kCompactionStyleNone;
     auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
     auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
@@ -741,7 +743,8 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   {
     rocksdb::Options rocksdb_options;
-    tablet().InitRocksDBOptions(&rocksdb_options, LogPrefix());
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(db_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
@@ -836,7 +839,8 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
 
   {
     rocksdb::Options rocksdb_options;
-    tablet().InitRocksDBOptions(&rocksdb_options, LogPrefix());
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(dest_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());

@@ -28,11 +28,14 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/server/skewed_clock.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -166,6 +169,23 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     if (!res.ok()) {
       return res;
     }
+
+    // Wait until the load balancer has moved every replica off the proxy. The load balancer spreads
+    // the system tablets (transaction status, advisory locks) across both tservers before the
+    // blacklist is set, and while such a replica is still hosted on the proxy, its leader on the
+    // data node keeps sending consensus updates to the proxy. Each update propagates the data
+    // node's hybrid time, which this test jumps forward, defeating the clock skew it relies on.
+    RETURN_NOT_OK(WaitFor(
+        [this] {
+          for (const auto& peer : cluster_->GetTabletPeers(proxy_idx_)) {
+            const auto state = peer->state();
+            if (state != tablet::SHUTDOWN && state != tablet::FAILED) {
+              return false;
+            }
+          }
+          return true;
+        },
+        60s * kTimeMultiplier, "No tablet replicas left on the proxy"));
 
     // Now, we are ready to connect to the proxy.
     return ConnectToIdx(proxy_idx_);
@@ -339,6 +359,20 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
       if (config.visibility != Visibility::RELAXED || config.same_node || config.wait_for_skew) {
         ASSERT_EQ(rows.size(), 1);
       } else {
+        // Every response the proxy processes lifts its clock to the hybrid time the responder
+        // stamped, so one stamped by the data host after the commit -- which can land while the
+        // INSERT above is still in flight -- closes the uncertainty window and the read
+        // legitimately sees the row. Re-arm: delete the row, wait out the skew so the proxy's
+        // clock is past the delete, then commit a fresh row above it. Same retry as
+        // CheckDdlSeesCommittedData().
+        for (int attempt = 1; !rows.empty() && attempt < 5; ++attempt) {
+          LOG(INFO) << "Read saw the committed row despite clock skew, re-arming; attempt "
+                    << attempt;
+          ASSERT_OK(setupConn.Execute("DELETE FROM kv WHERE k = 1"));
+          SleepFor(2 * skew);
+          ASSERT_OK(setupConn.Execute("INSERT INTO kv(k) VALUES (1)"));
+          rows = ASSERT_RESULT(readConn.FetchRows<int32_t>(query));
+        }
         ASSERT_EQ(rows.size(), 0);
       }
     } else {

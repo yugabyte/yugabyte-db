@@ -580,3 +580,4 @@ docdb_write_operations          | 1
 
 - [Latency histogram and P99 latencies](../../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
 - [Active Session History](../../../../explore/observability/active-session-history)
+- [Cluster-wide database views](../../../../explore/observability/cluster-wide-db-views/) to query `pg_stat_statements` across every live YB-TServer from a single session (`gv$pg_stat_statements`)

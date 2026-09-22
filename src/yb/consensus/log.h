@@ -56,6 +56,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/disk_space_checker.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
@@ -230,7 +231,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Returns a reader that is able to read through the previous segments.
   // Returns IllegalState if the log has been closed and the reader is no longer available.
-  Result<LogReader*> GetLogReader() const;
+  Result<LogReaderPtr> GetLogReader() const;
 
   Status GetSegmentsSnapshot(SegmentSequence* segments) const;
 
@@ -663,7 +664,9 @@ class Log : public RefCountedThreadSafe<Log> {
   LogState log_state_;
 
   // A reader for the previous segments that were not yet GC'd.
-  std::unique_ptr<LogReader> reader_;
+  // Shared so that a reference handed out by GetLogReader() outlives a concurrent Close()
+  // resetting reader_ mid-read.
+  LogReaderPtr reader_;
 
   // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;
@@ -796,10 +799,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The callback guarantees that value returned would be a 'valid' Hybrid time.
   MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback_;
 
-  std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
-  std::atomic<bool> has_free_disk_space_{false};
-  std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
-  std::shared_timed_mutex disk_space_mutex_;
+  DiskSpaceChecker disk_space_checker_;
 
   // Protect access to the get_xcluster_min_index_to_retain_.
   mutable PerCpuRwMutex get_xcluster_index_lock_;

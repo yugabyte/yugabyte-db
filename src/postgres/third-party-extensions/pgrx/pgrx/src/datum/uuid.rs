@@ -7,10 +7,10 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::{pg_sys, FromDatum, IntoDatum, PgMemoryContexts};
+use crate::{FromDatum, IntoDatum, PgMemoryContexts, pg_sys};
 use core::fmt::Write;
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -118,23 +118,23 @@ impl std::fmt::Display for Uuid {
     }
 }
 
-impl<'a> std::fmt::LowerHex for Uuid {
+impl std::fmt::LowerHex for Uuid {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.format(f, UuidFormatCase::Lowercase)
     }
 }
 
-impl<'a> std::fmt::UpperHex for Uuid {
+impl std::fmt::UpperHex for Uuid {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.format(f, UuidFormatCase::Uppercase)
     }
 }
 
-unsafe impl SqlTranslatable for crate::datum::Uuid {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("uuid"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("uuid")))
-    }
+unsafe impl SqlTranslatable for Uuid {
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(Uuid);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = Ok(SqlMappingRef::literal("uuid"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("uuid")));
 }

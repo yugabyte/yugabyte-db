@@ -65,11 +65,17 @@ public class BundleDetails {
     @EnumValue("NodeAgent")
     NodeAgent(ComponentLevel.NodeLevel),
 
+    @EnumValue("NodeHealthLogs")
+    NodeHealthLogs(ComponentLevel.NodeLevel),
+
     @EnumValue("SystemLogs")
     SystemLogs(ComponentLevel.NodeLevel),
 
     @EnumValue("TabletReport")
     TabletReport(ComponentLevel.GlobalLevel),
+
+    @EnumValue("ClusterConfig")
+    ClusterConfig(ComponentLevel.GlobalLevel),
 
     @EnumValue("K8sInfo")
     K8sInfo(ComponentLevel.GlobalLevel),
@@ -117,7 +123,11 @@ public class BundleDetails {
     PROMETHEUS,
     TSERVER_EXPORT,
     CQL_EXPORT,
-    YSQL_EXPORT;
+    YSQL_EXPORT,
+    // Everything scraped for this universe's pods and volume claims - cAdvisor, kubelet and
+    // kube-state-metrics. Kubernetes universes have no node_exporter, so this is the only
+    // source of resource usage for them.
+    KUBERNETES;
   }
 
   public enum PrometheusMetricsFormat {
@@ -288,8 +298,9 @@ public class BundleDetails {
     @ApiModelProperty(value = "Logical component name; used as output file label.")
     private String componentName;
 
-    @ApiModelProperty(value = "yb-admin subcommand (e.g. list_tables).")
-    private String ybAdminCommand;
+    @ApiModelProperty(
+        value = "yb-admin subcommands to run (each executed separately in one batch).")
+    private List<String> ybAdminCommands;
 
     @ApiModelProperty(value = "Additional arguments after the subcommand.")
     private List<String> ybAdminArgs;

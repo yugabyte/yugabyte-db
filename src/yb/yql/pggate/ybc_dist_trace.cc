@@ -160,15 +160,13 @@ void YBCDestroySpanContext(YbcOtelSpanContext span_ctx) {
   PgMemctx::Destroy(span_ctx);
 }
 
-void YBCInitDistTrace(int64_t process_pid, const char* node_uuid) {
-  DCHECK_GT(process_pid, 0);
-
-  dist_trace::InitDistTrace(process_pid, DCHECK_NOTNULL(node_uuid));
+void YBCInitDistTrace(const char* node_uuid) {
+  dist_trace::InitDistTrace(dist_trace::kYsqlServiceName, DCHECK_NOTNULL(node_uuid));
 }
 
-void YBCCleanupDistTrace() {
+void YBCShutdownDistTrace() {
   YBCDistTraceClearStack();
-  dist_trace::CleanupDistTrace();
+  dist_trace::ShutdownDistTrace();
 }
 
 void YBCDistTraceClearStack() {

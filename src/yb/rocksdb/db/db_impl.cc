@@ -5821,8 +5821,9 @@ Status DBImpl::SwitchMemtable(
   return s;
 }
 
-Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
-                                        TablePropertiesCollection* props) {
+Status DBImpl::GetPropertiesOfAllTables(
+    ColumnFamilyHandle* column_family, TablePropertiesCollection* props,
+    TablePropertiesErrorHandling error_handling) {
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
@@ -5832,7 +5833,7 @@ Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
   version->Ref();
   mutex_.Unlock();
 
-  auto s = version->GetPropertiesOfAllTables(props);
+  auto s = version->GetPropertiesOfAllTables(props, error_handling);
 
   // Decrement the ref count
   mutex_.Lock();
@@ -6129,6 +6130,39 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   // Use an empty (invalid) internal key to get the middle key without a lower bound.
   const Slice kEmptyInternalKey;
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
+}
+
+yb::Result<std::string> DBImpl::FindTargetKey(
+    Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) {
+  auto* cfd = default_cf_handle_->cfd();
+  SuperVersion* sv = GetAndRefSuperVersion(cfd);
+  auto scope_exit = yb::ScopeExit([this, cfd, sv] { ReturnAndCleanupSuperVersion(cfd, sv); });
+  auto* current_version = sv->current;
+
+  const auto lower_internal = InternalKey::MinPossibleForUserKey(lower_bound_key);
+
+  // Exclusive bound: MaxPossibleForUserKey sorts *below* every entry for this user key, despite
+  // its name and its comment in dbformat.h -- internal keys order by decreasing sequence number.
+  std::string upper_internal_buf;
+  if (!upper_bound_key.empty()) {
+    upper_internal_buf =
+        InternalKey::MaxPossibleForUserKey(upper_bound_key).Encode().ToBuffer();
+  }
+
+  auto internal_key = VERIFY_RESULT(current_version->FindTargetKey(
+      lower_internal.Encode(), upper_internal_buf, target_size));
+  return ExtractUserKey(internal_key).ToBuffer();
+}
+
+yb::Result<uint64_t> DBImpl::Cross(Slice key) {
+  InstrumentedMutexLock lock(&mutex_);
+  auto internal_key = InternalKey::MinPossibleForUserKey(key);
+  return default_cf_handle_->cfd()->current()->Cross(internal_key.Encode());
+}
+
+yb::Result<uint64_t> DBImpl::TotalDataSize() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TotalDataSize();
 }
 
 void DBImpl::TEST_SwitchMemtable() {

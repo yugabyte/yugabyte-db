@@ -21,6 +21,7 @@ import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseCrossCloudFederationSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
@@ -311,6 +312,13 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask operatorImportUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
     return universeHandler.operatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask manageCrossCloudFederation(
+      Request request, UUID cUUID, UUID uniUUID, UniverseCrossCloudFederationSpec spec)
+      throws Exception {
+    return universeHandler.manageCrossCloudFederation(request, cUUID, uniUUID, spec);
   }
 
   @Override

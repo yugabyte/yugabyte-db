@@ -1271,14 +1271,14 @@ YbExplainCommitStats(DestReceiver *dest)
 								es->yb_stats.catalog_read.wait_time);
 
 		YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_READ_OP,
-								   es->yb_stats.catalog_read_op_count);
+								   es->yb_stats.catalog_read.ops_count);
 
 		YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
 								es->yb_stats.read.count,
 								es->yb_stats.read.wait_time);
 
 		YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_READ_OP,
-								   es->yb_stats.read_op_count);
+								   es->yb_stats.read.ops_count);
 
 		YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
 								   es->yb_stats.write_count);
@@ -1756,7 +1756,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 									es->yb_stats.read.count,
 									es->yb_stats.read.wait_time);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_READ_OP,
-									   es->yb_stats.read_op_count);
+									   es->yb_stats.read.ops_count);
 			YbExplainStatWithoutTiming(&yb_es,
 									   YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
 									   es->yb_stats.read.rows_scanned);
@@ -1769,7 +1769,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 									es->yb_stats.catalog_read.count,
 									es->yb_stats.catalog_read.wait_time);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_READ_OP,
-									   es->yb_stats.catalog_read_op_count);
+									   es->yb_stats.catalog_read.ops_count);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_WRITE,
 									   es->yb_stats.catalog_write_count);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
@@ -3314,6 +3314,26 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										 bnl->numSortCols, 0, bnl->sortColIdx,
 										 bnl->sortOperators, bnl->collations,
 										 bnl->nullsFirst, ancestors, es);
+
+				if (is_yb_planning_stats_required &&
+					bnl->first_batch_size > 0)
+					ExplainPropertyInteger("First Batch Size", NULL,
+										   bnl->first_batch_size, es);
+
+				/*
+				 * The trimmed size the executor ran the first batch with; it
+				 * differs from the planned one only when the LIMIT was not
+				 * known at plan time.
+				 */
+				if (is_yb_planning_stats_required && es->analyze)
+				{
+					YbBatchedNestLoopState *bnlstate =
+						(YbBatchedNestLoopState *) planstate;
+
+					if (bnlstate->first_batch_size > 0)
+						ExplainPropertyInteger("Actual First Batch Size", NULL,
+											   bnlstate->first_batch_size, es);
+				}
 			}
 
 			show_upper_qual(plan->qual, "Filter", planstate, ancestors, es);
@@ -5218,11 +5238,11 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 
 	/* Read stats */
 	double		table_reads = yb_instr->tbl_reads.count / nloops;
+	double		table_read_ops = yb_instr->tbl_reads.ops_count / nloops;
 	double		table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
-	double		table_read_ops = yb_instr->tbl_read_ops / nloops;
 	double		index_reads = yb_instr->index_reads.count / nloops;
+	double		index_read_ops = yb_instr->index_reads.ops_count / nloops;
 	double		index_read_wait = yb_instr->index_reads.wait_time / nloops;
-	double		index_read_ops = yb_instr->index_read_ops / nloops;
 	double		table_rows_scanned = yb_instr->tbl_reads.rows_scanned / nloops;
 	double		index_rows_scanned = yb_instr->index_reads.rows_scanned / nloops;
 
@@ -6638,17 +6658,17 @@ YbAggregateExplainableRPCRequestStat(ExplainState *es,
 	/* Storage Reads */
 	es->yb_stats.read.count +=
 		yb_instr->tbl_reads.count + yb_instr->index_reads.count;
+	es->yb_stats.read.ops_count +=
+		yb_instr->tbl_reads.ops_count + yb_instr->index_reads.ops_count;
 	es->yb_stats.read.wait_time +=
 		yb_instr->tbl_reads.wait_time + yb_instr->index_reads.wait_time;
-	es->yb_stats.read_op_count +=
-		yb_instr->tbl_read_ops + yb_instr->index_read_ops;
 
 	/* Storage Writes */
 	es->yb_stats.write_count += yb_instr->tbl_writes + yb_instr->index_writes;
 
 	/* Catalog Reads */
 	es->yb_stats.catalog_read.count += yb_instr->catalog_reads.count;
-	es->yb_stats.catalog_read_op_count += yb_instr->catalog_read_ops;
+	es->yb_stats.catalog_read.ops_count += yb_instr->catalog_reads.ops_count;
 	es->yb_stats.catalog_read.wait_time += yb_instr->catalog_reads.wait_time;
 
 	/* Catalog Writes */

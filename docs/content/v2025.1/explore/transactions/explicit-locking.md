@@ -166,5 +166,11 @@ Because `enable_object_locking_for_table_locks` is a preview flag, to use it, ad
 
 As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the preview flag, [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
 
+{{< warning title="Warning" >}}
+
+Do not enable Transactional DDL on a cluster that uses CDC. Transactional DDL currently doesn't support CDC in both [logical replication](../../../architecture/docdb-replication/cdc-logical-replication/) (PostgreSQL) and the [gRPC protocol](../../../architecture/docdb-replication/change-data-capture/). Because table-level locks depend on Transactional DDL, you also must not enable table-level locks if you are using CDC.
+
+{{< /warning >}}
+
 For more information on the lock scopes and lifecycle, see [Table-level locks](../../../architecture/transactions/concurrency-control/#table-level-locks).
 

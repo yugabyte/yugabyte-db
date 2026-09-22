@@ -884,12 +884,14 @@ The following backup and snapshot commands are available:
 * [**edit_snapshot_schedule**](#edit-snapshot-schedule) modifies the schedule for snapshot creation
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
+* [**clone_namespace**](#clone-namespace) clones a YSQL database or YCQL keyspace as of a point in time
+* [**list_clones**](#list-clones) lists clone operations for a source database or keyspace
 
-{{< note title="YugabyteDB Anywhere" >}}
+{{< warning title="YugabyteDB Anywhere" >}}
 
-If you are using YugabyteDB Anywhere to manage point-in-time-recovery (PITR) for a universe, you must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
+A database or keyspace can have at most one snapshot schedule. If YugabyteDB Anywhere manages PITR for a universe, manage PITR only from the YugabyteDB Anywhere UI. Using yb-admin and the UI together to manage snapshot schedules can cause conflicts and is strongly discouraged. Changes you make using yb-admin are not reflected in YugabyteDB Anywhere.
 
-{{< /note >}}
+{{< /warning >}}
 
 #### create_database_snapshot
 
@@ -1073,19 +1075,31 @@ To see if the snapshot creation has finished, run the [yb-admin list_snapshots](
 
 #### restore_snapshot
 
-Restores the specified snapshot, including the tables and indexes. When the operation starts, a `restoration_id` is generated.
+Restores the specified snapshot, including the tables and indexes. Optionally, you can restore to a point in time.
+
+To restore a distributed snapshot as part of a recovery workflow, see [Restore a snapshot](../../manage/backup-restore/snapshot-ysql/#restore-a-snapshot) or [Restore to PIT](../../manage/backup-restore/point-in-time-recovery/restore/). To rewind a live database to a point in time, use [Rewind to PIT](../../manage/backup-restore/point-in-time-recovery/rewind/) (`restore_snapshot_schedule`).
+
+When the operation starts, a `restoration_id` is generated.
+
+{{< warning title="Do not restore to a point before the most recent DDL" >}}
+
+`restore_snapshot` is a low-level command for sophisticated users building a custom backup and restore workflow. Most users should not use this command.
+
+Restoring to a time before a DDL change (for example, `CREATE TABLE`, `DROP TABLE`, or `ALTER TABLE`) can have unexpected effects (whether or not you supply *restore-target*).
+
+{{< /warning >}}
 
 **Syntax**
 
 ```sh
 yb-admin \
     --master_addresses <master-addresses> \
-    restore_snapshot <snapshot-id> <restore-target>
+    restore_snapshot <snapshot-id> [<restore-target>]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *snapshot-id*: The identifier (ID) for the snapshot.
-* *restore-target*: The time to which to restore the snapshot. This can be either an absolute Unix time, or a relative time such as `minus 5m` (to restore to 5 minutes ago). Optional; omit to restore to the given snapshot's creation time.
+* *restore-target*: Optional. A timestamp at or before the snapshot's creation time. Absolute Unix time, or a relative time such as `minus 5m`. Omit to restore to the snapshot's creation time.
 
 **Example**
 
@@ -1295,7 +1309,7 @@ yb-admin \
 
 #### create_snapshot_schedule
 
-Creates a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to take snapshots for them, and a retention time.
+Creates a snapshot schedule for a YSQL database or YCQL keyspace. A schedule takes snapshots at a set interval and retains them for a configured duration. Creating a schedule also enables [Rewind to PIT](../../manage/backup-restore/point-in-time-recovery/rewind/) and [Clone to PIT](../../manage/backup-restore/point-in-time-recovery/clone/) for that database or keyspace.
 
 Returns a schedule ID in JSON format.
 
@@ -1434,7 +1448,7 @@ Edit a snapshot schedule to take a snapshot once every 90 minutes, and retain ea
 
 #### restore_snapshot_schedule
 
-Schedules group a set of items into a single tracking object (the *schedule*). When you restore, you can choose a particular schedule and a point in time, and revert the state of all affected objects back to the chosen time.
+A snapshot schedule is defined for a particular YSQL database or YCQL keyspace. When you [rewind](../../manage/backup-restore/point-in-time-recovery/rewind/) that database or keyspace to a point in time, you choose the corresponding schedule and revert the state of all objects in it to the chosen time.
 
 **Syntax**
 
@@ -1445,19 +1459,19 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *schedule-id*: The identifier (ID) of the schedule to be restored.
-* *restore-target*: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to restore to 5 minutes ago).
+* *schedule-id*: The identifier (ID) of the schedule for the database or keyspace to rewind.
+* *restore-target*: The time to which to rewind the database or keyspace. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to rewind to 5 minutes ago).
 
-You can also use a [YSQL timestamp](../../api/ysql/datatypes/type_datetime/) or [YCQL timestamp](../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
+You can also use a [YSQL timestamp](../../api/ysql/datatypes/type_datetime/) or [YCQL timestamp](../../api/ycql/type_datetime/#timestamp) with the command, if you like.
 
-In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago".
+In addition to rewinding to a particular timestamp, you can also rewind from a relative time, such as "ten minutes ago".
 
 When you specify a relative time, you can specify any or all of *days*, *hours*, *minutes*, and *seconds*. For example:
 
-* `minus 5m` to restore from five minutes ago
-* `minus 1h` to restore from one hour ago
-* `minus 3d` to restore from three days ago
-* `minus 1h 5m` to restore from one hour and five minutes ago
+* `minus 5m` to rewind from five minutes ago
+* `minus 1h` to rewind from one hour ago
+* `minus 3d` to rewind from three days ago
+* `minus 1h 5m` to rewind from one hour and five minutes ago
 
 Relative times can be in any of the following formats (again, note that you can specify any or all of days, hours, minutes, and seconds):
 
@@ -1526,6 +1540,107 @@ The output should show the schedule ID we just deleted.
 }
 ```
 
+#### clone_namespace
+
+Creates a clone of a YSQL database or YCQL keyspace as of a point in time. The clone is a new database or keyspace on the same cluster. The source must have a [snapshot schedule](#create-snapshot-schedule) that covers the clone time.
+
+For YSQL, you can also clone using `CREATE DATABASE ... TEMPLATE ... AS OF`. See [Clone to PIT](../../manage/backup-restore/point-in-time-recovery/clone/).
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    clone_namespace <source-namespace> <target-namespace-name> [<timestamp> | minus <interval>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *source-namespace*: The source YSQL database (`ysql.<database-name>`) or YCQL keyspace (`ycql.<keyspace-name>`). If you omit the prefix, the name is treated as a YCQL keyspace.
+* *target-namespace-name*: The name of the new clone.
+* *timestamp*: Unix timestamp in microseconds, or a [YSQL](../../api/ysql/datatypes/type_datetime/) or [YCQL](../../api/ycql/type_datetime/#timestamp) timestamp. Optional; omit to clone as of the current time.
+* `minus <interval>`: Clone as of a relative time, using the same formats as [restore_snapshot_schedule](#restore-snapshot-schedule).
+
+**Examples**
+
+Clone a YCQL keyspace as of an absolute time:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ycql.originaldb1 clonedb2 1715275616599020
+```
+
+Clone a YSQL database as of five minutes ago:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ysql.yugabyte cloned_db minus 5m
+```
+
+Clone a YSQL database as of the current time:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ysql.yugabyte cloned_db
+```
+
+When the clone starts, the command returns the source namespace ID and a sequence number you can pass to [list_clones](#list-clones):
+
+```output.json
+{
+    "source_namespace_id": "00004000000030008000000000000000",
+    "seq_no": "1"
+}
+```
+
+#### list_clones
+
+Lists clone operations for a source YSQL database or YCQL keyspace.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    list_clones <source-namespace-id> [<seq-no>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *source-namespace-id*: The identifier of the source database or keyspace. Find this ID on the YB-Master leader UI `/namespaces` endpoint, or in the output of [clone_namespace](#clone-namespace).
+* *seq-no*: Optional sequence number of a specific clone. Omit to list all clones of the source.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_clones 00004000000030008000000000000000
+```
+
+```output.json
+[
+    {
+        "aggregate_state": "COMPLETE",
+        "source_namespace_id": "00004000000030008000000000000000",
+        "seq_no": "1",
+        "target_namespace_name": "testing_clone_db",
+        "restore_time": "2024-08-09 21:42:16.451974"
+    }
+]
+```
+
+To check a specific clone, pass the sequence number:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_clones 00004000000030008000000000000000 1
+```
+
+If a clone was aborted, the entry includes an `abort_message`.
+
 ---
 
 <a name="deployment-topology-commands"></a>
@@ -1593,19 +1708,21 @@ This requests a placement of 3 replicas anywhere in the `us-east-1` region of `a
 
 #### set_preferred_zones
 
-Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
+Sets [leader affinity](../../architecture/key-concepts/#leader-affinity) for the cluster (preferred zones). The load balancer places tablet leaders on alive, healthy replicas in the listed availability zones, in order of preference. When no healthy replica is available in preference 1, preference 2 is used, and so on. Zones you omit are used only after every preferred rank is exhausted.
 
-Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
+This command does not change tablet replica placement (use [modify_placement_info](#modify-placement-info)) and does not move YB-Master processes. By default, the sys catalog (master) leader steps down onto a master that is already running in a preferred zone.
+
+Having tablet leaders in a single region reduces the number of network hops for transactional writes, which lowers latency.
 
 {{< note title="Note" >}}
 
-* Make sure you've already run [modify_placement_info](#modify-placement-info) command beforehand.
+* Make sure you've already run [modify_placement_info](#modify-placement-info). Preferred zones must match existing placement blocks.
 
-* By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
+* By default, transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction; using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
-* Leader blacklisted nodes don't host any leaders irrespective of their preference.
+* Leader-blacklisted nodes don't host any leaders, regardless of preference.
 
-* Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
+* Cluster configuration stores preferred zones in `multi_affinitized_leaders`. Older clusters may still have `affinitized_leaders`; this command rewrites the list as `multi_affinitized_leaders`.
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
@@ -1623,8 +1740,8 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *cloud.region.zone*: Specifies the cloud, region, and zone. Default is `cloud1.datacenter1.rack1`.
-* *preference*: Specifies the leader preference for a zone. Values have to be contiguous non-zero integers. Multiple zones can have the same value. Default is 1.
+* *cloud.region.zone*: Specifies the cloud, region, and zone. Use `*` for any zone in a region (`gcp.us-west1.*`) or any region in a cloud (`gcp.*.*`). Default is `cloud1.datacenter1.rack1`.
+* *preference*: Leader preference. Values must be contiguous integers starting at 1. Multiple zones can share a value (leaders are spread across them). Default is 1.
 
 **Example**
 
@@ -1676,7 +1793,7 @@ replication_info {
 }
 ```
 
-The following command sets the preferred region to `gcp.us-west1` and the fallback to zone `gcp.us-east4.us-east4-a`:
+The following command prefers both zones in `gcp.us-west1` (rank 1) and falls back to `gcp.us-east4.us-east4-a` (rank 2):
 
 ```sh
 ssh -i $PEM $ADMIN_USER@$MASTER1 \
@@ -1686,6 +1803,8 @@ ssh -i $PEM $ADMIN_USER@$MASTER1 \
     gcp.us-west1.us-west1-b:1 \
     gcp.us-east4.us-east4-a:2
 ```
+
+The equivalent region-level form is `gcp.us-west1.*:1 gcp.us-east4.us-east4-a:2`.
 
 Verify by running the following.
 
@@ -1925,9 +2044,9 @@ Create a change data capture (CDC) DB stream for the specified namespace using t
 
 {{< note title="Legacy workflow" >}}
 
-Use `yb-admin create_change_data_stream` to create streams in versions earlier than v2026.1.1.0. 
+Use `yb-admin create_change_data_stream` to create streams in versions earlier than v2026.1.2.0. 
 
-{{<tags/feature/ea idea="2762">}}In YugabyteDB v2026.1.1.0 and later, create and manage gRPC CDC streams using the PostgreSQL replication slot syntax and the `yb_grpc` output plugin. For example, `SELECT * FROM pg_create_logical_replication_slot('<slot>', 'yb_grpc');`. See [Create a gRPC CDC stream](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#create-a-grpc-cdc-stream).
+{{<tags/feature/ea idea="2762">}}In YugabyteDB v2026.1.2.0 and later, create and manage gRPC CDC streams using the PostgreSQL replication slot syntax and the `yb_grpc` output plugin. For example, `SELECT * FROM pg_create_logical_replication_slot('<slot>', 'yb_grpc');`. See [Create a gRPC CDC stream](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#create-a-grpc-cdc-stream).
 
 {{< /note >}}
 

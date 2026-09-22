@@ -78,6 +78,7 @@ ysql_server_rpc_port = {{ ynp_config['ynp'].ysql_server_rpc_port | default(5433)
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
 configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound | default(false)}}
+configure_fips = {{ ynp_config['ynp'].is_fips_enabled | default(false) }}
 is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false) }}
 is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
 configure_cgroup = {{ ynp_config['ynp'].configure_cgroup | default(true) }}
@@ -157,6 +158,11 @@ prometheus_user = prometheus
 use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
 service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
 {%- endif %}
+
+{#- Outside both mode blocks: enabling FIPS needs root, but confirming it does not, and a manual
+    on-prem node provisioned with --noroot still has to be checked. run.j2 only asks for root on
+    the path that changes the node. #}
+[ConfigureFips]
 
 {%- if is_root_mode is false %}
 {%- if ynp_config['ynp'].configure_cgroup | default(true) %}

@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -98,6 +99,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.RollbackEditUniverse,
           TaskType.ReplaceNodeInUniverse,
           TaskType.EditKubernetesUniverse,
+          TaskType.RollbackEditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.ReadOnlyClusterDelete,
           TaskType.AddNodeToUniverse,
@@ -177,7 +179,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.EditKMSConfig,
           TaskType.DeleteKMSConfig,
           TaskType.ProvisionUniverseNodes,
-          TaskType.ProvisionUniverseNodes);
+          TaskType.RollbackEditKubernetesUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -578,7 +580,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     CompletableFuture.supplyAsync(
         () -> MoreExecutors.shutdownAndAwaitTermination(executor, 2, TimeUnit.SECONDS));
     // Submit task executor shutdown to mimic shutdown hook.
-    CompletableFuture.supplyAsync(() -> taskExecutor.shutdown(Duration.ofSeconds(2)));
+    CompletableFuture.supplyAsync(() -> taskExecutor.shutdownAsync(Duration.ZERO /* abort */));
     // Wait for the task to be cancelled.
     waitForTask(taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
@@ -664,7 +666,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         TaskType.filteredValues().stream()
             .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toCollection(TreeSet::new));
-    assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
+    Set<TaskType> missingInExpected = Sets.difference(retryableTaskTypes, RETRYABLE_TASKS);
+    Set<TaskType> missingInActual = Sets.difference(RETRYABLE_TASKS, retryableTaskTypes);
+    String msg =
+        String.format(
+            "Missing in expected: %s, missing in actual: %s", missingInExpected, missingInActual);
+    assertEquals(msg, RETRYABLE_TASKS, retryableTaskTypes);
   }
 
   @Test

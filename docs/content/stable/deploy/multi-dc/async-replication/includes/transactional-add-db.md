@@ -46,7 +46,7 @@ The database should have at least one table in order to be added to replication.
 
 1. If bootstrapping is required, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty or you are using automatic mode, it must be bootstrapped.
 
-1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
+1. Enable [point-in-time recovery (PITR)](../../../../manage/backup-restore/point-in-time-recovery/enable-pitr/) on the database(s) on both the Primary and Standby universes:
 
     ```sh
     ./bin/yugabyted configure point_in_time_recovery \
@@ -92,7 +92,7 @@ The database should have at least one table in order to be added to replication.
 
 1. If bootstrapping is required, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty or you are using automatic mode, it must be bootstrapped.
 
-1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
+1. Enable [point-in-time recovery (PITR)](../../../../manage/backup-restore/point-in-time-recovery/enable-pitr/) on the database(s) on both the Primary and Standby universes:
 
     ```sh
     ./bin/yb-admin \

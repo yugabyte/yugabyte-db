@@ -1061,11 +1061,20 @@ typedef struct YbBNLHashClauseInfo
 	Expr	   *orig_expr;
 } YbBNLHashClauseInfo;
 
+/* ----------------
+ *		YB batched nested loop join node
+ *
+ * With a LIMIT pushed down, the executor trims the first outer batch to
+ * first_batch_size rows, the count the planner sized and priced.  0 means
+ * the planner could not size it (a parameterized LIMIT); the executor then
+ * trims to the run-time LIMIT count.
+ * ----------------
+ */
 typedef struct YbBatchedNestLoop
 {
 	NestLoop	nl;
 
-	double		first_batch_factor;
+	int			first_batch_size;
 	/* Only relevant if we're using the hash batching strategy. */
 
 	/*

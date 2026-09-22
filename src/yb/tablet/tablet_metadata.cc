@@ -76,6 +76,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -575,10 +576,11 @@ Status KvStoreInfo::LoadTablesFromPB(
   return Status::OK();
 }
 
-Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
-                               const KvStoreInfoPB& pb,
-                               const TableId& primary_table_id,
-                               bool local_superblock) {
+Status KvStoreInfo::LoadFromPB(
+    const std::string& tablet_log_prefix,
+    const KvStoreInfoPB& pb,
+    const TableId& primary_table_id,
+    bool local_superblock) {
   kv_store_id = KvStoreId(pb.kv_store_id());
   if (local_superblock) {
     rocksdb_dir = pb.rocksdb_dir();
@@ -598,15 +600,16 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
     if (tier_paths.empty()) {
       tier_paths.push_back({
           .path_id = 0,
-          .tier    = FsManager::kDefaultStorageTier,
+          .tier    = kDefaultStorageTier,
           .path    = rocksdb_dir,
       });
     }
   }
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
-  parent_data_compacted = pb.parent_data_compacted();
+  rocksdb_parent_data_compacted = pb.rocksdb_parent_data_compacted();
   last_full_compaction_time = pb.last_full_compaction_time();
+  split_generation = pb.split_generation();
   if (pb.has_post_split_compaction_file_number_upper_bound()) {
     post_split_compaction_file_number_upper_bound =
         pb.post_split_compaction_file_number_upper_bound();
@@ -626,8 +629,9 @@ Status KvStoreInfo::MergeWithRestored(
     dockv::OverwriteSchemaPacking overwrite) {
   lower_bound_key = snapshot_kvstoreinfo.lower_bound_key();
   upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
-  parent_data_compacted = snapshot_kvstoreinfo.parent_data_compacted();
+  rocksdb_parent_data_compacted = snapshot_kvstoreinfo.rocksdb_parent_data_compacted();
   last_full_compaction_time = snapshot_kvstoreinfo.last_full_compaction_time();
+  split_generation = snapshot_kvstoreinfo.split_generation();
   if (snapshot_kvstoreinfo.has_post_split_compaction_file_number_upper_bound()) {
     post_split_compaction_file_number_upper_bound =
         snapshot_kvstoreinfo.post_split_compaction_file_number_upper_bound();
@@ -752,7 +756,8 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
   } else {
     pb->set_upper_bound_key(upper_bound_key);
   }
-  pb->set_parent_data_compacted(parent_data_compacted);
+  pb->set_rocksdb_parent_data_compacted(rocksdb_parent_data_compacted);
+  pb->set_split_generation(split_generation);
   pb->set_last_full_compaction_time(last_full_compaction_time);
   if (post_split_compaction_file_number_upper_bound.has_value()) {
     pb->set_post_split_compaction_file_number_upper_bound(
@@ -797,7 +802,8 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
                           tier_paths,
                           lower_bound_key,
                           upper_bound_key,
-                          parent_data_compacted,
+                          rocksdb_parent_data_compacted,
+                          split_generation,
                           snapshot_schedules) &&
          MapsEqual(lhs.tables, rhs.tables, eq) &&
          MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
@@ -827,7 +833,7 @@ std::vector<TierPathInfo> BuildTierPaths(
   const auto& roots_by_tier = fs_manager->GetDataRootsByTier();
 
   // Identify the home tier by finding which tier's roots contain home_data_root.
-  std::string home_tier(FsManager::kDefaultStorageTier);
+  std::string home_tier(kDefaultStorageTier);
   for (const auto& [tier, roots] : roots_by_tier) {
     if (std::find(roots.begin(), roots.end(), home_data_root) != roots.end()) {
       home_tier = tier;
@@ -1041,7 +1047,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
-  docdb::InitRocksDBOptions(
+  docdb::InitRocksDBOptionsWithoutTableFactory(
       &rocksdb_options, log_prefix_, raft_group_id_, nullptr /* statistics */, tablet_options);
 
   // Tiered storage: the regular DB may have SSTs spread across several disks (tier_paths). Mirror
@@ -2055,6 +2061,16 @@ OpId RaftGroupMetadata::split_op_id() const {
   return split_op_id_;
 }
 
+uint64_t RaftGroupMetadata::split_generation() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.split_generation;
+}
+
+void RaftGroupMetadata::set_split_generation(uint64_t value) {
+  std::lock_guard lock(data_mutex_);
+  kv_store_.split_generation = value;
+}
+
 OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
   std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TabletDataState::TABLET_DATA_SPLIT_COMPLETED || hidden_) {
@@ -2319,7 +2335,7 @@ std::string RaftGroupMetadata::GetSubRaftGroupDataDir(const RaftGroupId& raft_gr
 }
 
 // We directly init fields of a new metadata, so have to use NO_THREAD_SAFETY_ANALYSIS here.
-Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSplitChildMetadata(
     const RaftGroupId& raft_group_id, const Partition& partition,
     const std::string& lower_bound_key, const std::string& upper_bound_key)
     const NO_THREAD_SAFETY_ANALYSIS {
@@ -2337,7 +2353,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   kv_store.set_upper_bound_key(upper_bound_key);
   const std::string child_rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
   kv_store.set_rocksdb_dir(child_rocksdb_dir);
-  kv_store.set_parent_data_compacted(false);
+  kv_store.set_rocksdb_parent_data_compacted(false);
+  kv_store.set_split_generation(kv_store_.split_generation + 1);
   kv_store.set_last_full_compaction_time(kNoLastFullCompactionTime);
   kv_store.clear_post_split_compaction_file_number_upper_bound();
 
@@ -2702,8 +2719,8 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   std::lock_guard lock(data_mutex_);
   bool updated = false;
 
-  if (!kv_store_.parent_data_compacted) {
-    kv_store_.parent_data_compacted = true;
+  if (!kv_store_.rocksdb_parent_data_compacted) {
+    kv_store_.rocksdb_parent_data_compacted = true;
     updated = true;
   }
 

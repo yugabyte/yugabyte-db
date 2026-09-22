@@ -284,6 +284,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
           TaskType.RollbackEditUniverse,
+          TaskType.RollbackEditKubernetesUniverse,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
@@ -641,6 +642,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // 1:1 with EditUniverseRollbackComputer / TaskType.EditUniverse.
       if (lockedTaskType == TaskType.EditUniverse) {
         builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditUniverse));
+      }
+      // 1:1 with EditKubernetesUniverseRollbackComputer / TaskType.EditKubernetesUniverse. Additive
+      // with the rerun path below (EditKubernetesUniverse is rerunnable), so both roll back and
+      // rerun are allowed on a failed K8s edit.
+      if (lockedTaskType == TaskType.EditKubernetesUniverse) {
+        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditKubernetesUniverse));
       }
       if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
         builder.rerun(true);
@@ -1563,6 +1570,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected void createValidateGFlagsTaskInGFlagsUpgrades(
+      List<UniverseDefinitionTaskParams.Cluster> newClusters,
+      String softwareVersion,
+      boolean skipValidation) {
+    if (!isFirstTry()
+        || skipValidation
+        || confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation)) {
+      return;
+    }
+    if (Util.compareYBVersions(
+            softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+        < 0) {
+      return;
+    }
+    boolean useCLIBinary =
+        Util.compareYBVersions(
+                softwareVersion, "2026.2.0.0-b1", "2.31.0.0-b49", true /* suppressFormatError */)
+            < 0;
+    createValidateGFlagsTask(newClusters, useCLIBinary, softwareVersion);
+  }
+
   /**
    * Creates a subtask that flips {@code state_transition_details.rollbackSafe} to false when the
    * task crosses the rollback checkpoint.
@@ -2261,6 +2289,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean deleteNode,
       boolean deleteRootVolumes,
       boolean skipDestroyPrecheck) {
+    return createDestroyServerTasks(
+        universe,
+        nodes,
+        isForceDelete,
+        deleteNode,
+        deleteRootVolumes,
+        skipDestroyPrecheck,
+        false /* skipUpdateNodeState */);
+  }
+
+  public SubTaskGroup createDestroyServerTasks(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      Function<NodeDetails, Boolean> isForceDelete,
+      boolean deleteNode,
+      boolean deleteRootVolumes,
+      boolean skipDestroyPrecheck,
+      boolean skipUpdateNodeState) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     nodes = filterUniverseNodes(universe, nodes, n -> true);
@@ -2295,6 +2341,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.nodeIP = node.cloudInfo.private_ip;
       params.useSystemd = userIntent.useSystemd;
       params.otelCollectorInstalled = universe.getUniverseDetails().otelCollectorEnabled;
+      params.skipUpdateNodeState = skipUpdateNodeState;
       // Create the Ansible task to destroy the server.
       AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
       task.initialize(params);
@@ -2869,7 +2916,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       @Nullable Predicate<DumpEntitiesResponse> moreStopCondition,
       NodeUIApiHelper nodeUIApiHelper) {
     // Wait for a maximum of 10 seconds for url to succeed.
-    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNodeOrThrow();
     HostAndPort masterLeaderHostPort =
         HostAndPort.fromParts(
             masterLeaderNode.cloudInfo.private_ip, masterLeaderNode.masterHttpPort);
@@ -3222,7 +3269,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
-    params.checkVolumesAttached = processType == ServerType.TSERVER && command.equals("start");
     params.useSystemd = userIntent.useSystemd;
     if (paramsCustomizer != null) {
       paramsCustomizer.accept(params);
@@ -4741,11 +4787,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createDeleteBackupYbTasks(List<Backup> backups, UUID customerUUID) {
+    return createDeleteBackupYbTasks(backups, customerUUID, false /* ignoreErrors */);
+  }
+
+  public SubTaskGroup createDeleteBackupYbTasks(
+      List<Backup> backups, UUID customerUUID, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteBackupYb");
     for (Backup backup : backups) {
       DeleteBackupYb.Params params = new DeleteBackupYb.Params();
       params.backupUUID = backup.getBackupUUID();
       params.customerUUID = customerUUID;
+      params.ignoreErrors = ignoreErrors;
       DeleteBackupYb task = createTask(DeleteBackupYb.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);
@@ -4932,15 +4984,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       @Nullable PreInMemoryApplyTask preInMemoryApplyTask) {
     Map<String, String> currentYbcFlagsMap =
         new HashMap<>(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
-    ControllerFlagsSetRequest controllerFlagsSetRequest =
-        ybcManager.prepareFlagsSetRequest(universe, throttleParams, currentYbcFlagsMap);
 
     List<SubTaskGroup> inMemoryGflagsUpgrades = new ArrayList<>();
-    for (Cluster c : universe.getUniverseDetails().clusters) {
-      List<NodeDetails> nodes = universe.getTserversInCluster(c.uuid);
-      inMemoryGflagsUpgrades.add(
-          createSetYbcThrottleParamsInMemory(universe, nodes, controllerFlagsSetRequest));
-    }
+    Util.splitTserversByProviders(universe)
+        .forEach(
+            (providerUUID, nodes) -> {
+              ControllerFlagsSetRequest controllerFlagsSetRequest =
+                  ybcManager.prepareFlagsSetRequest(
+                      universe,
+                      Provider.getOrBadRequest(providerUUID),
+                      nodes,
+                      throttleParams,
+                      currentYbcFlagsMap);
+              for (Cluster c : universe.getUniverseDetails().clusters) {
+                List<NodeDetails> clusterNodes =
+                    nodes.stream()
+                        .filter(n -> n.isInPlacement(c.uuid))
+                        .collect(Collectors.toList());
+                if (!clusterNodes.isEmpty()) {
+                  inMemoryGflagsUpgrades.add(
+                      createSetYbcThrottleParamsInMemory(
+                          universe, clusterNodes, controllerFlagsSetRequest));
+                }
+              }
+            });
+
     // For universe using in-built YBC, run helm upgrade with new ybc gflags
     if (preInMemoryApplyTask != null) {
       preInMemoryApplyTask.runPreApply(universe, currentYbcFlagsMap);
@@ -7325,10 +7393,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           !BackupCategory.YB_BACKUP_SCRIPT.equals(scheduleParams.backupCategory)
               && universe.isYbcEnabled()
               && !scheduleParams.backupType.equals(TableType.REDIS_TABLE_TYPE);
-      // Upgrade YBC version on universe
+      // Upgrade YBC version on universe. Universes using YBDB inbuilt YBC get YBC from the DB
+      // image, so YBA must not install or version it here.
       if (ybcBackup
           && universe.isYbcEnabled()
-          && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(stableYbcVersion)) {
+          && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+          && !StringUtils.equals(
+              universe.getUniverseDetails().getYbcSoftwareVersion(), stableYbcVersion)) {
         if (Util.isKubernetesBasedUniverse(universe)) {
           createUpgradeYbcTaskOnK8s(universe.getUniverseUUID(), stableYbcVersion)
               .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);

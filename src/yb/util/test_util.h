@@ -45,10 +45,11 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
-#include "yb/util/logging.h"
 #include "yb/util/test_macros.h" // For convenience
+#include "yb/util/scope_exit.h"
 
 #define ASSERT_EVENTUALLY(expr) do { \
   AssertEventually(expr); \
@@ -284,6 +285,13 @@ Status ForkAndRunToCrashPoint(const std::function<void(void)>& child,
 inline Status ForkAndRunToCrashPoint(const std::function<void(void)>& f,
                                      std::string_view crash_point) {
   return ForkAndRunToCrashPoint(f, {} /* parent */, crash_point);
+}
+
+template <class T, class V = T>
+auto ChangeFlagTemporary(T& flag, V new_value) {
+  const auto original_value = flag;
+  ANNOTATE_UNPROTECTED_WRITE(flag) = new_value;
+  return ScopeExit([&flag, original_value] { ANNOTATE_UNPROTECTED_WRITE(flag) = original_value; });
 }
 
 } // namespace yb

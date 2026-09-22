@@ -16,9 +16,11 @@ import { SecuritySettingsProps } from '../../create-universe/steps/security-sett
 import {
   getClusterByType,
   useEditUniverseContext,
-  useIsUniverseReady,
+  useIsUniverseEditActionDisabled,
   withUniverseResource
 } from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
@@ -83,7 +85,7 @@ export const SecurityTab = () => {
 
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
 
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
 
   const invalidateUniverseQueries = useCallback(() => {
     if (!universeUUID) return;
@@ -127,17 +129,17 @@ export const SecurityTab = () => {
                 )}
                 isControl
               >
-                <YBButton
+                <K8OperatorEditBlockedTooltip><YBButton
                   dataTestId="edit-network-access-button"
                   variant="ghost"
                   startIcon={<EditIcon />}
                   onClick={() => {
                     setNetworkModalOpen(true);
                   }}
-                  disabled={!isUniverseReady}
+                  disabled={isEditActionDisabled}
                 >
                   {t('edit', { keyPrefix: 'common' })}
-                </YBButton>
+                </YBButton></K8OperatorEditBlockedTooltip>
               </RbacValidator>
             </StyledCardHeader>
             <StyledContent>
@@ -185,17 +187,17 @@ export const SecurityTab = () => {
               )}
               isControl
             >
-              <YBButton
+              <K8OperatorEditBlockedTooltip><YBButton
                 dataTestId="edit-security-transit-button"
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEitModalOpen(true)}
                 disabled={
-                  eitModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady
+                  eitModalOpen || isLegacyUniverseLoading || !universeUUID || isEditActionDisabled
                 }
               >
                 {t('edit', { keyPrefix: 'common' })}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
           </StyledCardHeader>
           <StyledContent>
@@ -239,17 +241,17 @@ export const SecurityTab = () => {
               )}
               isControl
             >
-              <YBButton
+              <K8OperatorEditBlockedTooltip><YBButton
                 dataTestId="edit-security-at-rest-button"
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEarModalOpen(true)}
                 disabled={
-                  earModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady
+                  earModalOpen || isLegacyUniverseLoading || !universeUUID || isEditActionDisabled
                 }
               >
                 {t('edit', { keyPrefix: 'common' })}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
           </StyledCardHeader>
           <StyledContent>

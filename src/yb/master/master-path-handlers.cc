@@ -3464,7 +3464,10 @@ void MasterPathHandlers::HandleXCluster(
 
         for (const auto& table_status : namespace_status.table_statuses) {
           auto color = HtmlTableRowColor::Default;
-          if (table_status.state.contains("PAUSED") || table_status.state.contains("INITIATED")) {
+          if (table_status.is_wal_anchor) {
+            // A WAL anchor is expected to sit unconsumed, so leave it uncolored.
+          } else if (table_status.state.contains("PAUSED") ||
+                     table_status.state.contains("INITIATED")) {
             color = HtmlTableRowColor::Yellow;
           } else if (table_status.state != "ACTIVE") {
             color = HtmlTableRowColor::Red;
@@ -4039,10 +4042,12 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
 
     std::unordered_set<TabletId> tablet_ids;
     for (const auto& [_, table_tree] : tserver_tree) {
-      for (const auto& [_, replicas] : table_tree) {
-        for (const auto& replica : replicas) {
-          tablet_ids.insert(replica.tablet_id);
-        }
+      const auto* replicas = FindOrNull(table_tree, table_id);
+      if (replicas == nullptr) {
+        continue;
+      }
+      for (const auto& replica : *replicas) {
+        tablet_ids.insert(replica.tablet_id);
       }
     }
     auto tablet_count = tablet_ids.size();

@@ -136,17 +136,37 @@ get_ynp_executable_name(){
     echo "$name"
 }
 
+stage_shared_templates() {
+    # gcp-fed-creds.json.j2 is owned by YBA (managed/src/main/resources/federation) so YBA and
+    # node-agent render the same external_account credential from one source. Stage YBA's copy into
+    # the node-agent templates (this file is git-ignored under resources/templates/server).
+    local shared_src="$project_dir/../src/main/resources/federation/gcp-fed-creds.json.j2"
+    local dest_dir="$project_dir/resources/templates/server"
+    if [ -f "$shared_src" ]; then
+        mkdir -p "$dest_dir"
+        cp -f "$shared_src" "$dest_dir/gcp-fed-creds.json.j2"
+    else
+        echo "WARN: shared template not found at $shared_src"
+    fi
+}
+
 prepare() {
     setup_protoc
     generate_golang_grpc_files
 }
+
+# The FIPS 140-3 validated build of the Go Cryptographic Module: v1.0.0 is CMVP certificate
+# #5247. Building with it links that module and defaults the binary to GODEBUG=fips140=on, which
+# "go version -m <binary>" records. Overridable so a build can be pointed at a newer module once
+# one is certified, but the default is the certified one - not the newest.
+GOFIPS140_VERSION="${GOFIPS140_VERSION:-v1.0.0}"
 
 build_ynp_go() {
     local exec_name=$(get_ynp_executable_name "$os" "$arch")
     local executable="$build_output_dir/$exec_name"
     pushd "$project_dir"
     echo "Building ${exec_name}"
-    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 GOFIPS140="$GOFIPS140_VERSION" \
     go build -o "$executable" "$project_dir"/ynp/cmd/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
@@ -163,7 +183,7 @@ build_for_platform() {
     local executable="$build_output_dir/$exec_name"
     pushd "$project_dir"
     echo "Building ${exec_name}"
-    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 GOFIPS140="$GOFIPS140_VERSION" \
     go build -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
@@ -288,6 +308,10 @@ package_for_platform() {
     # Follow the symlinks.
     cp -Lf ../version.txt "${version_dir}"/version.txt
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
+    # Stage YBA's canonical gcp-fed-creds.json.j2 into resources/templates/server so the copy below
+    # picks it up. Only the package needs it (the node renders it at runtime); the build/test flows
+    # don't, so this is here rather than in prepare().
+    stage_shared_templates
     pushd "$project_dir/resources"
     cp -rf templates/* "$templates_dir/"
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh

@@ -171,6 +171,11 @@ public enum TaskType {
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Universe),
 
+  RollbackEditKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.RollbackEditKubernetesUniverse.class,
+      CustomerTask.TaskType.RollbackEditKubernetesUniverse,
+      CustomerTask.TargetType.Universe),
+
   ExternalScript(
       com.yugabyte.yw.commissioner.tasks.ExternalScript.class,
       CustomerTask.TaskType.ExternalScript,
@@ -701,6 +706,11 @@ public enum TaskType {
       CustomerTask.TaskType.EnableNodeAgent,
       CustomerTask.TargetType.Universe),
 
+  ManageCrossCloudFederationUniverse(
+      com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse.class,
+      CustomerTask.TaskType.ManageCrossCloudFederation,
+      CustomerTask.TargetType.Universe),
+
   DecommissionNode(
       com.yugabyte.yw.commissioner.tasks.DecommissionNode.class,
       CustomerTask.TaskType.Decommission,
@@ -1228,6 +1238,8 @@ public enum TaskType {
 
   ManageOtelCollector(com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector.class),
 
+  ManageCloudFederation(com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation.class),
+
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
 
@@ -1398,6 +1410,7 @@ public enum TaskType {
           .put(EditKubernetesUniverse, 7)
           .put(EditUniverse, 8)
           .put(RollbackEditUniverse, 17)
+          .put(RollbackEditKubernetesUniverse, 18)
           .put(PauseUniverse, 9)
           .put(ReadOnlyClusterCreate, 10)
           .put(ReadOnlyClusterDelete, 11)

@@ -320,6 +320,10 @@ class AbstractInstancesMethod(AbstractMethod):
             time.sleep(1)
             host_lookup_count += 1
 
+        if not host_info:
+            raise YBOpsRecoverableError(
+                "Timed out waiting for instance: '{}' (host not found)".format(
+                    args.search_pattern))
         host_port_user = get_host_port_user(self.extra_vars)
         raise YBOpsRecoverableError("Timed out waiting for instance: '{}'. {}@{}:{} using {}"
                                     .format(args.search_pattern, host_port_user["user"],

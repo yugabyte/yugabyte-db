@@ -24,10 +24,12 @@ public class SupportBundleComponentFactory {
   private final YbcLogsComponent ybcLogsComponent;
   private final K8sInfoComponent k8sInfoComponent;
   private final NodeAgentComponent nodeAgentComponent;
+  private final NodeHealthLogsComponent nodeHealthLogsComponent;
   private final YbaMetadataComponent ybaMetadataComponent;
   private final PrometheusMetricsComponent prometheusMetricsComponent;
   private final SystemLogsComponent systemLogsComponent;
   private final TabletReportComponent tabletReportComponent;
+  private final ClusterConfigComponent clusterConfigComponent;
   private final PerfAdvisorComponent perfAdvisorComponent;
   private final YBAComponent ybaComponent;
 
@@ -50,10 +52,12 @@ public class SupportBundleComponentFactory {
       YbcLogsComponent ybcLogsComponent,
       K8sInfoComponent k8sInfoComponent,
       NodeAgentComponent nodeAgentComponent,
+      NodeHealthLogsComponent nodeHealthLogsComponent,
       YbaMetadataComponent ybaMetadataComponent,
       PrometheusMetricsComponent prometheusMetricsComponent,
       SystemLogsComponent systemLogsComponent,
       TabletReportComponent tabletReportComponent,
+      ClusterConfigComponent clusterConfigComponent,
       PerfAdvisorComponent perfAdvisorComponent,
       YBAComponent ybaComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
@@ -73,10 +77,12 @@ public class SupportBundleComponentFactory {
     this.ybcLogsComponent = ybcLogsComponent;
     this.k8sInfoComponent = k8sInfoComponent;
     this.nodeAgentComponent = nodeAgentComponent;
+    this.nodeHealthLogsComponent = nodeHealthLogsComponent;
     this.ybaMetadataComponent = ybaMetadataComponent;
     this.prometheusMetricsComponent = prometheusMetricsComponent;
     this.systemLogsComponent = systemLogsComponent;
     this.tabletReportComponent = tabletReportComponent;
+    this.clusterConfigComponent = clusterConfigComponent;
     this.perfAdvisorComponent = perfAdvisorComponent;
     this.ybaComponent = ybaComponent;
   }
@@ -137,6 +143,9 @@ public class SupportBundleComponentFactory {
       case NodeAgent:
         supportBundleComponent = this.nodeAgentComponent;
         break;
+      case NodeHealthLogs:
+        supportBundleComponent = this.nodeHealthLogsComponent;
+        break;
       case YbaMetadata:
         supportBundleComponent = this.ybaMetadataComponent;
         break;
@@ -151,6 +160,9 @@ public class SupportBundleComponentFactory {
         break;
       case TabletReport:
         supportBundleComponent = this.tabletReportComponent;
+        break;
+      case ClusterConfig:
+        supportBundleComponent = this.clusterConfigComponent;
         break;
       case YBAComponent:
         supportBundleComponent = this.ybaComponent;

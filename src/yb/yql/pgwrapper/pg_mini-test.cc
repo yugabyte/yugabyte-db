@@ -277,9 +277,8 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
       cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
   // The first Connect() to a fresh DB spawns an internal libpq backend
   // (TriggerRelcacheInitConnection) whose session lingers in sessions_
-  // for the platform's ListenConnectionShutdown delay (up to 250ms on
-  // macOS, 1s under sanitizers). Poll until it drains instead of
-  // asserting immediately.
+  // for the platform's ListenConnectionShutdown delay.
+  // Poll until it drains instead of asserting immediately.
   ASSERT_OK(WaitFor([client_service, expected_count = connections.size() + kAshConnection]() {
     return client_service->TEST_SessionsCount() == expected_count;
   }, 5s, "relcache-init session cleanup"));
@@ -2232,8 +2231,26 @@ TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
-  auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
-  ASSERT_EQ(peers.size(), NumTabletServers());
+  // CREATE TABLE returns once the leader has applied the colocated ADD_TABLE op; followers apply
+  // it asynchronously and only report the table afterwards, so poll instead of sampling once.
+  std::vector<tablet::TabletPeerPtr> peers;
+  ASSERT_OK(WaitFor(
+      [&] {
+        peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+        if (peers.size() != NumTabletServers()) {
+          return false;
+        }
+        // Arming happens later in the same apply, so wait for it too.
+        for (const auto& peer : peers) {
+          auto table_info = peer->tablet_metadata()->GetTableInfo(kColocationId);
+          if (!table_info.ok() || !(*table_info)->doc_read_context ||
+              (*table_info)->doc_read_context->tombstone_cache_watermark() == HybridTime::kMax) {
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "Every replica of the colocated tablet armed the table"));
   const auto tablet_id = peers.front()->tablet_id();
 
   auto doc_read_context = [&](const tablet::TabletPeerPtr& peer) {
@@ -3627,6 +3644,12 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   LOG(INFO) << "Creating table";
   ASSERT_OK(conn1.Execute("CREATE TABLE test(a int) SPLIT INTO 1 TABLETS"));
 
+  // The transaction status tablets are created before every tablet server has registered, so the
+  // load balancer is still adding their third replica. Restarting one of the two voters they have
+  // until then costs those tablets their quorum and stalls applies for seconds.
+  ASSERT_OK(WaitAllReplicasReady(cluster_.get(), 120s * kTimeMultiplier, UserTabletsOnly::kFalse));
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(120s * kTimeMultiplier));
+
   const auto& pg_ts_uuid = cluster_->mini_tablet_server(kPgTsIndex)->server()->permanent_uuid();
   tablet::TabletPeerPtr tablet_peer = nullptr;
   tablet::TabletPtr tablet = nullptr;
@@ -3668,16 +3691,13 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
 
-  // The recently applied transactions map only retains a staircase of (first_write_ht,
-  // apply_op_id) pairs, so an apply landing out of first write order subsumes the entry of an
-  // earlier transaction. Applies are asynchronous with respect to commit, so let each transaction
-  // apply, i.e. leave the participant, before committing the next one.
+  // Every peer must report exactly the expected number of transactions: a peer that has not
+  // replicated them yet, or has not loaded them back after the restart, reports none of its own and
+  // would satisfy a check on the total vacuously.
   const auto& tablet_id = tablet_peer->tablet_id();
-  auto commit_and_wait_apply = [this, tablet_id, kApplyWait](
-      PGConn* conn, size_t expected_running) -> Status {
-    RETURN_NOT_OK(conn->CommitTransaction());
+  auto wait_running = [this, &tablet_id, kApplyWait](size_t expected_running) -> Status {
     return WaitFor([this, &tablet_id, expected_running]() -> Result<bool> {
-      size_t running = 0;
+      size_t peers_done = 0;
       for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
         if (peer->tablet_id() != tablet_id) {
           continue;
@@ -3686,14 +3706,31 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
         if (!peer_tablet) {
           return false;
         }
-        running += peer_tablet->transaction_participant()->GetNumRunningTransactions();
+        if (peer_tablet->transaction_participant()->GetNumRunningTransactions() !=
+            expected_running) {
+          return false;
+        }
+        ++peers_done;
       }
-      return running <= expected_running;
-    }, kApplyWait, Format("$0 running transactions left", expected_running));
+      return peers_done == NumTabletServers();
+    }, kApplyWait, Format("$0 running transactions left on every peer", expected_running));
   };
 
-  ASSERT_OK(commit_and_wait_apply(&conn1, 6));
-  ASSERT_OK(commit_and_wait_apply(&conn2, 3));
+  // Catching up with the tablet leader and loading the transactions back from the flushed intents
+  // are both asynchronous with the restart.
+  ASSERT_OK(wait_running(3));
+
+  // The recently applied transactions map only retains a staircase of (first_write_ht,
+  // apply_op_id) pairs, so an apply landing out of first write order subsumes the entry of an
+  // earlier transaction. Applies are asynchronous with respect to commit, so let each transaction
+  // apply, i.e. leave the participant, before committing the next one.
+  auto commit_and_wait_apply = [&wait_running](PGConn* conn, size_t expected_running) -> Status {
+    RETURN_NOT_OK(conn->CommitTransaction());
+    return wait_running(expected_running);
+  };
+
+  ASSERT_OK(commit_and_wait_apply(&conn1, 2));
+  ASSERT_OK(commit_and_wait_apply(&conn2, 1));
   ASSERT_OK(commit_and_wait_apply(&conn3, 0));
 
   std::unordered_map<std::string, uint64_t> metric_values;

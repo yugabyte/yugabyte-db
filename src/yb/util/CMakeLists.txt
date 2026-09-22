@@ -137,6 +137,7 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  disk_space_checker.cc
   dist_trace.cc
   drive_io_stats.cc
   enums.cc
@@ -389,6 +390,7 @@ ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(disk_space_checker-test)
 ADD_YB_TEST(drive_io_stats-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)

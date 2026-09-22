@@ -2,11 +2,10 @@ import { mui } from '@yugabyte-ui-library/core';
 
 const { Box, Typography, styled } = mui;
 
-export const DEFAULT_RELEASE_NOTES_URL =
-  'https://docs.yugabyte.com/preview/releases/yba-releases/';
+export const DEFAULT_RELEASE_NOTES_URL = 'https://docs.yugabyte.com/preview/releases/yba-releases/';
 
 export const NEW_EXPERIENCE_DOCS_URL =
-  'https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/yba-overview/#new-experience';
+  'https://docs.yugabyte.com/stable/yugabyte-platform/yba-overview/#new-experience';
 
 export const ModalBody = styled(Box)(() => ({
   display: 'flex',

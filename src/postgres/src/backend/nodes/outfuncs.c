@@ -620,6 +620,7 @@ _outIndexScan(StringInfo str, const IndexScan *node)
 	WRITE_NODE_FIELD(yb_rel_pushdown.quals);
 	WRITE_NODE_FIELD(yb_rel_pushdown.colrefs);
 	WRITE_INT_FIELD(yb_distinct_prefixlen);
+	WRITE_NODE_FIELD(yb_merge_scan_info);
 	WRITE_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 }
 
@@ -639,6 +640,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_NODE_FIELD(yb_pushdown.quals);
 	WRITE_NODE_FIELD(yb_pushdown.colrefs);
 	WRITE_INT_FIELD(yb_distinct_prefixlen);
+	WRITE_NODE_FIELD(yb_merge_scan_info);
 	WRITE_INT_FIELD(yb_num_decoded_pk_cols);
 }
 
@@ -858,6 +860,7 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 
 	_outJoinPlanInfo(str, (const Join *) node);
 	WRITE_NODE_FIELD(nl.nestParams);
+	WRITE_INT_FIELD(first_batch_size);
 	WRITE_INT_FIELD(num_hashClauseInfos);
 	appendStringInfoString(str, " :hashOps");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
@@ -2423,6 +2426,9 @@ _outNestPath(StringInfo str, const NestPath *node)
 	WRITE_NODE_TYPE("NESTPATH");
 
 	_outJoinPathInfo(str, (const JoinPath *) node);
+
+	/* YB */
+	WRITE_INT_FIELD(yb_first_batch_size);
 }
 
 static void
@@ -4118,6 +4124,7 @@ _outYbMergeScanSaopColInfo(StringInfo str, const YbMergeScanSaopColInfo *node)
 	WRITE_NODE_FIELD(saop);
 	WRITE_INT_FIELD(indexcol);
 	WRITE_INT_FIELD(num_elems);
+	WRITE_BOOL_FIELD(derived);
 }
 
 static void

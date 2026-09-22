@@ -113,6 +113,7 @@ struct PgClientSessionMetrics {
 struct PgClientSessionDbHistoryRetentionPin {
   PgOid db_oid = kPgInvalidOid;
   HybridTime read_time;
+  pid_t pid = -1;
 };
 
 struct PgClientSessionContext {

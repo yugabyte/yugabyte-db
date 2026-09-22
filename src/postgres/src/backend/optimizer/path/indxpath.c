@@ -812,10 +812,12 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			 * This qpqual references a batched relid but has no batched form
 			 * usable at this scan.  There are three cases:
 			 *
-			 * 1. It also references a relation not available here (neither this
-			 *    scan nor a batched outer relation), so it can't be enforced at
-			 *    this scan anyway.  Under CBO, leave it to the join above to
-			 *    enforce or relegate, keeping this scan batched.
+			 * 1. It also references a relation that is neither this scan nor a
+			 *    batched outer relation, so the batched nested loop join right
+			 *    above cannot pick it up from its own restrict list.  Under CBO,
+			 *    keep this scan batched: get_baserel_parampathinfo withholds
+			 *    the clause from the scan and records it in the ParamPathInfo,
+			 *    and get_joinrel_parampathinfo re-applies it at the join above.
 			 *
 			 * 2. It has no batched form at all: defer it for relegation to the
 			 *    join filter.

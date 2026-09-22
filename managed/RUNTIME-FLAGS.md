@@ -223,7 +223,8 @@
 | "Memory per node for advanced observability" | "yb.pa.memory_per_node_advanced_observability_mb" | "GLOBAL" | "Estimated memory usage per node when advanced observability is enabled (in MB). Used to precheck YBA node memory headroom before enabling advanced observability." | "Integer" |
 | "Memory per node for PA collector" | "yb.pa.memory_per_node_pa_collector_mb" | "GLOBAL" | "Estimated memory usage per node when PA collector is enabled without advanced observability (in MB). Used to precheck YBA node memory headroom before enabling PA collection." | "Integer" |
 | "Skip PA Collector memory validation" | "yb.pa.skip_memory_validation" | "GLOBAL" | "Skip memory availability validation when enabling Performance Advisor Collection" | "Boolean" |
-| "Whether to enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Whether to enable new universe experience for all users" | "Boolean" |
+| "Enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Enable new universe experience for all users" | "Boolean" |
+| "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -300,6 +301,8 @@
 | "Universe logs regex pattern" | "yb.support_bundle.universe_logs_regex_pattern" | "UNIVERSE" | "Universe logs regex pattern in support bundle" | "String" |
 | "Postgres logs regex pattern" | "yb.support_bundle.postgres_logs_regex_pattern" | "UNIVERSE" | "Postgres logs regex pattern in support bundle" | "String" |
 | "Connection Pooling logs regex pattern" | "yb.support_bundle.connection_pooling_logs_regex_pattern" | "UNIVERSE" | "Connection Pooling logs regex pattern in support bundle" | "String" |
+| "System logs regex pattern" | "yb.support_bundle.system_logs_regex_pattern" | "UNIVERSE" | "System logs under /var/log to collect in the support bundle, with their rotations. Defaults to messages (RHEL-family) and syslog (Debian/Ubuntu). Group 1 must capture the base log name." | "String" |
+| "Collect journald logs" | "yb.support_bundle.collect_journald_logs" | "UNIVERSE" | "Collect the systemd journal for the requested time window in the support bundle, in addition to (never instead of) the /var/log system log files." | "Boolean" |
 | "YSQL Upgrade Timeout in seconds" | "yb.upgrade.ysql_upgrade_timeout_sec" | "UNIVERSE" | "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL subtask rpc calls." | "Integer" |
 | "Under replicated tablets check timeout" | "yb.checks.under_replicated_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the checkUnderReplicatedTablets subtask" | "Duration" |
 | "Enabling under replicated tablets check" | "yb.checks.under_replicated_tablets.enabled" | "UNIVERSE" | "Controls whether or not to perform the checkUnderReplicatedTablets subtask" | "Boolean" |

@@ -36,7 +36,8 @@ set(YB_PCH_DEP_LIBS boost_regex)
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs
   WORKING_DIRECTORY ${YB_BUILD_ROOT}
-  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs)
+  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs
+  DEPENDS ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh)
 
 add_custom_target(generate_test_certs DEPENDS ${CMAKE_BINARY_DIR}/test_certs)
 
@@ -312,6 +313,7 @@ ADD_YB_TEST(upgrade-tests/ysql_major_extension_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_check-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_conn_mgr-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_audit_event_trigger-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)

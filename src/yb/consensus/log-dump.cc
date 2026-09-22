@@ -393,15 +393,10 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   DumpLogContext context;
   RETURN_NOT_OK(context.InitForTablet(tablet_id));
 
-  std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(context.env.get(),
-                                scoped_refptr<LogIndex>(),
-                                "Log reader: ",
-                                tablet_wal_path,
-                                scoped_refptr<MetricEntity>(),
-                                scoped_refptr<MetricEntity>(),
-                                /*read_wal_mem_tracker=*/nullptr,
-                                &reader));
+  auto reader = VERIFY_RESULT(LogReader::Open(
+      context.env.get(), scoped_refptr<LogIndex>(), "Log reader: ", tablet_wal_path,
+      scoped_refptr<MetricEntity>(), scoped_refptr<MetricEntity>(),
+      /*read_wal_mem_tracker=*/nullptr));
 
   SegmentSequence segments;
   RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));

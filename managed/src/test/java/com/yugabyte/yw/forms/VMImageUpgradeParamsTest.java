@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.ImageBundleUpgradeInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Arrays;
@@ -142,7 +144,123 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
         ex.getMessage().contains("Image Bundle primary-ib is missing the image for region"));
   }
 
+  @Test
+  public void testVerifyParamsRejectsOciPrimaryUniverse() {
+    Provider ociProvider = ModelFactory.ociProvider(customer);
+    Region ociRegion = Region.create(ociProvider, "ashburn", "Ashburn", "oci-image");
+    AvailabilityZone ociAz =
+        AvailabilityZone.createOrThrow(ociRegion, "ad-1", "AD 1", "subnet-oci");
+
+    UserIntent ociIntent = new UserIntent();
+    ociIntent.ybSoftwareVersion = "2026.1.2.0-b1";
+    ociIntent.accessKeyCode = "demo-access";
+    ociIntent.regionList = ImmutableList.of(ociRegion.getUuid());
+    ociIntent.providerType = Common.CloudType.oci;
+    ociIntent.provider = ociProvider.getUuid().toString();
+    ociIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    ociIntent.numNodes = 1;
+    ociIntent.replicationFactor = 1;
+
+    PlacementInfo placement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(ociAz.getUuid(), placement, 1, 1, true);
+
+    Universe ociUniverse = ModelFactory.createUniverse("oci-univ", customer.getId());
+    ociUniverse =
+        Universe.saveDetails(
+            ociUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(ociIntent, placement, true));
+
+    assertOciUpgradeForbidden(
+        ociUniverse, ociUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+  }
+
+  @Test
+  public void testVerifyParamsRejectsOciReadReplica() {
+    Provider ociProvider = ModelFactory.ociProvider(customer);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UserIntent rrIntent = u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
+              rrIntent.providerType = Common.CloudType.oci;
+              rrIntent.provider = ociProvider.getUuid().toString();
+            });
+    assertOciUpgradeForbidden(universe, readReplicaClusterUuid);
+  }
+
+  @Test
+  public void testVerifyParamsRejectsOciInMixedCloudPrimary() {
+    Provider ociProvider = ModelFactory.ociProvider(customer);
+    Region ociRegion = Region.create(ociProvider, "ashburn", "Ashburn", "oci-image");
+    AvailabilityZone ociAz =
+        AvailabilityZone.createOrThrow(ociRegion, "ad-1", "AD 1", "subnet-oci");
+    ImageBundle ociBundle = createImageBundle(ociProvider, "oci-ib", ociRegion.getCode());
+    UUID primaryUuid = primaryClusterUuid;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+              UniverseDefinitionTaskParams.ProviderSpecification ociSpec =
+                  new UniverseDefinitionTaskParams.ProviderSpecification();
+              ociSpec.setProviderType(Common.CloudType.oci);
+              ociSpec.setProviderUUID(ociProvider.getUuid());
+              ociSpec.setNodesSpecs(
+                  TestUtils.tserverSpec("VM.Standard.E4.Flex", intent.deviceInfo));
+              intent.providerSpecifications =
+                  Arrays.asList(TestUtils.toProviderSpecification(intent), ociSpec);
+
+              NodeDetails ociNode = new NodeDetails();
+              ociNode.nodeIdx = intent.numNodes + 1;
+              ociNode.nodeName = "host-n" + ociNode.nodeIdx;
+              ociNode.nodeUuid = UUID.randomUUID();
+              ociNode.placementUuid = primaryUuid;
+              ociNode.isMaster = true;
+              ociNode.isTserver = true;
+              ociNode.state = NodeDetails.NodeState.Live;
+              ociNode.azUuid = ociAz.getUuid();
+              ociNode.cloudInfo = new CloudSpecificInfo();
+              ociNode.cloudInfo.cloud = Common.CloudType.oci.toString();
+              ociNode.cloudInfo.region = ociRegion.getCode();
+              ociNode.cloudInfo.az = ociAz.getCode();
+              u.getUniverseDetails().nodeDetailsSet.add(ociNode);
+            });
+
+    VMImageUpgradeParams params = new VMImageUpgradeParams();
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.clusters = universe.getUniverseDetails().clusters;
+    params.machineImages = null;
+    params.imageBundles =
+        Arrays.asList(
+            new ImageBundleUpgradeInfo(primaryUuid, ociBundle.getUuid(), ociProvider.getUuid()));
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(universe, true));
+    assertTrue(
+        ex.getMessage(),
+        ex.getMessage()
+            .contains("VM image upgrade for OCI cloud based universe is not supported."));
+  }
+
+  private void assertOciUpgradeForbidden(Universe target, UUID clusterUuid) {
+    VMImageUpgradeParams params = new VMImageUpgradeParams();
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.clusters = target.getUniverseDetails().clusters;
+    params.machineImages = null;
+    params.imageBundles =
+        Arrays.asList(new ImageBundleUpgradeInfo(clusterUuid, UUID.randomUUID(), null));
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(target, true));
+    assertTrue(
+        ex.getMessage(),
+        ex.getMessage()
+            .contains("VM image upgrade for OCI cloud based universe is not supported."));
+  }
+
   private ImageBundle createImageBundle(String name, String regionCode) {
+    return createImageBundle(provider, name, regionCode);
+  }
+
+  private ImageBundle createImageBundle(Provider bundleProvider, String name, String regionCode) {
     ImageBundleDetails ibDetails = new ImageBundleDetails();
     ibDetails.setArch(Architecture.x86_64);
     ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
@@ -150,6 +268,6 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
     Map<String, ImageBundleDetails.BundleInfo> regions = new HashMap<>();
     regions.put(regionCode, bundleInfo);
     ibDetails.setRegions(regions);
-    return ImageBundle.create(provider, name, ibDetails, true);
+    return ImageBundle.create(bundleProvider, name, ibDetails, true);
   }
 }

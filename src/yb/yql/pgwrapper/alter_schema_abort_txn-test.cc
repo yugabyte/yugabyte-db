@@ -14,6 +14,8 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_fail_alter_schema_after_abort_transactions);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 
 namespace yb {
 namespace pgwrapper {
@@ -22,6 +24,12 @@ class AlterSchemaAbortTxnTest : public PgMiniTestBase {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_schema_after_abort_transactions) = true;
+    // The alter must reach the tablet's abort-active-transactions path while a conflicting
+    // transaction is open. With table locks it instead blocks on the object lock until the
+    // transaction commits, which never happens here. Concurrent DDL requires object locking,
+    // so keep the two flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     PgMiniTestBase::SetUp();
   }
 };

@@ -516,6 +516,7 @@ message PgsqlReadRequestPB {
 
   //------------------------------------------------------------------------------------------------
   // Query options.
+  // Unset means row order does not matter, which lets pggate read tablets in parallel.
   optional bool is_forward_scan = 10 [default = true];
 
   // Reading distinct columns?

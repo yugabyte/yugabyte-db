@@ -61,10 +61,15 @@ class IndexMergeTest : public YBTest {
     const size_t num_vectors() const { return vector_ids.size(); }
   };
 
+  static std::string PayloadForVector(const VectorId& vector_id) {
+    return "value_" + vector_id.ToString();
+  }
+
   IndexData CreateAndFillIndex(
       const VectorIndexTraitsPtr<FloatVector, float>& index_traits, size_t first_id,
       size_t num_entries) {
-    auto index = index_traits->Create(vector_index::FactoryMode::kCreate);
+    auto index = index_traits->Create(
+        vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kTrue);
     CHECK_OK(index->Reserve(
         num_entries, 1, 1, rocksdb::Cache::ReservationMode::kAlways));
 
@@ -72,7 +77,8 @@ class IndexMergeTest : public YBTest {
     ids.reserve(num_entries);
     for (size_t id = first_id; id < first_id + num_entries; ++id) {
       ids.emplace_back(VectorId::GenerateRandom());
-      CHECK_OK(index->Insert(ids.back(), input_vectors_[id % input_vectors_.size()]));
+      CHECK_OK(index->Insert(
+          ids.back(), input_vectors_[id % input_vectors_.size()], PayloadForVector(ids.back())));
     }
 
     return {std::move(index), std::move(ids)};
@@ -83,6 +89,7 @@ class IndexMergeTest : public YBTest {
                                std::set<VectorId>&& expected_ids) {
     for (const auto& result : results) {
       ASSERT_TRUE(expected_ids.find(result.vector_id) != expected_ids.end());
+      ASSERT_EQ(result.payload.ToStringBuffer(), PayloadForVector(result.vector_id));
       expected_ids.erase(result.vector_id); // Remove found ID from the set.
     }
     ASSERT_TRUE(expected_ids.empty()); // Verify all expected IDs were found.
@@ -95,7 +102,8 @@ class IndexMergeTest : public YBTest {
     auto data_b = CreateAndFillIndex(index_traits, half_size, half_size);
 
     VectorIndexIfPtr<FloatVector, float> merged_index =
-      ASSERT_RESULT(Merge(index_traits, {data_a.index, data_b.index}));
+      ASSERT_RESULT(Merge(
+          index_traits, {data_a.index, data_b.index}, vector_index::StoreVectorPayload::kTrue));
 
     // Check that the merged index contains all entries.
     auto result_a = ASSERT_RESULT(merged_index->Search(
@@ -119,7 +127,8 @@ class IndexMergeTest : public YBTest {
 
   void TestMergeWithEmptyIndex(const VectorIndexTraitsPtr<FloatVector, float>& index_traits) {
     // Create an empty index with the same options.
-    VectorIndexIfPtr<FloatVector, float> empty_index = index_traits->Create(FactoryMode::kCreate);
+    VectorIndexIfPtr<FloatVector, float> empty_index = index_traits->Create(
+        FactoryMode::kCreate, vector_index::StoreVectorPayload::kTrue);
     CHECK_OK(empty_index->Reserve(
         10, 0, 0, rocksdb::Cache::ReservationMode::kAlways));
 
@@ -127,7 +136,8 @@ class IndexMergeTest : public YBTest {
     auto data_a = CreateAndFillIndex(index_traits, 0, input_vectors_.size() / 2);
 
     // Merge empty_index with data_a.
-    auto merged_index = ASSERT_RESULT(Merge(index_traits, {data_a.index, empty_index}));
+    auto merged_index = ASSERT_RESULT(Merge(
+        index_traits, {data_a.index, empty_index}, vector_index::StoreVectorPayload::kTrue));
 
     // Check that the merged index contains only the entries from data_a.
     auto all_results = ASSERT_RESULT(merged_index->Search(

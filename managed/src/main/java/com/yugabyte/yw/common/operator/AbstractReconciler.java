@@ -50,7 +50,7 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
     this.operatorUtils = operatorUtils;
     this.workqueue = new OperatorWorkQueue(clazz.getSimpleName());
     this.namespace = namespace;
-    this.resourceInformer.addEventHandler(this);
+    this.resourceInformer.addEventHandler(HaAwareResourceEventHandler.wrap(operatorUtils, this));
   }
 
   // Abstract methods
@@ -164,6 +164,9 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
    * @param resource specified resource
    */
   protected void reconcile(T resource, OperatorWorkQueue.ResourceAction action) {
+    if (HaAwareResourceEventHandler.skip(operatorUtils)) {
+      return;
+    }
     String resourceName = resource.getMetadata().getName();
     String resourceNamespace = resource.getMetadata().getNamespace();
     log.info(

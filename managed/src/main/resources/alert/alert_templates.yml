@@ -772,7 +772,7 @@ templates:
     name: Number of YSQL connections is high
     description: Number of YSQL connections is above threshold
     queryTemplate: max by (universe_uuid)
-      (max_over_time(yb_node_ysql_connections_count{universe_uuid="__universeUuid__"}[5m]))
+      (max_over_time(yb_ysqlserver_connection_total{universe_uuid="__universeUuid__",export_type="ysql_export"}[5m]))
       {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
@@ -784,7 +784,7 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)
-        (max_over_time(yb_node_ysql_connections_count{universe_uuid='{{ $labels.universe_uuid }}'}[5m]))
+        (max_over_time(yb_ysqlserver_connection_total{universe_uuid='{{ $labels.universe_uuid }}',export_type='ysql_export'}[5m]))
         {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
@@ -1291,6 +1291,7 @@ templates:
     defaultThresholdUnit: STATUS
     thresholdMaxValue: 0.0
     thresholdReadOnly: true
+    defaultDurationSec: 180
     labels:
       affected_xcluster_configs: >-
         {{ range $index, $element := query "count by (source_universe_uuid, xcluster_config_name)
@@ -2411,7 +2412,9 @@ templates:
     queryTemplate: ybp_pa_collector_expected_up{customer_uuid = "__customerUuid__"} == 1
       and on() absent(up{job="perf-advisor"}) == 1
     createForNewCustomer: true
-    defaultDurationSec: 900
+    # absent() only turns 1 once the collector's last sample leaves Prometheus' query lookback
+    # delta, 5 minutes by default, so the wait to fire is that plus this duration.
+    defaultDurationSec: 300
     defaultThresholdMap:
       SEVERE:
         threshold: 1.0
