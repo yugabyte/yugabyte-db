@@ -1482,6 +1482,23 @@ Default: `14400` (4 hours)
 
 Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
 
+##### --cdc_skip_unqualified_tables_for_polling
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2026.1.2.0 and later.
+
+When set to `true`, Virtual WAL (VWAL) ignores unqualified tables (expired or not-of-interest) when updating a publication's polling list, and continues with qualified tables only. This prevents VWAL from failing with a WAL or intents garbage collection error, which can otherwise render the replication slot unusable.
+
+When this flag is `false` (the default), VWAL refuses to add unqualified tables to the polling list and returns an error.
+
+A table is unqualified if its tablets have expired (not polled within [--cdc_intent_retention_ms](#cdc-intent-retention-ms)) or are not of interest (not polled within [--cdcsdk_tablet_not_of_interest_timeout_secs](#cdcsdk-tablet-not-of-interest-timeout-secs) of stream or slot creation).
+
+For more information, refer to [Unqualified tables](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#unqualified-tables).
+
 ##### --timestamp_syscatalog_history_retention_interval_sec
 
 {{% tags/wrap %}}

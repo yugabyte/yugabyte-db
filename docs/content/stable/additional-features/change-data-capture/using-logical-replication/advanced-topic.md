@@ -169,6 +169,14 @@ To enable dynamic table addition with minimal delay, perform the following steps
 If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you should set the value of the flag back to its original value after you start receiving changes from the new table, as every refresh incurs overhead.
 {{< /note >}}
 
+### Unqualified tables
+
+Available in v2026.1.2.0 and later.
+
+A table is unqualified for a replication slot if its tablets have expired or are not of interest. Adding an unqualified table to a publication can cause Virtual WAL (VWAL) to fail with a WAL or intents garbage collection error, which in versions earlier than v2026.1.2.0 renders the slot unusable.
+
+Set the YB-TServer flag [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) to `true` so VWAL skips unqualified tables and continues polling only the qualified tables in the publication. When the flag is `false` (the default), VWAL refuses to add unqualified tables to the polling list and returns an error.
+
 ## Streaming DDLs causing table rewrite
 
 By default (v2026.1 and later), you can perform DDL on _non-colocated_ tables in a database with active logical replication without dropping replication slots. When a DDL causes a table rewrite, logical replication detects it, sends a DDL event to the client, and transitions to streaming changes from the re-written table's tablets after finishing data from the older tablets.

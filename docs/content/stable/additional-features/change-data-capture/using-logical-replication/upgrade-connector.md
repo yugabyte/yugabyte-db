@@ -91,7 +91,7 @@ A re-snapshot rebuilds the stream from scratch. Instead of resuming from stored 
 A re-snapshot is required when the existing replication slot can't be reused:
 
 - The target release notes call out a breaking change that isn't backward compatible with existing slots or offsets.
-- The replication slot has expired or become invalid (for example, after certain DDL changes, after point-in-time recovery, or after you add an expired or not-of-interest table to the publication).
+- The replication slot has expired or become invalid (for example, after certain DDL changes, after point-in-time recovery, or, in versions earlier than v2026.1.2.0, after you add an expired or not-of-interest table to the publication).
 - You are planning a YSQL major upgrade (PostgreSQL 11 to PostgreSQL 15); see [Upgrade across a YSQL major version](#ysql-major-upgrade) for the supported flow that avoids a full re-snapshot.
 
 To re-snapshot:
