@@ -54,7 +54,7 @@ PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 PROMETHEUS_VERSION ?= 3.13.1
 
 # Node Exporter Version
-NODE_EXPORTER_VERSION ?= 1.10.2
+NODE_EXPORTER_VERSION ?= 1.12.1-fips
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
 POSTGRES_VERSION ?= 14.23
