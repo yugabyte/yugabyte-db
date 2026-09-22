@@ -1,7 +1,9 @@
 package com.yugabyte.yw.cloud.gcp;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,11 +16,13 @@ import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.ExponentialBackOff;
+import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.services.cloudresourcemanager.CloudResourceManager;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsRequest;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsResponse;
 import com.google.api.services.compute.Compute;
 import com.google.api.services.compute.model.AllocationSpecificSKUReservation;
+import com.google.api.services.compute.model.AttachedDisk;
 import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
 import com.google.api.services.compute.model.Firewall;
@@ -36,6 +40,7 @@ import com.google.api.services.compute.model.InstanceGroupsListInstancesRequest;
 import com.google.api.services.compute.model.InstanceGroupsRemoveInstancesRequest;
 import com.google.api.services.compute.model.InstanceList;
 import com.google.api.services.compute.model.InstanceReference;
+import com.google.api.services.compute.model.InstanceTemplate;
 import com.google.api.services.compute.model.InstanceTemplateList;
 import com.google.api.services.compute.model.InstanceWithNamedPorts;
 import com.google.api.services.compute.model.Network;
@@ -49,6 +54,9 @@ import com.google.api.services.compute.model.SubnetworkList;
 import com.google.api.services.compute.model.TCPHealthCheck;
 import com.google.auth.oauth2.ComputeEngineCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.kms.v1.CryptoKey;
+import com.google.cloud.kms.v1.KeyManagementServiceClient;
+import com.google.cloud.kms.v1.KeyManagementServiceSettings;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.GCPUtil;
@@ -75,6 +83,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -189,9 +198,16 @@ public class GCPProjectApiClient {
     return instanceGroup;
   }
 
-  public boolean checkInstanceTempelate(String instanceTempelateName) {
+  /**
+   * Checks whether an instance template exists. Uses list rather than get so that it needs only
+   * compute.instanceTemplates.list, which every provider that passes a template to
+   * instances().insert() already has.
+   *
+   * @param instanceTemplateName Name of the global instance template
+   */
+  public boolean checkInstanceTemplateExists(String instanceTemplateName) {
     try {
-      String filter = "name eq " + instanceTempelateName;
+      String filter = "name eq " + instanceTemplateName;
       InstanceTemplateList instanceTemplateList =
           compute.instanceTemplates().list(project).setFilter(filter).execute();
       return instanceTemplateList.getItems() != null;
@@ -200,6 +216,79 @@ public class GCPProjectApiClient {
       throw new PlatformServiceException(
           BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
     }
+  }
+
+  /**
+   * Fetches an instance template by name. Needs compute.instanceTemplates.get, which is only
+   * required when {@code yb.gcp.read_instance_template} is on.
+   *
+   * @param instanceTemplateName Name of the global instance template
+   * @return the template, or {@code null} if no template by that name exists in the project
+   */
+  public InstanceTemplate getInstanceTemplate(String instanceTemplateName) {
+    try {
+      return compute.instanceTemplates().get(project, instanceTemplateName).execute();
+    } catch (GoogleJsonResponseException e) {
+      if (e.getStatusCode() == NOT_FOUND) {
+        return null;
+      }
+      log.error("Error in retrieving instance template", e);
+      if (e.getStatusCode() == FORBIDDEN) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "The SA does not have compute.instanceTemplates.get on instance template %s. Grant"
+                    + " that permission, or turn off yb.gcp.read_instance_template.",
+                instanceTemplateName));
+      }
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
+    } catch (Exception e) {
+      log.error("Error in retrieving instance template", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
+    }
+  }
+
+  /** The CMEK keys an instance template declares, split by the disk role they apply to. */
+  @Value
+  public static class TemplateDiskKmsKeys {
+    String bootDiskKey;
+    String dataDiskKey;
+  }
+
+  /**
+   * Returns the CMEK keys declared on an instance template's boot and data disks. The data disks
+   * YBA creates are identical, so the first data disk key in the template applies to all of them.
+   */
+  public static TemplateDiskKmsKeys getTemplateDiskKmsKeys(InstanceTemplate instanceTemplate) {
+    if (instanceTemplate == null
+        || instanceTemplate.getProperties() == null
+        || instanceTemplate.getProperties().getDisks() == null) {
+      return new TemplateDiskKmsKeys(null, null);
+    }
+    String bootDiskKey = null;
+    String dataDiskKey = null;
+    for (AttachedDisk disk : instanceTemplate.getProperties().getDisks()) {
+      if (disk.getDiskEncryptionKey() == null
+          || StringUtils.isEmpty(disk.getDiskEncryptionKey().getKmsKeyName())) {
+        continue;
+      }
+      String diskKey = disk.getDiskEncryptionKey().getKmsKeyName();
+      if (Boolean.TRUE.equals(disk.getBoot())) {
+        bootDiskKey = diskKey;
+      } else if (dataDiskKey == null) {
+        dataDiskKey = diskKey;
+      }
+    }
+    if (bootDiskKey != null || dataDiskKey != null) {
+      log.info(
+          "Instance template {} CMEK keys: boot disk {}, data disks {}",
+          instanceTemplate.getName(),
+          bootDiskKey,
+          dataDiskKey);
+    }
+    return new TemplateDiskKmsKeys(bootDiskKey, dataDiskKey);
   }
 
   public void checkInstanceFetching() throws IOException, GeneralSecurityException {
@@ -664,13 +753,44 @@ public class GCPProjectApiClient {
     }
   }
 
+  private CloudResourceManager buildCloudResourceManagerClient() {
+    return new CloudResourceManager.Builder(
+            httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
+        .setApplicationName("")
+        .build();
+  }
+
+  private KeyManagementServiceClient buildKmsClient() throws IOException {
+    return KeyManagementServiceClient.create(
+        KeyManagementServiceSettings.newBuilder()
+            .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
+            .build());
+  }
+
+  /**
+   * Fetches a Cloud KMS crypto key. Any {@code cryptoKeyVersions} suffix on the name is stripped
+   * first, since Compute returns fully-versioned key names but the KMS API expects the key itself.
+   *
+   * @throws com.google.api.gax.rpc.ApiException if the key is missing or inaccessible
+   */
+  public CryptoKey getCryptoKey(String kmsKeyName) {
+    try (KeyManagementServiceClient kmsClient = buildKmsClient()) {
+      return kmsClient.getCryptoKey(stripCryptoKeyVersion(kmsKeyName));
+    } catch (IOException e) {
+      log.error("Error in building the Cloud KMS client", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to connect to Cloud KMS [check logs for more info]");
+    }
+  }
+
+  private static String stripCryptoKeyVersion(String kmsKeyName) {
+    int versionIndex = kmsKeyName.indexOf("/cryptoKeyVersions/");
+    return versionIndex < 0 ? kmsKeyName : kmsKeyName.substring(0, versionIndex);
+  }
+
   public List<String> testIam(List<String> reqPermissions) {
     try {
-      CloudResourceManager crmService =
-          new CloudResourceManager.Builder(
-                  httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
-              .setApplicationName("")
-              .build();
+      CloudResourceManager crmService = buildCloudResourceManagerClient();
 
       TestIamPermissionsRequest request =
           new TestIamPermissionsRequest().setPermissions(reqPermissions);
