@@ -150,13 +150,51 @@ public class TestAudit extends BaseCQLTest {
       } catch (RuntimeException e) {
         // Expected.
       }
-      for (AuditLogEntry entry : auditRecords.popAll()) {
-        assertFalse("Audited operation leaked a password: " + entry.operationAndErrorMessage,
-            entry.operationAndErrorMessage.contains(first));
-        assertFalse("Audited operation leaked a password: " + entry.operationAndErrorMessage,
-            entry.operationAndErrorMessage.contains(second));
+      assertNoPasswordInAudit(
+          "CREATE ROLE user_dup_pw WITH PASSWORD = <REDACTED> AND PASSWORD = <REDACTED>",
+          first, second);
+    }
+
+    // The statement is echoed in the error message too, not only in the operation field, and an
+    // execution-time rejection is reported with ErrorIsFormatted::kFalse, so nothing strips that
+    // echo. user1 already exists, so this is rejected with DUPLICATE_ROLE after analysis.
+    {
+      final String password = "dup_role_pl4int3xt";
+      auditRecords.discard();
+      String cql = "CREATE ROLE user1 WITH login = true AND PASSWORD = '" + password + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE for an already existing role to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE user1 WITH login = true AND PASSWORD = <REDACTED>", password);
+    }
+  }
+
+  /**
+   * Asserts that the audit records captured since the last discard contain none of {@code secrets},
+   * and that at least one of them carries {@code expectedRedactedPrefix}. The second half matters:
+   * asserting only absence would pass vacuously if nothing were captured at all, which is exactly
+   * the failure mode a redaction test has to exclude.
+   */
+  private void assertNoPasswordInAudit(String expectedRedactedPrefix, String... secrets)
+      throws Exception {
+    List<AuditLogEntry> records = auditRecords.popAll();
+    assertFalse("No audit record was captured for the rejected statement", records.isEmpty());
+    boolean sawRedacted = false;
+    for (AuditLogEntry entry : records) {
+      String text = entry.operationAndErrorMessage;
+      assertNotNull("Audit record carries no operation text: " + entry, text);
+      for (String secret : secrets) {
+        assertFalse("Audited record leaked a password: " + text, text.contains(secret));
+      }
+      if (text.startsWith(expectedRedactedPrefix)) {
+        sawRedacted = true;
       }
     }
+    assertTrue("No audit record carried the redacted statement. Captured: " + records, sawRedacted);
   }
 
   /** Issuing DML batch as YCQL plaintext: {@code START TXN; DML1; DML2; COMMIT} */
