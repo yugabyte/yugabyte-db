@@ -71,6 +71,7 @@ export const MetricTypesWithOperations = {
       'network_packets',
       'network_bytes',
       'network_errors',
+      'network_tcp_retransmits',
       'system_load_over_time',
       'node_clock_skew'
     ]
