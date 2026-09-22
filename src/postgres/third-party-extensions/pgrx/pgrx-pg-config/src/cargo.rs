@@ -27,10 +27,6 @@ pub trait PgrxManifestExt {
     /// <https://doc.rust-lang.org/cargo/reference/cargo-targets.html#the-name-field>
     fn lib_name(&self) -> eyre::Result<String>;
 
-    /// Resolved string for target artifact name, used for matching on
-    /// `cargo_metadata::message::Artifact`.
-    fn target_name(&self) -> eyre::Result<String>;
-
     /// Resolved string for target library name extension filename
     fn lib_filename(&self) -> eyre::Result<String>;
 }
@@ -62,35 +58,20 @@ impl PgrxManifestExt for Manifest {
     }
 
     fn lib_name(&self) -> eyre::Result<String> {
-        match &self.package {
-            Some(_) => match &self.lib {
-                Some(lib) => match &lib.name {
-                    // `cargo_manifest` auto fills lib.name with package.name;
-                    // hyphen replaced with underscore if crate type is lib.
-                    // So we will always have a lib.name for lib crates.
-                    Some(lib_name) => Ok(lib_name.to_owned()),
-                    None => Err(eyre!("Could not get [lib] name from manifest.")),
-                },
-                None => Err(eyre!("Could not get [lib] name from manifest.")),
-            },
-            None => Err(eyre!("Could not get [lib] name from manifest.")),
-        }
-    }
-
-    fn target_name(&self) -> eyre::Result<String> {
-        let package = self.package_name()?;
-        let lib = self.lib_name()?;
-        if package.replace('-', "_") == lib {
-            Ok(package)
-        } else {
-            Ok(lib)
-        }
+        // `cargo_manifest` auto fills lib.name with package.name;
+        // hyphen replaced with underscore if crate type is lib.
+        // So we will always have a lib.name for lib crates.
+        self.package
+            .as_ref()
+            .and(self.lib.as_ref())
+            .and_then(|lib| lib.name.to_owned())
+            .ok_or_else(|| eyre!("Could not get [lib] name from manifest."))
     }
 
     fn lib_filename(&self) -> eyre::Result<String> {
         use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
         let lib_name = &self.lib_name()?;
-        Ok(format!("{DLL_PREFIX}{}{DLL_SUFFIX}", lib_name.replace('-', "_")))
+        Ok(format!("{DLL_PREFIX}{}{DLL_SUFFIX}", lib_name))
     }
 }
 

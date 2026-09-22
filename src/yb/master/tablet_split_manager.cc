@@ -22,7 +22,6 @@
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/human_readable.h"
 
 #include "yb/dockv/partition.h"
 
@@ -91,16 +90,17 @@ DEFINE_RUNTIME_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300
     "to be split. Checks are disabled if this value is set to 0.");
 
 DEFINE_RUNTIME_bool(sort_automatic_tablet_splitting_candidates, true,
-    "Whether we should sort candidates for new automatic tablet splits, so the largest "
-    "candidates are picked first.");
+    "Whether we should sort candidates for new automatic tablet splits, so that low phase takes "
+    "precedence over high and final phases, and largest candidates are prioritized within each "
+    "phase.");
 
 DEFINE_RUNTIME_double(tablet_split_min_size_ratio, 0.8,
     "If sorting by size is enabled, a tablet will only be considered for splitting if the ratio "
-    "of its size to the largest split candidate is at least this value. "
+    "of its size to the largest split candidate of its table is at least this value. "
     "Valid flag values are 0 to 1 (inclusive). "
     "Setting this to 0 means any tablet that does not exceed tserver / global limits can be split. "
     "Setting this to 1 forces the tablet splitting algorithm to always split the largest candidate "
-    "(even if that means waiting for existing splits to complete).");
+    "of each table (even if that means waiting for existing splits to complete).");
 
 DEFINE_test_flag(bool, skip_partitioning_version_validation, false,
     "When set, skips partitioning_version checks to prevent tablet splitting.");
@@ -781,10 +781,9 @@ class OutstandingSplitState {
     return splits_with_task_.size() + compacting_splits_.size() + splits_to_schedule_.size();
   }
 
-  void AddCandidate(TabletInfoPtr tablet, uint64_t leader_sst_size) {
-    largest_candidate_size_ = std::max(largest_candidate_size_, leader_sst_size);
-    new_split_candidates_.emplace_back(
-        SplitCandidate{.tablet = tablet, .leader_sst_size = leader_sst_size});
+  void AddCandidate(TabletInfoPtr tablet, uint64_t leader_sst_size, SplitPhase phase) {
+    new_split_candidates_.emplace_back(SplitCandidate{
+        .tablet = tablet, .leader_sst_size = leader_sst_size, .phase = phase});
   }
 
   void ProcessCandidates() {
@@ -801,20 +800,27 @@ class OutstandingSplitState {
     }
 
     if (FLAGS_sort_automatic_tablet_splitting_candidates) {
-      auto threshold = static_cast<uint64_t>(
-          FLAGS_tablet_split_min_size_ratio * largest_candidate_size_);
-      VLOG(3) << "Filtering out candidates smaller than "
-              << HumanReadableNumBytes::ToString(threshold);
-      std::erase_if(
-          new_split_candidates_,
-          [threshold](const auto& candidate) {
+      // The ratio is applied per table. The phase, and with it the size a tablet must reach to be
+      // a candidate at all, is decided per table, so the largest candidate of one table says
+      // nothing about whether another table's candidates are worth splitting.
+      std::unordered_map<TableId, uint64_t> largest_per_table;
+      for (const auto& candidate : new_split_candidates_) {
+        auto& largest = largest_per_table[candidate.tablet->table()->id()];
+        largest = std::max(largest, candidate.leader_sst_size);
+      }
+      VLOG(3) << Format("Filtering out candidates below $0 of their table's largest candidate",
+                        FLAGS_tablet_split_min_size_ratio);
+      std::erase_if(new_split_candidates_, [&largest_per_table](const auto& candidate) {
+        const auto threshold = static_cast<uint64_t>(
+            FLAGS_tablet_split_min_size_ratio *
+            largest_per_table.at(candidate.tablet->table()->id()));
         if (candidate.leader_sst_size < threshold) {
           VLOG(4) << "Rejected: " << candidate.ToString();
           return true;
         }
         return false;
       });
-      sort(new_split_candidates_.begin(), new_split_candidates_.end(), LargestTabletFirst);
+      sort(new_split_candidates_.begin(), new_split_candidates_.end(), LowPhaseLargestFirst);
     }
     for (const auto& candidate : new_split_candidates_) {
       VLOG(4) << Format("Processing split candidate $0 of size $1",
@@ -833,23 +839,25 @@ class OutstandingSplitState {
   }
 
  private:
-  uint64_t largest_candidate_size_ = 0;
   const TabletInfoMap& tablet_info_map_;
   TabletReplicaMapCache* replica_cache_;
-  // Splits which are tracked by an AsyncGetTabletSplitKey or AsyncSplitTablet task.
+  // Splits which are tracked by an AsyncGetTabletSplitKey or AsyncSplitTablet task. Not tracked
+  // per phase: an in flight split consumes a slot regardless of why it was scheduled.
   std::unordered_set<TabletId> splits_with_task_;
   // Splits for which at least one child tablet is still undergoing compaction.
   std::unordered_map<TabletId, std::unordered_set<TabletServerId>> compacting_splits_;
   // Splits that need to be started or restarted. If the split is a new split, the map contains
-  // the size of the leader tablet.
+  // the size of the leader tablet. The phase only influences which candidates are selected, so it
+  // does not need to be carried past this point.
   SplitsToScheduleMap splits_to_schedule_;
 
   struct SplitCandidate {
     TabletInfoPtr tablet;
     uint64_t leader_sst_size;
+    SplitPhase phase;
 
     std::string ToString() const {
-      return YB_STRUCT_TO_STRING(tablet, leader_sst_size);
+      return YB_STRUCT_TO_STRING(tablet, leader_sst_size, phase);
     }
   };
   // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
@@ -875,9 +883,25 @@ class OutstandingSplitState {
     }
   }
 
-  static inline bool LargestTabletFirst(const SplitCandidate& c1, const SplitCandidate& c2) {
+  static inline bool IsLowPhase(SplitPhase phase) {
+    return phase == SplitPhase::kLow;
+  }
+
+  // Splitting an under sharded table unlocks parallelism, which is worth more than shrinking a
+  // tablet on a table that is already well sharded, so low phase candidates go first. High is not
+  // distinguished from final phase: both will split eventually, so the order between them matters
+  // far less than getting low phase ahead of both.
+  static inline bool LowPhaseLargestFirst(const SplitCandidate& c1, const SplitCandidate& c2) {
+    if (IsLowPhase(c1.phase) != IsLowPhase(c2.phase)) {
+      return IsLowPhase(c1.phase);
+    }
     return c1.leader_sst_size > c2.leader_sst_size;
   }
+};
+
+struct AutomaticSplitCandidate {
+  uint64_t leader_sst_size;
+  SplitPhase phase;
 };
 
 void TabletSplitManager::DoSplitting(
@@ -976,7 +1000,7 @@ void TabletSplitManager::DoSplitting(
       }
 
       VLOG(4) << Format("Evaluating tablet $0 as a split candidate", tablet->id());
-      auto ValidateAutomaticSplitCandidateTablet = [&]() -> Result<uint64_t> {
+      auto ValidateAutomaticSplitCandidateTablet = [&]() -> Result<AutomaticSplitCandidate> {
         auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
         if (!drive_info_opt.ok()) {
           return drive_info_opt.status();
@@ -986,7 +1010,8 @@ void TabletSplitManager::DoSplitting(
           parent = FindPtrOrNull(tablet_info_map, parent_id);
         }
         RETURN_NOT_OK(ValidateSplitCandidateTablet(*tablet, parent));
-        RETURN_NOT_OK(catalog_manager_.ShouldSplitValidCandidate(*tablet, drive_info_opt.get()));
+        const auto phase = VERIFY_RESULT(
+            catalog_manager_.ShouldSplitValidCandidate(*tablet, drive_info_opt.get()));
 
         const auto replicas = replica_cache.GetOrAdd(*tablet);
         const auto tservers_with_outstanding_compaction =
@@ -996,15 +1021,16 @@ void TabletSplitManager::DoSplitting(
               "Tablet $0 may have uncompacted post-split data on tservers: $1",
               tablet->tablet_id(), AsString(tservers_with_outstanding_compaction));
         }
-        return drive_info_opt.get().sst_files_size;
+        return AutomaticSplitCandidate{
+            .leader_sst_size = drive_info_opt.get().sst_files_size, .phase = phase};
       };
-      Result<uint64_t> result = ValidateAutomaticSplitCandidateTablet();
+      Result<AutomaticSplitCandidate> result = ValidateAutomaticSplitCandidateTablet();
       if (!result.ok()) {
         VLOG(4) << Format("Should not split tablet $0. ", tablet->tablet_id())
-                           << result;
+                           << result.status();
         continue;
       }
-      state.AddCandidate(tablet, result.get());
+      state.AddCandidate(tablet, result->leader_sst_size, result->phase);
     }
   }
 

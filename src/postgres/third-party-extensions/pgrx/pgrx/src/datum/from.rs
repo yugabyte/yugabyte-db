@@ -10,7 +10,7 @@
 //! for converting a pg_sys::Datum and a corresponding "is_null" bool into a typed Option
 #![allow(clippy::manual_map, clippy::map_clone, clippy::into_iter_on_ref)]
 use crate::{
-    pg_sys, varlena, varlena_to_byte_slice, AllocatedByPostgres, IntoDatum, PgBox, PgMemoryContexts,
+    AllocatedByPostgres, IntoDatum, PgBox, PgMemoryContexts, pg_sys, varlena, varlena_to_byte_slice,
 };
 use alloc::ffi::CString;
 use core::{ffi::CStr, mem::size_of};
@@ -19,7 +19,9 @@ use std::num::NonZeroUsize;
 /// If converting a Datum to a Rust type fails, this is the set of possible reasons why.
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 pub enum TryFromDatumError {
-    #[error("Postgres type {datum_type} (Oid({datum_oid})) is not compatible with the Rust type {rust_type} (Oid({rust_oid}))")]
+    #[error(
+        "Postgres type {datum_type} (Oid({datum_oid})) is not compatible with the Rust type {rust_type} (Oid({rust_oid}))"
+    )]
     IncompatibleTypes {
         rust_type: &'static str,
         rust_oid: pg_sys::Oid,
@@ -170,11 +172,7 @@ impl FromDatum for pg_sys::Datum {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<pg_sys::Datum> {
-        if is_null {
-            None
-        } else {
-            Some(datum)
-        }
+        if is_null { None } else { Some(datum) }
     }
 }
 
@@ -216,11 +214,7 @@ impl FromDatum for pg_sys::TransactionId {
         is_null: bool,
         _typoid: pg_sys::Oid,
     ) -> Option<Self> {
-        if is_null {
-            None
-        } else {
-            datum.value().try_into().ok().map(Self::from_inner)
-        }
+        if is_null { None } else { datum.value().try_into().ok().map(Self::from_inner) }
     }
 }
 
@@ -232,11 +226,7 @@ impl FromDatum for bool {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<bool> {
-        if is_null {
-            None
-        } else {
-            Some(datum.value() != 0)
-        }
+        if is_null { None } else { Some(datum.value() != 0) }
     }
 }
 
@@ -248,11 +238,7 @@ impl FromDatum for i8 {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<i8> {
-        if is_null {
-            None
-        } else {
-            Some(datum.value() as _)
-        }
+        if is_null { None } else { Some(datum.value() as _) }
     }
 }
 
@@ -264,11 +250,7 @@ impl FromDatum for i16 {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<i16> {
-        if is_null {
-            None
-        } else {
-            Some(datum.value() as _)
-        }
+        if is_null { None } else { Some(datum.value() as _) }
     }
 }
 
@@ -280,11 +262,7 @@ impl FromDatum for i32 {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<i32> {
-        if is_null {
-            None
-        } else {
-            Some(datum.value() as _)
-        }
+        if is_null { None } else { Some(datum.value() as _) }
     }
 }
 
@@ -296,11 +274,7 @@ impl FromDatum for u32 {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<u32> {
-        if is_null {
-            None
-        } else {
-            Some(datum.value() as _)
-        }
+        if is_null { None } else { Some(datum.value() as _) }
     }
 }
 
@@ -333,11 +307,7 @@ impl FromDatum for f32 {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<f32> {
-        if is_null {
-            None
-        } else {
-            Some(f32::from_bits(datum.value() as _))
-        }
+        if is_null { None } else { Some(f32::from_bits(datum.value() as _)) }
     }
 }
 
@@ -426,7 +396,9 @@ unsafe fn convert_varlena_to_str_memoized<'a>(varlena: *const pg_sys::varlena) -
             if bytes.is_ascii() {
                 core::str::from_utf8_unchecked(bytes)
             } else {
-                panic!("datums converted to &str should be valid UTF-8, database encoding is only UTF-8 compatible for ASCII")
+                panic!(
+                    "datums converted to &str should be valid UTF-8, database encoding is only UTF-8 compatible for ASCII"
+                )
             }
         }
     }
@@ -487,11 +459,7 @@ impl<'a> FromDatum for &'a CStr {
         is_null: bool,
         _: pg_sys::Oid,
     ) -> Option<&'a CStr> {
-        if is_null || datum.is_null() {
-            None
-        } else {
-            Some(CStr::from_ptr(datum.cast_mut_ptr()))
-        }
+        if is_null || datum.is_null() { None } else { Some(CStr::from_ptr(datum.cast_mut_ptr())) }
     }
 
     unsafe fn from_datum_in_memory_context(

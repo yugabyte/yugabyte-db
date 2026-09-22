@@ -65,6 +65,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -478,7 +479,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        18,
+        20,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -667,8 +668,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .forUniverse(universe)
         .setValue(UniverseConfKeys.targetNodeDiskUsagePercentage.getKey(), "0");
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    DeviceInfo deviceInfo = taskParams.getPrimaryCluster().userIntent.deviceInfo;
+    deviceInfo.volumeSize--;
+    deviceInfo.numVolumes++;
+    // Provisioning validates that mount points match the volume count.
+    deviceInfo.mountPoints = ApiUtils.getDummyMountPoints(deviceInfo.numVolumes);
     setDumpEntitiesMock(defaultUniverse, "", false);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());

@@ -76,3 +76,5 @@ yugabyte=# SELECT * FROM foo;
 - Transactional DDL currently doesn't support CDC in both [logical replication](../../../architecture/docdb-replication/cdc-logical-replication/) (PostgreSQL) and the [gRPC protocol](../../../architecture/docdb-replication/change-data-capture/). You must not enable transactional DDL if you are using CDC.
 
 For an overview of common concepts used in YugabyteDB's implementation of distributed transactions, see [Distributed transactions](../distributed-transactions-ysql/).
+
+To speed up bulk loads into tables created in the same transaction, see [Faster writes to new tables](../new-table-writes/). That optimization's transaction-block support depends on transactional DDL.

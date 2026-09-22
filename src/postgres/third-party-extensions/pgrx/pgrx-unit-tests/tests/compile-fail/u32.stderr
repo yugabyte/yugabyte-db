@@ -1,0 +1,89 @@
+error[E0277]: `u32` has no representation in SQL
+ --> tests/compile-fail/u32.rs:6:20
+  |
+6 | pub fn whatever(a: u32) -> u32 {
+  |                    ^^^ non-SQL type
+  |
+  = help: the trait `SqlTranslatable` is not implemented for `u32`
+  = help: the following other types implement trait `SqlTranslatable`:
+            f32
+            f64
+            i16
+            i32
+            i64
+            i8
+            u8
+
+error[E0277]: `u32` has no representation in SQL
+ --> tests/compile-fail/u32.rs:6:28
+  |
+6 | pub fn whatever(a: u32) -> u32 {
+  |                            ^^^ non-SQL type
+  |
+  = help: the trait `SqlTranslatable` is not implemented for `u32`
+  = help: the following other types implement trait `SqlTranslatable`:
+            f32
+            f64
+            i16
+            i32
+            i64
+            i8
+            u8
+
+error[E0277]: the trait bound `u32: pgrx::callconv::RetAbi` is not satisfied
+ --> tests/compile-fail/u32.rs:6:28
+  |
+6 | pub fn whatever(a: u32) -> u32 {
+  |                            ^^^ the trait `BoxRet` is not implemented for `u32`
+  |
+  = help: the following other types implement trait `BoxRet`:
+            f32
+            f64
+            i16
+            i32
+            i64
+            i8
+  = note: required for `u32` to implement `pgrx::callconv::RetAbi`
+
+error[E0277]: `u32` cannot be passed into a Postgres function as a Datum
+ --> tests/compile-fail/u32.rs:6:17
+  |
+  5 | #[pg_extern]
+    | ------------ in this attribute macro expansion
+  6 | pub fn whatever(a: u32) -> u32 {
+    |                 ^ the trait `ArgAbi<'_>` is not implemented for `u32`
+    |
+    = help: the following other types implement trait `ArgAbi<'fcx>`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+   --> $WORKSPACE/pgrx/src/callconv.rs
+    |
+    |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+    |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+    = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u32: pgrx::callconv::RetAbi` is not satisfied
+ --> tests/compile-fail/u32.rs:6:32
+  |
+5 |   #[pg_extern]
+  |   ------------ in this attribute macro expansion
+6 |   pub fn whatever(a: u32) -> u32 {
+  |  ________________________________^
+7 | |     a
+8 | | }
+  | |_^ the trait `BoxRet` is not implemented for `u32`
+  |
+  = help: the following other types implement trait `BoxRet`:
+            f32
+            f64
+            i16
+            i32
+            i64
+            i8
+  = note: required for `u32` to implement `pgrx::callconv::RetAbi`
+  = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

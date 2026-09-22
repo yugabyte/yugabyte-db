@@ -255,7 +255,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
                 Map.of("1", Arrays.asList("host-readonly1-n1", "host-readonly1-n2")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        16,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(

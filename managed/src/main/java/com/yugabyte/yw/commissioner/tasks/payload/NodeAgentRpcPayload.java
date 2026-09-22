@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -70,7 +71,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -79,6 +79,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -129,22 +130,23 @@ public class NodeAgentRpcPayload {
     return result;
   }
 
-  private List<String> getMountPoints(NodeTaskParams params) {
-    if (StringUtils.isNotBlank(params.deviceInfo.mountPoints)) {
-      return Arrays.stream(params.deviceInfo.mountPoints.split("\\s*,\\s*"))
+  private List<String> getMountPoints(DeviceInfo deviceInfo, CloudType cloudType) {
+    Objects.requireNonNull(
+        deviceInfo, () -> "DeviceInfo cannot be null for cloud type: " + cloudType);
+    if (StringUtils.isNotBlank(deviceInfo.mountPoints)) {
+      return Arrays.stream(deviceInfo.mountPoints.split("\\s*,\\s*"))
           .map(String::trim)
           .filter(s -> !s.isEmpty())
           .collect(Collectors.toList());
     }
-    if (params.deviceInfo.numVolumes != null
-        && params.getProvider().getCloudCode() != Common.CloudType.onprem) {
-      List<String> mountPoints = new ArrayList<>();
-      for (int i = 0; i < params.deviceInfo.numVolumes; i++) {
-        mountPoints.add("/mnt/d" + i);
-      }
-      return mountPoints;
+    if (deviceInfo.numVolumes != null && cloudType != Common.CloudType.onprem) {
+      return IntStream.range(0, deviceInfo.numVolumes)
+          .mapToObj(i -> "/mnt/d" + i)
+          .collect(Collectors.toList());
     }
-    return Collections.emptyList();
+    // Avoid silent failure if mount points cannot be determined.
+    throw new IllegalArgumentException(
+        "Mount points cannot be determined for cloud type: " + cloudType);
   }
 
   private String getYbPackage(ReleaseContainer release, Architecture arch, Region region) {
@@ -434,7 +436,8 @@ public class NodeAgentRpcPayload {
         null);
     installYbcInputBuilder.setRemoteTmp(customTmpDirectory);
     installYbcInputBuilder.setYbHomeDir(provider.getYbHome());
-    installYbcInputBuilder.addAllMountPoints(getMountPoints(taskParams));
+    installYbcInputBuilder.addAllMountPoints(
+        getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
     return installYbcInputBuilder.build();
   }
 
@@ -452,7 +455,8 @@ public class NodeAgentRpcPayload {
 
     configureServerInputBuilder.setRemoteTmp(customTmpDirectory);
     configureServerInputBuilder.setYbHomeDir(provider.getYbHome());
-    configureServerInputBuilder.addAllMountPoints(getMountPoints(taskParams));
+    configureServerInputBuilder.addAllMountPoints(
+        getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
     if (!nodeDetails.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
       // For RR we don't setup master
       configureServerInputBuilder.addProcesses("tserver");
@@ -482,6 +486,12 @@ public class NodeAgentRpcPayload {
               / Math.pow(10, 9));
       configureServerInputBuilder.setAcceptableClockSkewMaxTries(
           (int) confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds());
+    }
+    NodeDetails node = universe.getNode(taskParams.nodeName);
+    if (node != null
+        && cluster != null
+        && cluster.getProviderCloudType(nodeDetails).isPublicCloud()) {
+      configureServerInputBuilder.setCheckDataVolumes(true);
     }
     return configureServerInputBuilder.build();
   }
@@ -579,7 +589,8 @@ public class NodeAgentRpcPayload {
             config.getYcqlAuditConfig().getLogRetentionDays());
       }
     }
-    installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
+    installOtelCollectorInputBuilder.addAllMountPoints(
+        getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
 
     if (!refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       String otelCollectorConfigFile =
@@ -741,15 +752,20 @@ public class NodeAgentRpcPayload {
             .setServerName(serverName)
             .setServerHome(serverHome)
             .setDeconfigure(taskParams.deconfigure);
-    if (taskParams.checkVolumesAttached) {
-      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams.placementUuid);
+    // Mount paths / volume count are only needed for cloud START so the node can
+    // wait on attached data volumes. On-prem paths are plain directories.
+    if (taskParams.shouldCheckVolumeAttached()) {
       NodeDetails node = universe.getNode(taskParams.nodeName);
-      if (node != null
-          && cluster != null
-          && cluster.userIntent.getDeviceInfoForNode(node) != null
-          && Util.getProviderForNode(nodeDetails, cluster).getCloudCode() != CloudType.onprem) {
-        serverControlInputBuilder.setNumVolumes(
-            cluster.userIntent.getDeviceInfoForNode(node).numVolumes);
+      if (node != null) {
+        DeviceInfo deviceInfo = null;
+        UniverseDefinitionTaskParams.Cluster cluster =
+            Objects.requireNonNull(universe.getCluster(node.placementUuid));
+        CloudType cloudType = Util.getProviderForNode(nodeDetails, cluster).getCloudCode();
+        if (cloudType != CloudType.onprem
+            && (deviceInfo = cluster.userIntent.getDeviceInfoForNode(node)) != null) {
+          serverControlInputBuilder.addAllMountPoints(getMountPoints(deviceInfo, cloudType));
+          serverControlInputBuilder.setCheckDataVolumes(true);
+        }
       }
     }
     return serverControlInputBuilder.build();

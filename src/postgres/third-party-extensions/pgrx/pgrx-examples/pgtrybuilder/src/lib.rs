@@ -10,7 +10,7 @@
 use pgrx::pg_sys::panic::CaughtError;
 use pgrx::prelude::*;
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 #[pg_extern]
 fn is_valid_number(i: i32) -> i32 {

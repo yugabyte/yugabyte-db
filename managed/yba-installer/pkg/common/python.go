@@ -20,6 +20,7 @@ var pythonBinaryNames = []string{
 	"python3.11",
 	"python3.12",
 	"python3.13",
+	"python3.14",
 	"python3"}
 
 var pythonVersionRegex = regexp.MustCompile(`Python (\d+)\.(\d+)`)
@@ -54,12 +55,12 @@ func ValidatePython(user string) error {
 		majorVersion, _ := strconv.Atoi(match[1])
 		minorVersion, _ := strconv.Atoi(match[2])
 		// Allowed versions are defined by LINUX_PLATFORMS in common.sh
-		if majorVersion == 3 && minorVersion >= 10 && minorVersion <= 13 {
+		if majorVersion == 3 && minorVersion >= 10 && minorVersion <= 14 {
 			log.Info(who + " meets Python installation requirements with version " + outputTrimmed)
 			return nil
 		}
 		log.Warn("Found " + outputTrimmed + " for " + who + " but is not an allowed Python version.")
 	}
 	return fmt.Errorf("%s does not meet Python requirements. Please install Python 3.10, 3.11, "+
-		"3.12, or 3.13 and ensure %s can run it", who, who)
+		"3.12, 3.13, or 3.14 and ensure %s can run it", who, who)
 }

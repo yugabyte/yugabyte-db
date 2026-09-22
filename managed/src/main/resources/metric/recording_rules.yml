@@ -82,6 +82,11 @@ groups:
         labels:
           saved_name: node_network_transmit_errs_irate
 
+      - record: node_netstat_Tcp_RetransSegs_irate
+        expr: 'irate(node_netstat_Tcp_RetransSegs[{{ range }}])'
+        labels:
+          saved_name: node_netstat_Tcp_RetransSegs_irate
+
       - record: node_disk_io_time_irate
         expr: 'irate(node_disk_io_time_seconds_total{device=~"[^l].*"}[{{ range }}])'
         labels:

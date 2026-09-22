@@ -663,6 +663,75 @@ public class TestYbQpm extends BasePgSQLTest {
     assertTrue(explainString.equals(qpmString));
   }
 
+  /**
+   * testYbQpmAutoExplain
+   *  GH 30380 : Test for crash caused by QPM when auto-analyze is enabled.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testYbQpmAutoExplain() throws Exception {
+
+    // Set the flags that reproduce the bug.
+    Map<String, String> flagMap = super.getTServerFlags();
+    appendToYsqlPgConf(flagMap, "shared_preload_libraries=auto_explain");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_min_duration=0");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_analyze=true");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_dist=true");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_track=all");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_plan_format=json");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+    Statement stmt = connection.createStatement();
+
+    stmt.execute("DROP TABLE IF EXISTS t1");
+    stmt.execute("DROP TABLE IF EXISTS t2");
+    stmt.execute("CREATE TABLE t1(a1 INT, b1 INT, c1 INT)");
+    stmt.execute("CREATE TABLE t2(a2 INT, b2 INT, c2 INT)");
+
+    // Simple repro query that has a shared subplan.
+    String query = "/*+ HashJoin(t1 t2) */ SELECT COUNT(*) " +
+                   "FROM t1, t2 WHERE a1=a2 AND b1 = ( select MIN(b1) FROM t1 t1a WHERE c1=c2)";
+    long queryId = getExplainQueryId(stmt, query);
+    stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+    stmt.execute(query);
+
+    String qpmQuery = String.format("SELECT plan FROM yb_pg_stat_plans WHERE queryid=%d",
+                                    queryId);
+
+    try (ResultSet rs = stmt.executeQuery(qpmQuery)) {
+      assertTrue(rs.next());
+      String planText = rs.getString("plan");
+      LOG.info("Plan text : " + planText);
+
+      ObjectMapper mapper = new ObjectMapper();
+      JsonNode root = mapper.readTree(planText);
+
+      // Plan contains SubPlan 1.
+      List<JsonNode> subplanNames = root.findValues("Subplan Name");
+      boolean hasSubPlan1 = subplanNames.stream()
+          .anyMatch(n -> "SubPlan 1".equals(n.asText()));
+      assertTrue(hasSubPlan1);
+
+      // SubPlan 1 is referenced in the Hash Join condition.
+      List<JsonNode> hashConds = root.findValues("Hash Cond");
+      boolean subPlanInHashCond = hashConds.stream()
+          .anyMatch(n -> n.asText().contains("SubPlan 1"));
+      assertTrue(subPlanInHashCond);
+
+      // Aggregate parent relationship is "SubPlan".
+      boolean hasAggregateSubPlan = false;
+      for (JsonNode node : root.findParents("Node Type")) {
+        if ("Aggregate".equals(node.path("Node Type").asText()) &&
+            "SubPlan".equals(node.path("Parent Relationship").asText())) {
+          hasAggregateSubPlan = true;
+          break;
+        }
+      }
+      assertTrue(hasAggregateSubPlan);
+    }
+  }
+
   public static char randomLetterOrDigit(Random rand) {
     String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     return chars.charAt(rand.nextInt(chars.length()));
@@ -1250,14 +1319,7 @@ public class TestYbQpm extends BasePgSQLTest {
         else
             LOG.info("Executing " + queryInfo.queryText);
 
-      boolean hitException = false;
-      try {
-          stmt.execute(queryInfo.queryText);
-      } catch (Exception e) {
-          LOG.info("Hit exception : " + e.getMessage());
-      }
-
-      assertFalse(hitException);
+      stmt.execute(queryInfo.queryText);
     }
   }
 

@@ -6481,6 +6481,58 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql,
       << "Post-TRUNCATE CREATE allocated an OID <= decoy's hidden table OID";
 }
 
+// Well above any healthy restore time, so that a restore which waits the delay out stays
+// unambiguous on a slow machine.
+constexpr int64_t kLongIntentsFlushMaxDelayMs = 60000;
+
+class YbAdminSnapshotScheduleTestWithYsqlAndLongIntentsFlushDelay
+    : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        Format("--intents_flush_max_delay_ms=$0", kLongIntentsFlushMaxDelayMs));
+  }
+};
+
+// A schedule's snapshots exclude hidden tables, so a restore has no snapshot for the tablet of a
+// table that a DROP hid. It restores such a tablet in place, which tears its RocksDBs down with
+// flush on shutdown enabled and waits for that flush. An unflushed transaction apply leaves the
+// regular DB behind the intents memtable, so Tablet::IntentsDbFlushFilter defers the intents flush
+// behind the regular DB; unless the filter short-circuits on rocksdb_shutdown_requested_, only
+// intents_flush_max_delay_ms clears the deferral and the restore waits it out per such tablet.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTestWithYsql, PitrRestoreDoesNotWaitOutIntentsFlushDelay,
+    YbAdminSnapshotScheduleTestWithYsqlAndLongIntentsFlushDelay) {
+  // A long interval keeps a periodic snapshot from landing between the transaction and the DROP,
+  // so the restore creates its snapshot on demand, when the table is already hidden.
+  auto schedule_id = ASSERT_RESULT(PreparePg(
+      YsqlColocationConfig::kNotColocated, 300s /* interval */, 1200s /* retention */));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1,100) i"));
+  ASSERT_OK(conn.CommitTransaction());
+  // Nothing flushes after the apply, so its records and the intent removal stay in the memtables.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+
+  auto start = MonoTime::Now();
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+  ASSERT_OK(WaitRestorationDone(
+      restoration_id,
+      MonoDelta::FromMilliseconds(3 * kLongIntentsFlushMaxDelayMs) * kTimeMultiplier));
+  auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "Restore took " << elapsed;
+
+  ASSERT_LT(elapsed, MonoDelta::FromMilliseconds(kLongIntentsFlushMaxDelayMs))
+      << "the restored tablet's teardown flush waited out intents_flush_max_delay_ms";
+}
+
 // Fixture for the clone-with-multiple-colocation-parents repro. We need the
 // PG-side gflag `ysql_enable_colocated_tables_with_tablespaces` enabled (it
 // is NON_RUNTIME and defaults to false) on both master and tserver so that

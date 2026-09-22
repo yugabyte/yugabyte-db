@@ -266,7 +266,13 @@ func writeBCFKSKeystore(certPath, keyPath, keystorePath, alias, password string)
 	if err != nil {
 		return err
 	}
+	bcNativeDir, err := bcNativeLibDir(filepath.Dir(keystorePath))
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(bcNativeDir)
 	out = shell.RunWithEnvVars(keytoolPath, passEnv, "-importkeystore",
+		"-J-Dorg.bouncycastle.native.loader.install_dir="+bcNativeDir,
 		"-srckeystore", intermediate,
 		"-srcstoretype", "PKCS12",
 		"-srcstorepass:env", keystorePasswordEnvVar,
@@ -293,6 +299,21 @@ func writeBCFKSKeystore(certPath, keyPath, keystorePath, alias, password string)
 		}
 	}
 	return nil
+}
+
+// bcNativeLibDir gives keytool somewhere exec-capable to unpack BouncyCastle's native libraries,
+// which it dlopen()s while constructing the provider: /tmp is noexec on hardened hosts, and the
+// failure surfaces only as `Provider "..." not found`. See
+// https://github.com/bcgit/bc-java/issues/1987.
+//
+// Its own directory, not the services': they run as the service user, so whichever went first
+// would own the unpacked files.
+func bcNativeLibDir(keystoreDir string) (string, error) {
+	dir, err := os.MkdirTemp(keystoreDir, ".bcnative")
+	if err != nil {
+		return "", fmt.Errorf("create a directory for the BouncyCastle native libraries: %w", err)
+	}
+	return dir, nil
 }
 
 const (

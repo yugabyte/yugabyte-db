@@ -497,6 +497,18 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
         ]
       })",
      "leader_preference is not supported for read replicas"},
+    {"unknown_storage_tier",
+     R"({
+        "num_replicas":1,
+        "storage_tier": "nvme-archive",
+        "placement_blocks": [
+           {"cloud":"cloud0",
+            "region":"rack4",
+            "zone":"zone",
+            "min_num_replicas":1}
+        ]
+      })",
+     "Invalid \"storage_tier\" value \"nvme-archive\" in read_replica_placement"},
 };
 
   for (const auto& invalid_case : invalid_cases) {
@@ -574,6 +586,19 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
              "region":"r2",
              "zone":"z2",
              "min_num_replicas":2}
+          ]
+        })",
+       ""},
+      {"storage_tier",
+       R"({
+          "placement_uuid": "read_replica",
+          "num_replicas": 1,
+          "storage_tier": "hdd",
+          "placement_blocks": [
+            {"cloud":"c1",
+             "region":"r1",
+             "zone":"z1",
+             "min_num_replicas":1}
           ]
         })",
        ""},
@@ -763,6 +788,78 @@ TEST(TablespaceParserTest, FromStringPopulatesReplicas) {
     ASSERT_EQ(block.cloud_info().placement_region(), "r1");
     ASSERT_EQ(block.cloud_info().placement_zone(), "z1");
     ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
+  }
+}
+
+// Verifies storage_tier parsing: accepted and populated for either value in the fixed allowlist,
+// rejected with a clear error for an unknown tier, the wrong type, or an empty string, and absent
+// (rather than defaulted) when omitted.
+TEST(TablespaceParserTest, StorageTierParsing) {
+  // The allowlist ("ssd", "hdd") must stay in sync with ValidStorageTiers() -- a tablespace
+  // naming any other tier could never be satisfied by any tserver's --fs_data_dirs.
+  for (const string& tier : {string("hdd"), string("ssd")}) {
+    SCOPED_TRACE("tier='" + tier + "'");
+    const string live_placement_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"" + tier + "\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromString(live_placement_json, ""));
+    ASSERT_TRUE(replication_info.live_replicas().has_storage_tier());
+    ASSERT_EQ(replication_info.live_replicas().storage_tier(), tier);
+  }
+
+  {
+    const string unknown_tier_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"nvme-archive\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto result = TablespaceParser::FromString(unknown_tier_json, "");
+    ASSERT_NOK_STR_CONTAINS(
+        result,
+        "Invalid \"storage_tier\" value \"nvme-archive\" in replica_placement. "
+        "Valid storage tiers are: ssd, hdd");
+  }
+
+  {
+    const string live_placement_json =
+        "{\"num_replicas\":1,\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromString(live_placement_json, ""));
+    ASSERT_FALSE(replication_info.live_replicas().has_storage_tier());
+  }
+
+  {
+    const string invalid_type_json =
+        "{\"num_replicas\":1,\"storage_tier\":1,\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto result = TablespaceParser::FromString(invalid_type_json, "");
+    ASSERT_NOK_STR_CONTAINS(
+        result, "Invalid type for \"storage_tier\" field in replica_placement. Expected string, "
+                "got number");
+  }
+
+  {
+    const string empty_value_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto result = TablespaceParser::FromString(empty_value_json, "");
+    ASSERT_NOK_STR_CONTAINS(
+        result, "\"storage_tier\" field in replica_placement cannot be empty");
+  }
+
+  // A read replica placement can name its own tier, independently of the live one.
+  {
+    const string live_placement_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"ssd\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    const string read_replica_placement_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"hdd\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r2\",\"zone\":\"z2\",\"min_num_replicas\":1}]}";
+    auto replication_info = ASSERT_RESULT(
+        TablespaceParser::FromString(live_placement_json, read_replica_placement_json));
+    ASSERT_EQ(replication_info.live_replicas().storage_tier(), "ssd");
+    ASSERT_EQ(replication_info.read_replicas_size(), 1);
+    ASSERT_EQ(replication_info.read_replicas(0).storage_tier(), "hdd");
   }
 }
 

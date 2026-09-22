@@ -71,6 +71,10 @@ class XClusterSourceManager {
       const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch,
       StdStatusCallback callback);
 
+  // The WAL anchor stream of the table, or an empty string if it has none.
+  Result<std::string> TEST_GetWalAnchorStreamId(const TableId& table_id) const
+      EXCLUDES(tables_to_stream_map_mutex_);
+
  protected:
   XClusterSourceManager(
       Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
@@ -120,10 +124,12 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       const std::vector<std::pair<TableName, PgSchemaName>>& opt_table_names) const;
 
-  // Expects source_table_ids to be non-empty.
+  // Expects source_table_ids to be non-empty. With create_stream_if_missing, recreates the
+  // stream if it is missing and a valid WAL_ANCHOR stream exists.
   Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreamsForTableIds(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      const std::vector<TableId>& source_table_ids) const;
+      const std::vector<TableId>& source_table_ids, bool create_stream_if_missing,
+      const LeaderEpoch& epoch);
 
   Status CreateXClusterReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -161,6 +167,10 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
       const LeaderEpoch& epoch);
 
+  Status DeleteXClusterWalAnchorStreams(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<TableId>& source_table_ids);
+
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
       NamespaceId namespace_filter) const;
 
@@ -181,6 +191,14 @@ class XClusterSourceManager {
 
  private:
   friend class XClusterOutboundReplicationGroup;
+
+  // The WAL anchor streams of the given tables, across all outbound replication groups.
+  std::unordered_set<xrepl::StreamId> GetWalAnchorStreamIds(
+      const std::unordered_set<TableId>& table_ids) const EXCLUDES(tables_to_stream_map_mutex_);
+
+  // The streams of the given tables that are not being deleted.
+  std::unordered_set<xrepl::StreamId> GetAliveStreamIds(const std::vector<TableId>& table_ids) const
+      EXCLUDES(tables_to_stream_map_mutex_);
 
   struct HiddenTabletInfo {
     TableId table_id;
@@ -206,14 +224,15 @@ class XClusterSourceManager {
       EXCLUDES(outbound_replication_group_map_mutex_);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
-      const std::vector<TableId>& table_ids, const LeaderEpoch& epoch, bool automatic_ddl_mode);
+      const std::vector<TableId>& table_ids, const LeaderEpoch& epoch, bool automatic_ddl_mode,
+      bool allow_hidden_table, bool is_wal_anchor);
   Result<xrepl::StreamId> CreateNonTxnStreamForNewTable(
       const TableId& table_id, const LeaderEpoch& epoch, StdStatusCallback callback);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsInternal(
       const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
       cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch,
-      bool automatic_ddl_mode);
+      bool automatic_ddl_mode, bool allow_hidden_table, bool is_wal_anchor);
 
   // Checkpoint the xCluster stream to the given location. Invokes callback with true if bootstrap
   // is required, and false is bootstrap is not required.

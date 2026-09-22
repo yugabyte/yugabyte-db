@@ -431,6 +431,8 @@ The following ALTER TABLE operations involve making a full copy of the underlyin
 1. [Adding a column with a (volatile) default value](#add-column-if-not-exists-column-data-constraint).
 1. [Changing the type of a column](#alter-column-column-set-data-type-data-collate-collation-using-expression).
 
+These rewrite operations write into a newly built table, so they can use [faster writes to new tables](../../../../../explore/transactions/new-table-writes/).
+
 ## See also
 
 - [CREATE TABLE](../ddl_create_table)

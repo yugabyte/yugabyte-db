@@ -9,8 +9,11 @@ macro_rules! lazy_err {
     }
 }
 
-pub fn with_array_brackets(s: String, brackets: bool) -> String {
-    s + if brackets { "[]" } else { "" }
+pub fn with_array_brackets(mut s: String, dimensions: u8) -> String {
+    for _ in 0..dimensions {
+        s.push_str("[]");
+    }
+    s
 }
 
 pub(crate) trait ErrHarder {
@@ -28,7 +31,7 @@ impl<T> ErrHarder for syn::Result<T> {
 }
 
 impl ErrHarder for syn::Error {
-    fn more_error(mut self, closerr: impl FnOnce() -> syn::Error) -> Self {
+    fn more_error(mut self, closerr: impl FnOnce() -> Self) -> Self {
         self.combine(closerr());
         self
     }

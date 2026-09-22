@@ -3051,13 +3051,13 @@ Result<TabletCDCCheckpointInfo> CDCServiceImpl::PopulateCDCSDKTabletCheckPointIn
   return *it;
 }
 
-int64_t CDCServiceImpl::GetXClusterMinRequiredIndex(const TabletId& tablet_id) {
+std::optional<int64_t> CDCServiceImpl::TryGetXClusterMinRequiredIndex(
+    const TabletId& tablet_id) {
   if (!CDCEnabled()) {
     return std::numeric_limits<int64_t>::max();
   }
 
   auto max_staleness_secs = FLAGS_xcluster_checkpoint_max_staleness_secs;
-
   if (max_staleness_secs == 0) {
     // Feature is disabled.
     return std::numeric_limits<int64_t>::max();
@@ -3067,16 +3067,11 @@ int64_t CDCServiceImpl::GetXClusterMinRequiredIndex(const TabletId& tablet_id) {
 
   auto seconds_since_last_refresh =
       MonoTime::Now().GetDeltaSince(xcluster_map_last_refresh_time_).ToSeconds();
-
   if (seconds_since_last_refresh > max_staleness_secs) {
-    YB_LOG_EVERY_N_SECS(WARNING, 60)
-        << "XCluster min opid map hasn't been refresh for a while, "
-        << "retain all WAL segments until the map is refreshed";
-    return 0;
+    return std::nullopt;
   }
 
   auto* min_replicated_opid = FindOrNull(xcluster_tablet_min_opid_map_, tablet_id);
-
   if (min_replicated_opid == nullptr) {
     // Tablet is not under XCluster replication.
     return std::numeric_limits<int64_t>::max();
@@ -3086,6 +3081,17 @@ int64_t CDCServiceImpl::GetXClusterMinRequiredIndex(const TabletId& tablet_id) {
           << " is the xcluster min required index for tablet " << tablet_id;
 
   return min_replicated_opid->index;
+}
+
+int64_t CDCServiceImpl::GetXClusterMinRequiredIndex(const TabletId& tablet_id) {
+  auto min_index = TryGetXClusterMinRequiredIndex(tablet_id);
+  if (!min_index) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "XCluster min opid map hasn't been refreshed for a while, "
+        << "retain all WAL segments until the map is refreshed";
+    return 0;
+  }
+  return *min_index;
 }
 
 void CDCServiceImpl::AddTableToExpiredTablesMap(

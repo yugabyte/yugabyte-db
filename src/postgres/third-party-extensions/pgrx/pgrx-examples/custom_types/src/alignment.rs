@@ -39,15 +39,27 @@ mod tests {
     #[cfg(not(feature = "no-schema-generation"))]
     #[pg_test]
     fn test_alignment_is_correct() {
-        let val = Spi::get_one::<String>(r#"SELECT typalign::text FROM pg_type WHERE typname = 'alignedto4bytes'"#).unwrap().unwrap();
+        let val = Spi::get_one::<String>(
+            r#"SELECT typalign::text FROM pg_type WHERE typname = 'alignedto4bytes'"#,
+        )
+        .unwrap()
+        .unwrap();
 
         assert!(val == "i");
 
-        let val = Spi::get_one::<String>(r#"SELECT typalign::text FROM pg_type WHERE typname = 'alignedto8bytes'"#).unwrap().unwrap();
+        let val = Spi::get_one::<String>(
+            r#"SELECT typalign::text FROM pg_type WHERE typname = 'alignedto8bytes'"#,
+        )
+        .unwrap()
+        .unwrap();
 
         assert!(val == "d");
 
-        let val = Spi::get_one::<String>(r#"SELECT typalign::text FROM pg_type WHERE typname = 'notalignedto8bytes'"#).unwrap().unwrap();
+        let val = Spi::get_one::<String>(
+            r#"SELECT typalign::text FROM pg_type WHERE typname = 'notalignedto8bytes'"#,
+        )
+        .unwrap()
+        .unwrap();
 
         assert!(val == "i");
     }

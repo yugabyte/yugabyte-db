@@ -10,16 +10,16 @@
 mod command;
 mod manifest;
 mod metadata;
+mod object_utils;
 
-pub(crate) mod env;
-pub(crate) mod profile;
+pub(crate) mod cargo;
 
 use clap::Parser;
 use std::io::{self, IsTerminal};
 use tracing_error::ErrorLayer;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 trait CommandExecute {
     fn execute(self) -> eyre::Result<()>;
@@ -58,7 +58,7 @@ impl CommandExecute for CargoSubcommands {
 
 fn main() -> color_eyre::Result<()> {
     let stderr_is_tty = io::stderr().is_terminal();
-    env::initialize();
+    cargo::initialize();
     color_eyre::config::HookBuilder::default().theme(color_eyre::config::Theme::new()).install()?;
 
     let cargo_cli = CargoCommand::parse();
@@ -83,6 +83,7 @@ fn main() -> color_eyre::Result<()> {
                 .add_directive(format!("pgrx={log_level}").parse()?)
                 .add_directive(format!("pgrx_macros={log_level}").parse()?)
                 .add_directive(format!("pgrx_tests={log_level}").parse()?)
+                .add_directive(format!("pgrx_unit_tests={log_level}").parse()?)
                 .add_directive(format!("pgrx_pg_sys={log_level}").parse()?)
                 .add_directive(format!("pgrx_utils={log_level}").parse()?)
         }

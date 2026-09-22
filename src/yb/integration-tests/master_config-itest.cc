@@ -357,8 +357,8 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   // Now the new master should start the election process.
   ASSERT_OK(cluster_->SetFlag(new_master.get(), "TEST_do_not_start_election_test_only", "false"));
 
-  // Leader stepdown might not succeed as PRE_VOTER could still be uncommitted. Let it go through
-  // as new master should get the other votes anyway once it starts the election.
+  // Stepdown is expected to fail while the new master is a live PRE_VOTER (possibly in RBS).
+  // If it does, start an election on the new master.
   if (!s.IsIllegalState()) {
     ASSERT_OK_PREPEND(s,  "Leader step down failed.");
   } else {
@@ -459,6 +459,57 @@ TEST_F(MasterChangeConfigTest, TestWaitForChangeRoleCompletion) {
                     "Remove Change Config returned error");
 
   VerifyLeaderMasterPeerCount();
+}
+
+TEST_F(MasterChangeConfigTest, TestStepDownSucceedsWithStalePreVoter) {
+  auto initial_masters = cluster_->master_daemons();
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_change_role", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("evict_failed_followers", "false"));
+  // Validator requires follower_unavailable >= heartbeat * missed_periods (6s under TSAN).
+  ASSERT_OK(cluster_->SetFlagOnMasters("raft_heartbeat_interval_ms", "500"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("follower_unavailable_considered_failed_sec", "5"));
+
+  auto new_master = ASSERT_RESULT(cluster_->StartShellMaster());
+  SetCurLogIndex();
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER),
+                    "Change Config(ADD_SERVER) returned error");
+  ++num_masters_;
+  // ADD_SERVER only: TEST_skip_change_role prevents the PRE_VOTER -> VOTER promotion.
+  cur_log_index_ += 1;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, initial_masters));
+
+  ExternalMaster* old_leader = cluster_->GetLeaderMaster();
+  TabletServerErrorPB::Code dummy_err = TabletServerErrorPB::UNKNOWN_ERROR;
+  Status s = cluster_->StepDownMasterLeader(&dummy_err);
+  ASSERT_TRUE(s.IsIllegalState()) << s;
+  ASSERT_EQ(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN, dummy_err);
+
+  new_master->Shutdown();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        TabletServerErrorPB::Code err = TabletServerErrorPB::UNKNOWN_ERROR;
+        auto status = cluster_->StepDownMasterLeader(&err);
+        if (status.ok()) {
+          return true;
+        }
+        if (status.IsIllegalState() &&
+            err == TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
+          return false;
+        }
+        return status;
+      },
+      30s * kTimeMultiplier, "stepdown after PRE_VOTER became unreachable"));
+  ExternalMaster* new_leader = cluster_->GetLeaderMaster();
+  ASSERT_NE(old_leader->bound_rpc_addr().port(), new_leader->bound_rpc_addr().port());
+
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::REMOVE_SERVER),
+                    "Change Config(REMOVE_SERVER) of stale PRE_VOTER returned error");
+  --num_masters_;
+  cur_log_index_ += 1;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, initial_masters));
+
+  VerifyLeaderMasterPeerCount();
+  VerifyNonLeaderMastersPeerCount();
 }
 
 TEST_F(MasterChangeConfigTest, TestLeaderSteppedDownNotElected) {
@@ -565,9 +616,8 @@ TEST_F(MasterChangeConfigTest, TestBlockRemoveServerWhenConfigHasTransitioningSe
     ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, current_masters));
     ++num_masters_;
 
-    // If we try to remove the leader master, it will initiate a leader stepdown and then remove it.
-    // But since there is a peer in transition, leader stepdown will not go through. So try removing
-    // a follower instead.
+    // REMOVE_SERVER of any peer other than the one in transition is rejected on sys.catalog, so
+    // pick a follower (not the transitioning new master) as the removal target.
     if (cluster_->GetLeaderMaster()->uuid() == current_masters.back()->uuid()) {
       std::swap(current_masters.back(), current_masters.front());
     }

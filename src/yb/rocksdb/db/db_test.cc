@@ -4535,7 +4535,8 @@ class ModelDB: public DB {
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(
       ColumnFamilyHandle* column_family,
-      TablePropertiesCollection* props) override {
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override {
     return Status();
   }
 

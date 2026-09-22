@@ -7,6 +7,7 @@ import api.v2.models.TaskExecutorShutdownSpec;
 import api.v2.models.TaskExecutorShutdownStatus;
 import api.v2.models.TaskPagedQuerySpec;
 import api.v2.models.TaskPagedResp;
+import api.v2.models.TaskRetrySpec;
 import api.v2.models.TaskRollbackSpec;
 import api.v2.models.YBATask;
 import com.google.inject.Inject;
@@ -46,6 +47,12 @@ public class TaskApiControllerImp extends TaskApiControllerImpInterface {
   public TaskExecutorShutdownResp shutdownTaskExecutor(
       Request request, TaskExecutorShutdownSpec taskExecutorShutdownSpec) throws Exception {
     return customerTaskHandler.shutdownTaskExecutor(taskExecutorShutdownSpec);
+  }
+
+  @Override
+  public YBATask retryTask(Request request, UUID cUUID, UUID tUUID, TaskRetrySpec taskRetrySpec)
+      throws Exception {
+    return customerTaskHandler.retryTask(cUUID, tUUID);
   }
 
   @Override

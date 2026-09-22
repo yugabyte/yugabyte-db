@@ -1371,7 +1371,18 @@ pgsm_update_entry(pgsmEntry * entry,
 
 	/* Start collecting data for next bucket and reset all counters */
 	if (reset)
+	{
+		/*
+		 * YB: cmd_type describes the query, not the bucket, and pgsm_store()
+		 * only assigns it when it creates the shared entry.  Restore it across
+		 * the reset, else the first query stored after a bucket rotation is
+		 * reported with cmd_type 0.
+		 */
+		CmdType		yb_cmd_type = entry->counters.info.cmd_type;
+
 		memset(&entry->counters, 0, sizeof(Counters));
+		entry->counters.info.cmd_type = yb_cmd_type;
+	}
 
 	/* volatile block */
 	{

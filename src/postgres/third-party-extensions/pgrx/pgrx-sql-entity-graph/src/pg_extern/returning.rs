@@ -18,8 +18,8 @@
 use super::LastIdent;
 use crate::UsedType;
 
-use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, ToTokens, TokenStreamExt};
+use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
+use quote::{ToTokens, TokenStreamExt, quote};
 use syn::parse::{Parse, ParseStream};
 
 use syn::spanned::Spanned;
@@ -42,12 +42,12 @@ pub enum Returning {
 }
 
 impl Returning {
-    fn parse_type_macro(type_macro: &mut syn::TypeMacro) -> Result<Returning, syn::Error> {
+    fn parse_type_macro(type_macro: &mut syn::TypeMacro) -> Result<Self, syn::Error> {
         let mac = &type_macro.mac;
         let opt_archetype = mac.path.segments.last().map(|archetype| archetype.ident.to_string());
         match opt_archetype.as_deref() {
             Some("composite_type") => {
-                Ok(Returning::Type(UsedType::new(syn::Type::Macro(type_macro.clone()))?))
+                Ok(Self::Type(UsedType::new(syn::Type::Macro(type_macro.clone()))?))
             }
             _ => Err(syn::Error::new(
                 type_macro.span(),
@@ -56,7 +56,7 @@ impl Returning {
         }
     }
 
-    fn match_type(ty: &Type) -> Result<Returning, Error> {
+    fn match_type(ty: &Type) -> Result<Self, Error> {
         let mut ty = Box::new(ty.clone());
 
         match &mut *ty {
@@ -73,18 +73,21 @@ impl Returning {
                             Some(syn::PathArguments::AngleBracketed(args)) => {
                                 let args_span = args.span();
                                 match args.args.first_mut() {
-                                    Some(syn::GenericArgument::Type(syn::Type::Path(syn::TypePath { qself: _, path }))) => path.clone(),
+                                    Some(syn::GenericArgument::Type(syn::Type::Path(
+                                        syn::TypePath { qself: _, path },
+                                    ))) => path.clone(),
                                     Some(syn::GenericArgument::Type(_)) => {
-                                        let used_ty = UsedType::new(syn::Type::Path(typepath.clone()))?;
-                                        return Ok(Returning::Type(used_ty))
-                                    },
+                                        let used_ty =
+                                            UsedType::new(syn::Type::Path(typepath.clone()))?;
+                                        return Ok(Self::Type(used_ty));
+                                    }
                                     other => {
                                         return Err(syn::Error::new(
                                             other.as_ref().map(|s| s.span()).unwrap_or(args_span),
                                             format!(
                                                 "Got unexpected generic argument for Option inner: {other:?}"
                                             ),
-                                        ))
+                                        ));
                                     }
                                 }
                             }
@@ -94,7 +97,7 @@ impl Returning {
                                     format!(
                                         "Got unexpected path argument for Option inner: {other:?}"
                                     ),
-                                ))
+                                ));
                             }
                         }
                     } else {
@@ -132,22 +135,24 @@ impl Returning {
                         let used_ty = match &last_path_segment.map(|ps| &ps.arguments) {
                             Some(syn::PathArguments::AngleBracketed(args)) => {
                                 match args.args.last().expect("should have one arg?") {
-                                    syn::GenericArgument::Type(ty) => {
-                                        match ty {
-                                            Type::Path(_) | Type::Macro(_) | Type::Reference(_) => UsedType::new(ty.clone())?,
-                                            ty => return Err(syn::Error::new(
+                                    syn::GenericArgument::Type(ty) => match ty {
+                                        Type::Path(_) | Type::Macro(_) | Type::Reference(_) => {
+                                            UsedType::new(ty.clone())?
+                                        }
+                                        ty => {
+                                            return Err(syn::Error::new(
                                                 ty.span(),
                                                 "SetOf Iterator must have an item",
-                                            )),
+                                            ));
                                         }
-                                    }
+                                    },
                                     other => {
                                         return Err(syn::Error::new(
                                             other.span(),
                                             format!(
                                                 "Got unexpected generic argument for SetOfIterator: {other:?}"
                                             ),
-                                        ))
+                                        ));
                                     }
                                 }
                             }
@@ -159,10 +164,10 @@ impl Returning {
                                     format!(
                                         "Got unexpected path argument for SetOfIterator: {other:?}"
                                     ),
-                                ))
+                                ));
                             }
                         };
-                        Ok(Returning::SetOf { ty: used_ty })
+                        Ok(Self::SetOf { ty: used_ty })
                     } else if is_table_iter {
                         let last_path_segment = segments.last_mut().unwrap();
                         let mut iterated_items = vec![];
@@ -234,7 +239,7 @@ impl Returning {
                                         return Err(syn::Error::new(
                                             other.span(),
                                             format!("Got unexpected generic argument: {other:?}"),
-                                        ))
+                                        ));
                                     }
                                 };
                             }
@@ -242,26 +247,26 @@ impl Returning {
                                 return Err(syn::Error::new(
                                     other.span(),
                                     format!("Got unexpected path argument: {other:?}"),
-                                ))
+                                ));
                             }
                         };
-                        Ok(Returning::Iterated { tys: iterated_items })
+                        Ok(Self::Iterated { tys: iterated_items })
                     } else {
                         let used_ty = UsedType::new(syn::Type::Path(typepath.clone()))?;
-                        Ok(Returning::Type(used_ty))
+                        Ok(Self::Type(used_ty))
                     }
                 } else {
                     let used_ty = UsedType::new(syn::Type::Path(typepath.clone()))?;
-                    Ok(Returning::Type(used_ty))
+                    Ok(Self::Type(used_ty))
                 }
             }
             syn::Type::Reference(ty_ref) => {
                 let used_ty = UsedType::new(syn::Type::Reference(ty_ref.clone()))?;
-                Ok(Returning::Type(used_ty))
+                Ok(Self::Type(used_ty))
             }
-            syn::Type::Macro(ref mut type_macro) => Self::parse_type_macro(type_macro),
-            syn::Type::Paren(ref mut type_paren) => match &mut *type_paren.elem {
-                syn::Type::Macro(ref mut type_macro) => Self::parse_type_macro(type_macro),
+            syn::Type::Macro(type_macro) => Self::parse_type_macro(type_macro),
+            syn::Type::Paren(type_paren) => match &mut *type_paren.elem {
+                syn::Type::Macro(type_macro) => Self::parse_type_macro(type_macro),
                 other => Err(syn::Error::new(
                     other.span(),
                     format!("Got unknown return type (type_paren): {type_paren:?}"),
@@ -281,7 +286,7 @@ impl TryFrom<&syn::ReturnType> for Returning {
 
     fn try_from(value: &syn::ReturnType) -> Result<Self, Self::Error> {
         match &value {
-            syn::ReturnType::Default => Ok(Returning::None),
+            syn::ReturnType::Default => Ok(Self::None),
             syn::ReturnType::Type(_, ty) => Self::match_type(ty),
         }
     }
@@ -290,10 +295,10 @@ impl TryFrom<&syn::ReturnType> for Returning {
 impl ToTokens for Returning {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         let quoted = match self {
-            Returning::None => quote! {
+            Self::None => quote! {
                 ::pgrx::pgrx_sql_entity_graph::PgExternReturnEntity::None
             },
-            Returning::Type(used_ty) => {
+            Self::Type(used_ty) => {
                 let used_ty_entity_tokens = used_ty.entity_tokens();
                 quote! {
                     ::pgrx::pgrx_sql_entity_graph::PgExternReturnEntity::Type {
@@ -301,7 +306,7 @@ impl ToTokens for Returning {
                     }
                 }
             }
-            Returning::SetOf { ty: used_ty } => {
+            Self::SetOf { ty: used_ty } => {
                 let used_ty_entity_tokens = used_ty.entity_tokens();
                 quote! {
                     ::pgrx::pgrx_sql_entity_graph::PgExternReturnEntity::SetOf {
@@ -309,7 +314,7 @@ impl ToTokens for Returning {
                                                                   }
                 }
             }
-            Returning::Iterated { tys: items } => {
+            Self::Iterated { tys: items } => {
                 let quoted_items = items
                     .iter()
                     .map(|ReturningIteratedItem { used_ty, name }| {
@@ -333,6 +338,83 @@ impl ToTokens for Returning {
             }
         };
         tokens.append_all(quoted);
+    }
+}
+
+impl Returning {
+    pub fn section_len_tokens(&self) -> TokenStream2 {
+        match self {
+            Self::None => quote! { ::pgrx::pgrx_sql_entity_graph::section::u8_len() },
+            Self::Type(used_ty) => {
+                let used_ty_len = used_ty.section_len_tokens();
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::u8_len() + (#used_ty_len)
+                }
+            }
+            Self::SetOf { ty } => {
+                let used_ty_len = ty.section_len_tokens();
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::u8_len() + (#used_ty_len)
+                }
+            }
+            Self::Iterated { tys: items } => {
+                let item_lens = items.iter().map(|ReturningIteratedItem { used_ty, name }| {
+                    let used_ty_len = used_ty.section_len_tokens();
+                    let name_len = name
+                        .as_ref()
+                        .map(|name| {
+                            quote! {
+                                ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                                    + ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#name))
+                            }
+                        })
+                        .unwrap_or_else(|| {
+                            quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() }
+                        });
+                    quote! { (#used_ty_len) + (#name_len) }
+                });
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                        + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                            #( #item_lens ),*
+                        ])
+                }
+            }
+        }
+    }
+
+    pub fn section_writer_tokens(&self, writer: TokenStream2) -> TokenStream2 {
+        match self {
+            Self::None => quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_RET_NONE)
+            },
+            Self::Type(used_ty) => used_ty.section_writer_tokens(quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_RET_TYPE)
+            }),
+            Self::SetOf { ty } => ty.section_writer_tokens(quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_RET_SET_OF)
+            }),
+            Self::Iterated { tys: items } => {
+                let item_count = items.len();
+                let writer_ident = Ident::new("__pgrx_schema_writer", Span::mixed_site());
+                let item_writers = items.iter().map(|ReturningIteratedItem { used_ty, name }| {
+                    let name_writer = name
+                        .as_ref()
+                        .map(|name| quote! { .bool(true).str(stringify!(#name)) })
+                        .unwrap_or_else(|| quote! { .bool(false) });
+                    used_ty.section_writer_tokens(quote! { #writer_ident #name_writer })
+                });
+                quote! {
+                    {
+                        let #writer_ident = #writer
+                            .u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_RET_ITERATED)
+                            .u32(#item_count as u32);
+                        #( let #writer_ident = { #item_writers }; )*
+                        #writer_ident
+                    }
+                }
+            }
+        }
     }
 }
 

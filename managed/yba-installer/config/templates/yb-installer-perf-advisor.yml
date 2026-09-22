@@ -115,10 +115,14 @@ services:
       Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
       # ysql_dump links against YugabyteDB's own C++ runtime, shipped in the same bundle.
       Environment="LD_LIBRARY_PATH={{ .YsqlDumpLibPath }}"
+      # install_dir: BouncyCastle dlopen()s the native libraries it unpacks, so they cannot go to
+      # a noexec /tmp. Both modes - the keystore is BCFKS either way.
       {{- if eq (yamlPath "fips.enabled") "true" }}
       # approved_only has to reach the JVM as a flag: BouncyCastle latches the mode when
       # CryptoServicesRegistrar initialises, before any application code runs.
-      Environment="JAVA_OPTS=-Dorg.bouncycastle.fips.approved_only=true"
+      Environment="JAVA_OPTS=-Dorg.bouncycastle.fips.approved_only=true -Dorg.bouncycastle.native.loader.install_dir={{ .DataDir }}/bcnative"
+      {{- else }}
+      Environment="JAVA_OPTS=-Dorg.bouncycastle.native.loader.install_dir={{ .DataDir }}/bcnative"
       {{- end }}
 
       ExecStart=/bin/sh -c "{{ .PABin }}/perf-advisor \
