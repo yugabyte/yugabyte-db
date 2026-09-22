@@ -145,13 +145,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3, bkt_tbl.r4, bkt_tbl.r5
          Sort Method: top-N heapsort
          ->  Seq Scan on public.bkt_tbl (actual rows=5048.00 loops=1)
+               Disabled: true
                Output: r1, r2, r3, r4, r5, (yb_hash_code(r3, r2, r4, r5, r1) % 3)
                Storage Filter: (bkt_tbl.n >= 0)
                Filter: ((yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3) = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 3
                Storage Table Read Ops: 11
                Storage Table Rows Scanned: 5048
-(13 rows)
+(14 rows)
 
 /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
  r1 | r2 | r3 | r4 | r5 | ?column? 

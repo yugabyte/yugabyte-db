@@ -280,6 +280,7 @@ explain (costs off)
 ---------------------------------------------------------
  Nested Loop
    ->  Seq Scan on s
+         Disabled: true
    ->  YB Bitmap Table Scan on r
          Storage Recheck Cond: ((a = s.x) OR (b <= 300))
          Storage Filter: ((a + b) >= s.y)
@@ -288,5 +289,5 @@ explain (costs off)
                      Index Cond: (a = s.x)
                ->  Bitmap Index Scan on i_r_b
                      Index Cond: (b <= 300)
-(10 rows)
+(11 rows)
 
