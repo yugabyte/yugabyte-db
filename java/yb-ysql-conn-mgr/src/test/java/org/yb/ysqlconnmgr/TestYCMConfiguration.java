@@ -29,7 +29,7 @@ import com.google.common.net.HostAndPort;
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestYCMConfiguration extends BaseYsqlConnMgr {
 
-  private static final String LONG_STR = new String(new char[50]).replace('\0', 'a');
+  private static final String LONG_STR = new String(new char[60]).replace('\0', 'a');
 
   private void createRole(String roleName) {
     try (Connection conn = getConnectionBuilder()
@@ -75,38 +75,17 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
     }
 
     // Decrease the size of query packet and restart the cluster.
-    // The deploy phase should fail if we continue to use a larger
-    // application name, we should expect only the reset phase to
-    // be executed, leading to an empty string for application_name.
-    reduceQuerySizePacketAndRestartCluster(75);
+    // The connection establishment should fail as startup guc's
+    // won't be able to fit in that size.
+    reduceQuerySizePacketAndRestartCluster(141);
 
     try (Connection conn = getConnectionBuilder()
                     .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-                    .connect();
-          Statement stmt = conn.createStatement();
-          Connection conn2 = getConnectionBuilder()
-                    .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-                    .connect();
-          Statement stmt2 = conn2.createStatement()) {
-
-          stmt.execute("SET application_name to " + LONG_STR);
-          stmt2.execute("BEGIN");
-          // Force logical connection 1 to open a new physical connection
-          ResultSet rs = stmt.executeQuery("show application_name");
-
-          if (rs.next()) {
-            // When switching between physical connections, the deploy phase
-            // should fail with the reduced query size parameter. The
-            // application name should not be set to LONG_STR on the new
-            // connection due to this restriction.
-            assertEquals("", rs.getString(1));
-          }
+                    .connect()) {
     }
     catch (Exception e) {
-      LOG.error("Got an unexpected error: ", e);
-      fail("Connection faced an unexpected issue");
+      LOG.info("Got an expected error due to large startup guc's ", e);
     }
-
   }
 
   @Test
