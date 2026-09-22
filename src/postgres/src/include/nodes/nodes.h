@@ -562,7 +562,7 @@ typedef enum NodeTag
 	T_YbSkippableEntities,
 	T_YbUpdateAffectedEntities,
 	T_YbMergeScanInfo,
-	T_YbMergeScanSaopColInfo,
+	T_YbMergeScanStreamColInfo,
 	T_YbSortInfo,
 
 } NodeTag;
