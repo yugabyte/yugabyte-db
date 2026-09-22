@@ -1933,6 +1933,9 @@ public class NodeManager extends DevopsBase {
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
                 commandArgs.add("--instance_template");
                 commandArgs.add(instanceTemplate);
+                if (confGetter.getGlobalConf(GlobalConfKeys.readGcpInstanceTemplate)) {
+                  commandArgs.add("--read_instance_template");
+                }
               }
             }
 

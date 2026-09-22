@@ -18,8 +18,8 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
                                        ProvisionInstancesMethod, ReplaceRootVolumeMethod,
                                        DeleteRootVolumesMethod, HardRebootInstancesMethod)
-from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH, GCP_HYPERDISK_BALANCED,\
-    GCP_HYPERDISK_EXTREME
+from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH, GCP_HYPERDISK_BALANCED, \
+    GCP_HYPERDISK_EXTREME, get_instance_template_to_read
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 
@@ -56,6 +56,9 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
                                  default="scratch", help="Storage type for GCP instances.")
         self.parser.add_argument("--instance_template",
                                  help="Instance type template for GCP instances")
+        self.parser.add_argument("--read_instance_template", action="store_true",
+                                 help="Read the instance template and carry its settings over to "
+                                      "the disks created for this instance.")
         self.parser.add_argument("--disk_iops", type=int, default=None,
                                  help="Desired iops for instance volumes.")
         self.parser.add_argument("--disk_throughput", type=int, default=None,
@@ -112,10 +115,15 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
 
     def create_master_volume(self, args):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
-        res = self.cloud.get_admin().create_disk(args.zone, args.instance_tags, body={
+        body = {
             "name": name,
             "sizeGb": args.boot_disk_size_gb,
-            "sourceImage": args.machine_image})
+            "sourceImage": args.machine_image}
+        boot_disk_kms_key, _ = self.cloud.get_admin().get_template_disk_kms_keys(
+            get_instance_template_to_read(args))
+        if boot_disk_kms_key:
+            body["diskEncryptionKey"] = {"kmsKeyName": boot_disk_kms_key}
+        res = self.cloud.get_admin().create_disk(args.zone, args.instance_tags, body)
         return res["targetLink"]
 
     # Not invoked. Just keeping it for consistency.
