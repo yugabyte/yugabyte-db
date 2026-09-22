@@ -84,8 +84,8 @@ export const MetricTypesWithOperations = {
       'process_virtual_memory',
       'process_resident_memory',
       'process_proportional_memory',
-      'postgres_backend_pss_max',
-      'postgres_backend_pss_p95',
+      'postgres_worker_pss_max',
+      'postgres_worker_pss_p95',
       'process_io_read',
       'process_io_write',
       'process_open_files'

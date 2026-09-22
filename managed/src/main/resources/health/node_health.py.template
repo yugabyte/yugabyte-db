@@ -265,11 +265,11 @@ YB_PROCESS_MEMORY_KB = MetricDefinition(
     "yb_process_memory_kb",
     "Check memory bytes per process and its subprocesses")
 YB_POSTGRES_BACKEND_PSS_MAX_KB = MetricDefinition(
-    "yb_postgres_backend_pss_max_kb",
+    "yb_postgres_worker_pss_max_kb",
     "Max PSS among postgres worker processes (children of postmaster)",
     "kb")
 YB_POSTGRES_BACKEND_PSS_P95_KB = MetricDefinition(
-    "yb_postgres_backend_pss_p95_kb",
+    "yb_postgres_worker_pss_p95_kb",
     "P95 PSS among postgres worker processes (children of postmaster)",
     "kb")
 YB_PROCESS_IO_KB_TOTAL = MetricDefinition(

@@ -4034,27 +4034,27 @@ process_proportional_memory:
         "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
-postgres_backend_pss_max:
-  metric: "yb_postgres_backend_pss_max_kb"
-  function: "avg_over_time|avg"
+postgres_worker_pss_max:
+  metric: "yb_postgres_worker_pss_max_kb"
+  function: "max_over_time|max"
   range: true
   operator: "/ 1024"
   panel_group: "Per-process Metrics"
   layout:
-    title: "Postgres Backend PSS (Max)"
+    title: "Postgres Worker PSS (Max)"
     xaxis:
       type: "date"
     yaxis:
       ticksuffix: "&nbsp;MB"
 
-postgres_backend_pss_p95:
-  metric: "yb_postgres_backend_pss_p95_kb"
-  function: "avg_over_time|avg"
+postgres_worker_pss_p95:
+  metric: "yb_postgres_worker_pss_p95_kb"
+  function: "max_over_time|max"
   range: true
   operator: "/ 1024"
   panel_group: "Per-process Metrics"
   layout:
-    title: "Postgres Backend PSS (P95)"
+    title: "Postgres Worker PSS (P95)"
     xaxis:
       type: "date"
     yaxis:
