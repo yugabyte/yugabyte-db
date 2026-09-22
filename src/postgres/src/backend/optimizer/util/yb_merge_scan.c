@@ -511,8 +511,8 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 			foreach(j, tlist)
 			{
 				/*
-				 * YB: skip over stream key cols, which may be part of sort
-				 * ECs in case they are equal to other columns part of sort.
+				 * YB: skip over stream key cols, which may be part of sort ECs
+				 * in case they are equal to other columns part of sort.
 				 */
 				if (bms_is_member(indexcol++, stream_col_idxs))
 					continue;

@@ -3761,8 +3761,8 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 
 /*
  * yb_fix_merge_scan_stream_conds
- *		Do set_plan_refs processing on the merge scan stream key conditions
- *		of an index scan.
+ *		Do set_plan_refs processing on the merge scan stream key conditions of
+ *		an index scan.
  *
  * These are the scalar array ops the planner pinned as merge scan stream keys
  * (see yb_merge_scan.c).  Their left-hand side holds Vars of the scanned
