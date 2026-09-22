@@ -6739,8 +6739,8 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 				   YbMergeScanInfo *merge_scan_info,
 				   ExplainState *es, List *ancestors)
 {
-	List	   *saop_keys = NIL;
-	List	   *saops = NIL;
+	List	   *stream_keys = NIL;
+	List	   *stream_conds = NIL;
 	int			num_streams = 1;
 	List	   *sort_keys = NIL;
 	ListCell   *lc;
@@ -6761,9 +6761,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 									   ancestors);
 	useprefix = (list_length(es->rtable) > 1 || es->verbose);
 
-	foreach(lc, merge_scan_info->saop_cols)
+	foreach(lc, merge_scan_info->stream_cols)
 	{
-		YbMergeScanSaopColInfo *item = lfirst(lc);
+		YbMergeScanStreamColInfo *item = lfirst(lc);
 		TargetEntry *target = get_tle_by_resno(indextlist,
 											   item->indexcol + 1);
 		char	   *exprstr;
@@ -6776,8 +6776,8 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 									 false /* yb_pretty */ ,
 									 es->ybMaskConstants);
 
-		saop_keys = lappend(saop_keys, exprstr);
-		saops = lappend(saops, item->saop);
+		stream_keys = lappend(stream_keys, exprstr);
+		stream_conds = lappend(stream_conds, item->clause);
 		num_streams *= item->num_elems;
 	}
 
@@ -6814,9 +6814,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 
 	if (sort_keys)
 		ExplainPropertyList("Merge Sort Key", sort_keys, es);
-	Assert(saop_keys);
-	ExplainPropertyList("Merge Stream Key", saop_keys, es);
+	Assert(stream_keys);
+	ExplainPropertyList("Merge Stream Key", stream_keys, es);
 	ExplainPropertyInteger("Merge Streams", NULL, num_streams, es);
 	if (es->verbose)
-		show_scan_qual(saops, "Merge Cond", planstate, ancestors, es);
+		show_scan_qual(stream_conds, "Merge Cond", planstate, ancestors, es);
 }

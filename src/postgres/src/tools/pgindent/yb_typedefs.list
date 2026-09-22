@@ -128,7 +128,7 @@ YbLockMechanism
 YbLogicalClientVersionType
 YbLsmBuildState
 YbMergeScanInfo
-YbMergeScanSaopColInfo
+YbMergeScanStreamColInfo
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry
