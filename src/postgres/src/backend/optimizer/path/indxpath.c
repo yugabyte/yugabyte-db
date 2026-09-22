@@ -4984,26 +4984,25 @@ yb_find_eq_const_for_var_in_clauses(Var *var, List *clauses)
 			rightop = (Node *) ((RelabelType *) rightop)->arg;
 
 		/*
-		 * The matched Const is substituted in place of the Var, so two things
-		 * must hold.  Its type must be binary-compatible with the Var's (e.g.
-		 * text for a varchar column); otherwise a cross-type equality such as
-		 * name_col = 'x'::text would splice a text Const where a name Var sat,
-		 * deriving a wrong value and silently dropping rows.  And it must be
-		 * non-null: a Var = NULL binding does not pin the column to a value, so
-		 * substituting it would derive a bogus condition.
+		 * The Const is substituted in place of the Var, so it must be
+		 * non-null (a Var = NULL binding does not pin the column to a value)
+		 * and must be indistinguishable from the column's datum --- see
+		 * yb_safe_to_substitute_for_var.
 		 */
 		if (IsA(leftop, Var) && IsA(rightop, Const) &&
 			((Var *) leftop)->varno == var->varno &&
 			((Var *) leftop)->varattno == var->varattno &&
 			!((Const *) rightop)->constisnull &&
-			IsBinaryCoercible(((Const *) rightop)->consttype, var->vartype))
+			yb_safe_to_substitute_for_var((Expr *) rightop, var,
+										  opexpr->inputcollid))
 			return (Expr *) rightop;
 
 		if (IsA(rightop, Var) && IsA(leftop, Const) &&
 			((Var *) rightop)->varno == var->varno &&
 			((Var *) rightop)->varattno == var->varattno &&
 			!((Const *) leftop)->constisnull &&
-			IsBinaryCoercible(((Const *) leftop)->consttype, var->vartype))
+			yb_safe_to_substitute_for_var((Expr *) leftop, var,
+										  opexpr->inputcollid))
 			return (Expr *) leftop;
 	}
 	return NULL;

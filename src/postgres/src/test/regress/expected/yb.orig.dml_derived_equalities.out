@@ -1379,3 +1379,127 @@ EXPLAIN (COSTS OFF) /*+ BitmapScan(demo_or) */ SELECT count(*) FROM demo_or WHER
 DROP TABLE demo_or;
 RESET yb_enable_bitmapscan;
 RESET enable_bitmapscan;
+-- Substitution requires the const to be the same datum as the column, not
+-- merely equal to it.  Differing width, display scale or blank padding each
+-- derive an index condition the stored row fails.  (see GH#33908)
+CREATE TABLE t_xtype (id int PRIMARY KEY, v real, n numeric, c char(3));
+CREATE INDEX t_xtype_v ON t_xtype ((v::double precision));
+CREATE INDEX t_xtype_n ON t_xtype ((n::text));
+CREATE INDEX t_xtype_c ON t_xtype ((octet_length(c)));
+INSERT INTO t_xtype VALUES (1, 81, 1.0, 'a');
+ANALYZE t_xtype;
+SET enable_seqscan = off;
+-- real column vs double precision const
+\set query ':P SELECT v FROM t_xtype WHERE v = 81.0;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT v FROM t_xtype WHERE v = 81.0;
+                   QUERY PLAN                   
+------------------------------------------------
+ Seq Scan on t_xtype
+   Storage Filter: (v = '81'::double precision)
+(2 rows)
+
+SELECT v FROM t_xtype WHERE v = 81.0;
+ v  
+----
+ 81
+(1 row)
+
+-- numeric 1.0 vs 1.00
+\set query ':P SELECT n FROM t_xtype WHERE n = 1.00;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT n FROM t_xtype WHERE n = 1.00;
+          QUERY PLAN          
+------------------------------
+ Seq Scan on t_xtype
+   Storage Filter: (n = 1.00)
+(2 rows)
+
+SELECT n FROM t_xtype WHERE n = 1.00;
+ n 
+---
+ 1
+(1 row)
+
+-- char(3) vs char(1)
+\set query ':P SELECT c FROM t_xtype WHERE c = ''a''::char(1);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT c FROM t_xtype WHERE c = 'a'::char(1);
+                QUERY PLAN                 
+-------------------------------------------
+ Seq Scan on t_xtype
+   Storage Filter: (c = 'a'::character(1))
+(2 rows)
+
+SELECT c FROM t_xtype WHERE c = 'a'::char(1);
+  c  
+-----
+ a  
+(1 row)
+
+-- bpchar without a length: same type and typmod, but different padding
+CREATE TABLE t_bpchar (id int PRIMARY KEY, b bpchar);
+CREATE INDEX t_bpchar_b ON t_bpchar ((octet_length(b)));
+INSERT INTO t_bpchar VALUES (1, 'a  ');
+ANALYZE t_bpchar;
+\set query ':P SELECT id FROM t_bpchar WHERE b = ''a'';'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_bpchar WHERE b = 'a';
+             QUERY PLAN              
+-------------------------------------
+ Seq Scan on t_bpchar
+   Storage Filter: (b = 'a'::bpchar)
+(2 rows)
+
+SELECT id FROM t_bpchar WHERE b = 'a';
+ id 
+----
+  1
+(1 row)
+
+-- Positive control: varchar(n) stores what it compares, so a const with a
+-- different typmod still derives.
+CREATE TABLE t_varchar (s varchar(3));
+CREATE INDEX t_varchar_idx ON t_varchar ((yb_hash_code(s) % 5) ASC, s ASC);
+INSERT INTO t_varchar VALUES ('a'), ('b'), ('c');
+ANALYZE t_varchar;
+SET yb_enable_bitmapscan = true;
+SET enable_bitmapscan = true;
+\set hint '/*+ BitmapScan(t_varchar) */'
+\set query ':P :hint SELECT s FROM t_varchar WHERE s = ''a'' OR s = ''b'' ORDER BY s;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(t_varchar) */ SELECT s FROM t_varchar WHERE s = 'a' OR s = 'b' ORDER BY s;
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: s
+   ->  YB Bitmap Table Scan on t_varchar
+         Recheck Cond: ((((yb_hash_code(s) % 5) = (yb_hash_code('a'::text) % 5)) AND ((s)::text = 'a'::text)) OR (((yb_hash_code(s) % 5) = (yb_hash_code('b'::text) % 5)) AND ((s)::text = 'b'::text)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on t_varchar_idx
+                     Index Cond: (((yb_hash_code(s) % 5) = (yb_hash_code('a'::text) % 5)) AND ((s)::text = 'a'::text))
+               ->  Bitmap Index Scan on t_varchar_idx
+                     Index Cond: (((yb_hash_code(s) % 5) = (yb_hash_code('b'::text) % 5)) AND ((s)::text = 'b'::text))
+(9 rows)
+
+/*+ BitmapScan(t_varchar) */ SELECT s FROM t_varchar WHERE s = 'a' OR s = 'b' ORDER BY s;
+ s 
+---
+ a
+ b
+(2 rows)
+
+RESET yb_enable_bitmapscan;
+RESET enable_bitmapscan;
+RESET enable_seqscan;
+DROP TABLE t_xtype, t_bpchar, t_varchar;
