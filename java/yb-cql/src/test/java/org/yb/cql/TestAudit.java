@@ -132,6 +132,31 @@ public class TestAudit extends BaseCQLTest {
                   null /* batchId */, null /* keyspace */, null /* scope */,
                   "ALTER ROLE user2 WITH PaSswORd   =<REDACTED>")));
     }
+
+    // A statement that is *rejected* is still audited, as a REQUEST_FAILURE carrying the statement
+    // text. Redaction used to happen only on paths that had a parse tree to identify the statement
+    // type, so a rejected CREATE ROLE was logged with its password in cleartext. Two PASSWORD
+    // clauses in one statement is the simplest way to be rejected while still carrying a password,
+    // and it also covers redacting every occurrence rather than only the first.
+    {
+      final String first = "first_pl4int3xt";
+      final String second = "second_pl4int3xt";
+      auditRecords.discard();
+      String cql = "CREATE ROLE user_dup_pw WITH PASSWORD = '" + first
+          + "' AND PASSWORD = '" + second + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE with two PASSWORD clauses to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      for (AuditLogEntry entry : auditRecords.popAll()) {
+        assertFalse("Audited operation leaked a password: " + entry.operationAndErrorMessage,
+            entry.operationAndErrorMessage.contains(first));
+        assertFalse("Audited operation leaked a password: " + entry.operationAndErrorMessage,
+            entry.operationAndErrorMessage.contains(second));
+      }
+    }
   }
 
   /** Issuing DML batch as YCQL plaintext: {@code START TXN; DML1; DML2; COMMIT} */
