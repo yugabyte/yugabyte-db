@@ -51,6 +51,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
+DECLARE_bool(use_libunwind_for_stack_trace_collection);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(allow_insecure_connections);
@@ -1282,6 +1283,25 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
   ybthin_client_destroy(client);
+}
+
+// ybthin_client_create must switch stack trace collection to libunwind (#33916). Two clients in one
+// process, so a write that fires only once per process cannot pass.
+TEST_F(
+    PgThinClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ClientCreateSelectsLibunwindForStackTraces)) {
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_libunwind_for_stack_trace_collection) = false;
+    ybthin_client* client = nullptr;
+    auto st = ybthin_client_create(
+        addrs, /* n_addrs= */ 1, /* tls= */ nullptr, /* pool= */ nullptr,
+        /* rpc_timeout_ms= */ 60000, /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+    ASSERT_TRUE(FLAGS_use_libunwind_for_stack_trace_collection) << "attempt " << attempt;
+    ybthin_client_destroy(client);
+  }
 }
 
 // A fenced write that already replicated must still report success when the client's resend of the
