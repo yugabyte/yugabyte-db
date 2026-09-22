@@ -41,10 +41,12 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/serialization.h"
 
 #include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
+#include "yb/tserver/pg_shared_mem_trace.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/dist_trace.h"
@@ -272,18 +274,6 @@ class BigDataFetcher {
 template <class T>
 struct ResponseReadyTraits;
 
-std::string_view GetSharedMemSpanName(tserver::PgSharedExchangeReqType req_type) {
-  switch (req_type) {
-    case tserver::PgSharedExchangeReqType::PERFORM:
-      return "shmem yb.tserver.PgClientService.Perform";
-    case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
-      return "shmem yb.tserver.PgClientService.AcquireObjectLock";
-    case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
-    case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
-  }
-  FATAL_INVALID_ENUM_VALUE(tserver::PgSharedExchangeReqType, req_type);
-}
-
 template <>
 struct ResponseReadyTraits<bool> {
   static bool AllowNotReady() {
@@ -382,7 +372,7 @@ template <class Data>
 void ExchangeFuture<Data>::wait() const {
   if (!value_) {
     value_ = MakeExchangeResult(*data_, data_->Complete());
-    data_->EndSharedMemorySpan(value_->status);
+    tserver::EndSharedMemSpan(&data_->otel_span, value_->status);
   }
 }
 
@@ -426,24 +416,12 @@ struct PgClientData : public FetchBigDataCallback {
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void StartSharedMemorySpan() {
-    otel_span = dist_trace::StartClientSpan(GetSharedMemSpanName(kSharedExchangeRequestType));
+    otel_span = dist_trace::StartClientSpan(
+        tserver::GetSharedMemSpanName(kSharedExchangeRequestType));
     if (otel_span) {
       // Mirror the attributes the RPC outbound span carries (outbound_call.cc).
       otel_span->SetAttribute("rpc.system", "yb_shmem");
     }
-  }
-
-  void EndSharedMemorySpan(const Status& status) {
-    if (!otel_span) {
-      return;
-    }
-    if (status.ok()) {
-      otel_span->SetStatus(opentelemetry::trace::StatusCode::kOk);
-    } else {
-      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
-    }
-    otel_span->End();
-    otel_span = nullptr;
   }
 
   void SetupExchange(
@@ -1098,22 +1076,34 @@ class PgClient::Impl : public BigDataFetcher {
       ash::MetadataSerializer metadata(rpc::MetadataSerializationMode::kWriteOnZero);
       constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
       const size_t kMetadataSize = metadata.SerializedSize();
+      // Sized before the span exists, so a too-large request falls back to RPC without having
+      // consumed the pending span attributes.
+      const size_t kTraceContextSize =
+          rpc::TraceContextSerializer::SerializedSizeFor(dist_trace::HasActiveContext());
       auto& exchange = session_shared_mem_->exchange();
-      auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
+      const size_t obtained_size =
+          kHeaderSize + kMetadataSize + kTraceContextSize + data->req.SerializedSize();
+      auto out = exchange.Obtain(obtained_size);
       if (out) {
+        // The request fits, so it goes over shared memory: start its span only now.
         data->StartSharedMemorySpan();
+        rpc::TraceContextSerializer trace_context;
+        if (data->otel_span) {
+          trace_context.SetTraceContext(data->otel_span->GetContext());
+        }
         const auto [rpc_deadline, rpc_timeout] =
             timeouts_.GetDeadlineAndTimeoutForRPC<typename Data::RequestType>();
+        const auto* start = out;
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
         out += sizeof(uint8_t);
         LittleEndian::Store64(out, rpc_timeout.ToMilliseconds());
         out += sizeof(uint64_t);
         out = pointer_cast<std::byte*>(metadata.SerializeToArray(to_uchar_ptr(out)));
-        const auto size = data->req.SerializedSize();
+        out = pointer_cast<std::byte*>(trace_context.SerializeToArray(to_uchar_ptr(out)));
         auto* end = pointer_cast<std::byte*>(
             data->req.SerializeToArray(pointer_cast<uint8_t*>(out)));
         Status status;
-        if ((size_t)(end - out) != size) {
+        if ((size_t)(end - start) != obtained_size) {
           status = STATUS(InternalError, "Obtained size does not match serialized size");
         }
         if (status.ok()) {
@@ -1121,7 +1111,7 @@ class PgClient::Impl : public BigDataFetcher {
         }
         if (!status.ok()) {
           auto result = MakeExchangeResult(*data, status);
-          data->EndSharedMemorySpan(result.status);
+          tserver::EndSharedMemSpan(&data->otel_span, result.status);
           data->promise.set_value(std::move(result));
           return data->promise.get_future();
         }
