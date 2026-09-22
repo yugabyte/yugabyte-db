@@ -87,6 +87,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
+DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
@@ -336,6 +337,16 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
       values += Format("($0, '$1')", id, AsString(Vector(id)));
     }
     return conn.Execute("INSERT INTO test VALUES " + values);
+  }
+
+  // Waits until all `expected_num_indexes` vector indexes of the cluster report their backfill as
+  // finished.
+  Status WaitForVectorIndexBackfills(size_t expected_num_indexes, const std::string& description) {
+    return WaitFor([this, expected_num_indexes] {
+      auto indexes = ListVectorIndexes(cluster_.get());
+      return indexes.size() == expected_num_indexes &&
+             std::ranges::all_of(indexes, [](const auto& index) { return index->BackfillDone(); });
+    }, 60s * kTimeMultiplier, description);
   }
 
   void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
@@ -4668,6 +4679,65 @@ TEST_P(PgVectorIndexTest, StatusResolutionDuringBootstrapBackfill) {
 
   // Reaching here without the tserver crashing means the fix holds.
   threads.Stop();
+}
+
+// A truncate pauses the tablet's read/write operation counters while it replaces the storages, so a
+// vector index backfill running at that moment fails to acquire its scoped operation and aborts
+// with TryAgain. Backfills were launched only from Tablet::Start(), so nothing resumed the aborted
+// one: the index stayed not backfilled until the tserver restarted, blocking tablet splits and
+// never reaching the master through vector_index_finished_backfills (GH#33102). In a debug build
+// the abort also hit a DFATAL.
+TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
+  constexpr size_t kNumRows = 64;
+
+  if (IsColocated()) {
+    // A colocated table shares its tablet with the rest of the database, so TRUNCATE tombstones the
+    // table instead of replacing the storages.
+    GTEST_SKIP() << "Truncate does not replace tablet storages of a colocated table";
+  }
+
+  // Park the backfills until the truncate below has paused the blocking operations, so that reading
+  // the indexed table fails with TryAgain. The dependency is satisfied by that first pause, so the
+  // retried backfill runs without parking.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"Tablet::StartShutdownStorages:BlockingPaused", "TabletVectorIndexes::Backfill:Start"}});
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearTrace();
+  });
+
+  // Retry as soon as possible: a retry that lands while the truncate still holds the pause just
+  // reschedules itself.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_retry_delay_ms) = 100 * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+
+  // The backfill is parked, so CREATE INDEX does not return until the truncate below releases it.
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  ASSERT_OK(WaitFor([this] {
+    return !ListVectorIndexes(cluster_.get()).empty();
+  }, 60s * kTimeMultiplier, "Vector index created on tablets"));
+
+  // Truncate through the client rather than through YSQL: a YSQL TRUNCATE either rewrites the table
+  // instead of truncating the tablet, or conflicts with the catalog version bump of the CREATE
+  // INDEX still running above.
+  ASSERT_OK(client_->TruncateTable(ASSERT_RESULT(GetTableIDFromTableName("test"))));
+
+  // CREATE INDEX returns once the backfill is reported to the master, so by now every peer has the
+  // index and the expected count is stable.
+  threads.JoinAll();
+  const auto num_indexes = ListVectorIndexes(cluster_.get()).size();
+  ASSERT_GT(num_indexes, 0);
+
+  ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
 }
 
 }  // namespace yb::pgwrapper

@@ -60,6 +60,10 @@ DEFINE_RUNTIME_uint64(vector_index_backfill_single_chunk_size_bytes, 0,
     "the first time to calculate the amount of entries in it (up to the computed limit) and "
     "then during backfill.");
 
+DEFINE_RUNTIME_uint32(vector_index_backfill_retry_delay_ms, 5000,
+    "Delay before retrying vector index backfills that were aborted because the tablet storages "
+    "were being replaced, e.g. by a truncate or a restore.");
+
 DECLARE_uint64(vector_index_initial_chunk_size);
 
 namespace yb::tablet {
@@ -569,16 +573,13 @@ Status TabletVectorIndexes::Backfill(
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "Backfilled " << AsString(*vector_index) << " in " << helper.num_chunks() << " chunks";
 
-  // The backfill task holds only a non-blocking ScopedRWOperation, so RocksDB shutdown may already
-  // have started by the time we reach the final regular DB flush. Acquire a blocking operation here
-  // ourselves: if it fails, shutdown is in progress and we abort the backfill gracefully (the
-  // ScheduleBackfill handler treats ShutdownInProgress as expected) instead of hitting the DFATAL
-  // inside Tablet::Flush. On success, hold it across the flush and skip Flush's own scoped
-  // operation via kNoScopedOperation.
+  // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
+  // the vector index flush, so acquire it here and pass kNoScopedOperation. Only
+  // StartShutdownStorages disables blocking operations, and it holds the pause while draining the
+  // non-blocking operation this task holds, so waiting here would block that drain: abort the
+  // backfill instead, ScheduleBackfill treats the resulting TryAgain as expected.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
-  if (!flush_op.ok()) {
-    return flush_op.GetAbortedStatus();
-  }
+  RETURN_NOT_OK(flush_op);
   // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
   RETURN_NOT_OK_PREPEND(
       Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
@@ -640,9 +641,13 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
           tablet().CreateScopedRWOperationNotBlockingRocksDbShutdownStart());
     }
     if (!read_op->ok()) {
-      LOG_WITH_PREFIX_AND_FUNC(WARNING)
-          << "Failed to create operation for backfill: " << read_op->GetAbortedStatus();
-      continue;
+      auto status = MoveStatus(*read_op);
+      LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to create operation for backfill: " << status;
+      if (status.IsTryAgain()) {
+        // The storages are still being replaced, so no backfill task will run to ask for a retry.
+        ScheduleBackfillRetry();
+      }
+      return;
     }
 
     ScheduleBackfill(
@@ -658,13 +663,45 @@ void TabletVectorIndexes::ScheduleBackfill(
       [this, vector_index, backfill_ht, key = key.ToBuffer(), op_id, indexed_table,
        read_op = std::move(read_op)] {
     auto status = Backfill(vector_index, *indexed_table, key, backfill_ht, op_id);
-    if (status.IsShutdownInProgress()) {
-      LOG_WITH_PREFIX(WARNING) << "Backfill " << AsString(vector_index) << " failed: " << status;
+    if (status.IsShutdownInProgress() || status.IsTryAgain()) {
+      LOG_WITH_PREFIX(WARNING) << "Backfill " << AsString(vector_index) << " aborted: " << status;
+      if (status.IsTryAgain()) {
+        // An operation pause taken to replace the tablet storages, e.g. by a truncate or a restore.
+        // The replacement re-creates the vector indexes, so retry through
+        // LaunchBackfillsIfNecessary rather than resuming this task: this index object is gone by
+        // then.
+        ScheduleBackfillRetry();
+      }
     } else {
       LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
           << "Backfill " << AsString(vector_index) << " failed: " << status;
     }
   });
+}
+
+void TabletVectorIndexes::SetScheduler(rpc::Scheduler* scheduler) {
+  scheduler_ = scheduler;
+  backfill_retry_task_.Bind(scheduler);
+}
+
+void TabletVectorIndexes::ScheduleBackfillRetry() {
+  if (!scheduler_) {
+    // No tablet peer, so no scheduler: only tests that drive a bare tablet get here.
+    LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Scheduler is not set, backfill retry skipped";
+    return;
+  }
+  // A single retry covers every index of the tablet, so replacing the pending one is enough.
+  backfill_retry_task_.Schedule([this](const Status& status) {
+    if (!status.ok()) {
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Backfill retry cancelled: " << status;
+      return;
+    }
+    LaunchBackfillsIfNecessary();
+  }, FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
+}
+
+void TabletVectorIndexes::StopBackfillRetry() {
+  backfill_retry_task_.Shutdown();
 }
 
 void TabletVectorIndexes::StartShutdown() {
