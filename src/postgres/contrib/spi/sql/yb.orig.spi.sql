@@ -130,7 +130,7 @@ CREATE INDEX CI ON C (refc);
 
 --Trigger for table A:
 
-CREATE TRIGGER AT BEFORE DELETE OR UPDATE ON A FOR EACH ROW
+CREATE TRIGGER AT AFTER DELETE OR UPDATE ON A FOR EACH ROW
 EXECUTE PROCEDURE check_foreign_key (2, 'cascade', 'id', 'B', 'refb', 'C', 'refc');
 
 -- 2	- means that check must be performed for foreign keys of 2 tables.
@@ -144,7 +144,7 @@ EXECUTE PROCEDURE check_foreign_key (2, 'cascade', 'id', 'B', 'refb', 'C', 'refc
 
 --Trigger for table B:
 
-CREATE TRIGGER BT BEFORE INSERT OR UPDATE ON B FOR EACH ROW
+CREATE TRIGGER BT AFTER INSERT OR UPDATE ON B FOR EACH ROW
 EXECUTE PROCEDURE check_primary_key ('refb', 'A', 'id');
 
 -- REFB	- name of foreign key column in triggered (B) table. You may use as many columns as you need,
@@ -154,7 +154,7 @@ EXECUTE PROCEDURE check_primary_key ('refb', 'A', 'id');
 
 --Trigger for table C:
 
-CREATE TRIGGER CT BEFORE INSERT OR UPDATE ON C FOR EACH ROW
+CREATE TRIGGER CT AFTER INSERT OR UPDATE ON C FOR EACH ROW
 EXECUTE PROCEDURE check_primary_key ('refc', 'A', 'id');
 
 INSERT INTO A VALUES (10);
