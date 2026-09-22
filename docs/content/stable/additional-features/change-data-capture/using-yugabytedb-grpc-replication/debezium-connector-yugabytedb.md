@@ -40,11 +40,13 @@ dz.<debezium-base>.yb.grpc.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 
 Release tags carry a leading `v`. For example, version `dz.1.9.5.yb.grpc.2025.2` is tagged `vdz.1.9.5.yb.grpc.2025.2`.
 
+Starting with `dz.1.9.5.yb.grpc.2026.1.2.0.1`, the YugabyteDB part is the full four-part release and the trailing number is the connector patch for that database version. For example, `dz.1.9.5.yb.grpc.2026.1.2.0.2` is connector patch 2 for YugabyteDB v2026.1.2.0.
+
 The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (forward compatibility is not supported). For example, connector release `dz.1.9.5.yb.grpc.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
 
 Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
-{{<tags/feature/ea idea="2809">}}Starting in v2026.1.2, the gRPC connector supports Kafka Connect 3.9.2 and 4.3.1. For other Kafka Connect versions, you can rely on Kafka's backward-compatibility guarantees. These Kafka Connect version updates currently apply _only_ to the gRPC connector.
+{{<tags/feature/ea idea="2809">}}Starting with connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2), the gRPC connector supports Kafka Connect 3.9 and Kafka Connect 4.x (4.0 and later). Earlier connector releases cannot run on a Kafka Connect 4.x worker because they bundled Kafka's own classes. For other Kafka Connect versions, you can rely on Kafka's backward-compatibility guarantees. These Kafka Connect version updates currently apply _only_ to the gRPC connector.
 
 {{< warning title="YugabyteDB v2026.1.2.0 and later" >}}
 
