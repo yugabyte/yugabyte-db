@@ -29,14 +29,8 @@ Usage:
 
 {{- $tabs := slice -}}
 {{- if eq $type "ybdb" -}}
-{{- /* 2026.1 & earlier */ -}}
-{{- $parts = split $version "." -}}
-{{- if or (lt (index $parts 0) 2026) (and (eq (index $parts 0) "2026") (le (index $parts 1) "1")) -}}
 {{- $tabs = slice
   (dict "header" `<i class='fa-brands fa-apple' aria-hidden='true'></i> x86` "body" (printf "wget %s/yugabyte-%s-darwin-x86_64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-darwin-x86_64-tar.gz.sha) *yugabyte-%s-darwin-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
--}}
-{{- end -}}
-{{- $tabs += slice
   (dict "header" `<i class='fa-brands fa-apple' aria-hidden='true'></i> ARM` "body" (printf "wget %s/yugabyte-%s-darwin-arm64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-darwin-arm64-tar.gz.sha) *yugabyte-%s-darwin-arm64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
   (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> x86` "body" (printf "wget %s/yugabyte-%s-linux-x86_64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-linux-x86_64-tar.gz.sha) *yugabyte-%s-linux-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
   (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> ARM` "body" (printf "wget %s/yugabyte-%s-el8-aarch64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-el8-aarch64-tar.gz.sha) *yugabyte-%s-el8-aarch64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
