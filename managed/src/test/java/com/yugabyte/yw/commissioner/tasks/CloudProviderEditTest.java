@@ -1125,6 +1125,64 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testInUseGcpImageBundleEditWithOmittedDestVpcId() throws InterruptedException {
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.gcp);
+    UUID providerUUID = p.getUuid();
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    p.getDetails().setCloudInfo(new ProviderDetails.CloudInfo());
+    GCPCloudInfo gcp = new GCPCloudInfo();
+    gcp.setDestVpcId("hostVpcId");
+    gcp.setHostVpcId("hostVpcId");
+    gcp.setGceProject("proj");
+    gcp.setUseHostVPC(true);
+    gcp.setUseHostCredentials(true);
+    gcp.setVpcType(CloudInfoInterface.VPCType.HOSTVPC);
+    p.getDetails().getCloudInfo().setGcp(gcp);
+    p.save();
+
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(Common.CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "hostVpcId").put("project", "proj"));
+
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    Universe universe = ModelFactory.createUniverse("gcp-in-use", defaultCustomer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          TestUtils.getProviderInitializerForTests(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent, providerUUID)
+              .setProviderUUID(providerUUID)
+              .setProviderType(Common.CloudType.gcp);
+        });
+    Result providerRes = getProvider(p.getUuid());
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ((ObjectNode) bodyJson.path("details").path("cloudInfo").path("gcp")).remove("destVpcId");
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ImageBundle ib = new ImageBundle();
+    ib.setName("ib-2");
+    ib.setProvider(p);
+    ib.setDetails(details);
+    List<ImageBundle> ibs = new ArrayList<>(p.getImageBundles());
+    ibs.add(ib);
+    p.setImageBundles(ibs);
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, p.getImageBundles().size());
+    assertEquals("hostVpcId", p.getDetails().getCloudInfo().getGcp().getDestVpcId());
+  }
+
+  @Test
   public void testWaitForFinishingTasksTimeout() throws InterruptedException {
     factory.globalRuntimeConf().setValue(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "50");
     factory

@@ -1019,6 +1019,10 @@ public class CloudProviderHelper {
       editOnPremCloudInfo.ynpManaged = provider.isYnpManaged();
     }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
+    if (editProviderReq.getCloudCode() == CloudType.gcp) {
+      maybeUpdateGCPProject(editProviderReq);
+    }
+    maybeUpdateVPC(editProviderReq);
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.
     long universeCount = provider.getUniverseCount();
@@ -1061,10 +1065,6 @@ public class CloudProviderHelper {
         }
       }
     }
-    if (editProviderReq.getCode().equalsIgnoreCase("gcp")) {
-      maybeUpdateGCPProject(editProviderReq);
-    }
-    maybeUpdateVPC(editProviderReq);
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI != null && !cloudAPI.isValidCreds(editProviderReq)) {
