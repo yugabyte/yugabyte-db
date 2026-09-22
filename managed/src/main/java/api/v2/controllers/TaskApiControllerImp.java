@@ -2,9 +2,6 @@
 
 package api.v2.controllers;
 
-import api.v2.models.TaskExecutorShutdownResp;
-import api.v2.models.TaskExecutorShutdownSpec;
-import api.v2.models.TaskExecutorShutdownStatus;
 import api.v2.models.TaskPagedQuerySpec;
 import api.v2.models.TaskPagedResp;
 import api.v2.models.TaskRetrySpec;
@@ -36,17 +33,6 @@ public class TaskApiControllerImp extends TaskApiControllerImpInterface {
   public TaskPagedResp pageListTasks(
       Request request, UUID cUUID, TaskPagedQuerySpec taskPagedQuerySpec) throws Exception {
     return customerTaskHandler.pageListTasks(cUUID, taskPagedQuerySpec);
-  }
-
-  @Override
-  public TaskExecutorShutdownStatus getShutdownStatus(Request request) throws Exception {
-    return customerTaskHandler.getShutdownStatus();
-  }
-
-  @Override
-  public TaskExecutorShutdownResp shutdownTaskExecutor(
-      Request request, TaskExecutorShutdownSpec taskExecutorShutdownSpec) throws Exception {
-    return customerTaskHandler.shutdownTaskExecutor(taskExecutorShutdownSpec);
   }
 
   @Override

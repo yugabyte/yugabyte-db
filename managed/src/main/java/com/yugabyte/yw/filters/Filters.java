@@ -17,6 +17,7 @@ public class Filters extends DefaultHttpFilters {
       HSTSFilter hstsFilter,
       HAApiFilter haApiFilter,
       CustomHTTPHeader customHTTPHeader,
+      ShutdownRejectFilter shutdownRejectFilter,
       BlockAllRequestsFilter blockAllRequestsFilter) {
     super(
         accessLogFilter,
@@ -27,6 +28,7 @@ public class Filters extends DefaultHttpFilters {
         hstsFilter,
         haApiFilter,
         customHTTPHeader,
+        shutdownRejectFilter,
         blockAllRequestsFilter);
   }
 }

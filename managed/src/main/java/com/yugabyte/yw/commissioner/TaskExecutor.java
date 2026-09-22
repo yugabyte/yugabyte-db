@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
+import com.yugabyte.yw.common.ShutdownHookHandler.ShutdownPhase;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -57,7 +58,6 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -284,15 +284,6 @@ public class TaskExecutor {
     return isShutdown.get();
   }
 
-  /** Placeholder for the shutdown status. */
-  @Builder
-  @Getter
-  public static class ShutdownStatus {
-    private boolean isShutdownInitiated;
-    private boolean isShutdownComplete;
-    private int numRunningTasks;
-  }
-
   @Inject
   public TaskExecutor(
       ShutdownHookHandler shutdownHookHandler,
@@ -307,70 +298,43 @@ public class TaskExecutor {
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
     this.shutdownHookHandler.addShutdownHook(
+        ShutdownPhase.BEFORE_SERVICE_UNBIND,
         this,
-        taskExecutor -> taskExecutor.shutdownSync(defaultAbortTaskTimeout, Duration.ofMinutes(2)),
+        taskExecutor -> {
+          Duration maxWaitTime =
+              runtimeConfGetter.getGlobalConf(GlobalConfKeys.taskExecutorShutdownMaxWaitTime);
+          // Inform running tasks to abort subtasks in maxWaitTime, and then wait for all all the
+          // running tasks to complete within maxWaitTime + defaultAbortTaskTimeout.
+          taskExecutor.shutdownSync(maxWaitTime, maxWaitTime.plus(defaultAbortTaskTimeout));
+        },
         100 /* weight */);
     this.taskTypeMap = taskTypeMap;
     this.inverseTaskTypeMap = inverseTaskTypeMap;
     this.runtimeConfGetter = runtimeConfGetter;
   }
 
-  /**
-   * Shuts down the task executor and aborts all the running tasks. It does not wait for the tasks
-   * to complete.
-   *
-   * @param abortTimeout time-out for aborting the running tasks.
-   * @return true if the shutdown was successful, false otherwise.
-   */
-  public boolean shutdownAsync(Duration abortTimeout) {
+  // Shuts down the task executor and waits for all the running tasks to complete within the given
+  // timeout.
+  private boolean shutdownSync(Duration abortTimeout, Duration drainTimeout) {
     if (isShutdown.compareAndSet(false, true)) {
       log.info("TaskExecutor is shutting down in {} seconds (max)", abortTimeout.getSeconds());
       runnableTasks.sealMap();
       runnableTasks.forEach((uuid, runnable) -> runnable.abort(abortTimeout));
-      CompletableFuture.runAsync(
-          () -> {
-            try {
-              runnableTasks.waitForEmpty(Duration.ofHours(1));
-            } catch (InterruptedException e) {
-              log.warn("Wait for task completion interrupted", e);
-            } finally {
-              // Also shutdown all the other registered platform threads.
-              shutdownHookHandler.onApplicationShutdown();
-            }
-          });
-      return true;
+      try {
+        runnableTasks.forEach((k, v) -> v.cancelWaiterIfAborted());
+        // Wait for all the RunnableTask to be done.
+        // A task in runnableTasks map is removed when it is cancelled due to executor shutdown or
+        // when it is completed.
+        return runnableTasks.waitForEmpty(drainTimeout);
+      } catch (InterruptedException e) {
+        log.error("Wait for task completion interrupted", e);
+      } finally {
+        log.info(
+            "TaskExecutor shutdown completed with number of running tasks: {}",
+            runnableTasks.size());
+      }
     }
     return false;
-  }
-
-  // Shuts down the task executor and waits for all the running tasks to complete within the given
-  // timeout.
-  private boolean shutdownSync(Duration abortTimeout, Duration drainTimeout) {
-    shutdownAsync(abortTimeout);
-    try {
-      runnableTasks.forEach((k, v) -> v.cancelWaiterIfAborted());
-      // Wait for all the RunnableTask to be done.
-      // A task in runnableTasks map is removed when it is cancelled due to executor shutdown or
-      // when it is completed.
-      return runnableTasks.waitForEmpty(drainTimeout);
-    } catch (InterruptedException e) {
-      log.error("Wait for task completion interrupted", e);
-    }
-    log.debug("TaskExecutor shutdown in time");
-    return false;
-  }
-
-  /**
-   * Returns the shutdown status of the TaskExecutor.
-   *
-   * @return ShutdownStatus instance.
-   */
-  public ShutdownStatus getShutdownStatus() {
-    return ShutdownStatus.builder()
-        .isShutdownInitiated(isShutdown.get())
-        .isShutdownComplete(shutdownHookHandler.isShutdownComplete() && runnableTasks.isEmpty())
-        .numRunningTasks(runnableTasks.size())
-        .build();
   }
 
   private void checkTaskExecutorState() {

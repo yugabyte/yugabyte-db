@@ -1,6 +1,0 @@
-description: Task executor shutdown status
-content:
-  application/json:
-    schema:
-      $ref: "../schemas/TaskExecutorShutdownStatus.yaml"
-x-yba-api-visibility: internal

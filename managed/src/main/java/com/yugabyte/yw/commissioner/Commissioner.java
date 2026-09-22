@@ -303,23 +303,6 @@ public class Commissioner {
   }
 
   /**
-   * Initiates platform shutdown: seals the task executor, aborts in-flight tasks after the given
-   * timeout, then runs application shutdown hooks once tasks have drained. Does not wait for
-   * completion. YBA is no longer usable after this call, until it is restarted.
-   *
-   * @param abortTimeout how long running tasks may continue before abort is forced
-   * @return true if shutdown was initiated by this call
-   */
-  public boolean initiateShutdown(Duration abortTimeout) {
-    return taskExecutor.shutdownAsync(abortTimeout);
-  }
-
-  /** Returns whether the task executor is shutting down and how many tasks remain. */
-  public TaskExecutor.ShutdownStatus getShutdownStatus() {
-    return taskExecutor.getShutdownStatus();
-  }
-
-  /**
    * Resumes a paused task. This is useful for fault injection to pause a task at a predefined
    * position (e.g 0) and get the list of subtasks to set the abort position during resume.
    *

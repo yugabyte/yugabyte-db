@@ -278,6 +278,11 @@ public class Util {
     YBA_SHUTDOWN_STARTED = false;
   }
 
+  @VisibleForTesting
+  public static void setYbaShutdownStarted(boolean started) {
+    YBA_SHUTDOWN_STARTED = started;
+  }
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */

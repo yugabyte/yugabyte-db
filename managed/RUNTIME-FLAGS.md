@@ -225,6 +225,7 @@
 | "Skip PA Collector memory validation" | "yb.pa.skip_memory_validation" | "GLOBAL" | "Skip memory availability validation when enabling Performance Advisor Collection" | "Boolean" |
 | "Enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Enable new universe experience for all users" | "Boolean" |
 | "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
+| "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
