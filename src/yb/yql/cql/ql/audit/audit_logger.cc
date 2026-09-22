@@ -438,41 +438,70 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
   FATAL_INVALID_ENUM_VALUE(TreeNodeOpcode, tnode.opcode());
 }
 
+// Replace every `password = '...'` string literal in a CQL command with a <REDACTED> placeholder.
+//
+// This is deliberately independent of the statement type. Redaction used to be reachable only
+// through ObfuscateOperation below, which needs a parse tree to check the opcode -- so a statement
+// that failed before or without one (a syntax error, a failed PREPARE, a rejected CREATE/ALTER
+// ROLE) was audited with its password in cleartext. Anything that audits a raw statement string
+// has to come through here instead.
+std::string RedactPasswordLiterals(const std::string& operation) {
+  static const auto replacement = "<REDACTED>";
+  // Using somewhat tricky code to account for escaped quotes ('') in a password.
+  // We replace an entire string, including quotes.
+  static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'", std::regex_constants::icase);
+
+  // Redact *every* occurrence, not just the first one. A single statement can carry more than one
+  // password clause -- a repeated PASSWORD, say -- and while Analyze rejects that, the rejected
+  // statement is still audited via LogStatementError. Stopping after the first match would log the
+  // remaining values in cleartext.
+  std::string result;
+  size_t pos = 0;  // Start of the part of `operation` not yet copied into `result`.
+  bool redacted = false;
+  std::smatch m;
+  while (pos < operation.length() &&
+         regex_search(operation.cbegin() + pos, operation.cend(), m, pwd_start_regex)) {
+    // Index of the opening quote of this string literal.
+    const size_t quote_start_idx =
+        pos + static_cast<size_t>(m.position()) + static_cast<size_t>(m.length()) - 1;
+    size_t quote_end_idx = std::string::npos;
+    for (auto i = quote_start_idx + 1; i < operation.length(); ++i) {
+      if (operation[i] == '\'') {
+        // If the next character is a quote too - this is an escaped quote.
+        if (i < operation.length() - 1 && operation[i + 1] == '\'') {
+          ++i; // Skip both quotes.
+        } else {
+          quote_end_idx = i;
+          break;
+        }
+      }
+    }
+    result.append(operation, pos, quote_start_idx - pos);
+    result.append(replacement);
+    redacted = true;
+    if (quote_end_idx == std::string::npos) {
+      // Unterminated literal (malformed or truncated statement): everything from the opening quote
+      // onwards is password material, so stop here instead of appending it verbatim.
+      return result;
+    }
+    pos = quote_end_idx + 1;
+  }
+  if (!redacted) {
+    return operation;
+  }
+  result.append(operation, pos, std::string::npos);
+  return result;
+}
+
 // Replace sensitive information in a CQL command string with <REDACTED> placeholders.
-// We only do this for CREATE/ALTER ROLE.
+// We only do this for CREATE/ALTER ROLE, where a password clause is expected; failure paths that
+// have no parse tree to check redact unconditionally via RedactPasswordLiterals instead.
 std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operation) {
   if (tnode.opcode() != TreeNodeOpcode::kPTCreateRole &&
       tnode.opcode() != TreeNodeOpcode::kPTAlterRole) {
     return operation;
   }
-
-  static const auto replacement = "<REDACTED>";
-  // Using somewhat tricky code to account for escaped quotes ('') in a password.
-  // We replace an entire string, including quotes.
-  static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'", std::regex_constants::icase);
-  std::smatch m;
-  if (!regex_search(operation, m, pwd_start_regex)) {
-    return operation;
-  }
-  size_t pwd_start_idx = m.position() + m.length() - 1;
-  ssize_t pwd_length = -1;
-  for (auto i = pwd_start_idx + 1; i < operation.length(); ++i) {
-    if (operation[i] == '\'') {
-      // If the next character is a quote too - this is an escaped quote.
-      if (i < operation.length() - 1 && operation[i + 1] == '\'') {
-        ++i; // Skip both quotes.
-      } else {
-        pwd_length = i - pwd_start_idx + 1;
-        break;
-      }
-    }
-  }
-  if (pwd_length == -1) {
-    return operation;
-  }
-  std::string copy(operation);
-  copy.replace(pwd_start_idx, pwd_length, replacement);
-  return copy;
+  return RedactPasswordLiterals(operation);
 }
 
 // Follows Cassandra's view format for prettified binary log.
@@ -781,10 +810,14 @@ Status AuditLogger::LogStatementError(const std::string& statement,
   }
 
   // For failed requests, we do not log keyspace and scope even if we have them.
+  // Redact here rather than relying on the caller: this overload is also the one used when there
+  // is no parse tree to identify the statement type (syntax errors, failed PREPARE), so without
+  // this a rejected CREATE/ALTER ROLE would be audited with its password in cleartext. Callers
+  // that already obfuscated via ObfuscateOperation are unaffected -- no literal is left to match.
   auto entry = VERIFY_RESULT(CreateLogEntry(type,
                                             "" /* keyspace */,
                                             "" /* scope */,
-                                            statement,
+                                            RedactPasswordLiterals(statement),
                                             std::move(error_message)));
 
   if (!ShouldBeLogged(entry)) {
