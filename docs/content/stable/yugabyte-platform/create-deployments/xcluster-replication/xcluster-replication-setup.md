@@ -307,13 +307,13 @@ You can opt to ignore errors and force delete the replication, but this is not r
 
 Use the same version of YugabyteDB on both the source and target.
 
-When [upgrading universes](../../upgrade-software-install/) in xCluster Replication, you should upgrade and finalize the target universe before upgrading and finalizing the source universe.
+When [upgrading universes](../../../manage-deployments/upgrade-software-install/) in xCluster Replication, you should upgrade and finalize the target universe before upgrading and finalizing the source universe.
 
 If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
 
 If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
-Refer to [Upgrades with xCluster and xCluster DR](../../upgrade-software-install/#upgrades-with-xcluster-and-xcluster-dr).
+Refer to [Upgrades with xCluster and xCluster DR](../../../manage-deployments/upgrade-software-install/#upgrades-with-xcluster-and-xcluster-dr).
 
 ### Rotating CA certificates
 
