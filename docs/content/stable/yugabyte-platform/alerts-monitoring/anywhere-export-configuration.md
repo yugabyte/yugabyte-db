@@ -35,13 +35,13 @@ Currently, you can export data to the following tools:
 
 | Integration | Log export | Metric export |
 | :---------- | :--------- | :------------ |
-| [Datadog](https://docs.datadoghq.com/) | Database audit logs | Yes |
-| [Splunk](https://www.splunk.com/en_us/solutions/opentelemetry.html) | Database audit logs | |
-| [AWS CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html) | Database audit logs | |
-| [Google Cloud Logging](https://cloud.google.com/logging/) | Database audit logs | |
+| [Datadog](https://docs.datadoghq.com/) | Yes | Yes |
+| [Splunk](https://www.splunk.com/en_us/solutions/opentelemetry.html) | Yes | |
+| [AWS CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html) | Yes | |
+| [Google Cloud Logging](https://cloud.google.com/logging/) | Yes | |
 | [Dynatrace](#dynatrace) | | Yes |
-| [Loki](#loki) | Database audit logs | |
-| [OTLP](#otlp) | Database audit logs | Yes |
+| [Loki](#loki) | Yes | |
+| [OTLP](#otlp) | Yes | Yes |
 
 ## Best practices
 
@@ -160,7 +160,7 @@ To create an export configuration, do the following:
 
 ### Loki
 
-[Grafana Loki](https://grafana.com/docs/loki/latest/) is a log aggregation system designed to store and query logs. YugabyteDB Anywhere can export database audit logs to a Loki-compatible endpoint (including self-hosted Loki and [Grafana Cloud](https://grafana.com/docs/grafana-cloud/send-data/logs/logs-with-loki/)).
+[Grafana Loki](https://grafana.com/docs/loki/latest/) is a log aggregation system designed to store and query logs. YugabyteDB Anywhere can export logs to a Loki-compatible endpoint (including self-hosted Loki and [Grafana Cloud](https://grafana.com/docs/grafana-cloud/send-data/logs/logs-with-loki/)).
 
 #### Prerequisites
 
@@ -193,11 +193,11 @@ After you create a configuration, you cannot edit it. To change settings, create
 
 ### OTLP
 
-YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemetry Protocol) as a generic telemetry provider sink. An OTLP telemetry provider lets a universe stream database audit logs, and database metrics to any OTLP-compatible receiver using the standard OpenTelemetry wire format.
+YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemetry Protocol) as a generic telemetry provider sink. An OTLP telemetry provider lets a universe stream database logs and database metrics to any OTLP-compatible receiver using the standard OpenTelemetry wire format.
 
 The OTLP sink is vendor-agnostic and works with any backend that speaks OTLP, including (but not limited to) [Cribl](https://cribl.io/), [Grafana Cloud](https://grafana.com/docs/grafana-cloud/), [New Relic](https://docs.newrelic.com/docs/opentelemetry/opentelemetry-introduction/), [Prometheus](https://prometheus.io/docs/guides/opentelemetry/) (3.0+), [VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/), and [Sumo Logic](https://help.sumologic.com/docs/send-data/opentelemetry-for-logs/).
 
-You can reuse the same OTLP telemetry provider for [database audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
+You can reuse the same OTLP telemetry provider for [query and audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
 
 #### Prerequisites
 

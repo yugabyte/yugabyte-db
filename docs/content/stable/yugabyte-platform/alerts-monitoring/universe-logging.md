@@ -1,9 +1,9 @@
 ---
 title: Export YSQL logs from YugabyteDB Anywhere universes
-headerTitle: Export audit logs
+headerTitle: Export logs
 linkTitle: Export logs
-description: Export universe audit logs to third-party tools.
-headcontent: Configure pgaudit logging
+description: Export universe query and audit logs to third-party tools.
+headcontent: Export YSQL query and audit logs to third-party tools
 menu:
   stable_yugabyte-platform:
     identifier: universe-logging
@@ -14,9 +14,8 @@ type: docs
 
 Export YSQL database logs to third-party tools for security monitoring, to build operations and health dashboards, troubleshooting, and more. You can export the following types of logs:
 
-- Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.7.0/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
-
-Note that YugabyteDB v2025.1 and later are based on PostgreSQL 15 and use pgaudit v1.7.0; earlier versions are based on PostgreSQL 11 and use pgaudit v1.3.2.
+- [Database query logging](#database-query-logging). This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/15/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.
+- [Database audit logging](#database-audit-logging). Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.7.0/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
 
 ## Prerequisites
 
@@ -28,7 +27,7 @@ Note that YugabyteDB v2025.1 and later are based on PostgreSQL 15 and use pgaudi
 
 ## Limitations
 
-Only YSQL database audit logs can be exported, not YCQL.
+Only YSQL query and audit logs can be exported, not YCQL.
 
 ## Best practices
 
@@ -36,7 +35,69 @@ Only YSQL database audit logs can be exported, not YCQL.
 - Configuring logging blocks other universe operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - To limit performance impact and control costs, log and export only what you need. The default settings are based on best practices from open source PostgreSQL, the broader community, and YugabyteDB testing to ensure the impact is bounded and insignificant.
 
-## Database audit log
+## Database query logging
+
+{{<tags/ui/new>}}To enable database query logging for a universe, navigate to the universe and do the following:
+
+1. Click **Settings > Logs** and under **Troubleshooting Logs** click **Enable Query Logging**.
+
+1. Configure the log settings. See [Query logging settings](#query-logging-settings).
+
+1. Click **Enable Database Query Logging** when you are done.
+
+YugabyteDB Anywhere begins the rolling restart.
+
+To send query logs to a third-party tool, click **Settings > Telemetry Export**, click **Export Database Query Log**, and select the [export configuration](../anywhere-export-configuration/) for the tool you want to export to. If query logging is not yet enabled, Telemetry Export shows **Enable Database Query Log** instead, and takes you to the Logs tab.
+
+### Query logging settings
+
+Database query logging provides access to the following subset of the standard [PostgreSQL logging settings](https://www.postgresql.org/docs/15/runtime-config-logging.html).
+
+##### Log SQL statements (log_statement)
+
+Turn this option on to log SQL statements by type. You can choose the following options:
+
+- `ddl` - log data definition statements CREATE, ALTER, and DROP.
+- `mod` - in addition to `ddl` statements, log data-modifying statements INSERT, UPDATE, DELETE, TRUNCATE, and COPY FROM.
+- `all` - log all statements.
+
+Statements that fail before the execute phase, or that have syntax errors, are not included; to log error statements, use [Log statements with severity](#log-statements-with-severity-log-min-error-statement).
+
+Note that if this option is off, statements may still be logged, depending on the other logging settings.
+
+##### Log statements with severity (log_min_error_statement)
+
+Controls which SQL statements that cause an error condition are logged. The current SQL statement is included in the log entry for any message of the specified severity or higher. This setting is not configurable in YugabyteDB Anywhere; it is set to ERROR, which means statements causing errors, log messages, fatal errors, or panics are logged.
+
+##### Log errors with verbosity (log_error_verbosity)
+
+Set the amount of detail for each log statement. Valid values are TERSE, DEFAULT, and VERBOSE, each adding more fields to displayed messages. TERSE excludes the logging of DETAIL, HINT, QUERY, and CONTEXT error information. VERBOSE output includes the SQLSTATE error code and the source code file name, function name, and line number that generated the error.
+
+##### Log the duration of all completed statements (log_duration)
+
+Log the duration of all completed statements. Statement text is not included. Use this option with the following option to log all durations, and the statement text for statements exceeding a specified duration. Use this option for performance analysis.
+
+##### Log all statements with duration (log_min_duration_statement)
+
+Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries. If a statement has been logged for [Log SQL statements](#log-sql-statements-log-statement), the text is not repeated in the duration log message.
+
+Setting this option to 0 logs all statements, with their duration, which is not recommended unless you have low traffic. You should set this to a reasonable value for your application (for example, 1000 milliseconds).
+
+##### Log the execution plan (debug_print_plan)
+
+Log the debug-level execution plan used by the parser. Used for debugging. Not recommended for production.
+
+##### Log connections (log_connections)
+
+Log all connection attempts, along with successfully completed client authentication and authorization.
+
+##### Log session terminations (log_disconnections)
+
+Log session termination and duration of the session.
+
+## Database audit logging
+
+Note that YugabyteDB v2025.1 and later are based on PostgreSQL 15 and use pgaudit v1.7.0; earlier versions are based on PostgreSQL 11 and use pgaudit v1.3.2.
 
 {{< tabpane text=true >}}
 
@@ -48,11 +109,11 @@ Only YSQL database audit logs can be exported, not YCQL.
 
 1. Configure the log settings. See [YSQL audit log settings](#ysql-audit-log-settings).
 
-1. Click **Enable** when you are done.
+1. Click **Enable Database Audit Logging** when you are done.
 
-1. Click **Settings > Telemetry Export**, and click **Export Audit Logs**.
+YugabyteDB Anywhere begins the rolling restart.
 
-1. Select the [export configuration](../anywhere-export-configuration/) for the tool you want to export to.
+To send audit logs to a third-party tool, click **Settings > Telemetry Export**, click **Export Database Audit Log**, and select the [export configuration](../anywhere-export-configuration/) for the tool you want to export to.
 
 {{% /tab %}}
 
@@ -68,11 +129,11 @@ Only YSQL database audit logs can be exported, not YCQL.
 
 1. Click **Enable** when you are done.
 
+YugabyteDB Anywhere begins the rolling restart.
+
 {{% /tab %}}
 
 {{< /tabpane >}}
-
-YugabyteDB Anywhere begins the rolling restart.
 
 ### YSQL audit log settings
 
