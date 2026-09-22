@@ -140,6 +140,12 @@
 \set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r4, r5, n LIMIT 5;'
 \i :run_query
 
+-- IN, sort, IN
+-- r3 follows the last sort column r2, so its IN fans out no streams and r3 is
+-- not a stream key.
+\set query ':P :Q SELECT r2, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4) ORDER BY r2, n LIMIT 5;'
+\i :run_query
+
 -- IN, sort, IN/sort, sort...
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query

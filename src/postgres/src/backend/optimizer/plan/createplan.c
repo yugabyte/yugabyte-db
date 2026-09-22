@@ -4861,8 +4861,8 @@ create_indexscan_plan(PlannerInfo *root,
 									   &yb_sort_info->nullsFirst);
 
 		/*
-		 * Prune the stream key columns now that the plan's last merge sort
-		 * column is known (sortColIdx holds index tlist resnos).
+		 * Prune the stream key columns here, where the plan's last merge sort
+		 * column is known.  sortColIdx holds index tlist resnos.
 		 */
 		yb_last_sort_indexcol = -1;
 		for (int yb_i = 0; yb_i < yb_sort_info->numCols; yb_i++)

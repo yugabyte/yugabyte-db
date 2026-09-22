@@ -1526,6 +1526,64 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r4, r5, n LIMIT 5;
 (output identical to previous)
+-- IN, sort, IN
+-- r3 follows the last sort column r2, so its IN fans out no streams and r3 is
+-- not a stream key.
+\set query ':P :Q SELECT r2, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4) ORDER BY r2, n LIMIT 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4) ORDER BY r2, n LIMIT 5;
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, n, r1, r3
+   ->  Sort (actual rows=5 loops=1)
+         Output: r2, n, r1, r3
+         Sort Key: r5n.r2, r5n.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=287 loops=1)
+               Output: r2, n, r1, r3
+               Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r3 = ANY ('{3,4}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 287
+(12 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4) ORDER BY r2, n LIMIT 5;
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, n, r1, r3
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r2, n, r1, r3
+         Sort Key: r5n.r2, r5n.n
+         Presorted Key: r5n.r2
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=35 loops=1)
+               Output: r2, n, r1, r3
+               Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r3 = ANY ('{3,4}'::integer[])))
+               Merge Sort Key: r5n.r2
+               Merge Stream Key: r5n.r1
+               Merge Streams: 3
+               Merge Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 6
+               Storage Table Rows Scanned: 287
+(17 rows)
+
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4) ORDER BY r2, n LIMIT 5;
+ r2 |   n   | r1 | r3 
+----+-------+----+----
+  0 |   402 |  2 |  4
+  0 |  1402 |  2 |  4
+  0 |  4401 |  1 |  4
+  0 | 17400 |  0 |  4
+  0 | 18401 |  1 |  4
+(5 rows)
+
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4) ORDER BY r2, n LIMIT 5;
+(output identical to previous)
 -- IN, sort, IN/sort, sort...
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
