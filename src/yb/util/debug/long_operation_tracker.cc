@@ -50,7 +50,7 @@ struct LongOperationTracker::TrackedOperation :
 
 namespace {
 
-typedef scoped_refptr<LongOperationTracker::TrackedOperation> TrackedOperationPtr;
+using TrackedOperationPtr = scoped_refptr<LongOperationTracker::TrackedOperation>;
 
 struct TrackedOperationComparer {
   // Order is reversed, because priority_queue keeps track of the "largest" element.
@@ -72,7 +72,8 @@ constexpr auto kShortDeadlineThreshold = 2 * kMaxWaitTime;
 
 // Upper bound on the number of registrations adopted from the intake queue in one iteration of
 // the checker loop, so that expired operations and stop_ are still checked periodically while
-// producers are registering at a high rate.
+// producers are registering at a high rate. The checker does not sleep while the intake queue
+// still has entries, so a backlog is drained in consecutive iterations without delay.
 constexpr size_t kMaxDrainPerIteration = 1000;
 
 // Singleton that maintains queue of tracked operation and runs thread that checks for expired
@@ -84,6 +85,16 @@ constexpr size_t kMaxDrainPerIteration = 1000;
 // mutex_ and cond_ are used to sleep in and wake up the checker thread: the destructor and
 // registrations with unusually short deadlines record their wakeup condition under the mutex
 // before notifying, so wakeups cannot be lost.
+//
+// Reporting semantics: the "took a long time" warning logged by ~LongOperationTracker is the
+// guaranteed signal for an overdue operation. The stack trace warning logged by the checker
+// thread is best effort: it can only be captured while the operation is still running. The
+// intake queue is FIFO, so an operation is ordered by deadline only after the checker adopts it
+// into its priority queue. An operation whose deadline is shorter than kShortDeadlineThreshold
+// and that completes shortly after that deadline can therefore miss its stack trace if it was
+// registered behind a large backlog that the checker is still draining. This was already
+// possible before the lock-free intake (through wakeup latency and mutex contention), and the
+// window is small because draining is not throttled while the backlog exists.
 class LongOperationTrackerHelper {
  public:
   LongOperationTrackerHelper() {

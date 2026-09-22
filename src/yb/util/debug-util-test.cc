@@ -643,6 +643,89 @@ TEST_F(DebugUtilTest, LongOperationTrackerUnderLoad) {
   }
 }
 
+// A short-deadline operation registered behind a large intake backlog. The intake queue is FIFO,
+// so the checker thread adopts this operation only after it has drained the older long-deadline
+// registrations. The stack trace warning must still be logged while the operation is running,
+// and within a bounded delay after its deadline, i.e. the backlog does not stall detection.
+TEST_F(DebugUtilTest, LongOperationTrackerShortDeadlineBehindBacklog) {
+#ifndef NDEBUG
+  const auto kTimeMultiplier = RegularBuildVsSanitizers(3, 10);
+#else
+  const auto kTimeMultiplier = 1;
+#endif
+
+  // Stays below the checker's short deadline threshold (200ms) in regular builds, so this also
+  // exercises the short deadline wakeup path.
+  const auto kShortDuration = 20ms * kTimeMultiplier;
+  // Generous bound on how long after the deadline the stack trace warning must be observed.
+  // The checker's scan interval is 100ms, the rest is slack for draining the backlog on loaded
+  // test hosts.
+  const auto kDetectionLatencyBound = 500ms * kTimeMultiplier;
+  // Long enough that backlog operations never expire.
+  const auto kBacklogDuration = 60s;
+  constexpr int kNumThreads = 8;
+  // Significantly more than the checker's drain bound of 1000 registrations per iteration.
+  constexpr int kBacklogPerThread = 25000;
+
+  TestLogSink log_sink;
+  google::AddLogSink(&log_sink);
+  auto se = ScopeExit([&log_sink] {
+    google::RemoveLogSink(&log_sink);
+  });
+
+  // Keep the backlog operations alive so that they occupy the intake queue and the checker's
+  // priority queue as live long-deadline operations while the short one is processed.
+  std::vector<std::vector<LongOperationTracker>> backlog(kNumThreads);
+  {
+    // Register the backlog concurrently from several threads, so that registrations outpace the
+    // single checker thread and a real backlog accumulates in the intake queue.
+    TestThreadHolder thread_holder;
+    for (int i = 0; i != kNumThreads; ++i) {
+      thread_holder.AddThreadFunctor([&ops = backlog[i], kBacklogDuration] {
+        ops.reserve(kBacklogPerThread);
+        for (int j = 0; j != kBacklogPerThread; ++j) {
+          ops.emplace_back("BacklogOp", kBacklogDuration);
+        }
+      });
+    }
+    thread_holder.JoinAll();
+  }
+
+  {
+    LongOperationTracker short_op("ShortOp", kShortDuration);
+    const auto deadline = CoarseMonoClock::now() + kShortDuration;
+
+    // Wait for the checker thread to report the running operation.
+    const auto timeout = deadline + 10s * kTimeMultiplier;
+    while (!IsSanitizer() && log_sink.CountMessagesContaining("ShortOp running for") == 0) {
+      ASSERT_LT(CoarseMonoClock::now(), timeout)
+          << "Timed out waiting for the short deadline operation warning";
+      std::this_thread::sleep_for(1ms);
+    }
+    const auto detected_at = CoarseMonoClock::now();
+
+    if (!IsSanitizer()) {
+      ASSERT_LT(detected_at - deadline, kDetectionLatencyBound)
+          << "Stack trace warning delayed by " << MonoDelta(detected_at - deadline)
+          << " after the deadline";
+    }
+    // short_op is destroyed here, after its deadline, producing the destructor warning.
+  }
+
+  backlog.clear();
+
+  if (IsSanitizer()) {
+    ASSERT_EQ(log_sink.MessagesSize(), 0);
+  } else {
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp running for"), 1);
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp took a long time"), 1);
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp"), 2);
+    ASSERT_STR_CONTAINS(log_sink.FirstMessageContaining("ShortOp running for"), "in thread");
+    // Backlog operations completed well before their deadline and must not be reported.
+    ASSERT_EQ(log_sink.CountMessagesContaining("BacklogOp"), 0);
+  }
+}
+
 TEST_F(DebugUtilTest, YB_DISABLE_TEST_ON_MACOS(TestGetStackTraceWhileCreatingThreads)) {
   // This test makes sure we can collect stack traces while threads are being created.
   // We create 10 threads that create threads in a loop. Then we create 100 threads that collect
