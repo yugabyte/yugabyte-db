@@ -78,6 +78,9 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tsan_util.h"
+
+DECLARE_bool(use_libunwind_for_stack_trace_collection);
 
 using yb::DataType;
 using yb::faststring;
@@ -753,6 +756,20 @@ ybthin_status ybthin_client_create(
     const char* const* tserver_addrs, size_t n_addrs, const ybthin_tls_opts* tls,
     const ybthin_pool_opts* pool, uint32_t rpc_timeout_ms, uint32_t num_reactors,
     ybthin_client** out) {
+  // Collect stack traces through libunwind rather than glibc backtrace(), before any thread is
+  // created (Thread::Create warms up the stack trace library on first use).
+  //
+  // glibc's unwinder is unsafe for a .so in a foreign process: our .eh_frame is registered with the
+  // HOST's libgcc, which sorts its FDEs lazily inside a malloc held under object_mutex. A host
+  // allocator that unwinds from inside that malloc deadlocks against itself, and
+  // ybthin_client_create never returns (#33916). libunwind has its own FDE cache.
+  //
+  // The trade: libunwind can SIGSEGV collecting a trace in a BOLT-ed binary, so this gives up BOLT
+  // for this .so. yb_release does not pass --bolt. Sanitizer builds keep the default.
+  if (!yb::IsSanitizer()) {
+    FLAGS_use_libunwind_for_stack_trace_collection = true;
+  }
+
   if (!tserver_addrs || n_addrs == 0 || !out) {
     return MakeStatus(YBTHIN_INVALID, "tserver_addrs and out are required");
   }
