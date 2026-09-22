@@ -372,6 +372,68 @@ int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 	return 0;
 }
 
+/*
+ * YB: Encode the client's leaf certificate for transport in a startup packet.
+ *
+ * Startup packet parameters are NUL terminated strings while the certificate is
+ * DER, so it travels base64 encoded and Postgres decodes it back into an X509
+ * to derive the CN/DN itself. On success returns a NUL terminated string owned
+ * by the caller and stores its size, including the terminator, in arg_len.
+ *
+ * Returning NULL is not fatal. Postgres then sees a connection that presented
+ * no certificate and rejects it if the matching hba rule requires one, so the
+ * failure stays closed while rules that do not involve certificates keep
+ * working.
+ */
+char *yb_encode_client_cert(od_client_t *client, int *arg_len)
+{
+	od_instance_t *instance;
+	od_logger_t *logger;
+
+	*arg_len = 0;
+
+	if (client == NULL || client->yb_client_cert_der == NULL)
+		return NULL;
+
+	instance = client->global->instance;
+	if (!instance->config.yb_cert_auth)
+		return NULL;
+
+	logger = &instance->logger;
+
+	if (client->yb_client_cert_der_len > YB_CLIENT_CERT_DER_MAX) {
+		od_error(logger, "client cert", client, NULL,
+			 "client certificate is %d bytes, above the %d byte limit "
+			 "that fits in a startup packet, not forwarding it",
+			 client->yb_client_cert_der_len,
+			 YB_CLIENT_CERT_DER_MAX);
+		return NULL;
+	}
+
+	int dst_len = pg_b64_enc_len(client->yb_client_cert_der_len) + 1;
+	char *encoded = malloc(dst_len);
+	if (encoded == NULL) {
+		od_error(logger, "client cert", client, NULL,
+			 "failed to allocate %d bytes for the client certificate",
+			 dst_len);
+		return NULL;
+	}
+
+	int encoded_len = pg_b64_encode((char *)client->yb_client_cert_der,
+					client->yb_client_cert_der_len, encoded,
+					dst_len);
+	if (encoded_len < 0) {
+		od_error(logger, "client cert", client, NULL,
+			 "failed to encode the client certificate");
+		free(encoded);
+		return NULL;
+	}
+	encoded[encoded_len] = '\0';
+
+	*arg_len = encoded_len + 1;
+	return encoded;
+}
+
 void od_backend_error(od_server_t *server, char *context, char *data,
 		      uint32_t size)
 {
@@ -641,9 +703,11 @@ static inline int od_backend_startup(od_server_t *server,
 
 	od_client_t *external_client = client->yb_external_client;
 	int argc = 0;
-	const int max_default_args = 18;
+	const int max_default_args = 20;
 	int num_startup_args =
 		external_client ? external_client->yb_startup_settings.size : 0;
+	char *yb_client_cert = NULL;
+	int yb_client_cert_len = 0;
 
 	kiwi_fe_arg_t *argv = malloc(sizeof(kiwi_fe_arg_t) *
 				     (max_default_args + 2 * num_startup_args));
@@ -689,6 +753,20 @@ static inline int od_backend_startup(od_server_t *server,
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF(YB_YCM_LOGICAL_CONN_TYPE));
 		yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
+
+		/*
+		 * Forward the certificate of the client that connected to the
+		 * connection manager, so that Postgres can read its CN/DN.
+		 */
+		yb_client_cert = yb_encode_client_cert(external_client,
+						       &yb_client_cert_len);
+		if (yb_client_cert != NULL) {
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_CERT));
+			yb_kiwi_set_fe_arg(&argv[argc++], yb_client_cert,
+					   yb_client_cert_len);
+		}
 	}
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
@@ -712,6 +790,8 @@ static inline int od_backend_startup(od_server_t *server,
 
 	machine_msg_t *msg = kiwi_fe_write_startup_message(NULL, argc, argv);
 	free(argv);
+	if (yb_client_cert != NULL)
+		free(yb_client_cert);
 	if (msg == NULL)
 		return -1;
 	int rc;

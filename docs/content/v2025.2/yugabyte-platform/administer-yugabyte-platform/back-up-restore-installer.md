@@ -12,22 +12,26 @@ menu:
 type: docs
 ---
 
-Your YugabyteDB Anywhere installation includes provider configurations, KMS configurations, certificates, users, roles, and other components required for managing YugabyteDB universes.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
+  <li>
     <a href="../back-up-restore-yba/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>
-      YugabyteDB Anywhere
+      Automated
     </a>
   </li>
+  <li>
+    <a href="../back-up-restore-installer/" class="nav-link active">
+      Manual
+    </a>
+  </li>
+</ul>
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../back-up-restore-installer/" class="nav-link active">
       <i class="fa-solid fa-building"></i>
-      YBA Installer</a>
+      YBA Installer
+    </a>
   </li>
-
   <li>
     <a href="../back-up-restore-k8s/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
@@ -35,6 +39,8 @@ Your YugabyteDB Anywhere installation includes provider configurations, KMS conf
     </a>
   </li>
 </ul>
+
+YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 If you installed YugabyteDB Anywhere using [YBA installer](../../install-yugabyte-platform/install-software/installer/), use the [yba-ctl](../../install-yugabyte-platform/install-software/installer/#download-yba-installer) CLI to back up and restore your YugabyteDB Anywhere installation. The CLI executes the `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 

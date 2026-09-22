@@ -95,11 +95,7 @@ pub fn heap_getattr<T: FromDatum, AllocatedBy: WhoAllocated>(
     };
     let typoid = tupdesc.get(attno.get() - 1).expect("no attribute").type_oid();
 
-    if is_null {
-        None
-    } else {
-        unsafe { T::from_polymorphic_datum(datum, false, typoid.value()) }
-    }
+    if is_null { None } else { unsafe { T::from_polymorphic_datum(datum, false, typoid.value()) } }
 }
 
 /// Extract an attribute of a heap tuple and return it as a Datum.
@@ -126,11 +122,7 @@ pub unsafe fn heap_getattr_raw(
 ) -> Option<pg_sys::Datum> {
     let mut is_null = false;
     let datum = pg_sys::heap_getattr(tuple, attno.get() as _, tupdesc, &mut is_null);
-    if is_null {
-        None
-    } else {
-        Some(datum)
-    }
+    if is_null { None } else { Some(datum) }
 }
 
 #[derive(Debug, Clone)]

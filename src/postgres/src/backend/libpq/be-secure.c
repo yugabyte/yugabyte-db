@@ -117,7 +117,8 @@ secure_open_server(Port *port)
 	int			r = 0;
 
 #ifdef USE_SSL
-	r = be_tls_open_server(port);
+	/* YB: Not a Connection Manager backend; run the TLS handshake here */
+	r = be_tls_open_server(port, NULL);
 
 	ereport(DEBUG2,
 			(errmsg_internal("SSL connection from DN:\"%s\" CN:\"%s\"",

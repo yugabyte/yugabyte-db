@@ -413,6 +413,22 @@ network_errors:
         "node_network_receive_errs_irate": "RX"
         "node_network_transmit_errs_irate": "TX"
 
+network_tcp_retransmits:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_netstat_Tcp_RetransSegs_irate"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "TCP Retransmits / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_netstat_Tcp_RetransSegs_irate": "Retransmits"
+
 system_load_over_time:
   metric: ""
   filters:

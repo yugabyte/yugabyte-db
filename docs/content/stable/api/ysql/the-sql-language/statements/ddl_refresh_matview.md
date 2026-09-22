@@ -70,8 +70,8 @@ yugabyte=# SELECT * FROM m1;
 - Materialized views must be refreshed manually using the `REFRESH` command. Automatic refreshes are not supported.
 - It is currently not possible to refresh materialized views inside an explicit transaction. (See <https://github.com/yugabyte/yugabyte-db/issues/1404>)
 
-
 ## See also
 
 - [CREATE MATERIALIZED VIEW](../ddl_create_matview)
 - [DROP MATERIALIZED VIEW](../ddl_drop_matview)
+- [Faster writes to new tables](../../../../../explore/transactions/new-table-writes/)

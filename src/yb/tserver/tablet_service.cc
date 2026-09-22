@@ -928,22 +928,21 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
   const auto& index_map = *index_map_result;
+  // For YSQL, take the index info from the request payload and do not consult the tablet's index
+  // map at all.  Correctness of the online index build is enforced on the postgres side through
+  // pg_index, and the permission state the map carries is about to stop reaching YSQL tablets
+  // altogether (#33037).  For YCQL, the tablet's index map is the source of the index info, it
+  // must be at exactly the DO_BACKFILL permission, and the permission checks below still apply.
   std::vector<qlexpr::IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
+    index_ids.push_back(idx.table_id());
+    if (is_pg_table) {
+      indexes_to_backfill.emplace_back(idx);
+      continue;
+    }
     auto result = index_map->FindIndex(idx.table_id());
-    if (result) {
-      const auto* index_info = *result;
-      indexes_to_backfill.push_back(*index_info);
-      index_ids.push_back(index_info->table_id());
-
-      IndexInfoPB idx_info_pb;
-      index_info->ToPB(&idx_info_pb);
-      all_at_backfill &=
-          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
-      all_past_backfill &=
-          idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
-    } else {
+    if (!result) {
       const auto& index_table_id = idx.table_id();
       LOG(INFO) << "index " << index_table_id << " not found in tablet metadata";
       *resp->add_failed_index_ids() = index_table_id;
@@ -955,31 +954,35 @@ void TabletServiceAdminImpl::BackfillIndex(
           TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
       return;
     }
+    indexes_to_backfill.push_back(**result);
+    all_at_backfill &= (*result)->index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
+    all_past_backfill &= (*result)->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
   }
 
-  if (!all_at_backfill) {
+  if (!is_pg_table) {
     if (all_past_backfill) {
-      // Change this to see if for all indexes: IndexPermission > DO_BACKFILL.
+      // This is possible if this tablet completed the backfill, but the master failed over before
+      // other tablets could complete.  The new master is redoing the backfill, so it is safe to
+      // ignore this request.
       LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
                    << " after all indexes have moved past DO_BACKFILL. IndexMap is "
                    << AsString(index_map);
-      // This is possible if this tablet completed the backfill. But the master failed over before
-      // other tablets could complete.
-      // The new master is redoing the backfill. We are safe to ignore this request.
       context.RespondSuccess();
       return;
     }
 
-    DCHECK_NE(our_schema_version, their_schema_version);
-    SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS_SUBSTITUTE(
-            InvalidArgument,
-            "Tablet has a different schema $0 vs $1. "
-            "Requested index is not ready to backfill. IndexMap: $2",
-            our_schema_version, their_schema_version, AsString(index_map)),
-        TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-    return;
+    if (!all_at_backfill) {
+      DCHECK_NE(our_schema_version, their_schema_version);
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_SUBSTITUTE(
+              InvalidArgument,
+              "Tablet has a different schema $0 vs $1. "
+              "Requested index is not ready to backfill. IndexMap: $2",
+              our_schema_version, their_schema_version, AsString(index_map)),
+          TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+      return;
+    }
   }
 
   Status backfill_status;

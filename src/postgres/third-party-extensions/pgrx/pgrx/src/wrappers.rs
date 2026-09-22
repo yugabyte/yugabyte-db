@@ -8,7 +8,7 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Provides safe wrapper functions around some of Postgres' useful functions.
-use crate::{direct_function_call, pg_sys, IntoDatum};
+use crate::{IntoDatum, direct_function_call, pg_sys};
 
 /// A helper function for Postgres' `regtypein` function to lookup a type by a specific name
 ///

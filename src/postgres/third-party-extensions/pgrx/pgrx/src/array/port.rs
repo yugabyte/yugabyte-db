@@ -102,13 +102,7 @@ pub(super) unsafe fn ARR_DATA_OFFSET(a: *mut pg_sys::ArrayType) -> usize {
     // (ARR_HASNULL(a) ? (a)->dataoffset : ARR_OVERHEAD_NONULLS(ARR_NDIM(a)))
 
     // SAFETY:  caller has asserted that `a` is a properly allocated ArrayType pointer
-    unsafe {
-        if ARR_HASNULL(a) {
-            (*a).dataoffset as _
-        } else {
-            ARR_OVERHEAD_NONULLS(ARR_NDIM(a))
-        }
-    }
+    unsafe { if ARR_HASNULL(a) { (*a).dataoffset as _ } else { ARR_OVERHEAD_NONULLS(ARR_NDIM(a)) } }
 }
 
 /// Returns a pointer to the actual array data.

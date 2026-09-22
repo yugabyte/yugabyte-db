@@ -22,11 +22,11 @@
 //! future...
 
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 static ACTIVE_THREAD: AtomicUsize = AtomicUsize::new(0);
 #[track_caller]
-pub(crate) fn check_active_thread() {
+pub fn check_active_thread() {
     let current_thread = nonzero_thread_id();
     // Relaxed is sufficient as we're only interested in the effects on a single
     // atomic variable, and don't need synchronization beyond that.
@@ -37,6 +37,24 @@ pub(crate) fn check_active_thread() {
                 thread_id_check_failed();
             }
         }
+    }
+}
+
+#[doc(hidden)]
+pub mod active_thread {
+
+    /// Clear the concept of the "active thread", allowing whatever the current thread is to claim
+    /// that it is the "active thread".
+    ///
+    /// This function exists to help facilitate the `#[pg_guard(unsafe_entry_thread)]` annotation
+    /// on Rust functions that Postgres can call.
+    ///
+    /// Apparently there's at least one Postgres extension, written in C++, that uses threads and
+    /// claims its thread usage is correct and that a thread it creates/manages can safely call
+    /// into Postgres via FFI.  That extension, pg_duckdb, will remain unnamed.
+    #[doc(hidden)]
+    pub fn clear() {
+        super::ACTIVE_THREAD.store(0, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -83,25 +101,21 @@ pub(super) fn is_os_main_thread() -> Option<bool> {
 
 #[track_caller]
 fn init_active_thread(tid: NonZeroUsize) {
-    // Check if we're the actual honest-to-god main thread (if we know). Or at
-    // least make sure we detect cases where we're definitely *not* the OS main
-    // thread.
-    //
-    // This avoids a case where Rust and Postgres disagree about the main
-    // thread. Such cases are almost certainly going to fail the thread check
-    // *eventually*.
-    if is_os_main_thread() == Some(false) {
-        panic!("Attempt to initialize `pgrx` active thread from a thread other than the main");
-    }
+    // Check if we're the thread that was previously set to be the ACTIVE_THREAD.
     match ACTIVE_THREAD.compare_exchange(0, tid.get(), Ordering::Relaxed, Ordering::Relaxed) {
         #[cfg(all(target_family = "unix", not(target_os = "emscripten")))]
         Ok(_) => unsafe {
+            static ATFORK_REGISTERED: AtomicBool = AtomicBool::new(false);
+
             // We won the race. Register an atfork handler to clear the atomic
             // in any child processes we spawn.
-            extern "C" fn clear_in_child() {
-                ACTIVE_THREAD.store(0, Ordering::Relaxed);
+            if !ATFORK_REGISTERED.swap(true, Ordering::Relaxed) {
+                extern "C" fn clear_in_child() {
+                    ACTIVE_THREAD.store(0, Ordering::Relaxed);
+                    ATFORK_REGISTERED.store(false, Ordering::Relaxed);
+                }
+                libc::pthread_atfork(None, None, Some(clear_in_child));
             }
-            libc::pthread_atfork(None, None, Some(clear_in_child));
         },
         #[allow(unreachable_patterns)]
         Ok(_) => (),
@@ -144,8 +158,7 @@ fn nonzero_thread_id() -> NonZeroUsize {
         static BYTE: u8 = const { 0 };
     }
     BYTE.with(|p: &u8| {
-        // Note: Avoid triggering the `unstable_name_collisions` lint.
-        let addr = sptr::Strict::addr(p as *const u8);
+        let addr = (p as *const u8).addr();
         // SAFETY: `&u8` is always nonnull, so its address is always nonzero.
         unsafe { NonZeroUsize::new_unchecked(addr) }
     })

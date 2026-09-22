@@ -52,6 +52,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -95,12 +96,15 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
                        "Enables fastpath writes for relations created in the current transaction "
                        "(skip intents DB when safe).");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
-                               "Allows yb_enable_new_relation_fastpath_write to be applicable "
-                               "inside explicit transaction blocks too. DDL inside a transaction "
-                               "block can only use the fastpath if the DDL runs in the enclosing "
-                               "transaction, so this flag only takes effect if "
-                               "ysql_yb_ddl_transaction_block_enabled is true.");
+// Defaults to kEnableDdlTransactionBlocks because the flag requires
+// ysql_yb_ddl_transaction_block_enabled, which is off by default in debug builds.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks,
+                       kEnableDdlTransactionBlocks,
+                       "Allows yb_enable_new_relation_fastpath_write to be applicable "
+                       "inside explicit transaction blocks too. DDL inside a transaction "
+                       "block can only use the fastpath if the DDL runs in the enclosing "
+                       "transaction, so this flag only takes effect if "
+                       "ysql_yb_ddl_transaction_block_enabled is true.");
 DEFINE_validator(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 

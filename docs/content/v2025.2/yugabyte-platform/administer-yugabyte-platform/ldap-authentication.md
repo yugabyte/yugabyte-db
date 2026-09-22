@@ -247,6 +247,7 @@ To map groups to roles, on the **Groups** tab, do the following:
 
 1. Click **Save**.
 
+
 ### Define the YugabyteDB Anywhere role
 
 In addition to group mapping, you can also define a YugabyteDB Anywhere-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation on the LDAP server. The value set for this annotation is read when signing in to YugabyteDB Anywhere. Note that if the value is modified on the LDAP server, the change is propagated to YugabyteDB Anywhere and automatically updated when signing in. Password updates are also automatically handled.

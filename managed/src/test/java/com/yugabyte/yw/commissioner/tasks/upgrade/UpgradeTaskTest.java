@@ -29,8 +29,10 @@ import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
@@ -78,6 +80,7 @@ import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import org.yb.master.MasterClusterOuterClass.RollbackAutoFlagsResponsePB;
 import org.yb.util.PeerInfo;
+import play.libs.Json;
 
 @Slf4j
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
@@ -279,7 +282,25 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
     // Create dummy shell response
     ShellResponse dummyShellResponse = new ShellResponse();
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              if (invocation.getArgument(0) == NodeManager.NodeCommandType.List
+                  && invocation.getArgument(1) instanceof NodeTaskParams) {
+                NodeTaskParams params = invocation.getArgument(1);
+                ObjectNode respJson = Json.newObject();
+                if (params.getUniverseUUID() != null) {
+                  respJson.put("universe_uuid", params.getUniverseUUID().toString());
+                }
+                // Azure provisioning recovers disk LUNs from the host-info output.
+                if (addAzureLunIndexes(respJson, params)) {
+                  ShellResponse listResponse = new ShellResponse();
+                  listResponse.message = respJson.toString();
+                  return listResponse;
+                }
+              }
+              return dummyShellResponse;
+            });
 
     defaultUser = ModelFactory.testUser(defaultCustomer);
 

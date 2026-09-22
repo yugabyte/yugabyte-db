@@ -127,6 +127,7 @@ message XClusterConsumerStreamTabletStatusPB {
   required bytes producer_tablet_id = 1;
   required int64 consumer_term = 2;
   required ReplicationErrorPb error = 3;
+  optional string error_detail = 4;
 }
 
 message XClusterConsumerTableStatusPB {

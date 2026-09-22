@@ -1,6 +1,6 @@
 ---
-title: Resource Governor for Multitenancy CPU isolation
-headerTitle: Resource Governor for multitenancy
+title: Resource Governance for Multitenancy CPU isolation
+headerTitle: Resource Governance for multitenancy
 linkTitle: Multitenancy
 description: Isolate CPU usage across databases (tenants) on a YugabyteDB node.
 headcontent: Prevent one database from starving others of CPU
@@ -15,7 +15,7 @@ cascade:
     feature: early-access
 ---
 
-The Resource Governor for multitenancy CPU isolation treats each YSQL database in a universe as a tenant, enforcing per-database CPU limits on each node. This provides predictable performance isolation across tenants, preventing noisy-neighbor problems and acting as insurance against rare incidents such as bugs and runaway workloads.
+Resource Governance isolates CPU across YSQL databases on a shared cluster, treating each database in a universe as a tenant and enforcing per-database CPU limits on each node. This provides predictable performance isolation across tenants, preventing noisy-neighbor problems and acting as insurance against rare incidents such as bugs and runaway workloads.
 
 The feature is built on [Linux control groups (cgroups)](https://man7.org/linux/man-pages/man7/cgroups.7.html). When enabled, the YB-TServer creates and manages a cgroup hierarchy, assigns threads and thread pools that do work for a specific database to per-database cgroups, and lets the Linux scheduler enforce the configured CPU limits.
 
@@ -27,13 +27,13 @@ Because enforcement happens at the OS level, no database can bypass the scheduli
 | CPU contention | Active databases receive equal CPU weighting so no single database can monopolize the cluster. |
 | Optional CPU cap | A configurable maximum CPU percentage limits every database to the same ceiling, even when idle CPU exists. |
 
-For example, consider four applications sharing a 64 vCPU cluster. During normal operation, a single application may temporarily use most of the cluster if the others are idle. When all four become active simultaneously, the resource governor redistributes CPU fairly across the active databases. If you configure a 25% CPU cap, no database can consume more than approximately 16 vCPUs regardless of available spare capacity.
+For example, consider four applications sharing a 64 vCPU cluster. During normal operation, a single application may temporarily use most of the cluster if the others are idle. When all four become active simultaneously, Resource Governance redistributes CPU fairly across the active databases. If you configure a 25% CPU cap, no database can consume more than approximately 16 vCPUs regardless of available spare capacity.
 
 ## How it works
 
 Each tenant corresponds to one database, and each user database corresponds to a tenant. (The standard template databases are not tenants.)
 
-The resource governor provides three related controls.
+Resource Governance provides three related controls.
 
 ### Per-database maximum CPU
 
@@ -71,7 +71,7 @@ Keep the following in mind when planning a multitenant deployment:
 {{<index/block>}}
 
   {{<index/item
-    title="Set up Resource Governor"
+    title="Set up Resource Governance"
     body="Prepare cgroups and enable per-database CPU isolation."
     href="set-up/"
     icon="fa-thin fa-sliders">}}

@@ -7,9 +7,9 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::{pg_sys, FromDatum, IntoDatum};
+use crate::{FromDatum, IntoDatum, pg_sys};
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 
 /// The [`anyelement` polymorphic pseudo-type][anyelement].
@@ -54,7 +54,9 @@ impl FromDatum for AnyElement {
     /// and pass a type ID.
     #[inline]
     unsafe fn from_datum(_datum: pg_sys::Datum, _is_null: bool) -> Option<AnyElement> {
-        panic!("Can't create a polymorphic type using from_datum, call FromDatum::from_polymorphic_datum instead")
+        panic!(
+            "Can't create a polymorphic type using from_datum, call FromDatum::from_polymorphic_datum instead"
+        )
     }
 
     #[inline]
@@ -63,11 +65,7 @@ impl FromDatum for AnyElement {
         is_null: bool,
         typoid: pg_sys::Oid,
     ) -> Option<AnyElement> {
-        if is_null {
-            None
-        } else {
-            Some(AnyElement { datum, typoid })
-        }
+        if is_null { None } else { Some(AnyElement { datum, typoid }) }
     }
 }
 
@@ -83,10 +81,11 @@ impl IntoDatum for AnyElement {
 }
 
 unsafe impl SqlTranslatable for AnyElement {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("anyelement"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("anyelement")))
-    }
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(AnyElement);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> =
+        Ok(SqlMappingRef::literal("anyelement"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("anyelement")));
 }

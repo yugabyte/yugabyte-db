@@ -160,7 +160,7 @@ $ ./bin/yb-admin \
     aws.us-west.us-west-2a
 ```
 
-Looking again at the cluster configuration, you should see `affinitized_leaders` added:
+Looking again at the cluster configuration, you should see `multi_affinitized_leaders` added:
 
 ```json
 replication_info {
@@ -190,7 +190,9 @@ replication_info {
       }
       min_num_replicas: 1
     }
-    affinitized_leaders {
+  }
+  multi_affinitized_leaders {
+    zones {
       placement_cloud: "aws"
       placement_region: "us-west"
       placement_zone: "us-west-2a"

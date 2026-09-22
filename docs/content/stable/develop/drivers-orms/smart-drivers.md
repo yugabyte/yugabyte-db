@@ -154,7 +154,7 @@ For a database deployment that spans multiple regions, evenly distributing reque
 
 - For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your universe is located. Topology balancing allows you to target only regions where the applications are hosted.
 
-- The universe has [preferred locations](../../../admin/yb-admin/#set-preferred-zones) assigned, where all the [tablet leaders](../../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
+- The universe has a [preferred region](../../../architecture/key-concepts/#preferred-region) ([leader affinity](../../../architecture/key-concepts/#leader-affinity)) assigned, so [tablet leaders](../../../architecture/key-concepts/#tablet-leader) sit in those zones. For best performance, set `topology_keys` to those same locations, in the same rank order, so connections land on the nodes that host the leaders.
 
 You can also specify fallback locations, and the order in which they should be attempted. When no nodes are available in the primary location, the driver tries to connect to nodes in the fallback locations in the order specified. This way you can, for example, target the next geographically nearest location in case the first location is unavailable.
 
@@ -178,10 +178,10 @@ Use an asterisk (*) to specify all zones in a region. (You can't do this for reg
 
 #### Fallback topology keys
 
-To specify fallback locations if a location is unavailable, add `:n` to the topology key, where `n` is an integer indicating priority. The following example using the _Go_ driver sets `zone1` as the topology key, and zones 2 and 3 as fallbacks (in that order) if `zone1` can't be reached:
+To specify fallback locations if a location is unavailable, add `:n` to the topology key, where `n` is an integer indicating priority. Match this order to the universe's preferred-region ranking. For example, if us-east is preferred rank 1 and us-central is rank 2:
 
 ```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1:1,cloud1.region1.zone2:2,cloud1.region1.zone3:3"
+"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=aws.us-east-1.*:1,aws.us-central-1.*:2"
 ```
 
 Not specifying a priority is the equivalent of setting priority to 1.

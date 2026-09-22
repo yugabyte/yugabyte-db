@@ -1,9 +1,11 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 use super::*;
+use crate::array::Element;
+use crate::callconv::DatumPass;
 use crate::layout::PassBy;
 use core::{ffi, mem, ptr};
 
-/// Types which can be "borrowed from" [`&Datum<'_>`] via simple cast, deref, or slicing
+/// Types which can be "borrowed from" [`&Datum<'_>`](crate::datum::Datum) via simple cast, deref, or slicing
 ///
 /// # Safety
 /// Despite its pleasant-sounding name, this implements a fairly low-level detail.
@@ -87,15 +89,27 @@ where
 macro_rules! impl_borrow_fixed_len {
     ($($value_ty:ty),*) => {
         $(
-            unsafe impl BorrowDatum for $value_ty {
+            unsafe impl DatumPass for $value_ty {
                 const PASS: PassBy = if mem::size_of::<Self>() <= mem::size_of::<Datum>() {
                     PassBy::Value
                 } else {
                     PassBy::Ref
                 };
-
+            }
+            unsafe impl Element for $value_ty {
                 unsafe fn point_from(ptr: ptr::NonNull<u8>) -> ptr::NonNull<Self> {
-                    ptr.cast()
+                    #[cfg(target_endian = "big")]
+                    unsafe {
+                        if mem::size_of::<Self>() <= mem::size_of::<Datum>() {
+                            ptr.add(mem::size_of::<Datum>() - mem::size_of::<Self>()).cast()
+                        } else {
+                            ptr.cast()
+                        }
+                    }
+                    #[cfg(target_endian = "little")]
+                    {
+                        ptr.cast()
+                    }
                 }
             }
         )*
@@ -105,13 +119,14 @@ macro_rules! impl_borrow_fixed_len {
 impl_borrow_fixed_len! {
     i8, i16, i32, i64, bool, f32, f64,
     pg_sys::Oid, pg_sys::Point,
-    Date, Time, Timestamp, TimestampWithTimeZone
+    Date, Time, TimeWithTimeZone, Timestamp, TimestampWithTimeZone
 }
 
 /// It is rare to pass CStr via Datums, but not unheard of
-unsafe impl BorrowDatum for ffi::CStr {
+unsafe impl DatumPass for ffi::CStr {
     const PASS: PassBy = PassBy::Ref;
-
+}
+unsafe impl Element for ffi::CStr {
     unsafe fn point_from(ptr: ptr::NonNull<u8>) -> ptr::NonNull<Self> {
         let char_ptr: *mut ffi::c_char = ptr.as_ptr().cast();
         unsafe {

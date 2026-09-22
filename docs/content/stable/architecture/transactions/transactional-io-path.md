@@ -53,6 +53,8 @@ Provisional records are written to tablets containing the rows that need to be m
 
 As the provisional records are written, it is possible to encounter conflicts with other transactions. In this case, the transaction would have to be aborted and restarted. These restarts still happen transparently to the client up to a certain number of retries.
 
+When a transaction creates or rebuilds a table and then writes into it, YugabyteDB can skip this step. See [Skip intents optimization](../skip-intents/).
+
 ### Commit the transaction
 
 When the transaction manager has written all the provisional records, it commits the transaction by sending an RPC request to the transaction status tablet. The commit operation can only succeed if the transaction has not yet been aborted due to conflicts. The atomicity and durability of the commit operation is guaranteed by the transaction status tablet's Raft group. Once the commit operation is complete, all provisional records immediately become visible to clients.

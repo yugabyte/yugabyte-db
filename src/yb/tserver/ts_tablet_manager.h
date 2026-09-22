@@ -388,11 +388,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
   //
-  // 'target_tier', when non-empty, restricts data-directory candidates to disks tagged with
-  // that tier (see FsManager::GetDataRootDirsForTier), so the tablet's home dir lands on the
-  // requested tier (e.g. from a tablespace's storage_tier). WAL directory selection is always
-  // tier-agnostic, since WAL dirs are not part of tier_paths. If no disks are configured for
-  // the requested tier on this node, falls back to the default (all-disk) policy.
+  // 'target_tier' (e.g. from a tablespace's storage_tier) restricts data-directory candidates
+  // to disks tagged with that tier (see FsManager::GetDataRootDirsForTier), so the tablet's
+  // home dir lands on the requested tier. When empty, this defaults to kDefaultStorageTier
+  // ("ssd") rather than spreading across every configured disk regardless of tier -- see
+  // storage_tier.h. WAL directory selection is always tier-agnostic, since WAL dirs are not
+  // part of tier_paths. By default, WAL lives on the fastest tier with disks ("ssd").
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const TabletId& tablet_id,

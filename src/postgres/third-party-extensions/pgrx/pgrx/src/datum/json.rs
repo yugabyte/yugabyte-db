@@ -8,11 +8,11 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use crate::{
-    direct_function_call, direct_function_call_as_datum, pg_sys, vardata_any, varsize_any_exhdr,
-    void_mut_ptr, FromDatum, IntoDatum,
+    FromDatum, IntoDatum, direct_function_call, direct_function_call_as_datum, pg_sys, vardata_any,
+    varsize_any_exhdr, void_mut_ptr,
 };
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 use serde::{Serialize, Serializer};
 use serde_json::Value;
@@ -188,19 +188,19 @@ impl Serialize for JsonString {
 }
 
 unsafe impl SqlTranslatable for Json {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("json"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("json")))
-    }
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(Json);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = Ok(SqlMappingRef::literal("json"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("json")));
 }
 
-unsafe impl SqlTranslatable for crate::datum::JsonB {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("jsonb"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("jsonb")))
-    }
+unsafe impl SqlTranslatable for JsonB {
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(JsonB);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = Ok(SqlMappingRef::literal("jsonb"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("jsonb")));
 }

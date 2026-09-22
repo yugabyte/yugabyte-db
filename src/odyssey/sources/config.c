@@ -60,6 +60,7 @@ void od_config_init(od_config_t *config)
 
 	/* YB */
 	config->yb_use_auth_backend = true;
+	config->yb_cert_auth = true;
 	config->yb_optimized_extended_query_protocol = true;
 	config->yb_enable_multi_route_pool = true;
 	// Same default as the value of ysql_max_connections.
@@ -379,6 +380,9 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 
 	od_log(logger, "config", NULL, NULL, "yb_use_auth_backend     %s",
 	       od_config_yes_no(config->yb_use_auth_backend));
+
+	od_log(logger, "config", NULL, NULL, "yb_cert_auth            %s",
+	       od_config_yes_no(config->yb_cert_auth));
 
 	od_log(logger, "config", NULL, NULL, "yb_optimized_extended_query_protocol %s",
 			od_config_yes_no(config->yb_optimized_extended_query_protocol));

@@ -15,7 +15,7 @@ import {
   fetchCustomerTasksSuccess,
   showTaskInDrawer
 } from '../../../actions/tasks';
-import { Task, TaskState, TaskType } from './dtos';
+import { TargetType, Task, TaskState, TaskType } from './dtos';
 import { AuditLogProps, DiffApiResp } from './components/diffComp/dtos';
 import {
   SoftwareUpgradeState,
@@ -228,6 +228,46 @@ export const getIsDbUpgradeRollbackTask = (task: Task): boolean =>
 
 export const getIsDbUpgradeFinalizeTask = (task: Task): boolean =>
   task.type === TaskType.FINALIZE_UPGRADE;
+
+/**
+ * Targets whose `targetUUID` is a universe UUID. `Cluster` covers read replica and add-on cluster
+ * operations, which the backend still records against `universe.getUniverseUUID()`.
+ *
+ * Also the targets an edit universe task (`EditUniverse` / `EditKubernetesUniverse`) is recorded
+ * against: `Universe` for a primary cluster edit, `Cluster` for a read replica edit.
+ */
+const UNIVERSE_TASK_TARGETS: TargetType[] = [TargetType.UNIVERSE, TargetType.CLUSTER];
+
+/**
+ * Universe this task ran against, or `undefined` when the task targets something else — a backup,
+ * provider, or schedule, whose `targetUUID` is that resource's UUID and not a universe.
+ *
+ * Use this instead of reading `task.targetUUID` directly whenever the UUID is about to be treated
+ * as a universe (universe queries, RBAC `onResource`).
+ */
+export const getTaskUniverseUuid = (task: Task): string | undefined =>
+  UNIVERSE_TASK_TARGETS.includes(task.target) ? task.targetUUID : undefined;
+
+/**
+ * Non-precheck edit universe, on VM or Kubernetes.
+ *
+ * Known overlap: `UniverseCRUDHandler.migrateUniverse` records its customer task as `Update` +
+ * `Universe`, even though the commissioner task type is `MigrateUniverse`, so a failed migrate
+ * also matches this check. Nothing on the customer task payload separates the two today —
+ * `typeName` is the `Update` friendly name for both, `title` is `Updated Universe : <name>` for
+ * both, and `CustomerTaskFormData.taskInfo` (which would carry the commissioner task type) is
+ * never populated by `CustomerTaskHandler.buildCustomerTaskFromData`. Since `MigrateUniverse` is
+ * annotated neither `@Retryable` nor `@CanRollback`, a failed migrate gets the edit universe
+ * banner copy but no retry or rollback action.
+ *
+ * The fix belongs on the backend: record the migrate customer task as
+ * `CustomerTask.TaskType.MigrateUniverse`, which already exists as an enum value and is already
+ * the mapping declared by the `TaskType` registry. This check becomes exact once that lands.
+ */
+export const getIsEditUniverseTask = (task: Task): boolean =>
+  task.type === TaskType.EDIT &&
+  UNIVERSE_TASK_TARGETS.includes(task.target) &&
+  !getIsPreCheckTask(task);
 
 /** Non-precheck software upgrade, rollback, or finalize — matches DB upgrade cluster banners (excludes precheck-only). */
 export const getIsSoftwareUpgradeLockingTask = (task: Task): boolean =>

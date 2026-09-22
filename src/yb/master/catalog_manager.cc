@@ -3094,7 +3094,7 @@ PitrCount CatalogManager::pitr_count() const {
   return sys_catalog_->pitr_count();
 }
 
-Status CatalogManager::ShouldSplitValidCandidate(
+Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
     return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
@@ -3107,7 +3107,7 @@ Status CatalogManager::ShouldSplitValidCandidate(
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($0) < low phase size threshold ($1).",
+    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
         tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
   }
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
@@ -3159,7 +3159,7 @@ Status CatalogManager::ShouldSplitValidCandidate(
           FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
           FLAGS_tablet_split_low_phase_size_threshold_bytes);
     }
-    return Status::OK();
+    return SplitPhase::kLow;
   }
   if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
     if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
@@ -3171,14 +3171,14 @@ Status CatalogManager::ShouldSplitValidCandidate(
           FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
           FLAGS_tablet_split_high_phase_size_threshold_bytes);
     }
-    return Status::OK();
+    return SplitPhase::kHigh;
   }
   if (size <= FLAGS_tablet_force_split_threshold_bytes) {
     return STATUS_FORMAT(IllegalState,
         "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
         tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
   }
-  return Status::OK();
+  return SplitPhase::kFinal;
 }
 
 namespace {
@@ -3460,13 +3460,13 @@ Status CatalogManager::DoSplitTablet(
       // the cluster may have changed, putting us in a new split threshold phase, and it may no
       // longer be a valid candidate. This is not an unexpected error, but we should bail out of
       // splitting this tablet regardless.
-      Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
-      if (!status.ok()) {
+      auto status_and_phase = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
+      if (!status_and_phase.ok()) {
         return STATUS_FORMAT(
             InvalidArgument,
             "Tablet split candidate $0 is no longer a valid split candidate: $1",
             source_tablet_info->tablet_id(),
-            status);
+            status_and_phase.status());
       }
     }
     // After this point, we expect to split the tablet.

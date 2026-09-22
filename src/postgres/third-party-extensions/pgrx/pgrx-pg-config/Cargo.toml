@@ -7,18 +7,18 @@
 #LICENSE All rights reserved.
 #LICENSE
 #LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
- 
+
 [package]
 name = "pgrx-pg-config"
-version = "0.14.1"
-authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
-license = "MIT"
+version = "0.18.1"
+authors.workspace = true
+license.workspace = true
 description = "A Postgres pg_config wrapper for 'pgrx'"
-homepage = "https://github.com/pgcentralfoundation/pgrx/"
-repository = "https://github.com/pgcentralfoundation/pgrx/"
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/pgrx-pg-config"
 readme = "README.md"
-edition = "2021"
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -32,5 +32,9 @@ thiserror.workspace = true
 toml.workspace = true
 url.workspace = true
 
-home = "0.5.11"
 pathsearch = "0.2.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+codepage = "0.1.2"
+encoding_rs = "0.8.35"
+winapi = { version = "0.3.9", features = ["winnls"] }

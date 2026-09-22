@@ -134,19 +134,6 @@ class FsManager {
   static const char *kRocksDBDirName;
   static const char *kDataDirName;
 
-  // Storage-tier labels are a fixed, predefined set (see ValidStorageTiers()).
-  // Data roots in --fs_data_dirs that carry no explicit ":tier" suffix fall back
-  // to this default tier, so existing/unlabeled deployments keep working.
-  static const char *kDefaultStorageTier;  // = "ssd"
-
-  // The set of valid storage-tier labels, in a stable order. Any label outside
-  // this set is rejected at FsManager::Init(). kDefaultStorageTier is always a
-  // member.
-  static const std::vector<std::string>& ValidStorageTiers();
-
-  // Whether `tier` is one of ValidStorageTiers().
-  static bool IsValidStorageTier(const std::string& tier);
-
   // Only for unit tests.
   FsManager(Env* env, const std::string& root_path, const std::string& server_type);
 

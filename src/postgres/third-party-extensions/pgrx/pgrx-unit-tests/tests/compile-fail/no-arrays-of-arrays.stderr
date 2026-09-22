@@ -1,0 +1,19 @@
+error[E0277]: the trait bound `FlatArray<'_, i32>: pgrx::array::Element` is not satisfied
+ --> tests/compile-fail/no-arrays-of-arrays.rs:7:39
+  |
+7 | fn something<'a>(_mcx: &MemCx<'a>) -> PBox<'a, FlatArray<'a, FlatArray<'a, i32>>> {
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `pgrx::array::Element` is not implemented for `FlatArray<'_, i32>`
+  |
+  = help: the following other types implement trait `pgrx::array::Element`:
+            CStr
+            Date
+            Oid
+            Point
+            Time
+            TimeWithTimeZone
+            Timestamp
+            TimestampWithTimeZone
+          and $N others
+  = note: required for `FlatArray<'_, FlatArray<'_, i32>>` to implement `SqlTranslatable`
+  = note: 1 redundant requirement hidden
+  = note: required for `PBox<'_, FlatArray<'_, FlatArray<'_, i32>>>` to implement `SqlTranslatable`
