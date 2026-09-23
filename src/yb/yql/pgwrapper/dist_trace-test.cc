@@ -77,20 +77,17 @@ static const auto kSharedMemoryPerformSpanName =
 static const auto kSharedMemoryObjectLockSpanName =
     tserver::GetSharedMemSpanName(tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK);
 
-// Sets otel_collector_traces_endpoint for the object's lifetime, keeping g_dist_trace_enabled
+// Sets otel_collector_traces_endpoint for the object's lifetime, keeping DistTrace::IsEnabled()
 // in sync (google::FlagSaver restores the flag without rerunning its callback).
 class TEST_ScopedSetOtelCollectorEndpoint {
  public:
   explicit TEST_ScopedSetOtelCollectorEndpoint(const std::string& endpoint)
       : saved_endpoint_(FLAGS_otel_collector_traces_endpoint) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = endpoint;
-    ANNOTATE_UNPROTECTED_WRITE(dist_trace::internal::g_dist_trace_enabled) = !endpoint.empty();
+    dist_trace::DistTrace::TEST_SetOtelCollectorEndpoint(endpoint);
   }
 
   ~TEST_ScopedSetOtelCollectorEndpoint() {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = saved_endpoint_;
-    ANNOTATE_UNPROTECTED_WRITE(dist_trace::internal::g_dist_trace_enabled) =
-        !saved_endpoint_.empty();
+    dist_trace::DistTrace::TEST_SetOtelCollectorEndpoint(saved_endpoint_);
   }
 
  private:
@@ -2286,9 +2283,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-log-test");
+  dist_trace::DistTrace::Init("ysql" /* service_name */, "dist-trace-otel-log-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::ShutdownDistTrace();
+    dist_trace::DistTrace::Shutdown();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -2314,9 +2311,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelDefaultsToInfo) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-default-log-level-test");
+  dist_trace::DistTrace::Init("ysql" /* service_name */, "dist-trace-otel-default-log-level-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::ShutdownDistTrace();
+    dist_trace::DistTrace::Shutdown();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -2343,9 +2340,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-error-log-level-test");
+  dist_trace::DistTrace::Init("ysql" /* service_name */, "dist-trace-otel-error-log-level-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::ShutdownDistTrace();
+    dist_trace::DistTrace::Shutdown();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -2374,9 +2371,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-none-log-level-test");
+  dist_trace::DistTrace::Init("ysql" /* service_name */, "dist-trace-otel-none-log-level-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::ShutdownDistTrace();
+    dist_trace::DistTrace::Shutdown();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -2486,12 +2483,12 @@ TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
       kOtelBatchMaxExportBatchSize;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_max_queue_size) = kOtelBatchMaxQueueSize;
 
-  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-rpc-error-test");
+  dist_trace::DistTrace::Init("ysql" /* service_name */, "dist-trace-rpc-error-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::ShutdownDistTrace();
+    dist_trace::DistTrace::Shutdown();
   });
 
-  auto root_span = dist_trace::GetDistTracer()->StartSpan("rpc-error-test");
+  auto root_span = dist_trace::DistTrace::GetTracer()->StartSpan("rpc-error-test");
   {
     opentelemetry::trace::Scope scope(root_span);
     auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("DistTraceRpcErrorTest").Build());

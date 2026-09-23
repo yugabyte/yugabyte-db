@@ -259,7 +259,7 @@ void Peer::DumpToHtml(std::ostream& out) const {
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // TODO(#16670): give consensus its own root trace.
-  auto detach_token = dist_trace::DetachTraceContext();
+  auto detach_token = dist_trace::DistTrace::DetachTraceContext();
   auto retain_self = shared_from_this();
   DCHECK(performing_update_mutex_.is_locked()) << "Cannot send request";
 

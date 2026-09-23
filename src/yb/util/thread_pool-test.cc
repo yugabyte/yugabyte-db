@@ -653,7 +653,7 @@ class ContextObservingTask : public ThreadPoolTask {
   const std::optional<dist_trace::trace::SpanContext>& observed() const { return observed_; }
 
  private:
-  void Run() override { observed_ = dist_trace::GetActiveSpanContext(); }
+  void Run() override { observed_ = dist_trace::DistTrace::GetActiveSpanContext(); }
 
   void Done(const Status&) override { latch_->CountDown(); }
 
@@ -669,7 +669,7 @@ class ContextObservingStrandTask : public StrandTask {
   const std::optional<dist_trace::trace::SpanContext>& observed() const { return observed_; }
 
  private:
-  void Run() override { observed_ = dist_trace::GetActiveSpanContext(); }
+  void Run() override { observed_ = dist_trace::DistTrace::GetActiveSpanContext(); }
 
   void Done(const Status&) override { latch_->CountDown(); }
 
@@ -689,7 +689,7 @@ TEST_F(ThreadPoolTraceTest, TraceContextCarriedToWorker) {
   ContextObservingTask task(&latch);
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     ASSERT_TRUE(pool.Enqueue(&task));
     ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
   }
@@ -727,7 +727,7 @@ TEST_F(ThreadPoolTraceTest, TraceContextCarriedToStrand) {
   ContextObservingStrandTask task(&latch);
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     ASSERT_TRUE(strand.Enqueue(&task));
     ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
   }
@@ -749,7 +749,7 @@ class BlockingContextObservingStrandTask : public StrandTask {
 
  private:
   void Run() override {
-    observed_ = dist_trace::GetActiveSpanContext();
+    observed_ = dist_trace::DistTrace::GetActiveSpanContext();
     started_->CountDown();
     CHECK(resume_->WaitFor(30s * kTimeMultiplier));
   }
@@ -780,14 +780,14 @@ TEST_F(ThreadPoolTraceTest, StrandDoesNotLeakContextToUntracedTask) {
 
   {
     dist_trace::ScopedAdoptSpan scope(first_context);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     ASSERT_TRUE(strand.Enqueue(&first_task));
   }
 
   // Queue the second task with no context active while the first is still running, so that both are
   // drained by the same Strand::Task::Done invocation.
   ASSERT_TRUE(started.WaitFor(10s * kTimeMultiplier));
-  ASSERT_FALSE(dist_trace::HasActiveContext());
+  ASSERT_FALSE(dist_trace::DistTrace::HasActiveContext());
   ASSERT_TRUE(strand.Enqueue(&second_task));
   resume.CountDown();
 

@@ -430,13 +430,13 @@ struct PgClientData : public FetchBigDataCallback {
 
   void StartSharedMemorySpan() {
     if constexpr (HasTracingAttributes<LWReqPB>::value) {
-      if (dist_trace::HasActiveContext()) {
+      if (dist_trace::DistTrace::HasActiveContext()) {
         for (auto& p : req.TracingAttributes()) {
-          dist_trace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));
+          dist_trace::DistTrace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));
         }
       }
     }
-    otel_span = dist_trace::StartClientSpan(
+    otel_span = dist_trace::DistTrace::StartClientSpan(
         tserver::GetSharedMemSpanName(kSharedExchangeRequestType));
     if (otel_span) {
       // Mirror the attributes the RPC outbound span carries (outbound_call.cc).
@@ -1108,7 +1108,7 @@ class PgClient::Impl : public BigDataFetcher {
       // Sized before the span exists, so a too-large request falls back to RPC without having
       // consumed the pending span attributes.
       const size_t kTraceContextSize =
-          rpc::TraceContextSerializer::SerializedSizeFor(dist_trace::HasActiveContext());
+          rpc::TraceContextSerializer::SerializedSizeFor(dist_trace::DistTrace::HasActiveContext());
       auto& exchange = session_shared_mem_->exchange();
       // Sanity check: the exchange must not be reused while a big shared memory response from a
       // previous request has been announced but not yet loaded and released. Otherwise the tserver

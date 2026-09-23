@@ -61,16 +61,18 @@ void DeclareMethod(YBPrinter printer, const std::string& type_prefix) {
 // Drains the request's trace-tagged fields onto the pending-attr buffer, which the outbound call's
 // span consumes when it is created. No-op unless there is an active context to consume them.
 const std::string kTraceAttrs =
-    "  if (::yb::dist_trace::HasActiveContext()) {\n"
+    "  if (::yb::dist_trace::DistTrace::HasActiveContext()) {\n"
     "    for (auto& p : req.TracingAttributes()) {\n"
-    "      ::yb::dist_trace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));\n"
+    "      ::yb::dist_trace::DistTrace::AddPendingRpcStringAttr(\n"
+    "          std::move(p.first), std::move(p.second));\n"
     "    }\n"
     "  }\n";
 
 const std::string kPbTraceAttrs =
-    "  if (::yb::dist_trace::HasActiveContext()) {\n"
+    "  if (::yb::dist_trace::DistTrace::HasActiveContext()) {\n"
     "    for (auto& p : TracingAttributes(req)) {\n"
-    "      ::yb::dist_trace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));\n"
+    "      ::yb::dist_trace::DistTrace::AddPendingRpcStringAttr(\n"
+    "          std::move(p.first), std::move(p.second));\n"
     "    }\n"
     "  }\n";
 

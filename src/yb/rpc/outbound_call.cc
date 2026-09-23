@@ -277,8 +277,9 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  if (dist_trace::HasActiveContext()) {
-    otel_span_ = dist_trace::StartClientSpan(Format("rpc $0", remote_method_.ToString()));
+  if (dist_trace::DistTrace::HasActiveContext()) {
+    otel_span_ = dist_trace::DistTrace::StartClientSpan(
+        Format("rpc $0", remote_method_.ToString()));
     if (otel_span_) {
       otel_span_->SetAttribute("rpc.system", "yb_rpc");
       otel_span_->SetAttribute("rpc.call_id", call_id_);
