@@ -1195,6 +1195,24 @@ TEST_F(TestQLRole, TestQLHashedPassword) {
       "CREATE ROLE bad_role WITH HASHED PASSWORD = '$0';", "$2a$32$" + hash.substr(7)),
       "Invalid bcrypt hash");
 
+  // The 16-byte salt and 23-byte checksum do not fill a whole radix-64 group, so crypt_blowfish
+  // always clears the padding bits in the last character of each. A hash that sets them is
+  // well-formed base64 but bcrypt_checkpw can never reproduce it -- another "role exists but can
+  // never authenticate" case -- so reject it at DDL time. Index 28 is the last salt char (low 4
+  // bits are padding), index 59 the last checksum char (low 2 bits); 'A' (radix-64 value 2) sets
+  // those bits in both.
+  {
+    string bad_salt_pad = hash;
+    bad_salt_pad[28] = 'A';
+    EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+        "CREATE ROLE bad_role WITH HASHED PASSWORD = '$0';", bad_salt_pad), "Invalid bcrypt hash");
+    string bad_checksum_pad = hash;
+    bad_checksum_pad[59] = 'A';
+    EXEC_INVALID_STMT_WITH_ERROR(Substitute(
+        "CREATE ROLE bad_role WITH HASHED PASSWORD = '$0';", bad_checksum_pad),
+        "Invalid bcrypt hash");
+  }
+
   // The $2b$/$2x$/$2y$ variants are accepted as well, and crypt_blowfish has to be able to verify
   // them: the four variants differ only in how they treat 8-bit and very long passwords, so for an
   // ASCII password the checksum is the same and the original plaintext still authenticates.

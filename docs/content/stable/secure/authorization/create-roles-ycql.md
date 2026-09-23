@@ -56,7 +56,7 @@ Roles that have `LOGIN` permissions are users. For example, create a user `john`
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
-To migrate a role's credentials from another cluster without exposing the plaintext, set the bcrypt hash directly with `HASHED PASSWORD` (compatible with Apache Cassandra 4.1). The hash is the value stored in the `salted_hash` column of `system_auth.roles`, and it also works with `ALTER ROLE`:
+To migrate a role's credentials from another cluster without exposing the plaintext, set the bcrypt hash directly with `HASHED PASSWORD` (compatible with Apache Cassandra 4.1). The hash is the first 60 characters of the `salted_hash` column of `system_auth.roles` (the column is padded to 64 bytes, so supply only the 60-character bcrypt string). It also works with `ALTER ROLE`:
 
 ```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH HASHED PASSWORD = '$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW' AND LOGIN = true;

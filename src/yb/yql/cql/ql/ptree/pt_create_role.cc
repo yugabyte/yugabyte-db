@@ -38,11 +38,18 @@ using yb::util::kBcryptHashSize;
 namespace {
 
 // bcrypt's radix-64 alphabet (OpenBSD variant): '.', '/', 'A'-'Z', 'a'-'z', '0'-'9'.
+// Returns the 6-bit value of a bcrypt base64 character, or -1 if `c` is not in the alphabet.
+int BcryptBase64Value(char c) {
+  if (c == '.') return 0;
+  if (c == '/') return 1;
+  if (c >= 'A' && c <= 'Z') return c - 'A' + 2;
+  if (c >= 'a' && c <= 'z') return c - 'a' + 28;
+  if (c >= '0' && c <= '9') return c - '0' + 54;
+  return -1;
+}
+
 bool IsBcryptBase64(char c) {
-  return c == '.' || c == '/' ||
-         (c >= 'A' && c <= 'Z') ||
-         (c >= 'a' && c <= 'z') ||
-         (c >= '0' && c <= '9');
+  return BcryptBase64Value(c) >= 0;
 }
 
 }  // namespace
@@ -76,6 +83,18 @@ bool PTRolePassword::IsValidBcryptHash(const char* hash) {
     if (!IsBcryptBase64(hash[i])) {
       return false;
     }
+  }
+  // Layout after the "$2a$<cost>$" prefix (7 chars): 22-char salt, then 31-char checksum. The
+  // 16-byte salt and 23-byte digest don't fill a whole radix-64 group, so the last character of
+  // each carries padding bits that crypt_blowfish always writes as zero. bcrypt_checkpw recomputes
+  // the hash and compares it byte-for-byte, so a value whose padding bits are non-zero -- a
+  // hand-edited or corrupted hash -- can never verify. That is the same "role exists but can never
+  // authenticate" failure the cost range check above guards against, so reject it at DDL time too.
+  constexpr size_t kSaltLastIdx = 7 + 22 - 1;            // 28: low 4 bits are padding.
+  constexpr size_t kChecksumLastIdx = 7 + 22 + 31 - 1;   // 59: low 2 bits are padding.
+  if ((BcryptBase64Value(hash[kSaltLastIdx]) & 0x0F) != 0 ||
+      (BcryptBase64Value(hash[kChecksumLastIdx]) & 0x03) != 0) {
+    return false;
   }
   return true;
 }

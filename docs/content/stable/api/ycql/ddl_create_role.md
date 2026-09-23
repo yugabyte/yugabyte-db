@@ -46,7 +46,7 @@ role_property ::=  PASSWORD = <Text Literal>
 Where
 
 - `role_name` is a text identifier.
-- `<Text Literal>` for `HASHED PASSWORD` is a bcrypt hash (as produced for the `salted_hash` column of `system_auth.roles`), not a plaintext password.
+- `<Text Literal>` for `HASHED PASSWORD` is a bcrypt hash, not a plaintext password. Use the first 60 characters of the `salted_hash` column of `system_auth.roles`, which is padded to 64 bytes.
 
 ## Semantics
 
@@ -82,7 +82,7 @@ ycqlsh:example> CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = true AND PA
 
 ### Create a role from an existing password hash
 
-Supply a bcrypt hash directly with `HASHED PASSWORD` to migrate a role's credentials from another cluster without knowing the plaintext. The hash is the value stored in the `salted_hash` column of `system_auth.roles`.
+Supply a bcrypt hash directly with `HASHED PASSWORD` to migrate a role's credentials from another cluster without knowing the plaintext. The hash is the first 60 characters of the `salted_hash` column of `system_auth.roles` (the column is padded to 64 bytes, so supply only the 60-character bcrypt string).
 
 ```sql
 ycqlsh:example> CREATE ROLE role4 WITH LOGIN = true AND HASHED PASSWORD = '$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW'
