@@ -349,7 +349,7 @@ For details, see [Operator High Availability](../../administer-yugabyte-platform
 Use the YBProvider CRD (available in v2025.2.2 or later) to define a Kubernetes provider that universes can reference via `spec.providerName`. The provider specifies cloud type, image registry, and per-region/per-zone settings such as storage class and namespace.
 
 ```sh
-kubectl apply provider-demo.yaml -n yb-platform
+kubectl apply -f provider-demo.yaml -n yb-platform
 ```
 
 ```yaml
@@ -427,7 +427,7 @@ To use a custom kubeconfig for the provider, specify it in either top-level `spe
 Use the YBUniverse CRD to create a universe using the `kubectl apply` command:
 
 ```sh
-kubectl apply universedemo.yaml -n yb-platform
+kubectl apply -f universedemo.yaml -n yb-platform
 ```
 
 ```yaml
@@ -486,7 +486,7 @@ You can specify `placementInfo` in the YBUniverse CRD to control regional and zo
 `placementInfo` also supports multi-region universes that span multiple Kubernetes clusters. Configure per-zone kubeconfigs in your YBProvider via [kubeConfigSecret](#using-a-custom-kubeconfig). Multi-cluster deployments require proper network connectivity between clusters; see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) and [Networking for Kubernetes](../../prepare/networking-kubernetes/).
 
 ```sh
-kubectl apply universedemo-placement.yaml -n yb-platform
+kubectl apply -f universedemo-placement.yaml -n yb-platform
 ```
 
 ```yaml
@@ -540,7 +540,7 @@ spec:
 Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
 
 ```sh
-kubectl apply universe-read-replica.yaml -n yb-platform
+kubectl apply -f universe-read-replica.yaml -n yb-platform
 ```
 
 ```yaml
@@ -585,7 +585,7 @@ spec:
 Use the Release CRD to add a different software release of YugabyteDB:
 
 ```sh
-kubectl apply updaterelease.yaml -n yb-platform
+kubectl apply -f updaterelease.yaml -n yb-platform
 ```
 
 ```yaml
@@ -609,7 +609,7 @@ spec:
 Specify a storage configuration CRD to configure backup storage, and perform backup and restore of your YBA universes as per the following example:
 
 ```sh
-kubectl apply backuprestore.yaml -n yb-platform
+kubectl apply -f backuprestore.yaml -n yb-platform
 ```
 
 ```yaml
@@ -796,7 +796,7 @@ This example describes how to create and delete scheduled backups, and assumes y
 Use the following CRD to create a scheduled backup:
 
 ```sh
-kubectl apply scheduled-backup-demo.yaml -n schedule-cr
+kubectl apply -f scheduled-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -910,7 +910,7 @@ This example describes how to create and delete incremental backups, and assumes
 Use the following CRD to create an incremental backup:
 
 ```sh
-kubectl apply operator-backup-demo.yaml -n schedule-cr
+kubectl apply -f operator-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -963,7 +963,7 @@ Starting from YugabyteDB Anywhere v2026.1, you can also trigger a PITR restore u
 #### Create a PITR configuration
 
 ```sh
-kubectl apply pitr-config.yaml -n test-pitr
+kubectl apply -f pitr-config.yaml -n test-pitr
 ```
 
 ```yaml
@@ -987,7 +987,7 @@ Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a 
 1. Create a universe:
 
     ```sh
-    kubectl apply pitr-universe.yaml -n test-pitr
+    kubectl apply -f pitr-universe.yaml -n test-pitr
     ```
 
     ```yaml
@@ -1029,7 +1029,7 @@ Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a 
 1. Create a PITR configuration:
 
     ```sh
-    kubectl apply pitr-config.yaml -n test-pitr
+    kubectl apply -f pitr-config.yaml -n test-pitr
     ```
 
     ```yaml
@@ -1048,7 +1048,7 @@ Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a 
 1. Trigger a PITR restore:
 
     ```sh
-    kubectl apply pitr-restore.yaml -n test-pitr
+    kubectl apply -f pitr-restore.yaml -n test-pitr
     ```
 
     ```yaml
@@ -1072,7 +1072,7 @@ Before you create a DrConfig CR, ensure that the source and target universes and
 #### Create a DR configuration
 
 ```sh
-kubectl apply dr-config.yaml -n yb-platform
+kubectl apply -f dr-config.yaml -n yb-platform
 ```
 
 ```yaml
@@ -1231,14 +1231,14 @@ Starting from YugabyteDB Anywhere v2026.1.2, use the KMSConfig CRD to create a [
 
 Supported KMS providers are AWS, GCP, Azure (`AZU`), OCI, CipherTrust (`CIPHERTRUST`), and HashiCorp Vault (`HASHICORP`). Put credentials in Kubernetes Secrets and reference those Secrets from the CR; don't put secrets in plaintext. `spec.name` and `spec.provider` are immutable after you create the CR.
 
-Wait until the KMSConfig status is `Ready` before you enable encryption at rest on a universe. If the KMS config isn't usable, the operator doesn't apply the EAR change and the universe can remain in an error or updating state until the config is Ready.
+Wait until the KMSConfig status is `Ready` before you enable encryption at rest on a universe. If the KMS config isn't usable, the operator skips the whole universe edit and not just the EAR change, so other updates in the same apply (for example scale-out, volume changes, or GFlags) are not applied either. The universe stays in `ERROR_UPDATING` status until the config is Ready.
 
 For the full field list, run `kubectl explain kmsconfig.spec` and `kubectl explain ybuniverse.spec.encryptionAtRest`.
 
 #### Create a KMS configuration
 
 ```sh
-kubectl apply kms-config.yaml -n yb-operator
+kubectl apply -f kms-config.yaml -n yb-operator
 ```
 
 ```yaml
@@ -1283,7 +1283,7 @@ You can delete a KMSConfig CR to remove the configuration from YBA. Deletion is 
 
 #### Enable encryption at rest on a universe
 
-`encryptionAtRest.kmsConfig` is the KMSConfig CR name in the same namespace. Omit the `encryptionAtRest` block to leave encryption at rest off.
+`encryptionAtRest.kmsConfig` is the KMSConfig CR name in the same namespace. Omit the `encryptionAtRest` block to leave the universe's current encryption-at-rest state unchanged. Setting `enabled` to false is the only way to disable encryption at rest.
 
 ```yaml
 apiVersion: operator.yugabyte.io/v1alpha1
@@ -1308,7 +1308,7 @@ Use the UniverseKeyRotation CRD to rotate the universe (data) key. Each CR is a 
 The universe must already have encryption at rest enabled.
 
 ```sh
-kubectl apply universe-key-rotation.yaml -n yb-operator
+kubectl apply -f universe-key-rotation.yaml -n yb-operator
 ```
 
 ```yaml
@@ -1330,7 +1330,7 @@ When you restore an encryption-at-rest backup, set `spec.kmsConfig` on the Resto
 Use the YBCertificate CRD to configure TLS certificates for encryption in transit:
 
 ```sh
-kubectl apply yb-certificate.yaml -n yb-operator
+kubectl apply -f yb-certificate.yaml -n yb-operator
 ```
 
 ```yaml
@@ -1351,7 +1351,7 @@ spec:
 Use the SupportBundle CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
 
 ```sh
-kubectl apply supportbundle.yaml -n yb-platform
+kubectl apply -f supportbundle.yaml -n yb-platform
 ```
 
 ```yaml
