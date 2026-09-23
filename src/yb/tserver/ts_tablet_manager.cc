@@ -311,6 +311,12 @@ DEFINE_RUNTIME_bool(enable_copy_retryable_requests_from_parent, true,
                     "Whether to copy retryable requests from parent tablet when opening"
                     "the child tablet");
 
+DEFINE_RUNTIME_bool(flush_bootstrap_state_after_tablet_open, true,
+    "Persist the tablet bootstrap state (retryable requests and the transaction loader hybrid time "
+    "filter) right after a tablet has been opened, instead of waiting for its first WAL segment "
+    "roll-over.");
+TAG_FLAG(flush_bootstrap_state_after_tablet_open, advanced);
+
 DEFINE_RUNTIME_string(allow_compaction_failures_for_tablet_ids, "",
     "List of tablet IDs for which compaction failures are allowed and will not cause write "
     "failures and FATALs.");
@@ -2570,6 +2576,17 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       LOG(DFATAL) << kLogPrefix << "Tablet failed to start: " << s;
       tablet_peer->SetFailed(s);
       return;
+    }
+
+    if (FLAGS_flush_bootstrap_state_after_tablet_open) {
+      // What bootstrap just rebuilt (or a split parent handed over) is exactly the state the next
+      // local bootstrap needs, and nothing else persists it before the first log roll-over. The
+      // task waits for the transaction loader on the flusher pool, so the persisted intent filter
+      // bound is computed from the fully loaded state.
+      auto flush_status = tablet_peer->SubmitFlushBootstrapStateTask();
+      LOG_IF(WARNING, !flush_status.ok() && !flush_status.IsNotSupported())
+          << kLogPrefix << "Failed to submit the bootstrap state flush after open: "
+          << flush_status;
     }
 
     if (server_->GetCDCService()) {
