@@ -337,7 +337,7 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 Use the YBProvider CRD (available in v2025.2.2 or later) to define a Kubernetes provider that universes can reference via `spec.providerName`. The provider specifies cloud type, image registry, and per-region/per-zone settings such as storage class and namespace.
 
 ```sh
-kubectl apply provider-demo.yaml -n yb-platform
+kubectl apply -f provider-demo.yaml -n yb-platform
 ```
 
 ```yaml
@@ -415,7 +415,7 @@ To use a custom kubeconfig for the provider, specify it in either top-level `spe
 Use the YBUniverse CRD to create a universe using the `kubectl apply` command:
 
 ```sh
-kubectl apply universedemo.yaml -n yb-platform
+kubectl apply -f universedemo.yaml -n yb-platform
 ```
 
 ```yaml
@@ -470,7 +470,7 @@ To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
 You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
 
 ```sh
-kubectl apply universedemo-placement.yaml -n yb-platform
+kubectl apply -f universedemo-placement.yaml -n yb-platform
 ```
 
 ```yaml
@@ -524,7 +524,7 @@ spec:
 Use the Release CRD to add a different software release of YugabyteDB:
 
 ```sh
-kubectl apply updaterelease.yaml -n yb-platform
+kubectl apply -f updaterelease.yaml -n yb-platform
 ```
 
 ```yaml
@@ -548,7 +548,7 @@ spec:
 Specify a storage configuration CRD to configure backup storage, and perform backup and restore of your YBA universes as per the following example:
 
 ```sh
-kubectl apply backuprestore.yaml -n yb-platform
+kubectl apply -f backuprestore.yaml -n yb-platform
 ```
 
 ```yaml
@@ -735,7 +735,7 @@ This example describes how to create and delete scheduled backups, and assumes y
 Use the following CRD to create a scheduled backup:
 
 ```sh
-kubectl apply scheduled-backup-demo.yaml -n schedule-cr
+kubectl apply -f scheduled-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -849,7 +849,7 @@ This example describes how to create and delete incremental backups, and assumes
 Use the following CRD to create an incremental backup:
 
 ```sh
-kubectl apply operator-backup-demo.yaml -n schedule-cr
+kubectl apply -f operator-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -900,7 +900,7 @@ Use the PitrConfig CRD to configure point-in-time recovery (PITR) for a universe
 Currently, only declarative operations are supported, including creating a PITR configuration, updating the list of databases, and deleting the configuration. Imperative operations such as restore from a PITR configuration will be supported in a future release.
 
 ```sh
-kubectl apply pitr-config.yaml -n test-pitr
+kubectl apply -f pitr-config.yaml -n test-pitr
 ```
 
 ```yaml
@@ -922,7 +922,7 @@ spec:
 Use the YBCertificate CRD to configure TLS certificates for encryption in transit:
 
 ```sh
-kubectl apply yb-certificate.yaml -n yb-operator
+kubectl apply -f yb-certificate.yaml -n yb-operator
 ```
 
 ```yaml
@@ -943,7 +943,7 @@ spec:
 Use the SupportBundle CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
 
 ```sh
-kubectl apply supportbundle.yaml -n yb-platform
+kubectl apply -f supportbundle.yaml -n yb-platform
 ```
 
 ```yaml
