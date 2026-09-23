@@ -773,6 +773,30 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
+   * EXPLAIN is resolved to the command tag of the statement it wraps, so EXPLAIN of a retriable
+   * statement is retried transparently. REPEATABLE READ is used because it has no read-committed
+   * carve-out for non-DML tags, so only the tag resolution can make the retry happen.
+   */
+  @Test
+  public void explainAnalyzeReadRestartRetried() throws Exception {
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT count(*) FROM test_rr",
+        IsolationLevel.REPEATABLE_READ).runTest();
+  }
+
+  /**
+   * EXPLAIN EXECUTE carries two wrappers, both of which have to be peeled off to reach the
+   * prepared statement's own tag.
+   */
+  @Test
+  public void explainAnalyzeExecutePreparedReadRestartRetried() throws Exception {
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE test_rr_count_q",
+        IsolationLevel.REPEATABLE_READ, true /* expectRetried */,
+        "PREPARE test_rr_count_q AS SELECT count(*) FROM test_rr").runTest();
+  }
+
+  /**
    * The proc-retriability flag is per top-level CALL: it is reset on the outermost SPI connect.
    * So a retriable proc invoked right after a non-retriable one (whose body blocked retries)
    * still retries transparently. Covers both autocommit and an explicit transaction block.
@@ -1545,8 +1569,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
-   * Runs a CALL/DO statement in a loop at the given isolation level while test_rr is populated
-   * concurrently, so the body repeatedly hits read restarts.
+   * Runs a statement in a loop at the given isolation level while test_rr is populated
+   * concurrently, so it repeatedly hits read restarts.
    *
    * When expectRetried is true, the query layer should retry the body transparently and no
    * read restart should surface. When it is false, the proc-retriability gate is expected to block

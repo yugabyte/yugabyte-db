@@ -5560,40 +5560,64 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	command_tag = retry_data->command_tag;
 
 	/*
-	 * If we're executing a prepared statement, we're interested in the command
-	 * tag of the underlying statement.
+	 * EXECUTE and EXPLAIN only wrap another statement, and retriability is a
+	 * property of that statement, so resolve the tag down to it. For EXPLAIN
+	 * without ANALYZE the wrapped statement never runs, so deciding by its tag
+	 * is conservative.
 	 */
-	if (command_tag == CMDTAG_EXECUTE)
+	if (command_tag == CMDTAG_EXECUTE || command_tag == CMDTAG_EXPLAIN)
 	{
 		List	   *parsetree_list = yb_parse_query_silently(retry_data->query_string);
+		Node	   *stmt;
 
-		if (list_length(parsetree_list) == 0)
+		if (parsetree_list == NIL)
 		{
-			const char *retry_err = ("query layer retry isn't possible because "
-									 "the EXECUTE command could not be parsed");
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "the %s command could not be parsed",
+											 GetCommandTagName(command_tag));
 
 			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
 				elog(LOG, "%s", retry_err);
 			return false;
 		}
-		ExecuteStmt *execute_stmt = (ExecuteStmt *) linitial_node(RawStmt,
-																  parsetree_list)->stmt;
-		PreparedStatement *prepared_stmt = FetchPreparedStatement(execute_stmt->name,
-																  false /* throwError */ );
 
-		if (prepared_stmt == NULL)
+		/* Multi-statement queries were rejected above. */
+		Assert(list_length(parsetree_list) == 1);
+		stmt = linitial_node(RawStmt, parsetree_list)->stmt;
+		Assert(stmt != NULL);
+
+		/* EXPLAIN EXECUTE has both wrappers, so peel EXPLAIN off first. */
+		if (IsA(stmt, ExplainStmt))
 		{
-			const char *retry_err = ("query layer retry isn't possible because "
-									 "the prepared statement for the EXECUTE "
-									 "command could not be found");
-
-			edata->message = psprintf("%s (%s)", edata->message, retry_err);
-			if (yb_debug_log_internal_restarts)
-				elog(LOG, "%s", retry_err);
-			return false;
+			stmt = ((ExplainStmt *) stmt)->query;
+			Assert(stmt != NULL);
 		}
-		command_tag = prepared_stmt->plansource->commandTag;
+
+		if (IsA(stmt, ExecuteStmt))
+		{
+			PreparedStatement *prepared_stmt =
+				FetchPreparedStatement(((ExecuteStmt *) stmt)->name,
+									   false /* throwError */ );
+
+			if (prepared_stmt == NULL)
+			{
+				const char *retry_err = ("query layer retry isn't possible because "
+										 "the prepared statement for the EXECUTE "
+										 "command could not be found");
+
+				edata->message = psprintf("%s (%s)", edata->message, retry_err);
+				if (yb_debug_log_internal_restarts)
+					elog(LOG, "%s", retry_err);
+				return false;
+			}
+			command_tag = prepared_stmt->plansource->commandTag;
+		}
+		else
+		{
+			/* EXPLAIN of a statement other than EXECUTE. */
+			command_tag = CreateCommandTag(stmt);
+		}
 	}
 
 	/*
@@ -5628,6 +5652,9 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 *       (extendable via yb_extra_commands_to_retry_in_proc). Other
 	 *       top-level tags are retried only if listed in
 	 *       yb_extra_commands_to_retry.
+	 *
+	 * EXECUTE and EXPLAIN are resolved above to the tag of the statement they
+	 * wrap, so they follow that statement's rule rather than their own.
 	 *
 	 * 2. REPEATABLE READ / SERIALIZABLE:
 	 *    For all error kinds, only SELECT/INSERT/UPDATE/DELETE retry by
