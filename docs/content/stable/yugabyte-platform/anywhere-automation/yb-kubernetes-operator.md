@@ -42,6 +42,8 @@ The following additional CRDs support day 2 operations.
 | [PitrRestore](#restore-from-pitr) | Restore a universe to a point in time using a PITR configuration. |
 | [DrConfig](#configure-xcluster-dr) | Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
+| [KMSConfig](#configure-encryption-at-rest) | Configure a KMS for encryption at rest (available in v2026.1.2 or later). |
+| [UniverseKeyRotation](#rotate-the-universe-key) | Rotate the universe key for an encryption-at-rest-enabled universe (available in v2026.1.2 or later). |
 
 For details of each CRD, run `kubectl explain` on the CR.
 
@@ -1223,6 +1225,106 @@ spec:
   storageConfig: trial-backup-config
 ```
 
+### Configure encryption at rest
+
+Starting from YugabyteDB Anywhere v2026.1.2, use the KMSConfig CRD to create a [KMS configuration](../../security/create-kms-config/aws-kms/), then set `encryptionAtRest` on the YBUniverse CR to [enable encryption at rest](../../security/enable-encryption-at-rest/).
+
+Supported KMS providers are AWS, GCP, Azure (`AZU`), OCI, CipherTrust (`CIPHERTRUST`), and HashiCorp Vault (`HASHICORP`). Put credentials in Kubernetes Secrets and reference those Secrets from the CR; don't put secrets in plaintext. `spec.name` and `spec.provider` are immutable after you create the CR.
+
+Wait until the KMSConfig status is `Ready` before you enable encryption at rest on a universe. If the KMS config isn't usable, the operator doesn't apply the EAR change and the universe can remain in an error or updating state until the config is Ready.
+
+For the full field list, run `kubectl explain kmsconfig.spec` and `kubectl explain ybuniverse.spec.encryptionAtRest`.
+
+#### Create a KMS configuration
+
+```sh
+kubectl apply kms-config.yaml -n yb-operator
+```
+
+```yaml
+# kms-config.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-kms-creds
+  namespace: yb-operator
+stringData:
+  access-key-id: <ACCESS_KEY>
+  secret-access-key: <SECRET>
+---
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: KMSConfig
+metadata:
+  name: aws-kms
+spec:
+  name: aws-kms
+  provider: AWS
+  aws:
+    region: us-west-2
+    accessKeyIdSecret:
+      name: aws-kms-creds
+      key: access-key-id
+    secretAccessKeySecret:
+      name: aws-kms-creds
+      key: secret-access-key
+    # Optional. If omitted, YBA creates a CMK.
+    # cmkID: <CMK_ID>
+```
+
+To use the IAM profile of the YBA host instead of static credentials, set `aws.useIAMProfile` to true and omit the access-key Secrets.
+
+Check status:
+
+```sh
+kubectl get kmsconfig -n yb-operator
+```
+
+You can delete a KMSConfig CR to remove the configuration from YBA. Deletion is blocked while the config is in use (`InUse`).
+
+#### Enable encryption at rest on a universe
+
+`encryptionAtRest.kmsConfig` is the KMSConfig CR name in the same namespace. Omit the `encryptionAtRest` block to leave encryption at rest off.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe-demo
+spec:
+  # ...other universe fields...
+  encryptionAtRest:
+    enabled: true
+    kmsConfig: aws-kms
+```
+
+To disable encryption at rest without dropping the KMS association, set `enabled` to false. You can re-enable later with the same `kmsConfig`. Changing `kmsConfig` in the same edit as a disable is applied only when you re-enable.
+
+To rotate the master key, change `kmsConfig` to another Ready KMSConfig CR while `enabled` is true. Don't rotate the master key and the universe key in the same operation. See [Rotate keys](../../security/enable-encryption-at-rest/#rotate-keys).
+
+#### Rotate the universe key
+
+Use the UniverseKeyRotation CRD to rotate the universe (data) key. Each CR is a one-shot rotation against the universe's currently active KMS config; listing the CRs for a universe is the rotation history. The spec is immutable.
+
+The universe must already have encryption at rest enabled.
+
+```sh
+kubectl apply universe-key-rotation.yaml -n yb-operator
+```
+
+```yaml
+# universe-key-rotation.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: UniverseKeyRotation
+metadata:
+  name: rotate-universe-key-1
+spec:
+  universe: operator-universe-demo
+```
+
+If the rotation task fails, the operator retries automatically (up to five times) before marking the CR `Failed`.
+
+When you restore an encryption-at-rest backup, set `spec.kmsConfig` on the RestoreJob CR to the KMSConfig that can decrypt the backup's universe keys. Leave it unset for unencrypted backups.
+
 ### Configure TLS certificates
 
 Use the YBCertificate CRD to configure TLS certificates for encryption in transit:
@@ -1356,11 +1458,11 @@ Importing a universe to the operator creates or adopts the following in the targ
 - Backups.
 - Backup schedules.
 - Storage configurations related to the backups or backup schedules, including secrets to access the storage configuration.
+- KMS configurations used by the universe for encryption at rest, including secrets that hold KMS credentials.
 - Release, including secrets to access the release.
 
 ## Limitations
 
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
-  - [Encryption-At-Rest](../../security/enable-encryption-at-rest/)
 - [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.
