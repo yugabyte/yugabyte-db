@@ -33,6 +33,7 @@ export type TaskState = (typeof TaskState)[keyof typeof TaskState];
 export const TaskType = {
   GFlags_UPGRADE: 'GFlagsUpgrade',
   EDIT: 'Update',
+  ROLLBACK_EDIT_UNIVERSE: 'RollbackEditUniverse',
   SOFTWARE_UPGRADE: 'SoftwareUpgrade',
   ROLLBACK_UPGRADE: 'RollbackUpgrade',
   FINALIZE_UPGRADE: 'FinalizeUpgrade',

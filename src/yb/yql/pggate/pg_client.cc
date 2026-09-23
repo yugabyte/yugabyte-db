@@ -105,6 +105,11 @@ using yb::ash::PggateRPC;
 
 namespace yb::pggate {
 
+MonoDelta DefaultRpcTimeout() {
+  return MonoDelta::FromMilliseconds(client::YsqlClientReadWriteTimeoutMs()) +
+      MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+}
+
 namespace {
 // The following two terms are used to express how long an operation can take to complete:
 // - Timeout: the maximum duration of time that an operation is allowed to run for.
@@ -204,8 +209,7 @@ class PgTimeout {
   }
 
   static MonoDelta GetDefaultRpcTimeout() {
-    return MonoDelta::FromMilliseconds(client::YsqlClientReadWriteTimeoutMs()) +
-        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+    return DefaultRpcTimeout();
   }
 
   const CoarseTimePoint& MinDeadline(const CoarseTimePoint& a, const CoarseTimePoint& b) const {

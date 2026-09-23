@@ -29,6 +29,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -260,6 +261,12 @@ Status BindToQLValue(const ybthin_bind& bind, yb::QLValuePB* out) {
     case YBTHIN_BIND_I64:
       out->set_int64_value(bind.int_value);
       return Status::OK();
+    case YBTHIN_BIND_U32:
+      if (bind.int_value < 0 || bind.int_value > std::numeric_limits<uint32_t>::max()) {
+        return STATUS_FORMAT(InvalidArgument, "U32 bind $0 is out of range", bind.int_value);
+      }
+      out->set_uint32_value(static_cast<uint32_t>(bind.int_value));
+      return Status::OK();
     case YBTHIN_BIND_TEXT:
       out->set_string_value(bind.bytes, bind.bytes_len);
       return Status::OK();
@@ -294,6 +301,7 @@ Result<ybthin_value_type> MapDataType(DataType dt) {
     case DataType::INT16: return YBTHIN_T_I16;
     case DataType::INT32: return YBTHIN_T_I32;
     case DataType::INT64: return YBTHIN_T_I64;
+    case DataType::UINT32: return YBTHIN_T_U32;
     case DataType::STRING: return YBTHIN_T_TEXT;
     case DataType::BINARY: return YBTHIN_T_BYTEA;
     default:
@@ -566,6 +574,10 @@ Status DecodeReadRows(
         case YBTHIN_T_I64:
           cell.tag = YBTHIN_BIND_I64;
           cell.int_value = VERIFY_RESULT(pggate::PgWire::CheckedReadNumber<int64_t>(&cursor));
+          break;
+        case YBTHIN_T_U32:
+          cell.tag = YBTHIN_BIND_U32;
+          cell.int_value = VERIFY_RESULT(pggate::PgWire::CheckedReadNumber<uint32_t>(&cursor));
           break;
         case YBTHIN_T_TEXT: {
           // Length-prefixed and NUL-terminated: len counts the trailing NUL.

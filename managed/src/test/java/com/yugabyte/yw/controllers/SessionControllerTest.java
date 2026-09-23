@@ -201,6 +201,9 @@ public class SessionControllerTest {
             .overrides(bind(org.pac4j.core.config.Config.class).toInstance(config))
             .build();
     Helpers.start(app);
+    // Helpers.stop() runs CoordinatedShutdown, which sets this static; clear it so
+    // ShutdownRejectFilter does not 503 subsequent tests in the same JVM.
+    Util.resetYbaShutdownStarted();
 
     alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);

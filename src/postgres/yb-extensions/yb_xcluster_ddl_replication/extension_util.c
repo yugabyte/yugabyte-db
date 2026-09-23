@@ -26,6 +26,8 @@
 #include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "extension_util.h"
+#include "nodes/parsenodes.h"
+#include "parser/parse_relation.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -262,6 +264,19 @@ bool
 IsTemporaryRule(Oid rule_oid)
 {
 	return IsTemporaryHelper("rule", rule_oid, "pg_rewrite", "ev_class");
+}
+
+bool
+CreateTableAsUsesTempRelation(CollectedCommand *cmd)
+{
+	if (cmd == NULL || cmd->type != SCT_Simple ||
+		!IsA(cmd->parsetree, CreateTableAsStmt))
+		return false;
+
+	Node	   *query = castNode(CreateTableAsStmt, cmd->parsetree)->query;
+
+	return query != NULL && IsA(query, Query) &&
+		isQueryUsingTempRelation((Query *) query);
 }
 
 Oid

@@ -26,6 +26,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
 
 public class WireConn implements AutoCloseable {
@@ -101,9 +102,16 @@ public class WireConn implements AutoCloseable {
     private final MiniYBCluster cluster;
     private final Map<String, String> startupParams = new LinkedHashMap<>();
     private int socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
+    private ConnectionEndpoint endpoint = ConnectionEndpoint.YSQL_CONN_MGR;
 
     Builder(MiniYBCluster cluster) {
       this.cluster = cluster;
+    }
+
+    // Bypasses the connection manager when set to POSTGRES.
+    public Builder endpoint(ConnectionEndpoint endpoint) {
+      this.endpoint = endpoint;
+      return this;
     }
 
     public Builder startupParam(String name, String value) {
@@ -142,7 +150,9 @@ public class WireConn implements AutoCloseable {
     }
 
     private WireConn openAndSendStartup() throws Exception {
-      InetSocketAddress target = cluster.getYsqlConnMgrContactPoints().get(0);
+      InetSocketAddress target = endpoint == ConnectionEndpoint.POSTGRES
+          ? cluster.getPostgresContactPoints().get(0)
+          : cluster.getYsqlConnMgrContactPoints().get(0);
       LOG.info("Connecting raw socket to {} as {}/{}", target, USER, DATABASE);
       Socket socket = new Socket();
       try {

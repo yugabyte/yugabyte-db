@@ -166,7 +166,7 @@ For information on installing YBA and creating universes using the YugabyteDB Ku
 Use the following CRD to create a universe using the `kubectl apply` command:
 
 ```sh
-kubectl apply universedemo.yaml -n yb-platform
+kubectl apply -f universedemo.yaml -n yb-platform
 ```
 
 ```yaml
@@ -211,7 +211,7 @@ Any modifications to the universe can be done by modifying the CRD using `kubect
 Use the release CRD to add a different software release of YugabyteDB:
 
 ```sh
-kubectl apply updaterelease.yaml -n yb-platform
+kubectl apply -f updaterelease.yaml -n yb-platform
 ```
 
 ```yaml
@@ -235,7 +235,7 @@ spec:
 Specify a storage configuration CRD to configure backup storage, and perform backup and restore of your YBA universes as per the following example:
 
 ```sh
-kubectl apply backuprestore.yaml -n yb-platform
+kubectl apply -f backuprestore.yaml -n yb-platform
 ```
 
 ```yaml
@@ -422,7 +422,7 @@ This example describes how to create and delete scheduled backups, and assumes y
 Use the following CRD to create a scheduled backup:
 
 ```sh
-kubectl apply scheduled-backup-demo.yaml -n schedule-cr
+kubectl apply -f scheduled-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -536,7 +536,7 @@ This example describes how to create and delete incremental backups, and assumes
 Use the following CRD to create an incremental backup:
 
 ```sh
-kubectl apply operator-backup-demo.yaml -n schedule-cr
+kubectl apply -f operator-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -585,7 +585,7 @@ No resources found in schedule-cr namespace.
 Use the following CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
 
 ```sh
-kubectl apply supportbundle.yaml -n yb-platform
+kubectl apply -f supportbundle.yaml -n yb-platform
 ```
 
 ```yaml

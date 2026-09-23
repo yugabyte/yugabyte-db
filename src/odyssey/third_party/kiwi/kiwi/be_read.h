@@ -258,14 +258,17 @@ static inline int yb_prepared_statement_alloc(kiwi_prepared_statement_t *stmt,
 					void *description, size_t description_len)
 {
 	stmt->operator_name = malloc(operator_name_len);
-	if (stmt->operator_name == NULL)
+	if (stmt->operator_name == NULL) {
+		yb_prepared_statement_init(stmt);
 		return -1;
+	}
 	memcpy(stmt->operator_name, operator_name, operator_name_len);
 	stmt->operator_name_len = operator_name_len;
 
 	stmt->description = malloc(description_len);
 	if (stmt->description == NULL) {
 		free(stmt->operator_name);
+		yb_prepared_statement_init(stmt);
 		return -1;
 	}
 	memcpy(stmt->description, description, description_len);

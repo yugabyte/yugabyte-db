@@ -36,9 +36,10 @@
 
 typedef enum YbParseType
 {
-	YB_PARSE_NORMAL,
-	YB_PARSE_FORCE,
-	YB_PARSE_REDEPLOY,
+	YB_PARSE_NORMAL,		 /* only used for unnamed prep stmts */
+	YB_PARSE_FORCE,			 /* used for both named & unnamed prep stmts */
+	YB_PARSE_REDEPLOY,		 /* only used for named prep stmts */
+	YB_UNNAMED_PARSE_FAILED, /* only used in YbParseComplete packet */
 } YbParseType;
 
 /*

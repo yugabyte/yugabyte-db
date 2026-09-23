@@ -654,6 +654,11 @@ public class Provider extends Model {
     return getCloudCode() == CloudType.onprem && getDetails().skipProvisioning;
   }
 
+  @JsonIgnore
+  public boolean isNonManualOnprem() {
+    return getCloudCode() == CloudType.onprem && !getDetails().skipProvisioning;
+  }
+
   /**
    * Returns true if this on-prem provider was created by YNP. YNP owns the configuration, the
    * instance types and the node instances of such providers, so YBA does not let a user change

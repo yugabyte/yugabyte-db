@@ -515,20 +515,13 @@ public class NodeInstanceController extends AuthenticatedController {
     if (nodeToBeFound.isUsed()) {
       throw new PlatformServiceException(BAD_REQUEST, "Node is in use");
     }
-
-    List<CustomerTask> running =
-        CustomerTask.findIncompleteByTargetUUID(nodeToBeFound.getNodeUuid());
-    if (!running.isEmpty()) {
-      throw new PlatformServiceException(
-          CONFLICT, "Node " + nodeToBeFound.getNodeUuid() + " has incomplete tasks");
-    }
+    nodeInstanceHandler.deleteInstance(provider, nodeToBeFound);
     auditService()
         .createAuditEntry(
             request,
             Audit.TargetType.NodeInstance,
             Objects.toString(nodeToBeFound.getNodeUuid(), null),
             Audit.ActionType.Delete);
-    YnpProviderUtil.deleteNodeInstance(provider, nodeToBeFound);
     return YBPSuccess.empty();
   }
 

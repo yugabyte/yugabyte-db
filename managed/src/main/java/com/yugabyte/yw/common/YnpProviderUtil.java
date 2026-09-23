@@ -7,9 +7,7 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
-import io.ebean.annotation.Transactional;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
@@ -61,21 +59,6 @@ public final class YnpProviderUtil {
         String.format(
             "%s is not allowed for provider %s because it is created and managed by YNP.",
             operation, provider.getName()));
-  }
-
-  /**
-   * Deletes a node instance and, when the provider is YNP managed, the instance type it was the
-   * last user of. Both writes happen in one transaction, so a failure cannot leave the node
-   * instance deleted while its now unused instance type stays behind.
-   *
-   * @param provider the provider owning the node instance.
-   * @param nodeInstance the node instance to delete.
-   */
-  @Transactional
-  public static void deleteNodeInstance(Provider provider, NodeInstance nodeInstance) {
-    String instanceTypeCode = nodeInstance.getInstanceTypeCode();
-    nodeInstance.delete();
-    removeUnusedInstanceTypes(provider, Collections.singletonList(instanceTypeCode));
   }
 
   /**
