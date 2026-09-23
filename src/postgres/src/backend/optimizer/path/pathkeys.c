@@ -707,9 +707,18 @@ build_index_pathkeys(PlannerInfo *root,
 			 */
 			if (!pathkey_is_redundant(cpathkey, retval))
 				retval = lappend(retval, cpathkey);
-			/* YB: Collect const cols for merge scan logic below. */
+			/*
+			 * YB: Collect const cols for merge scan logic below.  Skip a range
+			 * column whose EquivalenceClass is broken: the planner derived no
+			 * index condition from its constant, so filters hold it constant,
+			 * as for a redundancy without a constant.  Keep a hash column,
+			 * since pggate cannot merge without a condition on every hash
+			 * column.
+			 */
 			else if (yb_merge_scan_stream_cols &&
-					 EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass))
+					 EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass) &&
+					 (!cpathkey->pk_eclass->ec_broken ||
+					  i < index->nhashcolumns))
 				yb_const_cols = lappend_int(yb_const_cols, i);
 		}
 		else
