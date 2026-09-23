@@ -1,7 +1,6 @@
 {
   "exclude": [
      "([.]clang-tidy)",
-     "([.]csv$)",
      "([.]dump$)",
      "([.]gitignore$)",
      "([.]ipynb$)",
@@ -102,6 +101,7 @@
       "text.max-line-length": 100,
       "exclude": [
         "(/pom[.]xml$)",
+        "([.]csv$)",
         "([.]md$)",
         "([.]sql$)",
         "(^pg15_tests/.*[.](sh|tsv)$)",
