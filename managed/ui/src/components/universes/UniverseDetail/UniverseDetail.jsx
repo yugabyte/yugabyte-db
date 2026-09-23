@@ -1883,7 +1883,13 @@ class UniverseDetail extends Component {
                             disabled={isPerfAdvisorActionDisabled}
                             onClick={showEnablePerfAdvisorModal}
                           >
-                            <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                            <YBLabelWithIcon
+                              icon={
+                                isUniverseRegisteredToPa
+                                  ? 'fa fa-trash-o fa-fw'
+                                  : 'fa fa-plus fa-fw'
+                              }
+                            >
                               {isUniverseRegisteredToPa
                                 ? 'Disable Perf Advisor Collector'
                                 : 'Enable Perf Advisor Collector'}
