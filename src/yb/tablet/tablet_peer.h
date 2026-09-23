@@ -655,6 +655,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   MonoTime cdc_sdk_safe_time_refresh_time_ = MonoTime::Min();
 
  private:
+  // Persists the bootstrap state while consensus is still running, see StartShutdown.
+  void FlushBootstrapStateBeforeShutdown();
+
   // Checks whether the barrier last refreshed at refresh_time is stale.
   bool is_cdc_barrier_stale(const MonoTime& refresh_time, double* seconds_since_last_refresh_ptr)
       const REQUIRES(cdc_resource_refresh_time_lock_);

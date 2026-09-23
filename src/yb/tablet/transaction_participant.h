@@ -195,6 +195,9 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime MinRunningHybridTime() const override;
 
+  // Whether the transaction loader has finished loading transactions from the intents DB.
+  bool TransactionsLoaded() const;
+
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
   // When minimal start hybrid time of running transaction will be at least `ht` applier

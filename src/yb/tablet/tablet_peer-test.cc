@@ -947,4 +947,60 @@ TEST_F_EX(TabletBootstrapStateFlusherTest,
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
 }
 
+class TabletBootstrapStateShutdownTest : public TabletBootstrapStateFlusherTest {
+ protected:
+  // Executes writes that carry client and request ids, so that they are registered as retryable
+  // requests, and returns the op id of the last one. Nothing rolls the log, so nothing persists
+  // the bootstrap state along the way.
+  OpId ExecuteRetryableWrites(int num_writes) {
+    for (int i = 0; i < num_writes; ++i) {
+      WriteRequestPB req;
+      GenerateSequentialInsertRequest(&req);
+      req.set_client_id1(0x1234);
+      req.set_client_id2(0x5678);
+      req.set_request_id(i);
+      req.set_min_running_request_id(0);
+      ExecuteWrite(tablet_peer_.get(), req);
+    }
+    return CHECK_RESULT(tablet_peer_->GetRetryableRequests()).GetMaxReplicatedOpId();
+  }
+
+  Result<TabletBootstrapStateManager> LoadBootstrapStateFromDisk() {
+    TabletBootstrapStateManager manager(
+        tablet()->tablet_id(), tablet()->metadata()->fs_manager(), tablet()->metadata()->wal_dir());
+    RETURN_NOT_OK(manager.Init());
+    return manager;
+  }
+};
+
+// A graceful shutdown persists the bootstrap state as of the last write, even though nothing
+// rolled the log.
+TEST_F(TabletBootstrapStateShutdownTest, FlushOnGracefulShutdown) {
+  const auto last_write_op_id = ExecuteRetryableWrites(3);
+  ASSERT_GT(last_write_op_id.index, 0);
+  ASSERT_FALSE(tablet_peer_->TEST_HasBootstrapStateOnDisk());
+
+  ASSERT_OK(tablet_peer_->TEST_Shutdown(
+      ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse));
+
+  auto manager = ASSERT_RESULT(LoadBootstrapStateFromDisk());
+  ASSERT_TRUE(manager.has_file_on_disk());
+  const auto pb = ASSERT_RESULT(manager.LoadFromDisk());
+  ASSERT_EQ(OpId::FromPB(pb.last_op_id()), last_write_op_id);
+}
+
+// When the caller disables flushing on shutdown (tablet deletion, crash emulation in tests),
+// nothing is persisted.
+TEST_F(TabletBootstrapStateShutdownTest, NoFlushOnShutdownWhenFlushDisabled) {
+  const auto last_write_op_id = ExecuteRetryableWrites(3);
+  ASSERT_GT(last_write_op_id.index, 0);
+  ASSERT_FALSE(tablet_peer_->TEST_HasBootstrapStateOnDisk());
+
+  ASSERT_OK(tablet_peer_->TEST_Shutdown(
+      ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kTrue));
+
+  auto manager = ASSERT_RESULT(LoadBootstrapStateFromDisk());
+  ASSERT_FALSE(manager.has_file_on_disk());
+}
+
 } // namespace yb::tablet
