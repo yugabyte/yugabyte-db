@@ -770,7 +770,7 @@ message PgListReplicationSlotsResponsePB {
 }
 
 message PgOpenTableRequestPB {
-  string table_id = 1;
+  string table_id = 1 [(yb.rpc.trace) = {enabled: true}];
   bool reopen = 2;
 
   // Reserved for invalidate_cache_time_us which was used to invalidate
@@ -1175,7 +1175,7 @@ message PgCancelTransactionRequestPB {
   // Populating the field is optional. When populated, the cancel request is sent to the specified
   // status tablet alone. If not, the request is forwarded to all tablet servers and is thereafter
   // broadcast to all status tablets hosted by the tablet server.
-  bytes status_tablet_id = 2;
+  bytes status_tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
@@ -1445,11 +1445,11 @@ enum ObjectLockMode {
 }
 
 message ObjectLockOid {
-  uint32 database_oid = 1;
-  uint32 relation_oid = 2;
-  uint32 object_oid = 3;
-  uint32 object_sub_oid = 4;
-  uint32 tablespace_oid = 5;
+  uint32 database_oid = 1 [(yb.rpc.trace) = {enabled: true}];
+  uint32 relation_oid = 2 [(yb.rpc.trace) = {enabled: true}];
+  uint32 object_oid = 3 [(yb.rpc.trace) = {enabled: true}];
+  uint32 object_sub_oid = 4 [(yb.rpc.trace) = {enabled: true}];
+  uint32 tablespace_oid = 5 [(yb.rpc.trace) = {enabled: true}];
 }
 
 message PgAcquireObjectLockRequestPB {
@@ -1459,11 +1459,11 @@ message PgAcquireObjectLockRequestPB {
   ObjectLockOid lock_oid = 3;
 
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
-  ObjectLockMode lock_type = 4;
+  ObjectLockMode lock_type = 4 [(yb.rpc.trace) = {enabled: true}];
 
   reserved 5; // ASH metadata is now passed in RequestHeader PB
 
-  bool is_session_lock = 6;
+  bool is_session_lock = 6 [(yb.rpc.trace) = {enabled: true}];
 }
 
 message PgAcquireObjectLockResponsePB {

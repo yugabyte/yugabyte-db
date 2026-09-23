@@ -48,6 +48,7 @@ import "yb/docdb/docdb.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet.proto";
 import "yb/tserver/tserver_types.proto";
+import "yb/rpc/lightweight_message.proto";
 
 message TabletConsensusInfoPB {
   optional bytes tablet_id = 1;
@@ -58,7 +59,7 @@ message TabletConsensusInfoPB {
 message WriteRequestPB {
   // TODO(proto3) reserved 2, 3, 9;
 
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // When replicating RocksDB write operations through Raft for single-shard transactions,
   // we put a write batch here.
@@ -166,7 +167,7 @@ message WriteResponsePB {
 }
 
 message WaitForAsyncWriteRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional OpIdPB op_id = 2;
 }
 
@@ -191,7 +192,7 @@ message ListTabletsResponsePB {
 }
 
 message NoOpRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message NoOpResponsePB {
@@ -202,7 +203,7 @@ message NoOpResponsePB {
 // consistent with index table content. We will verify index table rows using
 // the primary table.
 message VerifyTableRowRangeRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // If indexes is empty, we will check all indexes
   // If it contains entries, then we will check only the ones provided.
@@ -231,7 +232,7 @@ message VerifyTableRowRangeResponsePB {
 
 message ReadRequestPB {
   // The tablet to scan.
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   repeated RedisReadRequestPB redis_batch = 2;
 
@@ -316,7 +317,7 @@ message ReadResponsePB {
 }
 
 message GetTabletKeyRangesRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional fixed64 propagated_hybrid_time = 2;
   optional bytes lower_bound_key = 3;
   optional bytes upper_bound_key = 4;
@@ -333,7 +334,7 @@ message GetTabletKeyRangesResponsePB {
 
 // Truncate tablet request.
 message TruncateRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional fixed64 propagated_hybrid_time = 2;
   optional tablet.TruncatePB truncate = 3;
 }
@@ -346,7 +347,7 @@ message TruncateResponsePB {
 
 // Tablet's status request
 message GetTabletStatusRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 // Tablet's status response
@@ -404,7 +405,7 @@ message ListMasterServersResponsePB {
 
 // Gets the schema version of the schema that is compatible with the requested schema.
 message GetCompatibleSchemaVersionRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional SchemaPB schema = 2;
 }
 
@@ -418,7 +419,7 @@ message GetCompatibleSchemaVersionResponsePB {
 }
 
 message CheckTserverTabletHealthRequestPB {
-  repeated bytes tablet_ids = 1;
+  repeated bytes tablet_ids = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message CheckTserverTabletHealthResponsePB {

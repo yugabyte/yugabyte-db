@@ -45,6 +45,7 @@ import "yb/tablet/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tserver/tserver_types.proto";
+import "yb/rpc/lightweight_message.proto";
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
 // startup to avoid running initdb.
@@ -65,7 +66,7 @@ message GetSafeTimeRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
-  required bytes tablet_id = 2;
+  required bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   optional uint32 schema_version = 3;
 
@@ -88,7 +89,7 @@ message BackfillIndexRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
-  required bytes tablet_id = 2;
+  required bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Indexes on the _same table_ to backfill.
   repeated IndexInfoPB indexes = 3;
@@ -135,7 +136,7 @@ message CreateTabletRequestPB {
   optional bytes dest_uuid = 8;
 
   required bytes table_id = 1;
-  required bytes tablet_id = 2;
+  required bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // DEPRECATED.
   optional bytes start_key = 3;
   // DEPRECATED.
@@ -193,7 +194,7 @@ message PrepareDeleteTransactionTabletRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 2;
 
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message PrepareDeleteTransactionTabletResponsePB {
@@ -205,7 +206,7 @@ message DeleteTabletRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 4;
 
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Reason the tablet is being deleted (for logging purposes)
   optional string reason = 2;
@@ -273,7 +274,7 @@ message FlushTabletsRequestPB {
   optional bytes dest_uuid = 1;
 
   // Tablets to flush or compact.
-  repeated bytes tablet_ids = 2;
+  repeated bytes tablet_ids = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   optional fixed64 propagated_hybrid_time = 3;
 
@@ -323,7 +324,7 @@ message CountIntentsResponsePB {
 }
 
 message AddTableToTabletRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   required tablet.TableInfoPB add_table = 2;
 }
 
@@ -333,7 +334,7 @@ message AddTableToTabletResponsePB {
 }
 
 message RemoveTableFromTabletRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   required bytes remove_table_id = 2;
 }
 
