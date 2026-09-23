@@ -1011,7 +1011,8 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 			"Refusing to parse unexpected 'S' ParameterStatus message from Postgres");
 		break;
 	case YB_CONN_MGR_PARAMETER_STATUS:
-		rc = od_backend_update_parameter(server, "main", data, size, 0);
+		rc = od_backend_update_parameter(server, "main", data, size,
+						 is_deploy);
 		if (rc == -1)
 			return relay->error_read;
 		break;

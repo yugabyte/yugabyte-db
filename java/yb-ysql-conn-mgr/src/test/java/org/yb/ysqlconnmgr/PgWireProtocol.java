@@ -26,6 +26,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.util.Pair;
 
 /**
  * Utility class for building and reading PostgreSQL v3 wire-protocol messages
@@ -372,6 +373,19 @@ public final class PgWireProtocol {
       len--;
     }
     return new String(body, 0, len, StandardCharsets.UTF_8);
+  }
+
+  public static Pair<String, String> parseParameterStatus(byte[] body) {
+    int nameEnd = 0;
+    while (body[nameEnd] != 0) {
+      nameEnd++;
+    }
+    int valueEnd = nameEnd + 1;
+    while (body[valueEnd] != 0) {
+      valueEnd++;
+    }
+    return new Pair<>(new String(body, 0, nameEnd, StandardCharsets.UTF_8),
+        new String(body, nameEnd + 1, valueEnd - nameEnd - 1, StandardCharsets.UTF_8));
   }
 
   // ---- Wire helpers: reading backend messages -------------------------------
