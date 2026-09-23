@@ -53,7 +53,7 @@ jobs:
     compiler: clang21
     build_type: release
     architecture: arm64
-    test_opts: YB_TEST_YB_CONTROLLER=0
+    test_opts: YB_TEST_YB_CONTROLLER=0 YB_RUN_ALL_MAC_TESTS=1
     release_artifact: true
     when:
      - full
