@@ -173,9 +173,9 @@ If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you s
 
 Available in v2026.1.2.0 and later.
 
-A table is unqualified for a replication slot if its tablets have expired or are not of interest. Adding an unqualified table to a publication can cause Virtual WAL (VWAL) to fail with a WAL or intents garbage collection error, which in versions earlier than v2026.1.2.0 renders the slot unusable.
+A table is unqualified for a replication slot if its tablets have expired or are not of interest. Adding an unqualified table to a publication renders the slot unusable while [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) is `false` (the default).
 
-Set the YB-TServer flag [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) to `true` so VWAL skips unqualified tables and continues polling only the qualified tables in the publication. When the flag is `false` (the default), VWAL refuses to add unqualified tables to the polling list and returns an error.
+Set the YB-TServer flag [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) to `true` so VWAL skips unqualified tables and keeps streaming the qualified tables. VWAL does not poll a skipped table's tablets on a later publication refresh, so changes to that table are never streamed on this slot. To stream the table, create a new replication slot. When the flag is `false` (the default), VWAL refuses to add unqualified tables to the polling list and returns an error.
 
 ## Streaming DDLs causing table rewrite
 

@@ -134,9 +134,9 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
     To handle updates/deletes with a non-CHANGE replica identity when no before image is available, set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC sends a null before-image instead of failing with an error.
 
-- Adding an expired or not-of-interest (unqualified) table to a publication can cause Virtual WAL to fail with a WAL or intents garbage collection error. In versions earlier than v2026.1.2.0, this renders the replication slot unusable, and you must drop the slot and create a new one to proceed. Tracked in issue {{<issue 28310>}}.
+- Adding an expired or not-of-interest (unqualified) table to a publication renders the replication slot unusable while the YB-TServer flag [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) is `false` (the default). The flag is available starting in v2026.1.2.0. While it is `false`, drop the slot and create a new one to proceed. Tracked in issue {{<issue 28310>}}.
 
-    Starting in v2026.1.2.0, set the YB-TServer flag [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) to `true` so VWAL skips unqualified tables and continues polling only qualified ones. See [Unqualified tables](./advanced-topic/#unqualified-tables) and issue {{<issue 31097>}}.
+    Set the flag to `true` so VWAL skips unqualified tables and keeps streaming the qualified ones. A skipped table is not polled again, so its changes are never streamed on this slot; create a new slot to stream it. See [Unqualified tables](./advanced-topic/#unqualified-tables) and issue {{<issue 31097>}}.
 
 ### CDC with point-in-time recovery
 
