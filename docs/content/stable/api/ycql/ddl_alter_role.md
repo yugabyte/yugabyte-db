@@ -40,7 +40,7 @@ role_property ::=  PASSWORD = '<Text Literal>'
 Where
 
 - `role_name` is a text identifier.
-- `<Text Literal>` for `HASHED PASSWORD` is a bcrypt hash (the value stored in the `salted_hash` column of `system_auth.roles`), not a plaintext password.
+- `<Text Literal>` for `HASHED PASSWORD` is a bcrypt hash, not a plaintext password. Use the first 60 characters of the `salted_hash` column of `system_auth.roles`, which is padded to 64 bytes.
 
 ## Semantics
 
