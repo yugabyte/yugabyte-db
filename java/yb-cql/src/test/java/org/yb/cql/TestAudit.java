@@ -133,6 +133,26 @@ public class TestAudit extends BaseCQLTest {
                   "ALTER ROLE user2 WITH PaSswORd   =<REDACTED>")));
     }
 
+    // A ' that is not a string delimiter must not shift the PASSWORD clause out of alignment and
+    // leak it. Quote-parity redaction counted the ' inside a double-quoted identifier or a comment
+    // as a string delimiter, so the real password clause was mistaken for a mis-fired match and
+    // logged verbatim. Cover both the identifier and comment cases.
+    {
+      assertAudit(
+          "CREATE ROLE \"o'brien\" WITH login = true AND PASSWORD = 'hide me!'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "CREATE ROLE \"o'brien\" WITH login = true AND PASSWORD = <REDACTED>")));
+
+      assertAudit(
+          "/* don't log me */ ALTER ROLE \"o'brien\" WITH PASSWORD = 'hide me too!'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "/* don't log me */ ALTER ROLE \"o'brien\" WITH PASSWORD = <REDACTED>")));
+    }
+
     // A statement that is *rejected* is still audited, as a REQUEST_FAILURE carrying the statement
     // text. Redaction used to happen only on paths that had a parse tree to identify the statement
     // type, so a rejected CREATE ROLE was logged with its password in cleartext. Two PASSWORD
@@ -152,6 +172,25 @@ public class TestAudit extends BaseCQLTest {
       }
       assertNoPasswordInAudit(
           "CREATE ROLE user_dup_pw WITH PASSWORD = <REDACTED> AND PASSWORD = <REDACTED>",
+          first, second);
+    }
+
+    // Same regression on the error-message path (the rejected statement is echoed into
+    // error_message as well): an apostrophe in the double-quoted role name must not defeat it.
+    {
+      final String first = "quoted_first_s3cr3t";
+      final String second = "quoted_second_s3cr3t";
+      auditRecords.discard();
+      String cql = "CREATE ROLE \"a'b\" WITH PASSWORD = '" + first
+          + "' AND PASSWORD = '" + second + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE with two PASSWORD clauses to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE \"a'b\" WITH PASSWORD = <REDACTED> AND PASSWORD = <REDACTED>",
           first, second);
     }
 
