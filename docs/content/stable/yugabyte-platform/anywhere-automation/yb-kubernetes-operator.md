@@ -1458,11 +1458,12 @@ Importing a universe to the operator creates or adopts the following in the targ
 - Backups.
 - Backup schedules.
 - Storage configurations related to the backups or backup schedules, including secrets to access the storage configuration.
-- KMS configurations used by the universe for encryption at rest, including secrets that hold KMS credentials.
+- KMS configurations used by the universe for encryption at rest, including secrets that hold KMS credentials (available in v2026.1.2 or later).
 - Release, including secrets to access the release.
 
 ## Limitations
 
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
+  - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2)
 - [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.
