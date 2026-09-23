@@ -2260,6 +2260,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       CMPerTableLoadState* per_table_state,
       CMGlobalLoadState* global_state);
 
+  // Adds 'ts' as a replica of the given member_type to 'config' and updates the selection and
+  // load bookkeeping accordingly. Used by SelectReplicas for each tserver it picks, and directly
+  // when the caller has already chosen the tservers.
+  void AddReplicaToConfig(
+      const std::shared_ptr<TSDescriptor>& ts, consensus::RaftConfigPB* config,
+      std::set<TabletServerId>* already_selected_ts,
+      consensus::PeerMemberType member_type,
+      CMPerTableLoadState* per_table_state,
+      CMGlobalLoadState* global_state);
+
   void HandleAssignPreparingTablet(const TabletInfoPtr& tablet,
                                    DeferredAssignmentActions* deferred);
 
