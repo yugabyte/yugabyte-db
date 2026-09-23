@@ -340,6 +340,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   Result<RetryableRequests> GetRetryableRequests() const;
   Result<std::unique_ptr<RetryableRequests>> TakeSnapshotOfRetryableRequests();
+  // Only for callers already holding the replica state lock, see ReplicaState.
+  std::unique_ptr<RetryableRequests> TakeSnapshotOfRetryableRequestsUnlocked() const;
   OpId GetLastFlushedOpIdInRetryableRequests();
   Status SetLastFlushedOpIdInRetryableRequests(const OpId& op_id);
 

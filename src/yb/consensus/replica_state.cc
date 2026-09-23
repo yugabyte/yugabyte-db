@@ -1287,6 +1287,11 @@ Result<std::unique_ptr<RetryableRequests>> ReplicaState::TakeSnapshotOfRetryable
 
 }
 
+std::unique_ptr<RetryableRequests> ReplicaState::TakeSnapshotOfRetryableRequestsUnlocked() const {
+  DCHECK(IsLocked());
+  return std::make_unique<RetryableRequests>(retryable_requests_);
+}
+
 OpId ReplicaState::GetLastFlushedOpIdInRetryableRequests() {
   auto lock = LockForRead();
   return retryable_requests_.GetLastFlushedOpId();

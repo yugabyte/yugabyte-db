@@ -89,6 +89,7 @@ YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 YB_STRONGLY_TYPED_BOOL(IncludeVectorIndexes);
 YB_STRONGLY_TYPED_BOOL(VectorIndexOnly);
+YB_STRONGLY_TYPED_BOOL(WaitForTransactionsLoaded);
 
 enum class FlushFlags {
   kNone = 0,

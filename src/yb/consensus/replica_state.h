@@ -464,6 +464,11 @@ class ReplicaState {
 
   Result<std::unique_ptr<RetryableRequests>> TakeSnapshotOfRetryableRequests();
 
+  // Like TakeSnapshotOfRetryableRequests, but for a caller that already holds the replica state
+  // lock (e.g. the SPLIT_OP apply, which runs under it): never blocks, does not require the
+  // kRunning state and always returns a copy, even if nothing changed since the last flush.
+  std::unique_ptr<RetryableRequests> TakeSnapshotOfRetryableRequestsUnlocked() const;
+
   OpId GetLastFlushedOpIdInRetryableRequests();
 
   Status SetLastFlushedOpIdInRetryableRequests(const OpId& op_id);

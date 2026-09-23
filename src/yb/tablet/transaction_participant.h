@@ -262,8 +262,13 @@ class TransactionParticipant : public TransactionStatusManager {
 
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 
+  // Computes min_replay_txn_first_write_ht as it would be persisted by a bootstrap state flush
+  // whose retryable requests cover retryable_requests_flushed_op_id, without modifying any state.
+  // Waits for the transaction loader unless wait_for_load is false, in which case a load still in
+  // progress yields the last safely computed value (see #32131 for why the loaded state matters).
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
-      const OpId& retryable_requests_flushed_op_id);
+      const OpId& retryable_requests_flushed_op_id,
+      WaitForTransactionsLoaded wait_for_load = WaitForTransactionsLoaded::kTrue);
 
   void SetRetryableRequestsFlushedOpId(const OpId& flushed_op_id);
 
