@@ -200,6 +200,7 @@ RefreshMatViewByOid(Oid matviewOid, bool is_create, bool skipData,
 	int			save_nestlevel;
 	ObjectAddress address;
 	bool		yb_in_place_refresh = YbRefreshMatviewInPlace();
+	bool		yb_fill_matview_directly;
 
 	matviewRel = table_open(matviewOid, NoLock);
 	relowner = matviewRel->rd_rel->relowner;
@@ -351,22 +352,37 @@ RefreshMatViewByOid(Oid matviewOid, bool is_create, bool skipData,
 	}
 
 	/*
+	 * YB: for CREATE MATERIALIZED VIEW, write the rows into the view directly.
+	 * In YB a relfilenode corresponds to a DocDB table, so a create should
+	 * avoid the make_new_heap and refresh_by_heap_swap paths below that a
+	 * refresh uses.
+	 */
+	yb_fill_matview_directly = (IsYugaByteEnabled() && is_create &&
+								!concurrent && !yb_in_place_refresh);
+
+	/*
 	 * Create the transient table that will receive the regenerated data. Lock
 	 * it against access by any other process until commit (by which time it
 	 * will be gone).
 	 */
-	OIDNewHeap = make_new_heap(matviewOid, tableSpace,
-							   matviewRel->rd_rel->relam,
-							   relpersistence, ExclusiveLock,
-							   false /* yb_copy_split_options */ );
-	Assert(CheckRelationOidLockedByMe(OIDNewHeap, AccessExclusiveLock, false));
+	if (!yb_fill_matview_directly)
+	{
+		OIDNewHeap = make_new_heap(matviewOid, tableSpace,
+								   matviewRel->rd_rel->relam,
+								   relpersistence, ExclusiveLock,
+								   false /* yb_copy_split_options */ );
+		Assert(CheckRelationOidLockedByMe(OIDNewHeap, AccessExclusiveLock, false));
+	}
+	else
+		OIDNewHeap = InvalidOid;
 
 	/* Generate the data, if wanted. */
 	if (!skipData && !yb_xcluster_automatic_mode_target_ddl)
 	{
 		DestReceiver *dest;
 
-		dest = CreateTransientRelDestReceiver(OIDNewHeap);
+		dest = CreateTransientRelDestReceiver(yb_fill_matview_directly ?
+											  matviewOid : OIDNewHeap);
 		processed = refresh_matview_datafill(dest, dataQuery, queryString,
 											 is_create);
 	}
@@ -391,6 +407,15 @@ RefreshMatViewByOid(Oid matviewOid, bool is_create, bool skipData,
 		}
 		PG_END_TRY();
 		Assert(matview_maintenance_depth == old_depth);
+	}
+	else if (yb_fill_matview_directly)
+	{
+		/*
+		 * YB: the rows were written into the view, so there is nothing to
+		 * swap.  The stats update is matched from the else branch below.
+		 */
+		if (!skipData)
+			pgstat_count_heap_insert(matviewRel, processed);
 	}
 	else
 	{
