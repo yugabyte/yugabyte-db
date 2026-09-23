@@ -2157,14 +2157,14 @@ void RaftGroupMetadata::EnableSchemaGC() {
       << "Disable GC counter underflow: " << disable_schema_gc_counter_;
 }
 
-Status RaftGroupMetadata::OldSchemaGC(
+Result<bool> RaftGroupMetadata::OldSchemaGC(
     const std::unordered_map<Uuid, SchemaVersion>& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
     if (disable_schema_gc_counter_ != 0) {
       // Could skip schema GC at all, because it will be cleaned after next compaction.
-      return Status::OK();
+      return false;
     }
     for (const auto& [table_id, schema_version] : versions) {
       auto it = table_id.IsNil() ? kv_store_.tables.find(primary_table_id_)
@@ -2193,9 +2193,10 @@ Status RaftGroupMetadata::OldSchemaGC(
   }
 
   if (!need_flush) {
-    return Status::OK();
+    return false;
   }
-  return Flush();
+  RETURN_NOT_OK(Flush());
+  return true;
 }
 
 Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(

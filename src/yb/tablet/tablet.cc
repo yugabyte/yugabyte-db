@@ -660,7 +660,13 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     }
 
     FillMinXClusterSchemaVersion(&table_id_to_min_schema_version);
-    ERROR_NOT_OK(tablet_.metadata()->OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
+    auto replaced = tablet_.metadata()->OldSchemaGC(table_id_to_min_schema_version);
+    if (!replaced.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << replaced.status();
+    } else if (*replaced) {
+      // The replacement TableInfos carry new DocReadContexts, which start unarmed.
+      tablet_.ArmColocatedTombstoneCaches();
+    }
 
     if (VLOG_IS_ON(2)) {
       VLOG_WITH_PREFIX_AND_FUNC(2) << AsString(table_id_to_min_schema_version);
@@ -3207,7 +3213,11 @@ Status Tablet::MarkBackfillDone(
     LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
     return status;
   }
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // OnBackfillDone replaced the table's TableInfo, whose new DocReadContext starts unarmed.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
 }
 
 Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
