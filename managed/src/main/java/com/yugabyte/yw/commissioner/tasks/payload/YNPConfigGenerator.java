@@ -30,11 +30,17 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.Builder;
@@ -52,6 +58,44 @@ import org.apache.commons.lang3.StringUtils;
  */
 @Slf4j
 public class YNPConfigGenerator {
+  private static final Pattern SAFE_MOUNT_PATH = Pattern.compile("^/[A-Za-z0-9._/-]+$");
+  private static final Set<String> PROTECTED_MOUNT_PATHS =
+      Set.of(
+          "/",
+          "/bin",
+          "/boot",
+          "/dev",
+          "/etc",
+          "/home",
+          "/lib",
+          "/lib64",
+          "/mnt",
+          "/mnt/resource",
+          "/proc",
+          "/root",
+          "/run",
+          "/sbin",
+          "/sys",
+          "/tmp",
+          "/usr",
+          "/var");
+  private static final Set<String> PROTECTED_MOUNT_PATH_PREFIXES =
+      Set.of(
+          "/bin",
+          "/boot",
+          "/dev",
+          "/etc",
+          "/lib",
+          "/lib64",
+          "/mnt/resource",
+          "/proc",
+          "/root",
+          "/run",
+          "/sbin",
+          "/sys",
+          "/tmp",
+          "/usr");
+
   private final RuntimeConfGetter confGetter;
   private final CloudQueryHelper queryHelper;
   private final ImageBundleUtil imageBundleUtil;
@@ -129,6 +173,107 @@ public class YNPConfigGenerator {
     ynpNode.put("ysql_server_http_port", String.valueOf(ports.ysqlServerHttpPort));
     ynpNode.put("ysql_server_rpc_port", String.valueOf(ports.ysqlServerRpcPort));
     ynpNode.put("node_exporter_port", String.valueOf(ports.nodeExporterPort));
+  }
+
+  private static String getValidatedAzureLunIndexes(NodeDetails node, DeviceInfo deviceInfo) {
+    Integer expectedLunCount =
+        Objects.requireNonNull(
+            deviceInfo.numVolumes, "Number of volumes is required for Azure LUN metadata");
+    Integer[] lunIndexes =
+        Objects.requireNonNull(node.cloudInfo, "Cloud info is required for Azure nodes")
+            .lun_indexes;
+    Set<Integer> uniqueLunIndexes = new HashSet<>();
+    if (lunIndexes == null || lunIndexes.length != expectedLunCount) {
+      throw new IllegalStateException(
+          String.format(
+              "Invalid Azure LUN metadata for node %s: expected %d LUNs, found %s",
+              node.nodeName, expectedLunCount, Arrays.toString(lunIndexes)));
+    }
+    for (Integer lunIndex : lunIndexes) {
+      if (lunIndex == null || lunIndex < 0 || !uniqueLunIndexes.add(lunIndex)) {
+        throw new IllegalStateException(
+            String.format(
+                "Invalid Azure LUN metadata for node %s: LUNs must be unique, non-negative"
+                    + " integers, found %s",
+                node.nodeName, Arrays.toString(lunIndexes)));
+      }
+    }
+    return Arrays.stream(lunIndexes).map(String::valueOf).collect(Collectors.joining(" "));
+  }
+
+  private static List<String> getValidatedMountPaths(DeviceInfo deviceInfo, boolean isCloud) {
+    Integer expectedMountCount = deviceInfo.numVolumes;
+    List<String> mountPaths = new ArrayList<>();
+    if (StringUtils.isNotBlank(deviceInfo.mountPoints)) {
+      mountPaths.addAll(
+          Arrays.stream(deviceInfo.mountPoints.split("\\s*,\\s*"))
+              .map(String::trim)
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.toList()));
+    } else {
+      Objects.requireNonNull(
+          deviceInfo.numVolumes, "Number of volumes is required to generate mount paths");
+      for (int i = 0; i < expectedMountCount; i++) {
+        mountPaths.add("/mnt/d" + i);
+      }
+    }
+    if (expectedMountCount == null) {
+      if (isCloud) {
+        throw new IllegalStateException("Number of volumes is required for cloud mount paths");
+      }
+      expectedMountCount = mountPaths.size();
+    }
+    if (expectedMountCount < 0) {
+      throw new IllegalStateException("Number of volumes cannot be negative");
+    }
+    if (mountPaths.size() != expectedMountCount) {
+      throw new IllegalStateException(
+          String.format(
+              "Expected %d unique mount paths, found %s", expectedMountCount, mountPaths));
+    }
+
+    Set<String> uniqueMountPaths = new HashSet<>();
+    for (String mountPath : mountPaths) {
+      if (uniqueMountPaths.contains(mountPath)) {
+        throw new IllegalStateException("Duplicate mount path: " + mountPath);
+      }
+      if (!isCloud) {
+        uniqueMountPaths.add(mountPath);
+        continue;
+      }
+      Path normalizedPath;
+      try {
+        normalizedPath = Paths.get(mountPath).normalize();
+      } catch (RuntimeException e) {
+        throw new IllegalStateException("Invalid mount path: " + mountPath, e);
+      }
+      boolean protectedPrefix =
+          PROTECTED_MOUNT_PATH_PREFIXES.stream()
+              .anyMatch(prefix -> mountPath.equals(prefix) || mountPath.startsWith(prefix + "/"));
+      boolean approvedCloudRoot =
+          mountPath.equals("/data")
+              || mountPath.startsWith("/data/")
+              || mountPath.startsWith("/mnt/");
+      if (!SAFE_MOUNT_PATH.matcher(mountPath).matches()
+          || !normalizedPath.isAbsolute()
+          || !normalizedPath.toString().equals(mountPath)
+          || !approvedCloudRoot
+          || PROTECTED_MOUNT_PATHS.contains(mountPath)
+          || protectedPrefix) {
+        throw new IllegalStateException("Unsafe mount path: " + mountPath);
+      }
+      for (String existingMountPath : uniqueMountPaths) {
+        if (mountPath.startsWith(existingMountPath + "/")
+            || existingMountPath.startsWith(mountPath + "/")) {
+          throw new IllegalStateException(
+              String.format(
+                  "Overlapping mount paths are not allowed: %s and %s",
+                  existingMountPath, mountPath));
+        }
+      }
+      uniqueMountPaths.add(mountPath);
+    }
+    return mountPaths;
   }
 
   private void populateFromProvider(ConfigParams params, ObjectNode rootNode) {
@@ -236,21 +381,12 @@ public class YNPConfigGenerator {
         "configure_cgroup",
         Util.configureCgroup(persistedUserIntent, provider, params.isBlankNode(), confGetter));
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
-    extraNode.put(
-        "mount_paths",
-        Util.getMountPoints(deviceInfo).stream()
-            .map(String::trim)
-            .filter(s -> !s.isBlank())
-            .collect(Collectors.joining(" ")));
-    if (userIntent.providerType == Common.CloudType.azu && node.cloudInfo.lun_indexes.length > 0) {
-      StringBuilder sb = new StringBuilder();
-      for (int i = 0; i < node.cloudInfo.lun_indexes.length; i++) {
-        sb.append(node.cloudInfo.lun_indexes[i]);
-        if (i < node.cloudInfo.lun_indexes.length - 1) {
-          sb.append(" ");
-        }
-      }
-      extraNode.put("disk_lun_indexes", sb.toString());
+    List<String> mountPaths =
+        getValidatedMountPaths(deviceInfo, provider.getCloudCode() != CloudType.onprem);
+    // DeviceInfo stores custom mount points as CSV, while YNP consumes a shell word list.
+    extraNode.put("mount_paths", String.join(" ", mountPaths));
+    if (userIntent.providerType == Common.CloudType.azu) {
+      extraNode.put("disk_lun_indexes", getValidatedAzureLunIndexes(node, deviceInfo));
     }
     if (provider.getCloudCode() != CloudType.onprem) {
       // Set device paths for cloud providers

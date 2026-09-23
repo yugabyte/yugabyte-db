@@ -13,6 +13,8 @@ import logging
 import socket
 import requests
 import os
+import re
+import shlex
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
@@ -280,19 +282,49 @@ class AzureCloud(AbstractCloud):
     def stop_instance(self, host_info):
         return self.get_admin().deallocate_instance(host_info['name'])
 
+    @staticmethod
+    def _disk_rescan_command(device_name):
+        """Shell command that makes the guest kernel pick up a resized Azure managed disk.
+
+        SCSI disks (sdX) expose a per-device 'rescan' attribute. NVMe namespaces (nvmeXnY) do
+        not: a rescan is requested from the owning controller through 'rescan_controller'. The
+        namespace's 'device' link points at the controller without native multipath and at the
+        NVMe subsystem with it, so fall back to rescanning every controller in the latter case.
+        """
+        if device_name.startswith("nvme"):
+            rescan_script = (
+                "ctrl=$(readlink -f /sys/class/block/{dev}/device); "
+                "if [ -w \"$ctrl/rescan_controller\" ]; then "
+                "echo 1 > \"$ctrl/rescan_controller\"; "
+                "else for f in /sys/class/nvme/*/rescan_controller; do echo 1 > \"$f\"; done; fi"
+            ).format(dev=device_name)
+        else:
+            rescan_script = "echo 1 > /sys/class/block/{dev}/device/rescan".format(
+                dev=device_name)
+        return "sudo bash -c '{}' && sudo fdisk -l /dev/{}".format(rescan_script, device_name)
+
     def expand_file_system(self, args, connect_options):
         remote_shell = RemoteShell(connect_options)
         mount_points = self.get_mount_points_csv(args).split(',')
         for mount_point in mount_points:
-            # need to rescan disks to see changes
-            cmd1 = "df | awk '($6 == \"" + mount_point + "\") {print $1}' | grep -o 'sd\\w*$'"
-            resp = remote_shell.check_exec_command(cmd1)
-            fsname = resp.replace('\n', '')
-            cmd2 = "sudo bash -c 'echo 1 > /sys/class/block/{}/device/rescan' " \
-                "&& sudo fdisk -l /dev/{}".format(fsname, fsname)
-            remote_shell.check_exec_command(cmd2)
+            quoted_mount_point = shlex.quote(mount_point)
+            source = remote_shell.check_exec_command(
+                "findmnt -rn -M {} -o SOURCE".format(quoted_mount_point)).strip()
+            if not source:
+                raise YBOpsRuntimeError(
+                    "Could not find a mounted device for {}".format(mount_point))
+            device_path = remote_shell.check_exec_command(
+                "readlink -f -- {}".format(shlex.quote(source))).strip()
+            device_name = os.path.basename(device_path)
+            if not re.fullmatch(r"(sd[a-z]+|nvme[0-9]+n[0-9]+)", device_name):
+                raise YBOpsRuntimeError(
+                    "Unsupported Azure data disk {} for mount point {}".format(
+                        device_path, mount_point))
+
+            remote_shell.check_exec_command(self._disk_rescan_command(device_name))
             logging.info("Expanding file system with mount point: {}".format(mount_point))
-            remote_shell.check_exec_command('sudo xfs_growfs {}'.format(mount_point))
+            remote_shell.check_exec_command(
+                'sudo xfs_growfs {}'.format(quoted_mount_point))
 
     def normalize_instance_state(self, instance_state):
         if instance_state:
