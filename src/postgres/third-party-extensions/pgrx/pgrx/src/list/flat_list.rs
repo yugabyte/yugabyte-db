@@ -70,9 +70,9 @@ unsafe impl Enlist for pg_sys::Oid {
     }
 }
 
-#[cfg(any(feature = "pg16", feature = "pg17"))]
+#[cfg(any(feature = "pg16", feature = "pg17", feature = "pg18"))]
 impl Sealed for pg_sys::TransactionId {}
-#[cfg(any(feature = "pg16", feature = "pg17"))]
+#[cfg(any(feature = "pg16", feature = "pg17", feature = "pg18"))]
 unsafe impl Enlist for pg_sys::TransactionId {
     const LIST_TAG: pg_sys::NodeTag = pg_sys::NodeTag::T_XidList;
 
@@ -112,7 +112,8 @@ impl<'cx, T: Enlist> List<'cx, T> {
                 // No silly reasoning, simply allocate ~2 cache lines for a list
                 let list_size = 128;
                 unsafe {
-                    let list: *mut pg_sys::List = mcx.alloc_bytes(list_size).cast();
+                    let list: *mut pg_sys::List =
+                        mcx.alloc_bytes(list_size).unwrap().cast().as_ptr();
                     assert!(list.is_non_null());
                     (*list).type_ = T::LIST_TAG;
                     (*list).max_length = ((list_size - mem::size_of::<pg_sys::List>())
@@ -425,7 +426,7 @@ impl<'a, T: Enlist> IntoIterator for List<'a, T> {
     }
 }
 
-impl<'a, T> Drop for ListIter<'a, T> {
+impl<T> Drop for ListIter<'_, T> {
     fn drop(&mut self) {
         if let List::Cons(head) = &mut self.list {
             unsafe { destroy_list(head.list.as_ptr()) }

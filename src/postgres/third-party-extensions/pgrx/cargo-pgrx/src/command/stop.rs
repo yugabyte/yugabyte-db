@@ -7,9 +7,9 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+use crate::CommandExecute;
 use crate::command::status::status_postgres;
 use crate::manifest::{get_package_manifest, pg_config_and_version};
-use crate::CommandExecute;
 use eyre::eyre;
 use owo_colors::OwoColorize;
 use pgrx_pg_config::{PgConfig, Pgrx};
@@ -20,7 +20,7 @@ use std::process::Stdio;
 #[derive(clap::Args, Debug, Clone)]
 #[clap(author)]
 pub(crate) struct Stop {
-    /// The Postgres version to stop (pg13, pg14, pg15, pg16, pg17, or all)
+    /// The Postgres version to stop (pg13, pg14, pg15, pg16, pg17, pg18, or all)
     #[clap(env = "PG_VERSION")]
     pg_version: Option<String>,
     #[clap(from_global, action = ArgAction::Count)]
@@ -39,8 +39,8 @@ impl CommandExecute for Stop {
         fn perform(me: Stop, pgrx: &Pgrx) -> eyre::Result<()> {
             let (package_manifest, _) = get_package_manifest(
                 &clap_cargo::Features::default(),
-                me.package.as_ref(),
-                me.manifest_path.clone(),
+                me.package.as_deref(),
+                me.manifest_path.as_deref(),
             )?;
             let (pg_config, _) =
                 pg_config_and_version(pgrx, &package_manifest, me.pg_version, None, false)?;
@@ -51,8 +51,8 @@ impl CommandExecute for Stop {
         let pgrx = Pgrx::from_config()?;
         let (package_manifest, _) = get_package_manifest(
             &clap_cargo::Features::default(),
-            self.package.as_ref(),
-            self.manifest_path.clone(),
+            self.package.as_deref(),
+            self.manifest_path.as_deref(),
         )?;
         if self.pg_version == Some("all".into()) {
             for v in crate::manifest::all_pg_in_both_tomls(&package_manifest, &pgrx) {

@@ -17,13 +17,13 @@ import { makeStyles } from '@material-ui/core';
 
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
-import { api } from '@app/redesign/helpers/api';
 import { YBButton, YBModal } from '../../../../components';
 import TaskDiffModal from '../TaskDiffModal';
 import { fetchCustomerTasks } from '../../../../../actions/tasks';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
-import { abortTask, retryTasks } from './api';
-import { doesTaskSupportsDiffData } from '../../TaskUtils';
+import { abortTask } from './api';
+import { useTaskActionMutations } from '../../hooks/useTaskActionMutations';
+import { doesTaskSupportsDiffData, getTaskUniverseUuid } from '../../TaskUtils';
 import { TaskDrawerCompProps } from './dtos';
 import { TaskState } from '../../dtos';
 
@@ -50,26 +50,22 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
 
   const dispatch = useDispatch();
 
+  // The drawer is mounted globally, so the task can target a backup / provider / schedule rather
+  // than a universe. Only treat targetUUID as a universe when the target says it is one.
+  const taskUniverseUuid = getTaskUniverseUuid(currentTask);
+
   // we should refresh the universe info after retrying the task, else the old task banner will be shown
   const refreshUniverse = () => {
-    return dispatch(fetchUniverseInfo(currentTask.targetUUID) as any).then((response: any) => {
+    if (!taskUniverseUuid) return;
+    return dispatch(fetchUniverseInfo(taskUniverseUuid) as any).then((response: any) => {
       return dispatch(fetchUniverseInfoResponse(response.payload));
     });
   };
 
-  const doRetryTask = useMutation(() => retryTasks(currentTask?.id), {
-    onSuccess: () => {
-      toast.success(t('messages.taskRetrySuccess'));
-    },
-    onError: () => {
-      toast.error(t('messages.taskRetryFailed'));
-    },
-    onSettled: () => {
-      toggleRetryConfirmationModal(false);
-      refreshUniverse();
-      dispatch(fetchCustomerTasks());
-    }
-  });
+  const { retryTaskMutation, rollbackTaskMutation } = useTaskActionMutations(
+    currentTask,
+    taskUniverseUuid
+  );
 
   const doabortTask = useMutation(() => abortTask(currentTask?.id), {
     onSuccess: () => {
@@ -80,20 +76,6 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     },
     onSettled: () => {
       toggleAbortConfirmationModal(false);
-      refreshUniverse();
-      dispatch(fetchCustomerTasks());
-    }
-  });
-
-  const doRollbackTask = useMutation(() => api.rollbackTask(currentTask?.id), {
-    onSuccess: () => {
-      toast.success(t('messages.taskRollbackSuccess'));
-    },
-    onError: () => {
-      toast.error(t('messages.taskRollbackFailed'));
-    },
-    onSettled: () => {
-      toggleRollbackConfirmationModal(false);
       refreshUniverse();
       dispatch(fetchCustomerTasks());
     }
@@ -161,12 +143,20 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
       <RetryConfirmModal
         visible={showRetryConfirmationModal}
         onClose={() => toggleRetryConfirmationModal(false)}
-        onSubmit={() => doRetryTask.mutate()}
+        onSubmit={() =>
+          retryTaskMutation.mutate(undefined, {
+            onSettled: () => toggleRetryConfirmationModal(false)
+          })
+        }
       />
       <RollbackConfirmModal
         visible={showRollbackConfirmationModal}
         onClose={() => toggleRollbackConfirmationModal(false)}
-        onSubmit={() => doRollbackTask.mutate()}
+        onSubmit={() =>
+          rollbackTaskMutation.mutate(undefined, {
+            onSettled: () => toggleRollbackConfirmationModal(false)
+          })
+        }
       />
       <TaskDiffModal
         visible={showTaskDiffModal}
@@ -226,7 +216,11 @@ export const RetryConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose
   );
 };
 
-const RollbackConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSubmit }) => {
+export const RollbackConfirmModal: FC<ConfirmationModalProps> = ({
+  visible,
+  onClose,
+  onSubmit
+}) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'taskDetails.actions'
   });

@@ -21,20 +21,20 @@ use crate::{SqlGraphEntity, SqlGraphIdentifier};
 
 /// The output of a [`Schema`](crate::schema::Schema) from `quote::ToTokens::to_tokens`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
-pub struct SchemaEntity {
-    pub module_path: &'static str,
-    pub name: &'static str,
-    pub file: &'static str,
+pub struct SchemaEntity<'a> {
+    pub module_path: &'a str,
+    pub name: &'a str,
+    pub file: &'a str,
     pub line: u32,
 }
 
-impl From<SchemaEntity> for SqlGraphEntity {
-    fn from(val: SchemaEntity) -> Self {
+impl<'a> From<SchemaEntity<'a>> for SqlGraphEntity<'a> {
+    fn from(val: SchemaEntity<'a>) -> Self {
         SqlGraphEntity::Schema(val)
     }
 }
 
-impl SqlGraphIdentifier for SchemaEntity {
+impl SqlGraphIdentifier for SchemaEntity<'_> {
     fn dot_identifier(&self) -> String {
         format!("schema {}", self.module_path)
     }
@@ -42,7 +42,7 @@ impl SqlGraphIdentifier for SchemaEntity {
         self.module_path.to_string()
     }
 
-    fn file(&self) -> Option<&'static str> {
+    fn file(&self) -> Option<&str> {
         Some(self.file)
     }
 
@@ -51,7 +51,7 @@ impl SqlGraphIdentifier for SchemaEntity {
     }
 }
 
-impl ToSql for SchemaEntity {
+impl ToSql for SchemaEntity<'_> {
     fn to_sql(&self, _context: &PgrxSql) -> eyre::Result<String> {
         let SchemaEntity { name, file, line, module_path } = self;
         let sql = format!(

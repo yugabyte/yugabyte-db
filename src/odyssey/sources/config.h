@@ -91,6 +91,7 @@ struct od_config {
 	/* YB */
 	int yb_ysql_max_connections;
 	int yb_use_auth_backend;
+	int yb_cert_auth;
 	int yb_optimized_extended_query_protocol;
 	int yb_enable_multi_route_pool;
 	int yb_optimized_session_parameters;

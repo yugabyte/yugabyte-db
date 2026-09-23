@@ -54,6 +54,12 @@ The following table summarizes the support for transactions across the YSQL and 
     href="transactional-ddl/"
     icon="fa-thin fa-table">}}
 
+  {{<index/item
+    title="Faster writes to new tables"
+    body="Speed up bulk loads into tables created in the same transaction."
+    href="new-table-writes/"
+    icon="fa-thin fa-bolt">}}
+
 {{</index/block>}}
 
 <!-- ADD THIS ONCE READY:

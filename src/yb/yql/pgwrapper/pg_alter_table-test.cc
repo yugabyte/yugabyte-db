@@ -181,8 +181,11 @@ class PgAlterTableConcurrencyTest : public PgAlterTableTest {
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL to be enabled, so keep the flags in sync.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags in sync.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
   }
 };
 

@@ -19,12 +19,15 @@
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 
+#include "yb/gutil/strings/join.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/storage_tier.h"
 
 using std::string;
 using std::vector;
@@ -198,6 +201,27 @@ Status TablespaceParser::PlacementInfoFromJson(
           "Invalid type for \"placement_uuid\" field in $0. Expected string, got $1.",
           replica_type_str, GetRapidJsonTypeName(placement["placement_uuid"]));
     placement_info->set_placement_uuid(placement["placement_uuid"].GetString());
+  }
+
+  if (placement.HasMember("storage_tier")) {
+    if (!placement["storage_tier"].IsString()) {
+      return STATUS_FORMAT(
+          Corruption,
+          "Invalid type for \"storage_tier\" field in $0. Expected string, got $1.",
+          replica_type_str, GetRapidJsonTypeName(placement["storage_tier"]));
+    }
+    const std::string storage_tier = placement["storage_tier"].GetString();
+    if (storage_tier.empty()) {
+      return STATUS_FORMAT(
+          Corruption, "\"storage_tier\" field in $0 cannot be empty.", replica_type_str);
+    }
+    if (!IsValidStorageTier(storage_tier)) {
+      return STATUS_FORMAT(
+          Corruption,
+          "Invalid \"storage_tier\" value \"$0\" in $1. Valid storage tiers are: $2",
+          storage_tier, replica_type_str, JoinStrings(ValidStorageTiers(), ", "));
+    }
+    placement_info->set_storage_tier(storage_tier);
   }
 
   // Parse the placement blocks.

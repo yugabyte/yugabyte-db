@@ -22,8 +22,9 @@ Check [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.co
 
 Upgrade the connector:
 
-- _Before upgrading YugabyteDB_ to a release series newer than the one your connector was built for. The connector is backward compatible only; running it against a newer database release is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _Before upgrading YugabyteDB_ to a release series later than the one your connector was built for. The connector is backward compatible only; running it against a later database release is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
 - _When a release fixes a bug or security issue_ that affects your deployment.
+- _To run on Kafka Connect 4.x_, use connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2) or later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 
 As a best practice, run the latest stable connector release regardless of your YugabyteDB version.
 

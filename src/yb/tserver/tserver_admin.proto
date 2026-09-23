@@ -175,7 +175,9 @@ message CreateTabletRequestPB {
 
   // Tiered storage: storage tier label (e.g. "ssd", "hdd") that this tablet's home directory
   // should be placed on, derived from the storage_tier of the tablespace the tablet's table
-  // belongs to. Empty/unset means no tier preference (default disk-selection policy).
+  // belongs to. Empty/unset is treated as the default tier (see yb::kDefaultStorageTier in
+  // src/yb/util/storage_tier.h, "ssd") rather than as "no preference" -- see
+  // TSTabletManager::GetAndRegisterDataAndWalDir.
   optional string target_storage_tier = 21;
 }
 

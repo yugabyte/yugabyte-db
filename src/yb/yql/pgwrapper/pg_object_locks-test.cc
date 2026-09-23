@@ -663,9 +663,12 @@ class PgObjectLocksTest : public LibPqTestBase {
     }
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTransactionalDdl()));
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--ysql_yb_enable_ddl_savepoint_support=$0", EnableTransactionalDdl()));
+    opts->extra_tserver_flags.emplace_back(yb::Format(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0", EnableTransactionalDdl()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(

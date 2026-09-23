@@ -451,6 +451,23 @@ MACHINE_API int machine_io_verify(machine_io_t *obj, char *common_name)
 	return rc;
 }
 
+/*
+ * YB: Export the peer's leaf certificate as DER. Returns 0 on success, with
+ * *buf left NULL when the peer sent no certificate, and -1 when a certificate
+ * was presented but could not be encoded. The caller must free() *buf.
+ */
+MACHINE_API int yb_machine_io_get_peer_cert_der(machine_io_t *obj,
+					     unsigned char **buf, int *len)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	mm_errno_set(0);
+	if (io->tls == NULL || io->tls_ssl == NULL) {
+		mm_errno_set(EINVAL);
+		return -1;
+	}
+	return yb_mm_tls_get_peer_cert_der(io, buf, len);
+}
+
 int mm_io_socket_set(mm_io_t *io, int fd)
 {
 	io->fd = fd;

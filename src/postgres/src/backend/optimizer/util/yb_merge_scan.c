@@ -520,8 +520,8 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 			foreach(j, tlist)
 			{
 				/*
-				 * YB: skip over stream key cols, which may be part of sort
-				 * ECs in case they are equal to other columns part of sort.
+				 * YB: skip over stream key cols, which may be part of sort ECs
+				 * in case they are equal to other columns part of sort.
 				 */
 				if (bms_is_member(indexcol++, stream_col_idxs))
 					continue;
@@ -598,12 +598,12 @@ ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *expr,
 }
 
 /*
- * The first equality index clause on the column, or NULL if there is none.
- * match_clause_to_indexcol commutes a clause whose index key is on the right,
- * so the index key is on the left here, as in the fixed index condition.
+ * The first equality index clause on the column whose index column expression
+ * is expr, or NULL if there is none.
  */
 static Expr *
-ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
+ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
+					  Expr *expr)
 {
 	ListCell   *lc;
 
@@ -617,13 +617,8 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 		foreach(lc2, iclause->indexquals)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-			Oid			opno;
 
-			if (!is_opclause(rinfo->clause))
-				continue;
-			opno = ((OpExpr *) rinfo->clause)->opno;
-			if (get_op_opfamily_strategy(opno, index->opfamily[indexcol]) ==
-				BTEqualStrategyNumber)
+			if (ybIsEqualityOnIndexCol(index, indexcol, expr, rinfo->clause))
 				return rinfo->clause;
 		}
 	}
@@ -656,38 +651,27 @@ ybEqualityImpliedByIndexPredicate(IndexOptInfo *index, int indexcol,
 }
 
 /*
- * Prune the single-value equality stream key columns whose bind the merge
- * order does not need, and store the equality index clause in the entries of
- * the columns kept, so that EXPLAIN can show it.  build_index_pathkeys records
- * every index column its walk skipped as an EquivalenceClass constant, since
- * it cannot settle either question: the plan's last merge sort column is known
- * only once truncate_useless_pathkeys has trimmed the pathkeys, and the plan's
- * index clauses belong to the path.  A column at or after the last merge sort
- * column (0-based last_sort_indexcol) does not affect the order and is
- * dropped.  Ahead of it, normally the bind of the column's equality index
- * condition is what keeps the column constant within each stream, but two
- * cases leave the column without an index clause yet constant in every index
- * row, so demanding a bind would be a false error:
+ * Prune the stream key columns whose bind the merge order does not need, and
+ * set the clause of each single-value equality column kept to its equality
+ * index clause.  This happens here because only the plan knows its last merge
+ * sort column, after truncate_useless_pathkeys, and its index clauses.
+ * Dropped:
  *
- * - A duplicate index column.  With an index on (a, b, b, c) and a query with
- *   b = 5 ORDER BY c, the clause becomes an index condition on the first b
- *   only, and the second b holds the same value as the first, which carries
- *   the requirement.
+ * - A column at or after the last merge sort column (0-based
+ *   last_sort_indexcol), which does not affect the order and fans out no
+ *   streams.
+ * - A duplicate index column, such as the second b of (a, b, b, c), which
+ *   holds the same value as the first.
+ * - A range column whose equality a partial index predicate implies, which
+ *   check_index_predicates removes from the index conditions.  TODO(#34120):
+ *   drop such hash columns too, which pggate cannot merge without a condition
+ *   on each.
  *
- * - A partial index whose predicate implies the equality.
- *   check_index_predicates drops the clause from the index conditions (it is
- *   in the relation's baserestrictinfo but not in indrestrictinfo), and every
- *   index row satisfies the predicate.
- *
- * Any other column without an equality index clause stays declared, with a
- * NULL clause, so that ybValidateMergeScanBinds reports it: a planner that
- * relied on a condition it never produced (the class of divergence issue
- * #32732 fixed for SAOP columns), or a future change that routes the equality
- * to a filter running after the streams are merged (a table storage filter on
- * a non-colocated secondary index, whose table fetch follows the index-side
- * merge, or a local filter).  A routing to a filter inside the per-stream
- * storage request would preserve the order and must add its case here.  SAOP
- * entries are kept as they are.  Returns a new list.
+ * Any other equality column without an equality index clause stays declared
+ * with a NULL clause, so that ybValidateMergeScanBinds reports it.  A change
+ * that evaluates such an equality as a filter inside the per-stream storage
+ * request keeps the order and must add that case here, or the validation
+ * rejects the plan.  Returns a new list.
  */
 List *
 yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
@@ -705,18 +689,21 @@ yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
 		bool		dup = false;
 		int			i;
 
-		/* A SAOP column: keep the entry as it is. */
+		/* At or after the last merge sort column: not needed for order. */
+		if (info->indexcol >= last_sort_indexcol)
+			continue;
+
+		/* A SAOP column ahead of it: keep the entry as it is. */
 		if (info->clause)
 		{
 			result = lappend(result, info);
 			continue;
 		}
 
-		/* At or after the last merge sort column: not needed for order. */
-		if (info->indexcol >= last_sort_indexcol)
-			continue;
-
-		clause = ybEqualityIndexClause(index, indexclauses, info->indexcol);
+		expr = ((TargetEntry *) list_nth(index->indextlist,
+										 info->indexcol))->expr;
+		clause = ybEqualityIndexClause(index, indexclauses, info->indexcol,
+									   expr);
 		if (clause)
 		{
 			/*
@@ -732,8 +719,6 @@ yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
 			continue;
 		}
 
-		expr = ((TargetEntry *) list_nth(index->indextlist,
-										 info->indexcol))->expr;
 		for (i = 0; i < info->indexcol; i++)
 		{
 			if (equal(expr,
@@ -743,8 +728,9 @@ yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
 				break;
 			}
 		}
-		if (dup || ybEqualityImpliedByIndexPredicate(index, info->indexcol,
-													 expr))
+		if (dup ||
+			(info->indexcol >= index->nhashcolumns &&
+			 ybEqualityImpliedByIndexPredicate(index, info->indexcol, expr)))
 			continue;
 
 		result = lappend(result, info);

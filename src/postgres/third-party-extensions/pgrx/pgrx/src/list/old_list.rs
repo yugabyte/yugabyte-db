@@ -36,11 +36,7 @@ impl<T> PgList<T> {
 
     #[inline]
     pub fn len(&self) -> usize {
-        if self.list.is_null() {
-            0
-        } else {
-            unsafe { self.list.as_ref() }.unwrap().length as usize
-        }
+        if self.list.is_null() { 0 } else { unsafe { self.list.as_ref() }.unwrap().length as usize }
     }
 
     #[inline]
@@ -185,7 +181,7 @@ struct PgListIteratorInt<'a, T> {
     pos: usize,
 }
 
-impl<'a, T> Iterator for PgListIteratorPtr<'a, T> {
+impl<T> Iterator for PgListIteratorPtr<'_, T> {
     type Item = *mut T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -195,7 +191,7 @@ impl<'a, T> Iterator for PgListIteratorPtr<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for PgListIteratorOid<'a, T> {
+impl<T> Iterator for PgListIteratorOid<'_, T> {
     type Item = pg_sys::Oid;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -205,7 +201,7 @@ impl<'a, T> Iterator for PgListIteratorOid<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for PgListIteratorInt<'a, T> {
+impl<T> Iterator for PgListIteratorInt<'_, T> {
     type Item = i32;
 
     fn next(&mut self) -> Option<Self::Item> {

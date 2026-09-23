@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-When deploying universes using a public [cloud provider configuration](../../../yba-overview/#provider-configurations) (AWS, GCP, or Azure), YugabyteDB Anywhere (YBA) creates cloud VMs for database nodes directly.
+When deploying universes using a public [cloud provider configuration](../../../yba-overview/#provider-configurations) (AWS, GCP, Azure, or OCI), YugabyteDB Anywhere (YBA) creates cloud VMs for database nodes directly.
 
 You have two options for provisioning the operating system for database nodes:
 
@@ -25,14 +25,14 @@ Using a YBA-managed Linux version requires connectivity from the database nodes 
 
 For YBA-managed Linux version, YBA manages the creation and provisioning of database nodes, including installing the disk image, configuring the Linux OS, and installing the additional software.
 
-You can proceed directly to installing YBA, creating your cloud provider configuration, and creating universes. YBA-managed Linux versions use `ec2-user` on AWS and `centos` on GCP and Azure.
+You can proceed directly to installing YBA, creating your cloud provider configuration, and creating universes. YBA-managed Linux versions use `ec2-user` on AWS, `opc` on OCI, and `centos` on GCP and Azure.
 
 ## Custom Linux version with Internet connectivity
 
 If you choose to provide your own custom Linux version and your VMs have connectivity to the public Internet, you must provide to YBA a Linux OS disk image with the following pre-installed:
 
 - [Supported Linux OS](../#linux-os). The SSH user must have passwordless sudo and must not be named `yugabyte` (YBA creates that account during provisioning). YBA uses this user to configure the OS, including creating the `yugabyte` user and updating ulimits.
-  - AWS and GCP: that user must already exist on the image. For standard images, use the image's default login user (for example `ec2-user` or `ubuntu`).
+  - AWS, GCP, and OCI: that user must already exist on the image. For standard images, use the image's default login user (for example `ec2-user`, `ubuntu`, or `opc`).
   - Azure: Azure creates the SSH user you specify when it provisions the VM. For a custom or shared-gallery image, choose a username that does not already exist on the image; Azure rejects the request if that user is already present.
 - [Additional software](../#additional-software)
 
@@ -52,7 +52,7 @@ Take the time now to prepare the Linux disk image.
 If you choose to provide your own custom Linux version and your VMs don't have connectivity to the public Internet, you must provide to YBA a Linux OS disk image with the following pre-installed:
 
 - [Supported Linux OS](../#linux-os). The SSH user must have passwordless sudo and must not be named `yugabyte` (YBA creates that account during provisioning). YBA uses this user to configure the OS, including creating the `yugabyte` user and updating ulimits.
-  - AWS and GCP: that user must already exist on the image. For standard images, use the image's default login user (for example `ec2-user` or `ubuntu`).
+  - AWS, GCP, and OCI: that user must already exist on the image. For standard images, use the image's default login user (for example `ec2-user`, `ubuntu`, or `opc`).
   - Azure: Azure creates the SSH user you specify when it provisions the VM. For a custom or shared-gallery image, choose a username that does not already exist on the image; Azure rejects the request if that user is already present.
 - [Additional software](../#additional-software)
 - [Additional software for airgapped](../#additional-software-for-airgapped-deployment)

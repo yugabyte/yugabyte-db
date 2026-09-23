@@ -54,6 +54,12 @@ message PlacementInfoPB {
   optional int32 num_replicas = 1;
   repeated PlacementBlockPB placement_blocks = 2;
   optional bytes placement_uuid = 3;
+
+  // Label of the storage tier that the replicas covered by this placement should live on,
+  // matching a tserver's --fs_data_dirs tier label. Must be one of the fixed set
+  // "ssd" or "hdd" (see ValidStorageTiers() in src/yb/util/storage_tier.h).
+  // Unset defaults to "ssd".
+  optional string storage_tier = 4;
 }
 
 // Higher level structure to keep track of all types of replicas configured. This will have, at a
