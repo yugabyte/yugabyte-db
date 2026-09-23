@@ -368,6 +368,15 @@ class Message {
         "}\n\n"
     );
 
+    if (MessageHasTracingAttributes(message_)) {
+      printer(
+          "std::vector<std::pair<std::string, std::string>> TracingAttributes() const;\n"
+          "void AppendTracingAttributes(\n"
+          "    const std::string& prefix,\n"
+          "    std::vector<std::pair<std::string, std::string>>* out) const;\n\n"
+      );
+    }
+
     public_scope.Reset();
 
     printer(" private:\n");
@@ -451,6 +460,16 @@ class Message {
 
     private_scope.Reset("};\n\n");
 
+    if (MessageHasTracingAttributes(message_) && !message_->options().map_entry()) {
+      printer(
+          "std::vector<std::pair<std::string, std::string>> TracingAttributes(\n"
+          "    const $message_pb_name$& msg);\n"
+          "void AppendTracingAttributes(\n"
+          "    const $message_pb_name$& msg, const std::string& prefix,\n"
+          "    std::vector<std::pair<std::string, std::string>>* out);\n\n"
+      );
+    }
+
     if (message_->options().map_entry()) {
       printer(
           "inline $message_lw_name$::KeyReturnType ExtractKey(const $message_lw_name$& pair) {\n"
@@ -494,6 +513,9 @@ class Message {
     Size(printer);
     if (!message_->options().map_entry()) {
       ToGoogleProtobuf(printer);
+    }
+    if (MessageHasTracingAttributes(message_)) {
+      TracingAttributes(printer);
     }
   }
 
@@ -1123,6 +1145,146 @@ class Message {
     method_indent.Reset("}\n\n");
   }
 
+  // Collects trace-tagged fields (recursing into nested messages) as (dotted-path, text-value)
+  // pairs; bytes hex-encoded unless bytes_as_string. Emitted as lightweight members and pb_ free
+  // functions.
+  void TracingAttributes(YBPrinter printer) const {
+    printer(
+        "std::vector<std::pair<std::string, std::string>> "
+            "$message_lw_name$::TracingAttributes() const {\n"
+        "  std::vector<std::pair<std::string, std::string>> result;\n"
+        "  AppendTracingAttributes(\"req.\", &result);\n"
+        "  return result;\n"
+        "}\n"
+        "\n"
+        "void $message_lw_name$::AppendTracingAttributes(\n"
+        "    const std::string& prefix, "
+            "std::vector<std::pair<std::string, std::string>>* out) const {\n"
+    );
+    EmitTracingAttributesBody(printer, Lightweight::kTrue);
+
+    if (message_->options().map_entry()) {
+      return;
+    }
+    printer(
+        "std::vector<std::pair<std::string, std::string>> TracingAttributes(\n"
+        "    const $message_pb_name$& msg) {\n"
+        "  std::vector<std::pair<std::string, std::string>> result;\n"
+        "  AppendTracingAttributes(msg, \"req.\", &result);\n"
+        "  return result;\n"
+        "}\n"
+        "\n"
+        "void AppendTracingAttributes(\n"
+        "    const $message_pb_name$& msg, const std::string& prefix,\n"
+        "    std::vector<std::pair<std::string, std::string>>* out) {\n"
+    );
+    EmitTracingAttributesBody(printer, Lightweight::kFalse);
+  }
+
+  // Emits the per-field code both AppendTracingAttributes forms share: `lightweight` picks
+  // the member form (fields via `this`) or the pb_ free-function form (fields via the `msg`
+  // parameter).
+  void EmitTracingAttributesBody(YBPrinter printer, Lightweight lightweight) const {
+    const bool lw = lightweight;
+    const std::string obj = lw ? std::string() : "msg."s;
+
+    ScopedIndent method_indent(printer);
+
+    for (int j = 0; j != message_->field_count(); ++j) {
+      const auto* field = message_->field(j);
+      const bool nested = IsMessage(field) && MessageHasTracingAttributes(field->message_type());
+      const bool scalar = !IsMessage(field) && FieldTraceEnabled(field);
+      if (!nested && !scalar) {
+        continue;
+      }
+      ScopedSubstituter field_substituter(printer, field);
+
+      // Value expression, given the token yielding a single field value (e.g. "$field_name$()" or
+      // "msg.$field_name$()" for a singular field, "entry" for a repeated element).
+      auto value_expr = [field, lw](const std::string& token) -> std::string {
+        if (StoredAsSlice(field)) {
+          const bool hex = field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
+                           !FieldTraceBytesAsString(field);
+          if (lw) {
+            return token + (hex ? ".ToDebugHexString()" : ".ToBuffer()");
+          }
+          return hex ? "::yb::Slice(" + token + ").ToDebugHexString()" : token;
+        }
+        if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
+          return "$nonlw_field_type$_Name(" + token + ")";
+        }
+        if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_BOOL) {
+          return "std::string(" + token + " ? \"true\" : \"false\")";
+        }
+        return "std::to_string(" + token + ")";
+      };
+
+      if (!field->is_repeated()) {
+        // The lightweight message always has has_$field$(); the pb_ message only for fields with
+        // explicit presence -- guard the rest on non-emptiness (string/bytes) or emit them plainly.
+        if (lw || field->has_presence()) {
+          printer("if (" + obj + "has_$field_name$()) {\n");
+        } else if (StoredAsSlice(field)) {
+          printer("if (!" + obj + "$field_name$().empty()) {\n");
+        } else {
+          printer("{\n");
+        }
+        ScopedIndent if_indent(printer);
+        if (nested) {
+          if (lw) {
+            printer("$field_name$().AppendTracingAttributes(prefix + \"$field_name$.\", out);\n");
+          } else {
+            printer(
+                "AppendTracingAttributes(" + obj +
+                "$field_name$(), prefix + \"$field_name$.\", out);\n");
+          }
+        } else {
+          printer(
+              "out->emplace_back(prefix + \"$field_name$\", " +
+              value_expr(obj + "$field_name$()") + ");\n");
+        }
+        if_indent.Reset("}\n");
+        continue;
+      }
+
+      // Repeated: one attribute per element, index folded into the key.
+      const bool pointer = lw && IsPointerField(field);
+      if (pointer) {
+        printer("if ($field_accessor$) {\n");
+        printer.printer().Indent();
+      }
+      const std::string range =
+          lw ? (pointer ? "*$field_accessor$"s : "$field_accessor$"s) : "msg.$field_name$()"s;
+      printer("{\n");
+      ScopedIndent loop_indent(printer);
+      printer("size_t index = 0;\n");
+      printer("for (const auto& entry : " + range + ") {\n");
+      {
+        ScopedIndent body_indent(printer);
+        if (nested) {
+          printer(
+              (lw ? "entry.AppendTracingAttributes(\n"s
+                  : "AppendTracingAttributes(entry,\n"s) +
+              "    prefix + \"$field_name$.\" + std::to_string(index) + \".\", out);\n");
+        } else {
+          printer(
+              "out->emplace_back(\n"
+              "    prefix + \"$field_name$.\" + std::to_string(index), " + value_expr("entry") +
+              ");\n");
+        }
+        printer("++index;\n");
+      }
+      printer("}\n");
+      loop_indent.Reset("}\n");
+      if (pointer) {
+        printer.printer().Outdent();
+        printer("}\n");
+      }
+    }
+
+    method_indent.Reset("}\n\n");
+  }
+
   bool StoreAsPointer(const google::protobuf::FieldDescriptor* field) const {
     return cycle_dependencies_.count(field) || IsPointerField(field) ||
            (field->real_containing_oneof() && field->message_type());
@@ -1159,6 +1321,10 @@ class MessagesGenerator::Impl {
         "// THIS FILE IS AUTOGENERATED FROM $path$\n"
         "\n"
         "#pragma once\n"
+        "\n"
+        "#include <string>\n"
+        "#include <utility>\n"
+        "#include <vector>\n"
         "\n"
     );
 

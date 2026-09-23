@@ -122,5 +122,81 @@ TEST(LWProtoTest, BigMessage) {
   ASSERT_EQ(pb.string1(), lwpb2.string1());
 }
 
+
+// Every trace-tagged field type the generator handles, in both the lightweight and the plain
+// protobuf form: scalars, enum, bool, hex bytes, bytes_as_string, repeated scalars, nested and
+// repeated nested messages, a pointer field, and recursion through a self-referential message.
+// Fields not tagged (i32, pairs) must not appear; unset tagged fields must not appear.
+TEST(LWProtoTest, TracingAttributes) {
+  using Attrs = std::vector<std::pair<std::string, std::string>>;
+  const Attrs expected = {
+      {"req.u32", "7"},
+      {"req.str", "hello"},
+      {"req.bytes", "0102FF"},
+      {"req.en", "TWO"},
+      {"req.ru32.0", "1"},
+      {"req.ru32.1", "2"},
+      {"req.rstr.0", "a"},
+      {"req.rstr.1", "b"},
+      {"req.message.str", "sub"},
+      {"req.message.rbytes.0", "x1"},
+      {"req.message.rbytes.1", "x2"},
+      {"req.message.cycle.str", "deep"},
+      {"req.repeated_messages.0.str", "r0"},
+      {"req.repeated_messages.1.str", "r1"},
+      {"req.ptr_message.str", "ptr"},
+      {"req.flag", "true"},
+      {"req.bytes_str", "raw text"},
+  };
+
+  rpc_test::LightweightRequestPB pb;
+  pb.set_i32(-1);
+  pb.set_u32(7);
+  pb.set_str("hello");
+  pb.set_bytes("\x01\x02\xff");
+  pb.set_en(rpc_test::TWO);
+  pb.add_ru32(1);
+  pb.add_ru32(2);
+  pb.add_rstr("a");
+  pb.add_rstr("b");
+  pb.mutable_message()->set_str("sub");
+  pb.mutable_message()->add_rbytes("x1");
+  pb.mutable_message()->add_rbytes("x2");
+  pb.mutable_message()->mutable_cycle()->set_str("deep");
+  pb.add_repeated_messages()->set_str("r0");
+  pb.add_repeated_messages()->set_str("r1");
+  pb.add_pairs()->set_s1("untagged");
+  pb.mutable_ptr_message()->set_str("ptr");
+  pb.set_flag(true);
+  pb.set_bytes_str("raw text");
+  ASSERT_EQ(TracingAttributes(pb), expected);
+
+  ThreadSafeArena arena;
+  rpc_test::LWLightweightRequestPB lw(&arena);
+  lw.set_i32(-1);
+  lw.set_u32(7);
+  lw.dup_str("hello");
+  lw.dup_bytes(Slice("\x01\x02\xff", 3));
+  lw.set_en(rpc_test::TWO);
+  lw.add_ru32(1);
+  lw.add_ru32(2);
+  lw.add_dup_rstr("a");
+  lw.add_dup_rstr("b");
+  lw.mutable_message()->dup_str("sub");
+  lw.mutable_message()->add_dup_rbytes("x1");
+  lw.mutable_message()->add_dup_rbytes("x2");
+  lw.mutable_message()->mutable_cycle()->dup_str("deep");
+  lw.add_repeated_messages()->dup_str("r0");
+  lw.add_repeated_messages()->dup_str("r1");
+  lw.add_pairs()->dup_s1("untagged");
+  lw.mutable_ptr_message()->dup_str("ptr");
+  lw.set_flag(true);
+  lw.dup_bytes_str("raw text");
+  ASSERT_EQ(lw.TracingAttributes(), expected);
+
+  ASSERT_TRUE(TracingAttributes(rpc_test::LightweightRequestPB()).empty());
+  ASSERT_TRUE(rpc_test::LWLightweightRequestPB(&arena).TracingAttributes().empty());
+}
+
 } // namespace rpc
 } // namespace yb
