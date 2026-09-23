@@ -412,7 +412,7 @@ TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
   auto make_placement = [](int32_t num_replicas, int32_t first_max, int32_t second_max) {
     PlacementInfoPB placement_info;
     placement_info.set_num_replicas(num_replicas);
-    for (const auto [zone, max_num_replicas] :
+    for (const auto& [zone, max_num_replicas] :
          {std::pair("z1", first_max), std::pair("z2", second_max)}) {
       auto* block = placement_info.add_placement_blocks();
       block->set_min_num_replicas(1);
