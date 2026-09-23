@@ -285,55 +285,41 @@ SELECT * FROM gtest1;
  4 | 8
 (2 rows)
 
+-- can't have generated column that is a child of normal column
 CREATE TABLE gtest_normal (a int, b int);
-CREATE TABLE gtest_normal_child (a int, b int GENERATED ALWAYS AS (a * 2) STORED) INHERITS (gtest_normal);
+CREATE TABLE gtest_normal_child (a int, b int GENERATED ALWAYS AS (a * 2) STORED) INHERITS (gtest_normal);  -- error
 NOTICE:  merging column "a" with inherited definition
 NOTICE:  merging column "b" with inherited definition
-\d gtest_normal_child
-                      Table "public.gtest_normal_child"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           |          | 
- b      | integer |           |          | generated always as (a * 2) stored
-Inherits: gtest_normal
-
-INSERT INTO gtest_normal (a) VALUES (1);
-INSERT INTO gtest_normal_child (a) VALUES (2);
-SELECT * FROM gtest_normal;
- a | b 
----+---
- 1 |  
- 2 | 4
-(2 rows)
-
-CREATE TABLE gtest_normal_child2 (a int, b int GENERATED ALWAYS AS (a * 3) STORED);
-ALTER TABLE gtest_normal_child2 INHERIT gtest_normal;
-INSERT INTO gtest_normal_child2 (a) VALUES (3);
-SELECT * FROM gtest_normal;
- a | b 
----+---
- 1 |  
- 2 | 4
- 3 | 9
-(3 rows)
-
--- test inheritance mismatches between parent and child
-CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- error
-NOTICE:  merging column "b" with inherited definition
 ERROR:  child column "b" specifies generation expression
-HINT:  Omit the generation expression in the definition of the child table column to inherit the generation expression from the parent table.
+HINT:  A child table column cannot be generated unless its parent column is.
+CREATE TABLE gtest_normal_child (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
+ALTER TABLE gtest_normal_child INHERIT gtest_normal;  -- error
+ERROR:  column "b" in child table must not be a generated column
+DROP TABLE gtest_normal, gtest_normal_child;
+-- test inheritance mismatches between parent and child
 CREATE TABLE gtestx (x int, b int DEFAULT 10) INHERITS (gtest1);  -- error
 NOTICE:  merging column "b" with inherited definition
 ERROR:  column "b" inherits from generated column but specifies default
 CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS IDENTITY) INHERITS (gtest1);  -- error
 NOTICE:  merging column "b" with inherited definition
 ERROR:  column "b" inherits from generated column but specifies identity
+CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- ok, overrides parent
+NOTICE:  merging column "b" with inherited definition
+\d+ gtestx
+                                                Table "public.gtestx"
+ Column |  Type   | Collation | Nullable |               Default               | Storage | Stats target | Description 
+--------+---------+-----------+----------+-------------------------------------+---------+--------------+-------------
+ a      | integer |           | not null |                                     | plain   |              | 
+ b      | integer |           |          | generated always as (a * 22) stored | plain   |              | 
+ x      | integer |           |          |                                     | plain   |              | 
+Not-null constraints:
+    "gtest1_a_not_null" NOT NULL "a" (inherited)
+Inherits:
+    gtest1
+
 CREATE TABLE gtestxx_1 (a int NOT NULL, b int);
 ALTER TABLE gtestxx_1 INHERIT gtest1;  -- error
 ERROR:  column "b" in child table must be a generated column
-CREATE TABLE gtestxx_2 (a int NOT NULL, b int GENERATED ALWAYS AS (a * 22) STORED);
-ALTER TABLE gtestxx_2 INHERIT gtest1;  -- error
-ERROR:  column "b" in child table has a conflicting generation expression
 CREATE TABLE gtestxx_3 (a int NOT NULL, b int GENERATED ALWAYS AS (a * 2) STORED);
 ALTER TABLE gtestxx_3 INHERIT gtest1;  -- ok
 CREATE TABLE gtestxx_4 (b int GENERATED ALWAYS AS (a * 2) STORED, a int NOT NULL);
@@ -720,7 +706,8 @@ CREATE TABLE gtest_parent (f1 date NOT NULL, f2 text, f3 bigint) PARTITION BY RA
 CREATE TABLE gtest_child PARTITION OF gtest_parent (
     f3 WITH OPTIONS GENERATED ALWAYS AS (f2 * 2) STORED
 ) FOR VALUES FROM ('2016-07-01') TO ('2016-08-01'); -- error
-ERROR:  generated columns are not supported on partitions
+ERROR:  child column "f3" specifies generation expression
+HINT:  A child table column cannot be generated unless its parent column is.
 DROP TABLE gtest_parent;
 -- partitioned table
 CREATE TABLE gtest_parent (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE (f1);
