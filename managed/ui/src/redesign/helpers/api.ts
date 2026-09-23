@@ -83,6 +83,7 @@ export const CONTINUOUS_BACKUP_QUERY_KEY = 'continuousBackup';
 
 export const taskQueryKey = {
   ALL: ['task'],
+  detail: (taskUuid: string) => [...taskQueryKey.ALL, 'detail', taskUuid],
   customer: (customerUuid: string) => [...taskQueryKey.ALL, 'customer', customerUuid],
   universe: (universeUuid: string) => [...taskQueryKey.ALL, 'universe', universeUuid],
   provider: (providerUuid: string) => [...taskQueryKey.ALL, 'provider', providerUuid],
@@ -122,10 +123,11 @@ export const universeQueryKey = {
     ...universeQueryKey.detail(universeUuid),
     'namespaces'
   ],
-  stateTransition: (
-    universeUuid: string | undefined,
-    state?: string | null
-  ) => [...universeQueryKey.detail(universeUuid), 'stateTransition', state ?? null],
+  stateTransition: (universeUuid: string | undefined, state?: string | null) => [
+    ...universeQueryKey.detail(universeUuid),
+    'stateTransition',
+    state ?? null
+  ],
   detailsV2: (universeUuid: string | undefined) => [
     ...universeQueryKey.ALL,
     'detailsV2',
@@ -382,6 +384,27 @@ export interface GetPagedCustomerTaskResponse {
   hasPrev: boolean;
 
   totalCount?: number;
+}
+
+/**
+ * `GET /tasks/{tUUID}` payload. Compared to `Task` type: there is no `id` or `typeName`, and
+ * `target` is the target's name rather than its type.
+ */
+export interface TaskStatus {
+  title: string;
+  createTime: string;
+  completionTime?: string;
+  target: string;
+  targetUUID: string;
+  type: string;
+  status: TaskState;
+  percent: number;
+  abortable: boolean;
+  retryable: boolean;
+  canRollback: boolean;
+  originalTaskUUID?: string;
+  userEmail?: string;
+  correlationId?: string;
 }
 
 class ApiService {
@@ -848,6 +871,11 @@ class ApiService {
     return axios
       .get<Task[]>(requestUrl, { params: { uUUID: universeUuid } })
       .then((response) => response.data);
+  };
+
+  fetchTaskStatus = (taskUuid: string): Promise<TaskStatus> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}`;
+    return axios.get<TaskStatus>(requestUrl).then((response) => response.data);
   };
 
   fetchPagedCustomerTasks = (

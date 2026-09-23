@@ -480,3 +480,51 @@ export const createEditUniverseTaskMock = (overrides: Partial<Task> = {}): Task 
     }
   };
 };
+
+export const EDIT_UNIVERSE_ROLLBACK_TASK_ID = 'd0000001-0001-4000-8000-000000000005';
+
+const buildEditUniverseRollbackTaskFixture = (): Task => ({
+  id: EDIT_UNIVERSE_ROLLBACK_TASK_ID,
+  title: 'Rolled back edit universe : mock-universe',
+  percentComplete: 5,
+  createTime: '2026-04-22T09:05:00Z',
+  completionTime: '',
+  target: TargetType.UNIVERSE as Task['target'],
+  targetUUID: EDIT_UNIVERSE_TASK_UNIVERSE_UUID,
+  type: TaskType.ROLLBACK_EDIT_UNIVERSE as Task['type'],
+  typeName: 'Rollback Edit Universe',
+  status: TaskState.RUNNING,
+  details: {
+    taskDetails: [
+      {
+        title: 'Rolling back universe update',
+        description: 'Restoring the universe to its state before the update.',
+        state: TaskState.RUNNING,
+        extraDetails: []
+      }
+    ]
+  },
+  abortable: true,
+  retryable: false,
+  canRollback: false,
+  originalTaskUUID: EDIT_UNIVERSE_TASK_ID,
+  correlationId: 'd0000001-0001-4000-8000-000000000006',
+  userEmail: 'admin',
+  subtaskInfos: [],
+  taskInfo: {
+    taskParams: {}
+  }
+});
+
+export const createEditUniverseRollbackTaskMock = (overrides: Partial<Task> = {}): Task => {
+  const base = buildEditUniverseRollbackTaskFixture();
+  return {
+    ...base,
+    ...overrides,
+    details: {
+      ...base.details,
+      ...(overrides.details ?? {}),
+      taskDetails: overrides.details?.taskDetails ?? base.details.taskDetails
+    }
+  };
+};

@@ -174,6 +174,11 @@ using PerformResultFuture = pg_client::internal::ResultFuture<pg_client::interna
 using WaitEventWatcher =
     std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC, uint32_t)>;
 
+// The deadline pggate applies to a request when no tighter timeout is in force -- in particular to
+// an object lock acquisition when postgres' lock_timeout is disabled. A caller that wants to report
+// the expiry itself must arm a timer that fires before this deadline does.
+MonoDelta DefaultRpcTimeout();
+
 class PgClient {
  public:
   struct ProxyInitInfo {

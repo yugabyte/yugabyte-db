@@ -103,6 +103,7 @@ typedef enum {
   YBTHIN_T_I64 = 3,
   YBTHIN_T_TEXT = 4,
   YBTHIN_T_BYTEA = 5,
+  YBTHIN_T_U32 = 6, // DocDB UINT32: what YSQL stores an `oid` column as
 } ybthin_value_type;
 
 typedef struct {
@@ -136,9 +137,10 @@ typedef enum {
   YBTHIN_BIND_I64 = 4,
   YBTHIN_BIND_TEXT = 5,
   YBTHIN_BIND_BYTEA = 6,
+  YBTHIN_BIND_U32 = 7, // `int_value` holds the unsigned value, 0..2^32-1
 } ybthin_bind_tag;
 
-// For BOOL/I16/I32/I64 read `int_value`; for TEXT/BYTEA read (`bytes`, `bytes_len`).
+// For BOOL/I16/I32/I64/U32 read `int_value`; for TEXT/BYTEA read (`bytes`, `bytes_len`).
 typedef struct {
   ybthin_bind_tag tag;
   int64_t int_value;

@@ -18,10 +18,56 @@ DETAIL:  This database is being replicated using xCluster automatic mode, which 
 HINT:  Drop the temporary objects separately from the permanent ones using multiple commands.
 DROP TABLE temp_foo;
 DROP TABLE foo;
+-- Test CREATE TABLE AS / SELECT INTO reading temp relations (#34017).
+CREATE TEMP TABLE temp_src(i int PRIMARY KEY);
+INSERT INTO temp_src VALUES (1), (2);
+CREATE TABLE perm_src(i int PRIMARY KEY);
+CREATE TEMP VIEW temp_view AS SELECT i FROM perm_src;
+CREATE TABLE ctas_from_temp AS SELECT * FROM temp_src; -- should fail
+ERROR:  unsupported mix of temporary and permanent objects
+DETAIL:  This database is being replicated using xCluster automatic mode, which does not support DDLs that simultaneously use both temporary and permanent objects.
+HINT:  Using multiple commands, manipulate the temporary objects separately from the permanent ones.
+SELECT * INTO ctas_from_temp FROM temp_src; -- should fail
+ERROR:  unsupported mix of temporary and permanent objects
+DETAIL:  This database is being replicated using xCluster automatic mode, which does not support DDLs that simultaneously use both temporary and permanent objects.
+HINT:  Using multiple commands, manipulate the temporary objects separately from the permanent ones.
+CREATE TABLE ctas_from_temp AS SELECT i FROM (SELECT i FROM temp_src) sub; -- should fail
+ERROR:  unsupported mix of temporary and permanent objects
+DETAIL:  This database is being replicated using xCluster automatic mode, which does not support DDLs that simultaneously use both temporary and permanent objects.
+HINT:  Using multiple commands, manipulate the temporary objects separately from the permanent ones.
+CREATE TABLE ctas_from_temp AS WITH t AS (SELECT i FROM temp_src) SELECT i FROM t; -- should fail
+ERROR:  unsupported mix of temporary and permanent objects
+DETAIL:  This database is being replicated using xCluster automatic mode, which does not support DDLs that simultaneously use both temporary and permanent objects.
+HINT:  Using multiple commands, manipulate the temporary objects separately from the permanent ones.
+CREATE TABLE ctas_from_temp AS SELECT p.i FROM perm_src p JOIN temp_src t USING (i); -- should fail
+ERROR:  unsupported mix of temporary and permanent objects
+DETAIL:  This database is being replicated using xCluster automatic mode, which does not support DDLs that simultaneously use both temporary and permanent objects.
+HINT:  Using multiple commands, manipulate the temporary objects separately from the permanent ones.
+CREATE TABLE ctas_from_temp AS SELECT * FROM temp_view; -- should fail
+ERROR:  unsupported mix of temporary and permanent objects
+DETAIL:  This database is being replicated using xCluster automatic mode, which does not support DDLs that simultaneously use both temporary and permanent objects.
+HINT:  Using multiple commands, manipulate the temporary objects separately from the permanent ones.
+CREATE TEMP TABLE temp_ctas AS SELECT * FROM temp_src; -- ok: temp target is not replicated
+SELECT * INTO TEMP temp_select_into FROM temp_src; -- ok: temp target is not replicated
+CREATE TABLE ctas_from_perm AS SELECT * FROM perm_src; -- ok
+SELECT * INTO select_into_from_perm FROM perm_src; -- ok
+DROP TABLE temp_ctas;
+DROP TABLE temp_select_into;
+DROP TABLE ctas_from_perm;
+DROP TABLE select_into_from_perm;
+DROP VIEW temp_view;
+DROP TABLE perm_src;
+DROP TABLE temp_src;
 SELECT yb_data FROM TEST_filtered_ddl_queue() ORDER BY ddl_end_time;
-                                                                                                                                                                                                                                                             yb_data                                                                                                                                                                                                                                                             
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                             yb_data                                                                                                                                                                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY)", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": "***", "rel_namespace": "public"}]}
  {"user": "yugabyte", "query": "DROP TABLE foo", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "DROP TABLE"}
-(2 rows)
+ {"user": "yugabyte", "query": "CREATE TABLE perm_src(i int PRIMARY KEY)", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "perm_src", "relfile_oid": "***", "rel_namespace": "public"}]}
+ {"user": "yugabyte", "query": "CREATE TABLE ctas_from_perm AS SELECT * FROM perm_src", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "CREATE TABLE AS", "new_rel_map": [{"rel_name": "ctas_from_perm", "relfile_oid": "***", "rel_namespace": "public"}]}
+ {"user": "yugabyte", "query": "SELECT * INTO select_into_from_perm FROM perm_src", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "SELECT INTO", "new_rel_map": [{"rel_name": "select_into_from_perm", "relfile_oid": "***", "rel_namespace": "public"}]}
+ {"user": "yugabyte", "query": "DROP TABLE ctas_from_perm", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "DROP TABLE"}
+ {"user": "yugabyte", "query": "DROP TABLE select_into_from_perm", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "DROP TABLE"}
+ {"user": "yugabyte", "query": "DROP TABLE perm_src", "schema": "public", "version": 1, "variables": {"timezone": "America/Los_Angeles", "datestyle": "Postgres, MDY", "intervalstyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_refresh_matview_in_place": "off", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "DROP TABLE"}
+(8 rows)
 

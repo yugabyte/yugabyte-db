@@ -14,14 +14,22 @@ export type StorybookTasksRootState = ReturnType<typeof tasksRootReducer>;
 
 const STORYBOOK_NOOP_ACTION = { type: '__STORYBOOK_NOOP__' } as const;
 
+type CreateStorybookTasksRootStoreOptions = {
+  /** When set, opens the task detail drawer on this task UUID. */
+  showTaskInDrawer?: string;
+};
+
 /** Preloads `tasks.customerTaskList` for Storybook; omit or pass `[]` for an empty list. */
-export function createStorybookTasksRootStore(customerTasks?: Task[]): Store<StorybookTasksRootState> {
+export function createStorybookTasksRootStore(
+  customerTasks?: Task[],
+  options?: CreateStorybookTasksRootStoreOptions
+): Store<StorybookTasksRootState> {
   const baseTasksState = tasksReducer(undefined, STORYBOOK_NOOP_ACTION as never);
   const preloadedState: StorybookTasksRootState = {
     tasks: {
       ...baseTasksState,
       customerTaskList: customerTasks ?? [],
-      showTaskInDrawer: ''
+      showTaskInDrawer: options?.showTaskInDrawer ?? ''
     }
   };
   return createStore(tasksRootReducer, preloadedState, applyMiddleware(promise));

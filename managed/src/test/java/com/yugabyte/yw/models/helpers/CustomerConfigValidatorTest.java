@@ -12,6 +12,7 @@ import static com.yugabyte.yw.models.configs.validators.ConfigDataValidator.fiel
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_GCS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
@@ -46,7 +47,10 @@ import com.google.cloud.storage.StorageException;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
@@ -1326,6 +1330,79 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       {"qwe@asd.com,qweqwe", "invalid email address qweqwe"},
       {"qwe@asd.com,qwe1@asd.com", null}
     };
+  }
+
+  @Test
+  public void testValidateConfig_SkipStorageValidationRuntimeConfig() {
+    ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(true);
+    CustomerConfig config = createS3Config("test");
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(PlatformServiceException.class));
+
+    setSkipStorageValidation(true);
+
+    customerConfigValidator.validateConfig(config);
+  }
+
+  @Test
+  public void testValidateConfig_SkipStorageValidationKeepsFieldValidation() {
+    setSkipStorageValidation(true);
+    ObjectNode data = Json.newObject();
+    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
+
+    // BACKUP_LOCATION is @NotNull on the data object, so bean validation rejects it even though
+    // the storage validators are disarmed.
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(PlatformServiceException.class));
+  }
+
+  @Test
+  public void testValidateConfig_SkipStorageValidationLeavesNonStorageConfigsAlone() {
+    setSkipStorageValidation(true);
+    ObjectNode data = Json.newObject();
+    data.put("alertingEmail", "qweqwe");
+    CustomerConfig config = createConfig(ConfigType.ALERTS, ALERTS_PREFERENCES, data);
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\""
+                + fieldFullName("alertingEmail")
+                + "\":[\"invalid email address qweqwe\"]}"));
+  }
+
+  @Test
+  public void testValidateConfig_SkipStorageValidationKeepsNameConflictCheck() {
+    setSkipStorageValidation(true);
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.createNfsStorageConfig(customer, "TEST_NFS");
+
+    CustomerConfig duplicate =
+        new CustomerConfig()
+            .setCustomerUUID(customer.getUuid())
+            .setName(NAME_NFS)
+            .setConfigName("TEST_NFS")
+            .setType(ConfigType.STORAGE)
+            .setData(Json.newObject().put(BACKUP_LOCATION_FIELDNAME, "/foo/bar"));
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(duplicate),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\"configName\":[\"Configuration TEST_NFS already exists\"]}"));
+  }
+
+  private void setSkipStorageValidation(boolean value) {
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.skipStorageConfigValidation.getKey(), String.valueOf(value));
   }
 
   private CustomerConfig createConfig(ConfigType type, String name, ObjectNode data) {

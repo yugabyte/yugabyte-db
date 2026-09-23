@@ -36,6 +36,7 @@ import {
   getIsDbUpgradePrecheckTask,
   getIsDbUpgradeRollbackTask,
   getIsDbUpgradeTask,
+  getIsEditUniverseRollbackTask,
   getIsEditUniverseTask,
   isSoftwareUpgradeFailed,
   useIsTaskNewUIEnabled
@@ -50,6 +51,7 @@ import { DbUpgradeFinalizeTaskBanner } from './clusterBanner/DbUpgradeFinalizeTa
 import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTaskBanner';
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
 import { DbUpgradeTaskBanner } from './clusterBanner/DbUpgradeTaskBanner';
+import { EditUniverseRollbackTaskBanner } from './clusterBanner/EditUniverseRollbackTaskBanner';
 import { EditUniverseTaskBanner } from './clusterBanner/EditUniverseTaskBanner';
 import { OperationBannerWaveIcon } from './clusterBanner/operationBannerIcons';
 import { YBButton } from '@app/redesign/components';
@@ -351,7 +353,15 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
     return null;
   }
 
-  // Edit universe tasks own their banner for the whole lifecycle: in progress, success and failure.
+  if (getIsEditUniverseRollbackTask(task)) {
+    return (
+      <div className={classes.bannerContainer}>
+        <EditUniverseRollbackTaskBanner task={task} universeUuid={universeUUID} />
+      </div>
+    );
+  }
+
+  // Edit universe tasks own their banner for the whole lifecycle.
   if (getIsEditUniverseTask(task)) {
     return (
       <div className={classes.bannerContainer}>

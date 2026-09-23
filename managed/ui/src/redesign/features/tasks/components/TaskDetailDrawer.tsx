@@ -12,13 +12,14 @@ import { useSessionStorage } from 'react-use';
 import { useDispatch, useSelector } from 'react-redux';
 import { find } from 'lodash';
 import { useTranslation } from 'react-i18next';
-import { Snackbar, makeStyles } from '@material-ui/core';
+import { Box, Snackbar, makeStyles } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 
 import { YBSidePanel } from '../../../components';
 import { TaskDetailActions } from './drawerComp/TaskDetailActions';
 import { TaskDetailsHeader } from './drawerComp/TaskDetailHeader';
 import { TaskDetailInfo } from './drawerComp/TaskDetailInfo';
+import { TaskOriginalTaskLink } from './drawerComp/TaskOriginalTaskLink';
 import { TaskDetailProgress } from './drawerComp/TaskDetailProgress';
 import { SubTaskDetails } from './drawerComp/SubTaskDetails';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
@@ -150,6 +151,9 @@ export const TaskDetailDrawer: FC = () => {
       <div className={classes.content}>
         <TaskDetailActions currentTask={currentTask} />
         <TaskDetailInfo currentTask={currentTask} />
+        <Box marginTop={4} marginBottom={3}>
+          <TaskOriginalTaskLink currentTask={currentTask} />
+        </Box>
         <TaskDetailProgress currentTask={currentTask} />
         <SubTaskDetails currentTask={currentTask} />
       </div>

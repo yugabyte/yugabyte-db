@@ -2597,13 +2597,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       NodeAgentManager nodeAgentManager = getInstanceOf(NodeAgentManager.class);
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
       Provider provider = Util.getProviderForNode(nodeDetails, cluster);
-      if (provider.getCloudCode() == CloudType.onprem) {
-        if (provider.getDetails().skipProvisioning) {
-          return;
-        }
+      if (!provider.isManualOnprem()) {
+        // CSPs and onprem sudo.
+        NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
+            .ifPresent(n -> nodeAgentManager.purge(n));
       }
-      NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
-          .ifPresent(n -> nodeAgentManager.purge(n));
     }
   }
 
