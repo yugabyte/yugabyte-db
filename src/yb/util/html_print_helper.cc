@@ -44,7 +44,9 @@ const char* RowColorToStyle(HtmlTableRowColor color) {
 // Styles for the sortable table headers emitted by HtmlTablePrintHelper::Print().
 // Unsorted headers show a dim up/down arrow so the affordance is visible before any click; the
 // active sort column shows a grey up or down triangle. The glyphs are CSS generated content, so
-// the header text stays the only child node of the <th>.
+// this adds no markup inside the <th>, and sortTable() no longer rewrites header contents.
+// Callers may still put markup in a column name; nothing here depends on the header being a
+// single text node.
 const char* const kSortableTableStyle = R"(
 <style>
 th.yb-sortable { cursor: pointer; user-select: none; }
