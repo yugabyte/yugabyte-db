@@ -125,7 +125,7 @@ Strand::~Strand() {
 }
 
 bool Strand::Enqueue(StrandTask* task) {
-  task->set_trace_parent(dist_trace::GetActiveSpanContext());
+  task->set_trace_parent(dist_trace::DistTrace::GetActiveSpanContext());
   return EnqueueHelper([this, task](bool ok) {
     if (ok) {
       if (task_->Enqueue(task)) {
