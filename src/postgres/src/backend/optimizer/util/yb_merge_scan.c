@@ -738,6 +738,21 @@ yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
 	return result;
 }
 
+/* Whether op is an equality operator of one of ec's operator families. */
+static bool
+ybIsEquivalenceClassEquality(EquivalenceClass *ec, OpExpr *op)
+{
+	ListCell   *lc;
+
+	foreach(lc, ec->ec_opfamilies)
+	{
+		if (get_op_opfamily_strategy(op->opno, lfirst_oid(lc)) ==
+			BTEqualStrategyNumber)
+			return true;
+	}
+	return false;
+}
+
 /*
  * Whether a merge scan may keep sorting past index column indexcol.  The
  * pathkeys walk skipped the column as redundant through ec, an
@@ -795,17 +810,21 @@ yb_merge_scan_gap_covered(PlannerInfo *root, IndexOptInfo *index,
 		List	   *colrefs = NIL;
 		ListCell   *lc2;
 
-		if (rinfo->pseudoconstant || rinfo->mergeopfamilies == NIL ||
-			!is_opclause(rinfo->clause))
+		if (!is_opclause(rinfo->clause))
 			continue;
 		op = (OpExpr *) rinfo->clause;
-		if (list_length(op->args) != 2)
+		if (list_length(op->args) != 2 ||
+			!ybIsEquivalenceClassEquality(ec, op))
 			continue;
 		foreach(lc2, ec->ec_members)
 		{
 			EquivalenceMember *em = lfirst_node(EquivalenceMember, lc2);
 
-			if (em->em_is_child)
+			/*
+			 * On a partition, the restriction clauses use the partition's own
+			 * columns, which ec holds as child members.
+			 */
+			if (em->em_is_child && !bms_equal(em->em_relids, rel->relids))
 				continue;
 			if (equal(em->em_expr, linitial(op->args)))
 				lhs_member = true;
