@@ -79,7 +79,9 @@ Raft elects one replica as leader in each replica group. For user [tablets](#tab
 
 Leader affinity is the cluster policy that ranks zones so [tablet leaders](#tablet-leader) (and, by default, the [sys catalog leader](#sys-catalog-leader)) prefer those zones. The load balancer elects leaders onto healthy replicas in rank order; omitted zones are last-resort. This is the same mechanism as [preferred region](#preferred-region).
 
-The policy is stored as `multi_affinitized_leaders` in cluster config. You set it with `yb-admin set_preferred_zones`, the YBA Preferred setting, or tablespace `leader_preference`. It does not change replica placement.
+The policy is stored as `multi_affinitized_leaders` in cluster config. You set it with `yb-admin set_preferred_zones` or the YBA Preferred setting. It does not change replica placement.
+
+Tablespace `leader_preference` sets the same kind of ranking for tables in that tablespace. It is stored with the tablespace, not in the cluster config, and it does not move the [sys catalog leader](#sys-catalog-leader).
 
 [Leader balancing](#leader-balancing) still spreads leaders evenly, but only among replicas allowed at the current rank.
 
