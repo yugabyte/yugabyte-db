@@ -27,10 +27,10 @@ namespace yb::dist_trace {
 class ScopedTestDistTrace {
  public:
   ScopedTestDistTrace() : saved_endpoint_(FLAGS_otel_collector_traces_endpoint) {
-    TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
+    DistTrace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
   }
 
-  ~ScopedTestDistTrace() { TEST_SetOtelCollectorEndpoint(saved_endpoint_); }
+  ~ScopedTestDistTrace() { DistTrace::TEST_SetOtelCollectorEndpoint(saved_endpoint_); }
 
  private:
   std::string saved_endpoint_;

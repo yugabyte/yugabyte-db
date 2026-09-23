@@ -335,13 +335,13 @@ class TraceObservingCatalogEntityTask : public MultiStepCatalogEntityTask {
   std::string description() const override { return "Trace observing task"; }
 
   Status FirstStep() override {
-    first_step_context_ = dist_trace::GetActiveSpanContext();
+    first_step_context_ = dist_trace::DistTrace::GetActiveSpanContext();
     ScheduleNextStep(std::bind(&TraceObservingCatalogEntityTask::SecondStep, this), "second step");
     return Status::OK();
   }
 
   Status SecondStep() {
-    second_step_context_ = dist_trace::GetActiveSpanContext();
+    second_step_context_ = dist_trace::DistTrace::GetActiveSpanContext();
     Complete();
     return Status::OK();
   }
@@ -376,7 +376,7 @@ TEST_F(CatalogEntityTaskTraceTest, TraceContextCarriedToSteps) {
   std::shared_ptr<TraceObservingCatalogEntityTask> task;
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     task = std::make_shared<TraceObservingCatalogEntityTask>(
         catalog_entity, *thread_pool.get(), *messenger.get());
   }
