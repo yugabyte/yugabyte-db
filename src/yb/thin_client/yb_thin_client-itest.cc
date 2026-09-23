@@ -132,6 +132,12 @@ void OnWriteDone(void* ctx, ybthin_status status) {
 
 ybthin_bind I32(int32_t value) { return ybthin_bind{YBTHIN_BIND_I32, value, nullptr, 0}; }
 
+ybthin_bind I64(int64_t value) { return ybthin_bind{YBTHIN_BIND_I64, value, nullptr, 0}; }
+
+ybthin_bind U32(uint32_t value) {
+  return ybthin_bind{YBTHIN_BIND_U32, static_cast<int64_t>(value), nullptr, 0};
+}
+
 ybthin_bind Bytea(const std::string& str) {
   return ybthin_bind{
       YBTHIN_BIND_BYTEA, 0, reinterpret_cast<const uint8_t*>(str.data()), str.size()};
@@ -286,6 +292,114 @@ TEST_F(PgThinClientTest, OpenUpsertReadPaged) {
 
   ASSERT_EQ(total, kExpectedRead);
   ASSERT_GT(pages, 1) << "expected the scan to span multiple pages at limit " << kPageLimit;
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// An `oid` column is DocDB UINT32. The shim must open a table that has one, bind an oid past
+// INT32_MAX (where a signed 32-bit stand-in would wrap negative and build a different key) as a
+// range key, decode the cell back as U32, and agree with SQL on what it wrote.
+TEST_F(PgThinClientTest, OidColumnRoundTrip) {
+  constexpr uint32_t kSqlOid = 3000000000u;   // > INT32_MAX
+  constexpr uint32_t kShimOid = 3000000001u;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE o (relnode oid, blk bigint, v int, PRIMARY KEY (relnode ASC, blk ASC))"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO o VALUES ($0, 0, 42)", kSqlOid));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'o'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ASSERT_EQ(info.n_columns, 3);
+  ASSERT_EQ(std::string(info.columns[0].name), "relnode");
+  ASSERT_EQ(info.columns[0].kind, YBTHIN_COL_RANGE);
+  ASSERT_EQ(info.columns[0].type, YBTHIN_T_U32);
+  ASSERT_EQ(info.columns[1].type, YBTHIN_T_I64);
+  ASSERT_EQ(info.columns[2].type, YBTHIN_T_I32);
+  const int32_t relnode_id = info.columns[0].id;
+  const int32_t v_id = info.columns[2].id;
+
+  // One row by its full range key, returning (relnode, v).
+  auto read_row = [&](uint32_t relnode) -> ReadOutcome {
+    ybthin_bind range_values[] = {U32(relnode), I64(0)};
+    int32_t target_ids[] = {relnode_id, v_id};
+    ybthin_read_spec spec = {};
+    spec.range_values = range_values;
+    spec.n_range = 2;
+    spec.target_ids = target_ids;
+    spec.n_targets = 2;
+    spec.limit = 10;
+    spec.is_forward_scan = 1;
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    return future.get();
+  };
+
+  // The SQL-written row is found under a U32 key bind, and its oid decodes as a U32 cell.
+  {
+    auto out = read_row(kSqlOid);
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    ASSERT_EQ(out.n_rows, 1u);
+    ASSERT_EQ(out.n_cols, 2u);
+    EXPECT_EQ(out.cells[0].tag, YBTHIN_BIND_U32);
+    EXPECT_EQ(out.cells[0].int_value, static_cast<int64_t>(kSqlOid));
+    EXPECT_EQ(out.cells[1].tag, YBTHIN_BIND_I32);
+    EXPECT_EQ(out.cells[1].int_value, 42);
+  }
+
+  // A shim write under a U32 key is the row SQL finds under that oid.
+  {
+    ybthin_bind key[] = {U32(kShimOid), I64(0)};
+    ybthin_bind value = I32(7);
+    int32_t value_id = v_id;
+    ybthin_upsert_row row{table, key, 2, &value_id, &value, 1, /* ignore_after_hybrid_time= */ 0};
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+  }
+  ASSERT_EQ(7, ASSERT_RESULT(conn.FetchRow<int32_t>(
+                   Format("SELECT v FROM o WHERE relnode = $0", kShimOid))));
+  ASSERT_EQ(2, ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM o")));
+
+  // A U32 bind outside 0..2^32-1 is refused before anything is sent, not wrapped into a key.
+  {
+    ybthin_bind key[] = {ybthin_bind{YBTHIN_BIND_U32, -1, nullptr, 0}, I64(0)};
+    ybthin_bind value = I32(0);
+    int32_t value_id = v_id;
+    ybthin_upsert_row row{table, key, 2, &value_id, &value, 1, /* ignore_after_hybrid_time= */ 0};
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+    auto out = future.get();
+    ASSERT_NE(out.code, YBTHIN_OK);
+    ASSERT_STR_CONTAINS(out.message, "out of range");
+  }
+  ASSERT_EQ(2, ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM o")));
 
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
