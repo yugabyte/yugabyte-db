@@ -121,6 +121,7 @@ YbIndexProcessorState
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
+YbInt8TransTypeData
 YbIntCounters
 YbInternalConnKind
 YbInternalConnKindDescriptor

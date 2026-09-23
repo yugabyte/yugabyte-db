@@ -6505,6 +6505,9 @@ int8_sum(PG_FUNCTION_ARGS)
  * we need to count the inputs.
  */
 
+/* YB: defined in numeric.h as YbInt8TransTypeData for use by nodeAgg.c. */
+typedef YbInt8TransTypeData Int8TransTypeData;
+
 Datum
 int2_avg_accum(PG_FUNCTION_ARGS)
 {
