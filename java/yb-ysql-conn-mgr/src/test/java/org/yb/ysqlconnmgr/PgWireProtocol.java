@@ -57,6 +57,8 @@ public final class PgWireProtocol {
   public static final char BE_COPY_DONE = 'c';
   public static final char BE_NOTICE_RESPONSE = 'N';
   public static final char BE_ROW_DESCRIPTION = 'T';
+  public static final char BE_PARAMETER_DESCRIPTION = 't';
+  public static final char BE_NO_DATA = 'n';
   public static final char BE_FUNCTION_CALL_RESPONSE = 'V';
   public static final char BE_EMPTY_QUERY_RESPONSE = 'I';
 
@@ -166,11 +168,16 @@ public final class PgWireProtocol {
 
   /** Binds the unnamed portal; a null entry in {@code textParams} is sent as SQL NULL. */
   public static byte[] buildBind(String stmtName, String[] textParams) throws IOException {
+    return buildBind("", stmtName, textParams);
+  }
+
+  public static byte[] buildBind(String portalName, String stmtName, String[] textParams)
+      throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeByte('B');
     d.writeInt(0); // placeholder
-    d.writeByte(0); // unnamed portal
+    writeString(d, portalName);
     writeString(d, stmtName);
     d.writeShort(0); // num format codes (all text)
     d.writeShort(textParams.length);
@@ -191,11 +198,15 @@ public final class PgWireProtocol {
   }
 
   public static byte[] buildExecute() throws IOException {
+    return buildExecute("");
+  }
+
+  public static byte[] buildExecute(String portalName) throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeByte('E');
     d.writeInt(0); // placeholder
-    d.writeByte(0); // unnamed portal
+    writeString(d, portalName);
     d.writeInt(0); // max rows (0 = unlimited)
     d.flush();
     byte[] msg = buf.toByteArray();
@@ -282,9 +293,18 @@ public final class PgWireProtocol {
   }
 
   public static byte[] buildClose(char kind, String name) throws IOException {
+    return buildDescribeOrClose('C', kind, name);
+  }
+
+  public static byte[] buildDescribe(char kind, String name) throws IOException {
+    return buildDescribeOrClose('D', kind, name);
+  }
+
+  private static byte[] buildDescribeOrClose(char msgType, char kind, String name)
+      throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
-    d.writeByte('C');
+    d.writeByte(msgType);
     d.writeInt(0); // placeholder
     d.writeByte(kind);
     writeString(d, name);
@@ -292,6 +312,19 @@ public final class PgWireProtocol {
     byte[] msg = buf.toByteArray();
     ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
     return msg;
+  }
+
+  // Builds a message of an arbitrary type, for packets no well-formed client sends.
+  public static byte[] buildRaw(char type, byte[] body) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte(type);
+    d.writeInt(4 + (body == null ? 0 : body.length));
+    if (body != null) {
+      d.write(body);
+    }
+    d.flush();
+    return buf.toByteArray();
   }
 
   public static void writeString(DataOutputStream d, String s) throws IOException {

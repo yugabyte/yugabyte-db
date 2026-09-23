@@ -161,7 +161,6 @@ typedef enum {
 	OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS,
 	OD_YB_TCMALLOC_GC_INTERVAL,
 	OD_YB_MAX_PREPARED_STATEMENTS,
-	OD_YB_ENABLE_PARSE_QUEUE_TRACKING,
 	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
 	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
 	OD_YB_LTLS_MAX_PROTOCOL_VERSION,
@@ -362,8 +361,6 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_max_prepared_statements",
 		   OD_YB_MAX_PREPARED_STATEMENTS),
 	od_keyword("yb_tcmalloc_gc_interval", OD_YB_TCMALLOC_GC_INTERVAL),
-	od_keyword("yb_enable_parse_queue_tracking",
-		   OD_YB_ENABLE_PARSE_QUEUE_TRACKING),
 	od_keyword("yb_wait_for_rfq_on_sync",
 		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
 	od_keyword("yb_backend_drain_timeout_ms",
@@ -2692,15 +2689,6 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			if (val < 0)
 				goto error;
 			config->yb_tcmalloc_gc_interval = val;
-			continue;
-		}
-		/* yb_enable_parse_queue_tracking */
-		case OD_YB_ENABLE_PARSE_QUEUE_TRACKING: {
-			int val;
-			if (!od_config_reader_yes_no(reader, &val)) {
-				goto error;
-			}
-			config->yb_enable_parse_queue_tracking = val;
 			continue;
 		}
 		/* yb_wait_for_rfq_on_sync */

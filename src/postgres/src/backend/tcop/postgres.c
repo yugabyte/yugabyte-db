@@ -529,6 +529,16 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
+			/* YB: YbThrowError packet */
+		case 'x':
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			doing_extended_query_message = true;
+			break;
+
 		default:
 
 			/*
@@ -7072,6 +7082,13 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					const char *query_string;
 
+					/*
+					 * YB: Send YbQueryAck packet to ConnMgr so it can keep
+					 * track of unnamed prepared statement deallocation
+					 */
+					if (YbIsClientYsqlConnMgr() && whereToSendOutput == DestRemote)
+						pq_putemptymessage('8');
+
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
@@ -7241,6 +7258,25 @@ PostgresMain(const char *dbname, const char *username)
 						/* Get error data */
 						ErrorData  *edata;
 						MemoryContext errorcontext = MemoryContextSwitchTo(yb_oldcontext);
+
+						/*
+						 * YB: Tell ConnMgr before anything below can throw
+						 * again: yb_is_dml_command() re-parses query_string,
+						 * so a syntax error would be raised a second time and
+						 * skip the rest of this block.
+						 */
+						if (YbIsClientYsqlConnMgr() &&
+							whereToSendOutput == DestRemote &&
+							yb_echo != NULL && stmt_name[0] == '\0')
+						{
+							StringInfoData yb_buf;
+
+							pq_beginmessage(&yb_buf, '6');
+							pq_sendbyte(&yb_buf, YB_UNNAMED_PARSE_FAILED);
+							pq_sendbytes(&yb_buf, yb_echo + 1, yb_echo_len - 1);
+							pq_endmessage(&yb_buf);
+							pq_flush();
+						}
 
 						edata = CopyErrorData();
 
@@ -7980,6 +8016,42 @@ PostgresMain(const char *dbname, const char *username)
 									firstchar)));
 				}
 				break;
+
+			case 'x':			/* YB: YbThrowError from ConnMgr */
+				{
+					/*
+					 * This packet is used by ConnMgr to send error to client in
+					 * the correct place in stream
+					 */
+					const char *yb_sqlstate;
+					const char *yb_message;
+
+					if (!YbIsClientYsqlConnMgr())
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("invalid frontend message type %d",
+											   firstchar)));
+
+					yb_sqlstate = pq_getmsgstring(&input_message);
+					yb_message = pq_getmsgstring(&input_message);
+					pq_getmsgend(&input_message);
+
+					if (strlen(yb_sqlstate) != 5)
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+										errmsg("invalid sqlstate \"%s\" in "
+											   "YbThrowError message",
+											   yb_sqlstate)));
+
+					ereport(ERROR,
+							(errcode(MAKE_SQLSTATE(yb_sqlstate[0], yb_sqlstate[1],
+												   yb_sqlstate[2], yb_sqlstate[3],
+												   yb_sqlstate[4])),
+							 errmsg("ConnMgr originated error: %s", yb_message)));
+					break;
+
+				}
+
 
 			default:
 				ereport(FATAL,

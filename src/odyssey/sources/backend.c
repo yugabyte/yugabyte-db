@@ -318,6 +318,105 @@ static void yb_backend_record_prep_stmt(od_server_t *server, char *context,
 	free(server_key);
 }
 
+static void yb_backend_set_client_unnamed_prep_stmt(od_server_t *server,
+						    char *context,
+						    char *stmt_name,
+						    char *description,
+						    uint32_t description_len)
+{
+	od_instance_t *instance = server->global->instance;
+	od_client_t *client = server->client;
+
+	if (client == NULL)
+		return;
+
+	yb_prepared_statement_free(&client->yb_unnamed_prep_stmt);
+
+	if (yb_prepared_statement_alloc(&client->yb_unnamed_prep_stmt,
+					stmt_name, strlen(stmt_name) + 1,
+					description, description_len) == -1)
+		od_error(&instance->logger, context, client, server,
+			 "failed to allocate unnamed prepared statement state");
+}
+
+static void yb_backend_clear_client_unnamed_prep_stmt(od_server_t *server)
+{
+	od_client_t *client = server->client;
+
+	if (client == NULL)
+		return;
+
+	yb_prepared_statement_free(&client->yb_unnamed_prep_stmt);
+}
+
+void yb_backend_handle_close_complete(od_server_t *server, char *context)
+{
+	od_instance_t *instance = server->global->instance;
+	yb_od_parse_queue_t *parse_queue = &server->parse_queue;
+
+	if (yb_od_parse_queue_empty(parse_queue)) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received CloseComplete with empty queue");
+		return;
+	}
+
+	yb_od_parse_queue_entry_t entry;
+	if (yb_od_parse_queue_peek(parse_queue, &entry) == -1) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received CloseComplete, error in peeking in queue");
+		return;
+	}
+
+	switch (entry.kind) {
+	case YB_PARSE_QUEUE_NAMED_CLOSE:
+	case YB_PARSE_QUEUE_PORTAL_CLOSE:
+		break;
+	case YB_PARSE_QUEUE_UNNAMED_CLOSE:
+		yb_backend_clear_client_unnamed_prep_stmt(server);
+		break;
+	default:
+		od_error(
+			&instance->logger, context, server->client, server,
+			"unexpected parse queue entry kind %d on CloseComplete",
+			entry.kind);
+		break;
+	}
+
+	if (yb_od_parse_queue_dequeue(parse_queue) != 0)
+		od_error(&instance->logger, context, server->client, server,
+			 "failed to dequeue parse queue on CloseComplete");
+}
+
+void yb_backend_handle_query_ack(od_server_t *server, char *context)
+{
+	od_instance_t *instance = server->global->instance;
+	yb_od_parse_queue_t *parse_queue = &server->parse_queue;
+
+	if (yb_od_parse_queue_empty(parse_queue)) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received YbQueryAck with empty queue");
+		return;
+	}
+
+	yb_od_parse_queue_entry_t entry;
+	if (yb_od_parse_queue_peek(parse_queue, &entry) == -1) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received YbQueryAck, error in peeking in queue");
+		return;
+	}
+
+	if (entry.kind != YB_PARSE_QUEUE_QUERY)
+		od_error(&instance->logger, context, server->client, server,
+			 "unexpected parse queue entry kind %d on YbQueryAck",
+			 entry.kind);
+	else
+		yb_backend_clear_client_unnamed_prep_stmt(server);
+
+	if (yb_od_parse_queue_dequeue(parse_queue) != 0)
+		od_error(&instance->logger, context, server->client, server,
+			 "failed to dequeue parse queue on YbQueryAck");
+}
+
 int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 				uint32_t size, YbParseType *yb_parse_type)
 {
@@ -344,11 +443,26 @@ int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 
 	switch (*yb_parse_type) {
 	case YB_PARSE_NORMAL:
-		/* Only used for unnamed prep stmts, no need to update state */
+		/* YB_PARSE_NORMAL is only used for unnamed prep stmts */
+		if (stmt_name[0] != '\0') {
+			od_error(
+				&instance->logger, context, server->client,
+				server,
+				"Unexpected named prep stmt %s, orig name %.*s found for YB_PARSE_NORMAL",
+				stmt_name, orig_name_len, orig_name);
+			break;
+		}
+		yb_backend_set_client_unnamed_prep_stmt(server, context,
+							stmt_name, description,
+							description_len);
 		break;
 	case YB_PARSE_REDEPLOY:
-		if (orig_name[0] == '\0')
+		if (orig_name[0] == '\0') {
+			yb_backend_set_client_unnamed_prep_stmt(
+				server, context, stmt_name, description,
+				description_len);
 			break;
+		}
 		yb_backend_record_prep_stmt(server, context, orig_name,
 					    orig_name_len, description,
 					    description_len, 1);
@@ -357,6 +471,10 @@ int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 		yb_backend_record_prep_stmt(server, context, orig_name,
 					    orig_name_len, description,
 					    description_len, 0);
+		break;
+	case YB_UNNAMED_PARSE_FAILED:
+		if (orig_name[0] == '\0')
+			yb_backend_clear_client_unnamed_prep_stmt(server);
 		break;
 	default:
 		od_error(&instance->logger, context, server->client, server,
@@ -1600,6 +1718,13 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 			if (rc == -1)
 				return -1;
 			continue;
+		} else if (type == KIWI_BE_CLOSE_COMPLETE) {
+			yb_backend_handle_close_complete(server, context);
+			machine_msg_free(msg);
+			continue;
+		} else if (type == YB_BE_YB_QUERY_ACK) {
+			machine_msg_free(msg);
+			continue;
 		} else if (type == KIWI_BE_PARSE_COMPLETE) {
 			od_error(&instance->logger, context, server->client, server,
 				 "unexpected ParseComplete packet from server");
@@ -1614,13 +1739,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				return 0;
 			}
 		} else if (type == YB_BE_SYNC_ACK) {
-			/*
-			 * If SYNC present at head of parse queue means all parses in this
-			 * SYNC boundary were acknowledged (success path). Otherwise, some
-			 * parses were silently dropped after an error -- evict stale entries.
-			 */
-			yb_drain_parse_queue_till_sync(server, server->client);
+			int rc = yb_drain_parse_queue_till_sync(server,
+								server->client);
 			machine_msg_free(msg);
+			if (rc == NOT_OK_RESPONSE)
+				return -1;
 			continue;
 		}
 		machine_msg_free(msg);

@@ -62,8 +62,8 @@ public class TestParseErrors extends BaseYsqlConnMgr {
   // The test then sends pipelines that interleave valid bind/execute of named
   // statements with intentional syntax errors to Backend 1 and Backend 2. When
   // a named statement (e.g. S2) is used on a backend where it wasn't originally
-  // parsed, the connection manager transparently re-parses it via
-  // PARSE_NO_PARSE_COMPLETE. The expected response sequence -- successes for
+  // parsed, the connection manager transparently re-parses it via a
+  // redeploy. The expected response sequence -- successes for
   // valid statements, errors for bad parses -- is verified exactly.
   //
   // Finally, all three prepared statements are executed on all three backends to
@@ -87,49 +87,33 @@ public class TestParseErrors extends BaseYsqlConnMgr {
        .sync()
        .parse(SYNTAX_ERROR_SQL).expectError("syntax error")
        .bind().execute()
-       // S2 has already been parsed by the client.
-       // On Backend 1, PARSE_NO_PARSE_COMPLETE will be sent by enqueuing S2.
+       // S2 has already been parsed by the client, so Backend 1 gets a
+       // redeploy of it.
        .bind("S2").execute()
        .sync()
-       // S3 has already been parsed by the client.
-       // On Backend 1, PARSE_NO_PARSE_COMPLETE will be sent by enqueuing S3.
+       // S3 has already been parsed by the client, so Backend 1 gets a
+       // redeploy of it.
        .bind("S3").execute().rowCount(1)
        .parse(SYNTAX_ERROR_SQL).expectError("syntax error")
        .bind().execute()
        .sync()
        .run();
 
-      // The pipeline below re-Parses S2. That is a no-op re-Parse only on a
-      // backend that already has S2; elsewhere conn mgr sends a real Parse,
-      // which the preceding error drops, unregistering S2 for the client
-      // (TODO[#30543]). Deploy S2 everywhere first: round-robin sends each
-      // Bind to the next backend.
-      for (int i = 1; i <= 3; ++i) {
-        c.createPipeline()
-         .bind("S2").execute().rowCount(1)
-         .sync()
-         .run();
-      }
-
       c.createPipeline()
-       // S1 has already been parsed by the client.
-       // On Backend 2, PARSE_NO_PARSE_COMPLETE will be sent by enqueuing S1.
+       // S1 has already been parsed by the client, so Backend 2 gets a
+       // redeploy of it.
        .bind("S1").execute().rowCount(1)
        .sync()
        .parse(SYNTAX_ERROR_SQL).expectError("syntax error")
        .bind().execute()
-       // Although no driver would re-parse already PARSED statement S2 and
-       // pg is also expected to throw error, "prep stmt already exists".
-       // But conn mgr today overrides this behavior and re-parses the statement
-       // and sends NO_PARSE_PARSE_COMPLETE to backend which shouldn't enqueue.
-       // In this case, SELECT 2 won't be executed on backend since error will
-       // come before processing it. We want to test NO_PARSE_PARSE_COMPLETE
-       // behaviour here.
-       // TODO[#30543]: Requirement improvement on client hashmap handling.
+       // Re-Parse of a name the client already registered overwrites it
+       // rather than raising "prepared statement already exists". This one is
+       // skipped by the preceding error, so its undo restores the old mapping
+       // and S2 stays bindable.
        .parse("S2", "SELECT 2").bind("S2").execute()
        .sync()
-       // S3 has already been parsed by the client.
-       // On Backend 2, PARSE_NO_PARSE_COMPLETE will be sent by enqueuing S3.
+       // S3 has already been parsed by the client, so Backend 2 gets a
+       // redeploy of it.
        .bind("S3").execute().rowCount(1)
        .parse(SYNTAX_ERROR_SQL).expectError("syntax error")
        .bind().execute()
@@ -219,14 +203,13 @@ public class TestParseErrors extends BaseYsqlConnMgr {
        .sync()
        .run();
 
-      // Verify sending BIND S3 throws an error since client has not prepared it.
-      // TODO[#30543]: Requirement improvement on client hashmap handling. This disconnects
-      // the client and the sever connections. Whereas PG is just expected to throw error
-      // "prepare statement does not exist".
-      // c.createPipeline()
-      //  .bind("S3").execute()
-      //  .sync()
-      //  .run();
+      // P(S3) was skipped after S_Wrong's error, so its undo unregistered S3.
+      c.createPipeline()
+       .bind("S3")
+           .expectConnMgrError("26000", "prepared statement \"S3\" does not exist")
+       .execute()
+       .sync()
+       .run();
 
       c.createPipeline()
        .parse("S3", "SELECT COUNT(*) FROM " + tableName).bind("S3").execute().rowCount(1)
@@ -253,8 +236,9 @@ public class TestParseErrors extends BaseYsqlConnMgr {
   // pipeline.
   //
   // These message types each implicitly act as sync points that generate
-  // ReadyForQuery. Conn mgr must properly enqueue sync markers in its parse
-  // queue for each, so that subsequent Parse+Bind+Execute+Sync messages are
+  // ReadyForQuery. Query enqueues a parse-queue record that YbQueryAck
+  // consumes, FunctionCall enqueues nothing and only Sync enqueues a sync
+  // marker, so that subsequent Parse+Bind+Execute+Sync messages are
   // matched to the correct pipeline boundary.
   //
   // The test sends three pipelines:
@@ -341,9 +325,9 @@ public class TestParseErrors extends BaseYsqlConnMgr {
   //                                     already recorded hash(S3, Q1) as present
   //                                     on the server
   //                 P(S3, Q2) B E    <- also skipped; client hashmap now S3 -> Q2
-  //                 Sync             <- the drain evicts using the client hashmap,
-  //                                     so only hash(S3, Q2) goes away and
-  //                                     hash(S3, Q1) stays in server hashmap
+  //                 Sync             <- the drain used to evict using the client
+  //                                     hashmap, so only hash(S3, Q2) went away
+  //                                     and hash(S3, Q1) stayed in server hashmap
   // A later plain Bind of S3 -> Q1 landing on that same backend then finds the
   // leaked entry, is forwarded without a re-parse, and the backend rejects it.
   //
@@ -406,7 +390,7 @@ public class TestParseErrors extends BaseYsqlConnMgr {
 
       // Back on pids[0]: the plain Bind must still be redeployed. If conn mgr
       // kept hash(S3, Q1) from the skipped Parse it forwards the Bind as-is and
-      // the backend answers with 26000.
+      // the backend answers with its own 26000.
       assertEquals("Final bind did not run on the backend that saw the failed pipeline",
           pids[0],
           c.createPipeline()
