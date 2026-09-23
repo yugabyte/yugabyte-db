@@ -659,10 +659,15 @@ ybEqualityImpliedByIndexPredicate(IndexOptInfo *index, int indexcol,
  * - A duplicate index column, such as the second b of (a, b, b, c), which
  *   holds the same value as the first.
  * - A range column whose equality a partial index predicate implies, which
- *   check_index_predicates removes from the index conditions.  TODO(#34120):
- *   drop such hash columns too, which pggate cannot merge without a condition
- *   on each.
+ *   check_index_predicates removes from the index conditions.
+ * - A range column whose EquivalenceClass is broken.  The planner could not
+ *   build the clause equating the column to the constant and kept the original
+ *   clauses, which hold the column constant as filters.
  *
+ * TODO(#34120): drop hash columns of the last two kinds too, which pggate
+ * cannot merge without a condition on each.
+ *
+ * A column with an equality index clause is dropped only in the first case.
  * Any other equality column without an equality index clause stays declared
  * with a NULL clause, so that ybValidateMergeScanBinds reports it.  A change
  * that evaluates such an equality as a filter inside the per-stream storage
@@ -726,7 +731,9 @@ yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
 		}
 		if (dup ||
 			(info->indexcol >= index->nhashcolumns &&
-			 ybEqualityImpliedByIndexPredicate(index, info->indexcol, expr)))
+			 (info->broken_ec ||
+			  ybEqualityImpliedByIndexPredicate(index, info->indexcol,
+												expr))))
 			continue;
 
 		result = lappend(result, info);

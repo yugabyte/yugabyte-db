@@ -52,13 +52,14 @@ RESET ROLE;
 -- the clause, and merge scan engages.
 \i :run_query
 
--- A policy that breaks an EquivalenceClass.  d = t uses the date = timestamp
--- operator, which is not leakproof, so under RLS the planner cannot derive
--- d = 2020-01-02 from the query's t = 2020-01-02.  The pathkeys walk still
--- sees d as a constant, but d has no index condition, so it must not be a
--- stream key.  The d = t filter holds it constant instead, and runs within each
--- stream as a storage filter.  The first row of each stream is a decoy that
--- fails d = t.
+-- A policy that breaks an EquivalenceClass.  rls_ec_tbl is of no use to other
+-- tests, so it is defined here rather than in yb.orig.merge_scan_setup.  d = t
+-- uses the date = timestamp operator, which is not leakproof, so under RLS the
+-- planner cannot build d = 2020-01-02 from the query's t = 2020-01-02, and
+-- keeps d = t and t = 2020-01-02 as they are.  The pathkeys walk still sees d
+-- as a constant, but d has no index condition, so it must not be a stream key.
+-- The d = t filter holds it constant instead, and runs within each stream as a
+-- storage filter.  The first row of each stream is a decoy that fails d = t.
 CREATE TABLE rls_ec_tbl (s int, d date, c int, t timestamp,
     PRIMARY KEY (s ASC, d ASC, c ASC));
 INSERT INTO rls_ec_tbl
@@ -80,6 +81,11 @@ SET ROLE regress_merge_scan_rls_user;
 \set Q2 ':on'
 \set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
+\i :run_query
+-- The same broken EquivalenceClass, with the query also holding d at
+-- 2020-01-02.  date = date is leakproof, so that clause binds d as an index
+-- condition, and d is a stream key.
+\set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
 \i :run_query
 \unset Q3
 RESET ROLE;

@@ -601,6 +601,7 @@ build_index_pathkeys(PlannerInfo *root,
 	int			yb_merge_scan_cardinality = 1;
 	PathKey	   *yb_pathkey = NULL;
 	List	   *yb_const_cols = NIL;
+	Bitmapset  *yb_broken_cols = NULL;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -707,19 +708,14 @@ build_index_pathkeys(PlannerInfo *root,
 			 */
 			if (!pathkey_is_redundant(cpathkey, retval))
 				retval = lappend(retval, cpathkey);
-			/*
-			 * YB: Collect const cols for merge scan logic below.  Skip a range
-			 * column whose EquivalenceClass is broken: the planner derived no
-			 * index condition from its constant, so filters hold it constant,
-			 * as for a redundancy without a constant.  Keep a hash column,
-			 * since pggate cannot merge without a condition on every hash
-			 * column.
-			 */
+			/* YB: Collect const cols for merge scan logic below. */
 			else if (yb_merge_scan_stream_cols &&
-					 EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass) &&
-					 (!cpathkey->pk_eclass->ec_broken ||
-					  i < index->nhashcolumns))
+					 EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass))
+			{
 				yb_const_cols = lappend_int(yb_const_cols, i);
+				if (cpathkey->pk_eclass->ec_broken)
+					yb_broken_cols = bms_add_member(yb_broken_cols, i);
+			}
 		}
 		else
 		{
@@ -760,11 +756,11 @@ build_index_pathkeys(PlannerInfo *root,
 	 * order relies on that.  Two things are not known here:
 	 *
 	 * - The column's condition.  Unlike a SAOP column, whose SAOP
-	 *   yb_indexcol_can_merge_scan picks from the restriction clauses under
-	 *   the rules match_clause_to_indexcol applies, a const column's condition
-	 *   is one the planner derives from the EquivalenceClass and may leave out
-	 *   (a duplicate index column, a partial index predicate implying it),
-	 *   which only the path's index clauses show.
+	 *   yb_indexcol_can_merge_scan picks from the restriction clauses under the
+	 *   rules match_clause_to_indexcol applies, a const column's condition is
+	 *   one the planner builds from the EquivalenceClass and may leave out (a
+	 *   duplicate index column, a partial index predicate implying it, or a
+	 *   broken EquivalenceClass), which only the path's index clauses show.
 	 * - The last merge sort column, which is known only once
 	 *   truncate_useless_pathkeys has trimmed the pathkeys built here.
 	 *
@@ -788,6 +784,7 @@ build_index_pathkeys(PlannerInfo *root,
 			yb_const_info->indexcol = yb_col;
 			yb_const_info->num_elems = 1;
 			yb_const_info->derived = false;
+			yb_const_info->broken_ec = bms_is_member(yb_col, yb_broken_cols);
 
 			/* Keep the list in index column order because EXPLAIN shows it. */
 			yb_pos = 0;
