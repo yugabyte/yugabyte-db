@@ -69,15 +69,25 @@ YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions
 
 ## Leader balancing
 
-YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load. {{<link dest="../docdb-sharding/cluster-balancing/">}}
+YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load. When [leader affinity](#leader-affinity) (preferred placement) is set, balancing applies only among replicas allowed at the current preferred rank. {{<link dest="../docdb-sharding/cluster-balancing/">}}
 
 ## Leader election
 
-Amongst the [tablet](#tablet) replicas, one tablet is elected [leader](#tablet-leader) as per the [Raft](../docdb-replication/raft) protocol. {{<link dest="../docdb-replication/raft/#leader-election">}}
+Raft elects one replica as leader in each replica group. For user [tablets](#tablet), that replica is the [tablet leader](#tablet-leader). For the [sys catalog](#sys-catalog), it is the [sys catalog leader](#sys-catalog-leader) (the active [master](#master-server)). {{<link dest="../docdb-replication/raft/#leader-election">}}
+
+## Leader affinity
+
+Leader affinity is the cluster policy that ranks zones so [tablet leaders](#tablet-leader) (and, by default, the [sys catalog leader](#sys-catalog-leader)) prefer those zones. The load balancer elects leaders onto healthy replicas in rank order; omitted zones are last-resort. This is the same mechanism as [preferred region](#preferred-region).
+
+The policy is stored as `multi_affinitized_leaders` in cluster config. You set it with `yb-admin set_preferred_zones`, the YBA Preferred setting, or tablespace `leader_preference`. It does not change replica placement.
+
+[Leader balancing](#leader-balancing) still spreads leaders evenly, but only among replicas allowed at the current rank.
 
 ## Master server
 
-The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link dest="../yb-master">}}
+The [YB-Master](../yb-master/) service keeps system metadata, coordinates DDL, and runs cluster-wide operations such as load balancing. Masters form a Raft group around the [sys catalog](#sys-catalog); the [sys catalog leader](#sys-catalog-leader) is the active master. {{<link dest="../yb-master">}}
+
+Master process placement (which nodes run yb-master) is separate from who leads the sys catalog, the same distinction as for [tablet leaders](#tablet-leader). See [Sys catalog leader](#sys-catalog-leader).
 
 {{<tip>}}
 The master server is also typically referred as just **master**.
@@ -111,13 +121,13 @@ OIDs are unique only in the context of a specific universe and are not guarantee
 
 ## Preferred region
 
-By default, YugabyteDB distributes client requests equally across the regions in a cluster. If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the [tablet leaders](#tablet-leader) to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
+By default, YugabyteDB balances [tablet leaders](#tablet-leader) across the regions in a cluster. If reads and writes originate primarily from one region, you can designate a preferred region (or ranked regions and zones), which pins tablet leaders there. Clients then send reads and writes to that region. If a [master](#master-server) is already running in a preferred zone, the [sys catalog leader](#sys-catalog-leader) steps down onto that master; ranking does not place master processes.
 
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a [smart driver](#smart-driver), you can set the topology keys to target the preferred region. This means that the smart driver will distribute connections uniformly among the nodes in the preferred region, further optimizing performance.
+You can rank multiple regions so that if the first fails, leaders move to the next. For lower latency, prefer the region closest to the application. If the application uses a [smart driver](#smart-driver), set topology keys to target the preferred region so connections land on those nodes.
 
-Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
+Follower copies stay in the other regions. Ranking chooses the leader among replicas that already exist; it does not add, remove, or move copies. See [Tablet leader](#tablet-leader).
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. If the cluster has [read replicas](#read-replica-cluster) and a client connects to a replica, reads are served from the replica; writes continue to go to the preferred region's tablet leaders. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 
@@ -162,6 +172,18 @@ A smart driver in the context of YugabyteDB is essentially a PostgreSQL driver w
 Smart drivers are optimized for use with a distributed SQL database, and are both cluster-aware and topology-aware. They keep track of the members of the cluster as well as their locations. As nodes are added or removed from clusters, the driver updates its membership and topology information. The drivers read the database cluster topology from the metadata table, and route new connections to individual instance endpoints without relying on high-level cluster endpoints. The smart drivers are also capable of load balancing read-only connections across the available YB-TServers.
 . {{<link dest="/stable/develop/drivers-orms/smart-drivers/">}}
 
+## Sys catalog
+
+The sys catalog is a single [tablet](#tablet), replicated across the [master servers](#master-server), that stores cluster metadata: namespaces, tables, tablet locations, roles, and cluster config. The sys catalog is not the same as the PostgreSQL [system catalogs](../system-catalog/) (`pg_catalog`), which YSQL uses for SQL object metadata.
+
+The Raft leader of that tablet is the [sys catalog leader](#sys-catalog-leader). The other masters are followers. The sys catalog is not on the user-table I/O path. {{<link dest="../yb-master">}}
+
+## Sys catalog leader
+
+The sys catalog leader is the Raft leader of the [sys catalog](#sys-catalog) tablet, and is the active [master](#master-server). It coordinates DDL, catalog lookups, and cluster operations such as load balancing.
+
+As with [tablet leaders](#tablet-leader), a leader can only sit where a replica already exists. A [preferred region](#preferred-region) can step the sys catalog leader down onto a master already in a preferred zone; it does not move master processes. If no master is in a preferred zone, the sys catalog leader stays where it is.
+
 ## Tablet
 
 YugabyteDB splits a table into multiple small pieces called tablets for data distribution. The word "tablet" finds its origins in ancient history, when civilizations utilized flat slabs made of clay or stone as surfaces for writing and maintaining records. {{<link dest="../../explore/linear-scalability/data-distribution/">}}
@@ -176,7 +198,9 @@ See [Tablet leader](#tablet-leader).
 
 ## Tablet leader
 
-In a cluster, each [tablet](#tablet) is replicated as per the [replication factor](#replication-factor-rf) for high availability. Amongst these tablet replicas one tablet is elected as the leader and is responsible for handling writes and consistent reads. The other replicas are called followers.
+In a cluster, each [tablet](#tablet) is replicated according to the [replication factor](#replication-factor-rf). One replica is elected leader and handles writes and strongly consistent reads. The others are followers.
+
+Where copies live (replica placement) is separate from which copy is leader. A leader can only sit where a replica already exists. A [preferred region](#preferred-region) pins leaders onto those existing copies; it does not move or add replicas, and it does not pack all copies into the preferred region. Fault tolerance still comes from followers in other fault domains. Strong writes still wait for a majority of replicas, so write latency follows replica locations even after leaders are pinned.
 
 ## Tablet splitting
 
