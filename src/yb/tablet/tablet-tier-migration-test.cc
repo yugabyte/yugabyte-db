@@ -47,6 +47,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 
@@ -59,10 +61,13 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
+
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb::tablet {
 
@@ -78,6 +83,7 @@ class TierMigrationTest : public YBTabletTest {
   // tier_paths configured below must be in place before OpenRocksDB reads them at Open() time.
   void SetUp() override {
     YBTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
     CreateTestTablet();
 
     auto* meta = tablet()->metadata();

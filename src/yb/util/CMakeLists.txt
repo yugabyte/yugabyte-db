@@ -224,6 +224,7 @@ set(UTIL_SRCS
   status.cc
   status_callback.cc
   stol_utils.cc
+  storage_tier.cc
   strand.cc
   string_case.cc
   string_trim.cc

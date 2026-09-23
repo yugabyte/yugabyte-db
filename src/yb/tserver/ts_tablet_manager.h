@@ -438,7 +438,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // If any check fails, re-resolves via SelectPathIdForTier and persists the repair so this
   // does not need to happen again on the next load. If the tier has no disks on this node at
   // all, returns 0 (home) without touching the persisted value, so the intent survives until a
-  // disk for that tier reappears.
+  // disk for that tier reappears. With tiered storage disabled, returns 0 and clears a persisted
+  // path_id, again leaving target_storage_tier alone.
   Result<uint32_t> ResolveTargetTierPathId(const tablet::RaftGroupMetadataPtr& meta)
       EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk

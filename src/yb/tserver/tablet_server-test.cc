@@ -96,6 +96,7 @@ DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
@@ -149,6 +150,36 @@ class TabletServerTest : public TabletServerTestBase {
 
   string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 };
+
+// Tiered storage is a preview feature: both of its admin RPCs are refused while the flag is off.
+TEST_F(TabletServerTest, TieredStorageRpcsRequirePreviewFlag) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  const auto uuid = mini_server_->server()->fs_manager()->uuid();
+  {
+    AlterTabletTierRequestPB req;
+    AlterTabletTierResponsePB resp;
+    RpcController rpc;
+    req.set_dest_uuid(uuid);
+    req.set_tablet_id(kTabletId);
+    req.set_target_tier("hdd");
+    ASSERT_OK(admin_proxy_->AlterTabletTier(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error()) << resp.DebugString();
+    auto status = StatusFromPB(resp.error().status());
+    ASSERT_TRUE(status.IsNotSupported()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "enable_tiered_storage");
+  }
+  {
+    GetTabletTierInfoRequestPB req;
+    GetTabletTierInfoResponsePB resp;
+    RpcController rpc;
+    req.set_dest_uuid(uuid);
+    req.set_tablet_id(kTabletId);
+    ASSERT_OK(admin_proxy_->GetTabletTierInfo(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error()) << resp.DebugString();
+    auto status = StatusFromPB(resp.error().status());
+    ASSERT_TRUE(status.IsNotSupported()) << status;
+  }
+}
 
 TEST_F(TabletServerTest, TestPingServer) {
   // Ping the server.

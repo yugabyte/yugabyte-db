@@ -398,6 +398,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, fa
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(docdb_enable_sst_stats_collector);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
@@ -1385,6 +1386,9 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
       LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
                             << " tiered db_paths (target_path_id="
                             << regular_rocksdb_options.target_path_id << "): " << desc;
+      LOG_IF_WITH_PREFIX(WARNING, !FLAGS_enable_tiered_storage && tier_paths.size() > 1)
+          << "Tiered storage is disabled but this tablet spans " << tier_paths.size()
+          << " disks; keeping all of them so existing SST files stay reachable";
     }
   }
 

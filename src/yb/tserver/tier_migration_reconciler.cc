@@ -32,6 +32,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 
+DECLARE_bool(enable_tiered_storage);
+
 DEFINE_RUNTIME_int32(tier_migration_reconcile_interval_sec, 30,
     "Seconds between passes of the tiered-storage migration reconciler, which moves SST files of "
     "tablets whose target storage tier differs from where the files are. 0 at startup disables "
@@ -95,6 +97,10 @@ TierMigrationReconciler::TierMigrationReconciler(TSTabletManager* ts_tablet_mana
 TierMigrationReconciler::~TierMigrationReconciler() = default;
 
 Status TierMigrationReconciler::Init() {
+  if (!FLAGS_enable_tiered_storage) {
+    LOG(INFO) << "Tier migration reconciler disabled (enable_tiered_storage=false)";
+    return Status::OK();
+  }
   const auto interval_sec = ANNOTATE_UNPROTECTED_READ(FLAGS_tier_migration_reconcile_interval_sec);
   if (interval_sec <= 0) {
     LOG(INFO) << "Tier migration reconciler disabled (tier_migration_reconcile_interval_sec="

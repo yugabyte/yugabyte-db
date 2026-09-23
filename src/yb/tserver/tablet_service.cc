@@ -347,6 +347,7 @@ DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
     "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(enable_active_table_metrics_filtering);
 DECLARE_uint32(max_active_table_metrics_table_count);
@@ -2286,6 +2287,25 @@ void FillTierMigrationStatusPB(
   }
 }
 
+// Tiered storage is a preview feature. Its admin RPCs are refused, not silently ignored, so a
+// caller never believes a migration was started or reads tier info that nothing maintains.
+template <class Resp>
+bool CheckTieredStorageEnabledOrRespond(
+    const char* method_name, Resp* resp, rpc::RpcContext* context) {
+  if (FLAGS_enable_tiered_storage) {
+    return true;
+  }
+  SetupErrorAndRespond(
+      resp->mutable_error(),
+      STATUS_FORMAT(
+          NotSupported,
+          "$0 requires tiered storage, which is disabled. Set the preview flag "
+          "--enable_tiered_storage=true to use it.",
+          method_name),
+      context);
+  return false;
+}
+
 }  // namespace
 
 void TabletServiceAdminImpl::AlterTabletTier(
@@ -2294,6 +2314,9 @@ void TabletServiceAdminImpl::AlterTabletTier(
     rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterTabletTier", req, resp,
                                &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("AlterTabletTier", resp, &context)) {
     return;
   }
 
@@ -2340,6 +2363,9 @@ void TabletServiceAdminImpl::GetTabletTierInfo(
     rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "GetTabletTierInfo", req, resp,
                                &context)) {
+    return;
+  }
+  if (!CheckTieredStorageEnabledOrRespond("GetTabletTierInfo", resp, &context)) {
     return;
   }
 

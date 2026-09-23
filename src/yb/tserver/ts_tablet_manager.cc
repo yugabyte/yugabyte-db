@@ -349,6 +349,7 @@ DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
 
 DECLARE_bool(docdb_enable_sst_stats_collector);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -3542,16 +3543,18 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   // For this fallback to be safe long-term, the master's load balancer needs to detect a
   // replica that isn't respecting its tablespace's tier placement and reconcile it
   // (locally via AlterTabletTier, or RBS).
-  const std::string effective_target_tier =
-      target_tier.empty() ? kDefaultStorageTier : target_tier;
   std::vector<string> candidate_dirs = data_root_dirs;
-  auto tier_dirs = fs_manager->GetDataRootDirsForTier(effective_target_tier);
-  if (tier_dirs.empty()) {
-    LOG(WARNING) << Format(
-        "No data roots configured for target storage tier '$0' on this node; falling back to "
-        "default disk selection for tablet $1", effective_target_tier, tablet_id);
-  } else {
-    candidate_dirs = std::move(tier_dirs);
+  if (FLAGS_enable_tiered_storage) {
+    const std::string effective_target_tier =
+        target_tier.empty() ? kDefaultStorageTier : target_tier;
+    auto tier_dirs = fs_manager->GetDataRootDirsForTier(effective_target_tier);
+    if (tier_dirs.empty()) {
+      LOG(WARNING) << Format(
+          "No data roots configured for target storage tier '$0' on this node; falling back to "
+          "default disk selection for tablet $1", effective_target_tier, tablet_id);
+    } else {
+      candidate_dirs = std::move(tier_dirs);
+    }
   }
 
   // Find the data directory with the least count of tablets for this table.
@@ -3724,6 +3727,20 @@ std::string TSTabletManager::PickMinLoadDataRootUnlocked(
 
 Result<uint32_t> TSTabletManager::ResolveTargetTierPathId(
     const tablet::RaftGroupMetadataPtr& meta) {
+  if (!FLAGS_enable_tiered_storage) {
+    // Preview feature off: no tier preference is acted on. The intent (target_storage_tier) is
+    // kept so it is honored again once the feature is enabled; only the cached disk is dropped,
+    // since OpenRegularDB and compactions trust it as the target for new files.
+    if (meta->target_tier_path_id() != 0) {
+      LOG(INFO) << "TieredStorage ResolveTargetTierPathId: tablet=" << meta->raft_group_id()
+                << " target_tier=" << meta->target_storage_tier()
+                << " is kept but not acted on while tiered storage is disabled; new files land "
+                << "on home (path_id 0)";
+      RETURN_NOT_OK(meta->ClearTargetTierPathId());
+    }
+    return 0;
+  }
+
   const auto target_tier = meta->target_storage_tier();
   if (target_tier.empty()) {
     // No tier preference persisted for this tablet (e.g. pre-tiered-storage tablet, or the
