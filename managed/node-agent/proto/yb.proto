@@ -157,6 +157,9 @@ message ConfigureServerInput {
     repeated string mountPoints = 4;
     uint32 numCoresToKeep = 5;
     bool configureCgroup = 6;
+    optional bool acceptableClockSkewWaitEnabled = 7;
+    optional double acceptableClockSkewSec = 8;
+    optional uint32 acceptableClockSkewMaxTries = 9;
 }
 
 message ConfigureServerOutput {

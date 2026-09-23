@@ -467,6 +467,19 @@ public class NodeAgentRpcPayload {
             ? configureCgroupOverride
             : Util.configureCgroup(cluster.userIntent, provider, false, confGetter);
     configureServerInputBuilder.setConfigureCgroup(configureCgroup);
+
+    // Bake YBA clock-sync runtime config into clock-sync.sh.
+    // See NodeManager.getInlineWaitForClockSyncCommandArgs for more details.
+    boolean clockSkewWaitEnabled =
+        confGetter.getGlobalConf(GlobalConfKeys.acceptableClockSkewWaitEnabled);
+    configureServerInputBuilder.setAcceptableClockSkewWaitEnabled(clockSkewWaitEnabled);
+    if (clockSkewWaitEnabled) {
+      configureServerInputBuilder.setAcceptableClockSkewSec(
+          confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew).toNanos()
+              / Math.pow(10, 9));
+      configureServerInputBuilder.setAcceptableClockSkewMaxTries(
+          (int) confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds());
+    }
     return configureServerInputBuilder.build();
   }
 

@@ -124,6 +124,115 @@ func TestCleanCoresTemplate(t *testing.T) {
 	}
 }
 
+func TestClockSyncTemplate(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	if projectDir == "" {
+		t.Fatal("PROJECT_DIR is not set")
+	}
+	templatePath := filepath.Join(projectDir, "resources/templates/server/clock-sync.sh.j2")
+
+	tests := []struct {
+		name     string
+		values   map[string]any
+		wantLine string
+	}{
+		{
+			name: "uses provided clock skew knobs",
+			values: map[string]any{
+				"is_acceptable_clock_skew_wait_enabled": false,
+				"acceptable_clock_skew_sec":             1.5,
+				"acceptable_clock_skew_max_tries":       60,
+				"mount_paths":                           "/mnt/d0",
+			},
+			wantLine: `is_acceptable_clock_skew_wait_enabled="False"`,
+		},
+		{
+			name: "defaults when knobs are unset",
+			values: map[string]any{
+				"mount_paths": "/mnt/d0",
+			},
+			wantLine: `is_acceptable_clock_skew_wait_enabled="True"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := ResolveTemplate(
+				context.TODO(),
+				tc.values,
+				templatePath,
+			)
+			if err != nil {
+				t.Fatalf("ResolveTemplate failed: %v", err)
+			}
+			if !strings.Contains(output, tc.wantLine) {
+				t.Fatalf("Expected %q in output:\n%s", tc.wantLine, output)
+			}
+			if tc.name == "uses provided clock skew knobs" {
+				if !strings.Contains(output, `acceptable_clock_skew_sec="1.5"`) {
+					t.Fatalf("Expected acceptable_clock_skew_sec=1.5 in output:\n%s", output)
+				}
+				if !strings.Contains(output, `max_tries="60"`) {
+					t.Fatalf("Expected max_tries=60 in output:\n%s", output)
+				}
+			}
+		})
+	}
+}
+
+func TestCollectMetricsWrapperTemplate(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	if projectDir == "" {
+		t.Fatal("PROJECT_DIR is not set")
+	}
+	templatePath := filepath.Join(
+		projectDir,
+		"resources/templates/server/collect_metrics_wrapper.sh.j2",
+	)
+
+	tests := []struct {
+		name     string
+		values   map[string]any
+		wantLine string
+	}{
+		{
+			name: "uses provided yb_metrics_dir",
+			values: map[string]any{
+				"yb_home_dir":    "/home/yugabyte",
+				"yb_metrics_dir": "/tmp/yugabyte/metrics",
+			},
+			wantLine: "filename=(/tmp/yugabyte/metrics/node_metrics.prom)",
+		},
+		{
+			name: "defaults yb_metrics_dir to yb_home_dir/metrics",
+			values: map[string]any{
+				"yb_home_dir": "/home/yugabyte",
+			},
+			wantLine: "filename=(/home/yugabyte/metrics/node_metrics.prom)",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := ResolveTemplateStrict(
+				context.TODO(),
+				tc.values,
+				templatePath,
+				true, /*strictUndefined*/
+			)
+			if err != nil {
+				t.Fatalf("ResolveTemplateStrict failed: %v", err)
+			}
+			if !strings.Contains(output, tc.wantLine) {
+				t.Fatalf("Expected %q in output:\n%s", tc.wantLine, output)
+			}
+			if strings.Contains(output, "filename=({{ yb_home_dir }}/metrics/node_metrics.prom)") {
+				t.Fatalf("Output still hardcodes yb_home_dir/metrics")
+			}
+		})
+	}
+}
+
 func TestSplitString(t *testing.T) {
 	values := map[string]any{
 		"servers": "s1,s2,s3",
