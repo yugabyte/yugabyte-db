@@ -491,6 +491,8 @@ message YsqlCatalogVersionPB {
 message DBCatalogVersionDataPB {
   repeated YsqlCatalogVersionPB db_catalog_versions = 1;
   optional bool ignore_catalog_version_staleness_check = 2 [ default = false ];
+  // Snapshot time for these versions. Advance the tserver clock before publishing them.
+  optional fixed64 read_time = 3;
 }
 
 // This matches a row in pg_yb_invalidation_messages table, which has a composite primary

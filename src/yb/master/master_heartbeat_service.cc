@@ -73,6 +73,10 @@ DEFINE_RUNTIME_AUTO_bool(use_tablet_report_pending_config_op_id, kLocalVolatile,
     "When true, allows master to rely on pending_config_op_id received within TServer->Master "
     "heartbeats.");
 
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_catalog_version_read_time, kLocalVolatile, false, true,
+    "Send catalog version snapshot times to tablet servers, so their clocks advance before "
+    "they publish the versions.");
+
 DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
                  "Whether to skip processing tablet metadata for TSHeartbeat.");
 
@@ -333,9 +337,10 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
 
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint; // can only be used when versions is not empty.
+  HybridTime read_time;
   auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
       FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
-      &versions, &fingerprint);
+      &versions, &fingerprint, &read_time);
   if (!s.ok() || versions.empty()) {
     LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
                  << s.ToUserMessage();
@@ -356,6 +361,9 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
   }
 
   auto* const mutable_version_data = resp.mutable_db_catalog_version_data();
+  if (FLAGS_ysql_enable_catalog_version_read_time) {
+    mutable_version_data->set_read_time(read_time.ToPB());
+  }
   for (const auto& it : versions) {
     auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
     catalog_version->set_db_oid(it.first);

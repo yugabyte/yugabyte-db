@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/consensus/log-test-base.h"
@@ -62,13 +63,16 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -84,11 +88,13 @@ DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
-DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_int32(ht_lease_duration_ms);
 DECLARE_string(metric_node_name);
+DECLARE_int32(metrics_retirement_age_ms);
+DECLARE_string(rpc_bind_addresses);
+DECLARE_bool(use_hybrid_clock);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
 METRIC_DECLARE_counter(rows_inserted);
@@ -150,6 +156,99 @@ TEST_F(TabletServerTest, TestServerClock) {
 
   ASSERT_OK(generic_proxy_->ServerClock(req, &resp, &controller));
   ASSERT_GT(mini_server_->Now().ToUint64(), resp.hybrid_time());
+}
+
+class TabletServerCatalogReadTimeTest : public TabletServerTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_hybrid_clock) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 0;
+    TabletServerTest::SetUp();
+  }
+
+ protected:
+  DBCatalogVersionDataPB VersionReport(uint64_t version) {
+    DBCatalogVersionDataPB result;
+    auto* entry = result.add_db_catalog_versions();
+    entry->set_db_oid(kTemplate1Oid);
+    entry->set_current_version(version);
+    entry->set_last_breaking_version(version);
+    return result;
+  }
+
+  void AssertVersion(uint64_t version) {
+    auto* server = mini_server_->server();
+    uint64_t current_version, last_breaking_version;
+    server->get_ysql_db_catalog_version(
+        kTemplate1Oid, &current_version, &last_breaking_version, false /* use_cache */);
+    ASSERT_EQ(current_version, version);
+    ASSERT_EQ(last_breaking_version, version);
+    ASSERT_EQ(server->shared_object()->ysql_catalog_version(), version);
+  }
+};
+
+TEST_F(TabletServerCatalogReadTimeTest, CatalogVersionAdvancesClock) {
+  auto* server = mini_server_->server();
+  auto* sync_point = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([&] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  size_t publications = 0;
+  sync_point->SetCallBack("TabletServer::SetYsqlDBCatalogVersions:BeforePublish", [&](void* arg) {
+    const auto& data = *static_cast<DBCatalogVersionDataPB*>(arg);
+    ASSERT_GT(server->Clock()->Now(), HybridTime::FromPB(data.read_time()));
+    ASSERT_EQ(server->shared_object()->ysql_catalog_version(), publications == 0 ? 0 : 1);
+    ++publications;
+  });
+  sync_point->EnableProcessing();
+
+  auto report = VersionReport(1);
+  const auto read_time = HybridTime::FromMicros(1'000'000);
+  report.set_read_time(read_time.ToPB());
+  ASSERT_LT(server->Clock()->Now(), read_time);
+  ASSERT_NO_FATALS(server->SetYsqlDBCatalogVersions(report));
+  ASSERT_NO_FATALS(AssertVersion(1));
+  ASSERT_GT(server->Clock()->Now(), read_time);
+
+  const auto later_read_time = read_time.AddSeconds(1);
+  report.set_read_time(later_read_time.ToPB());
+  ASSERT_NO_FATALS(
+      server->SetYsqlDBCatalogVersionsWithInvalMessages(report, DBCatalogInvalMessagesDataPB()));
+  ASSERT_NO_FATALS(AssertVersion(1));
+  ASSERT_GT(server->Clock()->Now(), later_read_time);
+  ASSERT_EQ(publications, 2);
+}
+
+TEST_F(TabletServerCatalogReadTimeTest, OlderReportDoesNotRewindClock) {
+  auto* server = mini_server_->server();
+  auto report = VersionReport(2);
+  const auto read_time = HybridTime::FromMicros(1'000'000);
+  report.set_read_time(read_time.ToPB());
+  server->SetYsqlDBCatalogVersions(report);
+  const auto clock_before = server->Clock()->Now();
+  ASSERT_GT(clock_before, read_time);
+
+  report = VersionReport(1);
+  report.set_read_time(read_time.Decremented().ToPB());
+  report.set_ignore_catalog_version_staleness_check(true);
+  server->SetYsqlDBCatalogVersions(report);
+  ASSERT_NO_FATALS(AssertVersion(2));
+  ASSERT_GT(server->Clock()->Now(), clock_before);
+}
+
+TEST_F(TabletServerCatalogReadTimeTest, MissingOrSpecialReadTime) {
+  auto* server = mini_server_->server();
+  auto report = VersionReport(1);
+  ASSERT_FALSE(report.has_read_time());
+  server->SetYsqlDBCatalogVersions(report);
+  ASSERT_NO_FATALS(AssertVersion(1));
+  for (auto time : {HybridTime::kMin, HybridTime::kMax, HybridTime::kInvalid}) {
+    report.set_read_time(time.ToUint64());
+    server->SetYsqlDBCatalogVersions(report);
+    ASSERT_NO_FATALS(AssertVersion(1));
+    ASSERT_LT(server->Clock()->Now(), HybridTime::FromMicros(1'000'000));
+  }
 }
 
 TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {

@@ -11228,6 +11228,9 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
       if (fingerprint) {
         *fingerprint = heartbeat_pg_catalog_versions_cache_fingerprint_;
       }
+      if (out_read_ht) {
+        *out_read_ht = heartbeat_pg_catalog_versions_cache_read_ht_;
+      }
       return Status::OK();
     }
   }
@@ -14522,8 +14525,6 @@ bool CatalogManager::InstallPgCatalogVersionsSnapshot(
     // Callers must pass the read time of an actual read. Installing an invalid one would both
     // install out of order -- HybridTime::kInvalid is kMax - 1, so it beats every real snapshot
     // in the comparison below -- and then disarm that comparison for the following install.
-    // Note GetYsqlAllDBCatalogVersions() leaves its out_read_ht untouched on a cache hit, so
-    // only a use_cache=false read supplies a usable one.
     LOG_WITH_FUNC(DFATAL) << "Refusing to install a catalog versions snapshot with no read time";
     return false;
   }
