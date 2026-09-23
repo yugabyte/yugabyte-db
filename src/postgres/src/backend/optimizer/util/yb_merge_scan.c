@@ -780,7 +780,7 @@ yb_merge_scan_gap_covered(PlannerInfo *root, IndexOptInfo *index,
 	bool		found = false;
 	ListCell   *lc;
 
-	for (int i = 0; i < indexcol; i++)
+	for (int i = 0; i < indexcol; ++i)
 	{
 		if (equal(expr, ((TargetEntry *) list_nth(index->indextlist, i))->expr))
 			return true;
@@ -795,8 +795,8 @@ yb_merge_scan_gap_covered(PlannerInfo *root, IndexOptInfo *index,
 		Relation	table_rel = RelationIdGetRelation(relid);
 		Relation	index_rel = RelationIdGetRelation(index->indexoid);
 
-		index_side_only = !index_rel->rd_index->indisprimary &&
-			!YbIsScanningEmbeddedIdx(table_rel, index_rel);
+		index_side_only = (!index_rel->rd_index->indisprimary &&
+						   !YbIsScanningEmbeddedIdx(table_rel, index_rel));
 		RelationClose(index_rel);
 		RelationClose(table_rel);
 	}
