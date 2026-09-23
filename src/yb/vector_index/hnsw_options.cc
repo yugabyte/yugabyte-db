@@ -50,6 +50,18 @@ scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
   FATAL_INVALID_ENUM_VALUE(CoordinateKind, coordinate_kind);
 }
 
+scalar_kind_t ScalarKindFromStorageKind(VectorStorageKind storage_kind) {
+  switch (storage_kind) {
+    case VectorStorageKind::kFloat32:
+      return scalar_kind_t::f32_k;
+    case VectorStorageKind::kFloat16:
+      return scalar_kind_t::f16_k;
+    case VectorStorageKind::kInt8:
+      return scalar_kind_t::i8_k;
+  }
+  FATAL_INVALID_ENUM_VALUE(VectorStorageKind, storage_kind);
+}
+
 } // namespace
 
 std::string HNSWOptions::ToString() const {
@@ -61,11 +73,13 @@ std::string HNSWOptions::ToString() const {
       num_neighbors_per_vertex_base,
       max_neighbors_per_vertex_base,
       ef_construction,
-      robust_prune_alpha);
+      robust_prune_alpha,
+      storage_kind,
+      rerank_kind);
 }
 
 template <class Vector>
-unum::usearch::metric_punned_t HNSWOptions::CreateMetric() const {
+unum::usearch::metric_punned_t HNSWOptions::CreateBuildMetric() const {
   return unum::usearch::metric_punned_t(
       dimensions,
       MetricKindFromDistanceType(distance_kind),
@@ -73,6 +87,14 @@ unum::usearch::metric_punned_t HNSWOptions::CreateMetric() const {
 }
 
 template
-unum::usearch::metric_punned_t HNSWOptions::CreateMetric<FloatVector>() const;
+unum::usearch::metric_punned_t HNSWOptions::CreateBuildMetric<FloatVector>() const;
+
+unum::usearch::metric_punned_t HNSWOptions::CreateStoredMetric(
+    size_t dimensions_arg, VectorStorageKind storage_kind_arg) const {
+  return unum::usearch::metric_punned_t(
+      dimensions_arg,
+      MetricKindFromDistanceType(distance_kind),
+      ScalarKindFromStorageKind(storage_kind_arg));
+}
 
 }  // namespace yb::vector_index

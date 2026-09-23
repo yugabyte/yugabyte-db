@@ -42,4 +42,5 @@ set(YB_TEST_LINK_LIBS ann_methods ann_methods_test_proto yrpc hnsw_test_util ${Y
 
 ADD_YB_TEST(index_merge-test)
 ADD_YB_TEST(vector_index_perf-test)
+ADD_YB_TEST(yb_hnsw_storage-test)
 ADD_YB_TEST(vector_lsm-test)
