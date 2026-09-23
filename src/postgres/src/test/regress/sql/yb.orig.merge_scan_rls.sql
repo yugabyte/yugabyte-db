@@ -81,6 +81,12 @@ SET ROLE regress_merge_scan_rls_user;
 \set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
 \i :run_query
+-- With expression pushdown off, d = t runs after the merge, so a merge scan
+-- cannot sort past d.  The only merge sort column c is past d, so no merge scan
+-- is chosen.
+SET yb_enable_expression_pushdown = off;
+\i :run_query
+RESET yb_enable_expression_pushdown;
 \unset Q3
 RESET ROLE;
 

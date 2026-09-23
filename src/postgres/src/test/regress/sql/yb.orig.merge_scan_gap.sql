@@ -64,9 +64,9 @@ RESET TimeZone;
 --
 -- Secondary index: filter pushed to the table, read after the index merge
 --
--- d is not in the index, and the equalities the class generates reference it,
--- so they are pushed to the table.  With c1 = c2 instead, the filter runs on
--- the index and the merge may sort past the gap.
+-- d is not in the index, and the equalities the planner generates from c2 = d
+-- and c1 = d reference it, so they are pushed to the table.  With c1 = c2
+-- instead, the filter runs on the index and the merge may sort past the gap.
 CREATE TABLE gap_idx_tbl (k int, s int, c1 int, c2 int, c3 int, d int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_idx_tbl_idx ON gap_idx_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
@@ -83,3 +83,43 @@ ANALYZE gap_idx_tbl;
 RESET enable_sort;
 
 DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl;
+
+--
+-- Decoded primary key column: filter kept local on an index-only scan
+--
+-- With yb_enable_primary_key_decode_from_index on, an index-only scan returns
+-- k1 by decoding it from the base table row reference, and a filter on it runs
+-- locally, after the merge.  This runs on a secondary index that is not
+-- embedded, and again in the colocated database, where the index is embedded.
+-- There the scan pushes a table filter within each stream, but not a filter on
+-- k1.
+-- Here c2 = k1 and c1 = k1 make c2 redundant, and the first row is the decoy.
+\set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c1, c3, s, c2, k1 FROM gap_pk_tbl WHERE s IN (1, 2) AND c2 = k1 AND c1 = k1 ORDER BY c1, c3;'
+SET enable_sort = off;
+SET yb_enable_primary_key_decode_from_index = on;
+SET yb_enable_base_scans_cost_model = on;
+CREATE TABLE gap_pk_tbl (k1 int, k2 int, s int, c1 int, c2 int, c3 int,
+    PRIMARY KEY (k1 ASC, k2 ASC));
+CREATE INDEX NONCONCURRENTLY gap_pk_tbl_idx ON gap_pk_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
+INSERT INTO gap_pk_tbl VALUES
+    (1, 100, 1, 1, 0, 9), (1, 1, 1, 1, 1, 0), (1, 2, 2, 1, 1, 4), (5, 1, 1, 5, 5, 1),
+    (5, 2, 2, 5, 5, 2);
+ANALYZE gap_pk_tbl;
+\i :run_query
+DROP TABLE gap_pk_tbl;
+
+\c co
+SET enable_sort = off;
+SET yb_enable_primary_key_decode_from_index = on;
+SET yb_enable_base_scans_cost_model = on;
+CREATE TABLE gap_pk_tbl (k1 int, k2 int, s int, c1 int, c2 int, c3 int,
+    PRIMARY KEY (k1 ASC, k2 ASC));
+CREATE INDEX NONCONCURRENTLY gap_pk_tbl_idx ON gap_pk_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
+INSERT INTO gap_pk_tbl VALUES
+    (1, 100, 1, 1, 0, 9), (1, 1, 1, 1, 1, 0), (1, 2, 2, 1, 1, 4), (5, 1, 1, 5, 5, 1),
+    (5, 2, 2, 5, 5, 2);
+ANALYZE gap_pk_tbl;
+\i :run_query
+DROP TABLE gap_pk_tbl;

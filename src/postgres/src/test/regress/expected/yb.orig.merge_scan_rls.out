@@ -281,6 +281,50 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 (output identical to previous)
 /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
 (output identical to previous)
+-- With expression pushdown off, d = t runs after the merge, so a merge scan
+-- cannot sort past d.  The only merge sort column c is past d, so no merge scan
+-- is chosen.
+SET yb_enable_expression_pushdown = off;
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=4 loops=1)
+   Output: c, s, d
+   ->  Sort (actual rows=4 loops=1)
+         Output: c, s, d
+         Sort Key: rls_ec_tbl.c
+         Sort Method: top-N heapsort
+         ->  Index Scan using rls_ec_tbl_pkey on public.rls_ec_tbl (actual rows=50 loops=1)
+               Output: c, s, d
+               Index Cond: (rls_ec_tbl.s = ANY ('{1,2}'::integer[]))
+               Filter: ((rls_ec_tbl.d = rls_ec_tbl.t) AND (rls_ec_tbl.t = 'Thu Jan 02 00:00:00 2020'::timestamp without time zone))
+               Rows Removed by Filter: 152
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 202
+(14 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+(output identical to previous)
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+ c  | s |     d      
+----+---+------------
+  1 | 1 | 01-02-2020
+  5 | 2 | 01-02-2020
+ 13 | 1 | 01-02-2020
+ 17 | 2 | 01-02-2020
+(4 rows)
+
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+(output identical to previous)
+/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+(output identical to previous)
+RESET yb_enable_expression_pushdown;
 \unset Q3
 RESET ROLE;
 -- Cleanup

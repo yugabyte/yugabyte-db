@@ -754,16 +754,42 @@ ybIsEquivalenceClassEquality(EquivalenceClass *ec, OpExpr *op)
 }
 
 /*
+ * Whether colrefs refers to a primary key column that index returns only by
+ * decoding the base table row reference.  An index-only scan evaluates a filter
+ * on such a column locally, after the merge.
+ */
+static bool
+ybRefersToDecodedPkCol(List *colrefs, IndexOptInfo *index)
+{
+	ListCell   *lc;
+
+	foreach(lc, colrefs)
+	{
+		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
+
+		for (int i = index->ncolumns - index->yb_num_decoded_pk_cols;
+			 i < index->ncolumns; ++i)
+		{
+			if (colref->attno == index->indexkeys[i])
+				return true;
+		}
+	}
+	return false;
+}
+
+/*
  * Whether a merge scan may keep sorting past index column indexcol.  The
- * pathkeys walk skipped the column as redundant through ec, an
- * EquivalenceClass with no constant.
+ * pathkeys walk skipped the column as redundant through ec, an EquivalenceClass
+ * that yields no index condition on it.  Either ec has no constant, or ec is
+ * broken.
  *
  * A duplicate of an earlier index column is always fine.  Otherwise the column
- * is redundant through an equality such as c1 = c2, and each stream is sorted
- * by the merge sort keys only among the rows that satisfy it.  So the equality
- * must be filtered within each stream, before the merge.  A pushed-down filter
- * does that, except a table filter on a secondary index that is not embedded,
- * which runs after the index-side merge.
+ * is redundant through an equality such as c1 = c2 or c1 = 5, and each stream
+ * is sorted by the merge sort keys only among the rows that satisfy it.  So the
+ * equality must be filtered within each stream, before the merge.  A
+ * pushed-down filter does that, except a table filter on a secondary index that
+ * is not embedded, which runs after the index-side merge, and a filter on a
+ * decoded primary key column.
  *
  * Every base restriction clause joining two members of ec must qualify.
  * Return false if there is none.
@@ -835,7 +861,8 @@ yb_merge_scan_gap_covered(PlannerInfo *root, IndexOptInfo *index,
 			continue;
 
 		found = true;
-		if (!YbCanPushdownExpr(rinfo->clause, &colrefs, relid))
+		if (!YbCanPushdownExpr(rinfo->clause, &colrefs, relid) ||
+			ybRefersToDecodedPkCol(colrefs, index))
 			return false;
 		if (index_side_only &&
 			!is_index_only_attribute_nums(colrefs, index, false))

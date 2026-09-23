@@ -722,10 +722,12 @@ build_index_pathkeys(PlannerInfo *root,
 					  i < index->nhashcolumns))
 				yb_const_cols = lappend_int(yb_const_cols, i);
 			/*
-			 * YB: A redundancy without a constant (c1 = c2) is enforced by a
-			 * filter, not a bind.  A merge scan may sort past it only if that
-			 * filter runs within each stream before the merge.  Otherwise,
-			 * remember where to cut the merge scan's pathkeys, see below.
+			 * YB: Any other redundancy, through a broken EquivalenceClass or
+			 * through an equality without a constant such as c1 = c2, is
+			 * enforced by a filter, not a bind.  A merge scan may sort past it
+			 * only if that filter runs within each stream before the merge.
+			 * Otherwise, remember where to cut the merge scan's pathkeys, see
+			 * below.
 			 */
 			else if (yb_merge_scan_stream_cols && yb_gap_cut < 0 &&
 					 i >= index->nhashcolumns &&
