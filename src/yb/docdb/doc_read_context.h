@@ -44,6 +44,11 @@ struct DocReadContext {
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
 
+  // The next two rebuild the context of the same table data: the first replaces schema properties
+  // without a version change (backfill done), the second drops old schema packings (schema GC).
+  // Both carry rhs's tombstone-cache state, so the rebuilt context stays armed and warm. The
+  // caller must hold the lock that serializes table-tombstone notifies with the TableInfo swap
+  // (RaftGroupMetadata::data_mutex_), otherwise a notify that lands on rhs after the copy is lost.
   DocReadContext(const DocReadContext& rhs, const Schema& schema);
 
   DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version);
@@ -203,6 +208,7 @@ struct DocReadContext {
   void LogAfterLoad();
   void LogAfterMerge(dockv::OverwriteSchemaPacking overwrite);
   void UpdateKeyPrefix();
+  void CarryTombstoneCacheFrom(const DocReadContext& rhs);
 
   const std::string& LogPrefix() const {
     return log_prefix_;

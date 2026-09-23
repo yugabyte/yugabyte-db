@@ -76,6 +76,7 @@ DocReadContext::DocReadContext(const DocReadContext& rhs, const Schema& schema)
       schema_(schema),
       log_prefix_(rhs.log_prefix_) {
   UpdateKeyPrefix();
+  CarryTombstoneCacheFrom(rhs);
   LOG_WITH_PREFIX(INFO) << "DocReadContext, copy and replace schema";
 }
 
@@ -85,10 +86,20 @@ DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_sche
       schema_(rhs.schema_),
       log_prefix_(rhs.log_prefix_) {
   UpdateKeyPrefix();
+  CarryTombstoneCacheFrom(rhs);
   LOG_WITH_PREFIX(INFO)
       << "DocReadContext, copy and filter: " << rhs.schema_packing_storage.VersionsToString()
       << " => " << schema_packing_storage.VersionsToString() << ", min_schema_version: "
       << min_schema_version;
+}
+
+void DocReadContext::CarryTombstoneCacheFrom(const DocReadContext& rhs) {
+  // This context is not published yet, so only rhs needs the lock.
+  std::lock_guard lock(rhs.tombstone_cache_mutex_);
+  table_tombstone_time_ = rhs.table_tombstone_time_;
+  tombstone_cache_entry_generation_ = rhs.tombstone_cache_entry_generation_;
+  tombstone_cache_generation_ = rhs.tombstone_cache_generation_;
+  tombstone_cache_watermark_ = rhs.tombstone_cache_watermark_;
 }
 
 std::optional<DocHybridTime> DocReadContext::table_tombstone_time() const {

@@ -2259,9 +2259,13 @@ Status RaftGroupMetadata::CheckColocationPacking(
 }
 
 // Apply path: table tombstone written for this colocation id, invalidate its tombstone-time cache.
+// Invalidates under data_mutex_, which the TableInfo rebuilds that carry the cache state (schema
+// GC, backfill done) also hold, so a notify lands either on the old context before the copy or on
+// the new one.
 void RaftGroupMetadata::NotifyTableTombstoneWritten(
     ColocationId colocation_id, HybridTime write_ht) {
-  auto table_info = GetTableInfo(colocation_id);
+  std::lock_guard lock(data_mutex_);
+  auto table_info = GetTableInfoUnlocked(colocation_id);
   if (!table_info.ok()) {
     // Table may have been dropped; nothing to invalidate.
     return;
@@ -2278,7 +2282,8 @@ void RaftGroupMetadata::NotifyTableTombstoneWritten(const Uuid& cotable_id, Hybr
   if (cotable_id.IsNil()) {
     return;
   }
-  auto table_info = GetTableInfo(cotable_id.ToHexString());
+  std::lock_guard lock(data_mutex_);
+  auto table_info = GetTableInfoUnlocked(cotable_id.ToHexString());
   if (!table_info.ok()) {
     return;
   }
@@ -2302,7 +2307,10 @@ void RaftGroupMetadata::ArmColocatedTombstoneCaches(HybridTime safe_time) {
       safe_time < HybridTime::kInitial) {
     return;
   }
-  for (const auto& table_info : GetColocatedTableInfos()) {
+  // Under data_mutex_ so a concurrent schema GC cannot copy a context's cache state before this
+  // arms it and leave the replacement unarmed.
+  std::lock_guard lock(data_mutex_);
+  for (const auto& [_, table_info] : kv_store_.colocation_to_table) {
     if (table_info->doc_read_context && table_info->schema().has_colocation_id()) {
       table_info->doc_read_context->AdvanceTombstoneCacheWatermark(safe_time);
     }
@@ -2678,9 +2686,10 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(
 
 Status RaftGroupMetadata::SetTableInfoUnlocked(
     const TableInfoMap::iterator& it, const TableInfoPtr& new_table_info) {
-  it->second = new_table_info;
-  if (it->second->schema().has_colocation_id()) {
-    const auto colocation_id = it->second->schema().colocation_id();
+  // Validate before replacing anything: installing new_table_info in tables but not in
+  // colocation_to_table would leave a context that NotifyTableTombstoneWritten never reaches.
+  if (new_table_info->schema().has_colocation_id()) {
+    const auto colocation_id = new_table_info->schema().colocation_id();
     auto table_it = kv_store_.colocation_to_table.find(colocation_id);
     RSTATUS_DCHECK(table_it != kv_store_.colocation_to_table.end(), NotFound,
         Format("Could not find table $0 (colocation_id=$1) in colocation_to_table map",
@@ -2695,6 +2704,7 @@ Status RaftGroupMetadata::SetTableInfoUnlocked(
                colocation_id, table_it->second->schema().colocation_id()));
     table_it->second = new_table_info;
   }
+  it->second = new_table_info;
   return Status::OK();
 }
 
