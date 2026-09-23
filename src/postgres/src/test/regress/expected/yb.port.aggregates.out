@@ -491,10 +491,10 @@ SELECT float8_accum('{4,140,2900}'::float8[], 100);
  {5,240,6280}
 (1 row)
 
-SELECT float8_regr_accum('{4,140,2900,1290,83075,15050}'::float8[], 200, 100);
-      float8_regr_accum       
-------------------------------
- {5,240,6280,1490,95080,8680}
+SELECT float8_regr_accum('{4,140,2900,1290,83075,15050,100,0}'::float8[], 200, 100);
+           float8_regr_accum           
+---------------------------------------
+ {5,240,2900,1490,95080,15050,100,NaN}
 (1 row)
 
 SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
@@ -529,25 +529,25 @@ SELECT float8_combine('{3,60,200}'::float8[], '{2,180,200}'::float8[]);
  {5,240,6280}
 (1 row)
 
-SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
-                           '{0,0,0,0,0,0}'::float8[]);
-    float8_regr_combine    
----------------------------
- {3,60,200,750,20000,2000}
+SELECT float8_regr_combine('{3,60,200,750,20000,2000,1,NaN}'::float8[],
+                           '{0,0,0,0,0,0,0,0}'::float8[]);
+       float8_regr_combine       
+---------------------------------
+ {3,60,200,750,20000,2000,1,NaN}
 (1 row)
 
-SELECT float8_regr_combine('{0,0,0,0,0,0}'::float8[],
-                           '{2,180,200,740,57800,-3400}'::float8[]);
-     float8_regr_combine     
------------------------------
- {2,180,200,740,57800,-3400}
+SELECT float8_regr_combine('{0,0,0,0,0,0,0,0}'::float8[],
+                           '{2,180,200,740,57800,-3400,NaN,1}'::float8[]);
+        float8_regr_combine        
+-----------------------------------
+ {2,180,200,740,57800,-3400,NaN,1}
 (1 row)
 
-SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
-                           '{2,180,200,740,57800,-3400}'::float8[]);
-     float8_regr_combine      
-------------------------------
- {5,240,6280,1490,95080,8680}
+SELECT float8_regr_combine('{3,60,200,750,20000,2000,7,8}'::float8[],
+                           '{2,180,200,740,57800,-3400,7,9}'::float8[]);
+        float8_regr_combine         
+------------------------------------
+ {5,240,6280,1490,95080,8680,7,NaN}
 (1 row)
 
 DROP TABLE regr_test;
@@ -716,9 +716,9 @@ select array(select sum(x+y) s
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Function Scan on pg_catalog.generate_series x
-   Output: (SubPlan 1)
+   Output: ARRAY(SubPlan array_1)
    Function Call: generate_series(1, 3)
-   SubPlan 1
+   SubPlan array_1
      ->  Sort
            Output: (sum((x.x + y.y))), y.y
            Sort Key: (sum((x.x + y.y)))
@@ -1160,15 +1160,14 @@ select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
 -- interesting corner case: constant gets optimized into a seqscan
 explain (costs off)
   select max(100) from tenk1;
-                     QUERY PLAN                     
-----------------------------------------------------
+           QUERY PLAN            
+---------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
-           ->  Result
-                 One-Time Filter: (100 IS NOT NULL)
-                 ->  Seq Scan on tenk1
-(6 rows)
+           ->  Seq Scan on tenk1
+(5 rows)
 
 select max(100) from tenk1;
  max 
@@ -1231,7 +1230,7 @@ select min(f1), max(f1) from minmaxtest;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Unique
-   InitPlan 1 (returns $0)
+   InitPlan minmax_1
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest.f1
@@ -1254,9 +1253,10 @@ select min(f1), max(f1) from minmaxtest;
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_4_1
    ->  Sort
-         Sort Key: ($0), ($1)
+         Sort Key: ((InitPlan minmax_1).col1), ((InitPlan minmax_2).col1)
          ->  Result
-(26 rows)
+               Replaces: MinMaxAggregate
+(27 rows)
 
 /*+ Set(enable_hashagg off) */  -- YB: disable hashagg to get the same plan as PG
 select distinct min(f1), max(f1) from minmaxtest;
@@ -1282,17 +1282,19 @@ explain (costs off)
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Sort
+   Disabled: true
    Sort Key: (((abs(t0.f1))::double precision - sign((t0.f1)::double precision)))
    ->  Seq Scan on int4_tbl t0
-         SubPlan 2
+         SubPlan expr_1
            ->  HashAggregate
-                 Group Key: $1
-                 InitPlan 1 (returns $1)
+                 Group Key: (InitPlan minmax_1).col1
+                 InitPlan minmax_1
                    ->  Limit
                          ->  Seq Scan on int4_tbl t1
                                Storage Filter: ((f1 IS NOT NULL) AND (f1 = t0.f1))
                  ->  Result
-(11 rows)
+                       Replaces: MinMaxAggregate
+(13 rows)
 
 select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
 from int4_tbl t0 order by abs(f1) - sign(f1); -- YB: ordering
@@ -1346,7 +1348,7 @@ group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.y,t2.z;
                       QUERY PLAN                      
 ------------------------------------------------------
  HashAggregate
-   Group Key: t1.a, t1.b, t2.x, t2.y
+   Group Key: t1.a, t1.b
    ->  Hash Join
          Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
@@ -1361,7 +1363,7 @@ group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.z;
                       QUERY PLAN                      
 ------------------------------------------------------
  HashAggregate
-   Group Key: t1.a, t1.b, t2.x, t2.z
+   Group Key: t1.a, t1.b, t2.z
    ->  Hash Join
          Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
@@ -2695,15 +2697,15 @@ set enable_memoize to off;
 explain (costs off)
   select 1 from tenk1
    where (hundred, thousand) in (select twothousand, twothousand from onek);
-                         QUERY PLAN                          
--------------------------------------------------------------
+                   QUERY PLAN                    
+-------------------------------------------------
  Hash Join
    Hash Cond: (tenk1.hundred = onek.twothousand)
    ->  Seq Scan on tenk1
          Storage Filter: (hundred = thousand)
    ->  Hash
          ->  HashAggregate
-               Group Key: onek.twothousand, onek.twothousand
+               Group Key: onek.twothousand
                ->  Seq Scan on onek
 (8 rows)
 

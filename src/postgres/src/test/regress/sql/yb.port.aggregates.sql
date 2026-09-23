@@ -139,7 +139,7 @@ FROM regr_test WHERE x IN (10,20,30,80);
 SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
 FROM regr_test;
 SELECT float8_accum('{4,140,2900}'::float8[], 100);
-SELECT float8_regr_accum('{4,140,2900,1290,83075,15050}'::float8[], 200, 100);
+SELECT float8_regr_accum('{4,140,2900,1290,83075,15050,100,0}'::float8[], 200, 100);
 SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
 FROM regr_test WHERE x IN (10,20,30);
 SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
@@ -147,12 +147,12 @@ FROM regr_test WHERE x IN (80,100);
 SELECT float8_combine('{3,60,200}'::float8[], '{0,0,0}'::float8[]);
 SELECT float8_combine('{0,0,0}'::float8[], '{2,180,200}'::float8[]);
 SELECT float8_combine('{3,60,200}'::float8[], '{2,180,200}'::float8[]);
-SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
-                           '{0,0,0,0,0,0}'::float8[]);
-SELECT float8_regr_combine('{0,0,0,0,0,0}'::float8[],
-                           '{2,180,200,740,57800,-3400}'::float8[]);
-SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
-                           '{2,180,200,740,57800,-3400}'::float8[]);
+SELECT float8_regr_combine('{3,60,200,750,20000,2000,1,NaN}'::float8[],
+                           '{0,0,0,0,0,0,0,0}'::float8[]);
+SELECT float8_regr_combine('{0,0,0,0,0,0,0,0}'::float8[],
+                           '{2,180,200,740,57800,-3400,NaN,1}'::float8[]);
+SELECT float8_regr_combine('{3,60,200,750,20000,2000,7,8}'::float8[],
+                           '{2,180,200,740,57800,-3400,7,9}'::float8[]);
 DROP TABLE regr_test;
 
 -- test count, distinct

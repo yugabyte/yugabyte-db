@@ -936,10 +936,10 @@ EXPLAIN (COSTS OFF) SELECT DISTINCT int_8 FROM ybaggtest;
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
-         QUERY PLAN          
------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Aggregate
-   ->  Seq Scan on ybaggtest
+   ->  Index Only Scan using ybaggtestindexsimple on ybaggtest
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM pg_type WHERE oid = 21 AND oid < 0;
@@ -1548,7 +1548,7 @@ INSERT INTO test VALUES(1), (2), (3);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Index Only Scan using testindex on test
                Partial Aggregate: true
@@ -1559,7 +1559,7 @@ INSERT INTO test VALUES(1), (2), (3);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Index Scan using testindex on test
                Index Cond: (k > 0)
@@ -1571,7 +1571,7 @@ INSERT INTO test VALUES(1), (2), (3);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
@@ -1897,7 +1897,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(*)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Index Only Scan using testindex on test
                Partial Aggregate: true
@@ -1908,7 +1908,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(*)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Index Scan using testindex on test
                Index Cond: (k > 0)
@@ -1920,7 +1920,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(*)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
@@ -1957,62 +1957,62 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
 
 \set innerquery 'SELECT COUNT(k) AS count FROM test'
 :run;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.k)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
-         Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
+         Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
 (7 rows)
 
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.k)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Seq Scan on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
-         Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
+         Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
 (7 rows)
 
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.k)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Index Only Scan using testindex on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
-         Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
+         Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
 (7 rows)
 
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.k)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  Index Scan using testindex on test
                Index Cond: (k > 0)
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
-         Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
+         Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
 (8 rows)
 
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.k)))
+   Join Filter: ((count(*)) = d.k)
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
                ->  Bitmap Index Scan on test_pkey
                      Index Cond: (k > 0)
    ->  Index Scan using digit_pkey on digit d
-         Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
+         Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
 (9 rows)
 
  k |  v  | count 
@@ -2067,7 +2067,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v1)))
+   Join Filter: ((count(test.v1)) = d.k)
    ->  Finalize Aggregate
          ->  Index Only Scan using testindex on test
                Partial Aggregate: true
@@ -2078,7 +2078,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v1)))
+   Join Filter: ((count(test.v1)) = d.k)
    ->  Finalize Aggregate
          ->  Index Scan using testindex on test
                Index Cond: (k > 0)
@@ -2090,7 +2090,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v1)))
+   Join Filter: ((count(test.v1)) = d.k)
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
@@ -2152,7 +2152,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Index Only Scan using testindex on test
                Partial Aggregate: true
@@ -2163,7 +2163,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  Index Scan using testindex on test
                Index Cond: (k > 0)
@@ -2175,7 +2175,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (d.k = (count(test.v2)))
+   Join Filter: ((count(test.v2)) = d.k)
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
