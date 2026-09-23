@@ -187,6 +187,11 @@ message InstallOtelCollectorInput {
     // Used to propagate audit-log setting changes even when otel-collector
     // is not being (re)installed.
     bool refreshScriptOnly = 13;
+    // POSIX-ERE record-start pattern for YSQL logs, derived from the universe's
+    // log_line_prefix (the same source the collector's multiline config uses).
+    // zip_purge_yb_logs.sh needs it to group multi-line audit statements into
+    // whole records when archiving; empty falls back to the script's default.
+    string ysqlAuditLineStartRegex = 14;
 }
 
 message InstallOtelCollectorOutput {

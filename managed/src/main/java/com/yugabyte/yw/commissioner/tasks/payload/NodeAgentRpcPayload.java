@@ -526,6 +526,14 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
     installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
 
+    // The purge script groups multi-line YSQL audit records using this pattern,
+    // derived from the same log_line_prefix the collector uses. Set in both
+    // full and refresh-only modes, and recomputed from current gflags on every
+    // ManageOtelCollector run, so a log_line_prefix change reaches the node.
+    installOtelCollectorInputBuilder.setYsqlAuditLineStartRegex(
+        otelCollectorConfigGenerator.generateAuditLineStartEre(
+            GFlagsUtil.getLogLinePrefix(queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+
     // Set memory limit for OTel collector
     int otelColMaxMemory =
         confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);

@@ -2601,6 +2601,28 @@ public class OtelCollectorConfigGenerator {
         + ")";
   }
 
+  // POSIX-ERE counterpart of generateLineStartPattern, consumed by
+  // zip_purge_yb_logs.sh (awk) to group multi-line YSQL audit statements into
+  // whole records. Same record boundary as the collector's multiline config -
+  // a YB glog header or the log_line_prefix - so the archived audit slice keeps
+  // every physical line of a record, not just the first. Interval quantifiers
+  // are loosened to '+' so the pattern works under both mawk and gawk.
+  public String generateAuditLineStartEre(String logPrefix) {
+    String prefixEre =
+        re2ToPosixEre(
+            auditLogRegexGenerator
+                .generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true)
+                .getRegex());
+    return "^([A-Z][0-9]+)|^(" + prefixEre + ")";
+  }
+
+  static String re2ToPosixEre(String re2) {
+    String ere = re2.replaceAll("\\(\\?P<[A-Za-z0-9_]+>", "(");
+    ere = ere.replace("\\d", "[0-9]").replace("\\w", "[A-Za-z0-9_]");
+    ere = ere.replaceAll("\\{[0-9]+(?:,[0-9]*)?\\}", "+");
+    return ere;
+  }
+
   private String generateQueryLineStartPattern(String logPrefix) {
     return ".*([A-Z]\\d{4})|("
         + auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true).getRegex()
