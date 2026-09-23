@@ -310,7 +310,7 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   // Extract the propagated distributed-trace parent from the header, if present. The span itself is
   // created later, when the RpcContext is constructed (CreateServerSpan). Tracing is best-effort: a
   // malformed context is logged and dropped, never fails the RPC.
-  if (dist_trace::IsDistTraceEnabled() && !header_.trace_context.empty()) {
+  if (dist_trace::DistTrace::IsEnabled() && !header_.trace_context.empty()) {
     auto parsed = ParseTraceContext(header_.trace_context);
     if (parsed.ok()) {
       parent_span_context_ = std::move(*parsed);
@@ -333,7 +333,7 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
 void YBInboundCall::CreateServerSpan(std::optional<opentelemetry::trace::SpanContext> traceparent) {
   // Remote calls supply no `traceparent` and fall back to the context parsed from the wire header;
   // local calls pass the originating outbound span's context explicitly (there is no wire header).
-  if (!dist_trace::IsDistTraceEnabled()) {
+  if (!dist_trace::DistTrace::IsEnabled()) {
     return;
   }
   const auto& parent_context = traceparent ? traceparent : parent_span_context_;
@@ -345,7 +345,7 @@ void YBInboundCall::CreateServerSpan(std::optional<opentelemetry::trace::SpanCon
     return;
   }
   auto span_name = Format("rpc $0.$1", parsed_method->service, parsed_method->method);
-  span_ = dist_trace::StartServerSpan(span_name, *parent_context);
+  span_ = dist_trace::DistTrace::StartServerSpan(span_name, *parent_context);
   if (span_) {
     span_->SetAttribute("rpc.system", "yb_rpc");
     span_->SetAttribute("rpc.call_id", header_.call_id);

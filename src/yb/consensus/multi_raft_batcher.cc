@@ -138,7 +138,7 @@ void MultiRaftHeartbeatBatcher::SendBatchRequest(std::shared_ptr<MultiRaftConsen
     return;
   }
   // TODO(#16670): give consensus its own root trace.
-  auto detach_token = dist_trace::DetachTraceContext();
+  auto detach_token = dist_trace::DistTrace::DetachTraceContext();
 
   data->controller.Reset();
   data->controller.set_timeout(MonoDelta::FromMilliseconds(
