@@ -232,6 +232,14 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         run_tests_extra_args+=( "--num_repetitions" "${NUM_REPETITIONS}" )
       else
         run_tests_extra_args+=( "--fail_repetitions" "${YB_FAIL_REPETITIONS:-0}" )
+        # Extra runs of the tests this lane has not run before. Nothing to add when every test is
+        # already being repeated above. The pipeline says which tests the lane HAS run before
+        # (YB_KNOWN_TEST_LIST_FILE, written from CSI by jenkins-helpers next to rerun_list.txt);
+        # without the file the harness repeats nothing.
+        run_tests_extra_args+=( "--new_test_repetitions" "${YB_NEW_TEST_REPETITIONS:-0}" )
+        if [[ -n ${YB_KNOWN_TEST_LIST_FILE:-} ]]; then
+          run_tests_extra_args+=( "--known_test_list" "${YB_KNOWN_TEST_LIST_FILE}" )
+        fi
       fi
 
       set +u  # because extra_args can be empty

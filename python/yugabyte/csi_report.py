@@ -22,6 +22,8 @@ import requests
 # Set by caller (run_tests_on_spark.py), based on other criteria
 # YB_CSI_REPS   - integer (default: 1) Number of times each test is being run.
 # YB_CSI_QID    - integer ID of launch to query
+# YB_CSI_NEW_TEST - non-empty for the extra runs of a test that is new on this lane
+#                 (--new_test_repetitions); set for that job only.
 # ===================================
 # Returned by create_suite(), but put into environment by caller:
 # YB_CSI_C++    - Suite ID for test, by language
@@ -83,6 +85,7 @@ def csi_env(content: str = 'json') -> Dict[str, Any]:
         'url_sync': f"https://{server}/api/v1/{project}",
         'reps': os.getenv('YB_CSI_REPS', '1'),
         'qid': os.getenv('YB_CSI_QID', ''),
+        'new_test': os.getenv('YB_CSI_NEW_TEST', ''),
         'headers': {
             'Authorization': 'Bearer ' + os.getenv('CSI_TOKEN', '')
         }
@@ -304,6 +307,10 @@ def query_test(uniqueId: str, wait: bool) -> bool:
 #   fail_repetition - intentional re-run of a test that failed earlier (--fail_repetitions);
 #                     exists only after a first-attempt failure, so it must never enter a
 #                     first-attempt failure rate;
+#   new_test_repetition - intentional re-run of a test that is new on this lane
+#                     (--new_test_repetitions); dispatched only for a test whose first attempt
+#                     PASSED, so like fail_repetition it must never enter a first-attempt rate,
+#                     and it tells a consumer the first attempt's outcome without reading it;
 #   task_resubmit   - Spark re-ran the task because a worker died; an infra artifact;
 #   repetition      - unconditional extra run (--num_repetitions).
 # The shapes overlap: a Spark task resubmit (attempt > 0) can happen inside the
@@ -317,11 +324,18 @@ def query_test(uniqueId: str, wait: bool) -> bool:
 # Known gap: a driver-level Spark JOB resubmit starts a fresh task with attempt 0 and is
 # indistinguishable from a first attempt here.
 def classify_execution(rerun: bool, attempt: int, reps: str,
-                       attempt_index: int) -> Tuple[bool, str, bool]:
+                       attempt_index: int, new_test: bool = False) -> Tuple[bool, str, bool]:
     if rerun:
         # Intentionally re-running a completed (failed) test; serial, no wait needed. Checked
         # before attempt so a resubmit inside the rerun job keeps this kind (see above).
         return True, 'fail_repetition', False
+    if new_test:
+        # Intentionally re-running a test that is new on this lane and passed its first attempt.
+        # Dispatched serially after the main pass, like the fail repetitions, so the first attempt
+        # has long reported and no wait is needed. Checked before attempt for the same reason
+        # fail_repetition is: the "first attempt passed" implication has to hold for every
+        # execution of this job, including one Spark resubmitted.
+        return True, 'new_test_repetition', False
     if attempt > 0:
         # Spark re-tries happen only if there is some failure, so attempts are serial.
         # The previous attempt died before reporting completion; the query must wait to
@@ -349,8 +363,13 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
     pt = SimpleTestDescriptor.parse(full_name)
     tname = f"{pt.class_name} - {pt.test_name}"
 
-    retry, retry_kind, wait = classify_execution(rerun, attempt, csi['reps'], test.attempt_index)
-    if retry and not rerun:
+    retry, retry_kind, wait = classify_execution(rerun, attempt, csi['reps'], test.attempt_index,
+                                                 bool(csi['new_test']))
+    # A repetition runs alongside its first attempt and a resubmit follows a worker death, so
+    # either has to ask whether a previous item exists before calling itself a retry. A fail
+    # repetition or a new-test repetition runs serially after the main pass, in which its first
+    # attempt completed and reported, so neither asks: that would be one query per execution.
+    if retry and not rerun and not csi['new_test']:
         prev_test = query_test(full_name, wait)
         if not prev_test:
             # Found no previous test, so do not call this one a retry. The retry_kind

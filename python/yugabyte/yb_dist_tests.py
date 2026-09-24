@@ -108,6 +108,10 @@ class TestResult:
     artifact_copy_result: Optional[artifact_upload.FileTransferResult]
     spark_error_copy_result: Optional[artifact_upload.FileTransferResult]
 
+    # The test exited 0 but its report says it skipped itself (GTEST_SKIP, a platform gate), and
+    # was reported to CSI as skipped. Not a pass, for anything that would repeat a pass.
+    skipped: bool = False
+
     def log_artifact_upload_errors(self) -> None:
         for copy_result in [self.artifact_copy_result, self.spark_error_copy_result]:
             if copy_result is not None and copy_result.has_errors():
