@@ -34,7 +34,7 @@ You enable encryption at rest for a universe by assigning the universe a KMS con
 
 {{< note title="Retain keys" >}}
 
-If you enable encryption at rest, keep the KMS configuration for that universe. Disabling encryption at rest does not take the configuration out of use. You can delete a KMS configuration only if it has never been used by any universes.
+If you enable encryption at rest, keep the KMS configuration for that universe. Disabling encryption at rest does not take the configuration out of use. You can't delete a KMS configuration while any existing universe has used it. If you delete a universe, keep its KMS configuration for as long as you need to restore that universe's backups.
 
 {{< /note >}}
 
@@ -84,7 +84,7 @@ If your configuration includes AWS KMS, the following occurs: after the universe
 
 ### Disable encryption at rest
 
-Disabling encryption at rest in YugabyteDB Anywhere stops encryption of new data. It does not decrypt data already on disk; data on disk stays encrypted until compaction rewrites it. In addition, the KMS configuration remains required to restore backups taken after that.
+Disabling encryption at rest in YugabyteDB Anywhere stops encryption of new data. It does not decrypt data already on disk; data on disk stays encrypted until compaction rewrites it. In addition, a backup taken after that rewrite still requires the KMS configuration to restore, even though the backup data is not encrypted.
 
 To disable encryption at rest for a universe, navigate to the universe and do the following:
 
@@ -136,7 +136,7 @@ You can change KMS configurations, and consequently the master keys used to encr
 
 {{< warning title="Keep KMS configurations after rotation" >}}
 
-Without a KMS configuration, you would no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
+Without a KMS configuration, you would no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. You can't delete a KMS configuration while any existing universe has used it. If you delete a universe, keep its KMS configuration for as long as you need to restore that universe's backups.
 
 {{< /warning >}}
 
