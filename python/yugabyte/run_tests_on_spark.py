@@ -139,9 +139,10 @@ REPEAT_FAILURE_LIMIT = 50
 NEW_TEST_LIMIT = 50
 
 # Least share of this build's tests the known-test list (--known_test_list) has to cover for it to
-# be used as the baseline for "new". The pipeline writes the list from the previous launch of the
-# lane; one that ended early reported a fraction of its tests, and every test it never reached
-# would otherwise read as new.
+# be used as the baseline for "new". This is not a cap on how many tests are repeated
+# (NEW_TEST_LIMIT is): a list short of it is not used at all. The pipeline writes the list from
+# the previous launch of the lane; one that ended early reported a fraction of its tests, and every
+# test it never reached would otherwise read as new.
 NEW_TEST_MIN_KNOWN_RATIO = 0.9
 
 # The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
