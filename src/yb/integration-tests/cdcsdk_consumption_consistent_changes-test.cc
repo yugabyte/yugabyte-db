@@ -5077,11 +5077,18 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
   ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn_2, commit_lsn_2));
   change_resp_2 = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   ASSERT_EQ(change_resp_2.cdc_sdk_proto_records_size(), 0);
-  change_resp_2 = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
 
-  // Now that all the DDLs have been acknowledged, we should move the checkpoint forward.
-  new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
-  ASSERT_GT(new_checkpoint.index, old_checkpoint.index);
+  // Now that all the DDLs have been acknowledged, we should move the checkpoint forward. The table
+  // tablet is polled (carrying the explicit checkpoint) only once its queue drains, which may take
+  // more than one call depending on the order its safepoint and the sys catalog's are popped.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp_2 = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        new_checkpoint =
+            VERIFY_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+        return new_checkpoint.index > old_checkpoint.index;
+      },
+      MonoDelta::FromSeconds(30), "Timed out waiting for checkpoint to move forward"));
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
