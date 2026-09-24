@@ -499,13 +499,18 @@ Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_k
   }
 
   const auto read_ht = read_operation_data_.read_time.read;
-  const auto watermark_before = doc_read_context_.tombstone_cache_watermark();
-  const auto gen_before = doc_read_context_.tombstone_cache_generation();
   if (auto cached_tombstone_time =
           doc_read_context_.GetCachedTableTombstoneTime(read_ht)) {
     return *cached_tombstone_time;
   }
 
+  if (!doc_read_context_.IsTombstoneCacheArmed()) {
+    return ProbeAndArmTableTombstoneCache(root_doc_key, read_ht);
+  }
+
+  // Armed with an empty slot: a tombstone apply cleared it. Refill from a normal bounded lookup.
+  const auto watermark_before = doc_read_context_.tombstone_cache_watermark();
+  const auto gen_before = doc_read_context_.tombstone_cache_generation();
   auto doc_ht = VERIFY_RESULT(docdb::GetTableTombstoneTime(
       root_doc_key, doc_db_, txn_op_context_, read_operation_data_));
   // Cache doc_ht only if this read is still eligible and watermark/generation did not change
@@ -518,6 +523,46 @@ Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_k
     doc_read_context_.set_table_tombstone_time(doc_ht, gen_before);
   }
   return doc_ht;
+}
+
+// Arm the tombstone cache of a context that has never been armed, from the tablet's own data.
+//
+// Probing at an unbounded read time finds the newest table tombstone whatever hybrid time it
+// carries, which is exactly what the watermark has to bound - see ArmTombstoneCacheFromProbe for
+// why no clock reading can do that. The probe subsumes this read's own lookup unless the read
+// predates the tombstone it found, so the common path costs the same single seek as before.
+Result<DocHybridTime> DocRowwiseIterator::ProbeAndArmTableTombstoneCache(
+    Slice root_doc_key, HybridTime read_ht) const {
+  const auto gen_before = doc_read_context_.tombstone_cache_generation();
+  const auto latest = VERIFY_RESULT(docdb::GetTableTombstoneTime(
+      root_doc_key, doc_db_, txn_op_context_,
+      read_operation_data_.WithAlteredReadTime(ReadHybridTime::Max())));
+
+  const auto usable_watermark = [](HybridTime ht) {
+    return ht.is_valid() && ht != HybridTime::kMax && ht >= HybridTime::kInitial;
+  };
+
+  if (!latest.is_valid()) {
+    // No tombstone anywhere in this table's data, so "absent" answers every read time and any
+    // watermark would be sound. Arm at read_ht anyway, so the field keeps one meaning everywhere -
+    // a time at which this replica verified it knows the whole tombstone story. The cost is that
+    // reads pinned below read_ht stay ineligible and pay a lookup.
+    if (usable_watermark(read_ht)) {
+      doc_read_context_.ArmTombstoneCacheFromProbe(read_ht, DocHybridTime::kInvalid, gen_before);
+    }
+    return DocHybridTime::kInvalid;
+  }
+
+  if (usable_watermark(latest.hybrid_time())) {
+    doc_read_context_.ArmTombstoneCacheFromProbe(latest.hybrid_time(), latest, gen_before);
+  }
+  if (read_ht.is_valid() && read_ht >= latest.hybrid_time()) {
+    return latest;
+  }
+  // This read predates the newest tombstone, so it needs the newest one at or below its own read
+  // time, and it sits below the watermark so it neither consumes nor populates.
+  return docdb::GetTableTombstoneTime(
+      root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
 }
 
 Status DocRowwiseIterator::InitIterator(
