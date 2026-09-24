@@ -2268,6 +2268,29 @@ TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
   ASSERT_EQ(backend_span.op_name, "query");
 }
 
+// Every global object-lock release is followed by a second one at the acquire deadline, in case an
+// acquire retry landed late. That deadline release must not join and stretch the DDL's trace.
+TEST_F(DistTraceTest, TestLostMessageLockReleaseNotTraced) {
+  static constexpr auto kReleaseSpan = "rpc yb.master.MasterService.ReleaseObjectLocksGlobal";
+  // The acquire deadline, and so the second release, is lock_timeout + pg_client_extra_timeout_ms.
+  static constexpr auto kLockTimeout = 2s;
+  static constexpr auto kPgClientExtraTimeout = 2s;
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET lock_timeout = '$0s'", kLockTimeout.count()));
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute("CREATE TABLE lost_release_test (id int PRIMARY KEY)"));
+
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, kReleaseSpan, 1));
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 5ms);
+  const auto releases_after_ddl = collector_.FindSpansByName(tp.trace_id, kReleaseSpan).size();
+
+  SleepFor(
+      kLockTimeout + kPgClientExtraTimeout + kOtelBatchScheduleDelayMs * kTimeMultiplier * 10ms);
+  ASSERT_EQ(collector_.FindSpansByName(tp.trace_id, kReleaseSpan).size(), releases_after_ddl)
+      << "the deadline release joined the DDL trace";
+}
+
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
   google::FlagSaver flag_saver;
   TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
