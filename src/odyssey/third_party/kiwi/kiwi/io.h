@@ -105,7 +105,7 @@ static inline void kiwi_write32(char **pos, uint32_t value)
 	*pos = *pos + sizeof(value);
 }
 
-static inline void kiwi_write(char **pos, char *buf, int size)
+static inline void kiwi_write(char **pos, const char *buf, int size)
 {
 	memcpy(*pos, buf, size);
 	*pos = *pos + size;

@@ -14,6 +14,7 @@ struct kiwi_be_startup {
 	int yb_ssl_established;
 	int unsupported_request;
 	int is_cancel;
+	uint32_t proto_version;
 	kiwi_key_t key;
 	kiwi_var_t user;
 	kiwi_var_t database;
@@ -23,6 +24,7 @@ struct kiwi_be_startup {
 static inline void kiwi_be_startup_init(kiwi_be_startup_t *su)
 {
 	su->is_cancel = 0;
+	su->proto_version = 0;
 	su->is_ssl_request = 0;
 	su->yb_ssl_established = 0;
 	su->unsupported_request = 0;
@@ -113,11 +115,51 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 }
 
 #define PG_PROTOCOL(m, n) (((m) << 16) | (n))
+#define PG_PROTOCOL_MAJOR(v) ((int)((v) >> 16))
+#define PG_PROTOCOL_MINOR(v) ((int)((v) & 0x0000ffff))
 #define NEGOTIATE_SSL_CODE PG_PROTOCOL(1234, 5679)
 #define NEGOTIATE_GSS_CODE PG_PROTOCOL(1234, 5680)
 #define CANCEL_REQUEST_CODE PG_PROTOCOL(1234, 5678)
 #define PG_PROTOCOL_LATEST PG_PROTOCOL(3, 0)
-#define PG_PROTOCOL_EARLIEST PG_PROTOCOL(2, 0)
+#define PG_PROTOCOL_EARLIEST PG_PROTOCOL(3, 0)
+
+enum {
+	KIWI_STARTUP_READ_OK = 0,
+	KIWI_STARTUP_READ_LEN_ERROR,
+	KIWI_STARTUP_READ_VERSION_ERROR,
+	KIWI_STARTUP_CANCEL_READ_ERROR,
+	KIWI_STARTUP_READ_OPTIONS_ERROR,
+	KIWI_STARTUP_INVALID_MAJOR_ERROR,
+};
+
+KIWI_API static inline int kiwi_be_read_cancel_request(char **pos,
+						       uint32_t *pos_size,
+						       kiwi_be_startup_t *su)
+{
+	if (kiwi_unlikely(kiwi_read32(&su->key.key_pid, pos, pos_size) == -1)) {
+		return -1;
+	}
+	if (kiwi_unlikely(kiwi_read32(&su->key.key, pos, pos_size) == -1)) {
+		return -1;
+	}
+	return 0;
+}
+
+KIWI_API static inline int kiwi_protocol_major_supported(uint32_t version)
+{
+	return PG_PROTOCOL_MAJOR(version) >=
+		       PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST) &&
+	       PG_PROTOCOL_MAJOR(version) <=
+		       PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST);
+}
+
+KIWI_API static inline int kiwi_protocol_minor_supported(uint32_t version)
+{
+	return PG_PROTOCOL_MINOR(version) >=
+		       PG_PROTOCOL_MINOR(PG_PROTOCOL_EARLIEST) &&
+	       PG_PROTOCOL_MINOR(version) <=
+		       PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST);
+}
 
 KIWI_API static inline int kiwi_be_read_startup(char *data, uint32_t size,
 						kiwi_be_startup_t *su,
@@ -128,30 +170,23 @@ KIWI_API static inline int kiwi_be_read_startup(char *data, uint32_t size,
 	int rc;
 	uint32_t len;
 	rc = kiwi_read32(&len, &pos, &pos_size);
-	if (kiwi_unlikely(rc == -1))
-		return -1;
+	if (kiwi_unlikely(rc == -1)) {
+		return KIWI_STARTUP_READ_LEN_ERROR;
+	}
 	uint32_t version;
 	rc = kiwi_read32(&version, &pos, &pos_size);
-	if (kiwi_unlikely(rc == -1))
-		return -1;
+	if (kiwi_unlikely(rc == -1)) {
+		return KIWI_STARTUP_READ_VERSION_ERROR;
+	}
 	su->unsupported_request = 0;
 	switch (version) {
-	/* StartupMessage */
-	case PG_PROTOCOL_LATEST:
-		su->is_cancel = 0;
-		rc = kiwi_be_read_options(su, pos, pos_size, vars);
-		if (kiwi_unlikely(rc == -1))
-			return -1;
-		break;
 	/* CancelRequest */
 	case CANCEL_REQUEST_CODE:
 		su->is_cancel = 1;
-		rc = kiwi_read32(&su->key.key_pid, &pos, &pos_size);
-		if (kiwi_unlikely(rc == -1))
-			return -1;
-		rc = kiwi_read32(&su->key.key, &pos, &pos_size);
-		if (kiwi_unlikely(rc == -1))
-			return -1;
+		rc = kiwi_be_read_cancel_request(&pos, &pos_size, su);
+		if (rc == -1) {
+			return KIWI_STARTUP_CANCEL_READ_ERROR;
+		}
 		break;
 	/* SSLRequest */
 	case NEGOTIATE_SSL_CODE:
@@ -159,14 +194,26 @@ KIWI_API static inline int kiwi_be_read_startup(char *data, uint32_t size,
 		break;
 	/* GSSRequest */
 	case NEGOTIATE_GSS_CODE:
-	/* V2 protocol startup */
-	case PG_PROTOCOL_EARLIEST:
 		su->unsupported_request = 1;
 		break;
 	default:
-		return -1;
+		/* StartupMessage */
+
+		su->proto_version = version;
+
+		if (!kiwi_protocol_major_supported(version)) {
+			return KIWI_STARTUP_INVALID_MAJOR_ERROR;
+		}
+
+		rc = kiwi_be_read_options(su, pos, pos_size, vars);
+		if (kiwi_unlikely(rc == -1)) {
+			return KIWI_STARTUP_READ_OPTIONS_ERROR;
+		}
+
+		break;
 	}
-	return 0;
+
+	return KIWI_STARTUP_READ_OK;
 }
 
 KIWI_API static inline int kiwi_be_read_password(char *data, uint32_t size,
