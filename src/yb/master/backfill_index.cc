@@ -108,6 +108,10 @@ DEFINE_RUNTIME_bool(allow_batching_non_deferred_indexes, true,
     "backfill, even if they were not deferred.");
 TAG_FLAG(allow_batching_non_deferred_indexes, advanced);
 
+DEFINE_test_flag(bool, ysql_walk_removing_index_permissions, false,
+    "Let CatalogManager::BackfillIndex advance a YSQL index through the removing permissions, "
+    "the way the #28849 regression did, so tests can build the states it left behind.");
+
 DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
     "Slows down the send alter table rpc's so that the master may be stopped between "
     "different phases.");
@@ -447,12 +451,27 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
           indexes_to_backfill.emplace_back(idx_pb);
         }
       } else if (idx_pb.index_permissions() == INDEX_PERM_INDEX_UNUSED) {
-        indexes_to_delete.emplace_back(idx_pb);
+        if (is_ysql_table) {
+          // Postgres owns a YSQL index's lifecycle and the master never moves one to
+          // INDEX_UNUSED.  One that is there was left by a build with the #28849 regression,
+          // before its fix in b6efa55e7247da85f50ab77ed4d1151e49fd9101.  Deleting its DocDB
+          // table here breaks the postgres side that still references it, so leave it to
+          // DROP INDEX.
+          LOG(WARNING) << "Ignoring YSQL index " << idx_pb.table_id() << " on "
+                       << indexed_table->ToString() << " at INDEX_PERM_INDEX_UNUSED";
+        } else {
+          indexes_to_delete.emplace_back(idx_pb);
+        }
       } else if (!is_ysql_table && idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE) {
         indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       } else if (update_ysql_to_backfill &&
-                 idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE &&
-                 idx_pb.index_permissions() != INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING) {
+                 (FLAGS_TEST_ysql_walk_removing_index_permissions
+                      ? idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE
+                      : idx_pb.index_permissions() < INDEX_PERM_DO_BACKFILL)) {
+        // Postgres asks the master for one YSQL transition, WRITE_AND_DELETE to DO_BACKFILL.  A
+        // YSQL index at a removing permission stays where it is until DROP INDEX removes it.  The
+        // test flag selects the condition from before b6efa55e7247da85f50ab77ed4d1151e49fd9101
+        // instead, so tests can build the states that code left behind.
         indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       }
     }
@@ -501,9 +520,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   // This changes how we treat indexes_to_foo:
   //
   // - indexes_to_update: used for moving from WRITE_AND_DELETE to DO_BACKFILL.
-  // - indexes_to_delete is impossible to be nonempty, and, in the future, when we do use
-  //   INDEX_PERM_INDEX_UNUSED, we want to use some other delete trigger that makes sure no
-  //   transactions are left using the index.  Prepare for that by doing nothing when nonempty.
+  // - indexes_to_delete: never holds a YSQL index.  A YSQL index at INDEX_PERM_INDEX_UNUSED is
+  //   logged above and left to DROP INDEX, which removes it through DeleteTable.
   // - indexes_to_backfill: used to launch StartBackfillingData once the index ready to backfill.
 
   if (!indexes_to_update.empty()) {
