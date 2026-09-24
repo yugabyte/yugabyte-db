@@ -1141,7 +1141,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	YBInitPostgresBackend("postgres", yb_init_info);
 
 	/* YB: Disabled by YbInitPostgres. */
-	if (!bootstrap)
+	if (IsUnderPostmaster)
 		YbEnableStartupClientConnectionCheck();
 
 	if (!bootstrap && MyProcPort != NULL &&
@@ -1819,8 +1819,7 @@ YbEnableStartupClientConnectionCheck(void)
 	 * queries.
 	 */
 	if (!*YBCGetGFlags()->ysql_enable_startup_client_connection_check ||
-		client_connection_check_interval <= 0 || !IsUnderPostmaster ||
-		MyProcPort == NULL)
+		client_connection_check_interval <= 0 || MyProcPort == NULL)
 		return;
 
 	yb_startup_client_connection_check = true;
@@ -1868,16 +1867,15 @@ YbCheckClientConnectionFromSignalHandler(void)
 	 * for them.
 	 */
 	pfd.fd = MyProcPort->sock;
-	pfd.events = POLLHUP | POLLERR;
 	/*
 	 * POLLRDHUP is a Linux-only flag that captures graceful close of conn. The
 	 * other poll flags capture errors on the socket. This means that the
 	 * client connection check cannot detect graceful client close on MacOS.
 	 */
 #ifdef POLLRDHUP
-	pfd.events |= POLLRDHUP;
 	hangup_events |= POLLRDHUP;
 #endif
+	pfd.events = hangup_events;
 	pfd.revents = 0;
 	if (poll(&pfd, 1, 0) > 0 && (pfd.revents & hangup_events) != 0)
 	{
