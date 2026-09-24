@@ -80,6 +80,7 @@
 #include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
@@ -279,7 +280,11 @@ Status GetSplitPoints(YbcPgTableDesc table_desc,
 }
 
 void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInfo> caching_info) {
-  pgapi->StartSysTablePrefetching({caching_info, implicit_cast<uint64_t>(yb_fetch_row_limit)});
+  const auto* flags = YBCGetGFlags();
+  pgapi->StartSysTablePrefetching({
+      caching_info,
+      *flags->ysql_catalog_prefetch_row_limit,
+      *flags->ysql_catalog_prefetch_size_limit});
 }
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {
