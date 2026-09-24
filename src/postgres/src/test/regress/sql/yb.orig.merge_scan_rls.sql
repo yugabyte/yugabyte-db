@@ -54,12 +54,13 @@ RESET ROLE;
 
 -- A policy that breaks an EquivalenceClass.  rls_ec_tbl is of no use to other
 -- tests, so it is defined here rather than in yb.orig.merge_scan_setup.  d = t
--- uses the date = timestamp operator, which is not leakproof, so under RLS the
--- planner cannot build d = 2020-01-02 from the query's t = 2020-01-02, and
+-- uses the date = timestamp operator, which is not leakproof, so under RLS,
+-- the planner cannot build d = 2020-01-02 from the query's t = 2020-01-02 and
 -- keeps d = t and t = 2020-01-02 as they are.  The pathkeys walk still sees d
 -- as a constant, but d has no index condition, so it must not be a stream key.
--- The d = t filter holds it constant instead, and runs within each stream as a
--- storage filter.  The first row of each stream is a decoy that fails d = t.
+-- The d = t filter holds it constant instead.  With expression pushdown on, it
+-- runs within each stream as a storage filter, so the merge order holds.  The
+-- first row of each stream is a decoy that fails d = t.
 CREATE TABLE rls_ec_tbl (s int, d date, c int, t timestamp,
     PRIMARY KEY (s ASC, d ASC, c ASC));
 INSERT INTO rls_ec_tbl

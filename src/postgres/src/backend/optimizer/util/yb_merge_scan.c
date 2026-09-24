@@ -662,7 +662,8 @@ ybEqualityImpliedByIndexPredicate(IndexOptInfo *index, int indexcol,
  *   check_index_predicates removes from the index conditions.
  * - A range column whose EquivalenceClass is broken.  The planner could not
  *   build the clause equating the column to the constant and kept the original
- *   clauses, which hold the column constant as filters.
+ *   clauses as filters.  The merge order holds only if those filters run within
+ *   each stream, before the merge.  TODO(#33384): ensure that.
  *
  * TODO(#34120): drop hash columns of the last two kinds too, which pggate
  * cannot merge without a condition on each.
