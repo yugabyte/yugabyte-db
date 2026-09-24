@@ -251,11 +251,6 @@ class PgBuiltinGlobalViewsTest : public LibPqTestBase {
     AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "track_functions='all'");
     tserver_flags.push_back("--ysql_yb_ash_sampling_interval_ms=50");
     tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
-
-    // CDC decoding transiently misses schema packing; silence the debug DCHECK
-    // (no-op in release), as other CDC consumption tests do.
-    tserver_flags.push_back("--TEST_dcheck_for_missing_schema_packing=false");
-    options->extra_master_flags.push_back("--TEST_dcheck_for_missing_schema_packing=false");
   }
 
  protected:

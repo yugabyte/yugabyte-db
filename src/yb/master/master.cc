@@ -286,7 +286,7 @@ const std::string& Master::permanent_uuid() const {
 void Master::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
   async_client_init->builder()
       .set_master_address_flag_name("master_addresses")
-      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
+      .default_admin_operation_timeout(default_client_timeout())
       .AddMasterAddressSource([this] {
         return catalog_manager_->GetMasterAddresses();
   });

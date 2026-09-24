@@ -78,7 +78,6 @@ using std::string;
 
 DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
-DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
@@ -2316,7 +2315,6 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1));
 
   // 2. Setup replication.
