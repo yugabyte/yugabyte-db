@@ -1,9 +1,8 @@
 --
 -- See yb_merge_scan_schedule for details about the test.  Tests that a merge
 -- scan does not sort past a gap column whose covering equality runs after the
--- streams are merged (issue #33384): the filter is local because expression
--- pushdown is off, the collation is not C, or the operator is not immutable,
--- or it is pushed to the table read after the index-side merge.
+-- streams are merged, and what cutting the merge at such a gap does to the
+-- plans built on it.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
@@ -22,10 +21,10 @@
 \set Q2 ':on'
 SET enable_sort = off;
 -- These tables are of no use to other tests, so they are defined here rather
--- than in yb.orig.merge_scan_setup.  In each, c1 = c2 makes c2 redundant for
--- ORDER BY c1, c3 on the index (s, c1, c2, c3), and the first row is a decoy
--- that fails c1 = c2, sorts first within its stream, and sorts last by
--- (c1, c3), so that a merge past the gap misorders the survivors.
+-- than in yb.orig.merge_scan_setup.  Unless a section says otherwise, c1 = c2
+-- makes c2 redundant for ORDER BY c1, c3 on the index (s, c1, c2, c3), and the
+-- first row is a decoy that fails c1 = c2, sorts first within its stream, and
+-- sorts last by (c1, c3), so that a merge past the gap misorders the survivors.
 --
 -- Local filter: expression pushdown off
 --
