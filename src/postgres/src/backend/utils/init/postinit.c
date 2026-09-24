@@ -1868,7 +1868,7 @@ YbCheckClientConnectionFromSignalHandler(void)
 	 * for them.
 	 */
 	pfd.fd = MyProcPort->sock;
-	pfd.events = 0;
+	pfd.events = POLLHUP | POLLERR;
 	/*
 	 * POLLRDHUP is a Linux-only flag that captures graceful close of conn. The
 	 * other poll flags capture errors on the socket. This means that the
