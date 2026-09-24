@@ -153,6 +153,35 @@ public class TestAudit extends BaseCQLTest {
                   "/* don't log me */ ALTER ROLE \"o'brien\" WITH PASSWORD = <REDACTED>")));
     }
 
+    // A $ inside an unquoted identifier is part of it, not a dollar-quote opener that would swallow
+    // the rest of the statement.
+    {
+      assertAudit(
+          "CREATE ROLE a$$ WITH login = true AND PASSWORD = 'hide me!'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "CREATE ROLE a$$ WITH login = true AND PASSWORD = <REDACTED>")));
+    }
+
+    // Every string-constant form the grammar accepts as a password value is redacted, including a
+    // dollar-quoted string and a quoted literal continued onto the next line.
+    {
+      assertAudit(
+          "ALTER ROLE a$$ WITH PASSWORD = $tag$hide me too!$tag$",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "ALTER ROLE a$$ WITH PASSWORD = <REDACTED>")));
+
+      assertAudit(
+          "ALTER ROLE a$$ WITH PASSWORD = 'hide me'\n'too!' AND login = true",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "ALTER ROLE a$$ WITH PASSWORD = <REDACTED> AND login = true")));
+    }
+
     // A statement that is *rejected* is still audited, as a REQUEST_FAILURE carrying the statement
     // text. Redaction used to happen only on paths that had a parse tree to identify the statement
     // type, so a rejected CREATE ROLE was logged with its password in cleartext. Two PASSWORD
@@ -209,6 +238,23 @@ public class TestAudit extends BaseCQLTest {
       }
       assertNoPasswordInAudit(
           "CREATE ROLE user1 WITH login = true AND PASSWORD = <REDACTED>", password);
+    }
+
+    // The error text in front of the echo is prose, not CQL, and the master prints the role name
+    // unquoted: "Role o'brien already exists". That apostrophe must not open a phantom literal that
+    // swallows the echoed PASSWORD clause.
+    {
+      final String password = "dup_quoted_role_pl4int3xt";
+      auditRecords.discard();
+      String cql = "CREATE ROLE \"o'brien\" WITH PASSWORD = '" + password + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE for an already existing role to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE \"o'brien\" WITH PASSWORD = <REDACTED>", password);
     }
   }
 
