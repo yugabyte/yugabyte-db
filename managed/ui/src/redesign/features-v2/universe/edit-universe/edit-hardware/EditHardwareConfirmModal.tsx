@@ -216,6 +216,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : undefined;
 
   const storageSpec = targetCluster?.node_spec.storage_spec;
+  const cloudVolumeEncryption = storageSpec?.cloud_volume_encryption;
   const toast = useYBToast();
 
   const { data: instanceTypes } = useQuery(
@@ -884,7 +885,9 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         targetCluster?.node_spec?.master?.storage_spec?.mount_points ?? storageSpec?.mount_points
     },
     tserverK8SNodeResourceSpec: tserverK8sResourceSpec,
-    masterK8SNodeResourceSpec: masterK8sResourceSpec
+    masterK8SNodeResourceSpec: masterK8sResourceSpec,
+    enableEbsVolumeEncryption: cloudVolumeEncryption?.enable_volume_encryption ?? false,
+    ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid || null
   } as InstanceSettingProps;
 
   // For the read-replica edit modal, when the user toggles "Keep RR same as primary T-Server",
