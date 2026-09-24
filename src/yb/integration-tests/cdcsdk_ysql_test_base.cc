@@ -3061,7 +3061,15 @@ void CDCSDKYsqlTest::WaitUntilSplitIsSuccesful(
     const int expected_num_tablets) {
   ASSERT_OK(WaitFor(
       [this, tablet_id, &table, &expected_num_tablets]() -> Result<bool> {
-        auto status = SplitTablet(tablet_id, &test_cluster_);
+        // Split needs an SST in the regular DB. Transactional writes are applied to it
+        // asynchronously, so an earlier flush may have left the rows in the memtable.
+        auto status = WaitForFlushTables(
+            {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+            /* is_compaction = */ false);
+        if (!status.ok()) {
+          return false;
+        }
+        status = SplitTablet(tablet_id, &test_cluster_);
         if (!status.ok()) {
           return false;
         }
