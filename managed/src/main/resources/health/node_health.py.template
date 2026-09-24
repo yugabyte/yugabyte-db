@@ -264,6 +264,14 @@ YB_PROCESS_CPU_SECONDS_TOTAL = MetricDefinition(
 YB_PROCESS_MEMORY_KB = MetricDefinition(
     "yb_process_memory_kb",
     "Check memory bytes per process and its subprocesses")
+YB_POSTGRES_BACKEND_PSS_MAX_KB = MetricDefinition(
+    "yb_postgres_worker_pss_max_kb",
+    "Max PSS among postgres worker processes (children of postmaster)",
+    "kb")
+YB_POSTGRES_BACKEND_PSS_P95_KB = MetricDefinition(
+    "yb_postgres_worker_pss_p95_kb",
+    "P95 PSS among postgres worker processes (children of postmaster)",
+    "kb")
 YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
     "yb_process_io_kb_total",
     "Check io bytes per process and its subprocesses")
@@ -640,6 +648,21 @@ def get_rss_from_statm(statm):
             continue
         total_rss += int(process_rss)
     return total_rss
+
+
+def get_nearest_rank_percentile(values, p):
+    if not values:
+        return 0
+    sorted_vals = sorted(values)
+    n = len(sorted_vals)
+    # nearest-rank: ceil(p * n) - 1
+    rank = int(n * p)
+    if rank < n * p:
+        rank += 1
+    idx = max(0, rank - 1)
+    if idx >= n:
+        idx = n - 1
+    return sorted_vals[idx]
 
 
 class NodeChecker():
@@ -2133,6 +2156,22 @@ class NodeChecker():
             metrics[2].add_value(stat['io_read_kb'], labels=[process,
                                                                 Label('type', 'read')])
             metrics[3].add_value(stat['open_files'], labels=[process])
+            if process_name == POSTMASTER:
+                backend_pss = []
+                for pid_info in res['process_map'].values():
+                    if not pid_info.get('is_root'):
+                        pss = pid_info['stats']['proportional_memory_kb']
+                        if pss > 0:
+                            backend_pss.append(pss)
+                metric_max = Metric.from_definition(YB_POSTGRES_BACKEND_PSS_MAX_KB)
+                metric_p95 = Metric.from_definition(YB_POSTGRES_BACKEND_PSS_P95_KB)
+                if backend_pss:
+                    metric_max.add_value(max(backend_pss))
+                    metric_p95.add_value(get_nearest_rank_percentile(backend_pss, 0.95))
+                else:
+                    metric_max.add_value(0)
+                    metric_p95.add_value(0)
+                metrics.extend([metric_max, metric_p95])
             return e.fill_and_return_entry([], has_error=False, metrics=metrics)
         except Exception as ex:
             logging.exception("Unexpected error in check_process_stats")
