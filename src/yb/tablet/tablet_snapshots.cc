@@ -593,6 +593,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
       operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
+  if (s.ok()) {
+    tablet().vector_indexes().ScheduleBackfillAfterRestore();
+  }
   int32 delay_time_secs = FLAGS_TEST_delay_tablet_split_metadata_restore_secs;
   if (delay_time_secs > 0) {
     SleepFor(MonoDelta::FromSeconds(delay_time_secs));
