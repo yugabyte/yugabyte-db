@@ -507,6 +507,20 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       }
       break;
     case SysNamespaceEntryPB::PREPARING:
+      // NEXT_VER_PREPARING marks a live database whose new-version catalog copy was interrupted.
+      if (pb_data.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_PREPARING) {
+        LOG(INFO) << "Loading namespace in state PREPARING because its ysql major catalog upgrade "
+                  << "was interrupted: " << ns->ToString();
+        l.mutable_data()->pb.set_ysql_next_major_version_state(
+            SysNamespaceEntryPB::NEXT_VER_FAILED);
+        catalog_manager_->namespace_ids_map_[ns_id] = ns;
+        if (!pb_data.name().empty()) {
+          catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+        }
+        l.Commit();
+        break;
+      }
+
       // PREPARING means the server restarted before completing NS creation. For YSQL consider it
       // FAILED & remove any partially-created data. We must do this to avoid leaking the namespace
       // because such databases are not visible to clients through pg sessions as the pg process
