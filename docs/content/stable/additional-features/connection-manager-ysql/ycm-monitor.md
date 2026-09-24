@@ -84,6 +84,32 @@ The following metrics are reported per pool, labelled with the `database` and `u
 | `ysql_conn_mgr_avg_wait_time_ns` | gauge | Average wait time (in nanoseconds) for a logical connection to be attached to a physical connection. |
 | `ysql_conn_mgr_sticky_connections` | gauge | Number of logical connections attached to a physical connection for the lifetime of the logical connection. |
 
+## Logical clients in pg_stat_activity
+
+Available in v2026.1.2 and later. {{<issue 31862>}}
+
+When YSQL Connection Manager is enabled, your application connects to Connection Manager, and each YSQL backend keeps a physical connection to Connection Manager over a Unix socket. [`pg_stat_activity`](../../../explore/observability/pg-stat-activity/) shows the logical client's connection details on that backend.
+
+Connection Manager sends the logical client's IP address and TCP port to the backend each time that client attaches. The backend records those values, and `pg_stat_activity` returns them in the existing client columns:
+
+| Column | Description |
+| :----- | :---------- |
+| `client_addr` | IP address of the logical client. |
+| `client_port` | TCP port of the logical client. |
+| `client_hostname` | Hostname from a reverse DNS lookup of `client_addr`. Populated only when [`log_hostname`](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-HOSTNAME) is on. The lookup runs once, during authentication of that logical client. |
+
+These columns are updated on each attach. Until the next attach, they keep the address and port of the logical client that attached last, including while the physical connection is idle in the pool.
+
+When the backend has no logical client address, `client_addr` and `client_hostname` are null and `client_port` is `-1` (the Unix socket between Connection Manager and the backend).
+
+To list Connection Manager worker backends:
+
+```plpgsql
+SELECT pid, usename, client_addr, client_hostname, client_port, state
+FROM pg_stat_activity
+WHERE backend_type = 'yb-conn-mgr worker connection';
+```
+
 ## Logging
 
 Connection Manager provides the following log levels that you can set using the `ysql_conn_mgr_log_settings` flag:
