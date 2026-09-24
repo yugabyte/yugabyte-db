@@ -302,6 +302,18 @@ ybDeriveSaopFromVar(Var *var,
 }
 
 /*
+ * Whether the session and the relation allow a merge scan on index: the GUC
+ * yb_max_merge_scan_streams is above 0, yb_enable_base_scans_cost_model is on,
+ * and the relation is a YB relation.
+ */
+bool
+yb_merge_scan_enabled(IndexOptInfo *index)
+{
+	return (yb_max_merge_scan_streams > 0 && yb_enable_base_scans_cost_model &&
+			index->rel->is_yb_relation);
+}
+
+/*
  * Whether this index column is able to be part of merge scan.  If true, find
  * the best SAOP (best meaning having the smallest cardinality), and fill
  * in/out params merge_scan_cardinality and merge_scan_stream_cols.
@@ -320,16 +332,10 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 	YbMergeScanStreamColInfo *stream_col_info;
 
 	/*
-	 * Abort if any of the following hold:
-	 * - the caller disables merge scan (in/out param merge_scan_stream_cols is
-	 *   NULL)
-	 * - the session disables merge scan (GUC yb_max_merge_scan_streams is 0 or
-	 *   yb_enable_base_scans_cost_model is false)
-	 * - merge scan is not supported for this relation (not a YB relation)
+	 * Abort if the caller disables merge scan (in/out param
+	 * merge_scan_stream_cols is NULL), or the session or the relation does.
 	 */
-	if (!(merge_scan_stream_cols &&
-		  yb_max_merge_scan_streams > 0 && yb_enable_base_scans_cost_model &&
-		  index->rel->is_yb_relation))
+	if (!(merge_scan_stream_cols && yb_merge_scan_enabled(index)))
 		return false;
 
 	/*

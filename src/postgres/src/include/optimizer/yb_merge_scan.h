@@ -34,6 +34,8 @@
 extern PGDLLIMPORT bool yb_enable_derived_saops;
 extern PGDLLIMPORT int yb_max_merge_scan_streams;
 
+extern bool yb_merge_scan_enabled(IndexOptInfo *index);
+
 extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   IndexOptInfo *index,
 									   Expr *expr,

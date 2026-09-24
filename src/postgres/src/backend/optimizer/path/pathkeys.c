@@ -603,6 +603,8 @@ build_index_pathkeys(PlannerInfo *root,
 	List	   *yb_const_cols = NIL;
 	Bitmapset  *yb_broken_cols = NULL;
 	int			yb_gap_cut = -1;
+	bool		yb_can_merge = (yb_merge_scan_stream_cols &&
+								yb_merge_scan_enabled(index));
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -727,7 +729,8 @@ build_index_pathkeys(PlannerInfo *root,
 					 * cut a merge that an index condition makes safe.
 					 * TODO(#34173): keep such a merge.
 					 */
-					if (yb_gap_cut < 0 && i >= index->nhashcolumns &&
+					if (yb_can_merge && yb_gap_cut < 0 &&
+						i >= index->nhashcolumns &&
 						!yb_merge_scan_gap_covered(root, index, i,
 												   cpathkey->pk_eclass))
 						yb_gap_cut = list_length(retval);
@@ -739,7 +742,7 @@ build_index_pathkeys(PlannerInfo *root,
 			 * filter runs within each stream before the merge.  Otherwise,
 			 * remember where to cut the merge scan's pathkeys, see below.
 			 */
-			else if (yb_merge_scan_stream_cols && yb_gap_cut < 0 &&
+			else if (yb_can_merge && yb_gap_cut < 0 &&
 					 i >= index->nhashcolumns &&
 					 !yb_merge_scan_gap_covered(root, index, i,
 												cpathkey->pk_eclass))
