@@ -59,7 +59,7 @@ Use one or more of the following techniques to improve import data performance:
 
 ## Improve import CDC streaming performance
 
-During [live migration](../../migrate/live-migrate/), after importing the snapshot, yb-voyager continuously applies change events captured from your source database. To apply changes quickly, the importer captures every insert, update, and delete in commit order and spreads them across many parallel channels (workers). The rule that decides which channel an event goes to is the CDC partition key, and choosing it well is the main lever for streaming throughput on write-heavy workloads.
+During [live migration](../../migrate/live-migrate/), after importing the snapshot, yb-voyager continuously applies change events captured from your source database. To apply changes quickly, the importer captures every insert, update, and delete in commit order and spreads them across many parallel channels (workers). Events are assigned to channels by hashing a CDC partition key, and choosing that key well is the main lever for streaming throughput on write-heavy workloads.
 
 ![Router CDC](/images/migrate/router-cdc.png)
 
@@ -67,18 +67,20 @@ The router sits between the ordered change stream and the parallel channels. Eac
 
 ### How events are partitioned by default
 
-By default (`--cdc-partition-key auto`), yb-voyager partitions most tables by primary key: every event is routed by a hash of the row's primary key. Tables that can't be partitioned by primary key (when primary key hashing isn't safe) are partitioned by table instead.
+By default (`--cdc-partition-key auto`), yb-voyager partitions most tables by primary key: every event is routed by a hash of the row's primary key. This means:
 
 - Events for the _same row_ always land on the _same channel_, so that row's history is applied in commit order.
-- Events for _different rows_ spread across _all channels_, so a single busy table can keep every channel working. This is what lets a distributed target like YugabyteDB absorb writes at full speed.
+- Events for _different rows_ can be spread across _all channels_, so a single busy table can keep every channel working. Parallel channels apply those writes concurrently, and a distributed target like YugabyteDB can take them on many nodes at once.
+
+In the following example, the `users` table's events are different rows, so they can be spread across channels 1 and 2. The two events on the `orders` table with `id` 7 touch the same row, so they hash to the same channel (3) and stay in order.
 
 ![Route by hash of the primary key](/images/migrate/route-by-hash.png)
 
-In this example, `users` rows land on all three channels. The two events on `orders` with `id` 7 touch the same row, so they hash to the same channel and stay in order.
+Tables that can't be partitioned by primary key (when primary key hashing isn't safe) are partitioned by table instead.
 
-Because two different rows can still depend on each other (for example, when a unique value such as an email is shared across several rows of the table at a given point in time, those events must be applied in order), yb-voyager runs _conflict detection_ for primary-key-partitioned tables that have a unique index. It compares unique-key values across in-flight events and, when an incoming event's new value matches an in-flight event's old value, holds the incoming event until the earlier one is fully applied. The result matches the source, at the cost of a short wait.
+### Unique key conflict detection
 
-**Example: the unique-key race**
+A unique value such as an email can be freed by one row and taken by another. Those events touch different rows, so they can land on different channels, but they still have to be applied in that order. For this reason, yb-voyager runs _conflict detection_ for primary-key-partitioned tables that have a unique index. It compares unique-key values across in-flight events and, when an incoming event's new value matches an in-flight event's old value, holds the incoming event until the earlier one is fully applied. The result matches the source, at the cost of a short wait.
 
 Consider a `users` table with primary key `id` and a unique `email`. Two changes commit in this order:
 
