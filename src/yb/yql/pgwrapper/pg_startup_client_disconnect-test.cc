@@ -129,6 +129,11 @@ class PgStartupClientDisconnectTest : public LibPqTestBase,
     options->replication_factor = 1;
     options->extra_tserver_flags.push_back(
         Format("--pg_client_use_shared_memory=$0", GetParam().shared_memory));
+    if (!GetParam().shared_memory) {
+      // The object lock fast path requires the shared memory exchange whenever object locking is
+      // on, which it is by default in release builds.
+      options->extra_tserver_flags.push_back("--enable_object_lock_fastpath=false");
+    }
     // Otherwise the tserver response cache answers the preload and there is nothing to stall.
     options->extra_tserver_flags.push_back("--ysql_enable_read_request_caching=false");
     // Every new connection then preloads the relcache, which reads pg_attribute, after
