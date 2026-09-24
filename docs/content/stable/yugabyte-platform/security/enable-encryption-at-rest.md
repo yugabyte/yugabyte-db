@@ -32,12 +32,6 @@ Master key details are stored in YugabyteDB Anywhere in KMS configurations, and 
 
 You enable encryption at rest for a universe by assigning the universe a KMS configuration. For instructions on creating a KMS configuration, see [Create a KMS configuration](../create-kms-config/aws-kms/).
 
-{{< note title="Retain keys" >}}
-
-If you enable encryption at rest, keep the KMS configuration for that universe. Disabling encryption at rest does not take the configuration out of use. You can't delete a KMS configuration while any existing universe has used it. If you delete a universe, keep its KMS configuration for as long as you need to restore that universe's backups.
-
-{{< /note >}}
-
 For more information on the features, assumptions, design, data key management, universe keys, key rotations, master failures, and adding a node, see [Encryption at rest in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md).
 
 ## Manage universe encryption at rest
