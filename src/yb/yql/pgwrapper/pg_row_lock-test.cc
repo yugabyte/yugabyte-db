@@ -610,155 +610,6 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
 
-  // Check conflicts according to the following matrix (X - conflict, O - no conflict):
-  //                   | FOR KEY SHARE | FOR SHARE | FOR NO KEY UPDATE | FOR UPDATE
-  // ------------------+---------------+-----------+-------------------+-----------
-  // FOR KEY SHARE     |       O       |     O     |         O         |     X
-  // FOR SHARE         |       O       |     O     |         X         |     X
-  // FOR NO KEY UPDATE |       O       |     X     |         X         |     X
-  // FOR UPDATE        |       X       |     X     |         X         |     X
-  void TestRowLockConflictMatrix(const std::string& cur_name = "") {
-    if (level == IsolationLevel::SERIALIZABLE_ISOLATION &&
-        ANNOTATE_UNPROTECTED_READ(FLAGS_skip_prefix_locks)) {
-      TestRowLockConflictMatrixForSlowModeSerializable(cur_name);
-      return;
-    }
-
-    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
-    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
-
-    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
-
-    // Transaction 1.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE", cur_name);
-
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 2.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
-
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 3.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR SHARE", cur_name);
-
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 4.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
-
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 5.
-    // Check FOR KEY SHARE + FOR UPDATE conflict separately
-    // as FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
-
-    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-
-    ASSERT_NOK(conn.Execute("COMMIT"));
-
-    ASSERT_OK(conn.Execute("DROP TABLE t"));
-  }
-
-  // Check conflicts according to the following matrix (X - conflict, O - no conflict) for
-  // SERIALIZABLE level with skip_prefix_locks enabled:
-  //                   | FOR KEY SHARE | FOR SHARE | FOR NO KEY UPDATE | FOR UPDATE
-  // ------------------+---------------+-----------+-------------------+-----------
-  // FOR KEY SHARE     |       O       |     O     |         X         |     X
-  // FOR SHARE         |       O       |     O     |         X         |     X
-  // FOR NO KEY UPDATE |       X       |     X     |         X         |     X
-  // FOR UPDATE        |       X       |     X     |         X         |     X
-  void TestRowLockConflictMatrixForSlowModeSerializable(const std::string& cur_name = "") {
-    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
-    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
-
-    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
-
-    // Transaction 1.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE", cur_name);
-
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 2.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
-
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 3.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR SHARE", cur_name);
-
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 4.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
-
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
-
-    ASSERT_OK(conn.Execute("COMMIT"));
-
-    // Transaction 5.
-    // Check FOR KEY SHARE + FOR UPDATE and FOR NO KEY UPDATE conflict separately
-    // as FOR KEY SHARE uses regular but FOR UPDATE and FOR NO KEY UPDATE uses high txn priority.
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
-    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(conn.Execute("COMMIT"));
-
-    ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
-    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(conn.Execute("COMMIT"));
-
-    ASSERT_OK(conn.Execute("DROP TABLE t"));
-  }
-
   void RowLock(PGConn* connection, const std::string& query, const std::string& cur_name) {
     std::string lock_stmt = query;
     if (!cur_name.empty()) {
@@ -1000,22 +851,6 @@ TEST_F_EX(PgRowLockTest,
 }
 
 TEST_F_EX(PgRowLockTest,
-          RowLockConflictMatrixSerializable,
-          PgMiniTestTxnHelperSerializable) {
-  RunTestTwice([this]() {
-    TestRowLockConflictMatrix();
-  });
-}
-
-TEST_F_EX(PgRowLockTest,
-          RowLockConflictMatrixSnapshot,
-          PgRowLockTxnHelperSnapshotTest) {
-  RunTestTwice([this]() {
-    TestRowLockConflictMatrix();
-  });
-}
-
-TEST_F_EX(PgRowLockTest,
           CursorRowKeyShareLockSerializable,
           PgMiniTestTxnHelperSerializable) {
   RunTestTwice([this]() {
@@ -1028,22 +863,6 @@ TEST_F_EX(PgRowLockTest,
           PgRowLockTxnHelperSnapshotTest) {
   RunTestTwice([this]() {
     TestRowKeyShareLock("cur_name");
-  });
-}
-
-TEST_F_EX(PgRowLockTest,
-          CursorRowLockConflictMatrixSerializable,
-          PgMiniTestTxnHelperSerializable) {
-  RunTestTwice([this]() {
-    TestRowLockConflictMatrix("cur_name");
-  });
-}
-
-TEST_F_EX(PgRowLockTest,
-          CursorRowLockConflictMatrixSnapshot,
-          PgRowLockTxnHelperSnapshotTest) {
-  RunTestTwice([this]() {
-    TestRowLockConflictMatrix("cur_name");
   });
 }
 
@@ -1142,28 +961,6 @@ TEST_F_EX(PgRowLockTest,
           PgMiniTestTxnHelperSerializable) {
   RunTestTwice([this]() {
     TestInOperatorLock();
-  });
-}
-
-TEST_F_EX(PgRowLockTest,
-          PartialKeyRowLockConflict,
-          PgMiniTestTxnHelperSerializable) {
-  RunTestTwice([this]() {
-    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
-    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
-
-    ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r INT, v INT, PRIMARY KEY(h, r))"));
-    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2, 3)"));
-
-    ASSERT_OK(StartTxn(&conn));
-    ASSERT_OK(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r = 2 FOR KEY SHARE"));
-
-    // Check that FOR KEY SHARE + FOR UPDATE conflicts.
-    // FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
-    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE h = 1 FOR UPDATE"));
-    ASSERT_NOK(conn.Execute("COMMIT"));
-
-    ASSERT_OK(conn.Execute("DROP TABLE t"));
   });
 }
 

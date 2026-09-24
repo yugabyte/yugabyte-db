@@ -1181,6 +1181,77 @@ TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsAfterFailover) {
   LOG(INFO) << "Restoration: " << restorations[0];
 }
 
+// Scheduled snapshot creation must resume on a master that started a snapshot, lost
+// leadership before it finished, and later became leader again.
+TEST_F(YbAdminSnapshotScheduleTest, CreatingSnapshotMarkerHealedAfterFailover) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl());
+
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 8, client_.get(), &table_));
+
+  const auto original_leader_uuid = cluster_->GetLeaderMaster()->uuid();
+
+  // Stall tablet snapshot creation so the leader is mid-create when it steps down.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_create_checkpoint", "true"));
+  auto snapshot_state = [this](const std::string& id) -> Result<std::string> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    for (const auto& snapshot : snapshots.GetArray()) {
+      if (VERIFY_RESULT(GetMemberAsStr(snapshot, "id")) == id) {
+        return std::string(VERIFY_RESULT(GetMemberAsStr(snapshot, "state")));
+      }
+    }
+    return std::string();
+  };
+  // A create that started before the pause flag landed can slip past the pause point and
+  // complete normally; wait for one that stays CREATING.
+  std::string stuck_snapshot_id;
+  ASSERT_OK(WaitFor([this, &snapshot_state, &stuck_snapshot_id]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    std::string candidate;
+    for (const auto& snapshot : snapshots.GetArray()) {
+      if (VERIFY_RESULT(GetMemberAsStr(snapshot, "state")) == "CREATING") {
+        candidate = VERIFY_RESULT(GetMemberAsStr(snapshot, "id"));
+        break;
+      }
+    }
+    if (candidate.empty()) {
+      return false;
+    }
+    SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+    if (VERIFY_RESULT(snapshot_state(candidate)) != "CREATING") {
+      return false;
+    }
+    stuck_snapshot_id = candidate;
+    return true;
+  }, kInterval * 5, "Wait for a snapshot stuck in CREATING"));
+
+  LOG(INFO) << "Stepping down master leader " << original_leader_uuid
+            << ", stuck snapshot " << stuck_snapshot_id;
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  // The paused snapshot must still be mid-create; otherwise the marker was cleared normally
+  // and the leak was not reproduced.
+  ASSERT_EQ(ASSERT_RESULT(snapshot_state(stuck_snapshot_id)), "CREATING");
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_create_checkpoint", "false"));
+
+  // The new leader finishes the stuck snapshot and keeps the schedule going.
+  ASSERT_OK(WaitNewSnapshot(schedule_id));
+
+  LOG(INFO) << "Returning leadership to " << original_leader_uuid;
+  ASSERT_OK(WaitFor([this, &original_leader_uuid]() -> Result<bool> {
+    if (cluster_->GetLeaderMaster()->uuid() == original_leader_uuid) {
+      return true;
+    }
+    RETURN_NOT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader(original_leader_uuid));
+    return cluster_->GetLeaderMaster()->uuid() == original_leader_uuid;
+  }, 60s * kTimeMultiplier, "Wait for original master to regain leadership"));
+
+  // Fails without the marker heal: the re-elected leader never creates snapshots again.
+  ASSERT_OK(WaitNewSnapshot(schedule_id));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, ASSERT_RESULT(GetCurrentTime())));
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsTestMigration) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(2s * kTimeMultiplier, 10s * kTimeMultiplier));
 
@@ -1448,6 +1519,15 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlCreateTable) {
     }, 30s, "Restore failed."));
 
     ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'now')", table_name));
+    // A restore bumps pg_yb_catalog_version directly in the sys catalog, bypassing the fast DDL
+    // propagation path, so this backend keeps serving its pre-restore catcache until the new
+    // version arrives via a heartbeat. Both to_regclass and CREATE TABLE resolve the name through
+    // that catcache, so waiting for the former makes the latter see the restored catalog.
+    ASSERT_OK(LoggedWaitFor(
+        [&conn, &table_name]() -> Result<bool> {
+          return conn.FetchRow<bool>(Format("SELECT to_regclass('$0') IS NULL", table_name));
+        },
+        30s * kTimeMultiplier, "Wait for the restored catalog to reach this backend"));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
         table_name, option));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'after')", table_name));
@@ -3932,7 +4012,8 @@ void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
 
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
-  virtual std::vector<std::string> ExtraTSFlags() { return {"--TEST_tablet_delay_restore_ms=0"}; }
+  // Suppresses the base class flags; keep the defaults.
+  std::vector<std::string> ExtraTSFlags() override { return {}; }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {
@@ -6398,6 +6479,58 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql,
       "SELECT oid::int4 FROM pg_class WHERE relname='post_truncate_probe'"));
   EXPECT_GT(probe_oid, decoy_oid)
       << "Post-TRUNCATE CREATE allocated an OID <= decoy's hidden table OID";
+}
+
+// Well above any healthy restore time, so that a restore which waits the delay out stays
+// unambiguous on a slow machine.
+constexpr int64_t kLongIntentsFlushMaxDelayMs = 60000;
+
+class YbAdminSnapshotScheduleTestWithYsqlAndLongIntentsFlushDelay
+    : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        Format("--intents_flush_max_delay_ms=$0", kLongIntentsFlushMaxDelayMs));
+  }
+};
+
+// A schedule's snapshots exclude hidden tables, so a restore has no snapshot for the tablet of a
+// table that a DROP hid. It restores such a tablet in place, which tears its RocksDBs down with
+// flush on shutdown enabled and waits for that flush. An unflushed transaction apply leaves the
+// regular DB behind the intents memtable, so Tablet::IntentsDbFlushFilter defers the intents flush
+// behind the regular DB; unless the filter short-circuits on rocksdb_shutdown_requested_, only
+// intents_flush_max_delay_ms clears the deferral and the restore waits it out per such tablet.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTestWithYsql, PitrRestoreDoesNotWaitOutIntentsFlushDelay,
+    YbAdminSnapshotScheduleTestWithYsqlAndLongIntentsFlushDelay) {
+  // A long interval keeps a periodic snapshot from landing between the transaction and the DROP,
+  // so the restore creates its snapshot on demand, when the table is already hidden.
+  auto schedule_id = ASSERT_RESULT(PreparePg(
+      YsqlColocationConfig::kNotColocated, 300s /* interval */, 1200s /* retention */));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1,100) i"));
+  ASSERT_OK(conn.CommitTransaction());
+  // Nothing flushes after the apply, so its records and the intent removal stay in the memtables.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+
+  auto start = MonoTime::Now();
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+  ASSERT_OK(WaitRestorationDone(
+      restoration_id,
+      MonoDelta::FromMilliseconds(3 * kLongIntentsFlushMaxDelayMs) * kTimeMultiplier));
+  auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "Restore took " << elapsed;
+
+  ASSERT_LT(elapsed, MonoDelta::FromMilliseconds(kLongIntentsFlushMaxDelayMs))
+      << "the restored tablet's teardown flush waited out intents_flush_max_delay_ms";
 }
 
 // Fixture for the clone-with-multiple-colocation-parents repro. We need the

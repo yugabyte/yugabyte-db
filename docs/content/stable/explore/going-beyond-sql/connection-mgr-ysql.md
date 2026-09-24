@@ -4,8 +4,6 @@ headerTitle: Built-in connection pooling
 linkTitle: Built-in connection pooling
 description: YSQL Connection Manager 
 headcontent: YSQL Connection Manager
-tags:
-  feature: early-access
 aliases:
    - /stable/explore/connection-manager/connection-mgr-ysql/
    - /stable/explore/connection-manager/
@@ -91,12 +89,10 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
   </div>
   <div id="platform" class="tab-pane fade" role="tabpanel" aria-labelledby="platform-tab">
 
-{{<tags/feature/ea idea="1368">}}While in Early Access, YSQL Connection Manager is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
-
 To enable built-in connection pooling for universes deployed using YugabyteDB Anywhere:
 
 - Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
-- Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
+- Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/scale-deployments/edit-config-flags/#connection-pooling).
 
 Note that when managing universes using YugabyteDB Anywhere, do not set connection pooling flags, `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, and `pgsql_proxy_bind_address`.
 
@@ -109,7 +105,7 @@ Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-po
   </div>
   <div id="aeon" class="tab-pane fade" role="tabpanel" aria-labelledby="aeon-tab">
 
-{{<tags/feature/ea idea="1368">}}You can enable built-in connection pooling on YugabyteDB Aeon clusters in the following ways:
+You can enable built-in connection pooling on YugabyteDB Aeon clusters in the following ways:
 
 - When [creating a cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/), turn on the **Connection Pooling** option. (Connection Pooling is enabled by default for [Sandbox clusters](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).)
 - For clusters that are already created, navigate to the cluster **Settings>Connection Pooling** tab.

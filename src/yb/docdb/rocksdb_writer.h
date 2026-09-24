@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <span>
 
 #include <boost/logic/tribool.hpp>
@@ -283,6 +284,13 @@ class VectorIndexesUpdater {
   Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
   Status Complete();
 
+  // Whether reverse mapping tombstones should be written for deleted vectors. They are not
+  // needed when all vector indexes store ybctids: such a vector has no reverse mapping entry,
+  // and a deleted row is detected by fetching it by the ybctid from the vector payload.
+  bool NeedReverseMappingTombstones() const {
+    return !all_indexes_store_ybctid_;
+  }
+
  private:
   template <class Decoder>
   Status FeedPackedRow(
@@ -312,6 +320,11 @@ class VectorIndexesUpdater {
   const HybridTime commit_ht_;
   const IntraTxnWriteId& write_id_;
   const bool xcluster_target_;
+
+  // Whether all vector indexes store ybctids in their chunks, so no reverse mapping entries are
+  // needed at all. Based on the per-index decision fixed at index open, so it is consistent with
+  // the contents of the chunks the entries go to.
+  const bool all_indexes_store_ybctid_;
   // TODO(#30819 vector_index) Optimize memory management
   std::vector<DocVectorIndexInsertEntries> batches_;
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
@@ -407,11 +420,19 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes,
-      const StorageSet& apply_to_storages, TableType table_type);
+      const StorageSet& apply_to_storages, TableType table_type,
+      std::atomic<bool>* can_advance_intents_flush_op_id);
 
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override;
+
+  // Re-notify for table tombstones discovered while applying external intents. Call after
+  // WriteToRocksDB returns so the regular-DB write is visible: external intents are not
+  // IntentAwareIterator-visible, so a miss between the in-loop notify and memtable publish can
+  // cache "no tombstone" under the already-raised watermark; this second notify bumps generation
+  // and clears that poison. No-op when no such tombstone was seen.
+  void FlushPendingTableTombstoneNotifies();
 
  private:
   // Reads all stored external intents for provided transactions and prepares batches that will
@@ -443,6 +464,16 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   DocVectorIndexesPtr vector_indexes_;
   StorageSet apply_to_storages_;
   TableType table_type_;
+  std::atomic<bool>* can_advance_intents_flush_op_id_;
+
+  // Table-tombstone (key, value, write_ht) triples seen while applying external intents. Flushed
+  // via FlushPendingTableTombstoneNotifies after WriteToRocksDB (see that method's comment).
+  struct PendingTableTombstoneNotify {
+    std::string key;
+    std::string value;
+    HybridTime write_ht;
+  };
+  std::vector<PendingTableTombstoneNotify> pending_table_tombstone_notifies_;
 };
 
 // Context class for dumping intents records for a transaction.

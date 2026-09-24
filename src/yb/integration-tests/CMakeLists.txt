@@ -36,7 +36,8 @@ set(YB_PCH_DEP_LIBS boost_regex)
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs
   WORKING_DIRECTORY ${YB_BUILD_ROOT}
-  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs)
+  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs
+  DEPENDS ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh)
 
 add_custom_target(generate_test_certs DEPENDS ${CMAKE_BINARY_DIR}/test_certs)
 
@@ -227,6 +228,7 @@ ADD_YB_TEST(kv_table_ts_failover-test)
 ADD_YB_TEST(kv_table_ts_failover_write_if-test)
 ADD_YB_TEST(faulty_drive-itest)
 ADD_YB_TEST(flush_under_load-test)
+ADD_YB_TEST(fs_root_pin-itest)
 ADD_YB_TEST(stepdown_under_load-test)
 ADD_YB_TEST(full_stack-insert-scan-test)
 ADD_YB_TEST(redis_table-test)
@@ -298,6 +300,7 @@ ADD_YB_TEST(upgrade-tests/ash_metadata_upgrade-test)
 ADD_YB_TEST(upgrade-tests/auto_flag_upgrade-test)
 ADD_YB_TEST(upgrade-tests/backup_upgrade-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
+ADD_YB_TEST(upgrade-tests/index_birth_time_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg_advisory_locks_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg_locks_v76_upgrade-test)
 ADD_YB_TEST(upgrade-tests/replication_info_upgrade-test)
@@ -310,6 +313,7 @@ ADD_YB_TEST(upgrade-tests/ysql_major_extension_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_check-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_conn_mgr-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_audit_event_trigger-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)

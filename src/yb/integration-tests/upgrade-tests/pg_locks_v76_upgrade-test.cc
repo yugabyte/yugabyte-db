@@ -15,7 +15,6 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
@@ -75,20 +74,26 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
-  // When object locking is enabled, AcceptInvalidationMessages performs a full
-  // cache invalidation on catalog version bumps even mid-transaction, so the
-  // existing connection picks up the new schema and the query succeeds.
-  // Without object locking the cache remains stale (21 vs 24 columns).
+  // conn's transaction was opened before FinalizeUpgrade(), and the enable_object_locking_infra
+  // auto flag is latched once per transaction in StartTransaction (c60f1cba1cd), so this
+  // transaction keeps the pre-finalize value no matter how enable_object_locking_for_table_locks
+  // is set. AcceptInvalidationMessages() therefore skips the full cache invalidation and the
+  // catcache stays stale (21 vs 24 columns).
   auto result = conn.FetchAllAsString(Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery));
-  if (FLAGS_enable_object_locking_for_table_locks) {
-    ASSERT_OK(result);
-    ASSERT_EQ(
-        *result,
-        "2, 2, 2, ShareLock; "
-        "0, 1, 1, ExclusiveLock");
-  } else {
-    ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
-  }
+  ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+
+  // Once the transaction block ends, YBCheckSharedCatalogCacheVersion() stops bailing out on
+  // IsTransactionOrTransactionBlock() and refreshes the catalog cache, so the same connection
+  // renders the new columns. That path does not consult object locking; the latch above only
+  // decides whether a promotion is honored mid-transaction.
+  // Rolling back also released the xact-level advisory lock and reverted the yb_locks_min_txn_age
+  // set inside the transaction, so only the session-level lock remains to report.
+  ASSERT_OK(conn.RollbackTransaction());
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  pg_locks_result = ASSERT_RESULT(conn.FetchAllAsString(
+      Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery)));
+  ASSERT_EQ(pg_locks_result, "0, 1, 1, ExclusiveLock");
 }
 
 

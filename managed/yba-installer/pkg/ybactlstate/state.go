@@ -26,6 +26,10 @@ type State struct {
 	Services            Services                 `json:"services"`
 	RestoreDBOnRollback bool                     `json:"restore_db_on_rollback"`
 	_internalFields     internalFields
+	// The document this state was loaded from. Keys in it that this binary does not know are
+	// written back out by MarshalJSON, and migrations use it to notice fields an older binary
+	// dropped.
+	_loadedFields map[string]interface{}
 }
 
 type PostgresState struct {

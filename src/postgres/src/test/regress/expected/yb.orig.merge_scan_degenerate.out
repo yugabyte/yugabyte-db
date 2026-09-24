@@ -53,12 +53,16 @@ ANALYZE mod_null_tbl, mod_zero_tbl, mod_neg_tbl, mod_min_tbl;
 -- Each table gets both bucket shapes as secondary indexes.
 CREATE INDEX NONCONCURRENTLY mod_null_tbl_bkt_a_idx ON mod_null_tbl (bkt ASC, a);
 CREATE INDEX NONCONCURRENTLY mod_null_tbl_expr_a_idx ON mod_null_tbl ((yb_hash_code(k) % NULL::int) ASC, a);
+ANALYZE mod_null_tbl;
 CREATE INDEX NONCONCURRENTLY mod_zero_tbl_bkt_a_idx ON mod_zero_tbl (bkt ASC, a);
 CREATE INDEX NONCONCURRENTLY mod_zero_tbl_expr_a_idx ON mod_zero_tbl ((yb_hash_code(k) % 0) ASC, a);
+ANALYZE mod_zero_tbl;
 CREATE INDEX NONCONCURRENTLY mod_neg_tbl_bkt_a_idx ON mod_neg_tbl (bkt ASC, a);
 CREATE INDEX NONCONCURRENTLY mod_neg_tbl_expr_a_idx ON mod_neg_tbl ((yb_hash_code(k) % -5) ASC, a);
+ANALYZE mod_neg_tbl;
 CREATE INDEX NONCONCURRENTLY mod_min_tbl_bkt_a_idx ON mod_min_tbl (bkt ASC, a);
 CREATE INDEX NONCONCURRENTLY mod_min_tbl_expr_a_idx ON mod_min_tbl ((yb_hash_code(k) % '-2147483648'::int4) ASC, a);
+ANALYZE mod_min_tbl;
 --
 -- Null modulus
 --

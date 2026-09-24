@@ -78,6 +78,7 @@ rules:
     allowedValues:
       - application/json
       - application/gzip
+      - application/x-compressed
   response-contains-header: off # List headers that must be included with specific response types
   response-contains-property: off # Specify properties that should be present in specific response
                                   # types

@@ -33,9 +33,19 @@ If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/c
 
 ## Python for YugabyteDB Anywhere
 
-YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.12. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2025.1 or later. (Note that this requirement applies only to the node running YugabyteDB Anywhere.)
+YugabyteDB Anywhere v2026.1 and later requires Python v3.10-3.13. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2026.1 or later. (Note that this requirement applies only to the node running YugabyteDB Anywhere.)
 
 In addition, both python and python3 must symbolically link to Python 3. Refer to [Prerequisites to deploy YBA on a VM](../../prepare/server-yba/).
+
+## Kubernetes installations
+
+Starting in YugabyteDB Anywhere v2026.1.2, YugabyteDB Anywhere Docker images are STIG-compliant and hardened, and run as a non-root user by default.
+
+If your non-OpenShift Kubernetes installation does not pin a user in `securityContext`, upgrading to v2026.1.2 or later migrates the YugabyteDB Anywhere pods to a non-root user.
+
+To keep running as root on a non-OpenShift installation, set `securityContext.runAsUser` to `0` in your Helm values before you upgrade. See [Run containers as non-root](../../install-yugabyte-platform/install-software/kubernetes/#run-containers-as-non-root).
+
+This does not apply to OpenShift. OpenShift always runs containers as non-root and enforces that policy itself, not through `securityContext`.
 
 ## cron-based universes
 
@@ -73,8 +83,8 @@ What action you take will depend on the type of provider used to create a univer
 
 | Provider | Action |
 | :--- | :--- |
-| AWS, Google, Azure | Minimal user action needed.<br><br>For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, YugabyteDB Anywhere will automatically configure THP as part any universe task that causes node re-provisioning. For example, upgrading Linux to apply security patches to nodes. |
-| On-premises | Some user action is needed.<br><br>New nodes that you provision using [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/) are automatically configured with the correct THP settings.<br><br>For existing nodes that lack THP or have THP mis-configured, THP settings are automatically configured during node re-provisioning if you follow the procedure for boot disk replacement as described in [Patch and upgrade the system](../../manage-deployments/upgrade-nodes/). You can do this when performing a regular Linux security patch (monthly, quarterly). |
+| AWS, Google, Azure, OCI | Minimal user action needed.<br><br>For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later), or run any universe task that causes node re-provisioning (for example, [upgrading Linux](../../manage-deployments/upgrade-nodes-csp/) to apply security patches). |
+| On-premises | Some user action is needed.<br><br>New nodes that you provision using [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/) are automatically configured with the correct THP settings.<br><br>For existing nodes that lack THP or have THP mis-configured, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later), or follow the boot disk replacement procedure in [Patch and upgrade the Linux operating system](../../manage-deployments/upgrade-nodes/) when you apply a regular Linux security patch. |
 
 ## Node agent
 
@@ -82,7 +92,7 @@ YugabyteDB Anywhere v2025.2 and later require universes have node agent running 
 
 If any universe nodes require an update to node agent, YugabyteDB Anywhere displays a banner on the **Dashboard** to that effect.
 
-You can manually update a universe to node agent by navigating to the universe and clicking **Actions>More>Install Node Agent**.
+You can manually update a universe to node agent by navigating to the universe and clicking **Actions > More > Install Node Agent**.
 
 If you want YugabyteDB Anywhere to automatically update universes requiring node agent, on the banner, click **Automatically Install Node Agents**. YugabyteDB Anywhere will then attempt to update universe nodes to use node agent in the background. If it is unable to update a universe, click **View Node Agents** on the banner to display the **Node Agents** list, where you can identify problem nodes. Make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by clicking **Actions>Reinstall Node Agent** for the node in the **Node Agents** list.
 

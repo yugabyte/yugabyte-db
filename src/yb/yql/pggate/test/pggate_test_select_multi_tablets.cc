@@ -73,7 +73,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   LOG(INFO) << "Test SELECTing from empty table";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -111,7 +111,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -165,7 +165,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   LOG(INFO) << "Test SELECTing from partitioned table WITH specifying RANGE column";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -240,7 +240,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   LOG(INFO) << "Test SELECTing from partitioned table WITHOUT specifying RANGE column";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));

@@ -2,6 +2,7 @@ import { CloudType, Region } from '@app/redesign/helpers/dtos';
 import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { filter, isEmpty, keys, some } from 'lodash';
 import { useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TFunction } from 'i18next';
 import {
   ClusterGFlags,
@@ -14,12 +15,14 @@ import {
   PlacementRegion,
   Universe
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
 import {
-  AWS_CLOUD_OPTION,
-  AZURE_CLOUD_OPTION,
-  GCP_CLOUD_OPTION,
-  K8S_CLOUD_OPTION,
-  ON_PREM_CLOUD_OPTION
+  AZURE_CLOUD_CIRCLED,
+  GCP_CLOUD_CIRCLED,
+  OCI_CLOUD_CIRCLED,
+  K8S_CLOUD_CIRCLED,
+  ON_PREM_CLOUD_CIRCLED,
+  AWS_CLOUD_CIRCLED
 } from '@yugabyte-ui-library/core';
 import { EditUniverseContext } from './EditUniverseContext';
 import {
@@ -44,15 +47,17 @@ export const getProviderIcon = (providerCode?: string) => {
 
   switch (providerCode) {
     case CloudType.aws:
-      return AWS_CLOUD_OPTION.icon;
+      return AWS_CLOUD_CIRCLED;
     case CloudType.gcp:
-      return GCP_CLOUD_OPTION.icon;
+      return GCP_CLOUD_CIRCLED;
     case CloudType.azu:
-      return AZURE_CLOUD_OPTION.icon;
+      return AZURE_CLOUD_CIRCLED;
     case CloudType.onprem:
-      return ON_PREM_CLOUD_OPTION.icon;
+      return ON_PREM_CLOUD_CIRCLED;
     case CloudType.kubernetes:
-      return K8S_CLOUD_OPTION.icon;
+      return K8S_CLOUD_CIRCLED;
+    case CloudType.oci:
+      return OCI_CLOUD_CIRCLED;
     default:
       return null;
   }
@@ -91,6 +96,11 @@ export function useEditUniverseContext() {
     throw new Error('useEditUniverseContext must be used within an EditUniverseProvider');
   }
   return context;
+}
+
+/** Bind a universe UUID so RBAC checks match universe-scoped UPDATE permissions. */
+export function withUniverseResource<T extends object>(permission: T, universeUUID?: string) {
+  return { ...permission, onResource: universeUUID };
 }
 
 export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec | undefined) => {
@@ -191,11 +201,9 @@ export const getDedicatedCountsForPlacementRegion = (
 };
 
 /** Master nodes in a single AZ from universe node details. */
-export const countMasterNodesInAz = (universeData: Universe, azUuid: string | undefined) => {
+export const countNodesInAzByType = (universeData: Universe, azUuid: string | undefined, nodeType: NodeDetailsDedicatedTo) => {
   if (!azUuid) return 0;
-  return filter(universeData?.info?.node_details_set, { az_uuid: azUuid }).filter(
-    (node) => node.dedicated_to === NodeDetailsDedicatedTo.MASTER
-  ).length;
+  return filter(universeData?.info?.node_details_set, { az_uuid: azUuid, dedicated_to: nodeType }).length;
 };
 
 export const getResilientType = (
@@ -369,8 +377,19 @@ export const convertProxySettingsToFormValues = (
   };
 };
 
-export const hasDedicatedNodes = (universeData: Universe): boolean => {
-  return some(universeData?.info?.node_details_set, (node) => node.dedicated_to);
+/** Whether a cluster uses dedicated master/t-server nodes (spec flag or live node details). */
+export const hasDedicatedNodesForCluster = (
+  universeData: Universe,
+  cluster?: ClusterSpec
+): boolean => {
+  if (!cluster) return false;
+  if (cluster.node_spec?.dedicated_nodes) return true;
+  return some(universeData?.info?.node_details_set, (node) => {
+    if (!node.dedicated_to) return false;
+    if (node.placement_uuid) return node.placement_uuid === cluster.uuid;
+    // Legacy universes may omit placement_uuid on primary-cluster nodes.
+    return cluster.cluster_type === ClusterSpecClusterType.PRIMARY;
+  });
 };
 
 export const countMasterAndTServerNodesByPlacementRegion = (
@@ -411,10 +430,11 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   });
 };
 
-const getPlacementSpecFromCluster = (
-  cluster: ClusterSpec | ClusterPartitionSpec
-): ClusterPlacementSpec | null => {
-  if ('placement_spec' in cluster && cluster.placement_spec) {
+export const getPlacementSpecFromCluster = (cluster: ClusterSpec | ClusterPartitionSpec): ClusterPlacementSpec | null => {
+  if('partitions_spec' in cluster && cluster.partitions_spec) {
+    return cluster.partitions_spec.find((partition) => partition.default_partition)?.placement ?? null;
+  }
+  if('placement_spec' in cluster && cluster.placement_spec) {
     return cluster.placement_spec;
   }
   if ('placement' in cluster && cluster.placement) {
@@ -457,7 +477,97 @@ export const countMasterAndTServerNodes = (
   return dedicatedNodesCount;
 };
 
+/** Count dedicated nodes when node_details omit placement_uuid (legacy primary clusters). */
+function countLegacyDedicatedNodes(
+  universeData: Universe,
+  cluster: ClusterSpec
+): { tserver: number; master: number } {
+  let tserver = 0;
+  let master = 0;
+  universeData.info?.node_details_set?.forEach((node) => {
+    if (!node.dedicated_to) return;
+    const matchesCluster = node.placement_uuid
+      ? node.placement_uuid === cluster.uuid
+      : cluster.cluster_type === ClusterSpecClusterType.PRIMARY;
+    if (!matchesCluster) return;
+    if (node.dedicated_to === NodeDetailsDedicatedTo.MASTER) {
+      master += 1;
+    } else {
+      tserver += 1;
+    }
+  });
+  return { tserver, master };
+}
+
+/**
+ * Total display node count when dedicated masters are enabled (tservers + masters).
+ * Returns undefined for colocated-master clusters — callers should use pricing/spec `num_nodes`.
+ */
+export function getDedicatedClusterDisplayNodeTotal(
+  universeData: Universe | undefined,
+  cluster: ClusterSpec | undefined,
+  apiNumNodes?: number
+): number | undefined {
+  if (!universeData || !cluster || !hasDedicatedNodesForCluster(universeData, cluster)) {
+    return undefined;
+  }
+
+  let tserver = 0;
+  let master = 0;
+
+  const legacy = countLegacyDedicatedNodes(universeData, cluster);
+  if (legacy.tserver > 0 || legacy.master > 0) {
+    tserver = legacy.tserver;
+    master = legacy.master;
+  } else if (cluster.partitions_spec?.length) {
+    cluster.partitions_spec.forEach((partition) => {
+      if (!partition.placement) return;
+      const counts = getDedicatedTserverMasterDisplayCounts(
+        universeData,
+        cluster,
+        partition.placement
+      );
+      tserver += counts.tserver;
+      master += counts.master;
+    });
+  } else {
+    const placement = getPlacementSpecFromCluster(cluster);
+    if (placement) {
+      ({ tserver, master } = getDedicatedTserverMasterDisplayCounts(universeData, cluster, placement));
+    } else {
+      const fromDetails = countMasterAndTServerNodes(universeData, cluster);
+      tserver = fromDetails[NodeDetailsDedicatedTo.TSERVER] ?? 0;
+      master = fromDetails[NodeDetailsDedicatedTo.MASTER] ?? 0;
+    }
+  }
+
+  if (tserver <= 0) {
+    tserver = apiNumNodes ?? cluster.num_nodes ?? 0;
+  }
+  if (master <= 0) {
+    master = cluster.replication_factor ?? 0;
+  }
+
+  const total = tserver + master;
+  return total > 0 ? total : undefined;
+}
+
 export function useIsUniverseReady() {
   const { universeData } = useEditUniverseContext();
   return !universeData?.info?.update_in_progress && !universeData?.info?.universe_paused;
+}
+
+/** Disable mutate CTAs when the universe is busy/paused or owned by the K8s operator. */
+export function useIsUniverseEditActionDisabled() {
+  const isUniverseReady = useIsUniverseReady();
+  const { isK8OperatorEditBlocked = false } = useEditUniverseContext();
+  return !isUniverseReady || isK8OperatorEditBlocked;
+}
+
+export function useK8OperatorEditBlockedTooltip(): string {
+  const { isK8OperatorEditBlocked = false } = useEditUniverseContext();
+  const { t } = useTranslation();
+  return isK8OperatorEditBlocked
+    ? t('blockedByKubernetesOperator', { keyPrefix: 'universeActions' })
+    : '';
 }

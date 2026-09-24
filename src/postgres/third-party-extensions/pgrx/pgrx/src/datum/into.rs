@@ -12,7 +12,7 @@
 //! Primitive types can never be null, so we do a direct
 //! cast of the primitive type to pg_sys::Datum
 
-use crate::{pg_sys, rust_regtypein, set_varsize_4b, PgBox, PgOid, WhoAllocated};
+use crate::{PgBox, PgOid, WhoAllocated, pg_sys, rust_regtypein, set_varsize_4b};
 use core::fmt::Display;
 use pgrx_pg_sys::panic::ErrorReportable;
 use std::{
@@ -223,11 +223,7 @@ impl IntoDatum for f64 {
 impl IntoDatum for pg_sys::Oid {
     #[inline]
     fn into_datum(self) -> Option<pg_sys::Datum> {
-        if self == pg_sys::Oid::INVALID {
-            None
-        } else {
-            Some(pg_sys::Datum::from(self.to_u32()))
-        }
+        if self == pg_sys::Oid::INVALID { None } else { Some(pg_sys::Datum::from(self.to_u32())) }
     }
 
     #[inline]
@@ -239,11 +235,7 @@ impl IntoDatum for pg_sys::Oid {
 impl IntoDatum for pg_sys::TransactionId {
     #[inline]
     fn into_datum(self) -> Option<pg_sys::Datum> {
-        if self == Self::INVALID {
-            None
-        } else {
-            Some(self.into())
-        }
+        if self == Self::INVALID { None } else { Some(self.into()) }
     }
 
     #[inline]
@@ -378,8 +370,7 @@ impl<'a> IntoDatum for &'a [u8] {
             // and the `dest` was freshly allocated, thus non-overlapping
             std::ptr::copy_nonoverlapping(
                 self.as_ptr(),
-                // YB: To avoid DANGEROUS_IMPLICIT_AUTOREFS lint check error with rust >= 1.89.0
-                addr_of_mut!((&mut (*varattrib_4b)).va_data).cast::<u8>(),
+                addr_of_mut!((&mut *varattrib_4b).va_data).cast::<u8>(),
                 self.len(),
             );
 
@@ -422,11 +413,7 @@ impl IntoDatum for () {
 impl<T, AllocatedBy: WhoAllocated> IntoDatum for PgBox<T, AllocatedBy> {
     #[inline]
     fn into_datum(self) -> Option<pg_sys::Datum> {
-        if self.is_null() {
-            None
-        } else {
-            Some(self.into_pg().into())
-        }
+        if self.is_null() { None } else { Some(self.into_pg().into()) }
     }
 
     fn type_oid() -> pg_sys::Oid {

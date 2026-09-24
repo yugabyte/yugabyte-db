@@ -1,1 +1,0 @@
-../../backend/access/rmgrdesc/standbydesc.c

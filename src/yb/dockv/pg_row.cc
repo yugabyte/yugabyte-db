@@ -872,6 +872,7 @@ PgValueDatum PgTableRow::GetDatum(size_t idx) const {
 }
 
 std::optional<PgValue> PgTableRow::GetValueByIndex(size_t index) const {
+  DCHECK_LT(index, projection_->size());
   if (is_null_[index]) {
     return std::nullopt;
   }

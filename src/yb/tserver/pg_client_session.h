@@ -113,6 +113,7 @@ struct PgClientSessionMetrics {
 struct PgClientSessionDbHistoryRetentionPin {
   PgOid db_oid = kPgInvalidOid;
   HybridTime read_time;
+  pid_t pid = -1;
 };
 
 struct PgClientSessionContext {
@@ -132,6 +133,8 @@ struct PgClientSessionContext {
 #ifdef __linux__
   TServerCgroupManager* cgroup_manager;
 #endif
+  // Set only when FLAGS_TEST_enable_pg_client_mock is on.
+  PgClientServiceMockImpl* TEST_mock_service = nullptr;
 };
 
 using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;
@@ -149,15 +152,18 @@ class PgClientSession final {
       TransactionBuilder&& transaction_builder, client::YBClient& client,
       std::reference_wrapper<const PgClientSessionContext> context,
       uint64_t id, pid_t pid, uint64_t lease_epoch,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager);
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      std::optional<docdb::ObjectLockSharedStateHolder> object_lock_shared_state);
   ~PgClientSession();
 
   uint64_t id() const;
 
-  void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
+  struct SharedDataDescriptor {
+    PgSessionObjectLockData& object_lock;
+    std::atomic<uint64_t>& oldest_read_point_serial_no;
+  };
 
-  // Wire the session to the PG-published oldest read-point serial in session shared memory.
-  void SetupOldestReadPointSerialNo(std::atomic<uint64_t>* oldest_read_point_serial_no);
+  void SetupSharedData(const SharedDataDescriptor& descriptor);
 
   void Perform(
       LWPgPerformRequestPB& req, LWPgPerformResponsePB& resp, rpc::RpcContext&& context,
@@ -180,7 +186,9 @@ class PgClientSession final {
   // Safe to call from another thread without holding the session lock.
   PgClientSessionDbHistoryRetentionPin GetDbHistoryRetentionPin() const;
 
-  bool HasPublishedOldestReadPointSerial() const;
+  // If PG has not published a non-zero oldest-read-point serial, clear the pin and
+  // return true. Otherwise leave the pin alone and return false.
+  bool ClearNonPublishedOldestReadPointSerial();
 
   void ClearReadTimePin();
 

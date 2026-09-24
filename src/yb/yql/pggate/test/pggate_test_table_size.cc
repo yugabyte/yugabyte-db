@@ -23,6 +23,7 @@
 
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -47,6 +48,10 @@ Result<int64> TotalSize(const std::vector<std::string>& files) {
   return size;
 }
 
+// Bounds the wait for the reported size to catch up with the files on disk; generous next to the
+// 5s tserver_heartbeat_metrics_interval_ms that drives the refresh.
+const auto kReportedSizeTimeout = 60s * kTimeMultiplier;
+
 Result<int64> GetWalAndSstSizeForTable(ExternalMiniCluster* cluster, const TableId& table_id) {
   int64_t size = 0;
   itest::ExternalMiniClusterFsInspector inspector {cluster};
@@ -61,14 +66,35 @@ Result<int64> GetWalAndSstSizeForTable(ExternalMiniCluster* cluster, const Table
 
 class PggateTestTableSize : public PggateTest {
  public:
-  Status VerifyTableSize(YbcPgOid table_oid, const std::string& table_name, int64_t disk_size) {
+  // The master answers out of each tablet's last reported leader drive info, which a tserver only
+  // refreshes every tserver_heartbeat_metrics_interval_ms, so the reported size trails whatever is
+  // on disk by up to one heartbeat period. Poll both sides instead of sampling them once.
+  Status VerifyTableSize(YbcPgOid table_oid, const std::string& table_name) {
     const auto table_id = PgObjectId(kDefaultDatabaseOid, table_oid).GetYbTableId();
-    const auto file_size = VERIFY_RESULT(GetWalAndSstSizeForTable(cluster_.get(), table_id));
-    if (disk_size != file_size) {
-      return STATUS_FORMAT(IllegalState, "Table size mismatch for table $0: $1 vs $2",
-                           table_name, disk_size, file_size);
+    int64_t disk_size = 0;
+    int64_t file_size = 0;
+    int32_t num_missing_tablets = 0;
+    const auto status = WaitFor(
+        [this, table_oid, &table_id, &disk_size, &file_size,
+         &num_missing_tablets]() -> Result<bool> {
+          disk_size = 0;
+          num_missing_tablets = 0;
+          RETURN_NOT_OK(Status(
+              YBCPgGetTableDiskSize(
+                  table_oid, kDefaultDatabaseOid, &disk_size, &num_missing_tablets),
+              AddRef::kTrue));
+          file_size = VERIFY_RESULT(GetWalAndSstSizeForTable(cluster_.get(), table_id));
+          return num_missing_tablets == 0 && disk_size == file_size;
+        },
+        kReportedSizeTimeout, Format("Reported size of table $0 to match disk", table_name));
+    // Only a timeout means the sizes never converged. WaitFor returns an error raised by the poll
+    // itself verbatim, and an RPC or filesystem failure must not be reported as a size mismatch.
+    if (status.IsTimedOut()) {
+      return STATUS_FORMAT(
+          IllegalState, "Table size mismatch for table $0: $1 vs $2, missing tablets: $3",
+          table_name, disk_size, file_size, num_missing_tablets);
     }
-    return Status::OK();
+    return status;
   }
 };
 
@@ -112,25 +138,14 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
 
   YBCPgDeleteStatement(pg_stmt);
 
-    // Wait for master heartbeat service to run
-  sleep(5);
-
   // Calculate table size of empty table
-  int64_t disk_size = 0;
-  int32_t num_missing_tablets = 0;
-  CHECK_YBC_STATUS(YBCPgGetTableDiskSize(kTabOid,
-                                          kDefaultDatabaseOid,
-                                          &disk_size,
-                                          &num_missing_tablets));
-
-  ASSERT_OK(VerifyTableSize(kTabOid, kTabname, disk_size));
-  EXPECT_EQ(num_missing_tablets, 0) << "Unexpected missing tablets";
+  ASSERT_OK(VerifyTableSize(kTabOid, kTabname));
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;
@@ -181,19 +196,9 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
 
   ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
 
-  // Wait for master heartbeat to run
-  sleep(5);
-
-  // Calculate table size
-  disk_size = 0;
-  num_missing_tablets = 0;
-  CHECK_YBC_STATUS(YBCPgGetTableDiskSize(kTabOid,
-                                          kDefaultDatabaseOid,
-                                          &disk_size,
-                                          &num_missing_tablets));
-
-  ASSERT_OK(VerifyTableSize(kTabOid, kTabname, disk_size));
-  EXPECT_EQ(num_missing_tablets, 0) << "Unexpected missing tablets";
+  // Calculate table size. The compaction's flush is what first gives this table any SST files, so
+  // the size the master holds is a full heartbeat period behind here.
+  ASSERT_OK(VerifyTableSize(kTabOid, kTabname));
 }
 
 TEST_F(PggateTestTableSize, TestMissingTablets) {
@@ -234,7 +239,7 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;

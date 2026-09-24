@@ -81,6 +81,13 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
+    options->extra_tserver_flags.push_back(
+      Format("--ysql_yb_enable_ddl_savepoint_support=$0", TransactionalDdlEnabled()));
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0",
+        TransactionalDdlEnabled()));
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
     // Concurrent DDL requires object locking, so when object locking is disabled, disable
@@ -1050,6 +1057,12 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
     }
     options->extra_tserver_flags.push_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags in sync.
+    options->extra_tserver_flags.push_back(
+        yb::Format("--ysql_yb_enable_ddl_savepoint_support=$0", TableLocksEnabled()));
+    options->extra_tserver_flags.push_back(yb::Format(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0", TableLocksEnabled()));
   }
 
   bool TransactionalDdlEnabled() const override { return true; }
@@ -2144,8 +2157,9 @@ TEST_F(PgDdlAtomicityTest, DdlCommitWithLostResponseAndLeaderChange) {
   SleepFor(2s * kTimeMultiplier);
 
   // Step down transaction status tablet leaders to force retries to reach a new leader.
-  // Some step-downs may fail transiently (e.g. a peer still in PRE_VOTER state during
-  // bootstrap), which is fine: we just need at least one leadership change.
+  // Some step-downs may fail transiently (e.g. a live PRE_VOTER still bootstrapping, or the
+  // nominated peer is not caught up yet), which is fine: we just need at least one leadership
+  // change.
   int stepped_down = 0;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     auto tablets = ASSERT_RESULT(cluster_->GetTablets(cluster_->tablet_server(i)));

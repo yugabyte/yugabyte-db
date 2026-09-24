@@ -29,7 +29,10 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
 
   const canUseSpotInstance = getConfigValue('yb.use_spot_instances') === 'true';
 
-  const maxVolumeCount = Number(getConfigValue('yb.max_volume_count') ?? 0);
+  const parsedMaxVolumeCount = Number(getConfigValue('yb.max_volume_count') ?? 0);
+
+  const maxVolumeCount =
+    Number.isFinite(parsedMaxVolumeCount) && parsedMaxVolumeCount > 0 ? parsedMaxVolumeCount : 32;
 
   const ebsVolumeEnabled = getConfigValue('yb.universe.allow_cloud_volume_encryption') === 'true';
 

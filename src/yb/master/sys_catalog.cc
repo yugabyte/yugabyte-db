@@ -147,6 +147,7 @@ METRIC_DEFINE_counter(
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_int32(snapshot_cleanup_pool_size);
 DECLARE_bool(TEST_check_catalog_version_overflow);
 
 DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
@@ -207,6 +208,12 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
     .name = "raft_notifications",
     .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
   });
+  SCHECK_GT(FLAGS_snapshot_cleanup_pool_size, 0, InvalidArgument,
+            "snapshot_cleanup_pool_size must be positive");
+  RETURN_NOT_OK(ThreadPoolBuilder("snapshot-cleanup")
+                    .set_min_threads(1)
+                    .set_max_threads(FLAGS_snapshot_cleanup_pool_size)
+                    .Build(&snapshot_cleanup_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("log-sync").set_min_threads(1).Build(&log_sync_pool_));
@@ -252,6 +259,7 @@ void SysCatalogTable::CompleteShutdown() {
     peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
+  snapshot_cleanup_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
   if (multi_raft_manager_) {
@@ -574,6 +582,7 @@ Status SysCatalogTable::GoIntoShellMode() {
   std::atomic_store(&tablet_peer_, null_tablet_peer);
   inform_removed_master_pool_.reset();
   raft_pool_.reset();
+  snapshot_cleanup_pool_.reset();
   tablet_prepare_pool_.reset();
 
   return Status::OK();
@@ -698,6 +707,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTableMetricsEntity(),
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
+          snapshot_cleanup_pool(),
           raft_notifications_pool(),
           tablet_prepare_pool(),
           &retryable_requests,
@@ -923,6 +933,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   }));
 
   auto duration = CoarseMonoClock::Now() - start;
+  std::lock_guard metrics_lock(visitor_duration_metrics_mutex_);
   string id = Format("num_entries_with_type_$0_loaded", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
     string description = id + " metric for SysCatalogTable::Visit";
@@ -950,7 +961,8 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 }
 
 Status SysCatalogTable::ReadWithRestarts(
-    const ReadRestartFn& read_fn, tablet::RequireLease require_lease) const {
+    const ReadRestartFn& read_fn, tablet::RequireLease require_lease,
+    HybridTime* out_read_ht) const {
   ReadHybridTime read_time;
   auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
@@ -973,6 +985,9 @@ Status SysCatalogTable::ReadWithRestarts(
     }
     RETURN_NOT_OK(read_fn(read_time, &read_restart_ht));
   } while (read_restart_ht.is_valid());
+  if (out_read_ht) {
+    *out_read_ht = read_time.read;
+  }
   return Status::OK();
 }
 
@@ -995,11 +1010,12 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersion(
 }
 
 Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
-    const TableId& ysql_catalog_table_id, DbOidToCatalogVersionMap* versions) {
+    const TableId& ysql_catalog_table_id, DbOidToCatalogVersionMap* versions,
+    HybridTime* out_read_ht) {
   TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
   return ReadYsqlDBCatalogVersionImpl(
       ysql_catalog_table_id, kInvalidOid, /*catalog_version=*/nullptr,
-      /*last_breaking_version=*/nullptr, versions);
+      /*last_breaking_version=*/nullptr, versions, out_read_ht);
 }
 
 Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
@@ -1007,14 +1023,16 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     uint32_t db_oid,
     uint64_t* catalog_version,
     uint64_t* last_breaking_version,
-    DbOidToCatalogVersionMap* versions) {
+    DbOidToCatalogVersionMap* versions,
+    HybridTime* out_read_ht) {
   return ReadWithRestarts(
       [this, ysql_catalog_table_id, db_oid, catalog_version, last_breaking_version, versions](
           const ReadHybridTime& read_ht, HybridTime* read_restart_ht) -> Status {
         return SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
             ysql_catalog_table_id, db_oid, read_ht, read_restart_ht, catalog_version,
             last_breaking_version, versions);
-      });
+      },
+      tablet::RequireLease::kTrue, out_read_ht);
 }
 
 Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(

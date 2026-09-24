@@ -2491,7 +2491,7 @@ ExecAgg(PlanState *pstate)
 		 */
 		if (IsYugaByteEnabled())
 		{
-			pstate->state->yb_exec_params.limit_use_default = true;
+			pstate->state->yb_exec_params.plan_limit = 0;
 		}
 
 		/* Dispatch based on strategy */

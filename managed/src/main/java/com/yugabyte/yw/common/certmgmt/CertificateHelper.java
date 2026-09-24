@@ -68,6 +68,7 @@ import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.KeyUsage;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
@@ -736,6 +737,25 @@ public class CertificateHelper {
     }
   }
 
+  public static PublicKey getPublicKey(String keyContent) {
+    try (PEMParser parser = new PEMParser(new StringReader(keyContent))) {
+      Object parsedKey = parser.readObject();
+      if (parsedKey instanceof SubjectPublicKeyInfo) {
+        return new JcaPEMKeyConverter().getPublicKey((SubjectPublicKeyInfo) parsedKey);
+      } else if (parsedKey instanceof PEMKeyPair) {
+        return new JcaPEMKeyConverter().getKeyPair((PEMKeyPair) parsedKey).getPublic();
+      } else {
+        throw new RuntimeException(
+            "Unexpected public key type parsed: "
+                + (parsedKey == null ? "null" : parsedKey.getClass().getName()));
+      }
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException("Exception occurred parsing the public key", e);
+    }
+  }
+
   public static void writeCertFileContentToCertPath(X509Certificate cert, String certPath)
       throws IOException {
     writeCertFileContentToCertPath(cert, certPath, true, false);
@@ -972,6 +992,22 @@ public class CertificateHelper {
       log.error("Failed to read cert file {}", path, e);
       throw new RuntimeException(e.getMessage(), e);
     }
+  }
+
+  /**
+   * Returns the first certificate in the file. A CA file can hold a bundle. Callers that need to
+   * sign with it rely on the signer being the leading entry.
+   */
+  public static X509Certificate getCertificateFromFile(String path) {
+    Collection<X509Certificate> certs = getCertsFromFile(path);
+    if (certs.isEmpty()) {
+      throw new RuntimeException("No certificate found in file " + path);
+    }
+    return certs.iterator().next();
+  }
+
+  public static PrivateKey getPrivateKeyFromFile(String path) {
+    return getPrivateKey(FileUtils.readFileToString(new File(path)));
   }
 
   private static boolean verifySignature(X509Certificate cert, String key) {

@@ -159,9 +159,13 @@ public class UniverseInfoHandler {
   }
 
   public List<Details> healthCheck(UUID universeUUID) {
+    return healthCheck(universeUUID, null);
+  }
+
+  public List<Details> healthCheck(UUID universeUUID, Integer limit) {
     List<Details> detailsList = new ArrayList<>();
     try {
-      List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
+      List<HealthCheck> checks = HealthCheck.getAll(universeUUID, limit);
       for (HealthCheck check : checks) {
         detailsList.add(check.getDetailsJson());
       }
@@ -292,18 +296,22 @@ public class UniverseInfoHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     StateTransitionDetails details = universe.getStateTransitionDetails();
-    if (details == null) {
-      return Json.newObject();
-    }
-    JsonNode result = details.getDelta();
     if (Objects.equals("source", state)) {
-      result = DeltaEvaluator.generateOldValue(result);
-    } else if (Objects.equals("target", state)) {
-      result = DeltaEvaluator.generateNewValue(result);
-    } else if (Objects.equals("delta", state)) {
-      result = DeltaEvaluator.generateOnlyDelta(result);
+      return details == null
+          ? Json.toJson(universe.getUniverseDetails())
+          : DeltaEvaluator.generateOldValue(details.getDelta());
     }
-    return result;
+    if (Objects.equals("target", state)) {
+      return details == null
+          ? Json.toJson(universe.getUniverseDetails())
+          : DeltaEvaluator.generateNewValue(details.getDelta());
+    }
+    if (Objects.equals("delta", state)) {
+      return details == null
+          ? Json.newObject()
+          : DeltaEvaluator.generateOnlyDelta(details.getDelta());
+    }
+    return details == null ? Json.toJson(universe.getUniverseDetails()) : Json.toJson(details);
   }
 
   private JsonNode getUniverseAliveStatus(Universe universe, MetricQueryHelper metricQueryHelper) {

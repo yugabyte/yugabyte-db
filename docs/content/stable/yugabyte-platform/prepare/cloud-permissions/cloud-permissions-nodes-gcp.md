@@ -39,6 +39,12 @@ type: docs
     </a>
   </li>
   <li>
+    <a href="../cloud-permissions-nodes-oci/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
+  <li>
     <a href="../cloud-permissions-nodes-k8s" class="nav-link">
       <i class="fa-regular fa-dharmachakra"></i>
       Kubernetes
@@ -81,7 +87,9 @@ When creating VMs on the public cloud using a [cloud provider configuration](../
 - YBA managed keys. When YBA creates VMs, it will generate and manage the SSH key pair.
 - Provide a custom key pair. Create your own custom SSH keys and upload the SSH keys when you create the provider.
 
-If you will be using your own custom SSH keys, then ensure that you have them when installing YBA and creating your public cloud provider.
+The key pair authenticates as the image's default login user. For the user requirements, see [Software requirements for cloud provider nodes](../../server-nodes-software/software-cloud-provider/).
+
+If you will be using your own custom SSH keys, ensure they are authorized for that user and that you have them when installing YBA and creating your GCP cloud provider configuration.
 
 | Save for later | To configure |
 | :--- | :--- |
@@ -99,11 +107,11 @@ By using Workload Identity, you avoid the need for manually managing service acc
 
 - To enable GCP IAM when installing YugabyteDB Anywhere on Kubernetes, refer to [Enable GKE service account-based IAM](../../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
 
-- To enable GCP IAM during universe creation on Kubernetes, refer to [Configure Helm overrides](../../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
+- To enable GCP IAM during universe creation on Kubernetes, refer to [Configure Kubernetes overrides](../../../scale-deployments/edit-helm-overrides/#gke-service-account).
 
 - To enable GCP IAM for Google Cloud Storage backup configuration with Kubernetes, refer to [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage).
 
-- To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
+- To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../../scale-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
 
 **Prerequisites**
 

@@ -1,16 +1,17 @@
-import { Box } from '@material-ui/core';
+import { Box, MenuItem, Typography } from '@material-ui/core';
 import { useMutation, useQueryClient } from 'react-query';
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { YBCheckbox, YBModal } from '../../../../components';
-import { PerfAdvisorAPI, QUERY_KEY } from '../../../PerfAdvisor/api';
+import { YBModal, YBRadioGroup, YBSelect } from '../../../../components';
+import { PaRegistrationMode, PerfAdvisorAPI, QUERY_KEY } from '../../../PerfAdvisor/api';
+import { useListPerfAdvisorEndpoints } from '../../../../../v2/api/perf-advisor-endpoint/perf-advisor-endpoint';
 import { Universe } from '../../universe-form/utils/dto';
 import { PerfAdvisorModalIntention } from '../../../../../redesign/helpers/constants';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
 import { showTaskInDrawer } from '../../../../../actions/tasks';
-import { transitToUniverse } from '../../universe-form/utils/helpers';
+import { createErrorMessage, transitToUniverse } from '../../universe-form/utils/helpers';
 import { useIsTaskNewUIEnabled } from '../../../tasks/TaskUtils';
 
 type PerfAdvisorModalIntentionType =
@@ -18,24 +19,28 @@ type PerfAdvisorModalIntentionType =
 
 interface EnablePerfAdvisorModalProps {
   universeData: Universe;
-  perfAdvisorStatus: { data: { success?: boolean; advancedObservability?: boolean } };
+  perfAdvisorStatus: {
+    data: { success?: boolean; advancedObservability?: boolean; mode?: PaRegistrationMode };
+  };
   open: boolean;
   paUuid: string;
   onClose: () => void;
   paModalIntention?: PerfAdvisorModalIntentionType;
   isEmbeddedPAEnabled: boolean;
+  isPaOnlineModeEnabled?: boolean;
 }
+
 export const EnablePerfAdvisorModal = ({
   universeData,
   perfAdvisorStatus,
   paUuid,
   isEmbeddedPAEnabled,
+  isPaOnlineModeEnabled = false,
   open,
   onClose,
   paModalIntention = PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
 }: EnablePerfAdvisorModalProps) => {
   const { t } = useTranslation();
-  const [advancedObservability, setAdvancedObservability] = useState(false);
   const queryClient = useQueryClient();
   const dispatch = useDispatch();
   const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
@@ -45,18 +50,15 @@ export const EnablePerfAdvisorModal = ({
   const disableAdvancedObservabilityOnly =
     paModalIntention === PerfAdvisorModalIntention.DISABLE_ADVANCED_OBSERVABILITY_ONLY;
 
-  const onSubmit = async () => {
-    if (enableAdvancedObservabilityOnly) {
-      await enableAdvancedObservabilityOnlyStatus.mutateAsync();
-    } else if (disableAdvancedObservabilityOnly) {
-      await disableAdvancedObservabilityOnlyStatus.mutateAsync();
-    } else if (isUniverseRegisteredToPA) {
-      await disablePerfAdvisorToUniverse.mutateAsync();
-    } else {
-      await enablePerfAdvisorToUniverse.mutateAsync();
-    }
-    onClose();
-  };
+  const [mode, setMode] = useState<PaRegistrationMode>(PaRegistrationMode.BASIC);
+  const [paEndpointUuid, setPaEndpointUuid] = useState<string>('');
+
+  // Online mode needs a destination to pick, and there is nothing to offer until one is configured
+  // under Integrations -> Perf Advisor -> Endpoints.
+  const { data: endpoints = [] } = useListPerfAdvisorEndpoints(undefined, {
+    query: { enabled: isPaOnlineModeEnabled && open && !isUniverseRegisteredToPA }
+  });
+  const canSelectOnline = isPaOnlineModeEnabled && endpoints.length > 0;
 
   const handleTaskSuccess = (resp: any) => {
     setTimeout(() => {
@@ -74,51 +76,23 @@ export const EnablePerfAdvisorModal = ({
     }
   };
 
-  const enableAdvancedObservabilityOnlyStatus = useMutation(
-    () => PerfAdvisorAPI.attachUniverseToPerfAdvisor(paUuid, universeData.universeUUID, true),
-    {
-      onSuccess: (resp: any) => {
-        handleTaskSuccess(resp);
-      },
-      onError: (e: any) => {
-        toast.error(
-          e?.response?.data?.error ??
-            t('universeActions.paUniverseStatus.enableAdvancedObservabilityFailure')
-        );
-      }
-    }
-  );
-
-  const disableAdvancedObservabilityOnlyStatus = useMutation(
-    () => PerfAdvisorAPI.attachUniverseToPerfAdvisor(paUuid, universeData.universeUUID, false),
-    {
-      onSuccess: (resp: any) => {
-        handleTaskSuccess(resp);
-      },
-      onError: (e: any) => {
-        toast.error(
-          e?.response?.data?.error ??
-            t('universeActions.paUniverseStatus.disableAdvancedObservabilityFailure')
-        );
-      }
-    }
-  );
-
-  const enablePerfAdvisorToUniverse = useMutation(
-    () =>
+  const registerUniverse = useMutation(
+    (payload: { mode: PaRegistrationMode; paEndpointUuid?: string }) =>
       PerfAdvisorAPI.attachUniverseToPerfAdvisor(
         paUuid,
         universeData.universeUUID,
-        advancedObservability
+        payload.mode,
+        payload.paEndpointUuid
       ),
     {
       onSuccess: (resp: any) => {
         handleTaskSuccess(resp);
       },
       onError: (e: any) => {
+        // Registering in online mode fails here when the universe has not been registered on the
+        // destination Perf Advisor yet - that message explains exactly what is missing.
         toast.error(
-          e?.response?.data?.error ??
-            t('universeActions.paUniverseStatus.enablePaUniverseFailure')
+          createErrorMessage(e) ?? t('universeActions.paUniverseStatus.enablePaUniverseFailure')
         );
       }
     }
@@ -132,12 +106,27 @@ export const EnablePerfAdvisorModal = ({
       },
       onError: (e: any) => {
         toast.error(
-          e?.response?.data?.error ??
-            t('universeActions.paUniverseStatus.disablePaUniverseFailure')
+          createErrorMessage(e) ?? t('universeActions.paUniverseStatus.disablePaUniverseFailure')
         );
       }
     }
   );
+
+  const onSubmit = async () => {
+    if (enableAdvancedObservabilityOnly) {
+      await registerUniverse.mutateAsync({ mode: PaRegistrationMode.ADVANCED });
+    } else if (disableAdvancedObservabilityOnly) {
+      await registerUniverse.mutateAsync({ mode: PaRegistrationMode.BASIC });
+    } else if (isUniverseRegisteredToPA) {
+      await disablePerfAdvisorToUniverse.mutateAsync();
+    } else {
+      await registerUniverse.mutateAsync({
+        mode,
+        paEndpointUuid: mode === PaRegistrationMode.ONLINE ? paEndpointUuid : undefined
+      });
+    }
+    onClose();
+  };
 
   const title =
     paModalIntention === PerfAdvisorModalIntention.ENABLE_ADVANCED_OBSERVABILITY_ONLY
@@ -147,6 +136,32 @@ export const EnablePerfAdvisorModal = ({
         : isUniverseRegisteredToPA
           ? t('universeActions.paUniverseStatus.disableTitle')
           : t('universeActions.paUniverseStatus.enableTitle');
+
+  const modeOptions = [
+    {
+      value: PaRegistrationMode.BASIC,
+      label: t('universeActions.paUniverseStatus.modeBasic'),
+      'data-testid': 'EnablePerfAdvisorModal-ModeBasic'
+    },
+    ...(isEmbeddedPAEnabled
+      ? [
+          {
+            value: PaRegistrationMode.ADVANCED,
+            label: t('universeActions.paUniverseStatus.modeAdvanced'),
+            'data-testid': 'EnablePerfAdvisorModal-ModeAdvanced'
+          }
+        ]
+      : []),
+    ...(canSelectOnline
+      ? [
+          {
+            value: PaRegistrationMode.ONLINE,
+            label: t('universeActions.paUniverseStatus.modeOnline'),
+            'data-testid': 'EnablePerfAdvisorModal-ModeOnline'
+          }
+        ]
+      : [])
+  ];
 
   const bodyContent = enableAdvancedObservabilityOnly ? (
     <Box component="span" display="block">
@@ -175,28 +190,53 @@ export const EnablePerfAdvisorModal = ({
           }}
         />
       </span>
-      {!isUniverseRegisteredToPA && isEmbeddedPAEnabled && (
+      {!isUniverseRegisteredToPA && modeOptions.length > 1 && (
         <Box mt={2}>
-          <YBCheckbox
-            checked={advancedObservability}
-            onChange={(e) => setAdvancedObservability(e.target.checked)}
-            label={t('universeActions.paUniverseStatus.enableAdvancedObservability')}
-            inputProps={{
-              'data-testid': 'EnablePerfAdvisorModal-AdvancedObservability'
-            }}
+          <YBRadioGroup
+            label={t('universeActions.paUniverseStatus.modeLabel')}
+            options={modeOptions}
+            value={mode}
+            onChange={(_, value) => setMode(value as PaRegistrationMode)}
           />
+        </Box>
+      )}
+      {!isUniverseRegisteredToPA && mode === PaRegistrationMode.ONLINE && (
+        <Box mt={2} display="flex" flexDirection="column" gridGap={8}>
+          <Typography variant="body2">
+            {t('universeActions.paUniverseStatus.onlineDestinationLabel')}
+          </Typography>
+          <YBSelect
+            value={paEndpointUuid}
+            onChange={(event) => setPaEndpointUuid(event.target.value as string)}
+            fullWidth
+            data-testid="EnablePerfAdvisorModal-Endpoint"
+          >
+            {endpoints.map((endpoint) => (
+              <MenuItem key={endpoint.info?.uuid} value={endpoint.info?.uuid}>
+                {endpoint.spec?.name}
+              </MenuItem>
+            ))}
+          </YBSelect>
+          <Typography variant="body2" color="textSecondary">
+            {t('universeActions.paUniverseStatus.onlinePrerequisite')}
+          </Typography>
         </Box>
       )}
     </>
   );
 
+  // Online mode without a destination is rejected by the API, so don't let it be submitted.
+  const isSubmitDisabled =
+    !isUniverseRegisteredToPA && mode === PaRegistrationMode.ONLINE && !paEndpointUuid;
+
   return (
     <YBModal
       open={open}
       title={title}
-      isSubmitting={enablePerfAdvisorToUniverse.isLoading || disablePerfAdvisorToUniverse.isLoading}
+      isSubmitting={registerUniverse.isLoading || disablePerfAdvisorToUniverse.isLoading}
       submitLabel={t('common.applyChanges')}
       cancelLabel={t('common.cancel')}
+      buttonProps={{ primary: { disabled: isSubmitDisabled } }}
       onClose={onClose}
       onSubmit={onSubmit}
       overrideWidth="fit-content"

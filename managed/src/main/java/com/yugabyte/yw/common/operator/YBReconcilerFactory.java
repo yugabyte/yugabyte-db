@@ -12,11 +12,13 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.dr.DrConfigHelper;
 import com.yugabyte.yw.common.kms.KMSConfigHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.TelemetryProviderCrConverter;
 import com.yugabyte.yw.common.pitr.PitrConfigHelper;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import io.fabric8.kubernetes.client.KubernetesClient;
 
 public class YBReconcilerFactory {
@@ -37,6 +39,8 @@ public class YBReconcilerFactory {
   @Inject private DrConfigHelper drConfigHelper;
   @Inject private ValidatingFormFactory formFactory;
   @Inject private ScheduleTaskHelper scheduleTaskHelper;
+  @Inject private TelemetryProviderService telemetryProviderService;
+  @Inject private TelemetryProviderCrConverter telemetryProviderCrConverter;
 
   public YBUniverseReconciler getYBUniverseReconciler(KubernetesClient client) {
     String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
@@ -96,6 +100,17 @@ public class YBReconcilerFactory {
     String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     return new DrConfigReconciler(
         drConfigHelper, namespace, operatorUtils, client, informerFactory);
+  }
+
+  public TelemetryProviderReconciler getTelemetryProviderReconciler(KubernetesClient client) {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    return new TelemetryProviderReconciler(
+        telemetryProviderService,
+        telemetryProviderCrConverter,
+        namespace,
+        operatorUtils,
+        client,
+        informerFactory);
   }
 
   public UniverseKeyRotationReconciler getUniverseKeyRotationReconciler(KubernetesClient client) {

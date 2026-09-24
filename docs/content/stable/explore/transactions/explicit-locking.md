@@ -106,6 +106,36 @@ COMMIT
 
 This should succeed.
 
+### Explicit row locking modes
+
+YSQL supports [PostgreSQL's explicit locking clause](https://www.postgresql.org/docs/15/sql-select.html#SQL-FOR-UPDATE-SHARE) that provides advanced control over lock acquisition behavior when conflicts occur.
+
+By default, the system waits to acquire locks when competing transactions hold the lock. You can modify this behavior using the NOWAIT and the SKIP LOCKED clauses. These locks can only be applied to row-level locks. They are not applicable to table locks.
+
+#### NOWAIT clause
+
+The `NOWAIT` clause causes a SELECT FOR UPDATE/SHARE to fail immediately if a row is locked, rather than waiting or aborting.
+
+Example:
+```sql
+SELECT * FROM account WHERE id = 100 FOR UPDATE NOWAIT;
+```
+
+For support details and limitations, see [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
+
+#### SKIP LOCKED clause
+
+The `SKIP LOCKED` clause allows a SELECT FOR UPDATE/SHARE to skip rows that are locked, returning only the unlocked rows. This is useful for applications that can process any available rows.
+
+Skipping locked rows provides an inconsistent view of the data, so this is not suitable for general purpose work, but can be used to avoid lock contention with multiple consumers accessing a queue-like table.
+
+Example:
+```sql
+SELECT * FROM orders WHERE status = 'pending' FOR UPDATE SKIP LOCKED LIMIT 10;
+```
+
+For support details, limitations, and performance tuning options, see [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses) and [Explicit row locking flags](../../../reference/configuration/yb-tserver/#explicit-row-locking-flags).
+
 ## Advisory locks
 
 YSQL also supports advisory locks, where the application manages concurrent access to resources through a cooperative locking mechanism. Advisory locks can be less resource-intensive than table or row locks for certain use cases because they don't involve scanning tables or indexes for lock conflicts. They are session-specific and managed by the client application.
@@ -137,5 +167,11 @@ Table-level locks are disabled by default. To enable the feature, set the [yb-ts
 Because `enable_object_locking_for_table_locks` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=enable_object_locking_for_table_locks`).
 
 As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the flag [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
+
+{{< warning title="Warning" >}}
+
+Do not enable Transactional DDL on a cluster that uses CDC. Transactional DDL currently doesn't support CDC in both [logical replication](../../../architecture/docdb-replication/cdc-logical-replication/) (PostgreSQL) and the [gRPC protocol](../../../architecture/docdb-replication/change-data-capture/). Because table-level locks depend on Transactional DDL, you also must not enable table-level locks if you are using CDC.
+
+{{< /warning >}}
 
 For more information on the lock scopes and lifecycle, see [Table-level locks](../../../architecture/transactions/concurrency-control/#table-level-locks).

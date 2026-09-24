@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp
 menu:
   stable_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-4-hashicorp-kms
+    identifier: create-kms-config-5-hashicorp-kms
     weight: 50
 type: docs
 ---
@@ -31,6 +31,13 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
     <a href="../azure-kms/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
+    </a>
+  </li>
+
+  <li >
+    <a href="../oci-kms/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
     </a>
   </li>
 

@@ -54,14 +54,10 @@ extern bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm,
 					      od_hashmap_elt_t **matched_keys,
 					      int *matched_count);
 
-typedef void (*yb_od_hashmap_visit_fn_t)(od_hashmap_elt_t *key,
-					 od_hashmap_elt_t *value,
-					 void *arg);
+extern bool yb_od_hashmap_remove_key(od_hashmap_t *hm, yb_od_hash_64_t keyhash,
+				     od_hashmap_elt_t *key);
 
-extern void yb_od_hashmap_drain(od_hashmap_t *hm,
-				yb_od_hashmap_visit_fn_t fn, void *arg);
-
-/* 
+/*
  * This function inserts a new key into the hashmap.
  * If hashmap already contains a value assotiated with provided key,
  * it will be rewritten.

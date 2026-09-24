@@ -32,9 +32,9 @@ class PgDelete final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kDelete> {
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
       YbcPgTransactionSetting transaction_setting,
-      bool skip_intents_write) {
+      const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
     std::unique_ptr<PgDelete> result{new PgDelete{pg_session, transaction_setting}};
-    RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_write));
+    RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_info));
     return result;
   }
 

@@ -49,7 +49,8 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ReplayingDecoder;
-import io.netty.handler.timeout.ReadTimeoutException;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.Signal;
 
 import org.slf4j.Logger;
@@ -70,6 +71,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -195,6 +197,7 @@ public class TabletClient extends ReplayingDecoder<Void> {
   }
 
   private <R> ByteBuf encode(final YRpc<R> rpc) {
+    rpc.sentAtNanos = System.nanoTime();
     final int rpcid = this.rpcid.incrementAndGet();
     ByteBuf payload;
     final String service = rpc.serviceName();
@@ -737,6 +740,37 @@ public class TabletClient extends ReplayingDecoder<Void> {
 
 
   @Override
+  public void userEventTriggered(final ChannelHandlerContext ctx, final Object evt)
+      throws Exception {
+    if (!(evt instanceof IdleStateEvent)
+            || ((IdleStateEvent) evt).state() != IdleState.ALL_IDLE) {
+      super.userEventTriggered(ctx, evt);
+      return;
+    }
+    // Only a peer that owes us a response is worth a teardown: nothing outstanding means no RPC to
+    // unblock, and closing the channel races callers that have already taken this client out of
+    // AsyncYBClient's cache. The event fires on the last activity of the connection rather than per
+    // RPC, so age each in-flight RPC on its own send time instead.
+    final long cutoff = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(socketReadTimeoutMs);
+    YRpc<?> overdue = null;
+    for (YRpc<?> rpc : rpcs_inflight.values()) {
+      if (rpc.sentAtNanos - cutoff <= 0) {
+        overdue = rpc;
+        break;
+      }
+    }
+    if (overdue == null) {
+      return;
+    }
+    LOG.warn("{}No response within {} ms for {}",
+        getPeerUuidLoggingString(), socketReadTimeoutMs, overdue);
+    // Invalidate all the RPCs right _now_, so that the ReplayingDecoder does not keep decoding
+    // while the channel is being closed.
+    cleanup(ctx.channel());
+    ctx.close();
+  }
+
+  @Override
   public void exceptionCaught(final ChannelHandlerContext ctx,
                               final Throwable cause) {
     final Channel c = ctx.channel();
@@ -744,11 +778,6 @@ public class TabletClient extends ReplayingDecoder<Void> {
     if (cause instanceof RejectedExecutionException) {
       LOG.warn(getPeerUuidLoggingString() + "RPC rejected by the executor," +
                " ignore this if we're shutting down", cause);
-    } else if (cause instanceof ReadTimeoutException) {
-      LOG.warn(getPeerUuidLoggingString() + "Encountered a read timeout");
-      // Doing the cleanup here since we want to invalidate all the RPCs right _now_, and not let
-      // the ReplayingDecoder continue decoding through Channels.close() below.
-      cleanup(c);
     } else {
       LOG.warn(getPeerUuidLoggingString() + "Unexpected exception " + cause.getMessage() +
                " from downstream on " + c, cause);

@@ -773,6 +773,30 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
+   * EXPLAIN is resolved to the command tag of the statement it wraps, so EXPLAIN of a retriable
+   * statement is retried transparently. REPEATABLE READ is used because it has no read-committed
+   * carve-out for non-DML tags, so only the tag resolution can make the retry happen.
+   */
+  @Test
+  public void explainAnalyzeReadRestartRetried() throws Exception {
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT count(*) FROM test_rr",
+        IsolationLevel.REPEATABLE_READ).runTest();
+  }
+
+  /**
+   * EXPLAIN EXECUTE carries two wrappers, both of which have to be peeled off to reach the
+   * prepared statement's own tag.
+   */
+  @Test
+  public void explainAnalyzeExecutePreparedReadRestartRetried() throws Exception {
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE test_rr_count_q",
+        IsolationLevel.REPEATABLE_READ, true /* expectRetried */,
+        "PREPARE test_rr_count_q AS SELECT count(*) FROM test_rr").runTest();
+  }
+
+  /**
    * The proc-retriability flag is per top-level CALL: it is reset on the outermost SPI connect.
    * So a retriable proc invoked right after a non-retriable one (whose body blocked retries)
    * still retries transparently. Covers both autocommit and an explicit transaction block.
@@ -1170,7 +1194,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(cb, valueToInsert, 50 /* numInserts */);
+      // A surfaced read restart requires an INSERT to commit while a SELECT is in flight, so the
+      // expected number of restarts per isolation level scales with the number of INSERTs, not with
+      // the speed of a single SELECT. Tests that require restarts to happen need a bigger INSERT
+      // budget to keep that expectation comfortably above zero; tests that require no restarts keep
+      // the smaller budget to avoid increasing test time.
+      super(cb, valueToInsert, expectRestartErrors ? 150 : 50 /* numInserts */);
       this.expectRestartErrors = expectRestartErrors;
     }
 
@@ -1217,8 +1246,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
 
       List<ThrowingRunnable> runnables = new ArrayList<>();
       //
-      // Singular SELECT statement (equal probability of being either serializable/repeatable read/
-      // /read committed isolation level)
+      // Singular SELECT statement (isolation level rotates over serializable/repeatable read/
+      // read committed, so each level gets the same number of attempts)
       //
       runnables.add(() -> {
         Map<IsolationLevel, Integer> selectsAttempted =
@@ -1262,9 +1291,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               setReadAfterCommitVisibility + getReadAfterCommitVisibility());
           }
 
-          for (/* No setup */; !isExecutionDone.getAsBoolean(); /* NOOP */) {
+          for (int attempt = 0; !isExecutionDone.getAsBoolean(); ++attempt) {
+            // Rotate over isolation levels rather than picking one at random: a random split gives
+            // one level noticeably fewer attempts than the others often enough that it ends up with
+            // no restart opportunity at all.
             IsolationLevel isolation =
-                RandomUtil.getRandomElement(isolationLevels);
+                isolationLevels.get(attempt % isolationLevels.size());
             Stmt stmt =
                 chooseForIsolation(isolation, serializableStmt, rrStmt, rcStmt);
 
@@ -1537,8 +1569,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
-   * Runs a CALL/DO statement in a loop at the given isolation level while test_rr is populated
-   * concurrently, so the body repeatedly hits read restarts.
+   * Runs a statement in a loop at the given isolation level while test_rr is populated
+   * concurrently, so it repeatedly hits read restarts.
    *
    * When expectRetried is true, the query layer should retry the body transparently and no
    * read restart should surface. When it is false, the proc-retriability gate is expected to block

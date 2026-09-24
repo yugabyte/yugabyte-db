@@ -35,8 +35,11 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
+#include "access/tableam.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
+#include "access/yb_parallel_scan.h"
+#include "access/yb_table_scan.h"
+#include "access/yb_table_scan_options.h"
 #include "executor/execdebug.h"
 #include "executor/nodeYbSeqscan.h"
 #include "utils/rel.h"
@@ -62,7 +65,6 @@ YbSeqNext(YbSeqScanState *node)
 	ExprContext *econtext;
 	MemoryContext oldcontext;
 	TableScanDesc tsdesc;
-	YbScanDesc	ybScan;
 
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
@@ -93,140 +95,115 @@ YbSeqNext(YbSeqScanState *node)
 		YbSeqScan  *plan = (YbSeqScan *) node->ss.ps.plan;
 		YbPushdownExprs *yb_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);
+		int			rowmark = YBC_NO_ROW_MARK;
+		LockWaitPolicy wait_policy = LockWaitBlock;
+
+		/*
+		 * In case of SERIALIZABLE isolation level we have to take prefix
+		 * range locks to disallow INSERTion of new rows that satisfy the
+		 * query predicate.  So, we set the rowmark on all read requests
+		 * sent to tserver instead of locking each tuple one by one in
+		 * LockRows node.
+		 */
+		if (IsolationIsSerializable())
+		{
+			for (int i = 0;
+				 estate->es_rowmarks && i < estate->es_range_table_size;
+				 i++)
+			{
+				ExecRowMark *erm = estate->es_rowmarks[i];
+
+				/*
+				 * YB_TODO: This block of code is broken on master (GH
+				 * #20704).  With PG commit
+				 * f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
+				 * estate->es_rowmarks is an array with potentially NULL
+				 * elements (previously, it was a list).  As a temporary
+				 * fix till #20704 is addressed, ignore any NULL element
+				 * in es_rowmarks.
+				 */
+				if (!erm)
+					continue;
+				/* Do not propagate non-row-locking row marks. */
+				if (erm->markType != ROW_MARK_REFERENCE &&
+					erm->markType != ROW_MARK_COPY)
+				{
+					rowmark = erm->markType;
+					wait_policy = erm->waitPolicy;
+				}
+			}
+		}
+
+		YbTableScanOptions yb_options = {
+			.pg_scan_plan = (Scan *) plan,
+			.rel_pushdown = yb_pushdown,
+			.aggrefs = node->aggrefs,
+			.exec_params = &estate->yb_exec_params,
+			.rowmark = rowmark,
+			.wait_policy = wait_policy,
+			.pscan = node->pscan,
+		};
 
 		node->ss.ss_currentScanDesc = tsdesc =
-			palloc(sizeof(TableScanDescData));
-		tsdesc->rs_rd = node->ss.ss_currentRelation;
-		tsdesc->rs_snapshot = estate->es_snapshot;
-		tsdesc->rs_nkeys = 0;
-		tsdesc->rs_key = NULL;
-		tsdesc->rs_flags = SO_TYPE_SEQSCAN;
-		tsdesc->rs_parallel = NULL;
-		tsdesc->ybscan = ybScan = YbBeginScan(tsdesc->rs_rd,
-											  NULL,	/* index */
-											  false,	/* xs_want_itup */
-											  tsdesc->rs_nkeys,
-											  tsdesc->rs_key,
-											  (Scan *) plan,
-											  yb_pushdown,	/* rel_pushdown */
-											  NULL,	/* idx_pushdown */
-											  node->aggrefs,
-											  0,	/* distinct_prefixlen */
-											  &estate->yb_exec_params,
-											  false,	/* is_internal_scan */
-											  false);	/* fetch_ybctids_only */
-		ybScan->pscan = node->pscan;
+			table_beginscan_yb(node->ss.ss_currentRelation,
+							   estate->es_snapshot,
+							   0,	/* nkeys */
+							   NULL,	/* keys */
+							   &yb_options);
 	}
-	else
-		ybScan = tsdesc->ybscan;
 
 	/*
-	 * Set up any locking that happens at the time of the scan.
+	 * Aggregate pushdown bypasses tableam: the scan slot has a synthetic
+	 * descriptor matching the pushed aggregates, not the relation's real
+	 * descriptor.
 	 */
-	if (IsYugaByteEnabled() && IsolationIsSerializable())
+	if (node->aggrefs)
 	{
 		/*
-		 * In case of SERIALIZABLE isolation level we have to take prefix range
-		 * locks to disallow INSERTion of new rows that satisfy the query
-		 * predicate. So, we set the rowmark on all read requests sent to
-		 * tserver instead of locking each tuple one by one in LockRows node.
+		 * In the case of parallel scan we need to obtain boundaries from the
+		 * pscan before the scan is executed. Also empty row from parallel range
+		 * scan does not mean scan is done, it means the range is done and we
+		 * need to pick up next. No rows from parallel range is possible, hence
+		 * the loop.
 		 */
-		for (int i = 0; estate->es_rowmarks && i < estate->es_range_table_size;
-			 i++)
+		while (true)
 		{
-			ExecRowMark *erm = estate->es_rowmarks[i];
+			/* Need to execute the request */
+			if (!yb_scan_desc_is_exec_done(tsdesc))
+			{
+				/* Parallel mode: pick up parallel block first */
+				if (yb_scan_desc_pscan(tsdesc) != NULL &&
+					!yb_scan_desc_apply_next_parallel_range(tsdesc))
+					return NULL;
+				yb_scan_desc_exec_select(tsdesc);
+			}
+
+			/* capture all fetch allocations in the short-lived context */
+			oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+			yb_scan_desc_fetch_next(tsdesc, slot,
+									RelationGetRelid(node->ss.ss_currentRelation));
+			MemoryContextSwitchTo(oldcontext);
 
 			/*
-			 * YB_TODO: This block of code is broken on master (GH #20704). With
-			 * PG commit f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
-			 * estate->es_rowmarks is an array with
-			 * potentially NULL elements (previously, it was a list). As a
-			 * temporary fix till #20704 is addressed, ignore any NULL element
-			 * in es_rowmarks.
+			 * No more rows in parallel mode: repeat for next range, else break
+			 * to return the result.
 			 */
-			if (!erm)
-				continue;
-			/* Do not propagate non-row-locking row marks. */
-			if (erm->markType != ROW_MARK_REFERENCE &&
-				erm->markType != ROW_MARK_COPY)
-			{
-				ybScan->exec_params->rowmark = erm->markType;
-				ybScan->exec_params->pg_wait_policy = erm->waitPolicy;
-				ybScan->exec_params->docdb_wait_policy =
-					YBGetDocDBWaitPolicy(erm->waitPolicy);
-			}
+			if (TupIsNull(slot) && yb_scan_desc_pscan(tsdesc) != NULL)
+				yb_scan_desc_set_exec_done(tsdesc, false);
+			else
+				break;
 		}
+		return slot;
 	}
 
 	/*
-	 * In the case of parallel scan we need to obtain boundaries from the pscan
-	 * before the scan is executed. Also empty row from parallel range scan does
-	 * not mean scan is done, it means the range is done and we need to pick up
-	 * next. No rows from parallel range is possible, hence the loop.
+	 * Non-aggregate-pushdown path: fetch through tableam.
+	 * Pggate does not perform tablet-level parallelism when a direction is
+	 * set (see CouldBeExecutedInParallel), so use NoMovementScanDirection.
 	 */
-	while (true)
-	{
-		/* Need to execute the request */
-		if (!ybScan->is_exec_done)
-		{
-			/* Parallel mode: pick up parallel block first */
-			if (ybScan->pscan != NULL)
-			{
-				YBParallelPartitionKeys parallel_scan = ybScan->pscan;
-				const char *low_bound;
-				size_t		low_bound_size;
-				const char *high_bound;
-				size_t		high_bound_size;
-
-				/*
-				 * If range is found, apply the boundaries, false means the scan
-				 * is done for that worker.
-				 */
-				if (ybParallelNextRange(parallel_scan,
-										&low_bound, &low_bound_size,
-										&high_bound, &high_bound_size))
-				{
-					HandleYBStatus(YBCPgDmlApplyParallelRange(ybScan->handle,
-															  low_bound,
-															  low_bound_size,
-															  high_bound,
-															  high_bound_size));
-					if (low_bound)
-						pfree((void *) low_bound);
-					if (high_bound)
-						pfree((void *) high_bound);
-				}
-				else
-					return NULL;
-				/*
-				 * Use unlimited fetch.
-				 * Parallel scan range is already of limited size, it is
-				 * unlikely to exceed the message size, but may save some RPCs.
-				 */
-				ybScan->exec_params->limit_use_default = true;
-				ybScan->exec_params->yb_fetch_row_limit = 0;
-				ybScan->exec_params->yb_fetch_size_limit = 0;
-			}
-			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
-										   ybScan->exec_params));
-			ybScan->is_exec_done = true;
-		}
-
-		/* capture all fetch allocations in the short-lived context */
-		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
-		ybFetchNext(ybScan->handle, slot,
-					RelationGetRelid(node->ss.ss_currentRelation));
-		MemoryContextSwitchTo(oldcontext);
-
-		/*
-		 * No more rows in parallel mode: repeat for next range, else break to
-		 * return the result.
-		 */
-		if (TupIsNull(slot) && ybScan->pscan != NULL)
-			ybScan->is_exec_done = false;
-		else
-			break;
-	}
+	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+	table_scan_getnextslot(tsdesc, NoMovementScanDirection, slot);
+	MemoryContextSwitchTo(oldcontext);
 	return slot;
 }
 
@@ -357,7 +334,7 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 	 * close heap scan
 	 */
 	if (tsdesc != NULL)
-		ybc_heap_endscan(tsdesc);
+		table_endscan(tsdesc);
 }
 
 /* ----------------------------------------------------------------
@@ -382,7 +359,7 @@ ExecReScanYbSeqScan(YbSeqScanState *node)
 	tsdesc = node->ss.ss_currentScanDesc;
 	if (tsdesc != NULL)
 	{
-		ybc_heap_endscan(tsdesc);
+		table_endscan(tsdesc);
 		node->ss.ss_currentScanDesc = NULL;
 	}
 

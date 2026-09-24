@@ -279,6 +279,7 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
     // Wildcard placement matches all tservers.
     state_->placement_.add_placement_blocks()->CopyFrom(PlacementBlockPB());
   }
+  state_->CachePlacementBlockMaxReplicas();
 
   bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
   state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
@@ -515,6 +516,10 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     // Calculate the current state and goal state and their difference (in terms of adds / removes).
     // We currently only use this to provide an estimate of the time it will take to balance the
     // cluster; it is not used in the algorithm below.
+    //
+    // The estimate does not account for per-block max_num_replicas: the goal distribution may
+    // place slack replicas in a block beyond its maximum, so the estimated number of moves can be
+    // low when maximums are binding.
     TsTableLoadMap current_loads;
     TSDescriptorVector valid_ts_descs;
     for (auto& ts_uuid : state_->sorted_load_) {
@@ -950,7 +955,10 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
       //
       // Do the placement check for both the cases.
       // If we have missing placements then this check is a tautology otherwise it matters.
-      bool can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid));
+      // There is no source tserver for this add, so pass an empty from_ts: placement maximums
+      // are enforced strictly, with no same-block move exemption.
+      bool can_choose_ts = VERIFY_RESULT(
+          state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, "" /* from_ts */));
       // If we've passed the checks, then we can choose this TS to add the replica to.
       if (can_choose_ts) {
         *out_to_ts = ts_uuid;
@@ -962,6 +970,66 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
         state_->tablets_missing_replicas_.erase(tablet_id);
         return true;
       }
+    }
+  }
+  return false;
+}
+
+Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  for (const auto& tablet_id : state_->tablets_over_max_placements_) {
+    // Skip tablets this run has already added a replica to (CanAddTabletToTabletServer would
+    // reject every destination anyway), so the destination scan below is not repeated for them.
+    if (state_->tablets_added_.contains(tablet_id)) {
+      continue;
+    }
+    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+    VLOG(3) << "Tablet " << tablet_id << " has a placement above its maximum"
+            << ", attempting to find a tserver in another placement to move a replica to.";
+    // Loop through TSs by load to find a destination outside the offending placement(s). The
+    // remove from the offending placement happens on the removal path once this add makes the
+    // tablet over-replicated.
+    for (const auto& to_ts : state_->sorted_load_) {
+      const auto to_placement = state_->GetValidPlacement(to_ts);
+      if (!to_placement || tablet_meta.over_max_placements.contains(*to_placement)) {
+        continue;
+      }
+      // No source tserver is passed: the destination is in a different placement, so the
+      // same-placement move exemption does not apply and the maximum is enforced strictly.
+      if (!VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts, "" /* from_ts */))) {
+        continue;
+      }
+      // Pick one of the tablet's replicas in an offending placement as the logged source of the
+      // move.
+      TabletServerId from_ts;
+      CloudInfoPB from_placement;
+      if (const auto tablet_opt = GetTabletInfo(tablet_id)) {
+        for (const auto& [ts_uuid, _] : *tablet_opt->get()->GetReplicaLocations()) {
+          // Only consider replicas the analysis counted as running for this tablet; this excludes
+          // replicas of the other replica type (live vs. read-only), whose tservers do have ts
+          // meta but were skipped by UpdateTablet.
+          const auto ts_meta_it = state_->per_ts_meta_.find(ts_uuid);
+          if (ts_meta_it == state_->per_ts_meta_.end() ||
+              !ts_meta_it->second.running_tablets.contains(tablet_id)) {
+            continue;
+          }
+          const auto placement = state_->GetValidPlacement(ts_uuid);
+          if (placement && tablet_meta.over_max_placements.contains(*placement)) {
+            from_ts = ts_uuid;
+            from_placement = *placement;
+            break;
+          }
+        }
+      }
+      *out_tablet_id = tablet_id;
+      *out_from_ts = from_ts;
+      *out_to_ts = to_ts;
+      VLOG(3) << "Found destination server " << to_ts << " to move tablet replica " << tablet_id
+              << " from " << from_ts;
+      RETURN_NOT_OK(AddOrMoveReplica(
+          tablet_id, from_ts, to_ts,
+          Format("Placement $0 exceeds its max_num_replicas", from_placement.ShortDebugString())));
+      return true;
     }
   }
   return false;
@@ -1044,6 +1112,14 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   // Handle wrong placements as next priority, as these could be servers we're moving off of, so
   // we can decommission ASAP.
   if (VERIFY_RESULT(HandleAddIfWrongPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
+    return true;
+  }
+
+  // Then handle placement blocks with more replicas than their configured maximum. This is lower
+  // priority than draining blacklisted or wrongly-placed servers, which block node
+  // decommissioning, but takes precedence over normal load balancing.
+  if (VERIFY_RESULT(
+          HandleAddIfOverMaxPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
     return true;
   }
 
@@ -1213,7 +1289,7 @@ Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
         continue;
       }
 
-      if (VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts))) {
+      if (VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts))) {
         filtered_drive_tablets.insert(tablet_id);
       }
     }
@@ -1718,9 +1794,12 @@ TabletServerId ClusterLoadBalancer::SelectBestLeaderAfterStepdown(
   };
 
   // Find all running replicas of this tablet (excluding the one we're removing).
+  // Never nominate a blacklisted tserver: it has no leaders, so it always wins the leader load tie
+  // break, yet its replica may lag, and a nominated peer that is not caught up fails the stepdown
+  // outright instead of falling back to another peer.
   std::vector<std::pair<TabletServerId, size_t>> ts_and_priority;
   for (const auto& [ts_uuid, ts_meta] : state_->per_ts_meta_) {
-    if (ts_uuid == ts_to_exclude) {
+    if (ts_uuid == ts_to_exclude || global_state_->blacklisted_servers_.contains(ts_uuid)) {
       continue;
     }
     if (ts_meta.running_tablets.count(tablet_id) > 0) {

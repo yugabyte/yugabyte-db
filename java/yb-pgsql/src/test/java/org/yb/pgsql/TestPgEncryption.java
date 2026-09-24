@@ -157,9 +157,6 @@ public class TestPgEncryption extends BasePgSQLTest {
 
   @Test
   public void testSslWithCustomAuth() throws Exception {
-    Assume.assumeFalse("Skipping this test for Ysql Connection Manager as CERT Authentication " +
-        "is currently not supported in Ysql Connection Manager.",
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
 
     String sslcertFile = String.format("%s/ysql.crt", certsDir());
     String sslkeyFile = String.format("%s/ysql.key.der", certsDir());

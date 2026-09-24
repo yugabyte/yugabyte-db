@@ -22,16 +22,19 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_utils.h"
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
@@ -91,6 +94,13 @@ inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pgg
       IsSleepRequired(pggate_rpc));
 }
 
+// A wait event waits either on a pggate RPC or on something the caller names, never on both,
+// so one value carries whichever applies.
+uint32_t MakeAux(ash::PggateRPC pggate_rpc, uint32_t aux) {
+  DCHECK(pggate_rpc == ash::PggateRPC::kNoRPC || aux == 0);
+  return pggate_rpc != ash::PggateRPC::kNoRPC ? std::to_underlying(pggate_rpc) : aux;
+}
+
 bool IsEqual(const YbcPgTableLocalityInfo& lhs, const YbcPgTableLocalityInfo& rhs) {
   return lhs.is_region_local == rhs.is_region_local && lhs.tablespace_oid == rhs.tablespace_oid;
 }
@@ -102,15 +112,15 @@ bool IsEmpty(const YbcPgTableLocalityInfo& info) {
 } // namespace
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params) {
-  return exec_params && exec_params->rowmark > -1
+  return exec_params && exec_params->rowmark != YBC_NO_ROW_MARK
       ? static_cast<RowMarkType>(exec_params->rowmark)
       : RowMarkType::ROW_MARK_ABSENT;
 }
 
 PgWaitEventWatcher::PgWaitEventWatcher(
-    Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc)
+    Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux)
     : starter_(starter),
-      prev_wait_event_(starter_({std::to_underlying(wait_event), std::to_underlying(pggate_rpc)})) {
+      prev_wait_event_(starter_({std::to_underlying(wait_event), MakeAux(pggate_rpc, aux)})) {
   if (PREDICT_FALSE(MaybeSleepForTests(wait_event, pggate_rpc))) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms));
   }
@@ -184,6 +194,15 @@ bool SkipIntents(const PgsqlOp& op) {
   return op.is_read()
       ? HasSkipIntents(down_cast<const PgsqlReadOp&>(op).read_request())
       : HasSkipIntents(down_cast<const PgsqlWriteOp&>(op).write_request());
+}
+
+Status CheckForPgInterrupts() {
+  if (!YBCHasProcessableAbortInterrupt()) [[likely]] {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Aborted, PgsqlError{YBPgErrorCode::YB_PG_QUERY_CANCELED},
+      "Canceled due to pending postgres interrupt");
 }
 
 } // namespace yb::pggate

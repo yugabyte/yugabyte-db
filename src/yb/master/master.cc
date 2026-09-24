@@ -136,6 +136,10 @@ DEFINE_NON_RUNTIME_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 
+DEFINE_NON_RUNTIME_int32(master_ysql_lease_svc_queue_length, 1000,
+             "RPC queue length for master YSQL lease service");
+TAG_FLAG(master_ysql_lease_svc_queue_length, advanced);
+
 DEFINE_NON_RUNTIME_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
 TAG_FLAG(master_consensus_svc_queue_length, advanced);
@@ -308,6 +312,9 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDclService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDdlService(this)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_ysql_lease_svc_queue_length, MakeMasterYsqlLeaseService(this),
+      rpc::ServicePriority::kHigh));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
@@ -527,6 +534,10 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
       return STATUS(NotFound, "No raft config found.");
   }
 
+  // Per-follower heartbeat delay; empty unless this master is the Raft leader.
+  const auto follower_heartbeat_delay_map =
+      catalog_manager_impl()->GetMasterFollowerHeartbeatDelaysMs();
+
   for (const RaftPeerPB& peer : cpb.config().peers()) {
     // Get all network addresses associated with this peer master
     std::vector<HostPort> addrs;
@@ -560,6 +571,13 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
       reg->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
       reg->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
     }
+
+    // Annotate with heartbeat delay when this master is the leader.
+    const auto it = follower_heartbeat_delay_map.find(peer.permanent_uuid());
+    if (it != follower_heartbeat_delay_map.end()) {
+      peer_entry.set_heartbeat_delay_ms(it->second);
+    }
+
     masters->push_back(peer_entry);
   }
 

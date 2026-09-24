@@ -147,9 +147,30 @@ SPLIT INTO 9 TABLETS;
 INSERT INTO tv_tbl (i2, i4, i8, t, v) SELECT r1, r3, r2, r5::text, r4::varchar FROM r5n;
 
 --
+-- Numeric types
+--
+-- Each column cycles at a distinct modulus, pairwise coprime so that any two
+-- columns take all value combinations.  id is unique.  The x.5 fractions are
+-- exactly representable in all three fractional types.
+CREATE TABLE num_tbl (
+    id int,
+    f8 float8,
+    i2 int2,
+    x text,
+    nu numeric,
+    i4 int,
+    f4 real,
+    i8 int8,
+    PRIMARY KEY (f4 ASC, id ASC));
+INSERT INTO num_tbl (i2, i4, i8, f4, f8, nu, id, x)
+    SELECT i % 3, i % 7, i % 11, (1 + (i % 5))::real + 0.5,
+        ((1 + (i % 13)) + 0.5)::float8, (1 + (i % 17)) + 0.5, i, 'x' || i
+    FROM generate_series(1, 10000) i;
+
+--
 -- Analyze
 --
-ANALYZE r5n, h3r2n, parent, bkt_tbl, tv_tbl;
+ANALYZE r5n, h3r2n, parent, bkt_tbl, tv_tbl, num_tbl;
 
 --
 -- Colocated

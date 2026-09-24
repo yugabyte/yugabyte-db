@@ -14,6 +14,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -45,11 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Abortable
 @Retryable
-// TODO(PLAT-21484): add @CanRollback here once RollbackUniverseEdit (PLAT-21484), the
-// state_transition_details safe-window gate (PLAT-21387 / PLAT-21483) and the runtime flag
-// (PLAT-21488) are in place. The TaskRollbackComputer registry already has a placeholder
-// (EditUniverseRollbackComputer) that rejects until those land. Annotating before they exist
-// would surface canRollback=true in the UI/API while the rollback action is not yet implemented.
+@CanRollback
 public class EditUniverse extends EditUniverseTaskBase {
   private final AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
   private final AtomicBoolean primaryRFChanged = new AtomicBoolean();
@@ -176,6 +173,16 @@ public class EditUniverse extends EditUniverseTaskBase {
       // is down externally for >15 minutes and the master leader then marks the node down for
       // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Re-configure cross-cloud federated IAM if the universe is already federated, so nodes added
+      // or changed by this edit match. Keyed off the persisted flag (not the provider) to avoid a
+      // mixed state.
+      if (isUniverseFederationConfigured()) {
+        for (Cluster cluster : taskParams().clusters) {
+          createConfigureCloudFederationTasks(
+              cluster.userIntent, taskParams().getNodesInCluster(cluster.uuid), true);
+        }
+      }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

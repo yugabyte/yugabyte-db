@@ -397,7 +397,9 @@ public interface UserIntentMapper {
       fillUserIntentFromClusterResizeNodeSpec(source.getNodeSpec(), userIntent);
     }
     // node_spec / provider_nodes_specs may be omitted for gflags-only resize requests
-    userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    if (source.getGflags() != null) {
+      userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    }
     return userIntent;
   }
 
@@ -648,13 +650,15 @@ public interface UserIntentMapper {
       }
       perProcess.put(ServerType.TSERVER, tserverOverrides);
     }
+    // When az_node_spec is present, fully replace existing AZ overrides (same semantics as
+    // az_gflags). Omitting the field leaves existing overrides unchanged; an empty map clears them.
     if (clusterNodeSpec.getAzNodeSpec() != null) {
+      UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
+      Map<UUID, AZOverrides> azOverridesMap = new HashMap<>();
       clusterNodeSpec
           .getAzNodeSpec()
           .forEach(
               (azUuid, azNode) -> {
-                UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
-                Map<UUID, AZOverrides> azOverridesMap = getOrCreateAzOverrides(overrides);
                 AZOverrides azOverrides = new AZOverrides();
                 azOverrides.setInstanceType(azNode.getInstanceType());
                 azOverrides.setDeviceInfo(storageSpecToDeviceInfo(azNode.getStorageSpec()));
@@ -675,6 +679,7 @@ public interface UserIntentMapper {
                 }
                 azOverridesMap.put(UUID.fromString(azUuid), azOverrides);
               });
+      overrides.setAzOverrides(azOverridesMap);
     }
     return userIntent;
   }
@@ -771,11 +776,7 @@ public interface UserIntentMapper {
       if (clusterResizeNodeSpec.getTserver().getStorageSpec() != null) {
         DeviceInfo incoming =
             resizeStorageSpecToDeviceInfo(clusterResizeNodeSpec.getTserver().getStorageSpec());
-        if (tserverOverrides.getDeviceInfo() == null) {
-          tserverOverrides.setDeviceInfo(incoming);
-        } else {
-          tserverOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
-        }
+        tserverOverrides.setDeviceInfo(incoming);
         hasChanges = true;
       }
       if (hasChanges) {
@@ -786,6 +787,15 @@ public interface UserIntentMapper {
         }
         PerProcessDetails existingTserverOverrides =
             perProcess.getOrDefault(ServerType.TSERVER, new PerProcessDetails());
+        // mergeWith() replaces deviceInfo wholesale, and the request only carries
+        // volumeSize/diskIops/throughput - merge field-wise first so the existing override keeps
+        // what this request does not mention.
+        if (tserverOverrides.getDeviceInfo() != null
+            && existingTserverOverrides.getDeviceInfo() != null) {
+          DeviceInfo merged = existingTserverOverrides.getDeviceInfo().clone();
+          merged.mergeDeviceInfo(tserverOverrides.getDeviceInfo());
+          tserverOverrides.setDeviceInfo(merged);
+        }
         existingTserverOverrides.mergeWith(tserverOverrides);
         perProcess.put(ServerType.TSERVER, existingTserverOverrides);
       }
@@ -924,7 +934,7 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
-  // Used by ClusterMapper.deepCopyClusterEditSpecWithoutPlacementSpec when inheriting
+  // Used by ClusterMapper.deepCopyInheritableClusterEditSpec when inheriting
   // primary ClusterSpec networking into ClusterEditSpec.
   default ClusterNetworkingEditSpec toClusterNetworkingEditSpec(ClusterNetworkingSpec source) {
     if (source == null) {

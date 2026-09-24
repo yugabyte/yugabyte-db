@@ -4,12 +4,14 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import { useForm, FormProvider, useFieldArray, useWatch } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation, Trans } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { isEqual, omit } from 'lodash';
 import { IconButton } from '@material-ui/core';
 import CloseRounded from '@app/redesign/assets/close-large.svg';
 import {
@@ -48,11 +50,12 @@ import { RRRegionCard } from './RRRegionCard';
 import { NodeInstanceDetails } from '@app/redesign/features-v2/universe/geo-partition/add/NodeInstanceDetails';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 import { useSubmitReadReplica } from '../../useSubmitReadReplica';
+import { useYBToast } from '@app/redesign/features-v2/universe/create-universe/helpers/ToastUtils';
 
 const { Box, styled, Typography } = mui;
 
 const StyledOuterPanel = styled('div')(({ theme }) => ({
-  width: '100%',
+  width: '720px',
   maxWidth: '720px',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[200]}`,
@@ -63,9 +66,7 @@ const StyledOuterPanel = styled('div')(({ theme }) => ({
 const StyledPanelHeader = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
-  height: '64px',
-  padding: `${theme.spacing(1.25)} ${theme.spacing(3)}`,
-  borderBottom: `1px solid ${theme.palette.grey[200]}`,
+  padding: theme.spacing(3),
   backgroundColor: theme.palette.common.white
 }));
 
@@ -87,14 +88,15 @@ const StyledBanner = styled(Box)(({ theme }) => ({
 
 type MapPin = { key: string; lat: number; lng: number; name: string };
 
-function getPrimaryMapPins(
+export function getPrimaryMapPins(
   universeData: UniverseRespResponse | undefined,
   providerRegions: Region[]
 ): MapPin[] {
   if (!universeData) return [];
   const primary = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
-  const regionList = (primary?.placement_spec?.cloud_list?.[0] as { region_list?: { uuid?: string; name?: string }[] })
-    ?.region_list;
+  const regionList = (
+    primary?.placement_spec?.cloud_list?.[0] as { region_list?: { uuid?: string; name?: string }[] }
+  )?.region_list;
   if (!regionList?.length) return [];
   const byUuid = new Map(providerRegions.map((r) => [r.uuid, r]));
   const out: MapPin[] = [];
@@ -120,10 +122,14 @@ function RRPlacementMap({
   providerRegions: Region[];
 }) {
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
-  const watchRegions = useWatch({ name: 'regions' }) as RRRegionsAndAZFormValues['regions'] | undefined;
+  const watchRegions = useWatch({ name: 'regions' }) as
+    | RRRegionsAndAZFormValues['regions']
+    | undefined;
   const primaryIcon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const rrIcon = useGetMapIcons({ type: MarkerType.READ_REPLICA });
-  const readReplicaCluster = universeData ? getClusterByType(universeData, ClusterSpecClusterType.ASYNC) : undefined;
+  const readReplicaCluster = universeData
+    ? getClusterByType(universeData, ClusterSpecClusterType.ASYNC)
+    : undefined;
   const primaryPins = useMemo(
     () => getPrimaryMapPins(universeData, providerRegions),
     [universeData, providerRegions]
@@ -163,7 +169,9 @@ function RRPlacementMap({
   }, [primaryPins, draftRrPins]);
 
   return (
-    <Box sx={{ width: '360px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <Box
+      sx={{ width: '360px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}
+    >
       <YBMaps
         mapHeight={362}
         dataTestId="yb-maps-rr-regions-az"
@@ -174,28 +182,41 @@ function RRPlacementMap({
           zoom: 2,
           center: [0, 0]
         }}
+        showBoundaries={false}
       >
-        {(primaryPins.map((p) => (
-          <YBMapMarker
-            key={p.key}
-            position={[p.lat, p.lng]}
-            type={MarkerType.REGION_SELECTED}
-            tooltip={<>{p.name}</>}
-          />
-        )) as unknown) as any}
-        {(draftRrPins.map((p) => (
-          <YBMapMarker
-            key={p.key}
-            position={[p.lat, p.lng]}
-            type={MarkerType.READ_REPLICA}
-            tooltip={<>{p.name}</>}
-          />
-        )) as unknown) as any}
+        {
+          primaryPins.map((p) => (
+            <YBMapMarker
+              key={p.key}
+              position={[p.lat, p.lng]}
+              type={MarkerType.REGION_SELECTED}
+              tooltip={<>{p.name}</>}
+            />
+          )) as unknown as any
+        }
+        {
+          draftRrPins.map((p) => (
+            <YBMapMarker
+              key={p.key}
+              position={[p.lat, p.lng]}
+              type={MarkerType.READ_REPLICA}
+              tooltip={<>{p.name}</>}
+            />
+          )) as unknown as any
+        }
         <MapLegend
           mapLegendItems={
             [
-              <MapLegendItem key="primary-legend" icon={<>{primaryIcon.normal}</>} label={t('legendPrimaryCluster')} />,
-              <MapLegendItem key="rr-legend" icon={<>{rrIcon.normal}</>} label={t('legendReadReplica')} />
+              <MapLegendItem
+                key="primary-legend"
+                icon={<>{primaryIcon.normal}</>}
+                label={t('legendPrimaryCluster')}
+              />,
+              <MapLegendItem
+                key="rr-legend"
+                icon={<>{rrIcon.normal}</>}
+                label={t('legendReadReplica')}
+              />
             ] as any
           }
         />
@@ -206,7 +227,7 @@ function RRPlacementMap({
 }
 
 export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
-  const [rrContext, rrMethods] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const [rrContext, rrMethods] = useContext(AddRRContext) as unknown as AddRRContextMethods;
   const {
     regionsAndAZ,
     regionsAndAZBaseline,
@@ -228,14 +249,16 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
   const { t: tc } = useTranslation('translation', { keyPrefix: 'common' });
 
   const [bannerVisible, setBannerVisible] = useState(true);
+  const toast = useYBToast();
+  // Baseline is spliced on region remove; keep the open-time snapshot for change detection.
+  const initialPlacementRef = useRef(regionsAndAZBaseline);
 
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
   const providerUUID = primaryCluster?.provider_spec?.provider ?? '';
   const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
-  const isK8s =
-    primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
+  const isK8s = primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
 
   const { data: regionsList = [], isLoading: isRegionsLoading } = useQuery(
     [QUERY_KEY.getRegionsList, providerUUID],
@@ -248,10 +271,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     [regionsAndAZ]
   );
 
-  const resolver = useMemo(
-    () => yupResolver(RRRegionsAndAZValidationSchema(t)),
-    [t]
-  );
+  const resolver = useMemo(() => yupResolver(RRRegionsAndAZValidationSchema(t)), [t]);
 
   const methods = useForm<RRRegionsAndAZFormValues>({
     defaultValues,
@@ -267,7 +287,11 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     [watchedRegions]
   );
 
-  const { fields: regionFields, append: appendRegion, remove: removeRegion } = useFieldArray({
+  const {
+    fields: regionFields,
+    append: appendRegion,
+    remove: removeRegion
+  } = useFieldArray({
     control,
     name: 'regions'
   });
@@ -283,13 +307,22 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     () => ({
       onNext: () => {
         return handleSubmit((data) => {
+          if (
+            isEditPlacementOnly &&
+            isEqual(
+              data.regions.map((r) => omit(r, 'isNew')),
+              initialPlacementRef.current?.regions.map((r) => omit(r, 'isNew'))
+            )
+          ) {
+            toast.warn(t('toast.noPlacementChanges'));
+            return;
+          }
           saveRegionsAndAZSettings(data);
           if (isEditPlacementOnly) {
             // Placement-only edit: submit from this page using fresh form data (context update is async).
             return submit({ ...rrContext, regionsAndAZ: data }, regionsList as Region[]);
           }
           moveToNextPage();
-          return undefined;
         })();
       },
       onPrev: () => {
@@ -304,7 +337,9 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
       isEditPlacementOnly,
       submit,
       rrContext,
-      regionsList
+      regionsList,
+      toast,
+      t
     ]
   );
 
@@ -345,8 +380,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '24px',
-                pt: 1,
+                gap: '16px',
+                pt: 0,
                 px: 3,
                 pb: 3
               }}
@@ -370,9 +405,9 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     onRemoveRegion={
                       regionFields.length > 1
                         ? () => {
-                          spliceRegionsAndAZBaseline(index);
-                          removeRegion(index);
-                        }
+                            spliceRegionsAndAZBaseline(index);
+                            removeRegion(index);
+                          }
                         : undefined
                     }
                   />
@@ -426,7 +461,11 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                   disabled={
                     !regionsList.length || regionFields.length >= (regionsList as Region[]).length
                   }
-                  onClick={() => appendRegion(getEmptyRRPlacementRegion({ isNew: true }))}
+                  onClick={() =>
+                    appendRegion(
+                      getEmptyRRPlacementRegion(isEditPlacementOnly ? { isNew: true } : undefined)
+                    )
+                  }
                   dataTestId="rr-add-region"
                 >
                   {t('addRegion')}

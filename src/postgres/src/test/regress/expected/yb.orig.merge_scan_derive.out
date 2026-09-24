@@ -539,7 +539,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 3030
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 9
                Storage Index Rows Scanned: 3087
 (20 rows)
 
@@ -566,6 +566,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 -- No limit
 -- TODO(#29078): this likely should use merge scan.
 \set query ':explain :Q SELECT * FROM r5n ORDER BY r2, r3;'
@@ -630,7 +631,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 8
                Storage Table Rows Scanned: 1000
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 9
                Storage Index Rows Scanned: 2383
 (20 rows)
 
@@ -652,24 +653,22 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, n, ((yb_hash_code(r2, r3, r4) % 3))
    ->  Sort (actual rows=5 loops=1)
          Output: r2, r3, n, ((yb_hash_code(r2, r3, r4) % 3))
          Sort Key: r5n.r2, r5n.r3, r5n.n
          Sort Method: top-N heapsort
-         ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=3311 loops=1)
+         ->  Seq Scan on public.r5n (actual rows=3311 loops=1)
                Output: r2, r3, n, (yb_hash_code(r2, r3, r4) % 3)
-               Index Cond: ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,2}'::integer[]))
-               Storage Table Read Requests: 7
-               Storage Table Read Ops: 30
-               Storage Table Rows Scanned: 3311
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 8
-               Storage Index Rows Scanned: 3311
-(15 rows)
+               Filter: ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,2}'::integer[]))
+               Rows Removed by Filter: 1737
+               Storage Table Read Requests: 5
+               Storage Table Read Ops: 11
+               Storage Table Rows Scanned: 5048
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
                                             QUERY PLAN                                             
@@ -692,7 +691,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 635
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 6
                Storage Index Rows Scanned: 1354
 (20 rows)
 
@@ -714,24 +713,22 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, n, ((yb_hash_code(r2, r3, r4) % 3))
    ->  Sort (actual rows=5 loops=1)
          Output: r2, r3, n, ((yb_hash_code(r2, r3, r4) % 3))
          Sort Key: r5n.r2, r5n.r3, r5n.n
          Sort Method: top-N heapsort
-         ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=3311 loops=1)
+         ->  Seq Scan on public.r5n (actual rows=3311 loops=1)
                Output: r2, r3, n, (yb_hash_code(r2, r3, r4) % 3)
-               Index Cond: ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,2,4,8}'::integer[]))
-               Storage Table Read Requests: 7
-               Storage Table Read Ops: 30
-               Storage Table Rows Scanned: 3311
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 9
-               Storage Index Rows Scanned: 3311
-(15 rows)
+               Filter: ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,2,4,8}'::integer[]))
+               Rows Removed by Filter: 1737
+               Storage Table Read Requests: 5
+               Storage Table Read Ops: 11
+               Storage Table Rows Scanned: 5048
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
                                                                                       QUERY PLAN                                                                                       
@@ -754,7 +751,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 635
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 4
+               Storage Index Read Ops: 6
                Storage Index Rows Scanned: 1354
 (20 rows)
 
@@ -793,7 +790,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 8
                Storage Table Rows Scanned: 1029
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
+               Storage Index Read Ops: 3
                Storage Index Rows Scanned: 1029
 (16 rows)
 
@@ -833,6 +830,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 -- Expression in sort, so not derived
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
@@ -905,7 +903,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 10
                Storage Table Rows Scanned: 636
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 7
                Storage Index Rows Scanned: 1165
 (20 rows)
 
@@ -1055,6 +1053,7 @@ SPLIT AT VALUES (
     (2, 2),
     (2, 2, 2),
     (3));
+ANALYZE parent;
 -- Parent
 \set query ':P :Q SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;'
 \i :run_query
@@ -1115,7 +1114,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 211
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 782
                ->  Index Scan using child1b_expr_r2_r3_idx on public.child1b parent_3 (actual rows=6 loops=1)
                      Output: parent_3.r2, parent_3.r3, parent_3.n
@@ -1128,7 +1127,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 117
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 485
                ->  Index Scan using child2_expr_r2_r3_idx on public.child2 parent_4 (actual rows=22 loops=1)
                      Output: parent_4.r2, parent_4.r3, parent_4.n
@@ -1141,7 +1140,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 373
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 1348
                ->  Index Scan using child3_expr_r2_r3_idx on public.child3 parent_5 (actual rows=12 loops=1)
                      Output: parent_5.r2, parent_5.r3, parent_5.n
@@ -1154,7 +1153,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 234
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 907
 (61 rows)
 
@@ -1220,7 +1219,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 211
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 782
                ->  Index Scan using child1b_expr_r2_r3_idx on public.child1b child1_2 (actual rows=6 loops=1)
                      Output: child1_2.r2, child1_2.r3, child1_2.n
@@ -1233,7 +1232,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 117
                      Storage Index Read Requests: 2
-                     Storage Index Read Ops: 6
+                     Storage Index Read Ops: 7
                      Storage Index Rows Scanned: 485
 (35 rows)
 
@@ -1291,7 +1290,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 117
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 7
                Storage Index Rows Scanned: 485
 (20 rows)
 
@@ -1320,6 +1319,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 CREATE INDEX NONCONCURRENTLY ON parent ((yb_hash_code(r2, r3) % 3) ASC, r2, r3)
 SPLIT AT VALUES (
     (1),
@@ -1327,6 +1327,7 @@ SPLIT AT VALUES (
     (2, 2),
     (2, 2, 2),
     (3));
+ANALYZE parent;
 -- Derive from r5n
 \set query ':P :Q SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;'
 \i :run_query
@@ -1404,7 +1405,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      ->  Seq Scan on public.child1a parent_2 (actual rows=42 loops=1)
                            Output: parent_2.r3, parent_2.n
                            Storage Table Read Requests: 2
-                           Storage Table Read Ops: 2
+                           Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 1029
                      ->  Seq Scan on public.child1b parent_3 (never executed)
                            Output: parent_3.r3, parent_3.n

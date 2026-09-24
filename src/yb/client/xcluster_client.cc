@@ -15,6 +15,7 @@
 
 #include "yb/ash/rpc_wait_state.h"
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -392,13 +393,13 @@ Status XClusterClient::GetXClusterStreams(
 Status XClusterClient::GetXClusterStreams(
     CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
     const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids,
-    GetXClusterStreamsCallback callback) {
+    bool create_stream_if_missing, GetXClusterStreamsCallback callback) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
   SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid Namespace Id");
 
   return yb_client_.data_->GetXClusterStreams(
       &yb_client_, deadline, replication_group_id, namespace_id, source_table_ids,
-      std::move(callback));
+      create_stream_if_missing, std::move(callback));
 }
 
 Status XClusterClient::AddNamespaceToOutboundReplicationGroup(
@@ -510,6 +511,26 @@ Status XClusterClient::RepairOutboundXClusterReplicationGroupRemoveTable(
   return Status::OK();
 }
 
+Status XClusterClient::DeleteXClusterWalAnchorStreams(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<TableId>& source_table_ids) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication Group Id");
+  SCHECK(!source_table_ids.empty(), InvalidArgument, "No source table ids provided");
+
+  master::DeleteXClusterWalAnchorStreamsRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& table_id : source_table_ids) {
+    req.add_source_table_ids(table_id);
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(DeleteXClusterWalAnchorStreams, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Result<xrepl::StreamId> XClusterClient::CreateXClusterStream(
     const TableId& table_id, bool active, cdc::StreamModeTransactional transactional) {
   std::promise<Result<xrepl::StreamId>> promise;
@@ -599,7 +620,8 @@ XClusterClient::GetUniverseReplicationInfo(
 
   XClusterClient::XClusterInboundReplicationGroupInfo result;
   result.replication_type = resp.replication_type();
-  result.source_master_addrs = resp.source_master_addresses();
+  result.deprecated_source_master_addresses = resp.deprecated_source_master_addresses();
+  HostPortsFromPBs(resp.source_master_addrs(), &result.source_master_addrs);
 
   for (const auto& pb_table_info : resp.table_infos()) {
     XClusterClient::XClusterInboundReplicationGroupInfo::XClusterInboundReplicationGroupTableInfo
@@ -734,12 +756,13 @@ Status XClusterClient::GetXClusterTableCheckpointInfos(
 
 Status XClusterClient::GetXClusterTableCheckpointInfos(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    const std::vector<TableName>& table_ids, BootstrapProducerCallback user_callback) {
+    const std::vector<TableName>& table_ids, bool create_stream_if_missing,
+    BootstrapProducerCallback user_callback) {
   auto callback = CreateXClusterStreamsCallback(user_callback);
 
   RETURN_NOT_OK(GetXClusterStreams(
       CoarseMonoClock::Now() + yb_client_.default_admin_operation_timeout(), replication_group_id,
-      namespace_id, table_ids, std::move(callback)));
+      namespace_id, table_ids, create_stream_if_missing, std::move(callback)));
 
   return Status::OK();
 }

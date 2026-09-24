@@ -33,12 +33,18 @@
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 
+#include <algorithm>
 #include <iomanip>
+#include <iostream>
+#include <limits>
+#include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -50,6 +56,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/common/xcluster_util.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_alterer.h"
@@ -57,7 +64,9 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/json_util.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/tablespace_parser.h"
@@ -66,6 +75,7 @@
 
 #include "yb/consensus/consensus.proxy.h"
 
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
@@ -90,13 +100,15 @@
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/server/server_base.proxy.h"
+
 #include "yb/tools/tools_utils.h"
+#include "yb/tools/xcluster_verify.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
 
-#include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
@@ -108,6 +120,7 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/tostring.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/doc_key.h"
@@ -121,6 +134,10 @@ DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
 DEFINE_NON_RUNTIME_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
+
+DEFINE_NON_RUNTIME_uint32(read_time_wait_ms, kDumpTabletDataMaxReadTimeWaitMsDefault,
+    "get_table_hash: how long each tablet may wait for safe time to reach read_ht before failing. "
+    "0 fails immediately.");
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
     "Used in 'export_snapshot' metadata file format (0 means using latest format).");
@@ -770,11 +787,12 @@ Status ClusterAdminClient::SetTabletPeerInfo(
     HostPort* peer_addr) {
   TSInfoPB peer_ts_info;
   RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
-  auto rpc_addresses = peer_ts_info.private_rpc_addresses();
-  CHECK_GT(rpc_addresses.size(), 0) << peer_ts_info
-        .ShortDebugString();
+  const auto rpc_address = SelectServerAddress(peer_ts_info);
+  SCHECK_FORMAT(
+      !rpc_address.host().empty(), NotFound, "Tablet peer has no RPC address registered: $0",
+      peer_ts_info.ShortDebugString());
 
-  *peer_addr = HostPortFromPB(rpc_addresses.Get(0));
+  *peer_addr = HostPortFromPB(rpc_address);
   *peer_uuid = peer_ts_info.permanent_uuid();
   return Status::OK();
 }
@@ -973,10 +991,17 @@ Status ClusterAdminClient::ChangeConfig(
     return STATUS(InvalidArgument, "Must specify member_type when adding a server.");
   }
 
-  // Look up RPC address of peer if adding as a new server.
+  // Record all the addresses of the peer if adding as a new server, so that every other peer can
+  // pick the one that is appropriate for it.
   if (cc_type == consensus::ADD_SERVER) {
-    HostPort host_port = VERIFY_RESULT(GetFirstRpcAddressForTS(peer_uuid));
-    HostPortToPB(host_port, peer_pb.mutable_last_known_private_addr()->Add());
+    auto registration = VERIFY_RESULT(GetTSRegistration(peer_uuid));
+    SCHECK_FORMAT(
+        !registration.private_rpc_addresses().empty(), NotFound,
+        "Server with UUID $0 has no RPC address registered with the Master", peer_uuid);
+
+    peer_pb.mutable_last_known_private_addr()->Swap(registration.mutable_private_rpc_addresses());
+    peer_pb.mutable_last_known_broadcast_addr()->Swap(registration.mutable_broadcast_addresses());
+    peer_pb.mutable_cloud_info()->Swap(registration.mutable_cloud_info());
   }
 
   // Look up the location of the tablet leader from the Master.
@@ -1329,21 +1354,29 @@ Status ClusterAdminClient::ListTabletServers(
   return Status::OK();
 }
 
-Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid) {
+Result<ServerRegistrationPB> ClusterAdminClient::GetTSRegistration(const PeerId& uuid) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     if (server.instance_id().permanent_uuid() == uuid) {
-      if (!server.has_registration() ||
-          server.registration().common().private_rpc_addresses().empty()) {
-        break;
+      if (server.has_registration()) {
+        return server.registration().common();
       }
-      return HostPortFromPB(server.registration().common().private_rpc_addresses(0));
+      break;
     }
   }
 
-  return STATUS_FORMAT(
-      NotFound, "Server with UUID $0 has no RPC address registered with the Master", uuid);
+  return STATUS_FORMAT(NotFound, "Server with UUID $0 is not registered with the Master", uuid);
+}
+
+Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid) {
+  const auto registration = VERIFY_RESULT(GetTSRegistration(uuid));
+  const auto rpc_address = SelectServerAddress(registration);
+  SCHECK_FORMAT(
+      !rpc_address.host().empty(), NotFound,
+      "Server with UUID $0 has no RPC address registered with the Master", uuid);
+
+  return HostPortFromPB(rpc_address);
 }
 
 Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
@@ -1445,7 +1478,9 @@ Status ClusterAdminClient::ListAllMasters() {
   cout << RightPadToUuidWidth("Master UUID") << kColumnSep
         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
         << RightPadToWidth("State", kSmallColWidth) << kColumnSep
-        << "Role" << kColumnSep << RightPadToWidth(kBroadcastHeading, kHostPortColWidth) << endl;
+        << RightPadToWidth("Role", kSmallColWidth) << kColumnSep
+        << RightPadToWidth(kBroadcastHeading, kHostPortColWidth)
+        << kColumnSep << "Lag(ms)" << endl;
 
   for (const auto& master : lresp.masters()) {
       const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
@@ -1459,10 +1494,19 @@ Status ClusterAdminClient::ListAllMasters() {
                                 PBEnumToString(master.error().code()) : "ALIVE"),
                               kSmallColWidth)
             << kColumnSep;
-      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << kColumnSep;
+      cout << RightPadToWidth(
+                master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN",
+                kSmallColWidth)
+            << kColumnSep;
       cout << RightPadToWidth(
         master_reg ? FormatFirstHostPort(master_reg->broadcast_addresses()) : "UNKNOWN",
-        kHostPortColWidth) << endl;
+        kHostPortColWidth) << kColumnSep;
+      if (master.has_heartbeat_delay_ms()) {
+        cout << master.heartbeat_delay_ms();
+      } else {
+        cout << "N/A";
+      }
+      cout << endl;
   }
 
   return Status::OK();
@@ -1494,14 +1538,14 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
       continue;
     }
 
-    if (!server.has_registration() ||
-        server.registration().common().private_rpc_addresses().empty()) {
+    const auto rpc_address = SelectServerAddress(server.registration().common());
+    if (rpc_address.host().empty()) {
       LOG(WARNING) << "Tablet server " << ts_uuid << " has no RPC address registered";
       cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
       continue;
     }
 
-    HostPort ts_addr = HostPortFromPB(server.registration().common().private_rpc_addresses(0));
+    HostPort ts_addr = HostPortFromPB(rpc_address);
     TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
     auto resp = InvokeRpc(
@@ -1646,6 +1690,15 @@ Status DoListTablets(
       AddStringField("id", tablet_uuid, &json_tablet, &document.GetAllocator());
       AddStringField(
           "partition_debug_string", partition_debug_string, &json_tablet, &document.GetAllocator());
+      // Hex encodings of the raw partition keys. get_table_hash, and any driver built on it, pass
+      // these through as [start, end) bounds (empty = unbounded). partition_key_end is already
+      // exclusive.
+      AddStringField(
+          "partition_key_start_hex", strings::b2a_hex(partition.partition_key_start()),
+          &json_tablet, &document.GetAllocator());
+      AddStringField(
+          "partition_key_end_hex", strings::b2a_hex(partition.partition_key_end()),
+          &json_tablet, &document.GetAllocator());
       rapidjson::Value json_leader(rapidjson::kObjectType);
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
@@ -1930,7 +1983,10 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
           &master::MasterClusterProxy::ChangeLoadBalancerState, *master_cluster_proxy_,
           req));
     } else {
-      HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
+      const auto hp_pb = SelectServerAddress(master.registration());
+      SCHECK_FORMAT(
+          !hp_pb.host().empty(), NotFound, "Master $0 has no RPC address registered",
+          master.instance_id().permanent_uuid());
 
       master::MasterClusterProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
       RETURN_NOT_OK(InvokeRpc(
@@ -1962,25 +2018,31 @@ Status ClusterAdminClient::GetLoadBalancerState() {
   master::GetLoadBalancerStateRequestPB req;
   master::GetLoadBalancerStateResponsePB resp;
   string error;
-  master::MasterClusterProxy* proxy;
   for (const auto& master : list_resp.masters()) {
     error.clear();
+    master::MasterClusterProxy* proxy = nullptr;
     std::unique_ptr<master::MasterClusterProxy> follower_proxy;
     if (master.role() == PeerRole::LEADER) {
       proxy = master_cluster_proxy_.get();
     } else {
-      HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
-      follower_proxy = std::make_unique<master::MasterClusterProxy>(
-          proxy_cache_.get(), HostPortFromPB(hp_pb));
-      proxy = follower_proxy.get();
+      const auto hp_pb = SelectServerAddress(master.registration());
+      if (hp_pb.host().empty()) {
+        error = "No RPC address registered with the Master";
+      } else {
+        follower_proxy = std::make_unique<master::MasterClusterProxy>(
+            proxy_cache_.get(), HostPortFromPB(hp_pb));
+        proxy = follower_proxy.get();
+      }
     }
-    auto result = InvokeRpc(&master::MasterClusterProxy::GetLoadBalancerState, *proxy, req);
-    if (!result) {
-      error = result.ToString();
-    } else {
-      resp = *result;
-      if (!resp.has_error()) {
-        error = resp.error().status().message();
+    if (proxy != nullptr) {
+      auto result = InvokeRpc(&master::MasterClusterProxy::GetLoadBalancerState, *proxy, req);
+      if (!result) {
+        error = result.ToString();
+      } else {
+        resp = *result;
+        if (!resp.has_error()) {
+          error = resp.error().status().message();
+        }
       }
     }
     const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
@@ -2288,7 +2350,11 @@ Status ClusterAdminClient::FillPlacementInfo(
   // It is possible that placement_info_splits is empty, that is ok.
   // It just means we have no placement constraints on the total num replicas.
 
-  std::unordered_map<std::string, int> placement_to_min_replicas;
+  struct ReplicaLimits {
+    int64_t min_num_replicas = 0;
+    std::optional<int64_t> max_num_replicas = 0;
+  };
+  std::unordered_map<std::string, ReplicaLimits> placement_to_replica_limits;
   for (auto& placement_info_split : placement_info_splits) {
     StripWhiteSpace(&placement_info_split);
     if (placement_info_split.empty()) {
@@ -2298,21 +2364,49 @@ Status ClusterAdminClient::FillPlacementInfo(
     std::vector<std::string> placement_block_split =
         strings::Split(placement_info_split, ":", strings::AllowEmpty());
 
-    if (placement_block_split.size() == 0 || placement_block_split.size() > 2) {
+    if (placement_block_split.empty() || placement_block_split.size() > 3 ||
+        std::any_of(
+            placement_block_split.begin(), placement_block_split.end(),
+            [](const auto& component) { return component.empty(); })) {
       return STATUS(
           InvalidCommand,
-          "Each placement block must be of the form 'cloud.region.zone:[min_replica_count]'. "
+          "Each placement block must be of the form "
+          "'cloud.region.zone[:min_replica_count[:max_replica_count]]'. "
           "Invalid placement block: " + placement_info_split);
     }
 
     int min_replicas = 1;
-    if (placement_block_split.size() == 2) {
+    if (placement_block_split.size() >= 2) {
       min_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[1]));
     }
-    placement_to_min_replicas[placement_block_split[0]] += min_replicas;
+    std::optional<int64_t> max_replicas;
+    if (placement_block_split.size() == 3) {
+      max_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[2]));
+    }
+
+    auto& replica_limits = placement_to_replica_limits[placement_block_split[0]];
+    replica_limits.min_num_replicas += min_replicas;
+    if (replica_limits.max_num_replicas && max_replicas) {
+      *replica_limits.max_num_replicas += *max_replicas;
+    } else {
+      replica_limits.max_num_replicas.reset();
+    }
   }
 
-  for (auto& [placement_block, min_replicas] : placement_to_min_replicas) {
+  for (const auto& [placement_block, replica_limits] : placement_to_replica_limits) {
+    if (replica_limits.min_num_replicas < std::numeric_limits<int32_t>::min() ||
+        replica_limits.min_num_replicas > std::numeric_limits<int32_t>::max()) {
+      return STATUS_FORMAT(
+          InvalidCommand, "Aggregated min replica count is out of range for placement block $0",
+          placement_block);
+    }
+    if (replica_limits.max_num_replicas &&
+        (*replica_limits.max_num_replicas < std::numeric_limits<int32_t>::min() ||
+         *replica_limits.max_num_replicas > std::numeric_limits<int32_t>::max())) {
+      return STATUS_FORMAT(
+          InvalidCommand, "Aggregated max replica count is out of range for placement block $0",
+          placement_block);
+    }
     std::vector<std::string> blocks = strings::Split(placement_block, ".",
                                                     strings::AllowEmpty());
     auto* pb = placement_info_pb->add_placement_blocks();
@@ -2350,7 +2444,29 @@ Status ClusterAdminClient::FillPlacementInfo(
       pb->mutable_cloud_info()->set_placement_zone(blocks[2]);
     }
 
-    pb->set_min_num_replicas(min_replicas);
+    pb->set_min_num_replicas(static_cast<int32_t>(replica_limits.min_num_replicas));
+    if (replica_limits.max_num_replicas) {
+      pb->set_max_num_replicas(static_cast<int32_t>(*replica_limits.max_num_replicas));
+    }
+  }
+
+  // Explicit maxima require unambiguously attributing each tserver to one placement block, so
+  // they cannot be combined with wildcard (partially-specified) blocks anywhere in the placement.
+  // The master rejects this as well (CatalogManagerUtil::ValidateMaxNumReplicasFields), but
+  // failing here gives a friendlier error.
+  const auto& parsed_blocks = placement_info_pb->placement_blocks();
+  const bool has_explicit_max = std::any_of(
+      parsed_blocks.begin(), parsed_blocks.end(),
+      [](const auto& block) { return block.has_max_num_replicas(); });
+  if (has_explicit_max) {
+    for (const auto& block : parsed_blocks) {
+      if (!block.cloud_info().has_placement_region() ||
+          !block.cloud_info().has_placement_zone()) {
+        return STATUS(InvalidCommand,
+            "Max replica counts are not supported in combination with wildcard placements. "
+            "Invalid placement block: " + block.cloud_info().ShortDebugString());
+      }
+    }
   }
 
   return Status::OK();
@@ -4198,27 +4314,6 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::YsqlBackfillReplicationSlotNameToCDCSDKStream(
-    const std::string& stream_id, const std::string& replication_slot_name) {
-  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_stream_id(stream_id);
-  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name);
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(
-      master_replication_proxy_->YsqlBackfillReplicationSlotNameToCDCSDKStream(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    cout << "Error CDC stream with replication slot: " << resp.error().status().message()
-          << endl;
-    return StatusFromPB(resp.error().status());
-  }
-
-  return Status::OK();
-}
-
 Status ClusterAdminClient::DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id) {
   master::DisableDynamicTableAdditionOnCDCSDKStreamRequestPB req;
   master::DisableDynamicTableAdditionOnCDCSDKStreamResponsePB resp;
@@ -4294,6 +4389,48 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
          << AsString(resp.deleted_tablet_entries()) << "\n";
   } else {
     cout << "No additional entries found in cdc state table that requires deletion. \n";
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CleanupStaleCDCStreams(bool dry_run) {
+  master::CleanupStaleCDCStreamsRequestPB req;
+  master::CleanupStaleCDCStreamsResponsePB resp;
+
+  req.set_dry_run(dry_run);
+
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
+  RETURN_NOT_OK(master_replication_proxy_->CleanupStaleCDCStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error cleaning up stale CDC streams: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Found " << resp.stale_entries_size() << " stale cdc_state entries";
+  if (dry_run) {
+    cout << " (dry run)";
+  }
+  cout << ".\n";
+  for (const auto& entry : resp.stale_entries()) {
+    cout << "  tablet_id: " << entry.tablet_id()
+         << ", stream_id: " << entry.stream_id();
+    if (entry.has_colocated_table_id()) {
+      cout << ", colocated_table_id: " << entry.colocated_table_id();
+    }
+    for (const auto& table : entry.tables()) {
+      cout << ", table_id: " << table.table_id();
+      if (table.has_table_name()) {
+        cout << ", table_name: " << table.table_name();
+      }
+    }
+    cout << ", reason: " << entry.reason() << "\n";
+  }
+
+  if (!dry_run) {
+    cout << "Deleted " << resp.deleted_entries_size() << " stale cdc_state entries.\n";
   }
 
   return Status::OK();
@@ -4629,14 +4766,12 @@ Status ClusterAdminClient::PauseResumeXClusterProducerStreams(
 Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
-  for (const ListTabletServersResponsePB::Entry& server : servers) {
-    if (server.has_registration() &&
-        !server.registration().common().private_rpc_addresses().empty()) {
-      return HostPortFromPB(server.registration().common().private_rpc_addresses(0));
-    }
+  const auto rpc_address = SelectTabletServerAddress(servers);
+  if (rpc_address.host().empty()) {
+    return STATUS(NotFound, "Didn't find a server registered with the Master");
   }
 
-  return STATUS(NotFound, "Didn't find a server registered with the Master");
+  return HostPortFromPB(rpc_address);
 }
 
 Status ClusterAdminClient::BootstrapProducer(const TableIds& table_ids) {
@@ -4983,50 +5118,118 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
   return Status::OK();
 }
 
-namespace {
-// Returns true if a tablet covering partition keys [tablet_start, tablet_end) overlaps the
-// requested range [range_start, range_end). An empty bound is unbounded: -inf for a start, +inf
-// for an end.
-bool PartitionRangeOverlaps(
-    Slice tablet_start, Slice tablet_end, Slice range_start, Slice range_end) {
-  // tablet_start < range_end
-  const bool below_range_end =
-      range_end.empty() || tablet_start.empty() || tablet_start.compare(range_end) < 0;
-  // range_start < tablet_end
-  const bool above_range_start =
-      tablet_end.empty() || range_start.empty() || range_start.compare(tablet_end) < 0;
-  return below_range_end && above_range_start;
-}
-}  // namespace
-
-Status ClusterAdminClient::GetTableXorHash(
-    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key) {
-  uint64_t xor_hash = 0;
-  uint64_t row_count = 0;
+// Hashes [start_key, end_key) of one table at one read time, folding the per-tablet answers into a
+// single total. Visits tablets in key order so a spent max_rows leaves nothing unhashed behind the
+// continuation key, and fails rather than combine tablets that hashed under different schemes.
+Result<TableHashTotals> ClusterAdminClient::ComputeTableXorHash(
+    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key,
+    std::ostream* verbose, uint64_t max_rows) {
+  TableHashTotals totals;
   const bool has_key_range = !start_key.empty() || !end_key.empty();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
   RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
-  std::cout << "Processing " << tablet_locations.size() << " tablets for table " << table_id
-            << std::endl;
+  if (verbose) {
+    *verbose << "Processing " << tablet_locations.size() << " tablets for table " << table_id
+             << std::endl;
+  }
+
+  // Bounds are compared against tablet partition keys below, so both have to live in the same byte
+  // space. For a hash table a partition key is a bare 2-byte hash, while the continuation key a
+  // capped scan hands back is a full encoded row key, which byte-compares as larger than almost
+  // every 2-byte bound. Lift both sides into the encoded space first. GetEncodedPartitionKey is the
+  // identity for a range table, so this is a no-op there.
+  const auto table_info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& partition_schema = table_info.partition_schema;
+  // A 2-byte key is a partition key and gets encoded; anything else is either empty or already an
+  // encoded continuation key, and passes through untouched.
+  auto to_encoded_key = [&partition_schema](Slice key) -> Result<std::string> {
+    if (key.size() != dockv::PartitionSchema::kPartitionKeySize) {
+      return key.ToBuffer();
+    }
+    return partition_schema.GetEncodedPartitionKey(key.ToBuffer());
+  };
+  const auto encoded_start_key = VERIFY_RESULT(to_encoded_key(start_key));
+  const auto encoded_end_key = VERIFY_RESULT(to_encoded_key(end_key));
+  // start_key is inclusive and end_key exclusive, so a bounded range must have start < end. The
+  // check belongs here rather than in the CLI because only the encoded forms are comparable: a
+  // hash continuation key and a 2-byte hash bound order differently as raw bytes. An empty bound is
+  // unbounded on that side and imposes no ordering constraint.
+  SCHECK(
+      encoded_start_key.empty() || encoded_end_key.empty() ||
+          encoded_start_key < encoded_end_key,
+      InvalidArgument,
+      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
 
   HybridTime ht;
   if (!read_ht) {
-    ht = HybridTime::FromMicros(DateTime::TimestampNow().ToInt64());
+    // Ask the cluster for the time, not this machine. yb-admin runs anywhere, and a fast local
+    // clock would name a read time no replica has reached.
+    server::ServerClockRequestPB clock_req;
+    server::ServerClockResponsePB clock_resp;
+    RpcController clock_rpc;
+    clock_rpc.set_timeout(timeout_);
+    server::GenericServiceProxy generic_proxy(proxy_cache_.get(), leader_addr_);
+    RETURN_NOT_OK_PREPEND(
+        generic_proxy.ServerClock(clock_req, &clock_resp, &clock_rpc),
+        Format("Unable to read the cluster clock from master $0", leader_addr_));
+    SCHECK_FORMAT(
+        clock_resp.has_hybrid_time(), IllegalState, "Master $0 returned no hybrid time",
+        leader_addr_);
+    RETURN_NOT_OK(ht.FromUint64(clock_resp.hybrid_time()));
   } else {
     RETURN_NOT_OK(ht.FromUint64(read_ht));
   }
-  std::cout << "Read HT: " << ht << std::endl;
+  totals.read_ht = ht.ToUint64();
+  if (verbose) {
+    *verbose << "Read HT: " << ht << std::endl;
+  }
 
+  // The first tablet to answer, whose scheme every later one is held to. Empty until then, which is
+  // also how a range that hashed nothing leaves hash_scheme_version unset.
+  TabletId scheme_source_tablet;
+
+  // Each entry is (encoded partition_key_start, tablet). The encoded form is carried alongside so
+  // the sort below orders tablets in the same byte space as every other comparison here.
+  std::vector<std::pair<std::string, const master::TabletLocationsPB*>> overlapping;
+  overlapping.reserve(tablet_locations.size());
   for (const auto& location : tablet_locations) {
+    auto tablet_start = VERIFY_RESULT(to_encoded_key(location.partition().partition_key_start()));
     // When a key range is requested, skip tablets that do not overlap it. Each cluster resolves the
     // (logical) partition-key range to whatever tablets it happens to own, so this filtering is
     // cluster-independent even when tablet boundaries differ across clusters.
-    if (has_key_range &&
-        !PartitionRangeOverlaps(
-            location.partition().partition_key_start(),
-            location.partition().partition_key_end(), start_key, end_key)) {
-      continue;
+    if (has_key_range) {
+      const auto tablet_end =
+          VERIFY_RESULT(to_encoded_key(location.partition().partition_key_end()));
+      if (!PartitionRangeOverlaps(tablet_start, tablet_end, encoded_start_key, encoded_end_key)) {
+        continue;
+      }
+    }
+    overlapping.emplace_back(std::move(tablet_start), &location);
+  }
+  // The cap has to be spent on tablets in key order, otherwise the continuation key would report a
+  // resume point with unhashed tablets left behind it. Ordering is harmless when there is no cap.
+  // Sorting on the encoded start keeps this in the same byte space as the bounds comparisons above.
+  // Raw keys happen to sort the same way today, but relying on that would leave one comparison here
+  // reading a different space from every other.
+  std::sort(overlapping.begin(), overlapping.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.first < rhs.first;
+  });
+
+  for (const auto& [encoded_tablet_start, location_ptr] : overlapping) {
+    const auto& location = *location_ptr;
+    if (max_rows > 0 && totals.row_count >= max_rows) {
+      // Previous tablet hashed exactly the remaining budget. Continue from this tablet's start
+      // if it is still inside the requested range. Report the encoded form, not the raw partition
+      // key: a caller compares this against range bounds, which are encoded, and for a hash table
+      // the two spaces order differently. Handing back the raw 2-byte key lets a bound read as
+      // already passed, ending a range with tablets inside it still unhashed.
+      if ((encoded_start_key.empty() || encoded_tablet_start >= encoded_start_key) &&
+          (encoded_end_key.empty() || encoded_tablet_start < encoded_end_key)) {
+        totals.next_key = encoded_tablet_start;
+      }
+      break;
     }
 
     auto leader_replica = std::find_if(
@@ -5036,7 +5239,12 @@ Status ClusterAdminClient::GetTableXorHash(
         leader_replica != location.replicas().end(), NotFound,
         "Leader replica not found for tablet $0", location.tablet_id());
 
-    auto addr = HostPort::FromPB(leader_replica->ts_info().private_rpc_addresses(0));
+    const auto rpc_address = SelectServerAddress(leader_replica->ts_info());
+    SCHECK_FORMAT(
+        !rpc_address.host().empty(), NotFound,
+        "Leader replica for tablet $0 has no RPC address registered", location.tablet_id());
+
+    auto addr = HostPort::FromPB(rpc_address);
     auto tserver_proxy =
         std::make_unique<tserver::TabletServerServiceProxy>(proxy_cache_.get(), addr);
     tserver::DumpTabletDataRequestPB req;
@@ -5046,6 +5254,7 @@ Status ClusterAdminClient::GetTableXorHash(
     req.set_tablet_id(location.tablet_id());
     req.set_read_ht(ht.ToUint64());
     req.set_table_id(table_id);
+    req.set_max_wait_ms(FLAGS_read_time_wait_ms);
     // The same global bounds are passed to every overlapping tablet unchanged: each tablet's scan
     // only sees rows within its own partition, so the bounds effectively clamp to that tablet.
     if (!start_key.empty()) {
@@ -5054,20 +5263,402 @@ Status ClusterAdminClient::GetTableXorHash(
     if (!end_key.empty()) {
       req.set_end_key(end_key.cdata(), end_key.size());
     }
+    if (max_rows > 0) {
+      req.set_max_rows(max_rows - totals.row_count);
+    }
     RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
     if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
+      // The server's message does not say which tablet or which server it came from.
+      return StatusFromPB(resp.error().status())
+          .CloneAndPrepend(Format("Tablet $0 on $1", location.tablet_id(), addr));
     }
-    std::cout << "Tablet ID: " << location.tablet_id() << std::endl;
-    std::cout << "\tRow count: " << resp.row_count() << std::endl;
-    std::cout << "\tXOR hash: " << resp.xor_hash() << std::endl;
-    std::cout << std::endl;
-    xor_hash ^= resp.xor_hash();
-    row_count += resp.row_count();
+    // A tserver that predates the field is reported as scheme 0, not as "same as everyone else":
+    // during a rolling upgrade it really is hashing differently from its upgraded peers.
+    const uint32_t tablet_scheme = resp.hash_scheme_version();
+    if (verbose) {
+      *verbose << "Tablet ID: " << location.tablet_id() << std::endl;
+      *verbose << "\tRow count: " << resp.row_count() << std::endl;
+      *verbose << "\tXOR hash: " << resp.xor_hash() << std::endl;
+      *verbose << "\tHash scheme version: " << tablet_scheme << std::endl;
+      *verbose << std::endl;
+    }
+    // Tablet hashes fold into one total only when every tablet hashed the same way. Mid-upgrade the
+    // leaders of one table can sit on binaries of different versions, and xoring their hashes
+    // together yields a number that matches nothing on either scheme.
+    if (scheme_source_tablet.empty()) {
+      totals.hash_scheme_version = tablet_scheme;
+      scheme_source_tablet = location.tablet_id();
+    } else if (tablet_scheme != *totals.hash_scheme_version) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Tablets of table $0 hashed under different schemes, so their hashes cannot be combined: "
+          "tablet $1 reports version $2, tablet $3 on $4 reports version $5. This is expected "
+          "while an upgrade is in progress; re-run once every tserver is on the same version.",
+          table_id, scheme_source_tablet, *totals.hash_scheme_version, location.tablet_id(), addr,
+          tablet_scheme);
+    }
+    totals.xor_hash ^= resp.xor_hash();
+    totals.row_count += resp.row_count();
+    if (max_rows > 0 && resp.has_next_key() && !resp.next_key().empty()) {
+      totals.next_key = resp.next_key();
+      break;
+    }
   }
 
-  std::cout << "Total row count: " << row_count << std::endl;
-  std::cout << "Total XOR hash: " << xor_hash << std::endl;
+  return totals;
+}
+
+// Prints the totals for `yb-admin get_table_hash`. ComputeTableXorHash does the hashing and streams
+// the per-tablet lines; this only reports the summary.
+Status ClusterAdminClient::GetTableXorHash(
+    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key, uint64_t max_rows) {
+  auto totals = VERIFY_RESULT(
+      ComputeTableXorHash(table_id, read_ht, start_key, end_key, &std::cout, max_rows));
+  std::cout << "Total row count: " << totals.row_count << std::endl;
+  std::cout << "Total XOR hash: " << totals.xor_hash << std::endl;
+  // Lets two hashes taken by hand be checked for comparability first. Absent when no tablet was
+  // hashed.
+  if (totals.hash_scheme_version) {
+    std::cout << "Hash scheme version: " << *totals.hash_scheme_version << std::endl;
+  }
+  if (!totals.next_key.empty()) {
+    std::cout << "Next key: " << strings::b2a_hex(totals.next_key) << std::endl;
+  }
+  return Status::OK();
+}
+
+Result<SchemaFingerprint> ClusterAdminClient::GetSchemaFingerprint(const TableId& table_id) {
+  auto info = VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  // A catalog schema always carries column ids, so rejecting one here means the
+  // master returned something malformed. Prepended because its message names no table, and the
+  // table is what an operator needs to act on it.
+  return VERIFY_RESULT_PREPEND(
+      BuildSchemaFingerprint(info.schema),
+      Format("Cannot fingerprint schema of table $0", table_id));
+}
+
+Result<bool> ClusterAdminClient::IsVectorIndex(const TableId& table_id) {
+  const auto info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  return info.index_info && info.index_info->is_vector_index();
+}
+
+Result<std::vector<client::YBTableName>> ClusterAdminClient::ListUserTablesInNamespaceOf(
+    const TableId& table_id) {
+  const auto info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& table_name = info.table_name;
+  SCHECK_FORMAT(
+      !table_name.namespace_id().empty(), IllegalState, "Table $0 reported no namespace id",
+      table_id);
+  master::NamespaceIdentifierPB ns;
+  ns.set_id(table_name.namespace_id());
+  // The id is what resolves the namespace. GetTableSchema leaves the type unset, so this carries
+  // UNKNOWN, which the master ignores when an id is present.
+  ns.set_database_type(table_name.namespace_type());
+  return yb_client_->ListUserTables(ns, /* include_indexes = */ true);
+}
+
+Result<std::vector<KeyRange>> ClusterAdminClient::ListTableKeyRanges(const TableId& table_id) {
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
+  RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
+  const auto table_info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& partition_schema = table_info.partition_schema;
+
+  // Returned encoded, not as raw partition keys. A hash table's partition key is a bare 2-byte
+  // hash, while the continuation key a capped scan hands back is a full encoded row key, and the
+  // two do not byte-compare: an encoded key is larger than almost every 2-byte bound. Since a
+  // range's end is compared against continuation keys to decide when the range is covered, a raw
+  // bound would declare the range finished on its first capped slice. GetEncodedPartitionKey is the
+  // identity for a range table, so this is a no-op there.
+  auto encode = [&partition_schema](const std::string& key) -> Result<std::string> {
+    if (key.size() != dockv::PartitionSchema::kPartitionKeySize) {
+      return key;
+    }
+    return partition_schema.GetEncodedPartitionKey(key);
+  };
+
+  std::vector<KeyRange> ranges;
+  ranges.reserve(tablet_locations.size());
+  for (const auto& location : tablet_locations) {
+    ranges.push_back(
+        KeyRange{
+            .start = VERIFY_RESULT(encode(location.partition().partition_key_start())),
+            .end = VERIFY_RESULT(encode(location.partition().partition_key_end()))});
+  }
+  // Ranges are verified independently so order does not affect the result, but a stable order keeps
+  // a sequential run's output reproducible.
+  std::sort(ranges.begin(), ranges.end(), [](const KeyRange& lhs, const KeyRange& rhs) {
+    return lhs.start < rhs.start;
+  });
+  return ranges;
+}
+
+Result<uint64_t> ClusterAdminClient::GetXClusterSafeTimeForTable(const TableId& table_id) {
+  const auto info =
+      VERIFY_RESULT(yb_client_->GetYBTableInfoById(table_id, /* include_hidden = */ false));
+  const auto& namespace_id = info.table_name.namespace_id();
+  // Defensive and untested: a table the master returned always carries a namespace id, and the
+  // safe time RPC would fail obscurely on an empty one.
+  SCHECK_FORMAT(
+      !namespace_id.empty(), IllegalState, "Table $0 reported no namespace id", table_id);
+  // Every way of not getting a usable time ends in the same advice, which the master's own wording
+  // ("Could not find safe time entry for namespace ...") does not carry. This is what an operator
+  // sees when the universe has no inbound transactional replication, the common way here.
+  const auto no_safe_time_advice = Format(
+      "no usable xCluster safe time for namespace $0. A read time is resolved from the target's "
+      "xCluster safe time, which exists only while transactional (or automatic-mode) xCluster "
+      "replication is inbound and has been computed; verification cannot safely distinguish "
+      "replication lag from divergence without it",
+      namespace_id);
+  // NONE keeps every replicated table in the namespace in the minimum, including the ddl_queue
+  // table. Filtering it out would hand back a time ahead of a pending DDL.
+  const auto safe_time = VERIFY_RESULT_PREPEND(
+      yb_client_->GetXClusterSafeTimeForNamespace(
+          namespace_id, master::XClusterSafeTimeFilter::NONE),
+      no_safe_time_advice);
+  // kInvalid / kMin / kMax all mean some tablet of the namespace has not reported yet; reading at
+  // one would fail obscurely or silently read where the data has not reached. Defensive and
+  // untested: the master reports a namespace with no computed safe time as an error instead.
+  SCHECK_FORMAT(
+      !safe_time.is_special(), IllegalState, "$0 (safe time is $1)", no_safe_time_advice,
+      safe_time);
+  return safe_time.ToUint64();
+}
+
+Result<SliceVerifyOutcome> ClusterAdminClient::VerifyXClusterSliceAgainst(
+    ClusterAdminClient* source, const SliceVerifyRequest& req) {
+  SCHECK(source != nullptr, InvalidArgument, "source cluster client is required");
+  auto fetch = [](ClusterAdminClient* client) {
+    return [client](const TableId& table_id) { return client->GetSchemaFingerprint(table_id); };
+  };
+  auto hash = [](ClusterAdminClient* client) {
+    return [client](
+               const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key,
+               uint64_t max_rows) {
+      return client->ComputeTableXorHash(
+          table_id, read_ht, start_key, end_key, /* verbose = */ nullptr, max_rows);
+    };
+  };
+  auto safe_time = GetXClusterSafeTimeForTable(req.target_table_id);
+  if (!safe_time.ok()) {
+    return BaseSliceOutcome(
+        req, ClassifyStatus(safe_time.status(), XClusterClassifyContext::kHash),
+        Format("unable to resolve the target's xCluster safe time: $0", safe_time.status()));
+  }
+  if (req.read_ht && req.read_ht > *safe_time) {
+    return BaseSliceOutcome(
+        req, XClusterVerifyResult::kTryAgain,
+        Format(
+            "requested read time $0 is ahead of the target's xCluster safe time $1, so the "
+            "target has not necessarily applied everything the source holds at that time. "
+            "Nothing was compared; retry once the target has caught up, or verify at a read time "
+            "at or below the safe time.",
+            req.read_ht, *safe_time));
+  }
+  // Drawn from the target rather than the source clock. The target's xCluster safe time is a
+  // source-cluster hybrid time already applied here, so both sides can read it immediately. Naming
+  // the source's current time instead would make every slice wait out the replication lag, and
+  // report the ordinary lag that outlives the wait as kTryAgain.
+  ResolveReadTimeFn resolve_read_time = [safe_time = *safe_time]() {
+    return safe_time;
+  };
+  return VerifyXClusterSlice(
+      req, fetch(source), fetch(this), hash(source), hash(this), resolve_read_time);
+}
+
+namespace {
+
+// A colocation parent names the tables sharing its replicated tablet but contains no user rows.
+template <typename AddPairFn>
+Status ExpandColocationParent(
+    ClusterAdminClient* source, ClusterAdminClient* target, const TableId& source_parent,
+    const TableId& target_parent, const AddPairFn& add_pair,
+    std::vector<std::string>* unpaired) {
+  const auto source_tables = VERIFY_RESULT(source->ListUserTablesInNamespaceOf(source_parent));
+  const auto target_tables = VERIFY_RESULT(target->ListUserTablesInNamespaceOf(target_parent));
+
+  using TableKey = std::pair<std::string, std::string>;
+  auto key_of = [](const client::YBTableName& name) {
+    return TableKey(name.pgschema_name(), name.table_name());
+  };
+  auto describe = [](const client::YBTableName& name) {
+    return name.pgschema_name().empty()
+               ? name.table_name()
+               : Format("$0.$1", name.pgschema_name(), name.table_name());
+  };
+  auto never_replicated = [](const client::YBTableName& name) {
+    return name.pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+           name.table_name() == xcluster::kDDLReplicatedTableName;
+  };
+
+  std::map<TableKey, client::YBTableName> target_by_key;
+  std::set<TableKey> ambiguous;
+  for (const auto& table : target_tables) {
+    if (never_replicated(table)) {
+      continue;
+    }
+    if (!target_by_key.emplace(key_of(table), table).second) {
+      ambiguous.insert(key_of(table));
+    }
+  }
+
+  for (const auto& table : source_tables) {
+    if (never_replicated(table)) {
+      continue;
+    }
+    if (ambiguous.contains(key_of(table))) {
+      unpaired->push_back(Format(
+          "$0 ($1) matches more than one table on the target by schema and name; it cannot be "
+          "paired unambiguously", describe(table), table.table_id()));
+      target_by_key.erase(key_of(table));
+      continue;
+    }
+    const auto it = target_by_key.find(key_of(table));
+    if (it == target_by_key.end()) {
+      unpaired->push_back(Format(
+          "$0 ($1) is on the source and not the target", describe(table), table.table_id()));
+      continue;
+    }
+    RETURN_NOT_OK(add_pair(table.table_id(), it->second.table_id()));
+    target_by_key.erase(it);
+  }
+  for (const auto& [key, table] : target_by_key) {
+    unpaired->push_back(Format(
+        "$0 ($1) is on the target and not the source", describe(table), table.table_id()));
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ClusterAdminClient::VerifyXClusterGroup(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const GroupVerifyOptions& options,
+    const std::unordered_set<TableId>& skip_source_table_ids) {
+  const auto group_info = VERIFY_RESULT(
+      XClusterClient().GetUniverseReplicationInfo(replication_group_id));
+  SCHECK_FORMAT(
+      !group_info.source_master_addrs.empty(), NotSupported,
+      "replication group $0 does not report structured source master addresses; upgrade the target "
+      "masters before verification",
+      replication_group_id);
+  SCHECK_FORMAT(
+      group_info.automatic_ddl_mode, NotSupported,
+      "verification of replication group $0 requires automatic-mode xCluster, because its "
+      "certified safe time distinguishes replication lag from divergence",
+      replication_group_id);
+  const auto source_master_addrs =
+      HostPort::ToCommaSeparatedString(group_info.source_master_addrs);
+  ClusterAdminClient source(source_master_addrs, timeout_);
+  RETURN_NOT_OK_PREPEND(
+      source.Init(),
+      Format("Unable to connect to source masters at [$0]", source_master_addrs));
+
+  std::vector<TablePairToVerify> pairs;
+  std::vector<std::string> unpaired;
+  size_t skipped = 0;
+  std::unordered_set<TableId> matched_skips;
+  std::unordered_set<TableId> seen_source;
+  auto add_pair = [&](const TableId& source_table_id, const TableId& target_table_id) -> Status {
+    if (!seen_source.insert(source_table_id).second) {
+      return Status::OK();
+    }
+    if (skip_source_table_ids.contains(source_table_id)) {
+      ++skipped;
+      matched_skips.insert(source_table_id);
+      std::cerr << "Skipping table " << source_table_id
+                << " (skip_source_table_ids); it will not be verified" << std::endl;
+      return Status::OK();
+    }
+    if (target_table_id.empty()) {
+      unpaired.push_back(Format(
+          "$0 has no target table in this group; it may not be fully set up yet",
+          source_table_id));
+      return Status::OK();
+    }
+    const auto source_is_vector_index = VERIFY_RESULT(source.IsVectorIndex(source_table_id));
+    const auto target_is_vector_index = VERIFY_RESULT(IsVectorIndex(target_table_id));
+    if (source_is_vector_index || target_is_vector_index) {
+      if (source_is_vector_index != target_is_vector_index) {
+        unpaired.push_back(Format(
+            "$0 and $1 disagree on whether the table is a vector index",
+            source_table_id, target_table_id));
+      } else {
+        std::cerr << "Skipping vector index " << source_table_id
+                  << "; verify does not hash vector index data" << std::endl;
+      }
+      return Status::OK();
+    }
+    pairs.push_back(TablePairToVerify{
+        .source_table_id = source_table_id, .target_table_id = target_table_id});
+    return Status::OK();
+  };
+
+  std::vector<std::pair<TableId, TableId>> colocation_parents;
+  for (const auto& table : group_info.table_infos) {
+    if (xcluster::IsSequencesDataAlias(table.source_table_id) ||
+        xcluster::IsSequencesDataAlias(table.target_table_id)) {
+      std::cerr << "Skipping sequences data for replication group " << replication_group_id
+                << "; verify does not hash sequence data" << std::endl;
+      continue;
+    }
+    if (IsColocationParentTableId(table.source_table_id) ||
+        IsColocationParentTableId(table.target_table_id)) {
+      colocation_parents.emplace_back(table.source_table_id, table.target_table_id);
+      continue;
+    }
+    RETURN_NOT_OK(add_pair(table.source_table_id, table.target_table_id));
+  }
+
+  for (const auto& [source_parent, target_parent] : colocation_parents) {
+    if (target_parent.empty()) {
+      unpaired.push_back(Format(
+          "$0 has no target colocation parent in this group; it may not be fully set up yet",
+          source_parent));
+      continue;
+    }
+    RETURN_NOT_OK_PREPEND(
+        ExpandColocationParent(
+            &source, this, source_parent, target_parent, add_pair, &unpaired),
+        Format("Unable to expand colocation parent $0", source_parent));
+  }
+
+  for (const auto& id : skip_source_table_ids) {
+    if (!matched_skips.contains(id)) {
+      std::cerr << "Warning: skip_source_table_ids named " << id
+                << ", which is not a source table in this group; it skipped nothing" << std::endl;
+    }
+  }
+  SCHECK_FORMAT(
+      !pairs.empty() || skipped == 0, InvalidArgument,
+      "every table in replication group $0 was skipped by skip_source_table_ids, so nothing was "
+      "verified", replication_group_id);
+  const auto unpaired_detail = unpaired.empty() ? std::string() : Format(": $0", unpaired);
+  SCHECK_FORMAT(
+      !pairs.empty(), NotFound, "replication group $0 has no tables to verify$1",
+      replication_group_id, unpaired_detail);
+
+  auto summary = VERIFY_RESULT(VerifyXClusterTablePairs(
+      pairs, options,
+      [this, &source](const SliceVerifyRequest& req) {
+        return VerifyXClusterSliceAgainst(&source, req);
+      },
+      [&source](const TableId& table_id) {
+        return source.ListTableKeyRanges(table_id);
+      },
+      [](const SliceVerifyOutcome& outcome) {
+        std::cout << SliceVerifyOutcomeToJsonLine(outcome) << std::endl;
+      }));
+  if (!unpaired.empty()) {
+    summary.unpaired = std::move(unpaired);
+    ApplyVerdict(&summary, XClusterVerifyResult::kSchemaMismatch);
+  }
+  std::cout << GroupVerifySummaryToJson(summary) << std::endl;
+  SCHECK_FORMAT(
+      summary.result == XClusterVerifyResult::kMatch, IllegalState,
+      "verify finished as $0; see the summary above", ToCString(summary.result));
   return Status::OK();
 }
 

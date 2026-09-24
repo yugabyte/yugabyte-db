@@ -24,6 +24,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_flags.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
@@ -35,6 +36,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
@@ -276,6 +278,20 @@ class ObjectLockInfoManager::Impl {
     // No need to acquire the leader lock for testing.
     LockGuard lock(mutex_);
     return local_lock_manager_;
+  }
+
+  Result<SysObjectLockEntryPB> TEST_GetObjectLockInfoPB(const std::string& tserver_uuid)
+      EXCLUDES(mutex_) {
+    LockGuard lock(mutex_);
+    auto it = object_lock_infos_map_.find(tserver_uuid);
+    if (it == object_lock_infos_map_.end()) {
+      return STATUS_FORMAT(NotFound, "No ObjectLockInfo for tserver $0", tserver_uuid);
+    }
+    return it->second->LockForRead()->pb;
+  }
+
+  tserver::DdlLockEntriesPB TEST_ExportObjectLockInfoForMaster() EXCLUDES(mutex_) {
+    return ExportObjectLockInfoForMaster();
   }
 
   /*
@@ -555,7 +571,8 @@ std::string ReleaseObjectLockRequestToString(const ReleaseObjectLockRequestPB& p
   ss << "ReleaseObjectLockRequestPB{";
   ss << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
       txn_id, pb.subtxn_id(), pb.session_host_uuid(), pb.lease_epoch(),
-      pb.apply_after_hybrid_time(), pb.propagated_hybrid_time(), pb.request_id());
+      pb.apply_after_hybrid_time(), pb.propagated_hybrid_time(), pb.request_id(),
+      pb.ignore_lease_epochs_before());
   ss << "}";
   return ss.str();
 }
@@ -607,6 +624,9 @@ ReleaseObjectLockRequestPB ReleaseRequestToPersist(const ReleaseObjectLockReques
   DCHECK(!req.has_db_catalog_inval_messages_data());
   req_to_persist.set_populate_db_catalog_info(req.populate_db_catalog_info());
   req_to_persist.mutable_object_locks()->CopyFrom(req.object_locks());
+  if (req.has_ignore_lease_epochs_before()) {
+    req_to_persist.set_ignore_lease_epochs_before(req.ignore_lease_epochs_before());
+  }
 
 #ifndef NDEBUG
   DCHECK(CompareReleaseRequestsIgnoringCatalogFields(req, req_to_persist))
@@ -745,6 +765,15 @@ bool ObjectLockInfoManager::TabletServerHasLiveLease(const std::string& ts_uuid)
 
 std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_local_lock_manager() {
   return impl_->TEST_ts_local_lock_manager();
+}
+
+Result<SysObjectLockEntryPB> ObjectLockInfoManager::TEST_GetObjectLockInfoPB(
+    const std::string& tserver_uuid) {
+  return impl_->TEST_GetObjectLockInfoPB(tserver_uuid);
+}
+
+tserver::DdlLockEntriesPB ObjectLockInfoManager::TEST_ExportObjectLockInfoForMaster() {
+  return impl_->TEST_ExportObjectLockInfoForMaster();
 }
 
 std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLockInfo(
@@ -1060,13 +1089,19 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   if (!req.populate_db_catalog_info()) {
     return;
   }
+  // Captured before the read below, and handed to InstallPgCatalogVersionsSnapshot() at the end:
+  // it is what lets that call notice a leader stepdown that reset the cache in between, and
+  // decline rather than repopulating it with pre-stepdown data.
+  const auto cache_generation = catalog_manager_.GetPgCatalogVersionsCacheGeneration();
+
   // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
   // logic on the tserver side expects a full report. Fix it and then optimize the below to only
   // send the catalog version of the db being operated on by the txn.
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint;
-  auto s =
-      catalog_manager_.GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, &fingerprint);
+  HybridTime read_ht;
+  auto s = catalog_manager_.GetYsqlAllDBCatalogVersions(
+      false /* use_cache */, &versions, &fingerprint, &read_ht);
   if (!s.ok()) {
     // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
     LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
@@ -1086,19 +1121,44 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
     catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
   }
 
-  if (!FLAGS_ysql_yb_enable_invalidation_messages) {
-    return;
+  // update_messages distinguishes "leave the messages cache alone" (feature off) from "replace
+  // it", where a nullopt payload marks the messages unavailable so the next refresh re-reads
+  // them. Leaving a valid-but-older messages cache in place while advancing the versions would be
+  // worse than either: RefreshPgCatalogVersionCache decides whether to re-read
+  // pg_yb_invalidation_messages by comparing fingerprints, so it would conclude nothing changed
+  // and never catch the messages up.
+  bool update_messages = false;
+  std::optional<DbOidVersionToMessageListMap> messages;
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
+    update_messages = true;
+    auto inval_messages = catalog_manager_.GetYsqlCatalogInvalationMessages(false /* use_cache */);
+    if (inval_messages.ok()) {
+      messages = std::move(*inval_messages);
+    } else {
+      LOG(WARNING) << "Couldn't populate invalidation messages in lock release request "
+                   << inval_messages.status();
+    }
   }
 
-  // Populate all known invalidation messages
-  Result<DbOidVersionToMessageListMap> inval_messages =
-    catalog_manager_.GetYsqlCatalogInvalationMessages(false /*use_cache*/);
-  if (!inval_messages.ok()) {
-    LOG(WARNING) << "Couldn't populate invalidation messages in lock release request " << s;
+  // Feed the same snapshot into the heartbeat catalog versions cache, before the request above is
+  // sent. That cache is refreshed by a background task which can stall (its thread pool is shared
+  // with DDL verification work), and while it is stalled the broadcast would push tservers past
+  // any version the heartbeat will ever report -- which the tserver's staleness check treats as
+  // divergence and crashes on. Installing here keeps the cache at least as new as anything
+  // broadcast, independently of that task's health.
+  //
+  // `messages` is passed by value, i.e. copied, because the loop below moves it into the request.
+  // Installing after that loop instead would cache empty message lists for real versions, which a
+  // tserver merging them against genuine content reports as a message_list mismatch DFATAL.
+  catalog_manager_.InstallPgCatalogVersionsSnapshot(
+      cache_generation, read_ht, std::move(versions), fingerprint, update_messages, messages);
+
+  if (!messages) {
+    // Feature disabled, or the read above failed. Either way there is nothing to send.
     return;
   }
   auto* const mutable_messages_data = req.mutable_db_catalog_inval_messages_data();
-  for (auto& [db_oid_version, message_list] : *inval_messages) {
+  for (auto& [db_oid_version, message_list] : *messages) {
     auto* const db_inval_messages = mutable_messages_data->add_db_catalog_inval_messages();
     db_inval_messages->set_db_oid(db_oid_version.first);
     db_inval_messages->set_current_version(db_oid_version.second);
@@ -1106,7 +1166,6 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
       db_inval_messages->set_message_list(std::move(*message_list));
     }
   }
-
 }
 
 Status ObjectLockInfoManager::Impl::UnlockObjectSync(
@@ -1343,9 +1402,10 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByE
         request.set_session_host_uuid(tserver_uuid);
         auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
         request.set_txn_id(txn_id.data(), txn_id.size());
-        request.set_lease_epoch(max_lease_epoch_to_release + 1);
+        request.set_lease_epoch(lease_epoch);
         request.set_request_id(next_request_id());
         request.set_populate_db_catalog_info(requests_per_txn.size() == 1);
+        request.set_ignore_lease_epochs_before(max_lease_epoch_to_release + 1);
       }
     }
   }

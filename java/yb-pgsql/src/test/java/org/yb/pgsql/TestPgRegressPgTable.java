@@ -55,6 +55,9 @@ public class TestPgRegressPgTable extends BasePgRegressTestPorted {
     // (Auto-Analyze #28393) error output is flaky.
     flagMap.put("ysql_enable_auto_analyze", "false");
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", String.valueOf(objectLockingEnabled));
+    flagMap.put("ysql_yb_enable_ddl_savepoint_support", String.valueOf(objectLockingEnabled));
+    flagMap.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks",
+        String.valueOf(objectLockingEnabled));
     flagMap.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
     flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
     flagMap.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));

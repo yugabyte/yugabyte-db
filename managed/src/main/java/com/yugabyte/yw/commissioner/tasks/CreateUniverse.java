@@ -349,6 +349,16 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
+      // Configure cross-cloud federated IAM if the universe is set up for it. The flag is set on
+      // the UserIntent by the create handler (like certs), so create keys off it the same way
+      // edit/add-node/replace do.
+      if (isUniverseFederationConfigured()) {
+        for (Cluster cluster : taskParams().clusters) {
+          createConfigureCloudFederationTasks(
+              cluster.userIntent, taskParams().getNodesInCluster(cluster.uuid), true);
+        }
+      }
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       // This also flips universeDetails.creationSucceeded to true (see UniverseUpdateSucceeded)
       // which is what gates health checks and alert definition creation for this universe.

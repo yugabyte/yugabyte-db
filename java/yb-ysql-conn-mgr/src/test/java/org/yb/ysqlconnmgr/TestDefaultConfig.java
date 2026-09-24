@@ -13,6 +13,7 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import java.io.BufferedReader;
@@ -22,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,6 +101,26 @@ public class TestDefaultConfig extends BaseYsqlConnMgr {
 
   protected Map<String, String> expectedConfig() {
     return DEFAULT_CONFIG;
+  }
+
+  // The parse queue is always on now. Setting the flag that used to control it
+  // must not stop the tserver from starting, and must not reach the generated
+  // config, which no longer has a key for it.
+  @Test
+  public void testDeprecatedParseQueueTrackingFlag() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(),
+        Collections.singletonMap("ysql_conn_mgr_enable_parse_queue_tracking", "true"));
+    markClusterNeedsRecreation();
+    setPaths();
+
+    getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                          .connect()
+                          .close();
+
+    for (String key : fetchConfigs(fetchConfigPath()).keySet()) {
+      assertFalse("Deprecated flag reached the config as \"" + key + "\"",
+          key.contains("parse_queue"));
+    }
   }
 
   private Map<String, String> fetchConfigs(Path pathConfig) {

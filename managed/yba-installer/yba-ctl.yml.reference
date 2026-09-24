@@ -13,10 +13,20 @@ installRoot: "/opt/yugabyte"
 host: ""
 
 # HTTPS server cert and key in PEM format.
-# The certificate SAN/CN must match the host setting above
+# The certificate must have a subject alternative name (SAN) matching the host setting above.
+# A cert that only matches through the deprecated Common Name (CN) field still installs, but is
+# rejected by browsers and other modern TLS clients.
 # OK to leave empty - a self-signed cert will be generated
 server_cert_path: ""
 server_key_path: ""
+
+# FIPS 140-3 mode.
+# When true, the platform JVM runs BouncyCastle in approved-only mode
+# (-Dorg.bouncycastle.fips.approved_only=true) and YBA enforces the FIPS password policy.
+# The TLS keystore is written in BCFKS format either way, so this can be turned on later
+# without regenerating certificates.
+fips:
+   enabled: false
 
 # Linux user which will run all services that make up YugabyteDB Anywhere.
 # With default settings, the user "yugabyte" will be created and used.

@@ -111,7 +111,7 @@ extern PGDLLIMPORT volatile uint32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
-extern void YBCheckForInterrupts(void);
+extern bool YBHasProcessableAbortInterrupt(void);
 
 /* Test whether an interrupt is pending */
 #ifndef WIN32
@@ -373,6 +373,8 @@ typedef enum BackendType
 	YB_MATVIEW_REFRESH_DDL,
 	YB_RELCACHE_INIT_BACKEND,
 	YB_GLOBAL_VIEW_BACKEND,
+	YB_XCLUSTER_DDL_QUEUE_BACKEND,
+	YB_XCLUSTER_SETUP_BACKEND,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;
@@ -519,7 +521,7 @@ extern void BaseInit(void);
 
 extern void YbCheckMyDatabase(const char *name, bool am_superuser,
 							  bool override_allow_connections, Oid db_oid);
-extern void YbAuthPassthroughSetupGUCAndReport(void);
+extern void YbAuthPassthroughSetupGUCAndReport(Oid dboid);
 
 /* in utils/init/miscinit.c */
 extern PGDLLIMPORT bool IgnoreSystemIndexes;

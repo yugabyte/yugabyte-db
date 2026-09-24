@@ -32,7 +32,9 @@
 #pragma once
 
 #include <functional>
+#include <iosfwd>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "yb/cdc/cdc_service.pb.h"
@@ -62,6 +64,8 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_fwd.h"
 
+#include "yb/tools/table_hash.h"
+#include "yb/tools/xcluster_verify.h"
 #include "yb/tools/yb-admin_cli.h"
 #include "yb/rpc/rpc_fwd.h"
 
@@ -446,14 +450,13 @@ class ClusterAdminClient {
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
-  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      const std::string& stream_id, const std::string& replication_slot_name);
-
   Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
 
   Status RemoveUserTableFromCDCSDKStream(const std::string& stream_id, const std::string& table_id);
 
   Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const std::string& stream_id);
+
+  Status CleanupStaleCDCStreams(bool dry_run);
 
   Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
                                   const std::vector<std::string>& producer_addresses,
@@ -542,9 +545,67 @@ class ClusterAdminClient {
   // List the uuids of all masters/tservers known to the master leader.
   Result<std::unordered_set<std::string>> ListAllKnownMasterUuids();
   Result<std::unordered_set<std::string>> ListAllKnownTabletServersUuids();
+
+  // get_table_hash: hash the table and print the per-tablet breakdown plus the totals, including
+  // the continuation key if max_rows stopped the scan early.
   Status GetTableXorHash(
       const TableId& table_id, uint64_t read_ht, Slice start_key = Slice(),
-      Slice end_key = Slice());
+      Slice end_key = Slice(), uint64_t max_rows = 0);
+
+  // Hash one table at read_ht without printing. verbose, if set, gets the human-readable
+  // per-tablet dump that get_table_hash prints. max_rows > 0 caps the scan for every partitioning
+  // scheme; next_key is set when the cap stops the scan before end_key.
+  Result<TableHashTotals> ComputeTableXorHash(
+      const TableId& table_id, uint64_t read_ht, Slice start_key = Slice(),
+      Slice end_key = Slice(), std::ostream* verbose = nullptr, uint64_t max_rows = 0);
+
+  // Fingerprint of the table's current catalog schema. This only talks to the master, so verify can
+  // afford to call it both before and after hashing a slice.
+  Result<SchemaFingerprint> GetSchemaFingerprint(const TableId& table_id);
+
+  // Vector index contents are not part of DumpTabletData's row hash.
+  Result<bool> IsVectorIndex(const TableId& table_id);
+
+  // The xCluster safe time of the namespace this table belongs to, on the cluster this client is
+  // connected to. Only meaningful on a target: safe time is the minimum, over every producer
+  // tablet replicating into that namespace, of what has been applied here, so it covers every
+  // replicated table in the namespace including table_id. Fails when the namespace has no safe
+  // time (no transactional inbound replication, or it has not been computed yet).
+  Result<uint64_t> GetXClusterSafeTimeForTable(const TableId& table_id);
+
+  // Schema-sandwich one slice against source, using this client as the target. Runs the algorithm
+  // in VerifyXClusterSlice with the two clients supplying the schema and hash calls, and returns
+  // the outcome rather than printing it.
+  Result<SliceVerifyOutcome> VerifyXClusterSliceAgainst(
+      ClusterAdminClient* source, const SliceVerifyRequest& req);
+
+  // Discovers a replication group's source and table pairs from this target, then verifies every
+  // pair. Slice outcomes and the final summary are printed as JSON records.
+  Status VerifyXClusterGroup(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const GroupVerifyOptions& options,
+      const std::unordered_set<TableId>& skip_source_table_ids);
+
+  // Every user table and index in the namespace that owns `table_id`, for expanding a colocation
+  // parent into the tables worth verifying: the parent holds no user rows, only a dummy
+  // `parent_column` schema.
+  //
+  // This is the whole namespace, not just the tables sharing the parent's tablet. The two coincide
+  // for a colocated database under db-scoped replication, where every table is replicated, but not
+  // for a tablegroup parent, so a caller needing the parent's tablet mates must narrow this itself.
+  //
+  // Non-vector indexes are included: a colocated index lives in the parent's tablet, so
+  // IsTableEligibleForXClusterReplication rejects it as a secondary table and it never gets its own
+  // stream -- the parent's carries it. Leaving it out would mean the one kind of index the group
+  // cannot name is also the one kind nothing verifies. A non-colocated index arrives as an ordinary
+  // pair and is deduped against what this returns. Vector indexes are paired during discovery and
+  // then skipped because DumpTabletData deliberately does not hash their data.
+  Result<std::vector<client::YBTableName>> ListUserTablesInNamespaceOf(const TableId& table_id);
+
+  // The table's tablet boundaries, as the key ranges a sweep can verify it in concurrently. These
+  // are logical key intervals rather than anything about placement, so they remain meaningful
+  // against a target cluster split into different tablets.
+  Result<std::vector<KeyRange>> ListTableKeyRanges(const TableId& table_id);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -570,6 +631,9 @@ class ClusterAdminClient {
 
   // Look up the RPC address of the server with the specified UUID from the Master.
   Result<HostPort> GetFirstRpcAddressForTS(const std::string& uuid);
+
+  // Look up the registration of the server with the specified UUID from the Master.
+  Result<ServerRegistrationPB> GetTSRegistration(const std::string& uuid);
 
   // Step down the leader of this tablet.
   // If leader_uuid is empty, look it up with the master.
@@ -656,7 +720,7 @@ class ClusterAdminClient {
       const std::string& op_name);
 
   // Parses a placement info string of the form
-  // "cloud1.region1.zone1[:min_num_replicas],cloud2.region2.zone2[:min_num_replicas],..."
+  // "cloud1.region1.zone1[:min_num_replicas[:max_num_replicas]],..."
   // and puts the result in placement_info_pb. If no RF is specified for a placement block, a
   // default of 1 is used. This function does not validate correctness; that is done in
   // CatalogManagerUtil::IsPlacementInfoValid.

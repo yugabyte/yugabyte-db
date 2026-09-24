@@ -47,6 +47,8 @@ Upgrades are performed via a rolling update, where one node in the universe is t
 
 If your patching and upgrading process is likely to take longer than 15 minutes, increase the WAL log retention time. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
 
+If patching takes longer than the WAL log retention time, the node can be treated as failed and its data re-replicated.
+
 Before you start, make sure that all nodes in the universe are running correctly.
 
 ## Patch nodes

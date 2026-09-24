@@ -193,7 +193,7 @@ ExecScan(ScanState *node,
 	 */
 	if (qual)
 	{
-		node->ps.state->yb_exec_params.limit_use_default = true;
+		node->ps.state->yb_exec_params.plan_limit = 0;
 	}
 
 	/*

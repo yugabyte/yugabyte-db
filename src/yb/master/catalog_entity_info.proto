@@ -230,6 +230,9 @@ message SysTablesEntryPB {
   }
 
   optional XClusterTableInfo xcluster_table_info = 42;
+
+  // Marker to indicate that the xCluster source still has a WAL_ANCHOR stream to clean up.
+  optional bytes xcluster_pending_wal_anchor_deletion_source_table_id = 43;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -477,6 +480,19 @@ message SysXClusterConfigEntryPB {
   map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 3;
 }
 
+// The cluster-wide history retention pin for the ysql catalog tables, which live in the sys catalog
+// tablet as cotables. Only the master leader learns the pins, from tserver heartbeats; it publishes
+// them here so that master followers, which never see a heartbeat, do not compact away catalog
+// history that a live transaction can still read at its own read time.
+//
+// It also serves as persisted data for master failover.
+message SysHistoryRetentionPinEntryPB {
+  // Oldest read time pinned by any live ysql transaction in any database. Unset when nothing is
+  // pinned. This is the raw pin, not a retention cutoff (sys catalog's retention window is not
+  // applied).
+  optional fixed64 ysql_oldest_pinned_read_time = 1;
+}
+
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.
 message SysRedisConfigEntryPB {
   optional string key = 1;
@@ -676,6 +692,11 @@ message SysCDCStreamEntryPB {
   // target running them locally). Defaults to false so legacy and bi-directional streams keep
   // the legacy filter.
   optional bool xcluster_use_target_applied_filter = 18 [default = false];
+
+  // Immutable per stream, stamped true at creation on xCluster WAL anchor streams. Anchors are
+  // never consumed by the target, they only pin the source WAL at the table's creation point so
+  // that an in flight DDL can be retried.
+  optional bool xcluster_is_wal_anchor = 19 [default = false];
 }
 
 
@@ -1001,6 +1022,17 @@ message SysXClusterOutboundReplicationGroupEntryPB {
       // Was this stream checkpointed as part of the initial bootstrap, or was
       // it added later by a newly created table?
       optional bool is_part_of_initial_bootstrap = 3;
+      // xCluster "WAL anchor" stream used to roll forward a CREATE TABLE that has been added to
+      // replication but whose DDL has not yet durably committed on the target.
+      //
+      // The stream_id above is the table stream the target consumes. If the target rolls back the
+      // in-flight CREATE TABLE it deletes that stream on the source, which would normally make
+      // a retry impossible (the WAL needed to re-bootstrap could be GC'd). To avoid that we create
+      // a second, independent stream anchored at the table's creation point. Its sole job is to
+      // retain the source WAL so that, on a retry, a fresh table stream can be created and fully
+      // bootstrapped. Once the target's CREATE TABLE DDL commits, the WAL_ANCHOR stream is deleted
+      // and the table behaves like any other single-stream replicated table.
+      optional bytes wal_anchor_stream_id = 4;
     }
     // Table id -> TableInfoPB
     map<string, TableInfoPB> table_infos = 2;

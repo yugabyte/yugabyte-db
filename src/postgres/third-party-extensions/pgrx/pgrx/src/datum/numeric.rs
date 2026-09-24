@@ -13,7 +13,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::iter::Sum;
 
-use crate::datum::numeric_support::convert::{from_primitive_helper, FromPrimitiveFunc};
+use crate::datum::numeric_support::convert::{FromPrimitiveFunc, from_primitive_helper};
 pub use crate::datum::numeric_support::error::Error;
 use crate::{direct_function_call, pg_sys};
 

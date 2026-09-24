@@ -641,6 +641,13 @@ parse_yb_build_cmd_line "${original_args[@]}"
 # Finished parsing command-line arguments, post-processing them.
 # -------------------------------------------------------------------------------------------------
 
+# org.yb.yugabyted tests start the cluster with "yugabyted --ui=true", and yugabyted silently
+# starts without the UI when $BUILD_ROOT/gobin/yugabyted-ui is missing, so those tests only fail
+# with a refused connection. Jenkins gets that binary from the package build step.
+if [[ -n ${java_test_name} && ${java_test_name} == org.yb.yugabyted.* ]]; then
+  build_yugabyted_ui=true
+fi
+
 if is_apple_silicon && [[ -z ${YB_TARGET_ARCH:-} ]]; then
   # Use arm64 by default on an Apple Silicon machine.
   YB_TARGET_ARCH=arm64
@@ -1041,8 +1048,8 @@ create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Build only a subset of targets when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_conn_mgr_template
-      update_ysql_migrations )
+  make_targets+=( yb-master yb-tserver yb-admin gen_auto_flags_json postgres
+      initial_sys_catalog_snapshot update_ysql_conn_mgr_template update_ysql_migrations )
   # yb-ysql-conn-mgr tests launch bin/odyssey, so it must be part of the subset.
   if [[ "${build_odyssey:-}" == "true" ]]; then
     make_targets+=( odyssey )

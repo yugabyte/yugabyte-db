@@ -19,12 +19,17 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Background garbage collector that periodically scans all GCP capacity reservations across all
- * zones in the GCP project and deletes reservations that are fully utilized (i.e., all reserved
- * instances have been consumed by running VMs).
+ * zones in the GCP project and deletes:
  *
- * <p>A reservation is considered fully utilized when its {@code inUseCount} equals its {@code
- * count}. Such reservations are no longer needed because the instances they reserved have already
- * been provisioned, and the reservation only blocks capacity that could otherwise be released.
+ * <ul>
+ *   <li>Fully utilized reservations ({@code inUseCount == count}), whose reserved capacity has
+ *       already been consumed by running VMs and is no longer needed.
+ *   <li>Empty reservations ({@code inUseCount == 0}) older than a configured age (default 1 hour),
+ *       which are treated as orphaned leftovers from abandoned or partially cleaned-up operations.
+ * </ul>
+ *
+ * <p>Partially utilized reservations are left alone so shared capacity used by other universes is
+ * not released early.
  *
  * <p>YBA uses a single GCP project across all providers, so this GC picks any available GCP
  * provider for credentials and scans the project once per cycle.
@@ -58,7 +63,7 @@ public class GcpCapacityReservationGC {
 
   /**
    * Main GC loop. Finds any GCP provider for credentials, lists all reservations across zones in
-   * the project, and deletes the fully utilized ones.
+   * the project, and deletes fully utilized or sufficiently old empty ones.
    */
   void scheduleRunner() {
     if (!confGetter.getGlobalConf(GlobalConfKeys.gcpCapacityReservationGcEnabled)) {
@@ -85,12 +90,14 @@ public class GcpCapacityReservationGC {
   }
 
   /**
-   * Lists all reservations in the GCP project and deletes any that are fully utilized.
+   * Lists all reservations in the GCP project and deletes fully utilized ones, plus empty ones
+   * older than the configured empty-reservation age.
    *
    * @param provider a GCP provider used for project credentials
    */
   private void cleanupReservations(Provider provider) {
     GCPProjectApiClient apiClient = gcpClientFactory.getClient(provider);
+    Duration emptyAge = confGetter.getGlobalConf(GlobalConfKeys.gcpCapacityReservationGcEmptyAge);
 
     Map<String, List<Reservation>> reservationsByZone;
     try {
@@ -117,29 +124,44 @@ public class GcpCapacityReservationGC {
         totalReservations++;
         String reservationName = reservation.getName();
 
-        if (!GCPProjectApiClient.isReservationFullyUtilized(reservation)) {
+        boolean fullyUtilized = GCPProjectApiClient.isReservationFullyUtilized(reservation);
+        boolean emptyAndOld =
+            GCPProjectApiClient.isReservationEmpty(reservation)
+                && GCPProjectApiClient.isReservationOlderThan(reservation, emptyAge);
+
+        if (!fullyUtilized && !emptyAndOld) {
           log.debug(
-              "Reservation {} in zone {} is not fully utilized, skipping", reservationName, zone);
+              "Reservation {} in zone {} is neither fully utilized nor an old empty reservation,"
+                  + " skipping",
+              reservationName,
+              zone);
           continue;
         }
 
-        log.info(
-            "Reservation {} in zone {} is fully utilized (inUseCount == count), deleting",
-            reservationName,
-            zone);
         try {
-          boolean deleted =
-              apiClient.deleteCapacityReservation(
-                  reservationName, zone, true /* deleteOnlyIfFullyUtilized */);
-          if (deleted) {
-            deletedCount++;
+          boolean deleted;
+          if (fullyUtilized) {
             log.info(
-                "Successfully deleted fully utilized reservation {} in zone {}",
+                "Reservation {} in zone {} is fully utilized (inUseCount == count), deleting",
                 reservationName,
                 zone);
+            deleted =
+                apiClient.deleteCapacityReservation(
+                    reservationName, zone, true /* deleteOnlyIfFullyUtilized */);
           } else {
-            // deleteCapacityReservation returned false - reservation state may have changed
-            // between list and delete; this is not an error.
+            log.info(
+                "Reservation {} in zone {} is empty and older than {}, deleting",
+                reservationName,
+                zone,
+                emptyAge);
+            deleted = apiClient.deleteCapacityReservationIfEmpty(reservationName, zone);
+          }
+
+          if (deleted) {
+            deletedCount++;
+            log.info("Successfully deleted reservation {} in zone {}", reservationName, zone);
+          } else {
+            // Reservation state may have changed between list and delete; this is not an error.
             log.info(
                 "Reservation {} in zone {} was not deleted (state may have changed)",
                 reservationName,

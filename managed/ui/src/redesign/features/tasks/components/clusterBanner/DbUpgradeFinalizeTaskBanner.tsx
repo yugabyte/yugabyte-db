@@ -4,21 +4,24 @@ import { useMutation, useQuery } from 'react-query';
 import { useDispatch } from 'react-redux';
 import { Link as MUILink } from '@material-ui/core';
 import { AxiosError } from 'axios';
+import { OperationBannerVariant, YBOperationBanner } from '@yugabyte-ui-library/core';
 
 import { showTaskInDrawer } from '@app/actions/tasks';
 import { YBButton } from '@app/redesign/components';
+import { YBProgressBarState } from '@app/redesign/components/YBProgress/YBLinearProgress';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL } from '@app/redesign/features/universe/universe-actions/software-upgrade/constants';
 import { dbUpgradeMetadataQueryKey } from '@app/redesign/helpers/api';
 import { useRefreshUniverseDetailsCache } from '@app/redesign/helpers/cacheUtils';
 import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
+import { retryTask } from '@app/v2/api/task/task';
 import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
 import { Task, TaskState } from '../../dtos';
 import { getIsDbUpgradeFinalizeTask } from '../../TaskUtils';
-import { retryTasks } from '../drawerComp/api';
 import { RetryConfirmModal } from '../drawerComp/TaskDetailActions';
-import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
+import { OperationBannerProgressContent } from './OperationBannerProgressContent';
+import { OperationBannerLoadingIcon } from './operationBannerIcons';
 
 interface DbUpgradeFinalizeTaskBannerProps {
   task: Task;
@@ -57,7 +60,7 @@ export const DbUpgradeFinalizeTaskBanner = ({
     ...ApiPermissionMap.RETRY_TASKS
   };
 
-  const retryTaskMutation = useMutation(() => retryTasks(task.id), {
+  const retryTaskMutation = useMutation(() => retryTask(task.id, {}), {
     onSuccess: () => {
       refreshUniverseDetailsCache();
       setIsRetryConfirmModalOpen(false);
@@ -92,12 +95,19 @@ export const DbUpgradeFinalizeTaskBanner = ({
   switch (task.status) {
     case TaskState.RUNNING:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.IN_PROGRESS}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Info}
+          dense
+          minHeight={46}
+          showDivider={false}
+          iconCircle={false}
+          icon={<OperationBannerLoadingIcon />}
           title={t('finalizing.title')}
-          progressPercent={task.percentComplete ?? 0}
-          actions={openFinalizeTaskDetailsButton}
-          description={
+          content={
+            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
+          }
+          action={openFinalizeTaskDetailsButton}
+          message={
             <Trans
               t={t}
               i18nKey={
@@ -122,11 +132,19 @@ export const DbUpgradeFinalizeTaskBanner = ({
       break;
     case TaskState.FAILURE:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.ERROR}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Error}
+          dense
+          minHeight={46}
+          showDivider={false}
           title={t('finalizeFailed.title')}
-          progressPercent={task.percentComplete ?? 0}
-          actions={
+          content={
+            <OperationBannerProgressContent
+              progressPercent={task.percentComplete ?? 0}
+              state={YBProgressBarState.Error}
+            />
+          }
+          action={
             <>
               {openFinalizeTaskDetailsButton}
               {task.retryable && (

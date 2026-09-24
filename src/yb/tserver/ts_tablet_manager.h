@@ -194,6 +194,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -387,11 +388,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
   //
-  // 'target_tier', when non-empty, restricts data-directory candidates to disks tagged with
-  // that tier (see FsManager::GetDataRootDirsForTier), so the tablet's home dir lands on the
-  // requested tier (e.g. from a tablespace's storage_tier). WAL directory selection is always
-  // tier-agnostic, since WAL dirs are not part of tier_paths. If no disks are configured for
-  // the requested tier on this node, falls back to the default (all-disk) policy.
+  // 'target_tier' (e.g. from a tablespace's storage_tier) restricts data-directory candidates
+  // to disks tagged with that tier (see FsManager::GetDataRootDirsForTier), so the tablet's
+  // home dir lands on the requested tier. When empty, this defaults to kDefaultStorageTier
+  // ("ssd") rather than spreading across every configured disk regardless of tier -- see
+  // storage_tier.h. WAL directory selection is always tier-agnostic, since WAL dirs are not
+  // part of tier_paths. By default, WAL lives on the fastest tier with disks ("ssd").
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const TabletId& tablet_id,
@@ -449,6 +451,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
+
+  // Background task that recomputes each tablet's DocDB SST statistics aggregate. The poller only
+  // hands the sweep to sst_stats_resync_pool_; ResyncSstStatsForAllTablets is the sweep itself.
+  void ResyncSstStats();
+  void ResyncSstStatsForAllTablets();
 
   // Background task that emits metrics.
   void EmitMetrics();
@@ -817,6 +824,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for Raft replication callback operations.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 
+  // Bounded process-wide pool for physical tablet snapshot directory cleanup.
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
+
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
 
@@ -857,6 +867,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // on the server, accounting for hardlinks.
   std::unique_ptr<TsDataSizeMetrics> ts_data_size_metrics_;
   std::unique_ptr<rpc::Poller> data_size_metric_updater_;
+
+  // Recomputes each tablet's DocDB SST statistics aggregate from its whole live file set. The
+  // sweep reads a properties block per SST file not already in the table cache, so it runs on its
+  // own thread rather than on the messenger scheduler's IO threads, which also dispatch RPCs.
+  // Both are null unless the collector is enabled.
+  std::unique_ptr<rpc::Poller> sst_stats_resync_poller_;
+  std::unique_ptr<ThreadPool> sst_stats_resync_pool_;
+  // Set while a sweep is queued or running, so that a sweep outlasting the interval does not
+  // accumulate duplicate passes behind it.
+  std::atomic<bool> sst_stats_resync_active_{false};
 
   std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 

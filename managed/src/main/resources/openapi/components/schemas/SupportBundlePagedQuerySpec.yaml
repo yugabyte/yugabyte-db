@@ -1,0 +1,8 @@
+title: SupportBundlePagedQuerySpec
+description: |
+  Paged list of support bundles.
+  Rows are ordered by creation date, then bundle UUID. The order is ascending by default, so pass
+  a direction of DESC to list the most recently created bundles first.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"

@@ -18,6 +18,8 @@ DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 
 DECLARE_bool(TEST_ysql_require_force_catalog_modifications);
 
@@ -40,6 +42,11 @@ class YsqlDdlWhitelistTest : public pgwrapper::PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
     pgwrapper::PgMiniTestBase::SetUp();
   }
 };

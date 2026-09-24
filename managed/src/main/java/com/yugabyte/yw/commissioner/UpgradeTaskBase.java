@@ -1001,13 +1001,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  protected SubTaskGroup createClusterUserIntentUpdateTask(UUID clutserUUID, UUID imageBundleUUID) {
+  protected SubTaskGroup createClusterUserIntentUpdateTask(Map<String, UUID> nodeToImageBundleMap) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterUserIntent");
     UpdateClusterUserIntent.Params updateClusterUserIntentParams =
         new UpdateClusterUserIntent.Params();
     updateClusterUserIntentParams.setUniverseUUID(taskParams().getUniverseUUID());
-    updateClusterUserIntentParams.clusterUUID = clutserUUID;
-    updateClusterUserIntentParams.imageBundleUUID = imageBundleUUID;
+    updateClusterUserIntentParams.nodeToImageBundleMap = nodeToImageBundleMap;
 
     UpdateClusterUserIntent updateClusterUserIntentTask = createTask(UpdateClusterUserIntent.class);
     updateClusterUserIntentTask.initialize(updateClusterUserIntentParams);
@@ -1346,5 +1345,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     UUID rootCAUUID;
     @Builder.Default boolean useExistingServerCert = false;
     Boolean useYBDBInbuiltYbc;
+    @Builder.Default boolean reconcilePgDataOwnershipToRoot = false;
   }
 }

@@ -36,6 +36,13 @@ type: docs
     </a>
   </li>
 
+  <li>
+    <a href="../oci/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
+
 </ul>
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
@@ -65,7 +72,6 @@ You need to add the following Azure cloud provider credentials:
 - Resource group name
 - Subscription ID
 - Tenant ID
-- SSH port and user
 
 YugabyteDB Anywhere uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
@@ -180,7 +186,7 @@ To add your own machine images to the catalog:
 
 1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery).
 
-1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+1. Provide the SSH user and port to use to access the machine image OS. The SSH user is required; it must have passwordless sudo access and must not be named `yugabyte`. Azure creates this user when it provisions the VM. For a custom or shared-gallery image, choose a username that does not already exist on the image; Azure rejects the request if that user is already present.
 
 1. Click **Add Linux Version**.
 
@@ -194,7 +200,11 @@ For YugabyteDB Anywhere v2025.1 and later, if you want to deploy a universe on A
 
 To be able to provision cloud instances with YugabyteDB, YugabyteDB Anywhere requires SSH access.
 
-Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+{{< note title="SSH User and Port" >}}
+You cannot enter SSH user or port in this section; those fields are disabled. Specify them for each Linux version in the [Linux version catalog](#linux-version-catalog). The key pair you configure here is used to authenticate as that SSH user.
+{{< /note >}}
+
+YugabyteDB Anywhere-managed Linux versions use `centos`.
 
 You can manage SSH key pairs in the following ways:
 

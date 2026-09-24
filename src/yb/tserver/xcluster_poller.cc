@@ -208,9 +208,24 @@ void XClusterPoller::CompleteShutdown() {
   DCHECK(shutdown_);
   VLOG_WITH_PREFIX_AND_FUNC(2) << "Begin";
 
+  if (ddl_queue_handler_ && active_ddl_queue_handler_calls_ > 0) {
+    // DDLQueueHandlerCallScope completes the shutdown once ddl_queue handler finishes its work.
+    LOG_WITH_PREFIX(INFO)
+        << "DDL queue handler is running, it will complete the shutdown once done";
+    return;
+  }
+
   // Wait for tasks that started before shutdown to complete. We release mutex as new tasks acquire
   // it before checking for shutdown.
   { std::lock_guard l(data_mutex_); }
+
+  DoCompleteShutdown();
+}
+
+void XClusterPoller::DoCompleteShutdown() {
+  if (shutdown_completed_.exchange(true)) {
+    return;
+  }
 
   if (output_client_) {
     output_client_->CompleteShutdown();
@@ -223,6 +238,23 @@ void XClusterPoller::CompleteShutdown() {
   XClusterAsyncExecutor::CompleteShutdown();
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "End";
+}
+
+XClusterPoller::DDLQueueHandlerCallScope::DDLQueueHandlerCallScope(XClusterPoller& poller)
+    : poller_(poller) {
+  DCHECK(poller_.ddl_queue_handler_);
+  ++poller_.active_ddl_queue_handler_calls_;
+}
+
+XClusterPoller::DDLQueueHandlerCallScope::~DDLQueueHandlerCallScope() {
+  --poller_.active_ddl_queue_handler_calls_;
+
+  // Load shutdown_ before the count: a call that starts after we load shutdown_ is guaranteed to
+  // see it set and return before touching the handler.
+  if (poller_.shutdown_ && poller_.active_ddl_queue_handler_calls_ == 0) {
+    LOG(INFO) << poller_.LogPrefix() << "DDL queue handler finished, completing shutdown";
+    poller_.DoCompleteShutdown();
+  }
 }
 
 std::string XClusterPoller::LogPrefix() const {
@@ -335,15 +367,21 @@ void XClusterPoller::DoPoll() {
   }
 
   if (ddl_queue_handler_) {
+    DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     if (op_id_.index() == 0 && op_id_.term() == 0) {
       // This a new ddl_queue poller, so need to first process anything currently in the DDL queue.
       // This is needed to ensure that we don't miss any DDLs that were already in the queue when
       // the last poller was stopped.
       auto ddl_queue_status = ddl_queue_handler_->ProcessPendingBatchIfExists();
+      RETURN_WHEN_OFFLINE;
       if (!ddl_queue_status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
                                  << ddl_queue_status.ToString();
+        StoreDdlQueueReplicationError(ddl_queue_status);
+        if (FLAGS_enable_xcluster_stat_collection) {
+          poll_stats_history_.SetError(std::move(ddl_queue_status));
+        }
         IncrementPollFailures();
         return SchedulePoll();
       }
@@ -449,6 +487,8 @@ void XClusterPoller::DoPoll() {
 Status XClusterPoller::DoPausePoller() {
   DCHECK(is_stream_paused_);
   if (ddl_queue_handler_) {
+    DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
+    SCHECK(!IsOffline(), ShutdownInProgress, "Poller is offline");
     // Before pausing, ensure that we've updated the safe time to include the last executed DDL.
     RETURN_NOT_OK_PREPEND(
         ddl_queue_handler_->UpdateSafeTimeForPause(),
@@ -611,8 +651,10 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
   DCHECK(response.get_changes_response);
 
   if (ddl_queue_handler_) {
+    DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     auto s = ddl_queue_handler_->ProcessGetChangesResponse(response);
+    RETURN_WHEN_OFFLINE;
     if (!s.ok()) {
       if (s.IsTryAgain()) {
         // The handler will return try again when waiting for safe time to catch up, so can log
@@ -623,7 +665,7 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
         YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 30, 1)
             << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " ";
       }
-      StoreNOKReplicationError();
+      StoreDdlQueueReplicationError(s);
       if (FLAGS_enable_xcluster_stat_collection) {
         poll_stats_history_.SetError(std::move(s));
       }
@@ -778,27 +820,45 @@ XClusterPollerStats XClusterPoller::GetStats() const {
   return stats;
 }
 
-void XClusterPoller::StoreReplicationError(ReplicationErrorPb error) {
+void XClusterPoller::StoreReplicationError(
+    ReplicationErrorPb error, const std::string& error_detail) {
   DCHECK_NE(error, ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED);
 
   std::lock_guard l(replication_error_mutex_);
-  if (previous_replication_error_ != error) {
+  if (previous_replication_error_ != error || previous_replication_error_detail_ != error_detail) {
     // Avoid unnecessarily storing same errors since this is used in perf critical master heartbeat
     // path.
-    xcluster_consumer_->StoreReplicationError(GetPollerId(), error);
+    xcluster_consumer_->StoreReplicationError(GetPollerId(), error, error_detail);
     previous_replication_error_ = error;
+    previous_replication_error_detail_ = error_detail;
   }
 }
 
 void XClusterPoller::StoreNOKReplicationError() {
   {
     std::lock_guard l(replication_error_mutex_);
-    if (previous_replication_error_ != ReplicationErrorPb::REPLICATION_OK) {
+    if (previous_replication_error_ != ReplicationErrorPb::REPLICATION_OK &&
+        previous_replication_error_ != ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED) {
       return;
     }
   }
 
   StoreReplicationError(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR);
+}
+
+void XClusterPoller::StoreDdlQueueReplicationError(const Status& status) {
+  DCHECK(!status.ok());
+  if (ddl_queue_handler_->IsDdlReplicationPausedDueToStuckDdl()) {
+    StoreReplicationError(
+        ReplicationErrorPb::REPLICATION_DDL_QUEUE_PAUSED,
+        status.ToString(/*include_file_and_line=*/false));
+    return;
+  }
+  // Don't report TryAgain errors as these are expected during normal operations.
+  if (status.IsTryAgain()) {
+    return;
+  }
+  StoreNOKReplicationError();
 }
 
 void XClusterPoller::ClearReplicationError() {

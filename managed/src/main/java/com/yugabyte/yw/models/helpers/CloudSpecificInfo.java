@@ -57,6 +57,17 @@ public class CloudSpecificInfo {
   @ApiModelProperty(value = "The node's cloud provider")
   public String cloud = null;
 
+  // The cloud an on-prem node physically runs on, used to pick its federation direction. Distinct
+  // from 'cloud' above, which stays "onprem". "aws"/"gcp" were detected from the node's metadata
+  // service, "onprem" means it answered neither and is a physical node, and null means we have not
+  // been able to find out yet.
+  @ApiModelProperty(value = "For an on-prem node, the cloud the node physically runs on")
+  public String physicalCloud = null;
+
+  // The cloud provider's instance identifier.
+  @ApiModelProperty(value = "The cloud provider's instance identifier")
+  public String id = null;
+
   @ApiModelProperty(value = "True if the node has a public IP address assigned")
   public boolean assignPublicIP = true;
 
@@ -94,6 +105,8 @@ public class CloudSpecificInfo {
     cloudInfo.az = az;
     cloudInfo.region = region;
     cloudInfo.cloud = cloud;
+    cloudInfo.physicalCloud = physicalCloud;
+    cloudInfo.id = id;
     cloudInfo.assignPublicIP = assignPublicIP;
     cloudInfo.mount_roots = mount_roots;
     cloudInfo.lun_indexes = lun_indexes == null ? new Integer[0] : lun_indexes.clone();

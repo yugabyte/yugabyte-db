@@ -38,6 +38,15 @@ CREATE INDEX NONCONCURRENTLY on foo(i);  -- test without a name
 ALTER TABLE foo ADD CONSTRAINT constraint_foo UNIQUE (i);
 CREATE UNIQUE INDEX partitioned_index ON foo_partitioned_by_col(id);
 
+-- Tests for ALTER TABLE ... RENAME CONSTRAINT.
+CREATE TABLE rc_parent(id int PRIMARY KEY);
+CREATE TABLE rc_child(id int PRIMARY KEY, parent_id int REFERENCES rc_parent(id));
+ALTER TABLE rc_child RENAME CONSTRAINT rc_child_parent_id_fkey TO rc_fkey_renamed;
+-- Constraint renames on temporary tables are not replicated.
+CREATE TEMP TABLE rc_temp(val int CONSTRAINT rc_temp_check CHECK (val > 0));
+ALTER TABLE rc_temp RENAME CONSTRAINT rc_temp_check TO rc_temp_check_renamed;
+DROP TABLE rc_temp;
+
 -- Now test dropping these tables.
 DROP TABLE foo;
 
@@ -50,6 +59,8 @@ DROP TABLE extra_foo;
 DROP TABLE unique_foo;
 DROP TABLE foo_partitioned_by_pkey;
 DROP TABLE foo_partitioned_by_col;
+DROP TABLE rc_child;
+DROP TABLE rc_parent;
 
 SELECT yb_data FROM TEST_filtered_ddl_queue() ORDER BY ddl_end_time;
 SELECT yb_data FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;

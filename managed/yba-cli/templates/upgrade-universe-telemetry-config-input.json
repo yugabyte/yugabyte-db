@@ -1,0 +1,139 @@
+{
+    "audit_logs": {
+        "ysql_audit_config": {
+            "enabled": true,
+            "classes": ["READ", "WRITE", "DDL", "ROLE", "MISC"],
+            "log_catalog": true,
+            "log_client": true,
+            "log_level": "WARNING",
+            "log_parameter": false,
+            "log_parameter_max_size": 4096,
+            "log_relation": false,
+            "log_rows": false,
+            "log_statement": true,
+            "log_statement_once": false,
+            "log_retention_days": 7
+        },
+        "ycql_audit_config": {
+            "enabled": true,
+            "log_level": "WARNING",
+            "included_categories": ["QUERY", "DML", "DDL", "AUTH"],
+            "excluded_categories": [],
+            "included_keyspaces": [],
+            "excluded_keyspaces": [],
+            "included_users": [],
+            "excluded_users": [],
+            "log_retention_days": 7
+        },
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>",
+                "additional_tags": {
+                    "env": "prod"
+                }
+            }
+        ]
+    },
+    "query_logs": {
+        "ysql_query_log_config": {
+            "enabled": true,
+            "log_statement": "ALL",
+            "log_min_error_statement": "ERROR",
+            "log_error_verbosity": "DEFAULT",
+            "log_duration": false,
+            "debug_print_plan": false,
+            "log_connections": true,
+            "log_disconnections": true,
+            "log_min_duration_statement": -1,
+            "log_line_prefix": "%m [%p] %q%u@%d "
+        },
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>",
+                "additional_tags": {},
+                "send_batch_max_size": 1000,
+                "send_batch_size": 100,
+                "send_batch_timeout_seconds": 10,
+                "memory_limit_mib": 2048,
+                "memory_limit_check_interval_seconds": 60
+            }
+        ]
+    },
+    "metrics": {
+        "scrape_interval_seconds": 30,
+        "scrape_timeout_seconds": 10,
+        "collection_level": "NORMAL",
+        "scrape_config_targets": [
+            "MASTER_EXPORT",
+            "TSERVER_EXPORT",
+            "YSQL_EXPORT",
+            "CQL_EXPORT",
+            "NODE_EXPORT",
+            "NODE_AGENT_EXPORT",
+            "OTEL_EXPORT"
+        ],
+        "exporters": [
+            {
+                "exporter_uuid": "<metrics-capable-telemetry-provider-name-or-uuid>",
+                "additional_tags": {},
+                "send_batch_max_size": 1000,
+                "send_batch_size": 100,
+                "send_batch_timeout_seconds": 10,
+                "memory_limit_mib": 2048,
+                "memory_limit_check_interval_seconds": 60,
+                "metrics_prefix": "ybdb."
+            }
+        ]
+    },
+    "master_logs": {
+        "min_level": "WARNING",
+        "noise_sample_drop_ratio": 0.99,
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>",
+                "additional_tags": {},
+                "send_batch_max_size": 1000,
+                "send_batch_size": 100,
+                "send_batch_timeout_seconds": 10,
+                "memory_limit_mib": 2048,
+                "memory_limit_check_interval_seconds": 60
+            }
+        ]
+    },
+    "tserver_logs": {
+        "min_level": "WARNING",
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>"
+            }
+        ]
+    },
+    "ysql_conn_mgr_logs": {
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>"
+            }
+        ]
+    },
+    "node_agent_logs": {
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>"
+            }
+        ]
+    },
+    "ynp_logs": {
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>"
+            }
+        ]
+    },
+    "controller_logs": {
+        "exporters": [
+            {
+                "exporter_uuid": "<telemetry-provider-name-or-uuid>"
+            }
+        ]
+    }
+}

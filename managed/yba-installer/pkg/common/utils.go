@@ -45,6 +45,12 @@ const ybdbPackageGlob = "yba_installer-*linux*/yugabyte-*-linux-x86_64.tar.gz"
 
 const PACollectorPackageGlob = "yba_installer-*linux*/perf_advisor-*.tar.gz"
 
+// YsqlDumpClientBundleName is the ysql_dump client bundle packaged for Perf Advisor's DDL
+// collection.
+const YsqlDumpClientBundleName = "ysql_dump_client.tar.gz"
+
+const YsqlDumpClientBundleGlob = "yba_installer-*linux*/" + YsqlDumpClientBundleName
+
 var skipConfirmation = false
 
 var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}

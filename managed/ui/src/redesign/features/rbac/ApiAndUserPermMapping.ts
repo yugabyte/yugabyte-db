@@ -305,6 +305,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/node_agents'
     },
+    UPGRADE_NODE_AGENT: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/upgrade/node-agent'
+    },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
     CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {
@@ -543,7 +547,7 @@ export const ApiPermissionMap = {
     },
     RETRY_TASKS: {
         requestType: ApiRequestType.POST,
-        endpoint: '/tasks/$tUUID<[^/]+>/retry'
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/tasks/$tUUID<[^/]+>/retry'
     },
     ROLLBACK_TASKS: {
         requestType: ApiRequestType.POST,
@@ -785,7 +789,17 @@ export const ApiPermissionMap = {
 
     GET_UNIVERSE_PERF_ADVISOR_STATUS: {
       requestType: ApiRequestType.GET,
-      endpoint: '/pa_collector/$paUUID<[^/]+>/universes/$uniUUID<[^/]+>'
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector'
+    },
+
+    REGISTER_UNIVERSE_TO_PERF_ADVISOR: {
+      requestType: ApiRequestType.PUT,
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector/$paUUID<[^/]+>'
+    },
+
+    UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR: {
+      requestType: ApiRequestType.DELETE,
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector'
     },
 
     MODIFY_BACKUP_STATE: {

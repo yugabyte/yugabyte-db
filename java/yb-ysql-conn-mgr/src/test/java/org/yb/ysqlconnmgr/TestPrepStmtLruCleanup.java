@@ -15,6 +15,7 @@ package org.yb.ysqlconnmgr;
 
 import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -74,8 +75,6 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
         String.valueOf(MAX_PREPARED_STATEMENTS));
     tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
     tserverFlags.put("ysql_conn_mgr_optimized_extended_query_protocol",
-        Boolean.toString(optimizedMode));
-    tserverFlags.put("ysql_conn_mgr_enable_prep_stmt_close",
         Boolean.toString(optimizedMode));
     restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
 
@@ -174,8 +173,6 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
     tserverFlags.put("ysql_conn_mgr_max_prepared_statements", String.valueOf(maxPrepStmts));
     tserverFlags.put("ysql_conn_mgr_optimized_extended_query_protocol",
         Boolean.toString(optimizedMode));
-    tserverFlags.put("ysql_conn_mgr_enable_prep_stmt_close",
-        Boolean.toString(optimizedMode));
     restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
 
     Properties props = new Properties();
@@ -206,7 +203,8 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
       }
     }
 
-    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte", 0);
+    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte",
+        STATS_UPDATE_INTERVAL + 2);
     LOG.info("Pool has {} physical backend(s)", numBackends);
 
     // Validation: query pg_prepared_statements on each backend via a new
@@ -289,8 +287,6 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
     tserverFlags.put("ysql_conn_mgr_log_settings", "log_query, log_debug");
     tserverFlags.put("ysql_conn_mgr_optimized_extended_query_protocol",
         Boolean.toString(optimizedMode));
-    tserverFlags.put("ysql_conn_mgr_enable_prep_stmt_close",
-        Boolean.toString(optimizedMode));
     restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
 
     Properties props = new Properties();
@@ -317,7 +313,8 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
         }
       }
 
-      int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte", 0);
+      int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte",
+          STATS_UPDATE_INTERVAL + 2);
       LOG.info("Pool has {} physical backend(s)", numBackends);
 
       // Dirty search_path. With ysql_conn_mgr_optimized_session_parameters
@@ -397,8 +394,6 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
     tserverFlags.put("ysql_conn_mgr_max_prepared_statements", String.valueOf(initialLimit));
     tserverFlags.put("ysql_conn_mgr_optimized_extended_query_protocol",
         Boolean.toString(optimizedMode));
-    tserverFlags.put("ysql_conn_mgr_enable_prep_stmt_close",
-        Boolean.toString(optimizedMode));
     restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
 
     Properties props = new Properties();
@@ -435,7 +430,8 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
       }
     }
 
-    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte", 0);
+    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte",
+        STATS_UPDATE_INTERVAL + 2);
     LOG.info("Pool has {} physical backend(s)", numBackends);
 
     for (int b = 0; b < numBackends; b++) {
@@ -492,6 +488,70 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
 
     verifyConn.close();
     conn.close();
+  }
+
+  // A prepared statement evicted by the LRU trim at detach must remain
+  // usable: the driver's next bare Bind misses conn mgr's server hashmap and
+  // the statement is redeployed transparently.
+  @Test
+  public void testBindAfterLruEviction() throws Exception {
+    LOG.info("Running with optimizedMode={}", optimizedMode);
+    final int maxPrepStmts = 3;
+    final int numStmts = 8;
+
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    tserverFlags.put("ysql_conn_mgr_max_prepared_statements",
+        String.valueOf(maxPrepStmts));
+    tserverFlags.put("ysql_conn_mgr_optimized_extended_query_protocol",
+        Boolean.toString(optimizedMode));
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "1");
+    props.setProperty("preparedStatementCacheQueries", "0");
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withUser("yugabyte").withPassword("yugabyte").connect(props)) {
+      Statement stmt = conn.createStatement();
+
+      // Keep the PreparedStatement objects open so re-execution sends a bare
+      // Bind (no Close / re-Parse from the driver).
+      List<PreparedStatement> pstmts = new ArrayList<>();
+      for (int i = 0; i < numStmts; i++) {
+        PreparedStatement pstmt = conn.prepareStatement("SELECT " + i);
+        pstmt.execute();
+        pstmts.add(pstmt);
+      }
+
+      // Each execute above ended a transaction, detaching the connection and
+      // running the LRU trim, so only the last maxPrepStmts statements
+      // survive on the backend. Count only the test's statements: with
+      // prepareThreshold=1 the count query itself gets server-prepared and
+      // would otherwise count itself.
+      ResultSet rs = stmt.executeQuery(
+          "SELECT count(*) FROM pg_prepared_statements " +
+          "WHERE statement ~ '^SELECT [0-9]+$'");
+      assertTrue(rs.next());
+      int count = rs.getInt(1);
+      LOG.info("Backend has {} prepared statement(s) after eviction", count);
+      assertEquals("Expected the LRU trim to leave exactly the cap",
+          maxPrepStmts, count);
+
+      // Re-execute every statement, oldest (evicted) first.
+      for (int i = 0; i < numStmts; i++) {
+        rs = pstmts.get(i).executeQuery();
+        assertTrue("Expected a row from statement " + i, rs.next());
+        assertEquals(i, rs.getInt(1));
+        assertFalse(rs.next());
+      }
+
+      for (PreparedStatement pstmt : pstmts) {
+        pstmt.close();
+      }
+      stmt.close();
+    }
   }
 
 }

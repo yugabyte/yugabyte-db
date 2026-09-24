@@ -22,8 +22,9 @@ Check [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.co
 
 Upgrade the connector:
 
-- _Before upgrading YugabyteDB_ to a release series newer than the one your connector was built for. The connector is backward compatible only; running it against a newer database release is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _Before upgrading YugabyteDB_ to a release series later than the one your connector was built for. The connector is backward compatible only; running it against a later database release is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
 - _When a release fixes a bug or security issue_ that affects your deployment.
+- _To run on Kafka Connect 4.x_, use connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2) or later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 
 As a best practice, run the latest stable connector release regardless of your YugabyteDB version.
 
@@ -95,12 +96,23 @@ To re-snapshot:
 
 1. Delete the connector(s) associated with the stream ID.
 
-1. Create a new stream ID using [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (use EXPLICIT checkpointing mode):
+1. Create a new stream ID.
 
-   ```sh
-   yb-admin --master_addresses <master-addresses> \
-     create_change_data_stream ysql.<database-name>
-   ```
+    {{<tags/feature/ea idea="2762">}}In v2026.1.2.0 and later, use the PostgreSQL replication slot interface with the `yb_grpc` plugin:
+
+    ```sql
+    SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
+    SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = 'my_grpc_slot';
+    ```
+
+    Alternatively, use [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (use EXPLICIT checkpointing mode):
+
+    ```sh
+    yb-admin --master_addresses <master-addresses> \
+        create_change_data_stream ysql.<database-name>
+    ```
+
+    For more information, see [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream).
 
 1. Deploy the new connector version with the new `database.streamid`, following the same registration steps as a new deployment (see [Deploy the YugabyteDB gRPC Connector](../cdc-get-started/#deploy-the-yugabytedb-grpc-connector)).
 

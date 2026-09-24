@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <limits.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -354,6 +355,14 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 	{"yb_internal_conn_kind", NULL, NULL, NULL,
 		"YB-Internal-Conn-Kind", "", 32,
 	offsetof(struct pg_conn, yb_internal_conn_kind)},
+
+	/*
+	 * W3C traceparent set on any connection that carries a trace context, used
+	 * as the root span for backend init and queries.
+	 */
+	{"yb_dist_traceparent", NULL, NULL, NULL,
+		"YB-Dist-Traceparent", "", 64,
+	offsetof(struct pg_conn, yb_dist_traceparent)},
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -1005,7 +1014,7 @@ parse_comma_separated_list(char **startptr, bool *more)
 	char	   *p;
 	char	   *s = *startptr;
 	char	   *e;
-	int			len;
+	size_t		len;
 
 	/*
 	 * Search for the end of the current element; a comma or end-of-string
@@ -4193,6 +4202,8 @@ freePGconn(PGconn *conn)
 		free(conn->target_session_attrs);
 	if (conn->yb_internal_conn_kind)
 		free(conn->yb_internal_conn_kind);
+	if (conn->yb_dist_traceparent)
+		free(conn->yb_dist_traceparent);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 
@@ -5105,7 +5116,21 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	/* concatenate values into a single string with newline terminators */
 	size = 1;					/* for the trailing null */
 	for (i = 0; values[i] != NULL; i++)
+	{
+		if (values[i]->bv_len >= INT_MAX ||
+			size > (INT_MAX - (values[i]->bv_len + 1)))
+		{
+			appendPQExpBuffer(errorMessage,
+							  libpq_gettext("connection info string size exceeds the maximum allowed (%d)\n"),
+							  INT_MAX);
+			ldap_value_free_len(values);
+			ldap_unbind(ld);
+			return 3;
+		}
+
 		size += values[i]->bv_len + 1;
+	}
+
 	if ((result = malloc(size)) == NULL)
 	{
 		appendPQExpBufferStr(errorMessage,

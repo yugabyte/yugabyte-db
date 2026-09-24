@@ -38,7 +38,7 @@
 
 /* YB includes */
 #include "access/xact.h"
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
 #include "catalog/pg_am.h"
 #include "optimizer/planner.h"
 #include "pg_yb_utils.h"
@@ -843,6 +843,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			}
 		}
 
+		if (remove_old &&
+			IsYugaByteEnabled() &&
+			yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+			old_path->param_info == NULL &&
+			!yb_path_contains_gather(new_path) &&
+			yb_path_contains_gather(old_path))
+			remove_old = false;
+
 		/*
 		 * Remove current element from pathlist if dominated by new.
 		 */
@@ -1548,7 +1556,7 @@ create_index_path(PlannerInfo *root,
 				  Relids required_outer,
 				  double loop_count,
 				  bool partial_path,
-				  List *yb_merge_scan_saop_cols)
+				  List *yb_merge_scan_stream_cols)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
 	RelOptInfo *rel = index->rel;
@@ -1569,11 +1577,20 @@ create_index_path(PlannerInfo *root,
 	pathnode->yb_bitmap_idx_pushdowns = yb_bitmap_idx_pushdowns;
 	pathnode->indexorderbys = indexorderbys;
 	pathnode->indexorderbycols = indexorderbycols;
+
+	/*
+	 * YB: NoMovementScanDirection means "row order does not matter".  For
+	 * it, yb_scan_core.c does not call YBCPgSetForwardScan, and an unset
+	 * direction lets pggate read tablets in parallel
+	 * (CouldBeExecutedInParallel) and skip preserving ybctid order on
+	 * secondary index scans.  Forward and Backward both forfeit those
+	 * optimizations.
+	 */
 	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
 		NoMovementScanDirection : indexscandir;
 
-	pathnode->yb_index_path_info.merge_scan_saop_cols =
-		yb_merge_scan_saop_cols;
+	pathnode->yb_index_path_info.merge_scan_stream_cols =
+		yb_merge_scan_stream_cols;
 
 	if (IsYugaByteEnabled() &&
 		yb_enable_base_scans_cost_model &&
@@ -3205,6 +3222,8 @@ create_nestloop_path(PlannerInfo *root,
 	pathnode->jpath.outerjoinpath = outer_path;
 	pathnode->jpath.innerjoinpath = inner_path;
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
+
+	pathnode->yb_first_batch_size = workspace->yb_first_batch_size;
 
 	if (IsYugaByteEnabled())
 	{

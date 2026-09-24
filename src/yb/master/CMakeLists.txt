@@ -39,7 +39,7 @@ YRPC_GENERATE(
   PROTO_FILES
       master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
       master_encryption.proto master_heartbeat.proto master_replication.proto
-      master_backup.proto master_test.proto
+      master_backup.proto master_test.proto master_ysql_lease.proto
   MESSAGES_PROTO_FILES
       master_ddl.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
@@ -113,6 +113,7 @@ set(MASTER_SRCS
   master_test_service.cc
   master_tserver.cc
   master_types.cc
+  master_ysql_lease_service.cc
   mini_master.cc
   multi_step_monitored_task.cc
   object_lock_info_manager.cc
@@ -159,6 +160,7 @@ set(MASTER_SRCS
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
   xcluster/xcluster_universe_replication_alter_helper.cc
+  xcluster/xcluster_wal_anchor_deletion_task.cc
   xcluster_consumer_registry_service.cc
   xcluster_rpc_tasks.cc
   xrepl_catalog_manager.cc
@@ -243,6 +245,7 @@ set(MASTER_TEST_COMMON_SRCS
   master-test_base.cc
   master_cluster_client.cc
   master_ddl_client.cc
+  master_ysql_lease_client.cc
   ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
@@ -257,6 +260,7 @@ set(YB_TEST_LINK_LIBS master
   yb_client
   yb_tools_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(async_rpc_tasks-test)
 ADD_YB_TEST(async_task_result_collector-test)
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)

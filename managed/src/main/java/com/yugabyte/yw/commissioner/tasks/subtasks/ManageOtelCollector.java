@@ -30,7 +30,16 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ManageOtelCollector extends NodeTaskBase {
 
-  public static String OtelCollectorVersion = "0.90.0";
+  // Version of the YugabyteDB unified otel collector build consumed from ybm-package-store. This
+  // feeds the artifact filename built in NodeAgentRpcPayload#getOtelCollectorPackagePath, so it
+  // must stay in step with the URLs in support/thirdparty-dependencies.txt.
+  //
+  // The -fips suffix selects the build made with GOFIPS140=v1.0.0, the FIPS 140-3 validated Go
+  // Cryptographic Module (CMVP certificate #5247), which also defaults the binary to
+  // GODEBUG=fips140=on. It is a separate artifact from the bare 0.145.0 rather than a
+  // replacement, published from the same collector manifest by the unified-otelcol workflow in
+  // yugabyte-cloud, so the suffix is part of the version string and not a build flag here.
+  public static String OtelCollectorVersion = "0.145.0-fips";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;

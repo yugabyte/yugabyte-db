@@ -20,16 +20,42 @@ import org.apache.commons.collections4.CollectionUtils;
 public class TaskApiFilter {
 
   @ApiModelProperty(
-      value = "The start date to filter paged query.",
+      value =
+          "Include tasks created on or after this time (create_time). May be set alone or"
+              + " with date_range_end.",
       example = "2022-12-12T13:07:18Z")
   @JsonAlias("date_range_start")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date dateRangeStart;
 
-  @ApiModelProperty(value = "The end date to filter paged query.", example = "2022-12-12T13:07:18Z")
+  @ApiModelProperty(
+      value =
+          "Include tasks created on or before this time (create_time). May be set alone or"
+              + " with date_range_start.",
+      example = "2022-12-12T13:07:18Z")
   @JsonAlias("date_range_end")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date dateRangeEnd;
+
+  @ApiModelProperty(
+      value =
+          "Include tasks completed on or after this time (completion_time). May be set alone"
+              + " or with completion_date_range_end. Tasks with null completion_time (still"
+              + " in progress) are excluded when either completion bound is set.",
+      example = "2022-12-12T13:07:18Z")
+  @JsonAlias("completion_date_range_start")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  private Date completionDateRangeStart;
+
+  @ApiModelProperty(
+      value =
+          "Include tasks completed on or before this time (completion_time). May be set alone"
+              + " or with completion_date_range_start. Tasks with null completion_time (still"
+              + " in progress) are excluded when either completion bound is set.",
+      example = "2022-12-12T13:07:18Z")
+  @JsonAlias("completion_date_range_end")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  private Date completionDateRangeEnd;
 
   @JsonAlias("target_list")
   private Set<CustomerTask.TargetType> targetList;
@@ -67,6 +93,12 @@ public class TaskApiFilter {
     }
     if (dateRangeStart != null) {
       builder.dateRangeStart(dateRangeStart);
+    }
+    if (completionDateRangeStart != null) {
+      builder.completionDateRangeStart(completionDateRangeStart);
+    }
+    if (completionDateRangeEnd != null) {
+      builder.completionDateRangeEnd(completionDateRangeEnd);
     }
     return builder.build();
   }

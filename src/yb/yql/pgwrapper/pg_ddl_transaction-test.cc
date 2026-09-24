@@ -32,7 +32,6 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
@@ -93,14 +92,9 @@ class PgDdlTransactionTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     opts->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
-    opts->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
     opts->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
     opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
-    opts->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled,"
-        "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
     opts->extra_tserver_flags.push_back(
         Format("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0",
                (RandomUniformBool() ? "true" : "false")));
@@ -497,8 +491,6 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
-        "ysql_yb_enable_ddl_savepoint_support";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
 
@@ -971,6 +963,10 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
       }
     }
   }
+  ASSERT_FALSE(table_id_after_drop.empty());
+  // Hold the TableInfo now: once the rollback below deletes this table, the catalog manager's
+  // background cleanup erases it from its table map and GetTableInfo returns null.
+  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN b", kTableName));
   ASSERT_OK(conn.Execute("RELEASE SAVEPOINT b"));
   ASSERT_OK(conn.Execute("SAVEPOINT c"));
@@ -992,9 +988,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_EQ(table_schema.columns()[1].name(), "a");
   ASSERT_EQ(table_schema.columns()[2].name(), "b");
 
-  ASSERT_FALSE(table_id_after_drop.empty());
   ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
-  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN e TEXT", kTableName));
@@ -1078,6 +1072,14 @@ class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
         "--ysql_yb_ddl_transaction_block_enabled=false");
     options->extra_tserver_flags.push_back(
         "--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=false"));
     options->extra_master_flags.push_back(
@@ -1086,6 +1088,10 @@ class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
         Format("--ysql_enable_concurrent_ddl=false"));
     AppendFlagToAllowedPreviewFlagsCsv(
         options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    options->extra_master_flags.push_back(
+        Format("--ysql_enable_concurrent_ddl=false"));
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "ysql_enable_concurrent_ddl");
     LibPqTestBase::UpdateMiniClusterOptions(options);
   }
 

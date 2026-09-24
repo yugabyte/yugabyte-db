@@ -332,18 +332,17 @@ IntentAwareIteratorPtr CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
-    const FastBackwardScan use_fast_backward_scan,
-    const AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek) {
+    const IntentAwareIteratorFlags flags) {
   // Current policy is to enable restart block keys caching only when fast backward scan is enabled.
-  const auto cache_restart_block_keys = rocksdb::CacheRestartBlockKeys { use_fast_backward_scan };
+  const auto cache_restart_block_keys = rocksdb::CacheRestartBlockKeys {
+      flags.Test(IntentAwareIteratorFlag::kFastBackwardScan) };
 
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(
       bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, GetRegularDBStatistics(read_operation_data.statistics));
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, read_operation_data, txn_op_context,
-      use_fast_backward_scan, avoid_useless_next_instead_of_seek);
+      doc_db, read_opts, read_operation_data, txn_op_context, flags);
 }
 
 BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
@@ -741,8 +740,8 @@ void InitRocksDBBaseOptions(
   options->priority_thread_pool_metrics = tablet_options.priority_thread_pool_metrics;
 }
 
-void InitRocksDBOptionsTableFactory(
-    rocksdb::Options* options, const tablet::TabletOptions& tablet_options,
+std::shared_ptr<rocksdb::TableFactory> CreateRocksDBTableFactory(
+    const tablet::TabletOptions& tablet_options, StorageDbType db_type, rocksdb::Logger* info_log,
     rocksdb::BlockBasedTableOptions table_options) {
   // Set block cache options.
   if (tablet_options.block_cache) {
@@ -756,17 +755,19 @@ void InitRocksDBOptionsTableFactory(
 
   AutoInitBlockBasedTableOptionsFromFlags(&table_options);
 
-  // Set our custom bloom filter that is docdb aware.
-  if (FLAGS_use_docdb_aware_bloom_filter) {
+  // Set our custom bloom filter that is docdb aware. Only the regular DB read path consults
+  // bloom filters: every intents DB iterator runs with BloomFilterOptions::Inactive(), so
+  // building filter blocks there would only cost flush CPU and SST space.
+  if (db_type == StorageDbType::kRegular && FLAGS_use_docdb_aware_bloom_filter) {
     const auto filter_block_size_bits = table_options.filter_block_size * 8;
     table_options.filter_policy = std::make_shared<const DocDbAwareV3FilterPolicy>(
-        filter_block_size_bits, options->info_log.get());
+        filter_block_size_bits, info_log);
     table_options.supported_filter_policies =
         std::make_shared<rocksdb::BlockBasedTableOptions::FilterPoliciesMap>();
     AddSupportedFilterPolicy(std::make_shared<const DocDbAwareHashedComponentsFilterPolicy>(
-                                 filter_block_size_bits, options->info_log.get()), &table_options);
+                                 filter_block_size_bits, info_log), &table_options);
     AddSupportedFilterPolicy(std::make_shared<const DocDbAwareV2FilterPolicy>(
-                                 filter_block_size_bits, options->info_log.get()), &table_options);
+                                 filter_block_size_bits, info_log), &table_options);
   }
 
   if (FLAGS_use_multi_level_index) {
@@ -775,7 +776,19 @@ void InitRocksDBOptionsTableFactory(
     table_options.index_type = rocksdb::IndexType::kBinarySearch;
   }
 
-  options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
+  return std::shared_ptr<rocksdb::TableFactory>(
+      rocksdb::NewBlockBasedTableFactory(table_options));
+}
+
+void InitRocksDBOptionsWithoutTableFactory(
+    rocksdb::Options* options, const std::string& log_prefix,
+    const TabletId& tablet_id,
+    const std::shared_ptr<rocksdb::Statistics>& statistics,
+    const tablet::TabletOptions& tablet_options,
+    const uint64_t group_no) {
+  InitRocksDBBaseOptions(options, log_prefix, tablet_id, tablet_options, group_no);
+  SetLogPrefix(options, log_prefix);
+  options->statistics = statistics;
 }
 
 void InitRocksDBOptions(
@@ -783,12 +796,13 @@ void InitRocksDBOptions(
     const TabletId& tablet_id,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
+    StorageDbType db_type,
     rocksdb::BlockBasedTableOptions table_options,
     const uint64_t group_no) {
-  InitRocksDBBaseOptions(options, log_prefix, tablet_id, tablet_options, group_no);
-  SetLogPrefix(options, log_prefix);
-  options->statistics = statistics;
-  InitRocksDBOptionsTableFactory(options, tablet_options, table_options);
+  InitRocksDBOptionsWithoutTableFactory(
+      options, log_prefix, tablet_id, statistics, tablet_options, group_no);
+  options->table_factory = CreateRocksDBTableFactory(
+      tablet_options, db_type, options->info_log.get(), std::move(table_options));
 }
 
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
@@ -1135,10 +1149,11 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
 
 Result<BloomFilterOptions> BloomFilterOptions::Make(
     const DocReadContext& doc_read_context, Slice lower, Slice upper, bool allow_variable) {
-  const bool is_fixed_point_get =
-      !lower.empty() && VERIFY_RESULT(doc_read_context.HaveEqualBloomFilterKey(lower, upper));
-  if (is_fixed_point_get) {
-    return BloomFilterOptions::Fixed(lower);
+  // Fixed bloom filter mode requires that all keys the scan can return have the bloom filter key.
+  const auto user_key_for_fixed_filter =
+      VERIFY_RESULT(doc_read_context.UserKeyForFixedBloomFilter(lower, upper));
+  if (user_key_for_fixed_filter) {
+    return BloomFilterOptions::Fixed(*user_key_for_fixed_filter);
   }
   if (allow_variable) {
     return BloomFilterOptions::Variable();

@@ -121,10 +121,10 @@ std::vector<VectorWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
 // Draft of a function that returns a pointer to a merged index
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
-    VectorIndexFactory<Vector, DistanceResult> index_factory,
+    const VectorIndexTraitsPtr<Vector, DistanceResult>& index_traits,
     const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes,
-    size_t min_capacity = 0) {
-  VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory(FactoryMode::kCreate);
+    StoreVectorPayload store_vector_payload, size_t min_capacity = 0) {
+  auto merged_index = index_traits->Create(FactoryMode::kCreate, store_vector_payload);
 
   size_t total_capacity = 0;
   for (const auto& index : indexes) {
@@ -134,16 +134,18 @@ Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
   RETURN_NOT_OK(merged_index->Reserve(
       std::max(min_capacity, total_capacity),
       std::thread::hardware_concurrency(),
-      std::thread::hardware_concurrency()));
+      std::thread::hardware_concurrency(),
+      rocksdb::Cache::ReservationMode::kAlways));
 
-  RETURN_NOT_OK(Merge(merged_index, indexes, [](auto&&){ return storage::FilterDecision::kKeep; }));
+  RETURN_NOT_OK(Merge(
+      merged_index, indexes, [](auto&&...){ return storage::FilterDecision::kKeep; }));
   return std::move(merged_index);
 }
 
 template <typename Filter>
 concept MergeFilterType =
-    std::is_invocable_r_v<storage::FilterDecision, Filter, VectorId> ||
-    std::is_invocable_r_v<storage::FilterDecision, Filter, const VectorId&>;
+    std::is_invocable_r_v<storage::FilterDecision, Filter, VectorId, Slice> ||
+    std::is_invocable_r_v<storage::FilterDecision, Filter, const VectorId&, Slice>;
 
 template <IndexableVectorType Vector,
           ValidDistanceResultType DistanceResult,
@@ -153,9 +155,9 @@ Status Merge(
     const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& source,
     MergeFilter&& merge_filter) {
   for (const auto& index : source) {
-    for (const auto& [vector_id, vector] : *index) {
-      if (merge_filter(vector_id) == storage::FilterDecision::kKeep) {
-        RETURN_NOT_OK(target->Insert(vector_id, vector));
+    for (const auto& entry : *index) {
+      if (merge_filter(entry.vector_id, entry.payload) == storage::FilterDecision::kKeep) {
+        RETURN_NOT_OK(target->Insert(entry.vector_id, entry.vector, entry.payload));
       }
     }
   }

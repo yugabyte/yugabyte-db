@@ -70,6 +70,21 @@ public class AWSCloudInfo implements CloudInfoInterface {
   @EditableInUseProvider(name = "AWS VPC type", allowed = false)
   private VPCType vpcType = VPCType.EXISTING;
 
+  @ApiModelProperty(
+      value =
+          "Enable GCS-on-AWS cross-cloud federated IAM on this provider's DB nodes (GCP Workload"
+              + " Identity Federation). Requires the federated IAM audience below.")
+  @EditableInUseProvider(name = "Enable federated IAM", allowed = true)
+  public boolean enableFederatedIam;
+
+  @ApiModelProperty(
+      value =
+          "GCP Workload Identity Federation audience"
+              + " (//iam.googleapis.com/projects/.../providers/...), used when federated IAM is"
+              + " enabled. The DB node renders the external_account credential from it.")
+  @EditableInUseProvider(name = "Federated IAM audience", allowed = true)
+  public String federatedIamAudience;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();

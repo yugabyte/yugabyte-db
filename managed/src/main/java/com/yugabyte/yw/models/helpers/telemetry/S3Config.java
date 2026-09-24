@@ -45,13 +45,22 @@ public class S3Config extends TelemetryProviderConfig {
 
   @Getter
   public enum S3Partition {
-    hour("hour"),
-    minute("minute");
+    hour("hour", "year=%Y/month=%m/day=%d/hour=%H"),
+    minute("minute", "year=%Y/month=%m/day=%d/hour=%H/minute=%M");
 
     private final String granularity;
 
-    S3Partition(String granularity) {
+    /**
+     * strftime layout handed to the awss3 exporter's {@code s3_partition_format}. The exporter
+     * replaced the older {@code s3_partition} granularity keyword in contrib #37954. These layouts
+     * reproduce the keys that keyword used to build - {@code year=%d/month=%02d/day=%02d/hour=%02d}
+     * plus {@code /minute=%02d} only for minute - so existing bucket layouts are unchanged.
+     */
+    private final String partitionFormat;
+
+    S3Partition(String granularity, String partitionFormat) {
       this.granularity = granularity;
+      this.partitionFormat = partitionFormat;
     }
 
     @Override

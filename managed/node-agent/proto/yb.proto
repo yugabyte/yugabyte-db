@@ -92,7 +92,10 @@ message ServerControlInput {
     string serverName = 2;
     string serverHome = 3;
     bool deconfigure = 4;
-    uint32 numVolumes = 5;
+    // When true, run the CSP /mnt/dN data-volume attachment check.
+    bool checkDataVolumes = 5;
+    // Absolute mount paths to wait for / verify before START (cloud: /mnt/dN).
+    repeated string mountPoints = 6;
 }
 
 message ServerControlOutput {
@@ -157,6 +160,11 @@ message ConfigureServerInput {
     repeated string mountPoints = 4;
     uint32 numCoresToKeep = 5;
     bool configureCgroup = 6;
+    optional bool acceptableClockSkewWaitEnabled = 7;
+    optional double acceptableClockSkewSec = 8;
+    optional uint32 acceptableClockSkewMaxTries = 9;
+    // When true, bake the CSP /mnt/dN data-volume attachment check into scripts.
+    bool checkDataVolumes = 10;
 }
 
 message ConfigureServerOutput {
@@ -184,10 +192,63 @@ message InstallOtelCollectorInput {
     // Used to propagate audit-log setting changes even when otel-collector
     // is not being (re)installed.
     bool refreshScriptOnly = 13;
+    // POSIX-ERE record-start pattern for YSQL logs, derived from the universe's
+    // log_line_prefix (the same source the collector's multiline config uses).
+    // zip_purge_yb_logs.sh needs it to group multi-line audit statements into
+    // whole records when archiving; empty falls back to the script's default.
+    string ysqlAuditLineStartRegex = 14;
 }
 
 message InstallOtelCollectorOutput {
     int32 pid = 1;
+}
+
+// Input to set up cross-cloud federated IAM on a DB node, so YBC can reach GCS
+// backup storage using the node's own AWS identity.
+message ConfigureCloudFederationInput {
+    // Federation direction; computed per node by YBA.
+    enum FlowDirection {
+        FLOW_DIRECTION_UNSPECIFIED = 0;
+        GCS_ON_AWS = 1;  // AWS DB node -> GCS storage
+        S3_ON_GCP = 2;   // GCP DB node -> S3 storage
+    }
+    FlowDirection flowDirection = 1;
+    string ybHomeDir = 2;
+    // When false, federation artifacts on this node are torn down.
+    bool enabled = 3;
+    // Air-gapped node: skip package downloads, fail fast if a tool is missing.
+    bool isAirgap = 4;
+    // Writable temp dir provided by YBA (some nodes have a non-writable /tmp).
+    string remoteTmp = 7;
+    oneof config {
+        GcsOnAwsConfig gcsOnAws = 5;
+        S3OnGcpConfig s3OnGcp = 6;
+    }
+}
+
+// GCP Workload Identity Federation audience for an AWS node writing to GCS.
+// The node renders the full external_account JSON from this audience; the rest
+// of the credential (type, token_url, IMDS credential_source) is fixed in the
+// gcp-fed-creds.json.j2 template. The audience comes from provider YNP config.
+message GcsOnAwsConfig {
+    string audience = 1;
+}
+
+// Params for a GCP node writing to S3 via AWS AssumeRoleWithWebIdentity. The node
+// renders aws_credential_process.sh (which exchanges the GCE identity token for the
+// audience against STS) and an ~/.aws/config credential_process profile. All three
+// values come from the provider's federated-IAM config; profileName is a fixed
+// internal name YBC references via AWS_PROFILE.
+message S3OnGcpConfig {
+    string roleArn = 1;
+    string audience = 2;
+    string profileName = 3;
+}
+message ConfigureCloudFederationOutput {
+    // True if the handler (re)wrote artifacts and restarted YBC; false on a no-op reconcile.
+    bool changed = 1;
+    // Human-readable reason, e.g. "creds drift" or "already configured".
+    string detail = 2;
 }
 
 message SetupCGroupInput {

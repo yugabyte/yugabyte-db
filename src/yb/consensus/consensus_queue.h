@@ -166,9 +166,9 @@ class PeerMessageQueue {
     // Whether the last exchange with this peer was successful.
     bool is_last_exchange_successful = false;
 
-    // The time of the last communication with the peer.
-    // Defaults to the time of construction, so does not necessarily mean that
-    // successful communication ever took place.
+    // Last time we heard from this peer (RPC response or NotifyPeerIsResponsiveDespiteError).
+    // Defaults to construction time, so a just-tracked peer is treated as live. Not reset when
+    // SetLeaderMode re-enters LEADER mode on a config change.
     MonoTime last_successful_communication_time;
 
     // Leader lease expiration from this follower's point of view.
@@ -360,9 +360,15 @@ class PeerMessageQueue {
 
   Status UnRegisterObserver(PeerMessageQueueObserver* observer);
 
-  bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
+  virtual bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
 
-  OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
+  // True if we have heard from this peer within follower_unavailable_considered_failed_sec.
+  // Based on last_successful_communication_time, which is not reset on config change.
+  // Untracked peers are treated as live so a just-added PRE_VOTER cannot race past this check
+  // before the queue starts tracking it.
+  bool IsPeerLive(const std::string& peer_uuid) const;
+
+  virtual OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
 
   // Choose an up-to-date peer for leader elections that do not specify a new_leader_uuid. Any VOTER
   // would be valid, but we pick from those with the highest op id to minimize how long the leader
@@ -665,9 +671,6 @@ struct MajorityReplicatedData {
   CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
   uint64_t num_sst_files;
-
-  // Update was caused by the following peer, that received all operations.
-  TabletServerId peer_got_all_ops;
 
   std::string ToString() const;
 };

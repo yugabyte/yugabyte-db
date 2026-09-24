@@ -24,6 +24,7 @@ int mm_tls_writev(mm_io_t *, struct iovec *, int);
 int mm_tls_read_pending(mm_io_t *);
 int mm_tls_read(mm_io_t *, char *, int);
 int mm_tls_verify_common_name(mm_io_t *, char *);
+int yb_mm_tls_get_peer_cert_der(mm_io_t *, unsigned char **buf, int *len);
 SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client);
 
 #endif /* MM_TLS_H */

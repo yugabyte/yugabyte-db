@@ -373,6 +373,23 @@ public interface YBClientApi extends AutoCloseable {
     Long getchangesRespMaxSizeBytes)
     throws Exception;
 
+  GetChangesResponse getChangesCDCSDK(
+    YBTable table,
+    String streamId,
+    String tabletId,
+    long term,
+    long index,
+    byte[] key,
+    int write_id,
+    long time,
+    boolean needSchemaInfo,
+    CdcSdkCheckpoint explicitCheckpoint,
+    long safeHybridTime,
+    int walSegmentIndex,
+    Long getchangesRespMaxSizeBytes,
+    long maxIndexInSortWindow)
+    throws Exception;
+
   GetCheckpointResponse getCheckpoint(YBTable table, String streamId, String tabletId)
     throws Exception;
 

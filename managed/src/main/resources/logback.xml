@@ -4,7 +4,11 @@
   <property name="cloud" value="${yb.cloud.enabled}"/>
   <conversionRule conversionWord="coloredLevel" converterClass="play.api.libs.logback.ColoredLevel" />
 
-  <if condition='property("cloud").equals("true")'>
+  <condition class="ch.qos.logback.core.boolex.PropertyEqualityCondition">
+    <key>cloud</key>
+    <value>true</value>
+  </condition>
+  <if>
     <then>
       <appender name="SIFT_FILE" class="ch.qos.logback.classic.sift.SiftingAppender">
 
@@ -109,7 +113,11 @@
     </else>
   </if>
 
-  <if condition='property("cloud").equals("true")'>
+  <condition class="ch.qos.logback.core.boolex.PropertyEqualityCondition">
+    <key>cloud</key>
+    <value>true</value>
+  </condition>
+  <if>
     <then>
       <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
@@ -197,7 +205,11 @@
   <logger name="play" level="INFO" />
   <logger name="org.yb" level="INFO" />
   <logger name="db.migration" level="DEBUG" />
-  <if condition='property("cloud").equals("true")'>
+  <condition class="ch.qos.logback.core.boolex.PropertyEqualityCondition">
+    <key>cloud</key>
+    <value>true</value>
+  </condition>
+  <if>
     <then>
       <logger name="application" level="INFO" />
       <logger name="com.yugabyte.yw" level="DEBUG" />

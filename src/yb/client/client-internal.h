@@ -510,11 +510,12 @@ class YBClient::Data {
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
       std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
 
-  // Get xCluster streams by source table ids.
+  // Get xCluster streams by source table ids, optionally asking the source to create the streams of
+  // the tables that do not have one.
   Status GetXClusterStreams(
       YBClient* client, CoarseTimePoint deadline,
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      const std::vector<TableId>& source_table_ids,
+      const std::vector<TableId>& source_table_ids, bool create_stream_if_missing,
       std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
 
   Status IsXClusterBootstrapRequired(

@@ -10,7 +10,7 @@
 use pgrx::prelude::*;
 use serde::{Deserialize, Serialize};
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 #[pg_schema]
 mod home {

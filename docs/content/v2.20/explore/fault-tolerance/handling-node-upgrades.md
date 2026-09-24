@@ -128,7 +128,7 @@ To simulate bringing back a node online locally, you can just start the stopped 
 
 {{</nav/panels>}}
 
-The node is automatically added back into the cluster. The cluster will notice that the leaders and followers are unbalanced across the cluster, and trigger a re-balance and leader election. This ensures that the leaders and followers are evenly distributed. All the nodes in the cluster are fully functional and can start taking in load.
+The node is automatically added back into the cluster. The cluster will notice that the leaders and followers are unbalanced across the cluster, and trigger a rebalance and leader election. This ensures that the leaders and followers are evenly distributed. All the nodes in the cluster are fully functional and can start taking in load.
 
 Notice in the following illustration that the tablet followers in node-4 are updated with the latest data and are made leaders.
 

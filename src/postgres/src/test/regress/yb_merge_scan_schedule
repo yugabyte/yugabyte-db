@@ -16,6 +16,31 @@
 #    DISTINCT and GROUP BY) in order to provide consistently ordered results
 # 1. Columns part of SAOP
 # 1. Optionally, other columns
+#
+# Statistics matter to these tests because the plan a query gets depends on
+# them.  Aim for the statistics a real cluster would have.  These tests run
+# with the cost based optimizer on, and a cluster running it also runs the auto
+# analyze service, which analyzes a table for you soon after the table changes.
+# For realistic plans and plan stability, disable auto analyze and run ANALYZE
+# manually instead:
+# 1. Run ANALYZE once a table is created and filled.
+# 1. Run ANALYZE on the table again after creating an index on an expression,
+#    such as ((a + b)).  Such an index gets statistics of its own, describing
+#    the values the expression produces, and only ANALYZE collects them.
+#    Creating the index does not.
+#
+# This works because these tables are small.  ANALYZE looks at a sample of
+# 300 times default_statistics_target rows, which is 30000 by default, so a
+# table that fits in the sample has every one of its rows looked at and gets
+# the same statistics every time.  A bigger table gets a random subset of its
+# rows instead, and then its statistics differ from run to run, which moves
+# plans and breaks tests.  Keep tables here well under that size.  #34028 asks
+# for a way to make ANALYZE deterministic whatever the table size.
+#
+# Temporary tables are the exception.  The auto analyze service connects as its
+# own session, and one session cannot see another session's temporary tables,
+# so a real cluster leaves them unanalyzed unless the session analyzes them
+# itself.  Leave them unanalyzed here as well.
 
 # Setup is used by tests in later lines.
 test: yb.orig.merge_scan_setup
@@ -29,6 +54,7 @@ test: yb.orig.merge_scan_hash
 test: yb.orig.merge_scan_partition
 test: yb.orig.merge_scan_colocated
 test: yb.orig.merge_scan_relabel
+test: yb.orig.merge_scan_cross_type
 
 # This test uses tv_tbl like the relabel test on an earlier line, adding an
 # index that it tears down.
@@ -42,5 +68,7 @@ test: yb.orig.merge_scan_rls
 test: yb.orig.merge_scan_join
 test: yb.orig.merge_scan_derive
 
-# This test defines its own tables.
+# These tests define their own tables.
 test: yb.orig.merge_scan_degenerate
+test: yb.orig.merge_scan_subquery
+test: yb.orig.merge_scan_plan_cache

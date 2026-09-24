@@ -21,7 +21,14 @@ const (
 )
 
 var (
-	SystemdBackOff = backoff.NewSimpleBackOff(10*time.Second /* interval */, 10 /* max attempts */)
+	SystemdBackOff = backoff.NewSimpleBackOff(
+		10*time.Second, /* interval */
+		10,             /* max attempts */
+	)
+	SystemdReadyTimeout      = 30 * time.Second
+	SystemdReadyPollInterval = 2 * time.Second
+	// Must exceed the collector unit's RestartSec=5 so a crash loop ticks NRestarts inside it.
+	SystemdSettleInterval = 15 * time.Second
 	// UserSystemdUnitsForUpdate maps process names to their service file source and destination paths.
 	UserSystemdUnitsForUpdate = map[string]struct {
 		Src  string
@@ -243,6 +250,107 @@ func SystemdUnitPath(
 		return "", err
 	}
 	return strings.TrimSpace(cmdInfo.StdOut.String()), nil
+}
+
+// systemdUnitProperties reads systemd properties for a unit as a key/value map. "--value" does
+// print the values, but it drops the keys and systemd emits them in its own order rather than
+// the order the properties were requested, so they cannot be mapped back positionally.
+func systemdUnitProperties(
+	ctx context.Context,
+	username, serverName string,
+	properties []string,
+	logOut util.Buffer,
+) (map[string]string, error) {
+	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
+	if err != nil {
+		return nil, err
+	}
+	cmd := fmt.Sprintf(
+		"%s show -p %s %s", cmdPrefix, strings.Join(properties, " -p "), serverName)
+	cmdInfo, err := RunShellCmd(ctx, cmdUser, "ShowSystemdUnit", cmd, logOut)
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(cmdInfo.StdOut.String(), "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), "=")
+		if found {
+			values[key] = value
+		}
+	}
+	return values, nil
+}
+
+// VerifySystemdServiceStarted confirms a unit came up and is not crash-looping.
+//
+// otel-collector.service sets no Type=, so "systemctl start" succeeds as soon as the process
+// forks, before its config is parsed; Restart=always with StartLimitInterval=0 then means a
+// process dying on a bad config never reaches "failed" but restarts forever. So a steady
+// NRestarts across a settle window, not the exit code of start/enable, is the liveness signal.
+func VerifySystemdServiceStarted(
+	ctx context.Context,
+	username, serverName string,
+	logOut util.Buffer,
+) error {
+	properties := []string{"ActiveState", "SubState", "NRestarts", "Result"}
+	deadline := time.Now().Add(SystemdReadyTimeout)
+	var values map[string]string
+	var err error
+	for {
+		values, err = systemdUnitProperties(ctx, username, serverName, properties, logOut)
+		if err != nil {
+			return err
+		}
+		if values["ActiveState"] == "active" {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf(
+				"service %s did not become active within %s (ActiveState=%s, SubState=%s,"+
+					" Result=%s, NRestarts=%s); check the unit's journal for the startup error",
+				serverName,
+				SystemdReadyTimeout,
+				values["ActiveState"],
+				values["SubState"],
+				values["Result"],
+				values["NRestarts"],
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(SystemdReadyPollInterval):
+		}
+	}
+
+	restartsBefore := values["NRestarts"]
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(SystemdSettleInterval):
+	}
+
+	values, err = systemdUnitProperties(ctx, username, serverName, properties, logOut)
+	if err != nil {
+		return err
+	}
+	if values["ActiveState"] != "active" || values["NRestarts"] != restartsBefore {
+		return fmt.Errorf(
+			"service %s is not holding a healthy state: it restarted %s->%s times over %s"+
+				" (ActiveState=%s, SubState=%s, Result=%s). The process is exiting right after"+
+				" start, which usually means its config was rejected",
+			serverName,
+			restartsBefore,
+			values["NRestarts"],
+			SystemdSettleInterval,
+			values["ActiveState"],
+			values["SubState"],
+			values["Result"],
+		)
+	}
+	util.FileLogger().Infof(ctx, "Service %s is active and stable", serverName)
+	logOut.WriteLine("Service %s is active and stable", serverName)
+	return nil
 }
 
 // IsProcessRunning checks if a process is running. This check is already in Ansible.

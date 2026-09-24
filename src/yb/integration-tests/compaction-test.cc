@@ -29,6 +29,7 @@
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/dockv/doc_ttl_util.h"
@@ -83,6 +84,7 @@ DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(docdb_enable_sst_stats_collector);
 DECLARE_bool(enable_ondisk_compression);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(file_expiration_ignore_value_ttl);
@@ -97,6 +99,7 @@ DECLARE_double(auto_compact_percent_obsolete);
 
 DECLARE_int32(auto_compact_check_interval_sec);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(docdb_sst_stats_resync_interval_sec);
 DECLARE_int32(full_compaction_pool_max_threads);
 DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(replication_factor);
@@ -198,6 +201,13 @@ class CompactionTest : public YBTest {
     rocksdb_listener_ = std::make_shared<RocksDbListener>();
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 2;
+
+    // Pin the full compaction pool size so tests are independent of the CPU-count-derived
+    // default, unless a subclass already chose a value (ScheduledFullCompactionsTest sets 1
+    // before calling this SetUp).
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_pool_max_threads) < 0) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_threads) = 2;
+    }
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
 
@@ -531,6 +541,143 @@ TEST_F(CompactionTest, ManualCompactionProducesOneFilePerDb) {
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     ASSERT_EQ(1, db->GetCurrentVersionNumSSTFiles());
+  }
+}
+
+// The per-tablet SST statistics aggregate is fed by RocksDB flush and compaction events, so it is
+// exercised against a real tablet here rather than next to the collector's unit tests.
+class SstStatsAggregateTest : public CompactionTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_enable_sst_stats_collector) = CollectorEnabled();
+    // This test drives the resync itself; a background pass would race the assertions.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_sst_stats_resync_interval_sec) = 0;
+    CompactionTest::SetUp();
+  }
+
+ protected:
+  virtual bool CollectorEnabled() { return true; }
+
+  TSTabletManager::TabletPtrs WorkloadTablets() {
+    TSTabletManager::TabletPtrs tablets;
+    for (const auto& peer :
+         cluster_->GetTabletManager(0)->GetTabletPeersWithTableId(workload_table_id_)) {
+      if (auto tablet = peer->shared_tablet_maybe_null()) {
+        tablets.push_back(std::move(tablet));
+      }
+    }
+    EXPECT_FALSE(tablets.empty());
+    return tablets;
+  }
+
+  // Asserts that what the listener accumulated matches what a read of the whole live file set
+  // computes, and returns the aggregate.
+  docdb::SstStatsAggregate CheckAgainstLiveFiles(const tablet::TabletPtr& tablet) {
+    const auto stats = tablet->sst_stats();
+    EXPECT_NE(stats, nullptr);
+    const auto before_resync = stats->Get();
+    EXPECT_OK(tablet->ResyncSstStats());
+    const auto after_resync = stats->Get();
+    EXPECT_GT(after_resync.last_resync_micros, before_resync.last_resync_micros);
+    EXPECT_EQ(after_resync.aggregate, before_resync.aggregate);
+    const auto& from_events = before_resync.aggregate;
+    EXPECT_EQ(from_events.covered_files, tablet->GetCurrentVersionNumSSTFiles());
+    EXPECT_EQ(from_events.uncovered_files, 0);
+    EXPECT_EQ(from_events.unsubtracted_files, 0);
+    return from_events;
+  }
+};
+
+TEST_F(SstStatsAggregateTest, TracksFlushAndCompactionOutputs) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(5));
+
+  for (const auto& tablet : WorkloadTablets()) {
+    // Every live file was written by a flush the listener saw, so the incremental aggregate is
+    // already complete even though nothing has read the file set.
+    ASSERT_EQ(tablet->sst_stats()->Get().last_resync_micros, 0);
+    const auto flushed = CheckAgainstLiveFiles(tablet);
+    ASSERT_GT(flushed.total_entries, 0);
+    ASSERT_GT(flushed.num_rows, 0);
+  }
+
+  ASSERT_OK(ExecuteManualCompaction());
+
+  for (const auto& tablet : WorkloadTablets()) {
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
+    const auto compacted = CheckAgainstLiveFiles(tablet);
+    ASSERT_GT(compacted.total_entries, 0);
+  }
+}
+
+TEST_F(SstStatsAggregateTest, ReplacesAggregatorAfterTruncate) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, /* num_tablets = */ 1);
+  ASSERT_OK(WriteAtLeastFilesPerDb(2));
+
+  const auto tablets_before = WorkloadTablets();
+  ASSERT_EQ(tablets_before.size(), 1);
+  const auto old_stats = tablets_before.front()->sst_stats();
+  ASSERT_NE(old_stats, nullptr);
+  const auto old_aggregate = old_stats->Get().aggregate;
+  ASSERT_GT(old_aggregate.total_entries, 0);
+
+  const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+  ASSERT_OK(workload_->client().TruncateTable(table_info->id(), /* wait = */ true));
+
+  const auto tablets_after = WorkloadTablets();
+  ASSERT_EQ(tablets_after.size(), 1);
+  const auto new_stats = tablets_after.front()->sst_stats();
+  ASSERT_NE(new_stats, nullptr);
+  ASSERT_NE(new_stats, old_stats);
+  ASSERT_OK(tablets_after.front()->ResyncSstStats());
+  ASSERT_EQ(new_stats->Get().aggregate, docdb::SstStatsAggregate());
+  ASSERT_GT(new_stats->Get().last_resync_micros, 0);
+
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(2));
+  const auto new_aggregate = new_stats->Get().aggregate;
+  ASSERT_GT(new_aggregate.total_entries, 0);
+  ASSERT_EQ(new_aggregate.covered_files, tablets_after.front()->GetCurrentVersionNumSSTFiles());
+  // Holding the old shared_ptr is safe, but its aggregate belongs to the destroyed RocksDB.
+  ASSERT_EQ(old_stats->Get().aggregate, old_aggregate);
+}
+
+class SstStatsCoverageTest : public SstStatsAggregateTest {
+ protected:
+  bool CollectorEnabled() override { return false; }
+};
+
+TEST_F(SstStatsCoverageTest, CountsFilesWrittenBeforeTheCollector) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(3));
+
+  // Enabling the collector takes effect on tablet open and cannot measure what is already on disk.
+  // Those files have to read as unmeasured; a garbage ratio that ignored them would read as clean.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_enable_sst_stats_collector) = true;
+  ASSERT_OK(cluster_->RestartSync());
+
+  for (const auto& tablet : WorkloadTablets()) {
+    const auto stats = tablet->sst_stats();
+    ASSERT_NE(stats, nullptr);
+    ASSERT_OK(tablet->ResyncSstStats());
+    const auto aggregate = stats->Get().aggregate;
+    ASSERT_EQ(aggregate.covered_files, 0);
+    ASSERT_EQ(aggregate.uncovered_files, tablet->GetCurrentVersionNumSSTFiles());
+    ASSERT_GT(aggregate.uncovered_files, 0);
+    ASSERT_GT(aggregate.uncovered_entries, 0);
+    ASSERT_EQ(aggregate.total_entries, 0);
+  }
+
+  // A compaction rewrites them through the collector, and coverage follows.
+  ASSERT_OK(ExecuteManualCompaction());
+  for (const auto& tablet : WorkloadTablets()) {
+    const auto aggregate = tablet->sst_stats()->Get().aggregate;
+    ASSERT_EQ(aggregate.covered_files, tablet->GetCurrentVersionNumSSTFiles());
+    ASSERT_EQ(aggregate.uncovered_files, 0);
+    ASSERT_GT(aggregate.total_entries, 0);
   }
 }
 
@@ -2309,8 +2456,11 @@ TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
           CorruptRange{kCorruptionOffset, kCorruptionSize}}) {
       ASSERT_OK(yb::CorruptFile(
           data_file_path, corrupt_range.offset, corrupt_range.size, CorruptionType::kZero));
+      // Corrupt range boundaries are not aligned with on-disk data block boundaries, so the block
+      // holding the start of the range is destroyed on top of the fully covered ones.
       tablet_num_corrupt_data_blocks_estimate +=
-          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes;
+          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes +
+          1;
       // RocksDB record started before or ending after corrupt region is likely to be also corrupt.
       num_max_corrupt_keys_estimate += 2;
     }

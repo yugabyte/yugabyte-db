@@ -44,6 +44,7 @@ DECLARE_bool(allow_index_table_read_write);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(cql_prepare_child_threshold_ms);
 DECLARE_bool(disable_index_backfill);
+DECLARE_int32(rpc_high_priority_workers_limit);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int64(transaction_abort_check_interval_ms);
 DECLARE_uint64(transaction_manager_workers_limit);
@@ -219,6 +220,11 @@ class CqlIndexSmallWorkersTest : public CqlIndexTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_manager_workers_limit) = 4;
+    // The starved pool must be the one serving writes. Leaving consensus on 4 workers too queues
+    // UpdateConsensus/RequestConsensusVote for seconds, so no leader can commit its NoOp before
+    // the election timeout and the cluster livelocks re-electing instead of exercising the
+    // conflict resolution path this test covers.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_high_priority_workers_limit) = 256;
     CqlIndexTest::SetUp();
   }
 };
@@ -265,6 +271,9 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
           ++inserts;
         } else {
           LOG(INFO) << "Insert failed: " << status;
+          // Errors reported without a round trip (no host available) would otherwise turn this
+          // into a busy loop that starves the in-process cluster and the driver IO threads.
+          std::this_thread::sleep_for(10ms);
         }
       }
     });

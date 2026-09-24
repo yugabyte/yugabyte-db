@@ -1,0 +1,107 @@
+-- -----------------------------------------------------------------------------
+-- A statement's read point must survive a snapshot switch in the middle of that
+-- same statement.
+--
+-- There are 2 axes to test here resulting in 4 cases:
+-- (1) Whether the read point is picked when a distributed transaction is active
+-- or not.
+-- (2) Whether the read point is picked before a fan-out rpc to many tservers or
+-- picked on a remote tserver tablet when the rpc is directed to only one tablet.
+--
+-- To test this, we use the below statement:
+--
+-- SELECT rp_write(a.id) AS written_val,
+--       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
+-- FROM rp_anchor a;
+--
+-- In read committed, the write done by the volatile function in the target list
+-- below runs with a different read_time_serial_no than the statement itself. The
+-- statement's own read time has to be restored for the rest of the statement,
+-- otherwise the count(*) runs at a read time picked after that write and sees it.
+-- -----------------------------------------------------------------------------
+CREATE TABLE rp_dummy (id INT PRIMARY KEY, v INT);
+INSERT INTO rp_dummy VALUES (1, 1);
+CREATE TABLE rp_anchor (id INT PRIMARY KEY);
+INSERT INTO rp_anchor VALUES (10);
+CREATE TABLE rp_anchor_split (id INT PRIMARY KEY) SPLIT INTO 3 TABLETS;
+INSERT INTO rp_anchor_split VALUES (10);
+CREATE TABLE rp_target (id INT PRIMARY KEY);
+CREATE FUNCTION rp_write(v INT) RETURNS INT AS $$
+BEGIN
+  INSERT INTO rp_target VALUES (v);
+  RETURN v;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+-- Populate the catalog caches so that no catalog reads occur during the
+-- actual test. This is done because if we are using the legacy mode of
+-- catalog reads (i.e., ysql_enable_concurrent_ddl=false) with
+-- yb_ddl_transaction_block_enabled=true, then catalog reads use the same
+-- read snapshot as the first read and end up saving the statement's read time
+-- in the read point history and hide the bug.
+BEGIN;
+SELECT rp_write(a.id) AS written_val,
+       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
+FROM rp_anchor a;
+ written_val | count_after_write 
+-------------+-------------------
+          10 |                 0
+(1 row)
+
+ROLLBACK;
+-- Case 1: the read time is returned by the remote tserver as used_read_time.
+BEGIN;
+UPDATE rp_dummy SET v = v + 1 WHERE id = 1; -- start a distributed transaction
+SELECT rp_write(a.id) AS written_val,
+       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
+FROM rp_anchor a;
+ written_val | count_after_write 
+-------------+-------------------
+          10 |                 0
+(1 row)
+
+ROLLBACK;
+-- Case 2: same as 1 but without a distributed transaction.
+BEGIN;
+SELECT rp_write(a.id) AS written_val,
+       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
+FROM rp_anchor a;
+ written_val | count_after_write 
+-------------+-------------------
+          10 |                 0
+(1 row)
+
+ROLLBACK;
+-- Fill the catalog caches for rp_anchor_split, as done above for rp_anchor.
+BEGIN;
+SELECT rp_write(a.id) AS written_val,
+       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
+FROM rp_anchor_split a;
+ written_val | count_after_write 
+-------------+-------------------
+          10 |                 0
+(1 row)
+
+ROLLBACK;
+-- Case 3: the read time is picked before the scan fans out to 3 tablets.
+BEGIN;
+UPDATE rp_dummy SET v = v + 1 WHERE id = 1; -- start a distributed transaction
+SELECT rp_write(a.id) AS written_val,
+       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
+FROM rp_anchor_split a;
+ written_val | count_after_write 
+-------------+-------------------
+          10 |                 0
+(1 row)
+
+ROLLBACK;
+-- Case 4: same as 3, but without a distributed transaction.
+BEGIN;
+SELECT rp_write(a.id) AS written_val,
+       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
+FROM rp_anchor_split a;
+ written_val | count_after_write 
+-------------+-------------------
+          10 |                 0
+(1 row)
+
+ROLLBACK;

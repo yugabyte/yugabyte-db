@@ -31,7 +31,8 @@ func init() {
 		describeGCPCloudMonitoringTelemetryProviderCmd,
 	)
 	GCPCloudMonitoringTelemetryProviderCmd.AddCommand(deleteGCPCloudMonitoringTelemetryProviderCmd)
-	// GCPCloudMonitoringTelemetryProviderCmd.AddCommand(createGCPCloudMonitoringTelemetryProviderCmd)
+	GCPCloudMonitoringTelemetryProviderCmd.AddCommand(
+		createGCPCloudMonitoringTelemetryProviderCmd)
 	GCPCloudMonitoringTelemetryProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(

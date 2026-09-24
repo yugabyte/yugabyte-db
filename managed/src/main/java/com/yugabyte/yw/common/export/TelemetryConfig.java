@@ -2,16 +2,24 @@
 
 package com.yugabyte.yw.common.export;
 
+import com.yugabyte.yw.models.helpers.exporters.UniverseExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -43,6 +51,14 @@ public class TelemetryConfig {
 
   private TServerLogConfig tserverLogConfig = null;
 
+  private YsqlConnMgrLogConfig ysqlConnMgrLogConfig = null;
+
+  private NodeAgentLogConfig nodeAgentLogConfig = null;
+
+  private YnpLogConfig ynpLogConfig = null;
+
+  private ControllerLogConfig controllerLogConfig = null;
+
   /**
    * The config section for a given export type, or null when that type is disabled. This is the one
    * place that maps an {@link ExportType} to its backing field: {@link #diff} and {@link
@@ -61,9 +77,84 @@ public class TelemetryConfig {
         return masterLogConfig;
       case TSERVER_LOGS:
         return tserverLogConfig;
+      case YSQL_CONN_MGR_LOGS:
+        return ysqlConnMgrLogConfig;
+      case NODE_AGENT_LOGS:
+        return nodeAgentLogConfig;
+      case YNP_LOGS:
+        return ynpLogConfig;
+      case CONTROLLER_LOGS:
+        return controllerLogConfig;
       default:
         throw new IllegalArgumentException("Unhandled export type: " + type);
     }
+  }
+
+  /**
+   * Every exporter UUID referenced by any section. Second mapping of {@link ExportType} to a field,
+   * deliberately kept beside {@link #section} and fail-loud for the same reason: a forgotten export
+   * type here would report a telemetry provider as unreferenced, letting it be deleted while a
+   * universe still exports to it. That leaves a dangling exporterUuid, and every later task that
+   * regenerates the collector config for that universe - ResumeUniverse included - fails in
+   * appendLogExporter with "Invalid Telemetry Provider UUID".
+   */
+  public Set<UUID> referencedExporterUuids() {
+    Set<UUID> referenced = new HashSet<>();
+    for (ExportType type : ExportType.values()) {
+      for (UniverseExporterConfig exporter : exporters(type)) {
+        if (exporter != null && exporter.getExporterUuid() != null) {
+          referenced.add(exporter.getExporterUuid());
+        }
+      }
+    }
+    return referenced;
+  }
+
+  private List<? extends UniverseExporterConfig> exporters(ExportType type) {
+    switch (type) {
+      case AUDIT_LOGS:
+        return auditLogConfig == null
+            ? List.of()
+            : nullToEmpty(auditLogConfig.getUniverseLogsExporterConfig());
+      case QUERY_LOGS:
+        return queryLogConfig == null
+            ? List.of()
+            : nullToEmpty(queryLogConfig.getUniverseLogsExporterConfig());
+      case METRICS:
+        return metricsExportConfig == null
+            ? List.of()
+            : nullToEmpty(metricsExportConfig.getUniverseMetricsExporterConfig());
+      case MASTER_LOGS:
+        return masterLogConfig == null
+            ? List.of()
+            : nullToEmpty(masterLogConfig.getUniverseLogsExporterConfig());
+      case TSERVER_LOGS:
+        return tserverLogConfig == null
+            ? List.of()
+            : nullToEmpty(tserverLogConfig.getUniverseLogsExporterConfig());
+      case YSQL_CONN_MGR_LOGS:
+        return ysqlConnMgrLogConfig == null
+            ? List.of()
+            : nullToEmpty(ysqlConnMgrLogConfig.getUniverseLogsExporterConfig());
+      case NODE_AGENT_LOGS:
+        return nodeAgentLogConfig == null
+            ? List.of()
+            : nullToEmpty(nodeAgentLogConfig.getUniverseLogsExporterConfig());
+      case YNP_LOGS:
+        return ynpLogConfig == null
+            ? List.of()
+            : nullToEmpty(ynpLogConfig.getUniverseLogsExporterConfig());
+      case CONTROLLER_LOGS:
+        return controllerLogConfig == null
+            ? List.of()
+            : nullToEmpty(controllerLogConfig.getUniverseLogsExporterConfig());
+      default:
+        throw new IllegalArgumentException("Unhandled export type: " + type);
+    }
+  }
+
+  private static <T> List<T> nullToEmpty(List<T> list) {
+    return list == null ? List.of() : list;
   }
 
   /** True if any export section is set (non-null). */

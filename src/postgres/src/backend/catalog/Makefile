@@ -77,7 +77,7 @@ CATALOG_HEADERS := \
 	pg_publication_rel.h pg_subscription.h pg_subscription_rel.h \
 	pg_yb_catalog_version.h pg_yb_migration.h \
     pg_yb_profile.h pg_yb_role_profile.h pg_yb_tablegroup.h pg_yb_logical_client_version.h \
-    pg_yb_invalidation_messages.h
+    pg_yb_invalidation_messages.h pg_yb_password_history.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h system_fk_info.h
 

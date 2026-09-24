@@ -29,6 +29,51 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.9.2 - September 15, 2026
+
+### New features
+
+- Added support for a custom partition key in the CDC phase of [import data](../reference/data-migration/import-data/) using `--cdc-partition-key-overrides`, so change events for a table can be routed on a chosen list of columns instead of its primary key during live migration, thereby improving CDC import throughput by avoiding conflicts.
+
+  Example: `--cdc-partition-key-overrides 'public.orders:table;sales.events:pk;public.payments:(customer_id,region)'`.
+- Added `--log-max-size-mb` and `--log-max-backups` to control yb-voyager log rotation. Available as CLI flags or [configuration file](../reference/configuration-file/) global keys. `--log-max-backups -1` retains all rotated files.
+
+### Enhancements
+
+- Added YugabyteDB v2026.1 as the latest stable supported target version.
+- Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) reports no longer flag XML data type columns and XML functions as unsupported when the target is YugabyteDB v2026.1 or later, reporting them only as a live-migration caveat.
+- Multi-range columns are now reported as live-migration caveats when the target is YugabyteDB v2025.1 or later, where they were previously not reported at all.
+- [Export data](../reference/data-migration/export-data/) for live migration now fails fast when a table in scope has a DEFERRABLE UNIQUE or PRIMARY KEY constraint, listing the affected tables instead of stalling later during the streaming phase.
+- In [import data](../reference/data-migration/import-data/), with `--cdc-partition-key auto`, a table having a unique index on a STORED generated column is now routed using the table strategy, and an explicit `pk` or custom strategy on such a table is rejected before the snapshot begins.
+- Improved live-migration conflict-detection logs: multi-column unique-index values are now rendered readably and table names appear as `schema.table`. The logs also report when a detected conflict clears and how long the event was blocked.
+- Errors that were previously ignored are now surfaced: failures closing with a written report, control, or batch file; failures persisting migration state; and invalid cloud-storage `--data-dir` URLs.
+
+## v2026.9.1 - September 1, 2026
+
+### Enhancements
+
+- Upgraded the [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/) to support YugabyteDB v2026.1.
+
+### Bug fixes
+
+- Fixed an issue where live migration of PostgreSQL hstore values containing SQL NULL could stall permanently during CDC.
+- Fixed an issue where live [import data](../reference/data-migration/import-data/) could fail with a unique-violation error when an UPDATE changed only some columns of a composite unique index.
+- Fixed an issue where import data could hang after an abrupt Voyager exit, waiting on locks held by a stale connection.
+- Fixed an issue where import data could proceed with the wrong target schema if setting the search path failed, and where a failed source-database connection could crash Voyager instead of reporting an error.
+
+## v2026.8.2 - August 18, 2026
+
+### Enhancements
+
+- Improved CDC partition key conflict handling. Tables with foreign keys or unique indexes had to be used with the slower table mode, but can now be consumed by parallel streams:
+  - Improved resume validation for `--cdc-partition-key-overrides` so equivalent configurations are accepted and changed table strategies are identified clearly.
+  - CDC partition key options are now visible in [import data](../reference/data-migration/import-data/) help and live migration configuration templates.
+
+### Bug fixes
+
+- Fixed an issue where live migration unique key conflict detection incorrectly treated non-key INCLUDE columns of a covering unique index as part of the uniqueness key.
+- Fixed an issue where live migration could fail with read-restart errors while updating migration metadata.
+
 ## v2026.8.1 - August 4, 2026
 
 ### Overview

@@ -91,6 +91,8 @@ int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
 
 int yb_walsender_poll_sleep_duration_empty_ms = 10;
 
+int yb_reorderbuffer_max_memory_kb = 4096;
+
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
 int yb_explicit_row_locking_batch_size = 1;

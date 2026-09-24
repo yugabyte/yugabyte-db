@@ -49,7 +49,8 @@ class XClusterOutboundReplicationGroup
         get_tables_func;
     const std::function<bool(const NamespaceId& namespace_id)> is_automatic_mode_switchover_func;
     const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(
-        const std::vector<TableId>&, const LeaderEpoch&, bool /* automatic_ddl_mode */)>
+        const std::vector<TableId>&, const LeaderEpoch&, bool /* automatic_ddl_mode */,
+        bool /* allow_hidden_table */, bool /* is_wal_anchor */)>
         create_xcluster_streams_func;
     const std::function<Status(
         const std::vector<std::pair<TableId, xrepl::StreamId>>&, StreamCheckpointLocation,
@@ -58,6 +59,8 @@ class XClusterOutboundReplicationGroup
     const std::function<Result<DeleteCDCStreamResponsePB>(
         const DeleteCDCStreamRequestPB&, const LeaderEpoch&)>
         delete_cdc_stream_func;
+    const std::function<std::unordered_set<xrepl::StreamId>(const std::vector<TableId>&)>
+        get_alive_streams_func;
 
     // SysCatalog functions.
     const std::function<Status(
@@ -118,6 +121,10 @@ class XClusterOutboundReplicationGroup
       const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids) const
       EXCLUDES(mutex_);
 
+  Status CreateAndCheckpointStreamsForAnchoredTables(
+      const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids,
+      const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
   Status CreateXClusterReplication(
       const std::vector<HostPort>& source_master_addresses,
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch)
@@ -152,6 +159,11 @@ class XClusterOutboundReplicationGroup
 
   Result<std::string> GetStreamId(const NamespaceId& namespace_id, const TableId& table_id) const
       EXCLUDES(mutex_);
+
+  // Returns the WAL anchor stream id for the given table, or an empty string if the table has no
+  // WAL anchor stream.
+  Result<std::string> GetWalAnchorStreamId(
+      const NamespaceId& namespace_id, const TableId& table_id) const EXCLUDES(mutex_);
 
   bool AutomaticDDLMode() const { return automatic_ddl_mode_; }
 
@@ -190,6 +202,10 @@ class XClusterOutboundReplicationGroup
   Status DeleteNamespaceStreams(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       const SysXClusterOutboundReplicationGroupEntryPB& pb) REQUIRES(mutex_);
+
+  Status MarkAnchorStreamsForDeletion(
+      const std::vector<std::pair<TableId, std::string>>& anchor_streams, const LeaderEpoch& epoch)
+      REQUIRES(mutex_);
 
   virtual Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetRemoteClient(
       const std::vector<HostPort>& remote_masters) const;
@@ -230,8 +246,8 @@ class XClusterOutboundReplicationGroup
       NamespaceInfoPB& ns_info, const TableId& table_id) REQUIRES(mutex_);
 
   Status CreateStreamForNewTable(
-      const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch)
-      EXCLUDES(mutex_);
+      const NamespaceId& namespace_id, const TableId& table_id, bool needs_wal_anchor,
+      const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   Status CheckpointNewTable(
       const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch,
@@ -239,6 +255,10 @@ class XClusterOutboundReplicationGroup
 
   Status MarkNewTablesAsCheckpointed(
       const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch);
+
+  Status CheckpointTableStreamSync(
+      const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
 
   void StartNamespaceCheckpointTasks(
       const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch);

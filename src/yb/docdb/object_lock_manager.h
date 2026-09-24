@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <vector>
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
@@ -103,6 +106,12 @@ class ObjectLockManager {
   void DumpStatusHtml(std::ostream& out);
 
   void ConsumePendingSharedLockRequests();
+
+  // Collects, for each waiting object lock owner (transaction/subtransaction), the set of
+  // transactions currently blocking it. Used to populate pg_locks.ybdetails.blocked_by for
+  // object/table locks.
+  void PopulateObjectLockWaiterBlockers(
+      std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner);
 
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
