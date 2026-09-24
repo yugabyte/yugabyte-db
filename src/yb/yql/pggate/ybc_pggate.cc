@@ -281,10 +281,12 @@ Status GetSplitPoints(YbcPgTableDesc table_desc,
 
 void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInfo> caching_info) {
   const auto* flags = YBCGetGFlags();
+  const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
+  const auto max_size_limit = YBCGetMaxRpcResponseSize();
   pgapi->StartSysTablePrefetching({
       caching_info,
       *flags->ysql_catalog_prefetch_row_limit,
-      *flags->ysql_catalog_prefetch_size_limit});
+      configured_size_limit ? std::min(configured_size_limit, max_size_limit) : max_size_limit});
 }
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {

@@ -97,7 +97,8 @@ DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_row_limit, 0,
 
 DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 10 * 1024 * 1024,
     "Maximum combined response size in bytes for catalog prefetch requests. The limit is divided "
-    "evenly among the catalog tables active in each prefetch round. 0 means no limit.");
+    "evenly among the catalog tables active in each prefetch round and capped at the safe maximum "
+    "RPC response size. 0 uses that safe maximum.");
 
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
