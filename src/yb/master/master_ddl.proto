@@ -658,6 +658,8 @@ message GetNamespaceInfoResponsePB {
   optional bool colocated = 3;
   // This denotes if a colocated database is a legacy colocated database.
   optional bool legacy_colocated_database = 4;
+  optional SysNamespaceEntryPB.State state = 5;
+  optional SysNamespaceEntryPB.YsqlNextMajorVersionState ysql_next_major_version_state = 6;
 }
 
 // ============================================================================

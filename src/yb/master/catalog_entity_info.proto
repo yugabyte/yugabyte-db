@@ -365,7 +365,10 @@ message SysNamespaceEntryPB {
   // NEXT_VER_RUNNING -> NEXT_VER_DELETING  - deletion requested.
   // NEXT_VER_DELETING -> NEXT_VER_DELETED  - happy path of deletion.
   // NEXT_VER_DELETING -> NEXT_VER_FAILED   - unhappy path of deletion.
-  // NEXT_VER_DELETED -> NEXT_VER_RUNNING   - re-populated.
+  // NEXT_VER_DELETED -> NEXT_VER_PREPARING - re-population started.
+  // NEXT_VER_RUNNING -> NEXT_VER_PREPARING - re-population started, first pass.
+  // NEXT_VER_PREPARING -> NEXT_VER_RUNNING - happy path of re-population.
+  // NEXT_VER_PREPARING -> NEXT_VER_FAILED  - unhappy path of re-population.
   //
   // TODO: Change the initial state to something other than NEXT_VER_RUNNING. Be sure it makes sense
   // for multiple upgrades (e.g., a system that went from PG11 -> PG15 -> PG17). Therefore it may
@@ -376,6 +379,7 @@ message SysNamespaceEntryPB {
     NEXT_VER_RUNNING = 2;
     NEXT_VER_DELETING = 3;
     NEXT_VER_DELETED = 4;
+    NEXT_VER_PREPARING = 5;
   }
   optional YsqlNextMajorVersionState ysql_next_major_version_state = 8
       [ default = NEXT_VER_RUNNING ];
