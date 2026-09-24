@@ -98,7 +98,7 @@ class TableReader {
 
   // Returns approximate offset of the end of all data blocks (i.e. approximate size of the
   // data in the file, ignoring metadata/index/filter blocks). Used for total file size
-  // estimation (see DB::TotalDataSize) and as the past-the-last-key answer for
+  // estimation (see PinnedVersion::TotalDataSize) and as the past-the-last-key answer for
   // ApproximateOffsetOf(). Formats that don't support this return 0.
   virtual uint64_t ApproximateOffsetOfDataEnd() const { return 0; }
 

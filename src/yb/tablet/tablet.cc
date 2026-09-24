@@ -5440,16 +5440,20 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   }
   const Slice upper_bound_key = key_bounds_.upper;
 
-  const uint64_t total_data_size = VERIFY_RESULT(regular_db_->TotalDataSize());
+  // Pinned for the whole loop: a target computed on one version's Cross scale can land outside the
+  // search window when measured against another.
+  const auto pinned_version = regular_db_->PinCurrentVersion();
+
+  const uint64_t total_data_size = VERIFY_RESULT(pinned_version->TotalDataSize());
   SCHECK_GT(total_data_size, 0U, IllegalState, "No SST data available for size-based split");
 
   SplitKeysData split_keys;
   split_keys.encoded_keys.reserve(num_keys);
   split_keys.partition_keys.reserve(num_keys);
 
-  const uint64_t lower_cross = VERIFY_RESULT(regular_db_->Cross(lower_bound_key));
+  const uint64_t lower_cross = VERIFY_RESULT(pinned_version->Cross(lower_bound_key));
   const uint64_t upper_cross = upper_bound_key.empty()
-    ? total_data_size : VERIFY_RESULT(regular_db_->Cross(upper_bound_key));
+    ? total_data_size : VERIFY_RESULT(pinned_version->Cross(upper_bound_key));
 
   DCHECK_GE(upper_cross, lower_cross);
   auto chunk_size = (upper_cross - lower_cross) / split_factor;
@@ -5457,8 +5461,7 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   std::string last_key_buf = lower_bound_key.ToBuffer();
   for (int i = 0; i < num_keys; ++i) {
     auto target_size = lower_cross + chunk_size * (i + 1);
-    auto split_data_key =
-        regular_db_->FindTargetKey(last_key_buf, upper_bound_key, target_size);
+    auto split_data_key = pinned_version->FindTargetKey(last_key_buf, upper_bound_key, target_size);
     if (PREDICT_FALSE(!split_data_key.ok())) {
       // The Cross search found nothing to measure. For a 2-way split the approximate middle key is
       // a fine answer, so fall back rather than fail; call GetEncodedMiddleSplitKey directly, since
