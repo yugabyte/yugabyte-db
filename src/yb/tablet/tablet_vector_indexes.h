@@ -130,6 +130,10 @@ class TabletVectorIndexes :
 
   void LaunchBackfillsIfNecessary();
 
+  // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
+  // been taken before a backfill finished, e.g. by a replica still bootstrapping.
+  void ScheduleBackfillAfterRestore();
+
   // Binds the scheduler used to retry backfills aborted by an operation pause.
   void SetScheduler(rpc::Scheduler* scheduler);
 
@@ -182,7 +186,7 @@ class TabletVectorIndexes :
       HybridTime backfill_ht, OpId op_id, std::shared_ptr<ScopedRWOperation> read_op);
 
   // Re-runs LaunchBackfillsIfNecessary after a delay, replacing the retry scheduled before it.
-  void ScheduleBackfillRetry();
+  void ScheduleBackfillRetry(std::chrono::steady_clock::duration delay);
 
   Status Backfill(
       const docdb::DocVectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
@@ -220,6 +224,7 @@ class TabletVectorIndexes :
   // running retry that takes this mutex itself.
   std::mutex backfill_retry_mutex_;
   rpc::ScheduledTaskTracker backfill_retry_task_;
+  std::atomic<bool> backfills_launched_{false};
   // A backfill asked for a retry and no retry has evaluated the indexes since.
   std::atomic<bool> backfill_retry_pending_{false};
 };
