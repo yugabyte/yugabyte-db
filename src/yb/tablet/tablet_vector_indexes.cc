@@ -275,7 +275,7 @@ Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
   // dropped or restored away.
   if (backfill_retry_pending_.load(std::memory_order_acquire)) {
     if (has_vector_indexes_.load(std::memory_order_acquire)) {
-      ScheduleBackfillRetry();
+      ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
     } else {
       backfill_retry_pending_.store(false, std::memory_order_release);
     }
@@ -657,6 +657,7 @@ Status TabletVectorIndexes::Backfill(
 }
 
 void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
+  backfills_launched_.store(true);
   auto list = List();
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "list: " << AsString(list);
   if (!list) {
@@ -718,7 +719,7 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
       LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to create operation for backfill: " << status;
       if (status.IsTryAgain()) {
         // The storages are still being replaced, so no backfill task will run to ask for a retry.
-        ScheduleBackfillRetry();
+        ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
       }
       return;
     }
@@ -745,7 +746,7 @@ void TabletVectorIndexes::ScheduleBackfill(
         // The replacement re-creates the vector indexes, so retry through
         // LaunchBackfillsIfNecessary rather than resuming this task: this index object is gone by
         // then.
-        ScheduleBackfillRetry();
+        ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
       }
     } else if (!status.ok()) {
       // Unlike TryAgain, this doesn't schedule a retry, so record it for whoever waits on the
@@ -766,7 +767,14 @@ void TabletVectorIndexes::SetScheduler(rpc::Scheduler* scheduler) {
   backfill_retry_task_.Bind(scheduler);
 }
 
-void TabletVectorIndexes::ScheduleBackfillRetry() {
+void TabletVectorIndexes::ScheduleBackfillAfterRestore() {
+  // Before Tablet::Start, e.g. a restore replayed by bootstrap, Start launches the backfills.
+  if (backfills_launched_.load()) {
+    ScheduleBackfillRetry(0ms);
+  }
+}
+
+void TabletVectorIndexes::ScheduleBackfillRetry(std::chrono::steady_clock::duration delay) {
   if (!scheduler_) {
     // No tablet peer, so no scheduler: only tests that drive a bare tablet get here.
     LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Scheduler is not set, backfill retry skipped";
@@ -781,7 +789,7 @@ void TabletVectorIndexes::ScheduleBackfillRetry() {
       return;
     }
     LaunchBackfillsIfNecessary();
-  }, FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
+  }, delay);
 }
 
 void TabletVectorIndexes::StopBackfillRetry() {
