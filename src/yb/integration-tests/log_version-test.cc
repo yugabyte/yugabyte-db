@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/container/small_vector.hpp>
 #include "yb/util/logging.h"
 
 #include "yb/client/client.h"
@@ -88,9 +89,8 @@ TEST_F(LogRollingTest, Rolling) {
   const auto logs_dir = JoinPathSegments(master->GetDataDirs()[0], "logs");
   const auto log_path = JoinPathSegments(logs_dir, BaseName(exe) + ".INFO");
   const auto fingerprint = "Application fingerprint: " + version;
-  // In case of log rolling log_path link will be pointed to newly created file.
-  // Generate logs until the link has pointed to 5 distinct files.
-  std::vector<string> log_files = {ASSERT_RESULT(env_->ReadLink(log_path))};
+  // Collect several files during log rolling for further checks.
+  boost::container::small_vector<string, 5> log_files;
   auto master_proxy = cluster_->GetMasterProxy<master::MasterDdlProxy>();
   while (log_files.size() < 5) {
     // Call rpc functions to generate logs in master
@@ -101,27 +101,22 @@ TEST_F(LogRollingTest, Rolling) {
       ASSERT_OK(master_proxy.TruncateTable(req, &resp, &rpc));
     }
     auto target = ASSERT_RESULT(env_->ReadLink(log_path));
-    if (target != log_files.back()) {
+    if (log_files.empty() || target != log_files.back()) {
       log_files.push_back(std::move(target));
     }
   }
   // Rolled files are immutable, so checking them by name is race-free.
-  size_t prev_duration_sec = 0;
+  string prev_duration_str;
   for (const auto& file : log_files) {
-    // glog symlink targets are relative to the log directory.
-    const LogHeader header(JoinPathSegments(logs_dir, file));
+    const auto log_file_full_path = JoinPathSegments(logs_dir, file);
+    const LogHeader header(log_file_full_path);
     ASSERT_NE(header.GetByPrefix(fingerprint), "");
     const auto& duration_line = header.GetByPrefix(kDurationPrefix);
     ASSERT_NE(duration_line, "");
-    ASSERT_LT(ASSERT_RESULT(env_->GetFileSize(JoinPathSegments(logs_dir, file))), 2_MB);
+    ASSERT_LT(ASSERT_RESULT(env_->GetFileSize(log_file_full_path)), 2_MB);
     const auto duration_str = duration_line.substr(kDurationPrefix.size());
-    std::smatch match;
-    ASSERT_TRUE(std::regex_match(duration_str, match, std::regex(R"((\d+):(\d{2}):(\d{2}))")))
-        << duration_str;
-    const size_t duration_sec =
-        (std::stoul(match[1]) * 60 + std::stoul(match[2])) * 60 + std::stoul(match[3]);
-    ASSERT_GE(duration_sec, prev_duration_sec) << "Log file durations out of order: " << file;
-    prev_duration_sec = duration_sec;
+    ASSERT_GE(duration_str, prev_duration_str) << "Log file durations out of order: " << file;
+    prev_duration_str = duration_str;
   }
 }
 
