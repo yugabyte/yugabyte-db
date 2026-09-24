@@ -60,8 +60,9 @@ For GitHub issues, this skill requires the `gh` CLI installed and authenticated:
 1. **Install `gh`**: see https://cli.github.com/.
 2. **Authenticate**: `gh auth login` (or `gh auth status` to verify).
 
-For JIRA tickets, the Atlassian MCP tool `createJiraIssue` must be available
-(load it via ToolSearch: `select:mcp__claude_ai_Atlassian__createJiraIssue`).
+For JIRA tickets, an Atlassian MCP server exposing `createJiraIssue` must be
+available (find it via ToolSearch with the query `createJiraIssue`; the server
+prefix varies by setup).
 
 ## Workflow
 
@@ -110,10 +111,9 @@ If the user has already stated a preference or named a project, honor it.
    - `feature_request.yml` — generic fallback for tooling / other, or any feature
      request
 
-   **Never file a GitHub issue without a template.** Every issue must be built
-   from one of the `.github/ISSUE_TEMPLATE/` templates — do not hand-craft a bare
-   `gh issue create` body. If no component-specific template fits, fall back to
-   `feature_request.yml`.
+   Build every issue from one of these templates: they carry the labels and
+   the mandatory no-sensitive-information checkbox, which a hand-crafted
+   `gh issue create` body skips.
 
 2. **Read the chosen template YAML.** Then:
    - (a) Collect its `labels:` list and pass them via `--label`.
@@ -152,9 +152,8 @@ If the user has already stated a preference or named a project, honor it.
 1. Ask the user which project (e.g., `PLAT`) if not already known.
 2. Don't ask about the assignee. By default leave the ticket unassigned; only
    when the user has explicitly named an assignee, set it accordingly.
-3. Load the Atlassian tool via ToolSearch, then call
-   `mcp__claude_ai_Atlassian__createJiraIssue` with the confirmed summary and
-   description. **Confirm the summary/description with the user before creating.**
+3. Load the Atlassian `createJiraIssue` tool via ToolSearch, then call it
+   with the confirmed summary and description. **Confirm the summary/description with the user before creating.**
 4. Capture the resulting JIRA key.
 
 ### Step 4: Report back

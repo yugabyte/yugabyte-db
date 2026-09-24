@@ -1,7 +1,7 @@
 ## Making changes and pushing to upstream
 Never operate on master branch directly. Always create a new local branch and work on that.
 Pushing the branch to yugabyte/yugabyte-db repository is not allowed. If you are on a personal fork, you can push to that.
-arc and phorge are used to review, run lab tests, and merge changes. This should ONLY be done by the human.
+arc and Phorge are used to review, run lab tests, and merge changes. Run arc/Phorge operations only when the user asks for them (the `/create-diff` and `/backport-diff` workflows are such asks); land (`arc land`) only on the user's explicit request.
 
 Avoid using non-ASCII characters in files and commit messages.
 There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
@@ -77,7 +77,7 @@ Whenever you (the agent) **autonomously author** any of the following, append th
 _automated · <agent>_
 ```
 
-Substitute `<agent>` with the most specific identifier you have (model name + harness, e.g. `Claude Code (Opus 4.7)`); the harness name alone is fine if you don't know your model. Skip the signature on the commit subject line and in direct chat with the user.
+Substitute `<agent>` with the most specific identifier you have (model name + harness, e.g. `Claude Code (<model>)`); the harness name alone is fine if you don't know your model. Skip the signature on the commit subject line and in direct chat with the user.
 
 ## Reviewing commits
 
@@ -98,7 +98,7 @@ After addressing review comments in follow-up commits, follow these rules:
 
 ## Scratch files
 
-Write temporary files (PR bodies, commit messages, lint logs, etc.) to **`/tmp/claude/`** rather than `/tmp/` directly — the folder is allowlisted in `.claude/settings.json` for `Read`, `Edit`, and the common `Bash` write patterns, so writes there don't trigger a permission prompt. Pick a filename that disambiguates across concurrent uses (e.g. `/tmp/claude/pr-body-31407.md`, not `/tmp/claude/body.md`). Run `mkdir -p /tmp/claude` once if it doesn't exist.
+Write temporary files (PR bodies, commit messages, lint logs, etc.) to **`/tmp/claude/`** rather than `/tmp/` directly — the folder is allowlisted in `.claude/settings.json` for `Read`, `Edit`, and `mkdir -p /tmp/claude`, so reads and edits there don't trigger a permission prompt. Pick a filename that disambiguates across concurrent uses (e.g. `/tmp/claude/pr-body-31407.md`, not `/tmp/claude/body.md`). Run `mkdir -p /tmp/claude` once if it doesn't exist.
 
 ## C++ style
 
@@ -150,7 +150,7 @@ The first build takes approximately 20 minutes. Incremental builds are much fast
 
 Always pipe build output to a temp file so you can inspect errors without rebuilding:
 ```bash
-./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc 2>&1 | tee /tmp/yb-build.log
+./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc 2>&1 | tee /tmp/claude/yb-build.log
 ```
 
 Pitfalls when doing incremental build:
@@ -184,7 +184,7 @@ To run tests:
 ```bash
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test --gtest_filter TestLoadBalancerPreferredLeader.TestBalancingMultiPriorityWildcardLeaderPreference
 
-./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test --gtest_filter "*Wildcard*"
+./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test --gtest_filter "*MultiPriorityWildcard*"
 
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test -n 10
 ```
