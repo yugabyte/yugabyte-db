@@ -231,8 +231,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
   static YbcPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
       .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
-      .ysql_catalog_prefetch_row_limit          = &FLAGS_ysql_catalog_prefetch_row_limit,
-      .ysql_catalog_prefetch_size_limit         = &FLAGS_ysql_catalog_prefetch_size_limit,
       .ysql_preload_pg_authid_for_auth          = &FLAGS_ysql_preload_pg_authid_for_auth,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
@@ -309,6 +307,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
       .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+      .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,
+      .ysql_catalog_prefetch_size_limit = &FLAGS_ysql_catalog_prefetch_size_limit,
   };
   // clang-format on
   return &accessor;
