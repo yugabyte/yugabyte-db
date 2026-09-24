@@ -839,6 +839,7 @@ Status ObjectLockManagerImpl::PrepareAcquire(
   if (is_retry) {
     it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
   }
+  DoSignal(it->locked);
   while (it != key_to_lock.lock_batch.begin()) {
     --it;
     if (UnlockSingleEntry(*it)) {
