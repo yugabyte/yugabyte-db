@@ -435,9 +435,6 @@ class Loader {
       for (auto& op_info : op_info_) {
         auto& req = op_info.operation->read_request();
         req.set_size_limit(fetch_size_limit);
-        if (req.has_index_request()) {
-          req.mutable_index_request()->set_size_limit(fetch_size_limit);
-        }
       }
       if (yb_debug_log_catcache_events) {
         std::set<std::string> table_names;
