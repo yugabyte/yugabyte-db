@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <atomic>
+
+#include "yb/util/drive_io_stats_fwd.h"
 #include "yb/util/file_system.h"
 
 namespace yb {
@@ -91,6 +94,35 @@ class PosixWritableFile : public WritableFile {
   const std::string filename_;
   int fd_;
   uint64_t filesize_;
+
+  // Two writable-file classes still exist here (see the unify_env TODO above), so the per-drive
+  // accounting below is a second copy of what yb::PosixWritableFile in env_posix.cc carries: that
+  // one instruments the Raft WAL, this one the RocksDB SSTs. Keep the two in sync.
+
+  // Per-drive IO counters for the drive this file lives on, resolved once at construction by
+  // path prefix, or null when the file is under no registered drive root. Owned by the process-
+  // global DriveIoStatsRegistry, so this pointer stays valid for the life of the file.
+  yb::DriveIoStats* const drive_stats_;
+
+  // Bytes appended since the last sync of this file, used to walk the drive's approximate
+  // unsynced-bytes gauge back down. Atomic because Sync() is documented thread-safe with respect
+  // to Append() (see IsSyncThreadSafe()).
+  //
+  // Deliberately approximate, and the approximation is what keeps it cheap. Sync() zeroes this
+  // and then calls fdatasync, so an Append() landing in between is counted as still unsynced even
+  // though that fdatasync almost certainly pushed it out. Making the number exact would mean
+  // holding a lock across the append and the sync together, i.e. serializing the two operations
+  // that IsSyncThreadSafe() exists to let run concurrently. An upper bound is all the gauge
+  // claims to be (see the drive_bytes_unsynced description).
+  //
+  // Accessed with memory_order_relaxed, like the drive counters it feeds. It publishes no other
+  // memory, and every update is a read-modify-write on this one variable, so concurrent updates
+  // still compose correctly without any barrier.
+  std::atomic<uint64_t> unsynced_bytes_{0};
+
+  // Hands whatever this file still holds unsynced back to the drive gauge without counting a
+  // sync. Closing without syncing is the normal case, so without this the gauge only climbs.
+  void ReleaseUnsyncedBytes();
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   bool allow_fallocate_;
   bool fallocate_with_keep_size_;
