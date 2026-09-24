@@ -140,10 +140,8 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     " right away without incurring a master lookup");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_startup_client_connection_check, true,
-    "If true, client_connection_check_interval also applies while a backend starts up: the "
-    "backend checks its client socket while it waits on catalog preload RPCs, and exits if the "
-    "client has disconnected. If false, a backend whose client has gone away keeps waiting until "
-    "its startup RPCs complete.");
+    "When enabled, a non-zero client_connection_check_interval in ysql_pg_conf_csv will also "
+    "check for client disconnects during backend initialization.");
 TAG_FLAG(ysql_enable_startup_client_connection_check, advanced);
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
