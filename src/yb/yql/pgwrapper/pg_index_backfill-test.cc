@@ -4350,6 +4350,13 @@ TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailu
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 100) i"));
 
+  // Connect to every tserver first so relcache init finishes before the backfill starts.
+  std::vector<PGConn> ts_conns;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ts_conns.push_back(ASSERT_RESULT(
+        ConnectToTsForDB(*cluster_->tablet_server(i), "yugabyte")));
+  }
+
   Status create_index_status;
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&conn, &create_index_status] {
@@ -4359,11 +4366,6 @@ TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailu
   // The backfill connection lands on the tablet leader's node, so poll every tserver. Each chunk's
   // statement embeds a distinct row range: a text change proves the connection has cached the
   // table and is still mid-backfill.
-  std::vector<PGConn> ts_conns;
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ts_conns.push_back(ASSERT_RESULT(
-        ConnectToTsForDB(*cluster_->tablet_server(i), "yugabyte")));
-  }
   std::string first_seen_query;
   ASSERT_OK(WaitFor([&ts_conns, &first_seen_query]() -> Result<bool> {
     for (auto& ts_conn : ts_conns) {
@@ -4378,7 +4380,7 @@ TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailu
       }
     }
     return false;
-  }, MonoDelta::FromSeconds(60), "backfill completed a chunk"));
+  }, MonoDelta::FromSeconds(60 * kTimeMultiplier), "backfill completed a chunk"));
 
   // Another node, so PG-level locks don't queue the ALTER behind CREATE INDEX.
   auto ddl_conn = ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(1), "yugabyte"));
