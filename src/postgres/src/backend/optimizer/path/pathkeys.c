@@ -782,41 +782,44 @@ build_index_pathkeys(PlannerInfo *root,
 	}
 
 	/*
-	 * YB: For merge scan, cut the pathkeys at the first gap whose filter does
-	 * not run within each stream, so that no merge sort key forms past it.
-	 * The pathkeys built without merge scan keep the gap, since a single
-	 * stream filters before it emits.
-	 */
-	if (yb_merge_scan_stream_cols && *yb_merge_scan_stream_cols != NIL &&
-		yb_gap_cut >= 0)
-	{
-		retval = list_truncate(retval, yb_gap_cut);
-		if (*yb_distinct_nkeys > yb_gap_cut)
-			*yb_distinct_nkeys = -1;
-	}
-
-	/*
-	 * YB: For merge scan, const columns ahead of the last merge sort column
-	 * are stream keys too: each stream holds them at one value, and the merge
-	 * order relies on that.  Two things are not known here:
-	 *
-	 * - The column's condition.  Unlike a SAOP column, whose SAOP
-	 *   yb_indexcol_can_merge_scan picks from the restriction clauses under the
-	 *   rules match_clause_to_indexcol applies, a const column's condition is
-	 *   one the planner builds from the EquivalenceClass and may leave out (a
-	 *   duplicate index column, a partial index predicate implying it, or a
-	 *   broken EquivalenceClass), which only the path's index clauses show.
-	 * - The last merge sort column, which is known only once
-	 *   truncate_useless_pathkeys has trimmed the pathkeys built here.
-	 *
-	 * So every const column is recorded here without a clause, and
-	 * create_indexscan_plan fills in the clause or drops the entry, see
-	 * yb_prune_merge_scan_stream_cols.
+	 * YB: The rest applies only when the walk pinned a merge scan stream key.
 	 */
 	if (yb_merge_scan_stream_cols && *yb_merge_scan_stream_cols != NIL)
 	{
 		ListCell   *yb_col_lc;
 
+		/*
+		 * Cut the pathkeys at the first gap whose filter does not run within
+		 * each stream, so that no merge sort key forms past it.  The pathkeys
+		 * built without merge scan keep the gap, since a single stream filters
+		 * before it emits.
+		 */
+		if (yb_gap_cut >= 0)
+		{
+			retval = list_truncate(retval, yb_gap_cut);
+			if (*yb_distinct_nkeys > yb_gap_cut)
+				*yb_distinct_nkeys = -1;
+		}
+
+		/*
+		 * Const columns ahead of the last merge sort column are stream keys
+		 * too: each stream holds them at one value, and the merge order relies
+		 * on that.  Two things are not known here:
+		 *
+		 * - The column's condition.  Unlike a SAOP column, whose SAOP
+		 *   yb_indexcol_can_merge_scan picks from the restriction clauses under
+		 *   the rules match_clause_to_indexcol applies, a const column's
+		 *   condition is one the planner builds from the EquivalenceClass and
+		 *   may leave out (a duplicate index column, a partial index predicate
+		 *   implying it, or a broken EquivalenceClass), which only the path's
+		 *   index clauses show.
+		 * - The last merge sort column, which is known only once
+		 *   truncate_useless_pathkeys has trimmed the pathkeys built here.
+		 *
+		 * So every const column is recorded here without a clause, and
+		 * create_indexscan_plan fills in the clause or drops the entry, see
+		 * yb_prune_merge_scan_stream_cols.
+		 */
 		foreach(yb_col_lc, yb_const_cols)
 		{
 			int			yb_col = lfirst_int(yb_col_lc);
