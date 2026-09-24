@@ -429,18 +429,28 @@ class Loader {
   Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
-    if (yb_debug_log_catcache_events) {
-      std::set<std::string> table_names;
-      for (const auto& op : op_info_) {
-        table_names.insert(op.table->table_name().table_name());
+      const auto fetch_size_limit = options_.fetch_size_limit
+          ? std::max<uint64_t>(options_.fetch_size_limit / op_info_.size(), 1)
+          : 0;
+      for (auto& op_info : op_info_) {
+        auto& req = op_info.operation->read_request();
+        req.set_size_limit(fetch_size_limit);
+        if (req.has_index_request()) {
+          req.mutable_index_request()->set_size_limit(fetch_size_limit);
+        }
       }
-      LOG(INFO) << "Initiating prefetching for tables " << yb::ToString(table_names);
-    }
+      if (yb_debug_log_catcache_events) {
+        std::set<std::string> table_names;
+        for (const auto& op : op_info_) {
+          table_names.insert(op.table->table_name().table_name());
+        }
+        LOG(INFO) << "Initiating prefetching for tables " << yb::ToString(table_names);
+      }
       auto response = VERIFY_RESULT(Run(arena_.get(), session_, op_info_, options_));
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
-          [&response, data_container](OperationInfo& op_info) -> Result<bool> {
+          [&response, data_container, &options = options_](OperationInfo& op_info) -> Result<bool> {
             if (yb_debug_log_catcache_events) {
               LOG(INFO) << "Completed prefetch for op for table "
                         << op_info.table->table_name().table_name();
@@ -453,7 +463,7 @@ class Loader {
                        op_info.index ? op_info.index->relfilenode_id() : PgObjectId(),
                        &op_info.index_targets,
                        std::move(sidecar));
-            return !op_info.operation->PrepareNextRequest();
+            return !op_info.operation->PrepareNextRequest(options.fetch_row_limit);
           }, true /* bad_status_value */);
       std::erase_if(op_info_, remove_predicate);
       RETURN_NOT_OK(remove_predicate_status);
@@ -485,7 +495,7 @@ std::string PrefetcherOptions::CachingInfo::ToString() const {
 }
 
 std::string PrefetcherOptions::ToString() const {
-  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit);
+  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit, fetch_size_limit);
 }
 
 class PgSysTablePrefetcher::Impl {

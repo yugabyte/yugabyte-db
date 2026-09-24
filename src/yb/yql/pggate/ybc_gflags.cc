@@ -92,6 +92,13 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_row_limit, 0,
+    "Maximum number of rows returned by each catalog prefetch request. 0 means no limit.");
+
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 10 * 1024 * 1024,
+    "Maximum combined response size in bytes for catalog prefetch requests. The limit is divided "
+    "evenly among the catalog tables active in each prefetch round. 0 means no limit.");
+
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
     "before client authentication. Authentication reads pg_authid by role name "
@@ -223,6 +230,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
   static YbcPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
       .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
+      .ysql_catalog_prefetch_row_limit          = &FLAGS_ysql_catalog_prefetch_row_limit,
+      .ysql_catalog_prefetch_size_limit         = &FLAGS_ysql_catalog_prefetch_size_limit,
       .ysql_preload_pg_authid_for_auth          = &FLAGS_ysql_preload_pg_authid_for_auth,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
