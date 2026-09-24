@@ -647,15 +647,16 @@ ybEqualityImpliedByIndexPredicate(IndexOptInfo *index, int indexcol,
 }
 
 /*
- * Prune the stream key columns whose bind the merge order does not need, and
- * set the clause of each single-value equality column kept to its equality
- * index clause.  This happens here because only the plan knows its last merge
- * sort column, after truncate_useless_pathkeys, and its index clauses.
+ * Prune the stream key columns of an index path whose bind the merge order does
+ * not need, and set the clause of each single-value equality column kept to its
+ * equality index clause.  build_index_paths calls this once the path's pathkeys
+ * are final, after truncate_useless_pathkeys, with the path's index clauses, so
+ * that the path's costing and its plan see the same stream keys.  Returns NIL
+ * when no stream key column remains, and the path is then not a merge scan.
  * Dropped:
  *
- * - A column at or after the last merge sort column (0-based
- *   last_sort_indexcol), which does not affect the order and fans out no
- *   streams.
+ * - A column at or after the last merge sort column, which does not affect the
+ *   order and fans out no streams.
  * - A duplicate index column, such as the second b of (a, b, b, c), which
  *   holds the same value as the first.
  * - A range column whose equality a partial index predicate implies, which
@@ -676,11 +677,30 @@ ybEqualityImpliedByIndexPredicate(IndexOptInfo *index, int indexcol,
  * rejects the plan.  Returns a new list.
  */
 List *
-yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
-								List *indexclauses, int last_sort_indexcol)
+yb_prune_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
+								List *stream_cols, List *indexclauses,
+								List *pathkeys)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
+	Bitmapset  *stream_col_idxs = NULL;
+	int			numsortkeys;
+	AttrNumber *sortColIdx;
+	Oid		   *sortOperators;
+	Oid		   *collations;
+	bool	   *nullsFirst;
+	int			last_sort_indexcol = -1;
+
+	foreach(lc, stream_cols)
+		stream_col_idxs =
+			bms_add_member(stream_col_idxs,
+						   lfirst_node(YbMergeScanStreamColInfo, lc)->indexcol);
+	yb_get_sort_info_from_pathkeys(index->indextlist, pathkeys, relids,
+								   stream_col_idxs, &numsortkeys, &sortColIdx,
+								   &sortOperators, &collations, &nullsFirst);
+	/* sortColIdx holds index tlist resnos. */
+	for (int i = 0; i < numsortkeys; i++)
+		last_sort_indexcol = Max(last_sort_indexcol, sortColIdx[i] - 1);
 
 	foreach(lc, stream_cols)
 	{
@@ -708,16 +728,13 @@ yb_prune_merge_scan_stream_cols(IndexOptInfo *index, List *stream_cols,
 									   expr);
 		if (clause)
 		{
-			/*
-			 * Give the plan its own entry rather than filling in the path's,
-			 * which stays free of plan state and can be planned again.
-			 */
-			YbMergeScanStreamColInfo *plan_info =
+			/* Leave the pathkeys walk's entry as it is. */
+			YbMergeScanStreamColInfo *eq_info =
 				makeNode(YbMergeScanStreamColInfo);
 
-			*plan_info = *info;
-			plan_info->clause = clause;
-			result = lappend(result, plan_info);
+			*eq_info = *info;
+			eq_info->clause = clause;
+			result = lappend(result, eq_info);
 			continue;
 		}
 

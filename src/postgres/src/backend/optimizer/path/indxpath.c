@@ -222,6 +222,12 @@ static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, Re
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
 								 Relids relids, List *or_clauses,
 								 IndexClauseSet *clauseset);
+static List *yb_useful_pathkeys_without_merge_scan(PlannerInfo *root,
+												  RelOptInfo *rel,
+												  IndexOptInfo *index,
+												  ScanDirection scandir,
+												  int yb_distinct_prefixlen,
+												  int *yb_distinct_nkeys);
 static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 IndexOptInfo *index,
@@ -1627,6 +1633,27 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 																  index,
 																  useful_pathkeys);
 		}
+
+		/*
+		 * YB: Prune the stream key columns now that the pathkeys are final.
+		 * With none left, the path is not a merge scan, so use the pathkeys the
+		 * index gives without merge scan.
+		 */
+		if (yb_merge_scan_stream_cols)
+		{
+			yb_merge_scan_stream_cols =
+				yb_prune_merge_scan_stream_cols(index, rel->relids,
+												yb_merge_scan_stream_cols,
+												index_clauses,
+												useful_pathkeys);
+			if (yb_merge_scan_stream_cols == NIL)
+				useful_pathkeys =
+					yb_useful_pathkeys_without_merge_scan(root, rel, index,
+														  ForwardScanDirection,
+														  yb_distinct_prefixlen,
+														  &yb_distinct_nkeys);
+		}
+
 		orderbyclauses = NIL;
 		orderbyclausecols = NIL;
 	}
@@ -1749,16 +1776,11 @@ yb_step_4:
 		 */
 		if (yb_merge_scan_stream_cols != NIL)
 		{
-			/* Get useful_pathkeys without merge scan. */
-			yb_distinct_nkeys =
-				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
-			index_pathkeys = build_index_pathkeys(root, index,
-												  ForwardScanDirection,
-												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
-			useful_pathkeys = truncate_useless_pathkeys(root, rel,
-														index_pathkeys,
-														yb_distinct_nkeys);
+			useful_pathkeys =
+				yb_useful_pathkeys_without_merge_scan(root, rel, index,
+													  ForwardScanDirection,
+													  yb_distinct_prefixlen,
+													  &yb_distinct_nkeys);
 			yb_merge_scan_stream_cols = NIL;
 
 			goto yb_step_4;
@@ -1797,6 +1819,26 @@ yb_step_4:
 																  rel,
 																  index,
 																  useful_pathkeys);
+		}
+
+		/*
+		 * YB: Prune the stream key columns now that the pathkeys are final.
+		 * With none left, the path is not a merge scan, so use the pathkeys the
+		 * index gives without merge scan.
+		 */
+		if (yb_merge_scan_stream_cols)
+		{
+			yb_merge_scan_stream_cols =
+				yb_prune_merge_scan_stream_cols(index, rel->relids,
+												yb_merge_scan_stream_cols,
+												index_clauses,
+												useful_pathkeys);
+			if (yb_merge_scan_stream_cols == NIL)
+				useful_pathkeys =
+					yb_useful_pathkeys_without_merge_scan(root, rel, index,
+														  BackwardScanDirection,
+														  yb_distinct_prefixlen,
+														  &yb_distinct_nkeys);
 		}
 yb_step_5:
 		if (useful_pathkeys != NIL)
@@ -1867,16 +1909,11 @@ yb_step_5:
 		 */
 		if (yb_merge_scan_stream_cols != NIL)
 		{
-			/* Get useful_pathkeys without merge scan. */
-			yb_distinct_nkeys =
-				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
-			index_pathkeys = build_index_pathkeys(root, index,
-												  BackwardScanDirection,
-												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
-			useful_pathkeys = truncate_useless_pathkeys(root, rel,
-														index_pathkeys,
-														yb_distinct_nkeys);
+			useful_pathkeys =
+				yb_useful_pathkeys_without_merge_scan(root, rel, index,
+													  BackwardScanDirection,
+													  yb_distinct_prefixlen,
+													  &yb_distinct_nkeys);
 			yb_merge_scan_stream_cols = NIL;
 
 			goto yb_step_5;
@@ -5642,4 +5679,25 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 
 		return iclause;
 	}
+}
+
+/*
+ * YB: The useful pathkeys of index in scandir without merge scan.  Also sets
+ * *yb_distinct_nkeys for them.
+ */
+static List *
+yb_useful_pathkeys_without_merge_scan(PlannerInfo *root, RelOptInfo *rel,
+									  IndexOptInfo *index,
+									  ScanDirection scandir,
+									  int yb_distinct_prefixlen,
+									  int *yb_distinct_nkeys)
+{
+	List	   *index_pathkeys;
+
+	*yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
+	index_pathkeys = build_index_pathkeys(root, index, scandir,
+										  yb_distinct_nkeys,
+										  NULL);	/* yb_merge_scan_stream_cols */
+	return truncate_useless_pathkeys(root, rel, index_pathkeys,
+									 *yb_distinct_nkeys);
 }

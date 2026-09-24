@@ -1332,7 +1332,7 @@ typedef struct YbMergeScanStreamColInfo
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
  *
- * 'merge_scan_stream_cols' is the ordered list of merge stream keys before
+ * 'merge_scan_stream_cols' is the ordered list of merge stream keys after
  * pruning by yb_prune_merge_scan_stream_cols.
  */
 typedef struct YbIndexPathInfo

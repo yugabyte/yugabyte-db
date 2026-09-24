@@ -42,9 +42,10 @@ extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   List **merge_scan_stream_cols);
 
 extern List *yb_prune_merge_scan_stream_cols(IndexOptInfo *index,
+											 Relids relids,
 											 List *stream_cols,
 											 List *indexclauses,
-											 int last_sort_indexcol);
+											 List *pathkeys);
 
 extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   List *pathkeys,

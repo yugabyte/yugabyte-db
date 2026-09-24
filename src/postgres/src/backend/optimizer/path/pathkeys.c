@@ -751,9 +751,10 @@ build_index_pathkeys(PlannerInfo *root,
 	}
 
 	/*
-	 * YB: For merge scan, const columns ahead of the last merge sort column
-	 * are stream keys too: each stream holds them at one value, and the merge
-	 * order relies on that.  Two things are not known here:
+	 * YB: For merge scan, const columns ahead of the last merge sort column are
+	 * stream keys too: each stream holds them at one value, and the merge order
+	 * relies on that.  Two things are known only to the caller,
+	 * build_index_paths:
 	 *
 	 * - The column's condition.  Unlike a SAOP column, whose SAOP
 	 *   yb_indexcol_can_merge_scan picks from the restriction clauses under the
@@ -765,8 +766,8 @@ build_index_pathkeys(PlannerInfo *root,
 	 *   truncate_useless_pathkeys has trimmed the pathkeys built here.
 	 *
 	 * So every const column is recorded here without a clause, and
-	 * create_indexscan_plan fills in the clause or drops the entry, see
-	 * yb_prune_merge_scan_stream_cols.
+	 * build_index_paths fills in the clause or drops the entry once the
+	 * pathkeys are final, see yb_prune_merge_scan_stream_cols.
 	 */
 	if (yb_merge_scan_stream_cols && *yb_merge_scan_stream_cols != NIL)
 	{
@@ -779,7 +780,7 @@ build_index_pathkeys(PlannerInfo *root,
 			int			yb_pos;
 			ListCell   *yb_lc;
 
-			/* The clause is filled in by create_indexscan_plan, see above. */
+			/* The clause is filled in by build_index_paths, see above. */
 			yb_const_info = makeNode(YbMergeScanStreamColInfo);
 			yb_const_info->indexcol = yb_col;
 			yb_const_info->num_elems = 1;
