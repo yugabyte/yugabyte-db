@@ -147,6 +147,20 @@ DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
     "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
     "tests");
 
+// A commit-index-only UpdateConsensus (no new ops, sent purely to advance the follower's
+// committed_op_id) occupies the single in-flight UpdateConsensus slot a peer is allowed. A write
+// arriving while it is in flight therefore waits a full RTT for it to complete before its own
+// ops can be sent, which is why back-to-back single-writer traffic costs 2 RTT per write instead
+// of 1. Deferring that RPC lets the next write carry the new commit index itself.
+//
+// The deferred signal is harmless when a write does arrive first: the write already advanced the
+// peer's committed_op_id, so the deferred request computes as a pure heartbeat and
+// RequestTriggerMode::kNonEmptyOnly drops it. No extra RPC is emitted either way.
+DEFINE_RUNTIME_uint32(raft_commit_index_only_update_delay_ms, 0,
+    "Defer a commit-index-only UpdateConsensus by this many milliseconds instead of sending it "
+    "as soon as the commit index advances. Trades up to this much extra follower staleness for "
+    "one fewer round trip on back-to-back writes to the same tablet. 0 disables (default).");
+
 DEFINE_test_flag(string, delay_update_consensus_before_mark_committed_tablet_id, "",
     "If non-empty, delay UpdateConsensus before MarkOperationsAsCommitted for this tablet id.");
 
@@ -472,6 +486,8 @@ RaftConsensus::RaftConsensus(
       withhold_votes_until_(MonoTime::Min()),
       step_down_check_tracker_(
           "step_down_check_tracker", &peer_proxy_factory_->messenger()->scheduler()),
+      commit_index_update_tracker_(
+          "commit_index_update_tracker", &peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       deprecated_follower_memory_pressure_rejections_(
           tablet_metric_entity->FindOrCreateMetric<Counter>(
@@ -1567,8 +1583,24 @@ void RaftConsensus::UpdateMajorityReplicated(
 
     lock.unlock();
     // No need to hold the lock while calling SignalRequest.
-    peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+    const auto commit_only_delay_ms = FLAGS_raft_commit_index_only_update_delay_ms;
+    if (commit_only_delay_ms == 0) {
+      peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+      return;
+    }
+    // Schedule() aborts any signal already pending, so a burst of commit-index advances coalesces
+    // into one deferred wake-up rather than a queue of them.
+    commit_index_update_tracker_.Schedule(
+        std::bind(&RaftConsensus::SignalCommitIndexUpdate, this, _1), 1ms * commit_only_delay_ms);
   }
+}
+
+void RaftConsensus::SignalCommitIndexUpdate(const Status& status) {
+  if (!status.ok()) {
+    VLOG_WITH_PREFIX(1) << "Deferred commit index update aborted: " << status;
+    return;
+  }
+  peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 }
 
 void RaftConsensus::AppendEmptyBatchToLeaderLog() {
@@ -3102,6 +3134,7 @@ void RaftConsensus::StartShutdown() {
     // Transition to kShuttingDown state.
     CHECK_OK(state_->LockForShutdown(&lock));
     step_down_check_tracker_.StartShutdown();
+    commit_index_update_tracker_.StartShutdown();
   }
 
   // Close the peer manager.
@@ -3132,6 +3165,7 @@ void RaftConsensus::CompleteShutdown() {
   }
 
   step_down_check_tracker_.CompleteShutdown();
+  commit_index_update_tracker_.CompleteShutdown();
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_concurrent_token_->Shutdown();

@@ -724,6 +724,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Checked whether we should start step down when protege did not synchronize before timeout.
   void CheckDelayedStepDown(const Status& status);
 
+  void SignalCommitIndexUpdate(const Status& status);
+
   // Whether the delayed step down protege has received every operation present in our log.
   bool ProtegeSynchronizedUnlocked() const;
 
@@ -775,6 +777,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   DelayedStepDown delayed_step_down_;
   rpc::ScheduledTaskTracker step_down_check_tracker_;
+
+  // Fires the deferred commit-index-only UpdateConsensus when
+  // raft_commit_index_only_update_delay_ms is set. See the flag's definition.
+  rpc::ScheduledTaskTracker commit_index_update_tracker_;
 
   // The number of times this node has called and lost a leader election since
   // the last time it saw a stable leader (either itself or another node).
