@@ -80,9 +80,30 @@ ANALYZE gap_idx_tbl;
 \set query ':P :Q SELECT c1, c3, s, c2 FROM gap_idx_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
 \i :run_query
 
+--
+-- DISTINCT over a local filter gap
+--
+-- The distinct index scan needs pathkeys for its whole prefix, (s, c1, c2, c3),
+-- and the cut at c2 leaves only c1.  So no Unique node sits on the scan, and
+-- the rows are deduplicated above it.  k repeats each (s, c1, c2, c3).
+CREATE TABLE gap_dist_tbl (s int, c1 int, c2 int, c3 int, k int,
+    PRIMARY KEY (s ASC, c1 ASC, c2 ASC, c3 ASC, k ASC));
+INSERT INTO gap_dist_tbl SELECT s, c1, c2, c3, k
+    FROM (VALUES (1, 1, 0, 9), (1, 1, 1, 0), (2, 1, 1, 4), (1, 5, 5, 1),
+                 (2, 5, 5, 2)) v(s, c1, c2, c3),
+        generate_series(1, 3) k;
+ANALYZE gap_dist_tbl;
+
+SET yb_enable_expression_pushdown = off;
+\set Q1 '/*+IndexScan(gap_dist_tbl) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_dist_tbl) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT DISTINCT c1, c3 FROM gap_dist_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
+\i :run_query
+RESET yb_enable_expression_pushdown;
+
 RESET enable_sort;
 
-DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl;
+DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl;
 
 --
 -- Decoded primary key column: filter kept local on an index-only scan
