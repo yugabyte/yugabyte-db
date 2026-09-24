@@ -41,6 +41,22 @@ const char* RowColorToStyle(HtmlTableRowColor color) {
   FATAL_INVALID_ENUM_VALUE(HtmlTableRowColor, color);
 }
 
+// Styles for the sortable table headers emitted by HtmlTablePrintHelper::Print().
+// Unsorted headers show a dim up/down arrow so the affordance is visible before any click; the
+// active sort column shows a grey up or down triangle. The glyphs are CSS generated content, so
+// this adds no markup inside the <th>, and sortTable() no longer rewrites header contents.
+// Callers may still put markup in a column name; nothing here depends on the header being a
+// single text node.
+const char* const kSortableTableStyle = R"(
+<style>
+th.yb-sortable { cursor: pointer; user-select: none; }
+th.yb-sortable::after { content: "\21C5"; color: #bbb; font-size: 0.85em; margin-left: 4px; }
+th.yb-sortable:hover::after { color: #777; }
+th.yb-sortable.yb-sort-asc::after { content: "\25B2"; color: grey; }
+th.yb-sortable.yb-sort-desc::after { content: "\25BC"; color: grey; }
+</style>
+)";
+
 // This script is used to sort and filter tables in the html page.
 const char* const kSortAndFilterTableScript = R"(
 <script>
@@ -76,8 +92,6 @@ function normalizeString(elem) {
 }
 
 function sortTable(table_id, n) {
-  const asc_symb = ' <span style="color: grey">\u25B2</span>';
-  const desc_symb = ' <span style="color: grey">\u25BC</span>';
   const table = document.getElementById(table_id);
   if (table.rows.length < 3) {
     return;
@@ -87,18 +101,16 @@ function sortTable(table_id, n) {
   const thead = tbodies.shift();
   const header_row = thead.children[0];
 
-  const asc = !header_row.getElementsByTagName("TH")[n].innerHTML.includes(asc_symb);
-
-  for (let j = 0; j < header_row.children.length; ++j) {
-    const header = header_row.children[j];
-    let contents = header.innerHTML;
-    contents = contents.replace(asc_symb, "").replace(desc_symb, "");
-    if (j == n) {
-      sort_symb = asc ? asc_symb : desc_symb;
-      contents += sort_symb;
-    }
-    header.innerHTML = contents;
+  // The sort direction is tracked with classes on the header cells, and the matching arrows are
+  // drawn by the yb-sortable styles. Clicking the active column flips its direction.
+  const headers = header_row.getElementsByTagName("TH");
+  const asc = !headers[n].classList.contains("yb-sort-asc");
+  for (const header of headers) {
+    header.classList.remove("yb-sort-asc", "yb-sort-desc");
+    header.removeAttribute("aria-sort");
   }
+  headers[n].classList.add(asc ? "yb-sort-asc" : "yb-sort-desc");
+  headers[n].setAttribute("aria-sort", asc ? "ascending" : "descending");
 
   let all_number = true;
   for (const tbody of tbodies) {
@@ -179,7 +191,11 @@ HtmlPrintHelper::~HtmlPrintHelper() {
 HtmlTablePrintHelper HtmlPrintHelper::CreateTablePrinter(
     std::string table_name, std::vector<std::string> column_names,
     std::vector<HtmlTableCellAlignment> column_alignment) {
-  has_tables_ = true;
+  if (!has_tables_) {
+    // Emit the header styles once per page, ahead of the first table that uses them.
+    output_ << kSortableTableStyle;
+    has_tables_ = true;
+  }
 
   return HtmlTablePrintHelper(
       output_, std::move(table_name), std::move(column_names), std::move(column_alignment));
@@ -234,8 +250,8 @@ void HtmlTablePrintHelper::Print() {
   // Print the table header row.
   uint32 _header_cnt = 0;
   for (const auto& column : column_names_) {
-    output_ << "<th onclick=\"sortTable('" << table_name_ << "', " << _header_cnt << ")\">"
-            << column << "</th>";
+    output_ << "<th class=\"yb-sortable\" onclick=\"sortTable('" << table_name_ << "', "
+            << _header_cnt << ")\">" << column << "</th>";
     ++_header_cnt;
   }
 
