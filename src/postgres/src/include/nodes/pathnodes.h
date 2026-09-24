@@ -1323,6 +1323,7 @@ typedef struct YbMergeScanStreamColInfo
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
+	bool		broken_ec;		/* EquivalenceClass is broken */
 } YbMergeScanStreamColInfo;
 
 /*

@@ -52,13 +52,15 @@ RESET ROLE;
 -- the clause, and merge scan engages.
 \i :run_query
 
--- A policy that breaks an EquivalenceClass.  d = t uses the date = timestamp
--- operator, which is not leakproof, so under RLS the planner cannot derive
--- d = 2020-01-02 from the query's t = 2020-01-02.  The pathkeys walk still
--- sees d as a constant, but d has no index condition, so it must not be a
--- stream key.  The d = t filter holds it constant instead, and runs within each
--- stream as a storage filter.  The first row of each stream is a decoy that
--- fails d = t.
+-- A policy that breaks an EquivalenceClass.  rls_ec_tbl is of no use to other
+-- tests, so it is defined here rather than in yb.orig.merge_scan_setup.  d = t
+-- uses the date = timestamp operator, which is not leakproof, so under RLS,
+-- the planner cannot build d = 2020-01-02 from the query's t = 2020-01-02 and
+-- keeps d = t and t = 2020-01-02 as they are.  The pathkeys walk still sees d
+-- as a constant, but d has no index condition, so it must not be a stream key.
+-- The d = t filter holds it constant instead.  With expression pushdown on, it
+-- runs within each stream as a storage filter, so the merge order holds.  The
+-- first row of each stream is a decoy that fails d = t.
 CREATE TABLE rls_ec_tbl (s int, d date, c int, t timestamp,
     PRIMARY KEY (s ASC, d ASC, c ASC));
 INSERT INTO rls_ec_tbl
@@ -87,11 +89,39 @@ SET ROLE regress_merge_scan_rls_user;
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
+-- The same broken EquivalenceClass, with the query also holding d at
+-- 2020-01-02.  date = date is leakproof, so that clause binds d as an index
+-- condition, and d is a stream key.
+\set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
+\i :run_query
+RESET ROLE;
+
+-- A hash column in a broken EquivalenceClass.  rls_ec_hash_tbl has the rows and
+-- policy of rls_ec_tbl, with (s, d) as its hash key.  pggate cannot merge
+-- without a condition on every hash column, so d stays a stream key, and
+-- without an index condition on d, the merge scan errors.  The error names s,
+-- the first stream key column, because pggate binds no hash column when one
+-- lacks a condition.  With the query also holding d at 2020-01-02, the scan
+-- binds d and runs.  TODO(#34120): the first query should run without error.
+CREATE TABLE rls_ec_hash_tbl (s int, d date, c int, t timestamp,
+    PRIMARY KEY ((s, d) HASH, c ASC));
+INSERT INTO rls_ec_hash_tbl SELECT * FROM rls_ec_tbl;
+ANALYZE rls_ec_hash_tbl;
+GRANT SELECT ON rls_ec_hash_tbl TO regress_merge_scan_rls_user;
+ALTER TABLE rls_ec_hash_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY rls_ec_hash_tbl_policy ON rls_ec_hash_tbl
+    FOR SELECT TO regress_merge_scan_rls_user USING (d = t);
+
+SET ROLE regress_merge_scan_rls_user;
+\set query ':P :Q SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
+\i :run_query
+\set query ':P :Q SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
+\i :run_query
 \unset Q3
 RESET ROLE;
 
 -- Cleanup
-DROP TABLE rls_ec_tbl;
+DROP TABLE rls_ec_tbl, rls_ec_hash_tbl;
 DROP POLICY bkt_tbl_rls_policy ON bkt_tbl;
 ALTER TABLE bkt_tbl DISABLE ROW LEVEL SECURITY;
 REVOKE SELECT ON bkt_tbl FROM regress_merge_scan_rls_user;

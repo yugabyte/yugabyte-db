@@ -189,8 +189,8 @@ static List *set_windowagg_runcondition_references(PlannerInfo *root,
 
 /* YB declarations */
 static void yb_fix_merge_scan_stream_conds(PlannerInfo *root,
-									YbMergeScanInfo *yb_merge_scan_info,
-									int rtoffset, double num_exec);
+										   YbMergeScanInfo *yb_merge_scan_info,
+										   int rtoffset, double num_exec);
 
 /*****************************************************************************
  *
@@ -3768,9 +3768,9 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
  * and the equality index conditions of the single-value stream key columns
  * (see yb_merge_scan.c).  Their left-hand side holds Vars of the scanned
  * relation, so they need the same range table offsetting as every other
- * expression on the node.  Otherwise EXPLAIN VERBOSE, which deparses them as
- * "Merge Cond", resolves a varno still at its subquery-local value against an
- * unrelated entry of the flat range table.
+ * expression on the node. Otherwise EXPLAIN VERBOSE, which deparses them
+ * as "Merge Cond", resolves a varno still at its subquery-local value
+ * against an unrelated entry of the flat range table.
  */
 static void
 yb_fix_merge_scan_stream_conds(PlannerInfo *root,
