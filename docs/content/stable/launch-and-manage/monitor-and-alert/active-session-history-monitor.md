@@ -241,6 +241,8 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | :--------- | :--- | :---------- |
 | YBClient_WaitingOnDocDB | RPCWait | YB Client is waiting on DocDB to return a response. |
 | YBClient_LookingUpTablet | RPCWait | YB Client is looking up tablet information from the master. |
+| YBClient_WaitingForPipelinedWrites | RPCWait | YB Client is waiting for its pipelined writes to be Raft replicated before it can commit the transaction. |
+| BackfillIndex_WaitToBackfillTablet | RPCWait | Waiting for an index backfill chunk to be processed. |
 
 ## Limitations
 
