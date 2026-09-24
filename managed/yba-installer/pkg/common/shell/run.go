@@ -1,10 +1,14 @@
 package shell
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // Run will execute the named command with given arguments
@@ -41,6 +45,62 @@ func RunWithEnvVars(name string, envVars map[string]string, args ...string) *Out
 	output.ExitCode = cmd.ProcessState.ExitCode()
 	output.LogDebug()
 	return output
+}
+
+// RunWithEnvVarsProgress is RunWithEnvVars, except that output lines carrying progressPrefix are
+// logged as they arrive rather than only once the command exits. Everything else is buffered as
+// before. Use it where a command can stall for minutes and says why on stdout:
+// yb_platform_backup.sh waiting on another backup's lock names the holder every 30s, and buffered
+// that reads as a hang.
+func RunWithEnvVarsProgress(name string, envVars map[string]string, progressPrefix string,
+	args ...string) *Output {
+	output := NewOutput(name, args)
+	// One per stream: they are written by different pipes, and a shared line buffer would
+	// interleave their partial lines.
+	stdoutProgress := &progressLogger{prefix: progressPrefix}
+	stderrProgress := &progressLogger{prefix: progressPrefix}
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = io.MultiWriter(output.stdout, stdoutProgress)
+	cmd.Stderr = io.MultiWriter(output.stderr, stderrProgress)
+	cmd.Env = os.Environ()
+	for key, value := range envVars {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
+	}
+	output.Error = cmd.Run()
+	output.ExitCode = cmd.ProcessState.ExitCode()
+	output.LogDebug()
+	return output
+}
+
+// progressLogger logs those of the whole lines written to it that start with prefix, holding back
+// a trailing partial line until the rest of it arrives.
+type progressLogger struct {
+	prefix  string
+	pending bytes.Buffer
+	// Overridden in tests; nil logs through logging.Info.
+	log func(string)
+}
+
+func (l *progressLogger) Write(p []byte) (int, error) {
+	l.pending.Write(p)
+	for {
+		line, err := l.pending.ReadString('\n')
+		if err != nil {
+			// No newline yet: put the partial line back and wait for the rest.
+			l.pending.WriteString(line)
+			break
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if strings.HasPrefix(line, l.prefix) {
+			message := strings.TrimPrefix(line, l.prefix)
+			if l.log != nil {
+				l.log(message)
+			} else {
+				logging.Info(message)
+			}
+		}
+	}
+	return len(p), nil
 }
 
 // RunShell will run a command in shell mode. Shell mode will allow for pipes, redirects, etc.

@@ -431,3 +431,100 @@ export const createDbUpgradeFinalizeTaskMock = (overrides: Partial<Task> = {}): 
     }
   };
 };
+
+export const EDIT_UNIVERSE_TASK_ID = 'd0000001-0001-4000-8000-000000000001';
+
+export const EDIT_UNIVERSE_TASK_UNIVERSE_UUID = 'd0000001-0001-4000-8000-000000000002';
+
+const buildEditUniverseTaskFixture = (): Task => ({
+  id: EDIT_UNIVERSE_TASK_ID,
+  title: 'Updated Universe : mock-universe',
+  percentComplete: 5,
+  createTime: '2026-04-22T09:00:00Z',
+  completionTime: '2026-04-22T09:03:00Z',
+  target: TargetType.UNIVERSE as Task['target'],
+  targetUUID: EDIT_UNIVERSE_TASK_UNIVERSE_UUID,
+  type: TaskType.EDIT as Task['type'],
+  typeName: 'Update',
+  status: TaskState.FAILURE,
+  details: {
+    taskDetails: [
+      {
+        title: 'Provisioning',
+        description: 'Deploying machines of the required config into the desired cloud region.',
+        state: TaskState.FAILURE,
+        extraDetails: []
+      }
+    ]
+  },
+  abortable: false,
+  retryable: true,
+  canRollback: true,
+  correlationId: 'd0000001-0001-4000-8000-000000000003',
+  userEmail: 'admin',
+  subtaskInfos: [],
+  taskInfo: {
+    taskParams: {}
+  }
+});
+
+export const createEditUniverseTaskMock = (overrides: Partial<Task> = {}): Task => {
+  const base = buildEditUniverseTaskFixture();
+  return {
+    ...base,
+    ...overrides,
+    details: {
+      ...base.details,
+      ...(overrides.details ?? {}),
+      taskDetails: overrides.details?.taskDetails ?? base.details.taskDetails
+    }
+  };
+};
+
+export const EDIT_UNIVERSE_ROLLBACK_TASK_ID = 'd0000001-0001-4000-8000-000000000005';
+
+const buildEditUniverseRollbackTaskFixture = (): Task => ({
+  id: EDIT_UNIVERSE_ROLLBACK_TASK_ID,
+  title: 'Rolled back edit universe : mock-universe',
+  percentComplete: 5,
+  createTime: '2026-04-22T09:05:00Z',
+  completionTime: '',
+  target: TargetType.UNIVERSE as Task['target'],
+  targetUUID: EDIT_UNIVERSE_TASK_UNIVERSE_UUID,
+  type: TaskType.ROLLBACK_EDIT_UNIVERSE as Task['type'],
+  typeName: 'Rollback Edit Universe',
+  status: TaskState.RUNNING,
+  details: {
+    taskDetails: [
+      {
+        title: 'Rolling back universe update',
+        description: 'Restoring the universe to its state before the update.',
+        state: TaskState.RUNNING,
+        extraDetails: []
+      }
+    ]
+  },
+  abortable: true,
+  retryable: false,
+  canRollback: false,
+  originalTaskUUID: EDIT_UNIVERSE_TASK_ID,
+  correlationId: 'd0000001-0001-4000-8000-000000000006',
+  userEmail: 'admin',
+  subtaskInfos: [],
+  taskInfo: {
+    taskParams: {}
+  }
+});
+
+export const createEditUniverseRollbackTaskMock = (overrides: Partial<Task> = {}): Task => {
+  const base = buildEditUniverseRollbackTaskFixture();
+  return {
+    ...base,
+    ...overrides,
+    details: {
+      ...base.details,
+      ...(overrides.details ?? {}),
+      taskDetails: overrides.details?.taskDetails ?? base.details.taskDetails
+    }
+  };
+};

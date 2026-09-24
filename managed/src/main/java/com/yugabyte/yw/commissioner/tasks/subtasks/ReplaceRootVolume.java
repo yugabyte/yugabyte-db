@@ -5,6 +5,10 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Map;
 import java.util.UUID;
@@ -23,6 +27,7 @@ public class ReplaceRootVolume extends NodeTaskBase {
     public Map<UUID, Map<String, String>> bootDisksPerNodePerZone;
     public String rootDeviceName;
     public Map<UUID, String> rootDevicePerZone;
+    public String capacityReservation;
   }
 
   @Override
@@ -42,8 +47,14 @@ public class ReplaceRootVolume extends NodeTaskBase {
     if (bootDisksPerNode == null || bootDisksPerNode.isEmpty()) {
       throw new IllegalStateException("No available boot disks in AZ " + azUuid.toString());
     }
+    Universe universe = getUniverse();
+    NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
+    Provider provider = Util.getProviderForNode(nodeDetails, universe);
+    taskParams().capacityReservation =
+        CapacityReservationUtil.getReservationIfPresent(
+            getTaskCache(), provider, taskParams().nodeName);
     // Delete node agent record as the image is going to be replaced.
-    deleteNodeAgent(getUniverse().getNode(taskParams().nodeName));
+    deleteNodeAgent(nodeDetails);
     taskParams().replacementDisk = bootDisksPerNode.get(taskParams().nodeName);
     if (taskParams().rootDevicePerZone != null) {
       String rootDeviceName = taskParams().rootDevicePerZone.get(azUuid);

@@ -1,4 +1,5 @@
-x-yba-api-visibility: internal
+x-yba-api-visibility: preview
+x-yba-api-since: 2026.1.2.0
 title: ExportTelemetryUpgradeOptions
 type: object
 description: 'Upgrade options for applying telemetry config changes (rolling vs non-rolling, delays).'

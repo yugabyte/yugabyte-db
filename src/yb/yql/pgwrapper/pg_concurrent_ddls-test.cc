@@ -693,6 +693,14 @@ class PgConcurrentCreateOrReplaceCrashTest : public LibPqTestBase {
     // stale-syscache race window, so it must be disabled to reproduce.
     opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+    // ysql_enable_concurrent_ddl requires object locking as a prerequisite, so disable it.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 
   static bool IsBackendCrash(const Status& status) {

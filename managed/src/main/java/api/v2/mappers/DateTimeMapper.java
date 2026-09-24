@@ -14,4 +14,11 @@ public class DateTimeMapper {
     }
     return date.toInstant().atOffset(ZoneOffset.UTC);
   }
+
+  public Date toDate(OffsetDateTime offsetDateTime) {
+    if (offsetDateTime == null) {
+      return null;
+    }
+    return Date.from(offsetDateTime.toInstant());
+  }
 }

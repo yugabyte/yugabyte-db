@@ -87,6 +87,8 @@ class SnapshotScheduleState {
       HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations);
   Result<SnapshotScheduleOperation> ForceCreateSnapshot(HybridTime last_snapshot_time);
   void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
+  // Clears a creating-snapshot marker that can no longer make progress.
+  void ClearCreatingSnapshot(const std::string& reason);
 
   Result<dockv::KeyBytes> EncodedKey() const;
   static Result<dockv::KeyBytes> EncodedKey(

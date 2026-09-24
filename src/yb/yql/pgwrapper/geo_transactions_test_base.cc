@@ -41,6 +41,7 @@ DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
 DECLARE_bool(auto_create_local_transaction_tables);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_track_last_transaction);
@@ -392,10 +393,14 @@ Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
 
 Status GeoTransactionsTestBase::WarmupTablespaceCache(
     pgwrapper::PGConn& conn, std::string_view table) {
-  // Force tablespace information into cache.
-  // The purpose of ROLLBACK is to to ensure that in case object locking is enabled YB txn
-  // will not be reused.
-  return conn.ExecuteFormat("BEGIN;SELECT * FROM $0 LIMIT 1;ROLLBACK", table);
+  // Force tablespace information into cache. For object locking enabled, plain transaction
+  // must also be consumed, so that the next operation can start in the correct locality.
+  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  if (FLAGS_enable_object_locking_for_table_locks) {
+    RETURN_NOT_OK(conn.ExecuteFormat("LOCK TABLE $0 IN EXCLUSIVE MODE", table));
+  }
+  RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 LIMIT 1", table));
+  return conn.RollbackTransaction();
 }
 
 } // namespace yb::client

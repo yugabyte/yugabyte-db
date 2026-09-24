@@ -168,6 +168,29 @@ const (
 	// required to use Telemetry Provider resource via YBA CLI
 	YBAAllowTelemetryProviderMinPreviewVersion = "2.23.1.0-b27"
 
+	// YBAAllowTelemetryProviderTypesMinPreviewVersion specifies minimum version
+	// required to use the telemetry provider types API (preview line)
+	YBAAllowTelemetryProviderTypesMinPreviewVersion = "2.29.0.0-b0"
+	// YBAAllowTelemetryProviderTypesMinStableVersion specifies minimum version
+	// required to use the telemetry provider types API (stable line)
+	YBAAllowTelemetryProviderTypesMinStableVersion = "2025.2.0.0-b1"
+
+	// YBAAllowExportTelemetryConfigMinPreviewVersion specifies minimum version required to
+	// use the unified export telemetry config API. This is when the endpoint first shipped,
+	// not when it was promoted from internal to preview (2026.1.2.0 / 2.31.0.0).
+	YBAAllowExportTelemetryConfigMinPreviewVersion = "2.29.0.0-b0"
+	// YBAAllowExportTelemetryConfigMinStableVersion specifies minimum version required to
+	// use the unified export telemetry config API
+	YBAAllowExportTelemetryConfigMinStableVersion = "2026.1.0.0-b1"
+
+	// YBAAllowServerLogsExportMinPreviewVersion specifies minimum version required for the
+	// six server log sections. The API shipped earlier with only audit_logs, query_logs
+	// and metrics.
+	YBAAllowServerLogsExportMinPreviewVersion = "2.31.0.0-b0"
+	// YBAAllowServerLogsExportMinStableVersion specifies minimum version required for the
+	// six server log sections of the unified export telemetry config API
+	YBAAllowServerLogsExportMinStableVersion = "2026.1.2.0-b1"
+
 	// YBAAllowTelemetryProviderMinStableVersion specifies minimum version
 	// required to use Telemetry Provider resource via YBA CLI
 	YBAAllowTelemetryProviderMinStableVersion = "2024.1.2.0-b78"
@@ -462,6 +485,12 @@ const (
 	GCPCloudMonitoringTelemetryProviderType = "GCP_CLOUD_MONITORING"
 	// LokiTelemetryProviderType type
 	LokiTelemetryProviderType = "LOKI"
+	// DynatraceTelemetryProviderType type
+	DynatraceTelemetryProviderType = "DYNATRACE"
+	// S3TelemetryProviderType type
+	S3TelemetryProviderType = "S3"
+	// OTLPTelemetryProviderType type
+	OTLPTelemetryProviderType = "OTLP"
 )
 
 // LokiAuthTypes for loki
@@ -470,6 +499,55 @@ const (
 	BasicLokiAuthType = "BasicAuth"
 	// NoAuthLokiAuthType type
 	NoLokiAuthType = "NoAuth"
+)
+
+// Telemetry provider auth types, shared by OTLP and Loki. These are the
+// serialized names of AuthCredentials.AuthType, not display strings.
+const (
+	// NoAuthTelemetryAuthType type
+	NoAuthTelemetryAuthType = "NoAuth"
+	// BasicAuthTelemetryAuthType type
+	BasicAuthTelemetryAuthType = "BasicAuth"
+	// BearerTokenTelemetryAuthType type
+	BearerTokenTelemetryAuthType = "BearerToken"
+)
+
+// OTLP exporter protocols. The value selects the collector exporter type
+// (gRPC -> otlp, HTTP -> otlphttp), so it is not a free-form string.
+const (
+	// GRPCOTLPProtocol type
+	GRPCOTLPProtocol = "gRPC"
+	// HTTPOTLPProtocol type
+	HTTPOTLPProtocol = "HTTP"
+)
+
+// Compression types accepted by the OTLP exporter. Substituted directly into
+// the collector config, so the lowercase spelling is significant.
+const (
+	// GzipCompressionType type
+	GzipCompressionType = "gzip"
+	// NoneCompressionType type
+	NoneCompressionType = "none"
+	// SnappyCompressionType type
+	SnappyCompressionType = "snappy"
+	// ZstdCompressionType type
+	ZstdCompressionType = "zstd"
+)
+
+// Marshalers accepted by the S3 exporter. SUMO_IC is logs-only.
+const (
+	// OTLPJSONMarshaler type
+	OTLPJSONMarshaler = "OTLP_JSON"
+	// SumoICMarshaler type
+	SumoICMarshaler = "SUMO_IC"
+)
+
+// S3 partition granularities.
+const (
+	// HourS3Partition type
+	HourS3Partition = "hour"
+	// MinuteS3Partition type
+	MinuteS3Partition = "minute"
 )
 
 // Different kms types

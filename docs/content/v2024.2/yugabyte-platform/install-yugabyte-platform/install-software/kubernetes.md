@@ -160,7 +160,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2024.2" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
@@ -168,7 +168,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
     ```sh
     # Modify the fields kubernetesOperatorNamespace and defaultUser username, email and password fields as required
     helm install yba yugabytedb/yugaware \
-      --version {{< yb-version version="stable" format="short">}} \
+      --version {{< yb-version version="v2024.2" format="short">}} \
       --namespace yb-platform \
       --set yugaware.kubernetesOperatorEnabled=true \
       --set yugaware.kubernetesOperatorNamespace='yb-platform-test' \
@@ -199,7 +199,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
       enableNodeToNodeEncrypt: true
       enableClientToNodeEncrypt: true
       enableLoadBalancer: true
-      ybSoftwareVersion: "{{< yb-version version="stable" format="build">}}" <- This will be the YBA  version
+      ybSoftwareVersion: "{{< yb-version version="v2024.2" format="build">}}" <- This will be the YBA  version
       enableYSQLAuth: false
       enableYCQL: true
       enableYCQLAuth: false
@@ -226,7 +226,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
 
     ```output
     NAME        STATE   SOFTWARE VERSION
-    demo-test   Ready   {{< yb-version version="stable" format="build">}}
+    demo-test   Ready   {{< yb-version version="v2024.2" format="build">}}
     ```
 
 For more details, see [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).

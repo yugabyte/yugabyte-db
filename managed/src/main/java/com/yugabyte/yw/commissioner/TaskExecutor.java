@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
+import com.yugabyte.yw.common.ShutdownHookHandler.ShutdownPhase;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -154,6 +155,8 @@ public class TaskExecutor {
 
   // Default wait timeout for subtasks to complete since the abort call.
   private final Duration defaultAbortTaskTimeout = Duration.ofSeconds(30);
+
+  private final ShutdownHookHandler shutdownHookHandler;
 
   // ExecutorService provider for subtasks if explicit ExecutorService
   // is set for the subtasks in a task.
@@ -289,40 +292,48 @@ public class TaskExecutor {
       Map<TaskType, Provider<ITask>> taskTypeMap,
       Map<Class<? extends ITask>, TaskType> inverseTaskTypeMap,
       RuntimeConfGetter runtimeConfGetter) {
+    this.shutdownHookHandler = shutdownHookHandler;
     this.executorServiceProvider = executorServiceProvider;
     this.replicationManager = replicationManager;
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
-    shutdownHookHandler.addShutdownHook(
-        this, taskExecutor -> taskExecutor.shutdown(Duration.ofMinutes(2)), 100 /* weight */);
+    this.shutdownHookHandler.addShutdownHook(
+        ShutdownPhase.BEFORE_SERVICE_UNBIND,
+        this,
+        taskExecutor -> {
+          Duration maxWaitTime =
+              runtimeConfGetter.getGlobalConf(GlobalConfKeys.taskExecutorShutdownMaxWaitTime);
+          // Inform running tasks to abort subtasks in maxWaitTime, and then wait for all all the
+          // running tasks to complete within maxWaitTime + defaultAbortTaskTimeout.
+          taskExecutor.shutdownSync(maxWaitTime, maxWaitTime.plus(defaultAbortTaskTimeout));
+        },
+        100 /* weight */);
     this.taskTypeMap = taskTypeMap;
     this.inverseTaskTypeMap = inverseTaskTypeMap;
     this.runtimeConfGetter = runtimeConfGetter;
   }
 
-  // Shuts down the task executor.
-  // It assumes that the executor services will
-  // also be shutdown gracefully.
-  public boolean shutdown(Duration timeout) {
+  // Shuts down the task executor and waits for all the running tasks to complete within the given
+  // timeout.
+  private boolean shutdownSync(Duration abortTimeout, Duration drainTimeout) {
     if (isShutdown.compareAndSet(false, true)) {
-      log.info("TaskExecutor is shutting down");
+      log.info("TaskExecutor is shutting down in {} seconds (max)", abortTimeout.getSeconds());
       runnableTasks.sealMap();
-      Instant abortTime = Instant.now();
-      runnableTasks.forEach(
-          (uuid, runnable) -> {
-            runnable.setAbortTime(abortTime);
-            runnable.cancelWaiterIfAborted();
-          });
+      runnableTasks.forEach((uuid, runnable) -> runnable.abort(abortTimeout));
+      try {
+        runnableTasks.forEach((k, v) -> v.cancelWaiterIfAborted());
+        // Wait for all the RunnableTask to be done.
+        // A task in runnableTasks map is removed when it is cancelled due to executor shutdown or
+        // when it is completed.
+        return runnableTasks.waitForEmpty(drainTimeout);
+      } catch (InterruptedException e) {
+        log.error("Wait for task completion interrupted", e);
+      } finally {
+        log.info(
+            "TaskExecutor shutdown completed with number of running tasks: {}",
+            runnableTasks.size());
+      }
     }
-    try {
-      // Wait for all the RunnableTask to be done.
-      // A task in runnableTasks map is removed when it is cancelled due to executor shutdown or
-      // when it is completed.
-      return runnableTasks.waitForEmpty(timeout);
-    } catch (InterruptedException e) {
-      log.error("Wait for task completion interrupted", e);
-    }
-    log.debug("TaskExecutor shutdown in time");
     return false;
   }
 
@@ -504,7 +515,8 @@ public class TaskExecutor {
     if (!force && !isTaskAbortable(task.getClass())) {
       throw new RuntimeException("Task " + task.getName() + " is not abortable");
     }
-    runnableTask.abort(Duration.ZERO);
+    runnableTask.abort(defaultAbortTaskTimeout);
+    runnableTask.cancelWaiterIfAborted();
     // Update the task state in the memory and DB.
     runnableTask.compareAndSetTaskState(
         Sets.immutableEnumSet(State.Initializing, State.Created, State.Running), State.Abort);
@@ -777,7 +789,7 @@ public class TaskExecutor {
             removeCompletedSubTask(iter, runnableSubTask, e.getCause());
             // Call parent task abort if abortOnFailure set.
             if (abortOnFailure && !ignoreErrors) {
-              runnableTask.setAbortTime(Instant.now());
+              runnableTask.abort(Duration.ZERO);
               runnableTask.cancelWaiterIfAborted();
             }
           } catch (TimeoutException e) {
@@ -798,7 +810,7 @@ public class TaskExecutor {
               removeCompletedSubTask(iter, runnableSubTask, e);
             } else if (skipSubTaskAbortableCheck
                 || isTaskAbortable(runnableSubTask.getTask().getClass())) {
-              if (runnableSubTask.isAbortTimeReached(defaultAbortTaskTimeout)) {
+              if (runnableSubTask.isAbortTimeReached()) {
                 // Cancel waiter if it was not done previously.
                 runnableTask.cancelWaiterIfAborted();
                 future.cancel(true);
@@ -810,9 +822,6 @@ public class TaskExecutor {
                 anyEx = (anyEx != null) ? anyEx : thisEx;
                 runnableSubTask.updateTaskDetailsOnError(TaskInfo.State.Aborted, thisEx);
                 removeCompletedSubTask(iter, runnableSubTask, anyEx);
-              } else if (runnableSubTask.isAbortTimeReached(Duration.ZERO)) {
-                // Cancel waiter first.
-                runnableTask.cancelWaiterIfAborted();
               }
             }
 
@@ -1064,7 +1073,7 @@ public class TaskExecutor {
         writeTaskWaitMetric(taskLabels, taskScheduledTime, taskStartTime);
         TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setQueuedTimeMs(queuedTimeMs));
         publishBeforeTask();
-        if (isAbortTimeReached(Duration.ZERO)) {
+        if (shouldAbortBeforeTaskRun()) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
         }
         if (shouldRun()) {
@@ -1147,7 +1156,11 @@ public class TaskExecutor {
 
     protected abstract Map<String, String> getTaskMetricLabels();
 
-    protected abstract boolean isAbortTimeReached(@Nullable Duration graceTime);
+    /** Returns true when abort time is reached and the task should be aborted. */
+    protected abstract boolean isAbortTimeReached();
+
+    /** Returns true when abort time is set and the task should abort before running. */
+    protected abstract boolean shouldAbortBeforeTaskRun();
 
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
@@ -1267,8 +1280,10 @@ public class TaskExecutor {
     private int subTaskPosition = 0;
     private final AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
         new AtomicReference<>();
-    // Time when the abort is set.
+    // Time when abort should happen.
     private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
+    // Set when the task must be aborted before it is run when abort time is set.
+    private volatile boolean abortBeforeTaskRun = false;
     // Set when the task is paused by a subtask group.
     private volatile boolean paused = false;
 
@@ -1322,7 +1337,7 @@ public class TaskExecutor {
         taskCache.clear();
         // Update the customer task to a completed state.
         CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
-        if (customerTask != null && !isShutdown.get()) {
+        if (customerTask != null) {
           customerTask.markAsCompleted();
         }
 
@@ -1355,6 +1370,11 @@ public class TaskExecutor {
           getTaskInfo().getTaskType().name());
     }
 
+    @Override
+    protected boolean shouldAbortBeforeTaskRun() {
+      return abortTimeSupplierRef.get() != null && abortBeforeTaskRun;
+    }
+
     private Instant getAbortTime() {
       Supplier<Instant> supplier = abortTimeSupplierRef.get();
       if (supplier == null) {
@@ -1371,21 +1391,14 @@ public class TaskExecutor {
       abortTimeSupplierRef.set(() -> checkNotNull(abortTime, "Abort time must be set"));
     }
 
-    /**
-     * Checks if the future abort time is reached with the additional graceTime if it is provided.
-     */
+    /** Checks if the future abort time is reached. */
     @Override
-    protected boolean isAbortTimeReached(@Nullable Duration graceTime) {
+    protected boolean isAbortTimeReached() {
       Instant abortTime = getAbortTime();
       if (abortTime == null) {
         return false;
       }
-      long graceMillis = 0L;
-      Instant actualAbortTime = abortTime;
-      if (graceTime != null && (graceMillis = graceTime.toMillis()) > 0) {
-        actualAbortTime = actualAbortTime.plus(graceMillis, ChronoUnit.MILLIS);
-      }
-      return Instant.now().isAfter(actualAbortTime);
+      return Instant.now().compareTo(abortTime) >= 0;
     }
 
     @Override
@@ -1562,7 +1575,7 @@ public class TaskExecutor {
     }
 
     // Restricted access to package level for internal use.
-    void abort(@Nullable Duration delay) {
+    private void abort(@Nullable Duration delay) {
       Instant abortTime = Instant.now();
       if (delay != null && delay.toMillis() > 0) {
         abortTime = abortTime.plus(delay.toMillis(), ChronoUnit.MILLIS);
@@ -1573,6 +1586,7 @@ public class TaskExecutor {
         log.info("Aborting task {} in {} secs", getTaskUUID(), abortTime);
         setAbortTime(abortTime);
       }
+      abortBeforeTaskRun = true;
     }
 
     @Override
@@ -1661,8 +1675,13 @@ public class TaskExecutor {
     }
 
     @Override
-    protected boolean isAbortTimeReached(@Nullable Duration graceTime) {
-      return parentRunnableTask == null ? false : parentRunnableTask.isAbortTimeReached(graceTime);
+    protected boolean shouldAbortBeforeTaskRun() {
+      return parentRunnableTask == null ? false : parentRunnableTask.shouldAbortBeforeTaskRun();
+    }
+
+    @Override
+    protected boolean isAbortTimeReached() {
+      return parentRunnableTask == null ? false : parentRunnableTask.isAbortTimeReached();
     }
 
     @Override

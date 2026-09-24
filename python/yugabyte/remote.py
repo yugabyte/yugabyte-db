@@ -5,6 +5,7 @@ This module provides utility and helper functions to work with a remote server t
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -30,11 +31,63 @@ CONFIG_FILE_PATH = '~/.yb_remote_build.json'
 # The branch pattern mirrors PHAB_TITLE_RE from the detective-webapp repo.
 LOCAL_BRANCH_PREFIX_RE = re.compile(r'^([0-9]+(?:[.][0-9]+)+|pg[0-9]+)[_-].*')
 
+# Path of the remote file which describes the local state the remote directory has been synced from.
+# See `get_sync_state`.
+SYNC_STATE_FILE_NAME = '.yb_remote_build_state'
+
+# Value used in the sync state file when there are no changes on top of the corresponding commit.
+SYNC_STATE_NO_DIFF = 'none'
+
+# Options making the diff output depend only on the content we compare, so the checksum of the
+# diff can be calculated again later and compared. Without them the same content could produce
+# different diff output:
+# - `--no-ext-diff` and `--no-textconv` - external diff drivers and content filters replace the
+#   diff with their own output.
+# - `--no-renames` - rename and copy detection is heuristic and limited by `diff.renameLimit`.
+# - `diff.algorithm`, `diff.indentHeuristic` and `--unified` - these change how the diff is split
+#   into hunks and where the boundaries between hunks are.
+# - `--inter-hunk-context` - `diff.interHunkContext` joins hunks which are close to each other.
+# - `core.abbrev` - changes the length of blob hashes in `index` lines.
+# - `diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix` and `diff.dstPrefix` - change `a/`
+#   and `b/` path prefixes. The last two are supported since git 2.45 and are not reset by
+#   `diff.noprefix`, older git ignores them.
+# - `core.quotePath` - changes how paths with non-ASCII characters are written in the diff header.
+# - `-O` - `diff.orderFile` changes the order of the files in the diff, `/dev/null` is an empty
+#   order file which keeps the default order.
+# All of them are set to the git default value, so the checksum doesn't change for the users which
+# don't have these options in their git configuration. We use `--binary`, so changes in binary
+# files are included with their content instead of a single `Binary files differ` line.
+DETERMINISTIC_DIFF_ARGS = [
+    '-c', 'core.abbrev=40',
+    '-c', 'core.quotePath=true',
+    '-c', 'diff.algorithm=myers',
+    '-c', 'diff.indentHeuristic=true',
+    '-c', 'diff.noprefix=false',
+    '-c', 'diff.mnemonicPrefix=false',
+    '-c', 'diff.srcPrefix=a/',
+    '-c', 'diff.dstPrefix=b/',
+    '-c', 'diff.suppressBlankEmpty=false',
+    'diff',
+    '--no-color',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--no-renames',
+    '--binary',
+    '--unified=3',
+    '--inter-hunk-context=0',
+    '-O/dev/null',
+]
+
 
 def check_output(args: List[str]) -> str:
     logging.debug("Running command: %s", shlex_join(args))
     bytes = subprocess.check_output(args)
     return bytes.decode('utf-8')
+
+
+def check_output_bytes(args: List[str]) -> bytes:
+    logging.debug("Running command: %s", shlex_join(args))
+    return subprocess.check_output(args)
 
 
 def check_output_line(args: List[str]) -> str:
@@ -55,11 +108,103 @@ def parse_git_diff_name_status(lines: List[str]) -> Tuple[List[str], List[str]]:
             files[1].append(tokens[1])
             continue
         if tokens[0].startswith('R'):
-            name = tokens[2]
-        else:
-            name = tokens[1]
-        files[0].append(name)
+            # Rename is a deletion of the source path plus an addition of the destination path.
+            # We should delete the source path, otherwise a stale copy of the file is left there.
+            files[1].append(tokens[1])
+            files[0].append(tokens[2])
+            continue
+        if tokens[0].startswith('C'):
+            # Copy keeps its source path, only the destination path is new.
+            files[0].append(tokens[2])
+            continue
+        files[0].append(tokens[1])
     return files
+
+
+def get_diff_sha256(commit: str) -> str:
+    """
+    Returns sha256 of the local changes on top of the given commit, calculated on the output of:
+
+        git <options from DETERMINISTIC_DIFF_ARGS> diff <commit>
+
+    Only tracked files are taken into account, the same as for the files we sync - untracked files
+    are not reported by git diff and are never synced.
+
+    :param commit: commit to compare the local working tree against
+    :return: checksum as a hex string, or SYNC_STATE_NO_DIFF if there are no such changes
+    """
+    diff_bytes = check_output_bytes(['git'] + DETERMINISTIC_DIFF_ARGS + [commit])
+    if not diff_bytes:
+        return SYNC_STATE_NO_DIFF
+    return hashlib.sha256(diff_bytes).hexdigest()
+
+
+def get_sync_state(base_commit: str) -> str:
+    """
+    Returns content of the sync state file which describes the local state we sync to the remote
+    directory. The remote directory is checked out at `base_commit` and then local changes on top
+    of that commit are copied over it, so its content matches the local working tree.
+
+    The state has two pairs of fields, they answer different questions:
+    - `local_commit`/`local_diff_sha256` - local HEAD commit and sha256 of the local changes on top
+      of it. `local_diff_sha256` is SYNC_STATE_NO_DIFF when the remote directory holds
+      `local_commit` without any changes.
+    - `base_commit`/`base_diff_sha256` - commit checked out in the remote directory and sha256 of
+      everything we copy on top of it. `base_diff_sha256` is SYNC_STATE_NO_DIFF only when the local
+      branch has no commits of its own and the local working tree is clean.
+
+    Either checksum can be calculated again locally by passing the same diff to `sha256sum`, for
+    example for `local_diff_sha256`:
+
+        git -c core.abbrev=40 -c core.quotePath=true -c diff.algorithm=myers \\
+            -c diff.indentHeuristic=true -c diff.noprefix=false -c diff.mnemonicPrefix=false \\
+            -c diff.srcPrefix=a/ -c diff.dstPrefix=b/ -c diff.suppressBlankEmpty=false \\
+            diff --no-color --no-ext-diff --no-textconv --no-renames --binary --unified=3 \\
+            --inter-hunk-context=0 -O/dev/null HEAD |
+          sha256sum
+
+    The same command run in the remote directory gives a different checksum when the local changes
+    add new files - we copy them there, but they are not tracked by git there and are not reported
+    by git diff. Both checksums should be calculated on the local side.
+
+    :param base_commit: commit the remote directory is checked out at
+    :return: content of the sync state file
+    """
+    return ''.join(
+        '{0}={1}\n'.format(key, value) for key, value in [
+            ('local_commit', check_output_line(['git', 'rev-parse', 'HEAD'])),
+            ('local_diff_sha256', get_diff_sha256('HEAD')),
+            ('base_commit', base_commit),
+            ('base_diff_sha256', get_diff_sha256(base_commit)),
+        ])
+
+
+def remove_sync_state(host: str, escaped_remote_path: str, extra_ssh_args: List[str]) -> None:
+    """
+    Removes the sync state file before we modify the remote directory, so a failed or interrupted
+    sync leaves the remote directory without the state file, which means unknown state, instead of
+    a stale state file which describes content that is no longer there.
+    """
+    remote_communicate(
+        host=host,
+        remote_command='rm -f {0}/{1}'.format(
+            escaped_remote_path, shlex.quote(SYNC_STATE_FILE_NAME)),
+        extra_ssh_args=extra_ssh_args)
+
+
+def write_sync_state(
+        host: str,
+        escaped_remote_path: str,
+        sync_state: str,
+        extra_ssh_args: List[str]) -> None:
+    """
+    Writes the sync state file into the remote directory after the sync is complete.
+    """
+    remote_communicate(
+        host=host,
+        remote_command='printf %s {0} > {1}/{2}'.format(
+            shlex.quote(sync_state), escaped_remote_path, shlex.quote(SYNC_STATE_FILE_NAME)),
+        extra_ssh_args=extra_ssh_args)
 
 
 def get_ssh_cmd_line(host: str, extra_ssh_args: List[str], remote_command: List[str]) -> List[str]:
@@ -99,7 +244,13 @@ def check_remote_files(
         host: str,
         remote_path: str,
         extra_ssh_args: List[str],
-        files: List[str]) -> None:
+        files: List[str],
+        del_files: List[str]) -> None:
+    """
+    Makes the remote directory differ from the commit checked out there only by the files we have
+    just synced. Files changed or deleted in the remote directory by the previous sync or manually
+    are restored with `git checkout`.
+    """
     remote_command_str = 'cd {0} && git diff --name-status'.format(escaped_remote_path)
     remote_changed, remote_deleted = parse_git_diff_name_status(
         check_output_lines(get_ssh_cmd_line(
@@ -110,6 +261,10 @@ def check_remote_files(
     for changed in remote_changed:
         if changed not in files:
             unexpected.append(changed)
+    # Restore remote files which are present locally.
+    for deleted in remote_deleted:
+        if deleted not in del_files:
+            unexpected.append(deleted)
     if unexpected:
         command = 'cd {0}'.format(remote_path)
         message = 'Reverting:\n'
@@ -326,6 +481,10 @@ def sync_changes(
     else:
         escaped_remote_path = shlex.quote(remote_path)
 
+    # Remove the state file before we modify the remote directory in any way.
+    remove_sync_state(
+        host=host, escaped_remote_path=escaped_remote_path, extra_ssh_args=extra_ssh_args)
+
     if remote_commit != commit:
         logging.info("Remote commit mismatch, syncing")
         remote_command = ' && '.join([
@@ -342,9 +501,17 @@ def sync_changes(
             raise RuntimeError("Failed to sync remote commit to: {0}, it is still: {1}".format(
                 commit, remote_commit))
 
+    # We disable rename detection, so a rename is reported as a deletion of the source path plus
+    # an addition of the destination path. Rename detection is also heuristic and limited by
+    # `diff.renameLimit`, so with it enabled the set of files we sync depends on the user's git
+    # configuration and on the number of changed files.
     files, del_files = parse_git_diff_name_status(
-        check_output_lines(['git', 'diff', commit, '--name-status']))
+        check_output_lines(['git', 'diff', '--no-renames', commit, '--name-status']))
     logging.info("Total files: {0}, deleted files: {1}".format(len(files), len(del_files)))
+
+    # We calculate the sync state next to the list of files above, so the checksums and the files
+    # we transfer are taken from the same state of the working tree.
+    sync_state = get_sync_state(commit)
 
     if files:
         # From this StackOverflow thread: https://goo.gl/xzhBUC
@@ -378,6 +545,10 @@ def sync_changes(
 
     check_remote_files(
         escaped_remote_path=escaped_remote_path, host=host, remote_path=remote_path, files=files,
+        del_files=del_files, extra_ssh_args=extra_ssh_args)
+
+    write_sync_state(
+        host=host, escaped_remote_path=escaped_remote_path, sync_state=sync_state,
         extra_ssh_args=extra_ssh_args)
 
     return escaped_remote_path

@@ -27,6 +27,7 @@
 #include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 namespace {
@@ -97,6 +98,11 @@ class RequestCollector {
   };
 
   [[nodiscard]] auto operator()(std::span<const PgsqlOpPtr> ops, const PgTableDesc& table) {
+    if (!ops.empty()) {
+      const auto relation_oid = table.pg_table_id().object_oid;
+      single_relation_oid_ = ops_.empty() || single_relation_oid_ == relation_oid
+          ? relation_oid : kPgInvalidOid;
+    }
     for (const auto& o : ops) {
       ops_.emplace_back(o, &table);
     }
@@ -115,7 +121,7 @@ class RequestCollector {
               auto& info = *i++;
               return TO{.operation = &info.operation, .table = info.table};
             }), {.marker = marker})),
-        {TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
+        {TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse, single_relation_oid_});
     *provider_state_ = VERIFY_RESULT(response.Get(session));
     return Status::OK();
   }
@@ -128,6 +134,10 @@ class RequestCollector {
 
   ResponseProvider::StatePtr provider_state_{std::make_shared<ResponseProvider::State>()};
   boost::container::small_vector<OperationInfo, 16> ops_;
+  // OID of the relation all the collected operations belong to, kPgInvalidOid when they belong
+  // to more than one relation. Maintained as operations are collected so that the flush does
+  // not have to walk them.
+  PgOid single_relation_oid_ = kPgInvalidOid;
 };
 
 class Sender {

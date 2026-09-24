@@ -14,6 +14,15 @@ Ported tests (those named yb.port.foo) should be ordered the same way as
 parallel_schedule.  Otherwise, tests may not have the right dependencies or
 expected state.
 
+Tests with upstream PostgreSQL names (e.g. union.sql) are kept identical to
+the pinned upstream version (src/lint checks them against the commit in
+src/lint/upstream_repositories.csv); YB-specific changes belong in the
+yb.port. version of the test instead.  Within yb.port. tests, keep as close
+to the upstream test as possible, and mark each YB deviation with a "-- YB"
+comment carrying the reason (trailing on the changed line, or on its own
+line), so the port can be re-diffed against the upstream test mechanically
+on the next version upgrade.
+
 yb.depd.foo are targeted dependency tests that set up certain objects and
 eliminate the need to run whole dependency tests such as yb.port.test_setup and
 yb.port.create_index.

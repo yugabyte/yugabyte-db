@@ -13,6 +13,8 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
+import io.ebean.annotation.WhenCreated;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
@@ -59,6 +61,7 @@ public class TelemetryProvider extends Model {
   @ApiModelProperty(value = "Extra Tags", accessMode = READ_WRITE)
   private Map<String, String> tags = new HashMap<>();
 
+  @WhenCreated
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Creation timestamp",
@@ -66,6 +69,7 @@ public class TelemetryProvider extends Model {
       accessMode = READ_ONLY)
   private Date createTime;
 
+  @WhenModified
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Updation timestamp",

@@ -243,7 +243,8 @@ public class TestYbBackup extends BasePgSQLTest {
       "-d", restoreDbName,
       "-f", actual.toString(),
       "--no-tablespaces",
-      "--include-yb-metadata"
+      "--include-yb-metadata",
+      "--restrict-key=" + TestYsqlDump.RESTRICT_KEY
       ));
     ProcessUtil.executeSimple(args, "ysql_dump (" + testName + ")" );
     TestYsqlDump.assertOutputFile(expected, actual);
@@ -2404,7 +2405,7 @@ public class TestYbBackup extends BasePgSQLTest {
     //
     // The restore generates a ysql_dump in binary-upgrade mode that emits
     // `DROP EXTENSION IF EXISTS mage;` before recreating an empty extension
-    // shell. 
+    // shell.
     //
     // The test deliberately installs the extension *without* creating a graph.
     // create_graph() materializes per-graph vertex/edge tables whose snapshot
@@ -2478,7 +2479,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(1,100)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(50.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(80));
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -2512,7 +2513,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(101,200)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(100.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(80));
 
       // Test whether extension membership is set correctly after restoration.
       stmt.execute("DROP EXTENSION orafce CASCADE");

@@ -974,18 +974,22 @@ public class Universe extends Model {
     return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
   }
 
+  public CertificateInfo getCertificateInfoNodeToNode() {
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.rootCA != null && details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
+      return CertificateInfo.getOrBadRequest(details.rootCA);
+    }
+    return null;
+  }
+
   /**
    * Returns the certificate path in case node to node TLS is enabled.
    *
    * @return path to the certfile.
    */
   public String getCertificateNodetoNode() {
-    UniverseDefinitionTaskParams details = this.getUniverseDetails();
-    if (details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
-      // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).getCertificate();
-    }
-    return null;
+    CertificateInfo certInfo = getCertificateInfoNodeToNode();
+    return certInfo != null ? certInfo.getCertificate() : null;
   }
 
   /**
@@ -1238,6 +1242,24 @@ public class Universe extends Model {
   @JsonIgnore
   public NodeDetails getMasterLeaderNode() {
     return getNodeByPrivateIP(getMasterLeaderHostText());
+  }
+
+  /**
+   * Find the current master leader node, failing loudly when it is missing. Prefer this over {@link
+   * #getMasterLeaderNode()} on paths that cannot make progress without a master leader, so that a
+   * missing leader surfaces as an actionable error instead of a NullPointerException.
+   *
+   * @return NodeDetails of the master leader, never null
+   * @throws RuntimeException if the universe has no reachable master leader
+   */
+  @JsonIgnore
+  public NodeDetails getMasterLeaderNodeOrThrow() {
+    NodeDetails masterLeaderNode = getMasterLeaderNode();
+    if (masterLeaderNode == null) {
+      throw new IllegalStateException(
+          "Could not find the master leader node in universe " + getUniverseUUID());
+    }
+    return masterLeaderNode;
   }
 
   /**

@@ -13,26 +13,16 @@
 
 #include "yb/yql/pggate/pg_op.h"
 
-#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/partition.h"
-#include "yb/dockv/primitive_value_util.h"
-
-#include "yb/qlexpr/doc_scanspec_util.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
 namespace {
@@ -45,58 +35,6 @@ void Apply(ReqPB& req, const YbcPgTableLocalityInfo& info) {
 }
 
 } // namespace
-
-Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) {
-  // Set up paging state for next request.
-  auto& res = *read_op->response();
-  if (!res.has_paging_state()) {
-    return false;
-  }
-
-  // A query request can be nested, and paging state belong to the innermost query which is
-  // the read operator that is operated first and feeds data to other queries.
-  // Recursive Proto Message:
-  //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
-  auto& top_level_req = read_op->read_request();
-  auto* req = &top_level_req;
-  while (req->has_index_request()) {
-    req = req->mutable_index_request();
-  }
-
-  // Copy over the paging state from the response to the next request.
-  const auto& paging_state = res.paging_state();
-  VLOG_WITH_FUNC(1) << "Response paging state: " << paging_state.ShortDebugString();
-  *req->mutable_paging_state() = paging_state;
-
-  // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
-  // The docdb layer will check the target table's schema version is compatible.
-  // This allows long-running queries to continue in the presence of other DDL statements
-  // as long as they do not affect the table(s) being queried.
-  req->clear_ysql_catalog_version();
-  req->clear_backfill_spec();
-
-  if (paging_state.has_read_time()) {
-    auto paging_read_hybrid_time = ReadHybridTime::FromPB(paging_state.read_time());
-    VLOG(4) << "Setting read time for next request: " << paging_read_hybrid_time;
-    read_op->set_read_time(paging_read_hybrid_time);
-  }
-
-  // Setup backfill_spec for the next request.
-  if (res.has_backfill_spec()) {
-    req->dup_backfill_spec(res.backfill_spec());
-  }
-
-  // Limit is set lower than default if upper plan is estimated to consume no more than this
-  // number of rows. Here the operation fetches next page, so the estimation is proven incorrect.
-  // So resetting the limit to prevent excessive RPCs due to too small fetch size, if the estimation
-  // is too far from reality.
-  uint64_t prefetch_limit = yb_fetch_row_limit;
-  if (top_level_req.limit() != prefetch_limit) {
-    top_level_req.set_limit(prefetch_limit);
-  }
-
-  return true;
-}
 
 std::string PgsqlOp::ToString() const {
   return Format("{ $0 active: $1 read_time: $2 request: $3 }",
@@ -135,6 +73,53 @@ PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<ThreadSafeArena>& arena_p
 
 std::string PgsqlReadOp::RequestToString() const {
   return read_request_.ShortDebugString();
+}
+
+bool PgsqlReadOp::PrepareNextRequest(std::optional<uint64_t> row_limit) {
+  // Set up paging state for next request.
+  auto& res = *response();
+  if (!res.has_paging_state()) {
+    return false;
+  }
+
+  // A query request can be nested, and paging state belong to the innermost query which is
+  // the read operator that is operated first and feeds data to other queries.
+  // Recursive Proto Message:
+  //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
+  auto* req = &read_request_;
+  while (req->has_index_request()) {
+    req = req->mutable_index_request();
+  }
+
+  // Copy over the paging state from the response to the next request.
+  const auto& paging_state = res.paging_state();
+  VLOG_WITH_FUNC(1) << "Response paging state: " << paging_state.ShortDebugString();
+  *req->mutable_paging_state() = paging_state;
+
+  // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
+  // The docdb layer will check the target table's schema version is compatible.
+  // This allows long-running queries to continue in the presence of other DDL statements
+  // as long as they do not affect the table(s) being queried.
+  req->clear_ysql_catalog_version();
+  req->clear_backfill_spec();
+
+  if (paging_state.has_read_time()) {
+    auto paging_read_hybrid_time = ReadHybridTime::FromPB(paging_state.read_time());
+    VLOG(4) << "Setting read time for next request: " << paging_read_hybrid_time;
+    set_read_time(paging_read_hybrid_time);
+  }
+
+  // Setup backfill_spec for the next request.
+  if (res.has_backfill_spec()) {
+    req->dup_backfill_spec(res.backfill_spec());
+  }
+
+  if (row_limit) {
+    // Assign the row limit to the top-level request.
+    read_request_.set_limit(*row_limit);
+  }
+
+  return true;
 }
 
 PgsqlWriteOp::PgsqlWriteOp(

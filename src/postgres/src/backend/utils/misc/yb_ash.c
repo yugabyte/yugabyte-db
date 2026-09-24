@@ -1092,17 +1092,26 @@ YbGetWaitEventInfo(const PGPROC *proc)
 	for (size_t attempt = 0; attempt < 32; ++attempt)
 	{
 		const uint32 wait_event = proc->wait_event_info;
-		const uint16 rpc_code = proc->yb_rpc_code;
+		const uint32 aux = proc->yb_wait_event_aux;
 
 		if (wait_event != waiting_on_tserver_code)
 		{
 			info.wait_event = wait_event;
+
+			/* The field holds a leftover value if the wait event has no aux. */
+			if (YBCGetWaitEventAuxKind(wait_event) != YB_ASH_AUX_NONE)
+				info.aux = aux;
 			break;
 		}
 
-		if (rpc_code != 0)
+		/*
+		 * The backend may be between the aux and wait event writes. Re-reading
+		 * is best effort, there is no guarantee it has finished by the last
+		 * attempt, in which case the sample reports no aux.
+		 */
+		if (aux != 0)
 		{
-			info.rpc_code = rpc_code;
+			info.aux = aux;
 			break;
 		}
 	}
@@ -1122,8 +1131,10 @@ copy_pgproc_sample_fields(PGPROC *proc, int index)
 	YbcWaitEventInfo info = YbGetWaitEventInfo(proc);
 
 	cb_sample->encoded_wait_event_code = info.wait_event;
-	cb_sample->aux_info[0] = info.rpc_code;
-	cb_sample->aux_info[1] = '\0';
+	if (info.aux != 0)
+		snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%u", info.aux);
+	else
+		cb_sample->aux_info[0] = '\0';
 }
 
 /* We don't fill the sample weight here. Check YbAshFillSampleWeight */
@@ -1403,19 +1414,21 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 			nulls[j++] = true;
 		}
 
-		if (sample->aux_info[0] != '\0')
+		if (sample->aux_info[0] == '\0')
+			nulls[j++] = true;
+		else if (YBCGetWaitEventAuxKind(sample->encoded_wait_event_code) ==
+				 YB_ASH_AUX_PGGATE_RPC)
 		{
-			/*
-			 * In PG samples, the wait event aux buffer will be
-			 * [ash::PggateRPC, 0, ...], the 0-th index contains the rpc enum
-			 * value, the 1-st and subsequent indexes contains 0.
-			 */
-			values[j++] = sample->aux_info[0] != 0 && sample->aux_info[1] == 0
-				? CStringGetTextDatum(YBCGetPggateRPCName(sample->aux_info[0]))
-				: CStringGetTextDatum(sample->aux_info);
+			char	   *end;
+			unsigned long rpc = strtoul(sample->aux_info, &end, 10);
+			const char *name = *end == '\0' ? YBCGetPggateRPCName(rpc) : "";
+
+			/* Report the stored value if it does not name an RPC. */
+			values[j++] = CStringGetTextDatum(name[0] != '\0' ? name : sample->aux_info);
 		}
 		else
-			nulls[j++] = true;
+			/* A relation OID and a tablet id/table id are both reported as stored. */
+			values[j++] = CStringGetTextDatum(sample->aux_info);
 
 		values[j++] = Float4GetDatum(sample->sample_weight);
 

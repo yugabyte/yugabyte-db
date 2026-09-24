@@ -11,6 +11,8 @@ from langchain_core.documents import Document
 from rag_pipeline.chunk import chunk_langchain_docs, DEFAULT_SPLITTER, DEFAULT_ARGS
 from observability import meko_observe
 
+PDF_PARTITION_STRATEGY = os.getenv("PDF_PARTITION_STRATEGY", "").strip().lower()
+
 
 class PDFProcessor:
     def __init__(self):
@@ -26,7 +28,7 @@ class PDFProcessor:
                 filename=file_path,
 
                 infer_table_structure=True,
-                strategy="fast",
+                strategy=PDF_PARTITION_STRATEGY or "fast",
 
                 extract_image_block_types=["Image"],
                 extract_image_block_to_payload=True,
@@ -156,7 +158,7 @@ class PDFProcessor:
                     filename=temp_file_path,
 
                     infer_table_structure=True,
-                    strategy="auto",
+                    strategy=PDF_PARTITION_STRATEGY or "auto",
 
                     extract_image_block_types=["Image"],
                     extract_image_block_to_payload=True,

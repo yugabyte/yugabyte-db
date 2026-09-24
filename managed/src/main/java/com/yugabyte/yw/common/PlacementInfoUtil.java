@@ -720,6 +720,41 @@ public class PlacementInfoUtil {
                   pAz.tsStsIndex = pAz.tsStsIndex > 8 ? 0 : pAz.tsStsIndex + 1;
                 }
               });
+      // The per-partition placements are the source of truth for getOverallPlacement(), which is
+      // used to compute master addresses and pod names (e.g. during a K8s full move). Propagate the
+      // updated statefulset indices from the cluster placement into every partition placement, so
+      // they don't retain stale indices and generate incorrect master addresses.
+      syncK8sStsIndicesToPartitions(cluster);
+    }
+  }
+
+  /**
+   * Copies the master/tserver statefulset indices from the cluster's placementInfo into each
+   * partition's placement. AZs are disjoint across partitions, so each AZ maps to exactly one
+   * partition placement entry. This keeps getOverallPlacement() (rebuilt from partitions) in sync
+   * with the incremented cluster placement.
+   *
+   * @param cluster the cluster whose partition placements should be synced
+   */
+  public static void syncK8sStsIndicesToPartitions(Cluster cluster) {
+    if (cluster.placementInfo == null || CollectionUtils.isEmpty(cluster.getPartitions())) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+      PlacementInfo partitionPlacement = partition.getPlacement();
+      if (partitionPlacement == null) {
+        continue;
+      }
+      partitionPlacement
+          .azStream()
+          .forEach(
+              partAz -> {
+                PlacementAZ clusterAz = cluster.placementInfo.findByAZUUID(partAz.uuid);
+                if (clusterAz != null) {
+                  partAz.masterStsIndex = clusterAz.masterStsIndex;
+                  partAz.tsStsIndex = clusterAz.tsStsIndex;
+                }
+              });
     }
   }
 
@@ -957,11 +992,13 @@ public class PlacementInfoUtil {
                     zonesList.add(placementAZ);
                   });
         } else {
+          // This code path should be accessible for single provider only.
+          UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
           throw new IllegalStateException(
               "Couldn't find "
                   + deltaNodes
                   + " node(s) of type "
-                  + userIntent.getBaseInstanceType()); // TODO
+                  + userIntent.getBaseInstanceType(providerUUID));
         }
       }
       changed = false;
@@ -981,7 +1018,9 @@ public class PlacementInfoUtil {
   }
 
   public static void validatePartition(
-      UniverseDefinitionTaskParams.PartitionInfo p, boolean geoPartitioned) {
+      UniverseDefinitionTaskParams.PartitionInfo p,
+      boolean geoPartitioned,
+      ClusterType clusterType) {
     if (geoPartitioned) {
       if (StringUtils.isEmpty(p.getName())) {
         throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
@@ -1003,6 +1042,9 @@ public class PlacementInfoUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incorrect replicas for partition " + p.getName() + ": should be non-zero");
     }
+
+    verifyNumNodesAndRF(
+        clusterType, getNodeCountInPlacement(p.getPlacement()), p.getReplicationFactor());
 
     int numberOfReplicas =
         p.getPlacement()
@@ -1050,7 +1092,8 @@ public class PlacementInfoUtil {
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    PlacementInfoUtil.validatePartition(p, cluster.isGeoPartitioned());
+                    PlacementInfoUtil.validatePartition(
+                        p, cluster.isGeoPartitioned(), cluster.clusterType);
                     if (cluster.isGeoPartitioned()) {
                       if (!names.add(p.getName())) {
                         throw new PlatformServiceException(
@@ -1621,8 +1664,10 @@ public class PlacementInfoUtil {
         }
       }
     }
-
-    verifyNumNodesAndRF(oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    if (CollectionUtils.isEmpty(newCluster.getPartitions())) {
+      verifyNumNodesAndRF(
+          oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    }
   }
 
   // Helper API to verify number of nodes and replication factor requirements.
@@ -3002,7 +3047,9 @@ public class PlacementInfoUtil {
     appendAZsForRegions(allAzsInRegions, defaultRegions, azByRegionMap);
 
     if (allAzsInRegions.isEmpty()) {
-      String instanceType = userIntent.getBaseInstanceType();
+      // This code path should be accessible for a single provider only
+      String instanceType =
+          userIntent.getBaseInstanceType(userIntent.maybeGetSingleProviderUUID().get());
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(

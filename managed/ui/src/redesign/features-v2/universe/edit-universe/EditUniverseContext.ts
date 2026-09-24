@@ -17,12 +17,15 @@ export type EditUniverseContextProps = {
   activeTab: EditUniverseTabs;
   universeData: Universe | null;
   providerRegions: Region[];
+  /** True when K8s operator owns this universe and API mutations are blocked. */
+  isK8OperatorEditBlocked?: boolean;
 };
 
 export const InitialEditUniverseContextState: EditUniverseContextProps = {
   activeTab: EditUniverseTabs.GENERAL,
   universeData: null,
-  providerRegions: []
+  providerRegions: [],
+  isK8OperatorEditBlocked: false
 };
 
 export const EditUniverseContext = createContext<EditUniverseContextProps>(

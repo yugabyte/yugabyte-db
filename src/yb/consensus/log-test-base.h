@@ -408,10 +408,9 @@ Status CorruptLogFile(Env* env, const std::string& log_path,
 
 Result<SegmentSequence> GetReadableSegments(const std::string& wal_dir_path) {
   SegmentSequence segments;
-  std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(
+  auto reader = VERIFY_RESULT(LogReader::Open(
       Env::Default(), nullptr, "Log reader", wal_dir_path, nullptr, nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*read_wal_mem_tracker=*/nullptr));
   RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));
   return segments;
 }

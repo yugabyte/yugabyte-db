@@ -93,14 +93,18 @@ $node_primary->wait_for_catchup($node_standby_1, 'replay',
 command_ok(
 	[
 		'pg_dumpall', '-f', $outputdir . '/primary.dump',
-		'--no-sync', '--no-statistics',  '-p', $node_primary->port,
+		'--no-sync', '--no-statistics',
+		'--restrict-key=test',
+		'-p', $node_primary->port,
 		'--no-unlogged-table-data'    # if unlogged, standby has schema only
 	],
 	'dump primary server');
 command_ok(
 	[
 		'pg_dumpall', '-f', $outputdir . '/standby.dump',
-		'--no-sync', '--no-statistics', '-p', $node_standby_1->port
+		'--no-sync', '--no-statistics',
+		'--restrict-key=test',
+		'-p', $node_standby_1->port
 	],
 	'dump standby server');
 command_ok(
@@ -119,6 +123,7 @@ command_ok(
 		('--schema', 'pg_catalog'),
 		('-f', $outputdir . '/catalogs_primary.dump'),
 		'--no-sync',
+		'--restrict-key=test',
 		('-p', $node_primary->port),
 		'--no-unlogged-table-data',
 		'regression'
@@ -130,6 +135,7 @@ command_ok(
 		('--schema', 'pg_catalog'),
 		('-f', $outputdir . '/catalogs_standby.dump'),
 		'--no-sync',
+		'--restrict-key=test',
 		('-p', $node_standby_1->port),
 		'regression'
 	],

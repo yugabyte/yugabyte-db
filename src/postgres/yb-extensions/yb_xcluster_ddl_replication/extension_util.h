@@ -93,6 +93,12 @@ extern bool IsTemporaryTrigger(Oid trigger_oid);
 
 extern bool IsTemporaryRule(Oid rule_oid);
 
+/*
+ * Whether a CREATE TABLE AS / SELECT INTO reads any temporary relation
+ * (also includes temp views, subqueries or CTEs).  False for other commands.
+ */
+extern bool CreateTableAsUsesTempRelation(CollectedCommand *cmd);
+
 /* Returns the relation's colocation id or InvalidOid (0) if not colocated. */
 extern Oid	GetColocationIdFromRelation(Relation *rel, bool is_table_rewrite);
 

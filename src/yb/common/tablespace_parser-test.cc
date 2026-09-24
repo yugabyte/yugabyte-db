@@ -33,6 +33,7 @@
 #include <string>
 #include <gtest/gtest.h>
 
+#include "yb/common/common_net.h"
 #include "yb/common/tablespace_parser.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -497,6 +498,18 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
         ]
       })",
      "leader_preference is not supported for read replicas"},
+    {"unknown_storage_tier",
+     R"({
+        "num_replicas":1,
+        "storage_tier": "nvme-archive",
+        "placement_blocks": [
+           {"cloud":"cloud0",
+            "region":"rack4",
+            "zone":"zone",
+            "min_num_replicas":1}
+        ]
+      })",
+     "Invalid \"storage_tier\" value \"nvme-archive\" in read_replica_placement"},
 };
 
   for (const auto& invalid_case : invalid_cases) {
@@ -577,6 +590,19 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
           ]
         })",
        ""},
+      {"storage_tier",
+       R"({
+          "placement_uuid": "read_replica",
+          "num_replicas": 1,
+          "storage_tier": "hdd",
+          "placement_blocks": [
+            {"cloud":"c1",
+             "region":"r1",
+             "zone":"z1",
+             "min_num_replicas":1}
+          ]
+        })",
+       ""},
   };
 
   for (const auto& valid_case : valid_cases) {
@@ -584,6 +610,71 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
     auto result = TablespaceParser::FromString(kLivePlacement, valid_case.read_replica_json);
     ASSERT_OK(result);
   }
+}
+
+TEST(TablespaceParserTest, MaxNumReplicasParsing) {
+  const string live_placement = R"({
+    "num_replicas":3,
+    "placement_blocks":[
+      {"cloud":"c","region":"r","zone":"z1","min_num_replicas":1,
+       "max_num_replicas":2},
+      {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1}
+    ]
+  })";
+  const string read_placement = R"({
+    "num_replicas":3,
+    "placement_uuid":"read",
+    "placement_blocks":[
+      {"cloud":"c","region":"rr","zone":"z1","min_num_replicas":1,
+       "max_num_replicas":2},
+      {"cloud":"c","region":"rr","zone":"z2","min_num_replicas":1}
+    ]
+  })";
+
+  const auto replication_info =
+      ASSERT_RESULT(TablespaceParser::FromString(live_placement, read_placement));
+  const auto& live = replication_info.live_replicas();
+  ASSERT_EQ(live.placement_blocks(0).max_num_replicas(), 2);
+  ASSERT_FALSE(live.placement_blocks(1).has_max_num_replicas());
+  ASSERT_EQ(GetEffectiveMaxNumReplicas(live.placement_blocks(1), live.num_replicas()), 3);
+
+  const auto& read = replication_info.read_replicas(0);
+  ASSERT_EQ(read.placement_blocks(0).max_num_replicas(), 2);
+  ASSERT_FALSE(read.placement_blocks(1).has_max_num_replicas());
+  ASSERT_EQ(GetEffectiveMaxNumReplicas(read.placement_blocks(1), read.num_replicas()), 3);
+}
+
+TEST(TablespaceParserTest, MaxNumReplicasValidation) {
+  const std::vector<std::pair<string, string>> invalid_placements = {
+      {R"({"num_replicas":1,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
+          "max_num_replicas":"one"}]})",
+       "Invalid type for \"max_num_replicas\""},
+      {R"({"num_replicas":1,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
+          "max_num_replicas":0}]})",
+       "max_num_replicas (0) must be greater than or equal to min_num_replicas (1)"},
+      {R"({"num_replicas":2,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z","min_num_replicas":2,
+          "max_num_replicas":1}]})",
+       "max_num_replicas (1) must be greater than or equal to min_num_replicas (2)"},
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z1","min_num_replicas":1,
+          "max_num_replicas":1},
+         {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1,
+          "max_num_replicas":1}]})",
+       "Sum of effective max_num_replicas fields (2) is less than the total replication factor"},
+  };
+
+  for (const auto& [placement, expected_error] : invalid_placements) {
+    ASSERT_NOK_STR_CONTAINS(TablespaceParser::FromString(placement, ""), expected_error);
+  }
+
+  ASSERT_OK(TablespaceParser::FromString(
+      R"({"num_replicas":1,"placement_blocks":[
+        {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
+         "max_num_replicas":2}]})",
+      ""));
 }
 
 // Test the tablespace preferred zone info parsing.
@@ -763,6 +854,78 @@ TEST(TablespaceParserTest, FromStringPopulatesReplicas) {
     ASSERT_EQ(block.cloud_info().placement_region(), "r1");
     ASSERT_EQ(block.cloud_info().placement_zone(), "z1");
     ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
+  }
+}
+
+// Verifies storage_tier parsing: accepted and populated for either value in the fixed allowlist,
+// rejected with a clear error for an unknown tier, the wrong type, or an empty string, and absent
+// (rather than defaulted) when omitted.
+TEST(TablespaceParserTest, StorageTierParsing) {
+  // The allowlist ("ssd", "hdd") must stay in sync with ValidStorageTiers() -- a tablespace
+  // naming any other tier could never be satisfied by any tserver's --fs_data_dirs.
+  for (const string& tier : {string("hdd"), string("ssd")}) {
+    SCOPED_TRACE("tier='" + tier + "'");
+    const string live_placement_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"" + tier + "\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromString(live_placement_json, ""));
+    ASSERT_TRUE(replication_info.live_replicas().has_storage_tier());
+    ASSERT_EQ(replication_info.live_replicas().storage_tier(), tier);
+  }
+
+  {
+    const string unknown_tier_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"nvme-archive\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto result = TablespaceParser::FromString(unknown_tier_json, "");
+    ASSERT_NOK_STR_CONTAINS(
+        result,
+        "Invalid \"storage_tier\" value \"nvme-archive\" in replica_placement. "
+        "Valid storage tiers are: ssd, hdd");
+  }
+
+  {
+    const string live_placement_json =
+        "{\"num_replicas\":1,\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromString(live_placement_json, ""));
+    ASSERT_FALSE(replication_info.live_replicas().has_storage_tier());
+  }
+
+  {
+    const string invalid_type_json =
+        "{\"num_replicas\":1,\"storage_tier\":1,\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto result = TablespaceParser::FromString(invalid_type_json, "");
+    ASSERT_NOK_STR_CONTAINS(
+        result, "Invalid type for \"storage_tier\" field in replica_placement. Expected string, "
+                "got number");
+  }
+
+  {
+    const string empty_value_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    auto result = TablespaceParser::FromString(empty_value_json, "");
+    ASSERT_NOK_STR_CONTAINS(
+        result, "\"storage_tier\" field in replica_placement cannot be empty");
+  }
+
+  // A read replica placement can name its own tier, independently of the live one.
+  {
+    const string live_placement_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"ssd\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+    const string read_replica_placement_json =
+        "{\"num_replicas\":1,\"storage_tier\":\"hdd\",\"placement_blocks\":["
+        "{\"cloud\":\"c1\",\"region\":\"r2\",\"zone\":\"z2\",\"min_num_replicas\":1}]}";
+    auto replication_info = ASSERT_RESULT(
+        TablespaceParser::FromString(live_placement_json, read_replica_placement_json));
+    ASSERT_EQ(replication_info.live_replicas().storage_tier(), "ssd");
+    ASSERT_EQ(replication_info.read_replicas_size(), 1);
+    ASSERT_EQ(replication_info.read_replicas(0).storage_tier(), "hdd");
   }
 }
 

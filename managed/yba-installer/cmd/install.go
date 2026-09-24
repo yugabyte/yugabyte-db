@@ -3,11 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
@@ -158,14 +160,15 @@ var installCmd = &cobra.Command{
 			log.Fatal(err.Error())
 		}
 
-		getAndPrintStatus(state)
+		getAndPrintStatus(state, slices.Collect(serviceManager.Services()))
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
 }
 
-func getAndPrintStatus(state *ybactlstate.State) {
+// getAndPrintStatus checks that the given services are running and prints their status.
+func getAndPrintStatus(state *ybactlstate.State, services []components.Service) {
 	var statuses []common.Status
-	for service := range serviceManager.Services() {
+	for _, service := range services {
 		status, err := service.Status()
 		if err != nil {
 			log.Fatal("failed to get status: " + err.Error())
@@ -177,8 +180,7 @@ func getAndPrintStatus(state *ybactlstate.State) {
 			continue
 		}
 		if !common.IsHappyStatus(status) {
-			log.Fatal(status.Service + " is not running! Install might have failed, please check " +
-				common.YbactlLogFile())
+			log.Fatal(status.Service + " is not running! Please check " + common.YbactlLogFile())
 		}
 	}
 

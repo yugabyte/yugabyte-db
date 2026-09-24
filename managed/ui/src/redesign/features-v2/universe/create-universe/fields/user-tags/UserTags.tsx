@@ -49,7 +49,13 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column', pt: 1, pb: 1.5 }}>
       <StyledSubText>
         {t('subText')}
-        <StyledLink>{t('learnMore')}</StyledLink>
+        <StyledLink
+          href="https://docs.yugabyte.com/stable/yugabyte-platform/scale-deployments/instance-tags/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t('learnMore')}
+        </StyledLink>
       </StyledSubText>
       <Box
         sx={{

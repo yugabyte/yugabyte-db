@@ -30,10 +30,6 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* YB includes */
-#include "utils/builtins.h"
-#include "utils/typcache.h"
-
 
 typedef struct BTSortArrayContext
 {
@@ -45,6 +41,9 @@ typedef struct BTSortArrayContext
 static Datum _bt_find_extreme_element(IndexScanDesc scan, ScanKey skey,
 									  StrategyNumber strat,
 									  Datum *elems, int nelems);
+static int	_bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
+									bool reverse,
+									Datum *elems, int nelems);
 static int	_bt_compare_array_elements(const void *a, const void *b, void *arg);
 static bool _bt_compare_scankey_args(IndexScanDesc scan, ScanKey op,
 									 ScanKey leftarg, ScanKey rightarg,
@@ -446,7 +445,7 @@ _bt_find_extreme_element(IndexScanDesc scan, ScanKey skey,
  * scan and skey identify the index column, whose opfamily determines the
  * comparison semantics.  If reverse is true, we sort in descending order.
  */
-int
+static int
 _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 						bool reverse,
 						Datum *elems, int nelems)
@@ -480,25 +479,6 @@ _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 								 elemtype,
 								 elemtype,
 								 BTORDER_PROC);
-	if (IsYugaByteEnabled() && !RegProcedureIsValid(cmp_proc))
-	{
-		/*
-		 * YB: It can be possible that the opfamily for the requested attno
-		 * rightfully does not have the requested elemtype yet we should be
-		 * able to find a valid comparison function for it. For example, if
-		 * elemtype is a Record type in the case that skey is a SAOP on Row
-		 * expressions, we might run into this case.
-		 * We fall back to finding the column data-type specific comparator
-		 * in this case. The original PG code above looks for BTORDER_PROC
-		 * in what might potentially be a user-defined opclass but we don't
-		 * support that in YB yet. Until then, it's ok to fallback to the
-		 * column data-type specific comparator.
-		 */
-		TypeCacheEntry *typentry = lookup_type_cache(elemtype,
-													 TYPECACHE_CMP_PROC);
-
-		cmp_proc = typentry->cmp_proc;
-	}
 	if (!RegProcedureIsValid(cmp_proc))
 		elog(ERROR, "missing support function %d(%u,%u) in opfamily %u",
 			 BTORDER_PROC, elemtype, elemtype,

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
@@ -362,6 +363,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   private UUID paCollectorUuid = null;
+
+  /**
+   * The Perf Advisor Endpoint this universe's collected data is forwarded to, set only for an
+   * ONLINE registration. Kept here rather than read back from the collector so the sync loop can
+   * work out what each collector needs without a round trip, and so an endpoint still in use cannot
+   * be deleted while its collector is unreachable.
+   */
+  @Getter
+  @Setter
+  @ApiModelProperty(value = "YbaApi Internal. Perf Advisor Endpoint UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paEndpointUuid = null;
 
   @Data
   public static class UniverseSettings {
@@ -853,8 +866,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               .forEach(
                   az -> {
                     int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfoUtil.addPlacementZone(
-                        az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    PlacementInfo.PlacementAZ mergedAz =
+                        PlacementInfoUtil.addPlacementZone(
+                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    // AZs are disjoint across partitions, so each AZ is added exactly once
+                    // and it is safe to copy the K8s statefulset indices directly. These
+                    // indices must be preserved: master addresses and pod names computed
+                    // from the overall placement (e.g. during a K8s full move) rely on them,
+                    // and dropping them would generate stale/incorrect master addresses.
+                    mergedAz.masterStsIndex = az.masterStsIndex;
+                    mergedAz.tsStsIndex = az.tsStsIndex;
                   });
         }
         return result;
@@ -1519,6 +1540,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Setter
     private boolean cpuCgroupConfigured;
 
+    // Source of truth for whether every node in this universe has cross-cloud federated IAM set up.
+    // Set only after the per-node fan-out succeeds on all nodes, so add-node/edit can key off it,
+    // never leaving the universe in a mixed (some-federated) state.
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. All nodes configured for cross-cloud federated IAM")
+    @Getter
+    @Setter
+    private boolean federationConfigured;
+
     @Getter
     @Setter
     @Nullable
@@ -1630,6 +1661,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.multiTenancy = multiTenancy.clone();
       }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
+      newUserIntent.federationConfigured = federationConfigured;
       if (!CollectionUtils.isEmpty(providerSpecifications)) {
         newUserIntent.providerSpecifications = new ArrayList<>();
         for (ProviderSpecification providerSpecification : providerSpecifications) {
@@ -1666,6 +1698,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public Map<String, String> getInstanceTagsForProvider(UUID providerUUID) {
       return getProviderSpecProperty(providerUUID, spec -> spec.instanceTags, u -> u.instanceTags);
+    }
+
+    public K8SNodeResourceSpec getTserverK8SNodeResourceSpec(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getNodesSpec().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getK8SNodeResourceSpec() : null;
+          },
+          u -> u.tserverK8SNodeResourceSpec);
     }
 
     public void setProviderAccessKey(UUID providerUUID, String newAccessKeyCode) {
@@ -1821,9 +1864,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return serverType;
     }
 
-    @JsonIgnore
-    public String getBaseInstanceType() {
-      return getInstanceType(null);
+    public String getBaseInstanceType(@NotNull UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getNodesSpec().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getInstanceType() : null;
+          },
+          userIntent -> userIntent.instanceType);
     }
 
     public String getInstanceType(@Nullable UUID azUUID) {
@@ -1893,10 +1942,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       OverridenDetails overridenDetails =
           getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
       if (overridenDetails.getDeviceInfo() != null) {
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overridenDetails.getDeviceInfo()),
-            azUUID);
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Getting overriden device info {} for az {}",
+              Json.toJson(overridenDetails.getDeviceInfo()),
+              azUUID);
+        }
         return mergeDeviceInfos(deviceInfo, overridenDetails.getDeviceInfo());
       }
       return deviceInfo;
@@ -1912,9 +1963,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       JsonNode original = Json.toJson(deviceInfo);
       JsonNode overriden = Json.toJson(overridenDeviceInfo);
-      log.debug("Merging device info {} with {}", original, overriden);
+      // deepMerge only skips nulls, but `storageClass` defaults to "" instead of null. Every other
+      // DeviceInfo helper (mergeDeviceInfo/allNull/unsetFields) reads blank as "not overriden", so
+      // drop it here too - otherwise a partially populated override (e.g. the v2 resize API's
+      // per-process storage_spec, which carries only volume size) erases the storage class.
+      if (StringUtils.isBlank(overridenDeviceInfo.storageClass)) {
+        ((ObjectNode) overriden).remove("storageClass");
+      }
+      log.trace("Merging device info {} with {}", original, overriden);
       CommonUtils.deepMerge(original, overriden, true);
-      log.debug("Device info after merging {}", original);
+      log.trace("Device info after merging {}", original);
       return Json.fromJson(original, DeviceInfo.class);
     }
 
@@ -1992,10 +2050,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     private <T> List<T> getAllProviderProperties(
         Function<ProviderSpecification, T> getter, Function<UserIntent, T> oldGetter) {
+      return getAllProviderProperties(getter, oldGetter, false);
+    }
+
+    private <T> List<T> getAllProviderProperties(
+        Function<ProviderSpecification, T> getter,
+        Function<UserIntent, T> oldGetter,
+        boolean acceptNulls) {
+      List<T> result;
       if (isMulticloudSupport()) {
-        return providerSpecifications.stream().map(getter).collect(Collectors.toList());
+        result = providerSpecifications.stream().map(getter).collect(Collectors.toList());
+      } else {
+        result = Collections.singletonList(oldGetter.apply(this));
       }
-      return Collections.singletonList(oldGetter.apply(this));
+      if (!acceptNulls) {
+        return result.stream().filter(Objects::nonNull).collect(Collectors.toList());
+      }
+      return result;
     }
 
     @JsonIgnore

@@ -717,6 +717,11 @@ retry:
 		s->data.yb_detect_publication_changes_implicitly =
 			yb_replication_slot->detect_publication_changes_implicitly;
 
+		Assert(yb_replication_slot->yb_lsn_type != NULL);
+		s->yb_lsn_type =
+			strcmp(yb_replication_slot->yb_lsn_type, LSN_TYPE_HYBRID_TIME) == 0 ?
+			CRS_HYBRID_TIME : CRS_SEQUENCE;
+
 		MyReplicationSlot = s;
 
 		/* Setup the per-table replica identity table. */

@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -41,6 +43,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
+import org.yb.ybc.CloudStoreSpec;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -672,5 +675,107 @@ public class AWSUtilTest extends FakeDBApplication {
                       .key()
                       .equals("backup/cloudPath/test-backup-dir/backup_2025-03-26_12-00-00.tgz");
                 }));
+  }
+
+  private CustomerConfigStorageS3Data federationS3Data() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    s3Data.useCrossCloudFederation = true;
+    return s3Data;
+  }
+
+  @Test
+  public void testWebTokenCredentialSourceIsNotFederation() {
+    // WEB_TOKEN predates this feature and means EKS/IRSA web-identity. Treating it as the
+    // federation marker would silently reclassify every pre-existing config that uses it.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.iamConfig.credentialSource =
+        IAMTemporaryCredentialsProvider.IAMCredentialSource.WEB_TOKEN;
+    assertFalse(AWSUtil.isCrossCloudFederationConfig(s3Data));
+  }
+
+  @Test
+  public void testIsCrossCloudFederationConfig() {
+    assertTrue(AWSUtil.isCrossCloudFederationConfig(federationS3Data()));
+    // A default config is not a cross-cloud federation config.
+    assertFalse(AWSUtil.isCrossCloudFederationConfig(new CustomerConfigStorageS3Data()));
+    assertFalse(AWSUtil.isCrossCloudFederationConfig(null));
+  }
+
+  // Federation with no resolved audience: every YBA-side bucket call short-circuits before touching
+  // S3, deferring real access to the GCP node via YBC.
+
+  @Test
+  public void testCanCredentialListObjectsSkipsForFederationConfig() {
+    // Non-empty locations, yet no S3 listing is stubbed to succeed: returning true proves the skip.
+    assertTrue(
+        mockAWSUtil.canCredentialListObjects(
+            federationS3Data(), Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+  }
+
+  @Test
+  public void testCheckFileExistsSkipsForFederationConfig() {
+    // A federation backup is always a YB-Controller backup, so report the marker as present.
+    assertTrue(
+        mockAWSUtil.checkFileExists(
+            federationS3Data(), Collections.singleton("s3://test-bucket/backup"), "success", true));
+  }
+
+  @Test
+  public void testCheckListObjectsWithYbcSuccessMarkerSkipsForFederationConfig() {
+    // null csSpec proves the skip short-circuits before any dereference.
+    mockAWSUtil.checkListObjectsWithYbcSuccessMarkerCloudStore(federationS3Data(), null);
+  }
+
+  @Test
+  @Parameters({
+    "s3.us-west-2.amazonaws.com, us-west-2",
+    "s3-us-west-2.amazonaws.com, us-west-2",
+    "s3.dualstack.us-west-2.amazonaws.com, us-west-2",
+    "s3-fips.us-west-2.amazonaws.com, us-west-2",
+    "s3-control.me-central-1.amazonaws.com, me-central-1",
+    "s3.us-gov-west-1.amazonaws.com, us-gov-west-1",
+    // Name no region, so the caller keeps its default. A website endpoint is not an API endpoint,
+    // and 'website' must not be read as the region.
+    "s3.amazonaws.com, none",
+    "s3-website-us-west-2.amazonaws.com, none",
+    "rmn.kiba.local, none",
+    "bucket.vpce-a1.s3.ap-south-1.amazonaws.com, none"
+  })
+  public void testExtractRegionFromHostBase(String hostBase, String expectedRegion) {
+    String expected = "none".equals(expectedRegion) ? null : expectedRegion;
+    assertEquals(expected, AWSUtil.extractRegionFromHostBase(hostBase));
+  }
+
+  @Test
+  public void testExtractRegionFromHostBaseHandlesBlank() {
+    assertNull(AWSUtil.extractRegionFromHostBase(null));
+    assertNull(AWSUtil.extractRegionFromHostBase(""));
+  }
+
+  @Test
+  @Parameters({
+    // Nothing to go on: keep the historical default.
+    "none, none, us-east-1",
+    // No signing region, so read it off the host base.
+    "s3.us-west-2.amazonaws.com, none, us-west-2",
+    // An explicit signing region wins over the host base.
+    "s3.us-west-2.amazonaws.com, eu-central-1, eu-central-1"
+  })
+  public void testFederationCredsMapResolvesRegion(
+      String hostBase, String signingRegion, String expectedRegion) {
+    // YBC receives this region verbatim and has no cross-region redirect handling of its own, so a
+    // wrong value here fails the backup with an opaque HTTP 301.
+    CustomerConfigStorageS3Data s3Data = federationS3Data();
+    if (!"none".equals(hostBase)) {
+      s3Data.awsHostBase = hostBase;
+    }
+    if (!"none".equals(signingRegion)) {
+      s3Data.fallbackRegion = signingRegion;
+    }
+    CloudStoreSpec spec =
+        mockAWSUtil.createCloudStoreSpec(
+            YbcBackupUtil.DEFAULT_REGION_STRING, "commonDir", null, s3Data, null);
+    assertEquals(expectedRegion, spec.getCredsMap().get(AWSUtil.YBC_AWS_DEFAULT_REGION_FIELDNAME));
   }
 }

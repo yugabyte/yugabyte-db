@@ -50,6 +50,7 @@ import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.InputStream;
@@ -336,11 +337,21 @@ public class UniverseInfoController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
-  public Result healthCheck(UUID customerUUID, UUID universeUUID) {
+  public Result healthCheck(
+      UUID customerUUID,
+      UUID universeUUID,
+      @ApiParam(
+              value =
+                  "Maximum number of most recent health check entries to return. Defaults to 10.")
+          Integer limit) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
 
-    List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
+    if (limit != null && limit <= 0) {
+      throw new PlatformServiceException(BAD_REQUEST, "limit must be a positive integer");
+    }
+
+    List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID, limit);
     return PlatformResults.withData(convertDetails(detailsList));
   }
 

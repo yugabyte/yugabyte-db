@@ -4535,7 +4535,8 @@ class ModelDB: public DB {
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(
       ColumnFamilyHandle* column_family,
-      TablePropertiesCollection* props) override {
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override {
     return Status();
   }
 
@@ -4761,6 +4762,19 @@ class ModelDB: public DB {
   }
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
+    return NotSupported();
+  }
+
+  Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override {
+    return NotSupported();
+  }
+
+  Result<uint64_t> Cross(Slice key) override {
+    return NotSupported();
+  }
+
+  Result<uint64_t> TotalDataSize() override {
     return NotSupported();
   }
 

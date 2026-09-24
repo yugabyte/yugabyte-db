@@ -35,6 +35,8 @@ pub enum ReturnsError {
     NestedSetOf,
     #[error("Nested TableIterator in return type")]
     NestedTable,
+    #[error("Nested arrays are not supported in return types")]
+    NestedArray,
     #[error("SetOfIterator containing TableIterator in return type")]
     SetOfContainingTable,
     #[error("TableIterator containing SetOfIterator in return type")]

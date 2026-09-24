@@ -45,6 +45,13 @@ When backing up to an NFS storage target, only database nodes need access to the
       Azure
     </a>
   </li>
+  <li>
+    <a href="#oci" class="nav-link" id="oci-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="oci" aria-selected="false">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -154,7 +161,7 @@ On Amazon EKS, IAM roles attached to worker **nodes** do not grant S3 access to 
         eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/<IAM_ROLE_NAME>
     ```
 
-1. Apply the KSA to database pods using provider or universe [Helm overrides](../../../create-deployments/create-universe-multi-zone-kubernetes/#eks-service-account) (or Operator `kubernetesOverrides`). Do not rely on one-off `kubectl edit` changes — those are lost on upgrade. See [Make backup settings persistent on Kubernetes](../../../back-up-restore-universes/configure-backup-storage/#make-backup-settings-persistent-on-kubernetes).
+1. Apply the KSA to database pods using provider or universe [Helm overrides](../../../scale-deployments/edit-helm-overrides/#eks-service-account) (or Operator `kubernetesOverrides`). Do not rely on one-off `kubectl edit` changes — those are lost on upgrade. See [Make backup settings persistent on Kubernetes](../../../back-up-restore-universes/configure-backup-storage/#make-backup-settings-persistent-on-kubernetes).
 
 ##### Verify from a database pod
 
@@ -169,7 +176,7 @@ Confirm that the returned ARN matches the IRSA role you created.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Annotated KSA name and IAM role | [Kubernetes backups (EKS)](../../../back-up-restore-universes/configure-backup-storage/#kubernetes-backups-eks) and [EKS service account](../../../create-deployments/create-universe-multi-zone-kubernetes/#eks-service-account) overrides |
+| Annotated KSA name and IAM role | [Kubernetes backups (EKS)](../../../back-up-restore-universes/configure-backup-storage/#kubernetes-backups-eks) and [EKS service account](../../../scale-deployments/edit-helm-overrides/#eks-service-account) overrides |
 
   </div>
 </div>
@@ -251,7 +258,7 @@ metadata:
 
 Also grant the Google IAM service account permission for the KSA to impersonate it (see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the GKE documentation).
 
-Apply the KSA to database pods using provider or universe [Helm overrides](../../../create-deployments/create-universe-multi-zone-kubernetes/#gke-service-account), including the metadata-server nodeSelector. Persist YBA-pod IAM via Helm `values.yaml` — see [Enable GKE service account-based IAM](../../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam) and [Make backup settings persistent on Kubernetes](../../../back-up-restore-universes/configure-backup-storage/#make-backup-settings-persistent-on-kubernetes).
+Apply the KSA to database pods using provider or universe [Helm overrides](../../../scale-deployments/edit-helm-overrides/#gke-service-account), including the metadata-server nodeSelector. Persist YBA-pod IAM via Helm `values.yaml` — see [Enable GKE service account-based IAM](../../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam) and [Make backup settings persistent on Kubernetes](../../../back-up-restore-universes/configure-backup-storage/#make-backup-settings-persistent-on-kubernetes).
 
 ##### Verify from a database pod
 
@@ -265,7 +272,7 @@ Confirm that the email matches the Google IAM service account bound to the KSA.
 
 | Save for later | To configure |
 | :--- | :--- |
-| Annotated KSA name and Google IAM service account | [Kubernetes backups (GKE)](../../../back-up-restore-universes/configure-backup-storage/#kubernetes-backups-gke) and [GKE service account](../../../create-deployments/create-universe-multi-zone-kubernetes/#gke-service-account) overrides |
+| Annotated KSA name and Google IAM service account | [Kubernetes backups (GKE)](../../../back-up-restore-universes/configure-backup-storage/#kubernetes-backups-gke) and [GKE service account](../../../scale-deployments/edit-helm-overrides/#gke-service-account) overrides |
 
   </div>
 </div>
@@ -295,6 +302,34 @@ This requires configuring the VMs for YugabyteDB Anywhere and universe nodes wit
 | Save for later | To configure |
 | :--- | :--- |
 | Azure storage Connection string and SAS token | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure |
+
+  </div>
+
+  <div id="oci" class="tab-pane fade" role="tabpanel" aria-labelledby="oci-tab">
+
+When backing up to and/or restoring from OCI Object Storage, YBA and DB nodes must be able to write to and read from the storage bucket.
+
+You can grant access in either of the following ways:
+
+- **S3-compatible credentials.** Create a [Customer Secret Key](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/managingcredentials.htm#create-secret-key) for an OCI user that can manage objects in the bucket (OCI Console: **Identity > Users > Customer Secret Keys**). Provide the Access Key, Secret Key, and S3-compatible host base (`<namespace>.compat.objectstorage.<region>.oraclecloud.com`) when creating the backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#oracle-cloud-infrastructure).
+- **OCI IAM (instance principal).** The YugabyteDB Anywhere host and all universe nodes must belong to a dynamic group with object-storage access. Attach a policy to that dynamic group.
+
+Do not use an API signing key (User OCID, fingerprint, and PEM) for storage; those credentials are for the [OCI provider](../../../configure-yugabyte-platform/oci/) and [OCI KMS](../cloud-permissions-ear/), not backup storage.
+
+The following permissions are required:
+
+```properties
+Allow group yba-admins to manage object-family in compartment <compartment>
+Allow group yba-admins to inspect buckets in compartment <compartment>
+```
+
+When using instance principal, replace `group yba-admins` with `dynamic-group <dynamic-group-name>`.
+
+| Save for later | To configure |
+| :--- | :--- |
+| Access Key and Secret Key (S3-compatible) or instance principal | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#oracle-cloud-infrastructure) for OCI |
+| Object Storage namespace and region | |
+| Bucket name | |
 
   </div>
 

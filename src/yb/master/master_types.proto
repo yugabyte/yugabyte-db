@@ -51,6 +51,7 @@ enum SysRowEntryType {
   CLONE_STATE = 19;
   TSERVER_REGISTRATION = 20;
   OBJECT_LOCK_ENTRY = 21;
+  HISTORY_RETENTION_PIN = 22;
 
   // Each value must have a corresponding entry in CATALOG_ENTITY_TYPE_MAP of
   // catalog_entity_types.h

@@ -1,0 +1,5 @@
+test: yb.orig.error_on_inconsistent_catalog_cache-1
+test: yb.orig.error_on_inconsistent_catalog_cache-2
+test: yb.orig.error_on_inconsistent_catalog_cache-3
+test: yb.orig.error_on_inconsistent_catalog_cache-4
+test: yb.orig.error_on_inconsistent_catalog_cache-5

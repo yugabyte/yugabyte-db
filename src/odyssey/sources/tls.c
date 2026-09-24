@@ -19,10 +19,9 @@ machine_tls_t *od_tls_frontend(od_config_listen_t *config)
 
 	switch (config->tls_opts->tls_mode) {
 	/*
-	 * YB: On enabling encryption in yugabyteDB, conn mgr is configured by default
-	 * in allow mode. So enable SSL_VERIFY_PEER in allow mode as well. Although
-	 * conn mgr still doesn't still support cert authentication but SSL_VERIFY_PEER
-	 * performs additional checks like expiration of server certificate etc.
+	 * YB: Conn mgr is by default configured in allow mode on enabling encryption.
+	 * Postgres' be_tls_init() sets SSL_CTX verify mode, keeping below code as it is
+	 * for future rebasing purposes.
 	 */
 	case OD_CONFIG_TLS_ALLOW:
 	case OD_CONFIG_TLS_REQUIRE:
@@ -57,12 +56,93 @@ machine_tls_t *od_tls_frontend(od_config_listen_t *config)
 			return NULL;
 		}
 	}
+	/* YB: tls_opts->tls_protocols */
+	if (config->tls_opts->tls_protocols) {
+		rc = machine_tls_set_protocols(tls,
+					       config->tls_opts->tls_protocols);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
+	/* YB: tls_opts->yb_tls_max_protocol_version */
+	if (config->tls_opts->yb_tls_max_protocol_version) {
+		rc = yb_machine_tls_set_max_protocol_version(
+			tls, config->tls_opts->yb_tls_max_protocol_version);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
+	/* YB: tls_opts->yb_tls_prefer_server_ciphers */
+	rc = yb_machine_tls_set_prefer_server_ciphers(
+		tls, config->tls_opts->yb_tls_prefer_server_ciphers);
+	if (rc == -1) {
+		machine_tls_free(tls);
+		return NULL;
+	}
+	/* YB: tls_opts->yb_tls_ecdh_curve */
+	if (config->tls_opts->yb_tls_ecdh_curve) {
+		rc = yb_machine_tls_set_ecdh_curve(
+			tls, config->tls_opts->yb_tls_ecdh_curve);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
+	/* YB: tls_opts->yb_tls_dh_params_file */
+	if (config->tls_opts->yb_tls_dh_params_file) {
+		rc = yb_machine_tls_set_dh_params_file(
+			tls, config->tls_opts->yb_tls_dh_params_file);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
+	/* YB: tls_opts->yb_tls_crl_file */
+	if (config->tls_opts->yb_tls_crl_file) {
+		rc = yb_machine_tls_set_crl_file(tls,
+					      config->tls_opts->yb_tls_crl_file);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
+	/* YB: tls_opts->yb_tls_crl_dir */
+	if (config->tls_opts->yb_tls_crl_dir) {
+		rc = yb_machine_tls_set_crl_dir(tls,
+					     config->tls_opts->yb_tls_crl_dir);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
+	/* YB: tls_opts->yb_tls_cipher_list */
+	if (config->tls_opts->yb_tls_cipher_list) {
+		rc = yb_machine_tls_set_cipher_list(tls,
+						 config->tls_opts->yb_tls_cipher_list);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
+	/* YB: tls_opts->yb_tls_passphrase_command */
+	if (config->tls_opts->yb_tls_passphrase_command) {
+		rc = yb_machine_tls_set_passphrase_command(
+			tls, config->tls_opts->yb_tls_passphrase_command);
+		if (rc == -1) {
+			machine_tls_free(tls);
+			return NULL;
+		}
+	}
 	return tls;
 }
 
 int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 			   od_config_listen_t *config, machine_tls_t *tls)
 {
+	od_instance_t *instance = client->global->instance;
+
 	if (client->startup.is_ssl_request) {
 		od_debug(logger, "tls", client, NULL, "ssl request");
 
@@ -117,6 +197,28 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 			return -1;
 		}
 		client->startup.yb_ssl_established = 1;
+
+		/*
+		 * YB: Capture the client's leaf certificate right after the
+		 * handshake, at the same point PostgreSQL reads it in
+		 * be_tls_open_server(). A certificate that was presented but
+		 * cannot be read is fatal there, so it is fatal here too.
+		 */
+		if (instance->config.yb_cert_auth) {
+			if (yb_machine_io_get_peer_cert_der(
+				    client->io.io, &client->yb_client_cert_der,
+				    &client->yb_client_cert_der_len) == -1) {
+				od_error(logger, "tls", client, NULL,
+					 "failed to read client certificate: %s",
+					 od_io_error(&client->io));
+				return -1;
+			}
+			if (client->yb_client_cert_der != NULL)
+				od_debug(logger, "tls", client, NULL,
+					 "client certificate captured, %d bytes",
+					 client->yb_client_cert_der_len);
+		}
+
 		od_debug(logger, "tls", client, NULL, "ok");
 		return 0;
 	}

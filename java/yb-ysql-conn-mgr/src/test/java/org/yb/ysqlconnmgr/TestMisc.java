@@ -38,8 +38,8 @@ import com.google.common.collect.ImmutableMap;
 public class TestMisc extends BaseYsqlConnMgr {
 
   private final static String ERROR_YBTSERVERKEY_AUTH_EXPECTED =
-      "FATAL: yb_use_tserver_key_auth can only be set if the connection is made over " +
-      "unix domain socket";
+      "FATAL: yb_ycm_internal_use_tserver_key_auth can only be set if the connection " +
+      "is made over unix domain socket";
 
   private final static String GET_BACKEND_TYPE_QUERY =
       "SELECT backend_type FROM pg_stat_activity WHERE pid = %d";
@@ -211,8 +211,8 @@ public class TestMisc extends BaseYsqlConnMgr {
   public void testNegSetYsqlConnMgr() throws Exception {
     Properties props = new Properties();
     props.put("options", String.format("-c %s=%s -c %s=%s",
-        "yb_use_tserver_key_auth", "true",
-        "yb_is_client_ysqlconnmgr", "true"));
+        "yb_ycm_internal_use_tserver_key_auth", "true",
+        "yb_ycm_internal_is_client_ysqlconnmgr", "true"));
 
     try (Connection conn =
                 getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.POSTGRES)

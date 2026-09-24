@@ -110,9 +110,12 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
-  void StoreReplicationError(ReplicationErrorPb error) EXCLUDES(replication_error_mutex_);
-  // Stores a non OK replication error if one has not already been set.
+  void StoreReplicationError(ReplicationErrorPb error, const std::string& error_detail = {})
+      EXCLUDES(replication_error_mutex_);
+  // Stores a generic SYSTEM_ERROR if the current error is OK or uninitialized. Does not overwrite
+  // a more specific error that has already been set.
   void StoreNOKReplicationError() EXCLUDES(replication_error_mutex_);
+  void StoreDdlQueueReplicationError(const Status& status) EXCLUDES(replication_error_mutex_);
   void ClearReplicationError() EXCLUDES(replication_error_mutex_);
   void TEST_IncrementNumSuccessfulWriteRpcs();
   void ApplyChangesCallback(XClusterOutputClientResponse&& response);
@@ -127,6 +130,22 @@ class XClusterPoller : public XClusterAsyncExecutor {
   }
 
   bool IsOffline() override;
+
+  void DoCompleteShutdown();
+
+  // Marks a ddl_queue_handler_ call as in flight. CompleteShutdown does not wait for such a call;
+  // this scope completes the shutdown itself when the call ends.
+  //
+  // Usage: wrap every handler call, whether or not it takes data_mutex_. When it does, create the
+  // scope before ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN.
+  class DDLQueueHandlerCallScope {
+   public:
+    explicit DDLQueueHandlerCallScope(XClusterPoller& poller);
+    ~DDLQueueHandlerCallScope();
+
+   private:
+    XClusterPoller& poller_;
+  };
 
   void DoPoll() EXCLUDES(data_mutex_);
 
@@ -164,6 +183,9 @@ class XClusterPoller : public XClusterAsyncExecutor {
   mutable std::mutex data_mutex_;
 
   std::atomic<bool> shutdown_ = false;
+  std::atomic<bool> shutdown_completed_ = false;
+  // Number of live DDLQueueHandlerCallScope, used when shutting down a ddl_queue handler.
+  std::atomic<int32_t> active_ddl_queue_handler_calls_ = 0;
   // In failed state we do not poll for changes and are awaiting shutdown.
   std::atomic<bool> is_failed_ = false;
   std::mutex shutdown_mutex_;
@@ -193,6 +215,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::mutex replication_error_mutex_;
   ReplicationErrorPb previous_replication_error_ GUARDED_BY(replication_error_mutex_) =
       ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
+  std::string previous_replication_error_detail_ GUARDED_BY(replication_error_mutex_);
 
   PollStatsHistory poll_stats_history_;
 

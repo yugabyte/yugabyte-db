@@ -43,7 +43,6 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"

@@ -89,6 +89,31 @@ export const PrecheckRunning: Story = storyWithTask(
   { universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready } }
 );
 
+/** finalize_required from precheck must not surface the finalize card before progress exists. */
+export const PrecheckRunningFinalizeRequiredNoProgress: Story = storyWithTask(
+  createDbUpgradeTaskMock({
+    status: TaskState.RUNNING,
+    omitSoftwareUpgradeProgress: true
+  }),
+  {
+    precheckOverrides: { finalize_required: true },
+    universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
+  }
+);
+
+export const KubernetesUpgradePendingFinalize: Story = storyWithTask(
+  createDbUpgradeTaskMock({
+    status: TaskState.SUCCESS,
+    omitSoftwareUpgradeProgress: true
+  }),
+  {
+    precheckOverrides: { finalize_required: true },
+    universeInfoOverrides: {
+      software_upgrade_state: UniverseInfoSoftwareUpgradeState.PreFinalize
+    }
+  }
+);
+
 export const PrecheckFailed: Story = storyWithTask(
   createDbUpgradeTaskMock({
     status: TaskState.FAILURE,

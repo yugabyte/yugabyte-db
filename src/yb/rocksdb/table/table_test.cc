@@ -33,6 +33,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
@@ -54,6 +55,7 @@
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/get_context.h"
+#include "yb/rocksdb/table/index_reader.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
@@ -78,6 +80,7 @@ using std::unique_ptr;
 using namespace std::literals;
 
 DECLARE_double(cache_single_touch_ratio);
+DECLARE_bool(rocksdb_multi_level_index_range_cache_enabled);
 
 namespace rocksdb {
 
@@ -1588,6 +1591,231 @@ TEST_F(TableTest, MultiLevelIndexTest) {
     const int expected_index_levels = static_cast<int>(
         ceil(std::log(keys) / std::log(entries_per_index_block)));
     TestIndex(table_options, expected_index_levels);
+  }
+}
+
+// Fixture for the multi-level index range-cache fast path
+// (FLAGS_rocksdb_multi_level_index_range_cache_enabled). Builds a table whose index is split
+// across multiple levels, so the fast path (which re-seeks only the bottom-level index iterator)
+// is actually engaged.
+class MultiLevelIndexRangeCacheTest : public TableTest {
+ protected:
+  static constexpr int kNumKeys = 40;
+
+  void SetUp() override {
+    TableTest::SetUp();
+    ASSERT_TRUE(FLAGS_rocksdb_multi_level_index_range_cache_enabled)
+        << "Fast path must be on by default for these tests to exercise it.";
+
+    // Keys with distinct, lexicographically-sorted 4-digit prefixes and large random suffixes.
+    // The large suffixes force ~2 keys per data block (many data blocks), and the tiny index
+    // block size below forces the index to be split across multiple levels.
+    for (int i = 0; i < kNumKeys; ++i) {
+      prefixes_.push_back(std::to_string(1000 + i));  // 1000..1039, all 4 digits.
+      AddInternalKey(&c_, prefixes_.back());
+    }
+
+    table_options_.index_type = IndexType::kMultiLevelBinarySearch;
+    table_options_.min_keys_per_index_block = 2;
+    table_options_.index_block_size = 2 * 24;  // Tiny: force multiple index levels.
+    table_options_.block_size = 1700;          // ~2 keys per data block: force many data blocks.
+    table_options_.block_cache = NewLRUCache(1_MB);
+    options_.table_factory.reset(NewBlockBasedTableFactory(table_options_));
+
+    comparator_ = std::make_shared<InternalKeyComparator>(BytewiseComparator());
+    ioptions_ = std::make_unique<const ImmutableCFOptions>(options_);
+    c_.Finish(options_, *ioptions_, table_options_, comparator_, &keys_, &kvmap_);
+
+    auto props = c_.GetTableProperties().user_collected_properties;
+    auto pos = props.find(BlockBasedTablePropertyNames::kNumIndexLevels);
+    ASSERT_NE(pos, props.end());
+    ASSERT_GE(DecodeFixed32(pos->second.c_str()), 3)
+        << "Test setup failed to produce a multi-level index.";
+
+    reader_ = c_.GetTableReader();
+  }
+
+  // Encoded internal key that seeks to (just before) the i-th stored key.
+  std::string SeekKey(int i) const {
+    return InternalKey(prefixes_[i], 0, kTypeValue).Encode().ToString();
+  }
+  // Encoded internal key that seeks just past the i-th stored key (a between-keys target).
+  std::string SeekBetween(int i) const {
+    return InternalKey(prefixes_[i] + "~", 0, kTypeValue).Encode().ToString();
+  }
+
+  // Runs the given seek targets on the multi-level index iterator (each followed by a short forward
+  // walk) and returns {observed keys, number of DoSeek calls the index iterator performed}.
+  // `enable_cache` toggles the fast path. `next_steps` is the number of Next() calls after each
+  // Seek. Note a leaf-crossing Next() invalidates the range cache, so pass next_steps = 0 to keep
+  // consecutive Seeks eligible for the fast path (needed when asserting on the DoSeek count).
+  std::pair<std::vector<std::string>, uint64_t> Collect(
+      const std::vector<std::string>& targets, bool enable_cache, int next_steps = 3) {
+    const bool saved = FLAGS_rocksdb_multi_level_index_range_cache_enabled;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_multi_level_index_range_cache_enabled) = enable_cache;
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        reader_->NewDataBlockAwareIndexIterator(ReadOptions()));
+    std::vector<std::string> observed;
+    for (const auto& target : targets) {
+      iter->Seek(target);
+      EXPECT_OK(iter->status());
+      if (iter->Valid()) {
+        observed.push_back(iter->key().ToString());  // Seek result.
+      }
+      for (int n = 0; n < next_steps && iter->Valid(); ++n) {
+        iter->Next();
+        if (iter->Valid()) {
+          observed.push_back(iter->key().ToString());
+        }
+      }
+      observed.push_back("|");  // Delimiter so walks of different lengths can't alias.
+    }
+    const uint64_t num_do_seek_calls = TEST_MultiLevelIndexIteratorNumDoSeekCalls(iter.get());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_multi_level_index_range_cache_enabled) = saved;
+    return {std::move(observed), num_do_seek_calls};
+  }
+
+  // Asserts the cache-disabled and cache-enabled runs return the same keys, and returns
+  // {DoSeek count with cache disabled, DoSeek count with cache enabled}.
+  std::pair<uint64_t, uint64_t> ExpectFastMatchesSlow(
+      const std::string& scenario, const std::vector<std::string>& targets, int next_steps = 3) {
+    SCOPED_TRACE(scenario);
+    const auto slow = Collect(targets, /* enable_cache = */ false, next_steps);
+    const auto fast = Collect(targets, /* enable_cache = */ true, next_steps);
+    // Compare only the observed keys (.first); the DoSeek counts (.second) intentionally differ.
+    EXPECT_EQ(slow.first, fast.first);
+    return {slow.second, fast.second};
+  }
+
+  TableConstructor c_{BytewiseComparator()};
+  std::vector<std::string> prefixes_;
+  std::vector<std::string> keys_;
+  stl_wrappers::KVMap kvmap_;
+  Options options_;
+  BlockBasedTableOptions table_options_;
+  std::shared_ptr<InternalKeyComparator> comparator_;
+  std::unique_ptr<const ImmutableCFOptions> ioptions_;
+  TableReader* reader_ = nullptr;
+};
+
+// Seek into the last leaf index block, walk off the end of the index, then re-seek into the same
+// (still-cached) leaf range and Next() again.
+TEST_F(MultiLevelIndexRangeCacheTest, ReseekAfterEndOfIndex) {
+  std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+      reader_->NewDataBlockAwareIndexIterator(ReadOptions()));
+  // Lands on the last leaf index block.
+  const std::string last_target = SeekKey(kNumKeys - 1);
+  auto do_seek_calls = [&] { return TEST_MultiLevelIndexIteratorNumDoSeekCalls(iter.get()); };
+
+  // First Seek: the cache is empty, so this must take the slow path (one full DoSeek)
+  uint64_t before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 1u) << "first Seek must take the slow path";
+
+  // Off the end: ancestors go invalid, but the leaf range cache stays valid.
+  iter->Next();
+  ASSERT_OK(iter->status());
+  ASSERT_FALSE(iter->Valid());
+
+  // Re-seek into the still-cached leaf range. The cache Contains() the target, but the iterator is
+  // invalid, so the Valid() gate must skip the fast path and perform a full DoSeek.
+  before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 1u)
+      << "re-seek after walking off the end must take the slow path (fast path gated by Valid())";
+
+  // The iterator is valid again and the cache is repopulated: seeking into the same leaf range now
+  // must take the fast path (zero DoSeek).
+  before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 0u)
+      << "in-range seek on a valid iterator must take the fast path";
+
+  // Next() must cleanly reach end-of-index (all ancestors must be valid here).
+  iter->Next();
+  ASSERT_OK(iter->status());
+  ASSERT_FALSE(iter->Valid());
+
+  // The next Seek must once more take the slow path.
+  before = do_seek_calls();
+  iter->Seek(last_target);
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(do_seek_calls() - before, 1u)
+      << "Seek after walking off the end must take the slow path (fast path gated by Valid())";
+}
+
+// Forward seeks must return the same results with the fast path enabled as with it disabled.
+TEST_F(MultiLevelIndexRangeCacheTest, ForwardSeeksMatchSlowPath) {
+  // Monotonic ascending sweep over every key. Each leaf index block contains ~2 keys.
+  {
+    std::vector<std::string> targets;
+    for (int i = 0; i < kNumKeys; ++i) {
+      targets.push_back(SeekKey(i));
+    }
+
+    // next_steps = 0: pure consecutive seeks with no intervening Next(), so the range cache stays
+    // valid across seeks and the fast path is actually exercised. (A leaf-crossing Next() would
+    // invalidate it and force a full DoSeek on the following Seek.)
+    auto do_seeks = ExpectFastMatchesSlow("ascending-sweep", targets, /* next_steps = */ 0);
+
+    // do_seeks = {DoSeek count cache-off, DoSeek count cache-on}. Consecutive in-leaf forward seeks
+    // take the fast path, which skips the full DoSeek, so the cache-enabled run performs strictly
+    // fewer DoSeek calls.
+    EXPECT_LT(do_seeks.second, do_seeks.first) << "cache-enabled run did not reduce DoSeek count";
+
+    // next_steps = 1: consecutive seeks with 1 Next, so the range cache should still stay valid
+    // across seeks.
+    do_seeks = ExpectFastMatchesSlow("ascending-sweep", targets, /* next_steps = */ 1);
+    EXPECT_LT(do_seeks.second, do_seeks.first) << "cache-enabled run did not reduce DoSeek count";
+  }
+
+  // Forward seek by a large stride: the second target is in a different (later) index page.
+  {
+    std::vector<std::string> targets;
+    for (int i = 0; i < kNumKeys; i += 4) {
+      targets.push_back(SeekKey(i));
+    }
+    auto do_seeks = ExpectFastMatchesSlow("forward-across-pages", targets);
+    EXPECT_EQ(do_seeks.second, do_seeks.first) << "should not run into fast path";
+  }
+
+  // Forward seek to a between-keys target
+  {
+    std::vector<std::string> targets;
+    for (int i = 0; i < kNumKeys; ++i) {
+      targets.push_back(SeekKey(i));
+      targets.push_back(SeekBetween(i));
+    }
+    [[maybe_unused]] auto do_seeks = ExpectFastMatchesSlow("forward-between-keys", targets, 0);
+    EXPECT_LT(do_seeks.second, do_seeks.first) << "cache-enabled run did not reduce DoSeek count";
+  }
+}
+
+// Backward seeks must return the same results with the fast path enabled as with it disabled.
+TEST_F(MultiLevelIndexRangeCacheTest, BackwardSeeksMatchSlowPath) {
+  // Monotonic backward sweep over every key.
+  {
+    std::vector<std::string> targets;
+    for (int i = kNumKeys - 1; i >= 0; --i) {
+      targets.push_back(SeekKey(i));
+    }
+    auto do_seeks = ExpectFastMatchesSlow("backward-sweep", targets);
+    EXPECT_EQ(do_seeks.second, do_seeks.first) << "should not run into fast path";
+  }
+  {
+    std::vector<std::string> targets;
+    for (int i = kNumKeys - 1; i >= 0; i -= 4) {
+      targets.push_back(SeekKey(i));
+    }
+    auto do_seeks = ExpectFastMatchesSlow("backward-stride", targets);
+    EXPECT_EQ(do_seeks.second, do_seeks.first) << "should not run into fast path";
   }
 }
 
@@ -3313,25 +3541,220 @@ TEST_F(TableTest, Cross) {
   ASSERT_OK(db->Flush(FlushOptions()));
 
   // Before all keys: every SST contributes 0.
-  const uint64_t cross_before = ASSERT_RESULT(db->TEST_Cross(""));
+  const uint64_t cross_before = ASSERT_RESULT(db->Cross(""));
   ASSERT_EQ(cross_before, 0u);
 
   // Past all keys: sum of all SST data sizes (the maximum).
-  const uint64_t total = ASSERT_RESULT(db->TEST_Cross("\xff"));
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
   ASSERT_GT(total, 6000u);
 
   // Monotonically non-decreasing across the key space.
   uint64_t prev = 0;
   for (int k = 0; k < kNumKeys; k += kStep) {
-    const uint64_t c = ASSERT_RESULT(db->TEST_Cross(padded(k)));
+    const uint64_t c = ASSERT_RESULT(db->Cross(padded(k)));
     ASSERT_GE(c, prev) << "non-monotonic at key " << k;
     ASSERT_LE(c, total) << "exceeds total at key " << k;
     prev = c;
   }
 
   // A key in the middle should produce an intermediate value.
-  const uint64_t mid = ASSERT_RESULT(db->TEST_Cross(padded(kMidpointKey)));
+  const uint64_t mid = ASSERT_RESULT(db->Cross(padded(kMidpointKey)));
   ASSERT_BETWEEN(mid, total / 2 - kLeeway, total / 2 + kLeeway);
+
+  delete db;
+}
+
+// Drives DB::FindTargetKey the way an N-way split does: every cut uses the previous cut as its
+// lower bound and aims at an absolute Cross target of total * (i + 1) / split_factor. Unlike
+// Tablet::DoGetSplitKeysCross, there are no tablet key bounds and no split key validation.
+yb::Result<std::vector<std::string>> GetSplitKeysCrossForTest(DB* db, int split_factor) {
+  const int num_keys = split_factor - 1;
+  const uint64_t total_size = VERIFY_RESULT(db->TotalDataSize());
+  std::vector<std::string> keys;
+  keys.reserve(num_keys);
+  std::string last_key_buf;
+  const Slice upper_bound_key;
+  for (int i = 0; i < num_keys; ++i) {
+    auto key = VERIFY_RESULT(db->FindTargetKey(
+        last_key_buf, upper_bound_key, total_size * (i + 1) / split_factor));
+    last_key_buf = key;
+    keys.push_back(std::move(key));
+  }
+  return keys;
+}
+
+// Scenario (relative sizes 200:300:500, target = total/2 = 500):
+//   SST_1 size 200  keys: c=0, h=50, m=100, p=150
+//   SST_2 size 300  keys: e=0, k=60, q=120, v=180, y=240
+//   SST_3 size 500  keys: a..z with ~31-unit spacing; n sits at ~250 (half of SST_3)
+// 2-way GetSplitKeysCross cut settles on user key "n".
+TEST_F(TableTest, GetSplitKeysCrossHalfOfUnevenSsts) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  // One key per block so index midpoints land on real keys (letters).
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 64;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/find_target_uneven_ssts";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  // Scale unit so on-disk Cross offsets track the scenario's 50/60/31 spacing.
+  constexpr size_t kScale = 256;
+  auto put_keys = [&](std::initializer_list<char> keys, size_t chunk) {
+    const std::string val(chunk * kScale, 'v');
+    for (char c : keys) {
+      ASSERT_OK(db->Put(rocksdb::WriteOptions(), std::string(1, c), val));
+    }
+    ASSERT_OK(db->Flush(FlushOptions()));
+  };
+
+  // SST_1: 4 keys x 50 = 200
+  put_keys({'c', 'h', 'm', 'p'}, 50);
+  // SST_2: 5 keys x 60 = 300
+  put_keys({'e', 'k', 'q', 'v', 'y'}, 60);
+  // SST_3: 16 keys x approx 31 = approx 496 ~= 500; "n" is the 9th key (middle of this file).
+  put_keys({'a', 'b', 'd', 'f', 'g', 'i', 'k', 'l', 'n', 'p', 'r', 't', 'v', 'w', 'y', 'z'}, 31);
+
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  ASSERT_GT(total, 0u);
+
+  // split_factor=2 -> one cut at total/2; must be "n".
+  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/2));
+  ASSERT_EQ(keys.size(), 1u);
+
+  // FindTargetKey returns a user key.
+  const std::string& mid_user = keys[0];
+  const uint64_t mid_cross = ASSERT_RESULT(db->Cross(mid_user));
+  ASSERT_EQ(mid_user, "n")
+      << "half-target key=" << mid_user << " Cross=" << mid_cross << " total/2=" << (total / 2);
+
+  delete db;
+}
+
+// Scenario (relative sizes 400:600, target = total/2 = 500):
+//   SST_1 size 400  keys: a=0, b=200
+//   SST_2 size 600  keys: y=0, z=300
+// Cross values are a=0, b=200, y=400, z=700. FindTargetKey returns the key whose Cross is
+// nearest the target, which is "y": cutting there leaves 400 below and 600 above, against
+// |400 - 500| = 100, where "z" would leave 700/300 at |700 - 500| = 200. Note every key here
+// occupies its own data block, so no block has a middle record and the only candidates the search
+// can see are the single-record fallbacks (see BlockBasedTable::GetFirstDataBlockMiddleKey).
+TEST_F(TableTest, GetSplitKeysCrossHalfOfDisjointUnevenSsts) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 64;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/find_target_disjoint_uneven_ssts";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  constexpr size_t kScale = 256;
+  auto put_keys = [&](std::initializer_list<char> keys, size_t chunk) {
+    const std::string val(chunk * kScale, 'v');
+    for (char c : keys) {
+      ASSERT_OK(db->Put(rocksdb::WriteOptions(), std::string(1, c), val));
+    }
+    ASSERT_OK(db->Flush(FlushOptions()));
+  };
+
+  // SST_1: 2 keys x 200 = 400
+  put_keys({'a', 'b'}, 200);
+  // SST_2: 2 keys x 300 = 600
+  put_keys({'y', 'z'}, 300);
+
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  ASSERT_GT(total, 0u);
+
+  // split_factor=2 -> one cut at total/2; must be "z".
+  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/2));
+  ASSERT_EQ(keys.size(), 1u);
+
+  // FindTargetKey returns a user key.
+  const std::string& mid_user = keys[0];
+  const uint64_t mid_cross = ASSERT_RESULT(db->Cross(mid_user));
+  ASSERT_EQ(mid_user, "y")
+      << "half-target key=" << mid_user << " Cross=" << mid_cross << " total/2=" << (total / 2);
+  // The cut must beat the max key, which an unconverged search would otherwise fall out to.
+  ASSERT_LT(mid_cross, ASSERT_RESULT(db->Cross("z")));
+
+  delete db;
+}
+
+// Scenario (relative sizes 200:300:500 - same layout as GetSplitKeysCrossHalfOfUnevenSsts):
+//   SST_1 size 200  keys: c, h, m, p
+//   SST_2 size 300  keys: e, k, q, v, y
+//   SST_3 size 500  keys: a..z (~31-unit spacing); max key "z"
+// 3-way cuts at total/3 and 2*total/3. Max key "z" has Cross ~= total, so the 2/3 cut
+// must be a strictly smaller key - catches end-biased regressions.
+TEST_F(TableTest, GetSplitKeysCrossThreeWayUnevenSsts) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 64;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/find_target_three_way_uneven_ssts";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  constexpr size_t kScale = 256;
+  auto put_keys = [&](std::initializer_list<char> keys, size_t chunk) {
+    const std::string val(chunk * kScale, 'v');
+    for (char c : keys) {
+      ASSERT_OK(db->Put(rocksdb::WriteOptions(), std::string(1, c), val));
+    }
+    ASSERT_OK(db->Flush(FlushOptions()));
+  };
+
+  put_keys({'c', 'h', 'm', 'p'}, 50);
+  put_keys({'e', 'k', 'q', 'v', 'y'}, 60);
+  put_keys({'a', 'b', 'd', 'f', 'g', 'i', 'k', 'l', 'n', 'p', 'r', 't', 'v', 'w', 'y', 'z'}, 31);
+
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  ASSERT_GT(total, 0u);
+  const uint64_t cross_z = ASSERT_RESULT(db->Cross("z"));
+  // Max key should sit at the end of Cross-space (~= total).
+  ASSERT_GE(cross_z, total - total / 20);
+
+  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/3));
+  ASSERT_EQ(keys.size(), 2u);
+
+  const std::string& k0 = keys[0];
+  const std::string& k1 = keys[1];
+  const uint64_t c0 = ASSERT_RESULT(db->Cross(k0));
+  const uint64_t c1 = ASSERT_RESULT(db->Cross(k1));
+  const uint64_t leeway = total / 5;
+
+  ASSERT_LT(k0, k1) << "cuts must be strictly increasing";
+  // 2/3 cut must not be the max key (end-biased FindTargetKey would return "z").
+  ASSERT_NE(k1, "z");
+  ASSERT_LT(k1, "z");
+  ASSERT_NE(c1, cross_z) << "2/3 cut Cross must differ from max-key Cross";
+
+  ASSERT_GE(c0 + leeway, total / 3)
+      << "k0=" << k0 << " Cross=" << c0 << " total/3=" << (total / 3);
+  ASSERT_LE(c0, total / 3 + leeway)
+      << "k0=" << k0 << " Cross=" << c0 << " total/3=" << (total / 3);
+  ASSERT_GE(c1 + leeway, 2 * total / 3)
+      << "k1=" << k1 << " Cross=" << c1 << " 2*total/3=" << (2 * total / 3);
+  ASSERT_LE(c1, 2 * total / 3 + leeway)
+      << "k1=" << k1 << " Cross=" << c1 << " 2*total/3=" << (2 * total / 3);
 
   delete db;
 }

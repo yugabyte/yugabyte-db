@@ -182,6 +182,8 @@ static TimestampTz AlignTimestampToMinuteBoundary(TimestampTz ts);
 static Snapshot CopySnapshot(Snapshot snapshot);
 static void FreeSnapshot(Snapshot snapshot);
 static void SnapshotResetXmin(void);
+
+/* YB declarations */
 static void YbResetReadPoint(void);
 static YbcReadPointHandle YbGetOldestReadPointHandle(void);
 static void YbNoteReadPointAdded(YbOptionalReadPointHandle handle);
@@ -591,12 +593,12 @@ InvalidateCatalogSnapshot(void)
 		yb_debug_log_snapshot_mgmt_stack_trace ? YBCGetStackTrace() : "");
 	if (CatalogSnapshot)
 	{
-		YbOptionalReadPointHandle read_point = CatalogSnapshot->yb_read_point_handle;
+		YbOptionalReadPointHandle yb_read_point = CatalogSnapshot->yb_read_point_handle;
 
 		pairingheap_remove(&RegisteredSnapshots, &CatalogSnapshot->ph_node);
 		CatalogSnapshot = NULL;
 		SnapshotResetXmin();
-		YbNoteReadPointRemoved(read_point);
+		YbNoteReadPointRemoved(yb_read_point);
 		YbPublishOldestReadPointIfChanged();
 	}
 }
@@ -930,7 +932,9 @@ void
 PopActiveSnapshot(void)
 {
 	ActiveSnapshotElt *newstack;
-	YbOptionalReadPointHandle read_point;
+
+	/* YB declarations */
+	YbOptionalReadPointHandle yb_read_point;
 
 	newstack = ActiveSnapshot->as_next;
 
@@ -940,7 +944,7 @@ PopActiveSnapshot(void)
 						ActiveSnapshot, yb_debug_log_snapshot_mgmt_stack_trace);
 
 	/* Read before the snapshot can be freed below. */
-	read_point = ActiveSnapshot->as_snap->yb_read_point_handle;
+	yb_read_point = ActiveSnapshot->as_snap->yb_read_point_handle;
 
 	ActiveSnapshot->as_snap->active_count--;
 
@@ -957,7 +961,7 @@ PopActiveSnapshot(void)
 
 	SnapshotResetXmin();
 	YBCOnActiveSnapshotChange();
-	YbNoteReadPointRemoved(read_point);
+	YbNoteReadPointRemoved(yb_read_point);
 	YbPublishOldestReadPointIfChanged();
 }
 

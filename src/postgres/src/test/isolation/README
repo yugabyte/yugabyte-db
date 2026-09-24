@@ -170,6 +170,7 @@ The possible markers are:
 	*
 	<other step name>
 	<other step name> notices <n>
+	yb_never_waits
 
 An asterisk marker, such as mystep(*), forces the isolationtester to
 report the step as "waiting" as soon as it's been launched, regardless of
@@ -193,6 +194,13 @@ NOTICE messages, counting from when this step is launched.  This is useful
 for stabilizing cases where a step can return NOTICE messages before it
 actually completes, and those messages must be synchronized with the
 completions of other steps.
+
+YB: a marker of "yb_never_waits" is not a blocking condition but its
+opposite: it declares that the step never waits on another session in this
+permutation.  It is needed because pg_blocking_pids() cannot see YB
+object-lock waits, so the isolationtester otherwise assumes that a step still
+running after a few seconds is blocked; the marker makes it simply wait for
+the step however long it takes.  Use it for steps that are merely slow.
 
 Notice that these markers can only delay reporting of the completion
 of a step, not the launch of a step.  The isolationtester will launch

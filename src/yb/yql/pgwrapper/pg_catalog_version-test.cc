@@ -10,11 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env_util.h"
+#include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
@@ -75,6 +78,18 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   bool IsTransactionalDdlEnabled() const {
     return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
+  }
+
+  void CheckDroppedDatabaseError(const Status& status, Oid db_oid) {
+    const auto status_str = status.ToString();
+    const auto contains = [&status_str](const std::string& substr) {
+      return status_str.find(substr) != std::string::npos;
+    };
+    const auto namespace_not_found =
+        contains(GetPgsqlNamespaceId(db_oid)) && contains("OBJECT_NOT_FOUND");
+    const auto database_dropped =
+        contains(Format("base $0", db_oid)) && contains("base may have been dropped");
+    ASSERT_TRUE(namespace_not_found || database_dropped) << status;
   }
 
   // Sync up pg_yb_catalog_version with pg_database so that there is one row per
@@ -231,6 +246,29 @@ class PgCatalogVersionTest : public LibPqTestBase {
       }
     }
     return result;
+  }
+
+  // Return the shared memory catalog version of 'db_oid' at the tserver at 'tablet_index'.
+  Result<Version> GetShmDBCatalogVersion(size_t tablet_index, Oid db_oid) {
+    auto* ts = cluster_->tablet_server(tablet_index);
+    tserver::SharedMemoryManager shared_mem_manager;
+    RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(ts->instance_id().permanent_uuid()));
+    auto tserver_shared_data = shared_mem_manager.SharedData();
+
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(ts);
+    tserver::GetTserverCatalogVersionInfoRequestPB req;
+    tserver::GetTserverCatalogVersionInfoResponsePB resp;
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    SCHECK_EQ(resp.entries_size(), 1, IllegalState, "expected one entry");
+    const auto& entry = resp.entries(0);
+    SCHECK(entry.has_shm_index(), IllegalState, "missing shm_index");
+    return tserver_shared_data->ysql_db_catalog_version(entry.shm_index());
   }
 
   struct CatalogVersionMatcher {
@@ -797,10 +835,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   // After the test database is dropped, 'conn_test' should no longer succeed.
   LOG(INFO) << "Read the table from 'conn_test'";
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(),
-                      Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
+  ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
 
   // Recreate the same database and table.
   LOG(INFO) << "Re-create the same database";
@@ -833,10 +868,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   // same database and table.
   LOG(INFO) << "Read the table from 'conn_test'";
   status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(),
-                      Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
+  ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
 
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
@@ -876,9 +908,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   // Execute any query in the test session that requires metadata lookup
   // should fail with error indicating that the database has been dropped.
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), Format("base $0", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "base may have been dropped");
+  ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
 }
 
 // Test various global DDL statements in a single-tenant cluster setting.
@@ -1388,6 +1418,10 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
   const bool enable_inval_messages = GetParam();
   enable_inval_messages ? RestartClusterWithInvalMessageEnabled()
                         : RestartClusterWithInvalMessageDisabled();
+  // Concurrent CREATE INDEX bumps the catalog version once more with object locking
+  // for the post-backfill WaitForBackendsCatalogVersion.
+  const int concurrent_create_index_bumps =
+      (enable_inval_messages && IsObjectLockingEnabled()) ? 4 : 3;
   const string kDatabaseName = "yugabyte";
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1410,12 +1444,11 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
 
   ASSERT_OK(conn.Execute("CREATE INDEX idx1 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
-  // version 3 times.
-  ASSERT_EQ(new_version, version + 3);
+  // By default CREATE INDEX runs concurrently.
+  ASSERT_EQ(new_version, version + concurrent_create_index_bumps);
   version = new_version;
 
-  // CREATE INDEX CONCURRENTLY bumps up catalog version by 1.
+  // CREATE INDEX NONCONCURRENTLY bumps up catalog version by 1.
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx2 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version + 1);
@@ -1446,12 +1479,14 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
-  // version 3 times, only the first bump is suppressed.
+  // Concurrent CREATE INDEX bumps the catalog version concurrent_create_index_bumps times; with
+  // invalidation messages disabled only the first bump is suppressed by
+  // yb_make_next_ddl_statement_nonincrementing. version is still the pre-REVOKE baseline, so with
+  // invalidation messages enabled also add the REVOKE and GRANT bumps (+2).
   if (enable_inval_messages) {
-    ASSERT_EQ(new_version, version + 5);
+    ASSERT_EQ(new_version, version + 2 + concurrent_create_index_bumps);
   } else {
-    ASSERT_EQ(new_version, version + 2);
+    ASSERT_EQ(new_version, version + concurrent_create_index_bumps - 1);
   }
   version = new_version;
 
@@ -1481,7 +1516,7 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
 
   ASSERT_OK(conn.Execute("CREATE INDEX idx5 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version + 3);
+  ASSERT_EQ(new_version, version + concurrent_create_index_bumps);
   version = new_version;
 
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx6 ON t1(a)"));
@@ -2347,8 +2382,15 @@ DROP TABLE tempTable2;
   auto fingerprint = HashUtil::MurmurHash2_64(result.data(), result.size(), 0 /* seed */);
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
-  ASSERT_EQ(result.size(), 80932U);
-  ASSERT_EQ(fingerprint, 148605032842492807UL);
+  // Concurrent CREATE INDEX produces one extra invalidation message with object locking
+  // (post-backfill WaitForBackendsCatalogVersion).
+  if (IsObjectLockingEnabled()) {
+    ASSERT_EQ(result.size(), 80986U);
+    ASSERT_EQ(fingerprint, 16473784601673178567UL);
+  } else {
+    ASSERT_EQ(result.size(), 80932U);
+    ASSERT_EQ(fingerprint, 148605032842492807UL);
+  }
 }
 
 // Regression test for https://github.com/yugabyte/yugabyte-db/issues/31431.
@@ -3174,6 +3216,11 @@ class PgCatalogVersionConnManagerTest
 INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerTest,
                         ::testing::Values(false, true));
 
+/* Tests that are only meaningful with connection manager enabled. */
+class PgCatalogVersionConnManagerOnlyTest : public PgCatalogVersionConnManagerTest {};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerOnlyTest, ::testing::Values(true));
+
 TEST_P(PgCatalogVersionConnManagerTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRpcCount)) {
   const bool enable_ysql_conn_mgr = GetParam();
@@ -3482,6 +3529,82 @@ TEST_P(PgCatalogVersionConnManagerTest,
     // see the expected error immediately.
     ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("test_db", "test_user"), expected_error);
   }
+}
+
+// Sometimes, a DDL that starts at local catalog version x and commits at version x + 2
+// (because a concurrent DDL from another node produced version x + 1 that has
+// not reached this node's shared memory yet). In this case, we want to ensure that
+// a DDL run under YSQL conn mgr waits until x + 2 is published in local shared memory.
+// Test disables object locking because in that case, all DDL changes are propagated
+// on commit anyway, so there's nothing to test.
+TEST_P(PgCatalogVersionConnManagerOnlyTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerDdlVersionGapWait)) {
+  cluster_->Shutdown();
+  // Concurrent DDL requires object locking, so whenever object locking is off, concurrent DDL
+  // must be off too, otherwise the daemons FATAL at startup.
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    auto* flags = cluster_->master(i)->mutable_flags();
+    flags->push_back("--enable_object_locking_for_table_locks=false");
+    flags->push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto* flags = cluster_->tablet_server(i)->mutable_flags();
+    flags->push_back("--enable_object_locking_for_table_locks=false");
+    flags->push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_gap = ASSERT_RESULT(Connect());
+  auto conn_watcher = ASSERT_RESULT(Connect());
+  ASSERT_RESULT(conn_gap.FetchRow<int32_t>("SELECT 1"));
+  ASSERT_RESULT(conn_watcher.FetchRow<int32_t>("SELECT 1"));
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_watcher, kYugabyteDatabase));
+  const auto version_x = ASSERT_RESULT(GetCatalogVersion(&conn_watcher));
+
+  // Freeze catalog refresh on ts-0 so that a version increment from another
+  // node does not reach ts-0's shared memory.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0),
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
+
+  // Increment the catalog version to x + 1 from ts-1. Its shared memory
+  // publish is local to ts-1, so ts-0 stays at x.
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_bump = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_bump.Execute("CREATE TABLE gap_table1(id INT)"));
+
+  // This DDL runs on ts-0 at local catalog version x and commits at x + 2.
+  // The DDL must not return before ts-0's shared memory has version x + 2,
+  // which can only happen after the freeze is lifted below.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &conn_gap, version_x, yugabyte_db_oid] {
+    const auto start = MonoTime::Now();
+    ASSERT_OK(conn_gap.Execute("CREATE TABLE gap_table2(id INT)"));
+    const auto shm_version_at_return = ASSERT_RESULT(
+        GetShmDBCatalogVersion(0 /* tablet_index */, yugabyte_db_oid));
+    LOG(INFO) << "CREATE TABLE gap_table2 took " << MonoTime::Now() - start
+              << ", shared memory version at return: " << shm_version_at_return;
+    ASSERT_GE(shm_version_at_return, version_x + 2);
+  });
+  // Hold the freeze longer than the 2 * heartbeat_interval_ms that the DDL
+  // commit path used to sleep for. A DDL that returns after a fixed sleep, or
+  // without waiting at all, returns while ts-0's shared memory is still
+  // frozen at x and fails the assertion above; only waiting for the version
+  // itself is correct.
+  SleepFor(5s);
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0),
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"));
+  thread_holder.JoinAll();
+
+  // Any logical connection (routed to any physical backend) sees both tables
+  // right away.
+  ASSERT_RESULT(conn_watcher.FetchRow<PGUint64>("SELECT COUNT(*) FROM gap_table1"));
+  ASSERT_RESULT(conn_watcher.FetchRow<PGUint64>("SELECT COUNT(*) FROM gap_table2"));
+
+  const auto version_after = ASSERT_RESULT(GetCatalogVersion(&conn_watcher));
+  ASSERT_EQ(version_after, version_x + 2);
 }
 
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
@@ -3829,6 +3952,113 @@ TEST_F(PgCatalogVersionTest, RelcacheInitFileRevalidationRace) {
   ASSERT_GT(revalidated, 0);
 }
 
+// Exercises the interaction between the two master paths that publish catalog versions: the
+// heartbeat cache (refreshed by a background task) and the ReleaseObjectLocksGlobal broadcast on
+// DDL commit, which reads pg_yb_catalog_version directly and bypasses that cache. Object locking
+// must be on, since without it there is no broadcast.
+class PgCatalogVersionFrozenCacheTest : public PgCatalogVersionTest {
+ protected:
+  // The fatal threshold, in seconds before scaling. Exact rather than random because the fixture
+  // zeroes ysql_stale_catalog_version_random_extra_seconds, so the test does not have to wait out
+  // the default [30, 180] s window.
+  //
+  // Must stay comfortably above one heartbeat interval: with the fix in place a heartbeat already
+  // in flight when a DDL commits can still deliver the pre-commit version, opening a transient
+  // stale episode that the next heartbeat closes. That benign race has been observed lasting
+  // ~1.1 s in a healthy cluster, so a 1 s threshold would make this test crash the very tserver
+  // it is asserting stays alive. Scaled by kTimeMultiplier so sanitizer builds, where everything
+  // runs ~3x slower, keep proportional headroom.
+  static constexpr int kThresholdSecs = 5;
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
+    options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+
+    // The broadcast under test only happens with object locking enabled, which in turn requires
+    // DDL transaction blocks and invalidation messages.
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->push_back("--enable_object_locking_for_table_locks=true");
+      flags->push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+      flags->push_back("--ysql_yb_enable_invalidation_messages=true");
+    }
+
+    // Make the staleness check fire fast and deterministically, so the test does not have to wait
+    // out the production window to observe a pre-fix crash.
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_stale_catalog_version_min_seconds=$0", kThresholdSecs * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(
+        "--ysql_stale_catalog_version_random_extra_seconds=0");
+  }
+};
+
+// Regression test for the tserver FATAL "Ignoring ysql db catalog version update: new version too
+// old". While the master's catalog versions cache is stale, the DDL-commit
+// ReleaseObjectLocksGlobal broadcast still reads pg_yb_catalog_version directly and pushes every
+// tserver forward. If that broadcast does not also feed the cache, heartbeats keep reporting the
+// stale version, and the tserver reads its own (correct, master-supplied) version as divergence
+// and crashes.
+//
+// Restarting clears the tserver's map but not the master's cache, so the next DDL commit's
+// broadcast re-establishes the same divergence. Whether it crashes a second time then depends on a
+// quiet DDL gap exceeding a fresh random threshold.
+//
+// Before the fix this crashes a tserver a second or two after the first DDL below. After it, the
+// broadcast installs its snapshot into the cache, so the heartbeat never regresses.
+TEST_F(
+    PgCatalogVersionFrozenCacheTest, BroadcastKeepsFrozenCacheFromCrashingTserver) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+
+  // Let the cache populate at least once, so the freeze below leaves it populated-but-stale
+  // rather than empty. An empty cache makes the heartbeat send no catalog versions at all, which
+  // would not reproduce the divergence.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(60s * kTimeMultiplier));
+
+  // Freeze the cache against *every* refresh path. TEST_simulate_catalog_version_refresh_failure
+  // is not sufficient here: it only stops the periodic task, while ysql_ddl_handler refreshes the
+  // cache on demand at each DDL commit, so the cache would never actually fall behind the table.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "true"));
+
+  const auto versions_before = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+
+  // Advance the catalog version several times. Each DDL commit broadcasts the new version to all
+  // tservers, moving them past whatever the frozen cache holds.
+  constexpr int kNumDdls = 5;
+  for (int i = 0; i != kNumDdls; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN c$0 INT", i));
+  }
+
+  // The test's own precondition check: if pg_yb_catalog_version did not actually advance, nothing
+  // could have pushed a tserver past the frozen cache and the scenario under test was never
+  // reached. Failing here rather than passing vacuously is the point.
+  const auto versions_after = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  ASSERT_TRUE(versions_before.contains(db_oid) && versions_after.contains(db_oid))
+      << "pg_yb_catalog_version has no row for db " << db_oid;
+  ASSERT_GT(versions_after.at(db_oid).current_version,
+            versions_before.at(db_oid).current_version)
+      << "Catalog version did not advance across " << kNumDdls << " DDLs, so this test is not "
+      << "exercising the bug";
+
+  // No further DDL runs from here, so nothing resets the staleness window. Wait out several
+  // multiples of the (already scaled) threshold, so a tserver that is going to abort has ample
+  // opportunity to do so before the assertions below.
+  SleepFor(1s * (kThresholdSecs + 10) * kTimeMultiplier);
+
+  // The pre-fix failure mode is a tserver process aborting on tablet_server.cc's staleness check.
+  cluster_->AssertNoCrashes();
+
+  // And the cluster must still be usable: a fresh connection performs catalog reads, and DDL
+  // still works, which would not hold if a tserver had been lost.
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t ADD COLUMN c_final INT"));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM t LIMIT 1"));
+}
+
 class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -3943,6 +4173,280 @@ TEST_F(
   ASSERT_OK(hit_watcher_b.WaitFor(10s * kTimeMultiplier));
   ASSERT_FALSE(miss_watcher_b.IsEventOccurred())
       << "Cache miss after recovery: cache should be warm after failure injection was cleared";
+}
+
+// A master leader stepdown resets the leader's cached catalog versions and invalidation messages,
+// and must reset the cached fingerprint with them: it is what the next refresh compares the
+// catalog versions read from disk against to decide whether to re-read
+// pg_yb_invalidation_messages. Left stale, a refresh that runs after the master regains
+// leadership with no DDL in between concludes nothing changed and keeps serving heartbeats out of
+// an empty invalidation messages cache, so a tserver that missed the last catalog version bump
+// gets that version with no messages and its backends fall back to a full catalog cache refresh.
+class PgCatalogVersionMasterFailoverTest : public PgCatalogVersionTest {
+ protected:
+  // The node the DDL runs on updates its own tserver directly at commit time, so the catalog
+  // cache refresh under test has to be observed from a different node.
+  static constexpr size_t kDdlTs = 0;
+  static constexpr size_t kObserverTs = 1;
+
+  int GetNumMasters() const override { return 3; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->push_back("--ysql_yb_enable_invalidation_messages=true");
+      flags->push_back("--log_ysql_catalog_versions=true");
+      // With object locking, releasing the DDL's exclusive lock pushes catalog versions and
+      // invalidation messages from the master to every tserver, bypassing the heartbeat. This
+      // test needs the heartbeat to be the only path that carries them to the observer node.
+      flags->push_back("--enable_object_locking_for_table_locks=false");
+      // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list
+      // the preview flag so its non-default value is permitted).
+      flags->push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+    }
+  }
+};
+
+TEST_F(PgCatalogVersionMasterFailoverTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(InvalMessagesAfterMasterLeaderFailover)) {
+  auto conn_ddl = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(kDdlTs)));
+  auto conn_observer = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(kObserverTs)));
+  ASSERT_OK(conn_ddl.Execute("CREATE TABLE foo(id INT PRIMARY KEY)"));
+  ASSERT_OK(conn_ddl.Execute("INSERT INTO foo VALUES(1)"));
+  WaitForCatalogVersionToPropagate();
+
+  // Bring conn_observer up to date with the CREATE TABLE so that the only catalog cache refresh
+  // it does from here on is the one caused by the ALTER TABLE below.
+  ASSERT_EQ(ASSERT_RESULT(conn_observer.FetchAllAsString("SELECT * FROM foo")), "1");
+  const auto full_refreshes_before = GetInt64MetricsHelper("CatCacheRefresh", kObserverTs);
+  const auto delta_refreshes_before = GetInt64MetricsHelper("CatCacheDeltaRefresh", kObserverTs);
+
+  // Cut the observer node off from the master leader, so that it can only learn about the DDL
+  // below after the failover has completed.
+  auto* const observer_ts = cluster_->tablet_server(kObserverTs);
+  ASSERT_OK(cluster_->SetFlag(observer_ts, "TEST_tserver_disable_heartbeat", "true"));
+
+  auto* const old_leader = cluster_->GetLeaderMaster();
+  ASSERT_OK(conn_ddl.Execute("ALTER TABLE foo ADD COLUMN value TEXT"));
+
+  // The leader has to cache the DDL's catalog versions before it steps down: its stale
+  // fingerprint only matches what the post-failover refresh reads back from disk if it was
+  // computed after the DDL.
+  WaitForCatalogVersionToPropagate();
+
+  // Fail over away from the leader and back. The first stepdown makes it reset its caches, the
+  // second one puts it back in charge of serving heartbeats with catalog versions that have not
+  // changed since the reset.
+  // Note that a daemon only holds one log listener at a time, so the two waiters must not
+  // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
+  // and only starts again once it is the leader.
+  {
+    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+    ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
+  }
+  auto refresh_waiter = LogWaiter(old_leader, "RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader(old_leader->uuid()));
+  ASSERT_OK(refresh_waiter.WaitFor(30s * kTimeMultiplier));
+
+  ASSERT_OK(cluster_->SetFlag(observer_ts, "TEST_tserver_disable_heartbeat", "false"));
+
+  // conn_observer refreshes its catalog cache on its first query after the restored leader has
+  // sent the new catalog version to the observer node. Queries that run before that do not
+  // refresh, so polling here does not perturb the refresh counts. Poll with a query whose result
+  // shape does not depend on foo: a "SELECT * FROM foo" that races the refresh fails in libpq
+  // with "unexpected field count", because its row description is built from the pre-refresh
+  // relcache while its rows come from the post-refresh one.
+  int64_t full_refreshes_after = 0;
+  int64_t delta_refreshes_after = 0;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(conn_observer.FetchAllAsString("SELECT 1"));
+    full_refreshes_after = GetInt64MetricsHelper("CatCacheRefresh", kObserverTs);
+    delta_refreshes_after = GetInt64MetricsHelper("CatCacheDeltaRefresh", kObserverTs);
+    return full_refreshes_after + delta_refreshes_after >
+           full_refreshes_before + delta_refreshes_before;
+  }, 60s * kTimeMultiplier, "observer to refresh its catalog cache"));
+
+  // The refresh must have been incremental. With a stale fingerprint the restored leader keeps
+  // an empty invalidation messages cache, so it sends the observer node the new catalog version
+  // without the messages that go with it, and conn_observer has to refresh in full instead.
+  EXPECT_EQ(full_refreshes_after - full_refreshes_before, 0)
+      << "conn_observer did a full catalog cache refresh: the master leader sent the new catalog "
+      << "version without its invalidation messages";
+  EXPECT_GE(delta_refreshes_after - delta_refreshes_before, 1);
+
+  // The refresh brought in the DDL: conn_observer now sees the new column.
+  ASSERT_EQ(ASSERT_RESULT(conn_observer.FetchAllAsString("SELECT * FROM foo")), "1, NULL");
+}
+
+// Test CREATE TABLE (global + breaking via event-trigger REVOKE + ALTER ROLE)
+// executed inside a plpgsql function, racing with a concurrent non-breaking
+// ANALYZE.
+//
+// Customer-shaped race:
+//   1. Function starts; session local catalog version is x.
+//   2. Concurrent ANALYZE commits version x + 1 (non-breaking).
+//   3. CREATE TABLE inside the function increments all DB catalog versions as
+//      breaking and gets x + 2 back instead of x + 1.
+//   4. YbCheckNewLocalCatalogVersionOptimization refuses to jump x -> x + 2
+//      (would skip x + 1's inval messages), so local stays at x
+//      ("skipped optimization, local catalog version ... kept at x, new ... x+2").
+//   5. Still inside the function, following DML sends RPCs with version x.
+//
+// Behavior depends on whether object locking / transactional DDL are enabled
+// (and thus whether AcceptInvalidationMessages can mid-txn refresh):
+//
+// * Debug builds (object locking off by default): no mid-txn catalog refresh.
+//   YBCheckSharedCatalogCacheVersion is a no-op inside a transaction. Local
+//   stays at x; tservers reject following DML with breaking version x + 2
+//   (the session's own CREATE TABLE), e.g.
+//   "The catalog snapshot used for this transaction has been invalidated".
+//
+// * Release builds (object locking and transactional DDL on): lock acquisition
+//   calls AcceptInvalidationMessages, which can mid-txn refresh local x -> x + 1
+//   from ANALYZE before/around CREATE TABLE's bump. CREATE TABLE then gets
+//   x + 2 with local already at x + 1, so
+//   YbCheckNewLocalCatalogVersionOptimization applies (no "skipped optimization"
+//   log) and following DML succeeds.
+TEST_F(PgCatalogVersionTest, CreateTableGlobalBreakingRaceWithAnalyze) {
+  RestartClusterWithInvalMessageEnabled({"--ysql_enable_auto_analyze=false"});
+
+  auto* ts = cluster_->tablet_server(0);
+  pg_ts = ts;
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands = true"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION app_cdc_publication"));
+  ASSERT_OK(conn.Execute("CREATE ROLE test_trigger_role"));
+  ASSERT_OK(conn.Execute("CREATE TABLE dml_target(id INT PRIMARY KEY, val TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO dml_target SELECT i, 'v' FROM generate_series(1, 10) i"));
+
+  // Event trigger: REVOKE => breaking, ALTER ROLE IN DATABASE => global, so the
+  // outer CREATE TABLE becomes a global + breaking catalog version increment.
+  ASSERT_OK(conn.Execute(R"#(
+CREATE OR REPLACE FUNCTION auto_add_table_to_publication()
+RETURNS event_trigger AS $$
+DECLARE
+    obj RECORD;
+    cur_user TEXT;
+    cur_db TEXT;
+BEGIN
+    SELECT session_user, current_database() INTO cur_user, cur_db;
+
+    FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
+               WHERE command_tag = 'CREATE TABLE'
+               AND object_type = 'table' LOOP
+
+        IF obj.schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+        THEN
+            RAISE NOTICE 'Executing REVOKE and ALTER ROLE on % inside event trigger',
+                         obj.object_identity;
+
+            -- 1. REVOKE sets is_breaking = true
+            EXECUTE format('REVOKE ALL ON TABLE %s FROM test_trigger_role',
+                           obj.object_identity);
+
+            -- 2. ALTER ROLE IN DATABASE sets is_global = true (pg_db_role_setting)
+            EXECUTE format(
+                'ALTER ROLE %I IN DATABASE %I SET work_mem = ''64MB''',
+                cur_user, cur_db);
+
+            -- 3. Add to publication
+            EXECUTE format('ALTER PUBLICATION app_cdc_publication ADD TABLE %s',
+                           obj.object_identity);
+        END IF;
+
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+  )#"));
+
+  ASSERT_OK(conn.Execute(R"#(
+CREATE TABLE orders_partitioned (
+    order_id INT,
+    order_date DATE,
+    amount NUMERIC,
+    PRIMARY KEY (order_id, order_date)
+) PARTITION BY RANGE (order_date);
+  )#"));
+
+  ASSERT_OK(conn.Execute(R"#(
+CREATE EVENT TRIGGER trg_auto_add_table_to_pub
+ON ddl_command_end
+WHEN TAG IN ('CREATE TABLE')
+EXECUTE FUNCTION auto_add_table_to_publication();
+  )#"));
+
+  // plpgsql function that runs CREATE TABLE then DML in the same call.
+  // ANALYZE must finish *before* CREATE TABLE starts: overlapping ANALYZE with
+  // CREATE TABLE's open DDL commit contends on pg_yb_catalog_version and yields
+  // "could not serialize access due to concurrent update" instead of the
+  // catalog version mismatch. Sleep first so ANALYZE can commit x+1; then
+  // CREATE TABLE (local still x, no mid-txn refresh) gets x+2 back.
+  const int kSleepSec = 5 * kTimeMultiplier;
+  const std::string create_partition_sql =
+R"#(
+CREATE OR REPLACE FUNCTION create_partition_and_dml()
+RETURNS void AS $$
+DECLARE
+    cnt INT;
+BEGIN
+    -- LOG (not NOTICE): NOTICE is below default log_min_messages=WARNING.
+    RAISE LOG 'create_partition_and_dml: waiting for concurrent ANALYZE';
+    PERFORM pg_sleep()#" + std::to_string(kSleepSec) +
+R"#();
+    CREATE TABLE orders_y2026m08 PARTITION OF orders_partitioned
+        FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+
+    -- DML still uses local catalog version x; tservers already have breaking
+    -- version x+2 from the CREATE TABLE above.
+    SELECT count(*) INTO cnt FROM dml_target;
+    INSERT INTO dml_target VALUES (100 + cnt, 'from_function');
+    INSERT INTO orders_y2026m08 VALUES (1, '2026-08-15', 10.0);
+    PERFORM count(*) FROM orders_y2026m08;
+END;
+$$ LANGUAGE plpgsql;
+)#";
+  ASSERT_OK(conn.Execute(create_partition_sql));
+
+  auto conn_create = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn_analyze = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn_create.Execute("SET yb_max_query_layer_retries = 0"));
+
+  TestThreadHolder thread_holder;
+  Status fn_status;
+  auto waiter = LogWaiter(ts, "create_partition_and_dml: waiting for concurrent ANALYZE");
+  thread_holder.AddThreadFunctor([&conn_create, &fn_status] {
+    // Use Fetch: SELECT returns a row; Execute rejects PGRES_TUPLES_OK.
+    fn_status = ResultToStatus(conn_create.Fetch("SELECT create_partition_and_dml()"));
+  });
+
+  // Wait until the function is inside pg_sleep (before CREATE TABLE), then run
+  // ANALYZE so it commits x+1 with no open DDL txn to conflict with.
+  ASSERT_OK(waiter.WaitFor(30s));
+  ASSERT_OK(conn_analyze.Execute("ANALYZE dml_target"));
+  // Let ANALYZE's non-breaking x+1 commit/propagate before CREATE TABLE runs.
+  SleepFor(1s * kTimeMultiplier);
+
+  thread_holder.Stop();
+  if (IsObjectLockingEnabled()) {
+    // Object locking refreshes the local catalog version on each lock acquisition,
+    // which absorbs ANALYZE's x + 1 before/around CREATE TABLE's bump.
+    ASSERT_OK(fn_status);
+
+    auto row_count = ASSERT_RESULT(
+        conn_create.FetchRow<PGUint64>("SELECT count(*) FROM orders_y2026m08"));
+    ASSERT_EQ(row_count, 1);
+  } else {
+    // Without object locking, there is no mid-txn refresh and the DML after
+    // CREATE TABLE fails with a catalog version mismatch.
+    ASSERT_NOK_STR_CONTAINS(
+        fn_status,
+        "The catalog snapshot used for this transaction has been invalidated");
+  }
 }
 
 } // namespace pgwrapper

@@ -19,6 +19,10 @@
 
 #include "yb/hnsw/hnsw_fwd.h"
 
+#include "yb/rocksdb/listener.h"
+
+#include "yb/rpc/scheduler.h"
+
 #include "yb/tablet/tablet_component.h"
 #include "yb/tablet/tablet_options.h"
 
@@ -38,10 +42,13 @@ class VectorIndexList {
   explicit VectorIndexList(docdb::DocVectorIndexesPtr list) : list_(std::move(list)) {}
 
   void EnableAutoCompactions();
-  void Compact();
+  void Compact(rocksdb::CompactionReason reason);
   void Flush();
   Status WaitForCompaction();
   Status WaitForFlush();
+  // Returns true if this list is empty or every index has compacted inherited parent data for
+  // its tablet's split_generation.
+  bool ParentDataCompacted() const;
 
   // Returns the total size in bytes occupied on disk by all vector indexes in this list.
   uint64_t OnDiskSize() const;
@@ -93,6 +100,11 @@ class TabletVectorIndexes :
   // Removes specified index, also destroying its data on disk.
   Status Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
+  // Instantiates vector indexes of the given indexed table that were skipped because the indexed
+  // column was missing from the schema (see DoCreateIndex), once an alter brings the column back.
+  Status CreateSkippedIndexes(const TableInfoPtr& indexed_table, bool bootstrap)
+      EXCLUDES(vector_indexes_mutex_);
+
   // Returns a collection of vector indexes for the given vector index table ids. Returns an empty
   // list if at least one vector indexes is not found by the give table id. The order of vector
   // indexes in the returned collection is not guaranteed to be preserved.
@@ -107,7 +119,25 @@ class TabletVectorIndexes :
   // postpone tablet splitting until the backfill completes (see GH#32321).
   bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
 
+  // Returns true if there are no vector indexes, or every open vector index has compacted
+  // inherited parent data for its tablet's split_generation.
+  bool ParentDataCompacted() const EXCLUDES(vector_indexes_mutex_);
+
+  // Returns true if a post-split compaction is still required to drop inherited parent data.
+  // Always false when vector_index_include_into_post_split_compaction is off, as in that case no
+  // vector index post-split compaction is ever scheduled.
+  bool PostSplitCompactionRequired() const EXCLUDES(vector_indexes_mutex_);
+
   void LaunchBackfillsIfNecessary();
+
+  // Binds the scheduler used to retry backfills aborted by an operation pause.
+  void SetScheduler(rpc::Scheduler* scheduler);
+
+  // Cancels the pending backfill retry and waits for a running one. Called on tablet shutdown only:
+  // a truncate or a restore shuts this component down just to replace the storages and re-opens it
+  // right after, and the retry has to survive that.
+  void StopBackfillRetry();
+
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
   std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
@@ -135,10 +165,17 @@ class TabletVectorIndexes :
     return has_vector_deletion_.load();
   }
 
+  // Largest split_generation recorded by InitFrontiers() across open indexes, 0 if none.
+  uint64_t MaxPersistedSplitGeneration() const EXCLUDES(vector_indexes_mutex_);
+
  private:
   void ScheduleBackfill(
       const docdb::DocVectorIndexPtr& vector_index, const TableInfoPtr& indexed_table, Slice key,
       HybridTime backfill_ht, OpId op_id, std::shared_ptr<ScopedRWOperation> read_op);
+
+  // Re-runs LaunchBackfillsIfNecessary after a delay, replacing the retry scheduled before it.
+  void ScheduleBackfillRetry();
+
   Status Backfill(
       const docdb::DocVectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
       HybridTime backkfill_ht, OpId op_id);
@@ -168,6 +205,9 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   ShutdownController shutdown_controller_;
+
+  rpc::Scheduler* scheduler_ = nullptr;
+  rpc::ScheduledTaskTracker backfill_retry_task_;
 };
 
 }  // namespace yb::tablet

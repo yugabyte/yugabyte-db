@@ -161,7 +161,7 @@ To add your own machine images to the catalog:
 
 1. Enter the Machine Image ID to use for each [provider region](#regions).
 
-1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+1. Provide the SSH user and port to use to access the machine image OS. The SSH user is required; it must have passwordless sudo access and must not be named `yugabyte`. For standard images, use the image's default login user (for example `centos` or `ubuntu`).
 
 1. Click **Add Linux Version**.
 
@@ -171,7 +171,11 @@ To edit custom Linux versions, remove Linux versions, and set a version as the d
 
 To be able to provision cloud instances with YugabyteDB, YBA requires SSH access.
 
-Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+{{< note title="SSH User and Port" >}}
+You cannot enter SSH user or port in this section; those fields are disabled. Specify them for each Linux version in the [Linux version catalog](#linux-version-catalog). The key pair you configure here is used to authenticate as that SSH user.
+{{< /note >}}
+
+YBA-managed Linux versions use `centos`.
 
 You can manage SSH key pairs in the following ways:
 

@@ -121,6 +121,9 @@ DEFINE_test_flag(bool, skip_index_backfill, false,
 DEFINE_test_flag(bool, block_do_backfill, false,
     "Block DoBackfill from proceeding.");
 
+DEFINE_test_flag(bool, pause_compute_safe_time_for_backfill_read, false,
+    "Pauses the compute safe time for backfill read.");
+
 DEFINE_test_flag(bool, skip_ddl_requester_liveness_check, false,
     "Skip starting the requester liveness task. Used in tests to simulate the pre-fix behavior "
     "where master continues sending BackfillIndex RPCs after the backend is killed.");
@@ -332,7 +335,7 @@ Status MultiStageAlterTable::StartBackfillingData(
     const std::vector<IndexInfoPB>& idx_infos,
     std::optional<uint32_t> current_version, const LeaderEpoch& epoch,
     std::optional<TransactionMetadata> requester_transaction) {
-  // We leave the table state as ALTERING so that a master failover can resume the backfill.
+  // Stay in ALTERING: IsAlterTableDone must not report done while the backfill is running.
   RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
       catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false, epoch));
 
@@ -780,6 +783,7 @@ void BackfillTable::LaunchBackfillOrAbort() {
 
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
   RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
+  TEST_PAUSE_IF_FLAG(TEST_pause_compute_safe_time_for_backfill_read);
 
   std::vector<TableId> index_table_ids;
   std::transform(
@@ -1035,8 +1039,7 @@ Status BackfillTable::DoBackfill() {
     SleepFor(kSpinWait);
   }
   if (VLOG_IS_ON(1)) {
-    std::lock_guard l(mutex_);
-    VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill_;
+    VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill();
   }
 
   auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
@@ -1054,8 +1057,7 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
     LOG_WITH_PREFIX(WARNING) << "failed to backfill the index: " << AsString(failed_indexes)
                             << " due to " << s;
     RETURN_NOT_OK_PREPEND(
-        MarkIndexesAsFailed(failed_indexes, s.message().ToBuffer()),
-        "Couldn't mark indexes as failed");
+        MarkIndexesAsFailed(failed_indexes, s), "Couldn't mark indexes as failed");
     return CheckIfDone();
   }
 
@@ -1078,31 +1080,31 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
 }
 
 Status BackfillTable::MarkIndexesAsFailed(
-    const std::unordered_set<TableId>& failed_indexes, const string& message) {
+    const std::unordered_set<TableId>& failed_indexes, const Status& backfill_status) {
   if (indexes_to_build() == failed_indexes) {
     state_.store(State::kFailed, std::memory_order_release);
     StopLivenessMonitor();
     backfill_job_->SetState(MonitoredTaskState::kFailed);
   }
-  return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, message);
+  return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, backfill_status);
 }
 
 Status BackfillTable::MarkAllIndexesAsFailed() {
-  return MarkIndexesAsFailed(indexes_to_build(), "failed");
+  return MarkIndexesAsFailed(indexes_to_build(), STATUS(Aborted, "failed"));
 }
 
 Status BackfillTable::MarkAllIndexesAsSuccess() {
   const auto index_ids = indexes_to_build();
   RETURN_NOT_OK(master_->xcluster_manager()->MarkIndexBackfillCompleted(index_ids, epoch_));
-  return MarkIndexesAsDesired(index_ids, BackfillJobPB::SUCCESS, "");
+  return MarkIndexesAsDesired(index_ids, BackfillJobPB::SUCCESS, Status::OK());
 }
 
 Status BackfillTable::MarkIndexesAsDesired(
     const std::unordered_set<TableId>& index_ids_set, BackfillJobPB_State state,
-    const string message) {
+    const Status& backfill_status) {
   VLOG_WITH_PREFIX(3) << "Marking " << yb::ToString(index_ids_set)
                       << " as " << BackfillJobPB_State_Name(state)
-                      << " due to " << message;
+                      << " due to " << backfill_status;
   if (!index_ids_set.empty()) {
     auto l = indexed_table_->LockForWrite();
     auto& indexed_table_pb = l.mutable_data()->pb;
@@ -1128,10 +1130,12 @@ Status BackfillTable::MarkIndexesAsDesired(
       IndexInfoPB* idx_pb = indexed_table_pb.mutable_indexes(i);
       if (index_ids_set.find(idx_pb->table_id()) != index_ids_set.end()) {
         // Should this also move to the BackfillJob instead?
-        if (!message.empty()) {
-          idx_pb->set_backfill_error_message(message);
+        if (!backfill_status.ok()) {
+          idx_pb->set_backfill_error_message(backfill_status.message().ToBuffer());
+          StatusToPB(backfill_status, idx_pb->mutable_backfill_status());
         } else {
           idx_pb->clear_backfill_error_message();
+          idx_pb->clear_backfill_status();
         }
         idx_pb->clear_is_backfill_deferred();
 
@@ -1376,11 +1380,20 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     VLOG_WITH_FUNC(2) << "Unlocked index table for Read";
   } while (!is_ready);
   {
+    const auto idx_birth_time = read_time_for_backfill();
     TRACE("Locking index table");
     VLOG_WITH_FUNC(2) << "Trying to lock index table for Write";
     auto index_table_wlock = index_table_info->LockForWrite();
     VLOG_WITH_FUNC(2) << "Locked index table for Write";
     UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
+
+    // Persist the index birth time in the index table's index_info.
+    // TODO(#33155): read_time_for_backfill isn't set for xCluster automatic-mode target (where
+    // backfill is replicated from the source).
+    if (index_table_wlock.mutable_data()->pb.has_index_info() && !idx_birth_time.is_special()) {
+      index_table_wlock.mutable_data()->pb.mutable_index_info()->set_birth_time(
+          idx_birth_time.ToUint64());
+    }
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating index table metadata on disk");
@@ -1414,8 +1427,13 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const TabletInfoPtr& tablet, const std::string& table_id) {
   ADOPT_WAIT_STATE(wait_state_);
-  auto call =
-      std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet, table_id, epoch_);
+  // TODO(#33155): read_time_for_backfill isn't set for xCluster automatic-mode target (where
+  // backfill is replicated from the source).
+  auto idx_birth_time = read_time_for_backfill().is_special()
+      ? 0 : read_time_for_backfill().ToUint64();
+  auto call = std::make_shared<AsyncBackfillDone>(
+      master_, callback_pool_, tablet, table_id, epoch_,
+      idx_birth_time);
   tablet->table()->AddTask(call);
   RETURN_NOT_OK_PREPEND(
       master_->catalog_manager()->ScheduleTask(call),

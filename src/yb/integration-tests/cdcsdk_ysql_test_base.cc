@@ -41,6 +41,14 @@ DECLARE_bool(cdc_write_post_apply_metadata);
 
 namespace yb {
 namespace cdc {
+
+namespace {
+
+const auto kGetAllPendingChangesTimeout = MonoDelta::FromSeconds(300);
+const auto kGetAllPendingChangesRetryInterval = MonoDelta::FromMilliseconds(100);
+
+}  // namespace
+
 Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   yb::master::GetMasterClusterConfigRequestPB req;
   yb::master::GetMasterClusterConfigResponsePB resp;
@@ -1521,13 +1529,18 @@ void CDCSDKYsqlTest::CheckRecordTuples(
 Status CDCSDKYsqlTest::InitVirtualWAL(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
     const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range,
-    bool include_oid_to_relfilenode, int timeout) {
+    bool include_oid_to_relfilenode, int timeout,
+    const std::vector<uint32_t>& publication_oids, bool pub_all_tables) {
   InitVirtualWALForCDCRequestPB init_req;
   init_req.set_stream_id(stream_id.ToString());
   init_req.set_session_id(session_id);
   for (const auto& table_id : table_ids) {
     init_req.add_table_id(table_id);
   }
+  for (const auto& publication_oid : publication_oids) {
+    init_req.add_publication_oid(publication_oid);
+  }
+  init_req.set_pub_all_tables(pub_all_tables);
 
   if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range) {
     auto slot_hash_range_req = init_req.mutable_slot_hash_range();
@@ -1624,7 +1637,7 @@ Result<GetConsistentChangesResponsePB> CDCSDKYsqlTest::GetConsistentChangesFromC
 
 Status CDCSDKYsqlTest::UpdatePublicationTableList(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-    uint64_t session_id, bool include_oid_to_relfilenode) {
+    uint64_t session_id, bool include_oid_to_relfilenode, int timeout) {
   UpdatePublicationTableListRequestPB req;
   UpdatePublicationTableListResponsePB resp;
 
@@ -1656,7 +1669,7 @@ Status CDCSDKYsqlTest::UpdatePublicationTableList(
 
         return false;
       },
-      MonoDelta::FromSeconds(kRpcTimeout),
+      MonoDelta::FromSeconds(timeout),
       "UpdatePublicationTableList failed due to RPC timeout"));
 
   return Status::OK();
@@ -1824,7 +1837,7 @@ Result<int64> CDCSDKYsqlTest::GetChangeRecordCount(
     const xrepl::StreamId& stream_id,
     const YBTableName& table,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-    std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+    std::map<TabletId, CDCSDKCheckpointPB>& tablet_to_checkpoint,
     const int64 expected_total_records,
     bool explicit_checkpointing_enabled,
     std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records) {
@@ -2153,17 +2166,18 @@ CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChange
     const CDCSDKCheckpointPB* cp,
     int tablet_idx,
     int64 safe_hybrid_time,
-    int wal_segment_index) {
+    int wal_segment_index,
+    int expected_records_count) {
   GetAllPendingChangesResponse resp;
 
-  int prev_records = 0;
   CDCSDKCheckpointPB prev_checkpoint;
   int64 prev_safetime = safe_hybrid_time;
   int prev_index = wal_segment_index;
   const CDCSDKCheckpointPB* prev_checkpoint_ptr = cp;
   int count[8] = {};
+  const auto deadline = CoarseMonoClock::now() + kGetAllPendingChangesTimeout;
 
-  do {
+  for (;;) {
     GetChangesResponsePB change_resp;
     auto get_changes_result = GetChangesFromCDC(
         stream_id, tablets, prev_checkpoint_ptr, tablet_idx, prev_safetime, prev_index);
@@ -2186,8 +2200,16 @@ CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChange
     prev_checkpoint_ptr = &prev_checkpoint;
     prev_safetime = change_resp.has_safe_hybrid_time() ? change_resp.safe_hybrid_time() : -1;
     prev_index = change_resp.wal_segment_index();
-    prev_records = change_resp.cdc_sdk_proto_records_size();
-  } while (prev_records != 0);
+
+    if (change_resp.cdc_sdk_proto_records_size() != 0) {
+      continue;
+    }
+    if (std::cmp_greater_equal(resp.records.size(), expected_records_count) ||
+        CoarseMonoClock::now() >= deadline) {
+      break;
+    }
+    SleepFor(kGetAllPendingChangesRetryInterval);
+  }
 
 
   resp.checkpoint = prev_checkpoint;
@@ -5057,6 +5079,22 @@ Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
 
   return Status::OK();
+}
+
+Result<std::string> CDCSDKYsqlTest::CleanupStaleCDCStreams(bool dry_run) {
+  string tool_path = GetToolPath("../bin", "yb-admin");
+  vector<string> argv;
+  argv.push_back(tool_path);
+  argv.push_back("--master_addresses");
+  argv.push_back(AsString(test_cluster_.mini_cluster_->GetMasterAddresses()));
+  argv.push_back("cleanup_stale_cdc_streams");
+  if (dry_run) {
+    argv.push_back("dry_run");
+  }
+
+  std::string output;
+  RETURN_NOT_OK(Subprocess::Call(argv, &output));
+  return output;
 }
 
 Status CDCSDKYsqlTest::CreateTables(

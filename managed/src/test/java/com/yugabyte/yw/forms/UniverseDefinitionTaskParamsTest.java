@@ -675,4 +675,52 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     cluster.placementInfo = new PlacementInfo();
     return cluster;
   }
+
+  private static DeviceInfo baseDeviceInfoWithStorageClass() {
+    DeviceInfo base = new DeviceInfo();
+    base.volumeSize = 375;
+    base.numVolumes = 1;
+    base.mountPoints = "/mnt/d0";
+    base.storageType = StorageType.Persistent;
+    base.storageClass = "standard";
+    return base;
+  }
+
+  @Test
+  public void mergeDeviceInfosKeepsBaseStorageClassWhenOverrideIsBlank() {
+    DeviceInfo base = baseDeviceInfoWithStorageClass();
+    // A partially populated override, e.g. the v2 resize API's per-process storage_spec, which
+    // maps only volumeSize. `storageClass` is "" from the field initializer, not null.
+    DeviceInfo override = new DeviceInfo();
+    override.volumeSize = 380;
+
+    DeviceInfo merged = UserIntent.mergeDeviceInfos(base, override);
+
+    assertEquals("standard", merged.storageClass);
+    assertEquals((Object) 380, merged.volumeSize);
+    // Fields the override leaves null still come from the base.
+    assertEquals((Object) 1, merged.numVolumes);
+    assertEquals("/mnt/d0", merged.mountPoints);
+    assertEquals(StorageType.Persistent, merged.storageType);
+  }
+
+  @Test
+  public void mergeDeviceInfosKeepsBaseStorageClassWhenOverrideIsNull() {
+    DeviceInfo base = baseDeviceInfoWithStorageClass();
+    DeviceInfo override = new DeviceInfo();
+    override.volumeSize = 380;
+    override.storageClass = null;
+
+    assertEquals("standard", UserIntent.mergeDeviceInfos(base, override).storageClass);
+  }
+
+  @Test
+  public void mergeDeviceInfosAppliesOverriddenStorageClass() {
+    DeviceInfo base = baseDeviceInfoWithStorageClass();
+    DeviceInfo override = new DeviceInfo();
+    override.storageClass = "premium";
+
+    // Only a blank storage class means "not overriden"; a real one must still win.
+    assertEquals("premium", UserIntent.mergeDeviceInfos(base, override).storageClass);
+  }
 }

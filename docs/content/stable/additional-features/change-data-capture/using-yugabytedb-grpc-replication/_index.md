@@ -33,6 +33,8 @@ To know more about the internals of CDC, see [Overview](./cdc-overview).
 
 Get started with Yugabyte gRPC replication.
 
+{{<tags/feature/ea idea="2762">}}Create and manage gRPC CDC streams using the PostgreSQL replication slot interface (`yb_grpc` plugin) (v2026.1.2.0 and later). See [Create a gRPC CDC stream](./cdc-get-started/#create-a-grpc-cdc-stream).
+
 For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/stable/develop/tutorials/cdc-tutorials/).
 
 {{<lead link="./cdc-get-started/">}}
@@ -64,6 +66,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
     When performing [switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/) or [failover](../../../deploy/multi-dc/async-replication/async-transactional-failover/) on xCluster, if you are using CDC, remember to also reconfigure CDC to use the new primary universe.
 
 * Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
+* CDC currently doesn't support [Transactional DDL](../../../explore/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
 * YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 * [Composite types](../../../explore/ysql-language-features/data-types#composite-types) are currently not supported. Issue {{<issue 25221>}}.
 

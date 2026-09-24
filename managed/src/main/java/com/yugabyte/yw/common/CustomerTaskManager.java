@@ -164,6 +164,12 @@ public class CustomerTaskManager {
     this.taskRollbackComputers = taskRollbackComputers;
   }
 
+  private static boolean isTaskPending(UUID taskUuid) {
+    return TaskInfo.maybeGet(taskUuid)
+        .map(taskInfo -> TaskInfo.INCOMPLETE_STATES.contains(taskInfo.getTaskState()))
+        .orElse(false);
+  }
+
   // Invoked if the task is in incomplete state.
   private void setTaskError(TaskInfo taskInfo) {
     taskInfo.setTaskState(TaskInfo.State.Failure);
@@ -174,7 +180,8 @@ public class CustomerTaskManager {
     }
   }
 
-  public void handlePendingTask(CustomerTask customerTask, TaskInfo taskInfo) {
+  /** Returns true if the pending task was resumed instead of being marked failed. */
+  public boolean handlePendingTask(CustomerTask customerTask, TaskInfo taskInfo) {
     try {
       // Mark each subtask as a failure if it is not completed.
       taskInfo
@@ -317,7 +324,7 @@ public class CustomerTaskManager {
             if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
               log.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
               customerTask.markAsCompleted();
-              return;
+              return false;
             }
           }
           switch (taskType) {
@@ -338,7 +345,7 @@ public class CustomerTaskManager {
               break;
             default:
               log.error("Invalid task type: {} during platform restart", taskType);
-              return;
+              return false;
           }
           taskParams.setPreviousTaskUUID(taskUUID);
           taskInfo
@@ -367,7 +374,7 @@ public class CustomerTaskManager {
                   endTransaction();
                 }
               });
-
+          return true;
         } else {
           // Mark customer task as completed.
           // Customer task is marked completed after the task state is updated in TaskExecutor.
@@ -382,6 +389,7 @@ public class CustomerTaskManager {
     } catch (Exception e) {
       log.error(String.format("Error encountered failing task %s", customerTask.getTaskUUID()), e);
     }
+    return false;
   }
 
   public void handleAllPendingTasks() {
@@ -404,15 +412,31 @@ public class CustomerTaskManager {
               + incompleteStates
               + "'))";
       // TODO use Finder.
+      Set<UUID> resumedTaskUuids = new HashSet<>();
       DB.sqlQuery(query)
           .findList()
           .forEach(
               row -> {
                 TaskInfo taskInfo = TaskInfo.getOrBadRequest(row.getUUID("task_uuid"));
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
-                handlePendingTask(customerTask, taskInfo);
+                if (handlePendingTask(customerTask, taskInfo)) {
+                  resumedTaskUuids.add(taskInfo.getUuid());
+                }
               });
       for (Customer customer : Customer.getAll()) {
+        // Fail the InProgress backups whose creating task did not survive the restart. A backup
+        // belonging to a resumed task still references the task uuid it was created with, and a
+        // backup whose task is still pending is owned by a task that has already started running
+        // (e.g., a resumed task that has updated the backup with its new task uuid).
+        Backup.findAllBackupWithState(
+                customer.getUuid(), Arrays.asList(Backup.BackupState.InProgress))
+            .stream()
+            .filter(
+                b ->
+                    b.getTaskUUID() == null
+                        || (!resumedTaskUuids.contains(b.getTaskUUID())
+                            && !isTaskPending(b.getTaskUUID())))
+            .forEach(b -> b.transitionState(Backup.BackupState.Failed));
         // Change the DeleteInProgress backups state to QueuedForDeletion
         Backup.findAllBackupWithState(
                 customer.getUuid(), Arrays.asList(Backup.BackupState.DeleteInProgress))
@@ -700,7 +724,7 @@ public class CustomerTaskManager {
             });
   }
 
-  private boolean isTaskRetryable(CustomerTask task, TaskInfo taskInfo) {
+  public boolean isTaskRetryable(CustomerTask task, TaskInfo taskInfo) {
     return commissioner.isTaskRetryable(
         taskInfo,
         tf -> {
@@ -731,7 +755,31 @@ public class CustomerTaskManager {
   }
 
   private boolean canTaskRollback(TaskInfo taskInfo) {
-    return commissioner.canTaskRollback(taskInfo);
+    return commissioner.canTaskRollbackDetailed(taskInfo);
+  }
+
+  /**
+   * Sets {@code originalTaskUUID} to the root of the retry/rollback chain (first task on a clean
+   * universe state). Prefer an existing root on {@code taskParams} (fromJson of the failed task),
+   * then a root stored only on {@code oldTaskParams} JSON; otherwise the failed task itself is the
+   * root.
+   *
+   * <p>Retry A (first failure has no original): set to {@code failedTaskUUID}. Retry B (failed
+   * retry already carries the root): copy that root; do not overwrite with the failed retry's UUID.
+   */
+  private static void setRootOriginalTaskUUID(
+      AbstractTaskParams taskParams, UUID failedTaskUUID, @Nullable JsonNode oldTaskParams) {
+    UUID root = taskParams.getOriginalTaskUUID();
+    if (root == null && oldTaskParams != null) {
+      JsonNode originalNode = oldTaskParams.get("originalTaskUUID");
+      if (originalNode != null && !originalNode.isNull() && !originalNode.asText().isEmpty()) {
+        root = UUID.fromString(originalNode.asText());
+      }
+    }
+    if (root == null) {
+      root = failedTaskUUID;
+    }
+    taskParams.setOriginalTaskUUID(root);
   }
 
   // This performs actual retryability check on the task parameters.
@@ -829,10 +877,16 @@ public class CustomerTaskManager {
 
     // Reset the error string.
     taskParams.setErrorString(null);
+    // Carry the chain root (first clean-state task); do not overwrite with this failed UUID.
+    setRootOriginalTaskUUID(taskParams, taskUUID, oldTaskParams);
     if (submission.isSetPreviousTaskUUID()) {
       // Set previousTaskUUID only when rollback continues the same failed task (inherit
       // runtimeInfo / retry semantics). Leave unset for a fresh rollback TaskType.
       taskParams.setPreviousTaskUUID(taskUUID);
+    } else {
+      // fromJson of a retried failed task may have copied previousTaskUUID; clear it so a
+      // fresh rollback TaskType does not inherit runtimeInfo.
+      taskParams.setPreviousTaskUUID(null);
     }
     UUID newTaskUUID = commissioner.submit(submission.getRollbackTaskType(), taskParams);
     log.info(
@@ -866,8 +920,10 @@ public class CustomerTaskManager {
       case CreateKubernetesUniverse:
       case CreateUniverse:
       case EditUniverse:
+      case RollbackEditUniverse:
       case InstallYbcSoftwareOnK8s:
       case EditKubernetesUniverse:
+      case RollbackEditKubernetesUniverse:
       case ReadOnlyKubernetesClusterCreate:
       case ReadOnlyClusterCreate:
       case SyncMasterAddresses:
@@ -987,10 +1043,12 @@ public class CustomerTaskManager {
                 "Cannot retry modifying query logging task as YSQL major upgrade is in progress.");
           }
         }
+        break;
       case ModifyMetricsExportConfig:
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;
       case ConfigureExportTelemetryConfig:
+      case KubernetesConfigureExportTelemetryConfig:
         taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
         break;
       case AddNodeToUniverse:
@@ -1180,6 +1238,9 @@ public class CustomerTaskManager {
     // Reset the error string.
     taskParams.setErrorString(null);
     taskParams.setPreviousTaskUUID(taskUUID);
+    // Retry A: original unset -> failedTaskUUID is the root. Retry B: original already set on the
+    // failed retry -> carry that root; do not use taskUUID (the failed retry's id).
+    setRootOriginalTaskUUID(taskParams, taskUUID, oldTaskParams);
     String errMsg = verifyTaskRetryability(customerTask, taskParams);
     if (errMsg != null) {
       log.error("Task {} cannot be retried - {}", taskUUID, errMsg);

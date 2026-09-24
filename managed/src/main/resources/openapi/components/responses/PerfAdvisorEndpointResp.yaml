@@ -1,0 +1,5 @@
+description: Perf Advisor Endpoint
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/PerfAdvisorEndpoint.yaml"

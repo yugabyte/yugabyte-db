@@ -249,9 +249,7 @@ public class UniverseCRUDHandler {
         isAwsArnChanged(cluster, currentCluster)
             || areCommunicationPortsChanged(taskParams, universe)
             || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP
-            || !Objects.equals(
-                currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID);
-    // TODO
+            || imageBundleChanged(currentCluster, cluster);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -282,6 +280,19 @@ public class UniverseCRUDHandler {
       } else if (!isK8s) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
       }
+    }
+    return result;
+  }
+
+  private static boolean imageBundleChanged(Cluster currentCluster, Cluster cluster) {
+    return !getProviderToBundleMap(cluster.userIntent)
+        .equals(getProviderToBundleMap(currentCluster.userIntent));
+  }
+
+  private static Map<UUID, UUID> getProviderToBundleMap(UserIntent userIntent) {
+    Map<UUID, UUID> result = new HashMap<>();
+    for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
+      result.put(providerUUID, userIntent.getImageBundleUUIDForProvider(providerUUID));
     }
     return result;
   }
@@ -348,7 +359,16 @@ public class UniverseCRUDHandler {
   private static boolean isSameInstanceTypes(
       UserIntent newIntent, UserIntent currentIntent, Collection<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
-      return Objects.equals(newIntent.getBaseInstanceType(), currentIntent.getBaseInstanceType());
+      Set<UUID> commonProviders = new HashSet<>(newIntent.getAllProviderUUIDs());
+      commonProviders.retainAll(currentIntent.getAllProviderUUIDs());
+      for (UUID providerUUID : commonProviders) {
+        if (!Objects.equals(
+            newIntent.getBaseInstanceType(providerUUID),
+            currentIntent.getBaseInstanceType(providerUUID))) {
+          return false;
+        }
+      }
+      return true;
     }
     for (NodeDetails nodeDetails : nodes) {
       if (!Objects.equals(
@@ -692,8 +712,7 @@ public class UniverseCRUDHandler {
 
   public void setUpXClusterSettings(UniverseDefinitionTaskParams taskParams) {
     taskParams.xClusterInfo.sourceRootCertDirPath =
-        XClusterConfigTaskBase.getProducerCertsDir(
-            taskParams.getPrimaryCluster().userIntent.provider);
+        XClusterConfigTaskBase.getProducerCertsDir(taskParams.getPrimaryCluster().userIntent);
   }
 
   public UUID importUniverse(Customer customer, ImportUniverseTaskParams taskParams) {
@@ -837,6 +856,13 @@ public class UniverseCRUDHandler {
         c.userIntent.providerType =
             Common.CloudType.valueOf(Util.getSingleProvider(c.userIntent).getCode());
       }
+      // Record the intended cross-cloud federated IAM state on the cluster's UserIntent (like
+      // providerType/rootCA), so CreateUniverse and later edit/add-node/replace key off this one
+      // flag. TODO(multi-cloud): resolve per provider for clusters that span multiple clouds.
+      Provider federationProvider =
+          Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+      c.userIntent.setFederationConfigured(
+          CloudInfoInterface.getCrossCloudFederationAudience(federationProvider) != null);
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       // Enforce user tags.
@@ -988,21 +1014,14 @@ public class UniverseCRUDHandler {
           }
         }
       }
-      if (UpdateOOMServiceState.isEarlyoomInstallationPossible(confGetter, taskParams, customer)
+      UpdateOOMServiceState.EarlyoomEnablementState enablementState =
+          UpdateOOMServiceState.getEarlyoomEnablementState(confGetter, taskParams, customer);
+
+      if (enablementState.isInstallationPossible()
           && taskParams.additionalServicesStateData == null) {
         AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
-        // TODO: will modify this later.
-        Provider sampleProvider =
-            Provider.getOrBadRequest(
-                taskParams.getPrimaryCluster().userIntent.getAllProviderUUIDs().iterator().next());
-        Boolean enableEarlyoom =
-            confGetter.getConfForScope(
-                sampleProvider, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
-        String earlyoomArgs =
-            confGetter.getConfForScope(sampleProvider, ProviderConfKeys.earlyoomDefaultArgs);
-        servicesStateData.setEarlyoomConfig(
-            AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
-        servicesStateData.setEarlyoomEnabled(enableEarlyoom);
+        servicesStateData.setEarlyoomConfig(enablementState.getConfig());
+        servicesStateData.setEarlyoomEnabled(enablementState.isEnableByDefault());
         taskParams.additionalServicesStateData = servicesStateData;
       }
 
@@ -3055,8 +3074,8 @@ public class UniverseCRUDHandler {
         });
   }
 
-  private void maybeSetNewInstallGflags(
-      Customer customer, Universe universe, Cluster primaryCluster) {
+  @VisibleForTesting
+  void maybeSetNewInstallGflags(Customer customer, Universe universe, Cluster primaryCluster) {
 
     Map<String, String> newInstallMasterGflags = new HashMap<>();
     Map<String, String> newInstallTserverGflags = new HashMap<>();
@@ -3075,7 +3094,9 @@ public class UniverseCRUDHandler {
               "split_respects_tablet_replica_limits",
               "true"));
       if (primaryCluster.userIntent.enableYSQL) {
-        newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
+        Map<String, String> memGflags = Map.of("use_memory_defaults_optimized_for_ysql", "true");
+        newInstallTserverGflags.putAll(memGflags);
+        newInstallMasterGflags.putAll(memGflags);
       }
     }
 

@@ -839,7 +839,8 @@ public class Schedule extends Model {
             .runningState(schedule.runningState)
             .failureCount(schedule.failureCount)
             .backlogStatus(schedule.backlogStatus)
-            .incrementBacklogStatus(schedule.incrementBacklogStatus);
+            .incrementBacklogStatus(schedule.incrementBacklogStatus)
+            .kubernetesOperatorControlled(schedule.isKubernetesOperatorControlled());
 
     ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
     Date lastScheduledTime = null;
@@ -957,6 +958,7 @@ public class Schedule extends Model {
             .expiryTimeUnit(params.expiryTimeUnit)
             .parallelism(params.parallelism)
             .pointInTimeRestoreEnabled(params.enablePointInTimeRestore)
+            .useRoles(params.getUseRoles())
             .build();
     return backupInfo;
   }

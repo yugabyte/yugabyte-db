@@ -1,7 +1,7 @@
 recievers:
   ysql:
     regex: '(?P<timestamp_with_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.]\d{3} \w{3})[
-      ][[](?P<process_id>\d+)[]][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
+      ][[](?P<process_id>\d+)[]][ ](?P<log_level>\w+):  (?:[0-9A-Z]{5}: )?AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
     lineStartPattern: ([A-Z]\d{4})|((?P<timestamp_with_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.]\d{3}
       \w{3})[ ][[](?P<process_id>\d+)[]][ ])
     timestamp: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$OperatorTimestamp {

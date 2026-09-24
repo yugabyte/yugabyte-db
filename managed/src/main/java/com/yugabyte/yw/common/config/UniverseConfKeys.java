@@ -336,6 +336,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow users to override default Gflags values",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipPrechecksForNonRollingGFlagsUpgrade =
+      new ConfKeyInfo<>(
+          "yb.gflags.skip_prechecks_for_non_rolling_upgrade",
+          ScopeType.UNIVERSE,
+          "Skip Prechecks for Non-Rolling GFlags Upgrade",
+          "Skip cluster consistency, node data directory disk space, consistency table, and "
+              + "ValidateGFlags checks during a non-rolling gflags upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTriggerAPI =
       new ConfKeyInfo<>(
           "yb.health.trigger_api.enabled",
@@ -427,6 +436,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If enabled, slow queries data will be stored for universe, once per hour.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> slowQueryDisableCommandLogging =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.disable_command_logging",
+          ScopeType.UNIVERSE,
+          "Disable Slow queries logs in yugabyte anywhere logging",
+          "Disable Slow queries command logging in the Yugabyte Anywhere Logs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
@@ -706,6 +723,25 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Connection Pooling logs regex pattern in support bundle",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> systemLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.system_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "System logs regex pattern",
+          "System logs under /var/log to collect in the support bundle, with their rotations."
+              + " Defaults to messages (RHEL-family) and syslog (Debian/Ubuntu). Group 1 must"
+              + " capture the base log name.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> collectJournaldLogs =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.collect_journald_logs",
+          ScopeType.UNIVERSE,
+          "Collect journald logs",
+          "Collect the systemd journal for the requested time window in the support bundle, in"
+              + " addition to (never instead of) the /var/log system log files.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
       new ConfKeyInfo<>(
           "yb.upgrade.ysql_upgrade_timeout_sec",
@@ -714,6 +750,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL "
               + "subtask rpc calls.",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeCloudDetectionTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.node_cloud_detection.timeout",
+          ScopeType.UNIVERSE,
+          "Node cloud detection timeout",
+          "Bounds the instance-metadata probe that detects which cloud an on-prem node physically"
+              + " runs on. Each endpoint inside the probe is given 2 seconds, so lowering this"
+              + " below the total can cut the probe short and leave the node's cloud unknown.",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> underReplicatedTabletsTimeout =
       new ConfKeyInfo<>(
@@ -1594,7 +1640,10 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.universe.otel_collector_max_memory",
           ScopeType.UNIVERSE,
           "Max memory for OpenTelemetry Collector process.",
-          "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
+          "Hard memory limit in MiB for the OpenTelemetry Collector process. Applied as MemoryMax"
+              + " in the systemd unit file on VM universes and as the container memory limit on"
+              + " the collector sidecar for Kubernetes universes. Set to 0 to leave the collector"
+              + " uncapped.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> masterLogsAdditionalDropPatterns =
@@ -1605,6 +1654,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Comma-separated substrings; matching yb-master log lines are dropped before export, on"
               + " top of the hardcoded redaction list.",
           ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> emitLegacyExportAttributes =
+      new ConfKeyInfo<>(
+          "yb.universe.telemetry.emit_legacy_export_attributes",
+          ScopeType.UNIVERSE,
+          "Emit legacy export attributes",
+          "If true, the OpenTelemetry collector also emits the legacy yugabyte.-prefixed"
+              + " node identity attributes (yugabyte.node_name, .universe_uuid, .region,"
+              + " .zone, .node_type, .cloud, .purpose) alongside the canonical"
+              + " swamper-aligned names (node_name, universe_uuid, node_region, node_az,"
+              + " node_cluster_type, node_cloud, export_purpose). Log payload attributes"
+              + " such as yugabyte.log_level and yugabyte.audit_type keep their prefix"
+              + " regardless of this flag. Takes effect when the collector config is next"
+              + " regenerated, not at flag-change time.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> tserverLogsAdditionalDropPatterns =
       new ConfKeyInfo<>(
@@ -1881,7 +1945,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " is registered with Perf Advisor Service",
           "Enables new Performance Monitoring UI via Performance Tab",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // Node Script API configs (Internal)
   public static final ConfKeyInfo<Boolean> nodeScriptEnabled =
       new ConfKeyInfo<>(

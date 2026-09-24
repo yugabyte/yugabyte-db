@@ -52,6 +52,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -605,7 +606,12 @@ bool TableInfo::IsBeingDroppedDueToSubTxnRollback(
 
 Status TableInfo::AddTablet(const TabletInfoPtr& tablet) {
   std::lock_guard l(lock_);
-  return AddTabletUnlocked(tablet);
+  return AddTabletUnlocked(tablet, tablet->metadata().dirty());
+}
+
+Status TableInfo::AddTablet(const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state) {
+  std::lock_guard l(lock_);
+  return AddTabletUnlocked(tablet, tablet_state);
 }
 
 Status TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet) {
@@ -615,13 +621,13 @@ Status TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInf
       VERIFY_RESULT(PromoteTabletPointer(it->second)) == old_tablet) {
     partitions_.erase(it);
   }
-  return AddTabletUnlocked(new_tablet);
+  return AddTabletUnlocked(new_tablet, new_tablet->metadata().dirty());
 }
 
 Status TableInfo::AddTablets(const TabletInfos& tablets) {
   std::lock_guard l(lock_);
   for (const auto& tablet : tablets) {
-    RETURN_NOT_OK(AddTabletUnlocked(tablet));
+    RETURN_NOT_OK(AddTabletUnlocked(tablet, tablet->metadata().dirty()));
   }
   return Status::OK();
 }
@@ -676,18 +682,18 @@ Result<TabletInfo::WriteLock> TableInfo::AddStatusTabletViaSplitPartition(
   return old_lock;
 }
 
-Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
-  const auto& tablet_dirty = tablet->metadata().dirty();
-  if (tablet_dirty.is_deleted()) {
+Status TableInfo::AddTabletUnlocked(
+    const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state) {
+  if (tablet_state.is_deleted()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
     return Status::OK();
   }
-  const auto& tablet_meta = tablet_dirty.pb;
+  const auto& tablet_meta = tablet_state.pb;
   tablets_.emplace(tablet->id(), tablet);
 
-  if (tablet_dirty.is_hidden()) {
+  if (tablet_state.is_hidden()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.

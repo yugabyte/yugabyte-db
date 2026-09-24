@@ -7,10 +7,13 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,12 +37,42 @@ public class KMSConfigHelper {
    * is extracted into the task params and removed from the provider config before submission.
    */
   public UUID createKMSConfig(UUID customerUUID, KeyProvider keyProvider, ObjectNode formData) {
+    return createKMSConfig(customerUUID, keyProvider, formData, null /* k8sResourceDetails */);
+  }
+
+  public UUID createKMSConfig(
+      UUID customerUUID,
+      KeyProvider keyProvider,
+      ObjectNode formData,
+      @Nullable KubernetesResourceDetails k8sResourceDetails) {
+    return submitCreateKMSConfig(customerUUID, keyProvider, formData, k8sResourceDetails).taskUUID;
+  }
+
+  /**
+   * Like {@link #createKMSConfig} but also returns, as {@code resourceUUID}, the UUID the new
+   * config will have. The row is inserted by the task, so the UUID is minted here and carried in
+   * the task params; a client can wait on the task and then read the config by UUID instead of
+   * matching on name.
+   */
+  public YBPTask submitCreateKMSConfig(
+      UUID customerUUID, KeyProvider keyProvider, ObjectNode formData) {
+    return submitCreateKMSConfig(
+        customerUUID, keyProvider, formData, null /* k8sResourceDetails */);
+  }
+
+  public YBPTask submitCreateKMSConfig(
+      UUID customerUUID,
+      KeyProvider keyProvider,
+      ObjectNode formData,
+      @Nullable KubernetesResourceDetails k8sResourceDetails) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
+    taskParams.configUUID = UUID.randomUUID();
     taskParams.kmsProvider = keyProvider;
     taskParams.providerConfig = formData;
     taskParams.customerUUID = customerUUID;
     taskParams.kmsConfigName = formData.get("name").asText();
+    taskParams.kubernetesResourceDetails = k8sResourceDetails;
     formData.remove("name");
     UUID taskUUID = commissioner.submit(TaskType.CreateKMSConfig, taskParams);
     log.info("Submitted create KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
@@ -50,7 +83,7 @@ public class KMSConfigHelper {
         CustomerTask.TargetType.KMSConfiguration,
         CustomerTask.TaskType.Create,
         taskParams.getName());
-    return taskUUID;
+    return new YBPTask(taskUUID, taskParams.configUUID);
   }
 
   public UUID editKMSConfig(
@@ -59,6 +92,22 @@ public class KMSConfigHelper {
       KeyProvider keyProvider,
       String kmsConfigName,
       ObjectNode formData) {
+    return editKMSConfig(
+        customerUUID,
+        configUUID,
+        keyProvider,
+        kmsConfigName,
+        formData,
+        null /* k8sResourceDetails */);
+  }
+
+  public UUID editKMSConfig(
+      UUID customerUUID,
+      UUID configUUID,
+      KeyProvider keyProvider,
+      String kmsConfigName,
+      ObjectNode formData,
+      @Nullable KubernetesResourceDetails k8sResourceDetails) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
     taskParams.configUUID = configUUID;
@@ -66,6 +115,7 @@ public class KMSConfigHelper {
     taskParams.providerConfig = formData;
     taskParams.kmsConfigName = kmsConfigName;
     taskParams.customerUUID = customerUUID;
+    taskParams.kubernetesResourceDetails = k8sResourceDetails;
     formData.remove("name");
     UUID taskUUID = commissioner.submit(TaskType.EditKMSConfig, taskParams);
     log.info("Submitted edit KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
@@ -80,11 +130,20 @@ public class KMSConfigHelper {
   }
 
   public UUID deleteKMSConfig(UUID customerUUID, UUID configUUID, KeyProvider keyProvider) {
+    return deleteKMSConfig(customerUUID, configUUID, keyProvider, null /* k8sResourceDetails */);
+  }
+
+  public UUID deleteKMSConfig(
+      UUID customerUUID,
+      UUID configUUID,
+      KeyProvider keyProvider,
+      @Nullable KubernetesResourceDetails k8sResourceDetails) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
     taskParams.kmsProvider = keyProvider;
     taskParams.customerUUID = customerUUID;
     taskParams.configUUID = configUUID;
+    taskParams.kubernetesResourceDetails = k8sResourceDetails;
     UUID taskUUID = commissioner.submit(TaskType.DeleteKMSConfig, taskParams);
     log.info("Submitted delete KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
     CustomerTask.create(

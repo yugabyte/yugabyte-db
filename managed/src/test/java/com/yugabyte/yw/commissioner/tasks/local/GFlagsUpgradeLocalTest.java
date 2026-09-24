@@ -176,6 +176,12 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     runConfValidationPrecheckOnUniverse(universe);
   }
 
+  // A real released version >= 2024.2.0.0/2.25.0.0, the threshold below which
+  // use_memory_defaults_optimized_for_ysql is not defaulted to true for new universes.
+  private static final String ELIGIBLE_DB_VERSION = "2024.2.3.0-b116";
+  private static final String ELIGIBLE_DB_VERSION_URL =
+      "https://software.yugabyte.com/releases/2024.2.3.0/yugabyte-2024.2.3.0-b116-%s-%s.tar.gz";
+
   @Test
   public void testNonRestartAndNonRollingUpgrade() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
@@ -208,6 +214,33 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
     verifyYSQL(universe);
+  }
+
+  // PLAT-21736: Master and TServer must agree on use_memory_defaults_optimized_for_ysql, since
+  // they use it to negotiate available memory on a node. This gflag is only defaulted to true
+  // for new universes on DB versions >= 2024.2.0.0/2.25.0.0, so pin an eligible version here
+  // rather than relying on whichever build the local test harness happens to run.
+  @Test
+  public void testNewUniverseSetsMemoryDefaultsOptimizedForYsql() throws InterruptedException {
+    addRelease(ELIGIBLE_DB_VERSION, ELIGIBLE_DB_VERSION_URL);
+    localNodeManager.addVersionBinPath(
+        ELIGIBLE_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + ELIGIBLE_DB_VERSION + "/bin");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.ybSoftwareVersion = ELIGIBLE_DB_VERSION;
+    Universe universe = createUniverse(userIntent);
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    NodeDetails node = universe.getNodesByCluster(primaryCluster.uuid).get(0);
+
+    assertEquals(
+        "true",
+        getVarz(node, universe, UniverseTaskBase.ServerType.MASTER)
+            .get("use_memory_defaults_optimized_for_ysql"));
+    assertEquals(
+        "true",
+        getVarz(node, universe, UniverseTaskBase.ServerType.TSERVER)
+            .get("use_memory_defaults_optimized_for_ysql"));
   }
 
   @Test

@@ -140,6 +140,22 @@ class PgAshVectorIndexTest : public PgAshSingleNode {
   }
 };
 
+class PgAshRelationOidTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    // A read is fast, so it is unlikely to be in-flight when the sampler runs. Force it to
+    // linger in the wait state long enough for the sampler to catch it reliably.
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_wait_code_to_sleep_at=$0,$1,$2",
+        std::to_underlying(ash::WaitStateCode::kCatalogRead),
+        std::to_underlying(ash::WaitStateCode::kTableRead),
+        std::to_underlying(ash::WaitStateCode::kStorageFlush)));
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_sleep_at_wait_state_ms=$0", 2 * kSamplingIntervalMs));
+  }
+};
+
 class PgAshMinRunningHybridTimeTest : public PgAshSingleNode {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -151,6 +167,20 @@ class PgAshMinRunningHybridTimeTest : public PgAshSingleNode {
     options->extra_tserver_flags.push_back(
       "--ysql_yb_disable_wait_for_backends_catalog_version=true");
     options->extra_tserver_flags.push_back("--index_backfill_wait_for_old_txns_ms=30000");
+  }
+};
+
+class PgAshWritePipeliningTest : public PgAshTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_enable_write_pipelining");
+    options->extra_tserver_flags.push_back("--ysql_enable_write_pipelining=true");
+    // Slow the follower ack so the WaitForAsyncWrite RPC actually parks; otherwise the write is
+    // usually replicated before it even arrives.
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_delay_update_consensus_requests_ms=$0", 2 * kTimeMultiplier * kSamplingIntervalMs));
   }
 };
 
@@ -278,8 +308,16 @@ const Configuration kIndexRPCs{
     ash::PggateRPC::kGetIndexBackfillProgress,
     ash::PggateRPC::kWaitForBackendsCatalogVersion},
   .tserver_flags = {
-    "--ysql_yb_test_block_index_phase=postbackfill",
-    "--ysql_disable_index_backfill=false"}};
+    "--ysql_yb_test_block_index_phase=indisvalid",
+    "--ysql_disable_index_backfill=false",
+    "--enable_object_locking_for_table_locks=false",
+    "--ysql_yb_ddl_transaction_block_enabled=false",
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
+    "--ysql_yb_enable_ddl_savepoint_support=false",
+    "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false",
+    "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
+    "--ysql_enable_concurrent_ddl=false"}};
 
 // Test for RPCs which are fired with queries related to replication slots
 const Configuration kReplicationRPCs{
@@ -1670,6 +1708,107 @@ TEST_F_EX(PgAshTest, VectorIndexSearch, PgAshVectorIndexTest) {
   ASSERT_GT(count, 0)
       << "ASH recorded no VectorIndex_Search samples carrying the search query_id; the wait "
       << "event was either not entered or not attributed to the originating query.";
+}
+
+// The wait event aux of a read is the OID of the relation which is read, and the aux of a flush
+// of buffered writes is the OID of the relation they belong to when they all belong to one.
+TEST_F_EX(PgAshTest, ReadsReportRelationOid, PgAshRelationOidTest) {
+  static constexpr auto kCatalogRelName = "pg_statistic_ext_data";
+  static constexpr auto kTableName = "ash_relation_oid_test";
+  static constexpr auto kRowsPerInsert = 100;
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
+
+  // Read both relations continuously so the sampler observes the (deliberately slowed) reads.
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop) {
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kCatalogRelName)));
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName)));
+    }
+  });
+
+  // A multi row insert buffers its writes and flushes them in one request. The table has no
+  // secondary index, so the flushed operations all belong to it and the flush reports its OID.
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) i",
+          kTableName, i * kRowsPerInsert + 1, (i + 1) * kRowsPerInsert));
+    }
+  });
+
+  const auto ash_query = Format(
+      "SELECT COUNT(*) FILTER (WHERE wait_event = 'CatalogRead' "
+      "  AND wait_event_aux = '$0'::regclass::oid::text) > 0 "
+      "AND COUNT(*) FILTER (WHERE wait_event = 'TableRead' "
+      "  AND wait_event_aux = '$1'::regclass::oid::text) > 0 "
+      "AND COUNT(*) FILTER (WHERE wait_event = 'StorageFlush' "
+      "  AND wait_event_aux = '$1'::regclass::oid::text) > 0 "
+      "FROM yb_active_session_history",
+      kCatalogRelName, kTableName);
+  const auto status = WaitFor([this, &ash_query]() -> Result<bool> {
+    return conn_->FetchRow<bool>(ash_query);
+  }, 60s * kTimeMultiplier,
+     "wait for CatalogRead, TableRead and StorageFlush samples with their relation OID");
+  thread_holder_.Stop();
+  ASSERT_OK(status);
+}
+
+// With write pipelining the write is acked before Raft replication. Check that the tracking
+// WaitForAsyncWrite RPC and the deferred commit both attribute their waits to the issuing
+// statement instead of landing at query_id 0.
+TEST_F_EX(PgAshTest, WritePipeliningWaitAttributedToStatement, PgAshWritePipeliningTest) {
+  static constexpr auto kTableName = "pipelined_tbl";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; i += 2) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 VALUES ($1, 0), ($2, 0)", kTableName, i, i + 1));
+      ASSERT_OK(conn.CommitTransaction());
+    }
+  });
+
+  // Let ASH take several samples.
+  SleepFor(kSamplingIntervalMs * 40ms * kTimeMultiplier);
+  thread_holder_.Stop();
+
+  const auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO $0%'", kTableName)));
+
+  // yb_active_session_history is node-local, so aggregate across all tservers.
+  int64_t attributed = 0;
+  int64_t drained = 0;
+  for (auto* ts : cluster_->tserver_daemons()) {
+    auto conn = ASSERT_RESULT(ConnectToTs(*ts));
+    attributed += ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history "
+        "WHERE wait_event = 'Raft_WaitingForPipelinedReplication' AND query_id = $0", query_id)));
+    // Also make sure we aren't seeing any unattributed Raft_WaitingForReplication events.
+    const auto unattributed = ASSERT_RESULT((conn.FetchRows<std::string, int64_t>(
+        "SELECT wait_event, COUNT(*) FROM yb_active_session_history "
+        "WHERE query_id = 0 AND wait_event IN "
+        "('Raft_WaitingForPipelinedReplication', 'YBClient_WaitingForPipelinedWrites', "
+        "'Raft_WaitingForReplication') "
+        "GROUP BY 1 ORDER BY 2 DESC")));
+    for (const auto& [event, count] : unattributed) {
+      ADD_FAILURE() << count << " " << event << " samples with query_id=0 on tserver "
+                    << ts->uuid() << "; pipelining is dropping ASH metadata.";
+    }
+    drained += ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM yb_active_session_history "
+        "WHERE wait_event = 'YBClient_WaitingForPipelinedWrites' AND query_id != 0"));
+  }
+  ASSERT_GT(attributed, 0) << "No Raft_WaitingForPipelinedReplication samples carrying the "
+                           << "INSERT's query_id; not entered, or not attributed.";
+  ASSERT_GT(drained, 0) << "No attributed YBClient_WaitingForPipelinedWrites samples; the commit "
+                        << "was not deferred behind the async writes, or the drain is not "
+                        << "instrumented.";
 }
 
 } // namespace yb::pgwrapper

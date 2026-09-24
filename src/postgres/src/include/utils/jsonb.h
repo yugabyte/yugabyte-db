@@ -412,4 +412,9 @@ extern Datum jsonb_set_element(Jsonb *jb, Datum *path, int path_len,
 							   JsonbValue *newval);
 extern Datum jsonb_get_element(Jsonb *jb, Datum *path, int npath,
 							   bool *isnull, bool as_text);
+
+/* YB helper functions */
+extern bool yb_datum_to_jsonb_non_string_scalar_value(Datum val, Oid val_type,
+													  JsonbParseState **pstate);
+
 #endif							/* __JSONB_H__ */

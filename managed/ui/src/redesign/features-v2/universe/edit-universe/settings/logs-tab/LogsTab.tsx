@@ -26,7 +26,6 @@ import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandli
 import { AuditLogSettingsPanel } from './db-audit-log/AuditLogSettingsPanel';
 import { buildDisableTelemetryConfig as buildDisableAuditLogTelemetryConfig } from './db-audit-log/auditLogHelpers';
 import { LogConfigCard } from './LogConfigCard';
-import { NavigateToTelemetryExportConfirmationModal } from './NavigateToTelemetryExportConfirmationModal';
 import { QueryLogSettingsPanel } from './query-log/QueryLogSettingsPanel';
 import { buildDisableTelemetryConfig as buildDisableQueryLogTelemetryConfig } from './query-log/queryLogHelpers';
 import { TelemetryConfigConfirmationModal } from '../shared/TelemetryConfigConfirmationModal';
@@ -124,8 +123,6 @@ export const LogsTab = () => {
   const isUniverseReady = useIsUniverseReady();
   const [isAuditLogSettingsModalOpen, setAuditLogSettingsModalOpen] = useState(false);
   const [isQueryLogSettingsModalOpen, setQueryLogSettingsModalOpen] = useState(false);
-  const [isNavigateToTelemetryExportModalOpen, setNavigateToTelemetryExportModalOpen] =
-    useState(false);
   const [disableConfigType, setDisableConfigType] = useState<DisableConfigType | null>(null);
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
@@ -267,7 +264,7 @@ export const LogsTab = () => {
               telemetryLink: (
                 <TelemetryExportTabLink
                   className={classes.telemetryExportLink}
-                  onClick={() => setNavigateToTelemetryExportModalOpen(true)}
+                  onClick={() => browserHistory.push(telemetryExportTabRoute)}
                 />
               )
             }}
@@ -292,18 +289,6 @@ export const LogsTab = () => {
           universeName={universeName}
           replicationFactor={replicationFactor}
           onClose={() => setQueryLogSettingsModalOpen(false)}
-        />
-      )}
-      {isNavigateToTelemetryExportModalOpen && (
-        <NavigateToTelemetryExportConfirmationModal
-          onSubmit={() => {
-            setNavigateToTelemetryExportModalOpen(false);
-            browserHistory.push(telemetryExportTabRoute);
-          }}
-          modalProps={{
-            open: isNavigateToTelemetryExportModalOpen,
-            onClose: () => setNavigateToTelemetryExportModalOpen(false)
-          }}
         />
       )}
       {disableConfigType && (

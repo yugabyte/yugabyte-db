@@ -672,6 +672,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
     req.set_tablet_id(tablet_->tablet_id());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
     req.set_mark_backfill_done(true);
+    req.set_birth_time(birth_time_);
     schema_version_ = l->pb.version();
   }
 
@@ -1191,6 +1192,7 @@ void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
 }
 
 bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
+  TEST_SYNC_POINT("AsyncRemoveTableFromTablet::SendRequest");
   ts_admin_proxy_->RemoveTableFromTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
                       << req_.DebugString();

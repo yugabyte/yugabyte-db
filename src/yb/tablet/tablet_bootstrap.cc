@@ -669,18 +669,32 @@ class TabletBootstrap {
 
   // Makes updates to tablet meta if required.
   Status MaybeUpdateMetaAfterTabletHasBeenOpened(const Tablet& tablet) {
+    bool updated = false;
+
     // For backward compatibility: allow old tablets to use benefits of one-file-at-a-time
     // post split compaction algorithm by explicitly setting the value for
     // post_split_compaction_file_number_upper_bound.
     if (tablet.regular_db() && tablet.key_bounds().IsInitialized() &&
-        !meta_->parent_data_compacted() &&
+        !meta_->rocksdb_parent_data_compacted() &&
         !meta_->post_split_compaction_file_number_upper_bound().has_value()) {
       meta_->set_post_split_compaction_file_number_upper_bound(
           tablet.regular_db()->GetNextFileNumber());
-      RETURN_NOT_OK(meta_->Flush());
+      updated = true;
     }
 
-    return Status::OK();
+    // A binary rollback drops KvStoreInfo.split_generation, while the vector index manifests keep
+    // it. Restore the superblock so the next split increments past the persisted generation.
+    if (meta_->split_generation() == 0) {
+      const auto persisted = tablet.vector_indexes().MaxPersistedSplitGeneration();
+      if (persisted != 0) {
+        LOG_WITH_PREFIX(INFO)
+            << "Restoring split_generation to " << persisted << " from vector index manifest";
+        meta_->set_split_generation(persisted);
+        updated = true;
+      }
+    }
+
+    return updated ? meta_->Flush() : Status::OK();
   }
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir
@@ -785,7 +799,7 @@ class TabletBootstrap {
     VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir " << wal_path;
     // Open the reader.
     scoped_refptr<LogIndex> index(nullptr);
-    RETURN_NOT_OK_PREPEND(
+    log_reader_ = VERIFY_RESULT_PREPEND(
         LogReader::Open(
             GetEnv(),
             index,
@@ -793,8 +807,7 @@ class TabletBootstrap {
             wal_path,
             tablet_->GetTableMetricsEntity().get(),
             tablet_->GetTabletMetricsEntity().get(),
-            data_.tablet_init_data.read_wal_mem_tracker,
-            &log_reader_),
+            data_.tablet_init_data.read_wal_mem_tracker),
         "Could not open LogReader. Reason");
     return Status::OK();
   }
@@ -1998,12 +2011,15 @@ class TabletBootstrap {
           const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
 
           if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
-            LOG_WITH_PREFIX(INFO) << "Deleting old temporary snapshot directory " << snapshot_dir;
+            const auto snapshot_dir_type =
+                TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir) ? "tombstoned" : "temporary";
+            LOG_WITH_PREFIX(INFO) << "Deleting old " << snapshot_dir_type
+                                  << " snapshot directory " << snapshot_dir;
 
             s = meta_->fs_manager()->env()->DeleteRecursively(snapshot_dir);
             if (!s.ok()) {
-              LOG_WITH_PREFIX(WARNING) << "Cannot delete old temporary snapshot directory "
-                                       << snapshot_dir << ": " << s;
+              LOG_WITH_PREFIX(WARNING) << "Cannot delete old " << snapshot_dir_type
+                                       << " snapshot directory " << snapshot_dir << ": " << s;
             }
 
             s = meta_->fs_manager()->env()->SyncDir(top_snapshots_dir);
@@ -2042,7 +2058,7 @@ class TabletBootstrap {
   TabletStatusListener* listener_;
   TabletPtr tablet_;
   scoped_refptr<log::Log> log_;
-  std::unique_ptr<log::LogReader> log_reader_;
+  log::LogReaderPtr log_reader_;
   std::unique_ptr<ReplayState> replay_state_;
 
   consensus::ConsensusMetadata* cmeta_;

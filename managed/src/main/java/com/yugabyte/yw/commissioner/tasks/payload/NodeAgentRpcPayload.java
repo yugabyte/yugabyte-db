@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -45,21 +46,23 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
+import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
+import com.yugabyte.yw.nodeagent.GcsOnAwsConfig;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.S3OnGcpConfig;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
@@ -69,28 +72,28 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
 public class NodeAgentRpcPayload {
   public static final String DEFAULT_CONFIGURE_USER = "yugabyte";
+  // Fixed AWS profile name written to ~/.aws/config and exported as AWS_PROFILE for S3-on-GCP
+  // federation; internal to the node, so not user-configurable.
+  public static final String YB_CROSS_CLOUD_FEDERATION_AWS_PROFILE = "yb-cross-cloud-federation";
   private final ReleaseManager releaseManager;
   private final Config appConfig;
   private final OtelCollectorConfigGenerator otelCollectorConfigGenerator;
@@ -131,22 +134,23 @@ public class NodeAgentRpcPayload {
     return result;
   }
 
-  private List<String> getMountPoints(NodeTaskParams params) {
-    if (StringUtils.isNotBlank(params.deviceInfo.mountPoints)) {
-      return Arrays.stream(params.deviceInfo.mountPoints.split("\\s*,\\s*"))
+  private List<String> getMountPoints(DeviceInfo deviceInfo, CloudType cloudType) {
+    Objects.requireNonNull(
+        deviceInfo, () -> "DeviceInfo cannot be null for cloud type: " + cloudType);
+    if (StringUtils.isNotBlank(deviceInfo.mountPoints)) {
+      return Arrays.stream(deviceInfo.mountPoints.split("\\s*,\\s*"))
           .map(String::trim)
           .filter(s -> !s.isEmpty())
           .collect(Collectors.toList());
     }
-    if (params.deviceInfo.numVolumes != null
-        && params.getProvider().getCloudCode() != Common.CloudType.onprem) {
-      List<String> mountPoints = new ArrayList<>();
-      for (int i = 0; i < params.deviceInfo.numVolumes; i++) {
-        mountPoints.add("/mnt/d" + i);
-      }
-      return mountPoints;
+    if (deviceInfo.numVolumes != null && cloudType != Common.CloudType.onprem) {
+      return IntStream.range(0, deviceInfo.numVolumes)
+          .mapToObj(i -> "/mnt/d" + i)
+          .collect(Collectors.toList());
     }
-    return Collections.emptyList();
+    // Avoid silent failure if mount points cannot be determined.
+    throw new IllegalArgumentException(
+        "Mount points cannot be determined for cloud type: " + cloudType);
   }
 
   private String getYbPackage(ReleaseContainer release, Architecture arch, Region region) {
@@ -173,6 +177,13 @@ public class NodeAgentRpcPayload {
     return null;
   }
 
+  /**
+   * Name of the otel collector archive as it lands in the third-party package directory. The
+   * dependency list is fetched with {@code wget -i}, which saves each file under its URL basename,
+   * so this must track the archive names published to ybm-package-store. The executable inside is
+   * named {@code otelcol-unified}; node-agent renames it to {@code otelcol-contrib} on extract to
+   * keep the running process name stable.
+   */
   private String getOtelCollectorPackagePath(Architecture arch) {
     String architecture = "";
     if (arch.equals(Architecture.x86_64)) {
@@ -181,7 +192,7 @@ public class NodeAgentRpcPayload {
       architecture = "arm64";
     }
     return String.format(
-        "otelcol-contrib_%s_%s_%s.tar.gz",
+        "otelcol-unified_%s_%s_%s.tar.gz",
         ManageOtelCollector.OtelCollectorVersion,
         ManageOtelCollector.OtelCollectorPlatform,
         architecture);
@@ -429,7 +440,8 @@ public class NodeAgentRpcPayload {
         null);
     installYbcInputBuilder.setRemoteTmp(customTmpDirectory);
     installYbcInputBuilder.setYbHomeDir(provider.getYbHome());
-    installYbcInputBuilder.addAllMountPoints(getMountPoints(taskParams));
+    installYbcInputBuilder.addAllMountPoints(
+        getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
     return installYbcInputBuilder.build();
   }
 
@@ -447,7 +459,8 @@ public class NodeAgentRpcPayload {
 
     configureServerInputBuilder.setRemoteTmp(customTmpDirectory);
     configureServerInputBuilder.setYbHomeDir(provider.getYbHome());
-    configureServerInputBuilder.addAllMountPoints(getMountPoints(taskParams));
+    configureServerInputBuilder.addAllMountPoints(
+        getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
     if (!nodeDetails.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
       // For RR we don't setup master
       configureServerInputBuilder.addProcesses("tserver");
@@ -465,6 +478,25 @@ public class NodeAgentRpcPayload {
             ? configureCgroupOverride
             : Util.configureCgroup(cluster.userIntent, provider, false, confGetter);
     configureServerInputBuilder.setConfigureCgroup(configureCgroup);
+
+    // Bake YBA clock-sync runtime config into clock-sync.sh.
+    // See NodeManager.getInlineWaitForClockSyncCommandArgs for more details.
+    boolean clockSkewWaitEnabled =
+        confGetter.getGlobalConf(GlobalConfKeys.acceptableClockSkewWaitEnabled);
+    configureServerInputBuilder.setAcceptableClockSkewWaitEnabled(clockSkewWaitEnabled);
+    if (clockSkewWaitEnabled) {
+      configureServerInputBuilder.setAcceptableClockSkewSec(
+          confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew).toNanos()
+              / Math.pow(10, 9));
+      configureServerInputBuilder.setAcceptableClockSkewMaxTries(
+          (int) confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds());
+    }
+    NodeDetails node = universe.getNode(taskParams.nodeName);
+    if (node != null
+        && cluster != null
+        && cluster.getProviderCloudType(nodeDetails).isPublicCloud()) {
+      configureServerInputBuilder.setCheckDataVolumes(true);
+    }
     return configureServerInputBuilder.build();
   }
 
@@ -510,6 +542,14 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
     installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
+
+    // The purge script groups multi-line YSQL audit records using this pattern,
+    // derived from the same log_line_prefix the collector uses. Set in both
+    // full and refresh-only modes, and recomputed from current gflags on every
+    // ManageOtelCollector run, so a log_line_prefix change reaches the node.
+    installOtelCollectorInputBuilder.setYsqlAuditLineStartRegex(
+        otelCollectorConfigGenerator.generateAuditLineStartEre(
+            GFlagsUtil.getLogLinePrefix(queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
 
     // Set memory limit for OTel collector
     int otelColMaxMemory =
@@ -561,7 +601,8 @@ public class NodeAgentRpcPayload {
             config.getYcqlAuditConfig().getLogRetentionDays());
       }
     }
-    installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
+    installOtelCollectorInputBuilder.addAllMountPoints(
+        getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
 
     if (!refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       String otelCollectorConfigFile =
@@ -587,22 +628,9 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      Set<UUID> exporterUUIDs = new HashSet<>();
-      if (config != null && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
-        for (UniverseLogsExporterConfig logsExporterConfig :
-            config.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (queryLogConfig != null
-          && CollectionUtils.isNotEmpty(queryLogConfig.getUniverseLogsExporterConfig())) {
-        for (UniverseQueryLogsExporterConfig logsExporterConfig :
-            queryLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-
-      for (UUID exporterUUID : exporterUUIDs) {
+      // Same helper the legacy NodeManager path uses, so every export section contributes its
+      // credential-bearing exporters rather than only audit and query logs.
+      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
         installOtelCollectorInputBuilder =
             setupInstallOtelCollectorBitsEnv(
                 installOtelCollectorInputBuilder,
@@ -615,6 +643,70 @@ public class NodeAgentRpcPayload {
     }
 
     return installOtelCollectorInputBuilder.build();
+  }
+
+  /**
+   * Builds the node-agent input for cross-cloud federated IAM on a node: sets the flow direction
+   * from the node's cloud and fills the audience (and, for S3-on-GCP, the role ARN). Only static
+   * config is passed; credentials are minted in-process on the node.
+   */
+  public ConfigureCloudFederationInput setupConfigureCloudFederationBits(
+      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+    ConfigureCloudFederationInput.Builder builder = ConfigureCloudFederationInput.newBuilder();
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
+    builder.setYbHomeDir(provider.getYbHome());
+    if (provider.getDetails() != null) {
+      builder.setIsAirgap(provider.getDetails().airGapInstall);
+    }
+    builder.setRemoteTmp(confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
+
+    String audience = null;
+    String s3RoleArn = null;
+    boolean enabled = true;
+    if (taskParams instanceof ManageCloudFederation.Params) {
+      ManageCloudFederation.Params params = (ManageCloudFederation.Params) taskParams;
+      audience = params.audience;
+      s3RoleArn = params.s3RoleArn;
+      enabled = params.enabled;
+    }
+    builder.setEnabled(enabled);
+
+    CloudType nodeCloud = cluster.userIntent.providerType;
+    // Provider-audience mode. AWS-backed DB node -> GCS (native AWS or on-prem on AWS): renders
+    // the external_account JSON from the audience. GCP DB node -> S3: renders the
+    // AssumeRoleWithWebIdentity credential_process from role ARN + audience. YBA passes only
+    // static config, never a minted credential.
+    if (nodeCloud == CloudType.aws || nodeCloud == CloudType.onprem) {
+      builder.setFlowDirection(ConfigureCloudFederationInput.FlowDirection.GCS_ON_AWS);
+      if (enabled) {
+        if (StringUtils.isBlank(audience)) {
+          throw new RuntimeException(
+              "GCP workload-identity audience is required for GCS-on-AWS federation");
+        }
+        builder.setGcsOnAws(GcsOnAwsConfig.newBuilder().setAudience(audience).build());
+      }
+    } else if (nodeCloud == CloudType.gcp) {
+      builder.setFlowDirection(ConfigureCloudFederationInput.FlowDirection.S3_ON_GCP);
+      if (enabled) {
+        if (StringUtils.isBlank(s3RoleArn) || StringUtils.isBlank(audience)) {
+          throw new RuntimeException(
+              "AWS role ARN and audience are required for S3-on-GCP federation");
+        }
+        builder.setS3OnGcp(
+            S3OnGcpConfig.newBuilder()
+                .setRoleArn(s3RoleArn)
+                .setAudience(audience)
+                .setProfileName(YB_CROSS_CLOUD_FEDERATION_AWS_PROFILE)
+                .build());
+      }
+    } else {
+      throw new RuntimeException(
+          String.format(
+              "Cross-cloud federation (provider-audience mode) not applicable for node cloud %s",
+              nodeCloud));
+    }
+    return builder.build();
   }
 
   public InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(
@@ -689,15 +781,20 @@ public class NodeAgentRpcPayload {
             .setServerName(serverName)
             .setServerHome(serverHome)
             .setDeconfigure(taskParams.deconfigure);
-    if (taskParams.checkVolumesAttached) {
-      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams.placementUuid);
+    // Mount paths / volume count are only needed for cloud START so the node can
+    // wait on attached data volumes. On-prem paths are plain directories.
+    if (taskParams.shouldCheckVolumeAttached()) {
       NodeDetails node = universe.getNode(taskParams.nodeName);
-      if (node != null
-          && cluster != null
-          && cluster.userIntent.getDeviceInfoForNode(node) != null
-          && Util.getProviderForNode(nodeDetails, cluster).getCloudCode() != CloudType.onprem) {
-        serverControlInputBuilder.setNumVolumes(
-            cluster.userIntent.getDeviceInfoForNode(node).numVolumes);
+      if (node != null) {
+        DeviceInfo deviceInfo = null;
+        UniverseDefinitionTaskParams.Cluster cluster =
+            Objects.requireNonNull(universe.getCluster(node.placementUuid));
+        CloudType cloudType = Util.getProviderForNode(nodeDetails, cluster).getCloudCode();
+        if (cloudType != CloudType.onprem
+            && (deviceInfo = cluster.userIntent.getDeviceInfoForNode(node)) != null) {
+          serverControlInputBuilder.addAllMountPoints(getMountPoints(deviceInfo, cloudType));
+          serverControlInputBuilder.setCheckDataVolumes(true);
+        }
       }
     }
     return serverControlInputBuilder.build();

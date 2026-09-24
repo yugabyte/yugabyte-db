@@ -36,4 +36,4 @@ Specify the name of the database.
 
 ## See also
 
-- [`CREATE DATABASE`](../ddl_create_database)
+- [CREATE DATABASE](../ddl_create_database)

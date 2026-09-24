@@ -119,10 +119,13 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache = false) = 0;
+  // 'out_read_ht', when set, receives the hybrid time the underlying pg_yb_catalog_version read
+  // was served at. Only meaningful with use_cache=false; a cached answer leaves it untouched.
   virtual Status GetYsqlAllDBCatalogVersions(
       bool use_cache,
       DbOidToCatalogVersionMap* versions,
-      uint64_t* fingerprint) = 0;
+      uint64_t* fingerprint,
+      HybridTime* out_read_ht = nullptr) = 0;
   virtual Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version,
@@ -338,7 +341,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
-  virtual Status ShouldSplitValidCandidate(
+  virtual Result<SplitPhase> ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
   virtual Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;

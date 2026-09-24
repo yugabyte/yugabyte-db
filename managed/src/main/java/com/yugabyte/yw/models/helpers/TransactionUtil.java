@@ -110,7 +110,7 @@ public final class TransactionUtil {
         if (attemptCount > 1) {
           log.info("Retrying({})...", attemptCount);
         } else {
-          log.debug("Trying({})...", attemptCount);
+          log.trace("Trying({})...", attemptCount);
         }
         runnable.run();
         transaction.commit();

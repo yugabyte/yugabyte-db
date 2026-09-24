@@ -727,8 +727,14 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessError(
                                       s.ToUserMessage());
   }
 
-  return make_unique<ErrorResponse>(*request_, ErrorResponse::Code::SERVER_ERROR,
-                                    s.ToUserMessage());
+  // A TryAgain reaching the client means the statement was restarted (conflict, read restart) until
+  // its deadline expired, i.e. the server is contended, not broken. Report it as OVERLOADED, which
+  // redirects the client to the next host like SERVER_ERROR does but without defuncting the
+  // connection: on SERVER_ERROR a CQL driver tears down the whole pool, so a contention spike costs
+  // the client every connection it has.
+  const auto code =
+      s.IsTryAgain() ? ErrorResponse::Code::OVERLOADED : ErrorResponse::Code::SERVER_ERROR;
+  return make_unique<ErrorResponse>(*request_, code, s.ToUserMessage());
 }
 
 namespace {

@@ -9,6 +9,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
+import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -36,6 +37,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
@@ -85,6 +88,7 @@ public class BackupGarbageCollector {
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
+  private static final String OCI = Util.OCI;
   private static final String NFS = Util.NFS;
   private static final int BACKUP_DELETION_MAX_RETRIES_COUNT = 3;
 
@@ -382,6 +386,34 @@ public class BackupGarbageCollector {
       BackupCategory category = backup.getCategory();
       CustomerConfigStorageData configData =
           (CustomerConfigStorageData) customerConfig.getDataObject();
+      // Cross-cloud federation (useGcpIam GCS): stamp the audience so YBA can delete bucket objects
+      // via in-process WIF. Prefer the snapshot on the backup (survives universe + provider
+      // deletion); fall back to the live universe's provider for older backups predating it.
+      if (configData instanceof CustomerConfigStorageGCSData
+          && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
+        String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
+        if (StringUtils.isNotBlank(snapshotAudience)) {
+          ((CustomerConfigStorageGCSData) configData).federationAudience = snapshotAudience;
+        } else {
+          Universe.maybeGet(backup.getUniverseUUID())
+              .ifPresent(u -> backupHelper.applyCrossCloudFederationAudience(configData, u));
+        }
+      } else if (configData instanceof CustomerConfigStorageS3Data
+          && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+        // Cross-cloud federation (S3-on-GCP): stamp role ARN + audience so YBA can
+        // delete objects via in-process AssumeRoleWithWebIdentity. Prefer the backup snapshot
+        // (survives universe/provider deletion); else fall back to the live universe's provider.
+        CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+        String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
+        String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
+        if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
+          s3.federationAudience = snapshotAudience;
+          s3.federationRoleArn = snapshotRoleArn;
+        } else {
+          Universe.maybeGet(backup.getUniverseUUID())
+              .ifPresent(u -> backupHelper.applyCrossCloudFederationAudience(configData, u));
+        }
+      }
       if (configData.immutableStorage) {
         log.info(
             "Skipping cloud backup deletion for backup {} as this is immutable storage, will only"
@@ -395,19 +427,20 @@ public class BackupGarbageCollector {
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
         switch (customerConfig.getName()) {
-            // for cases S3, AZ, GCS, we get Util from CloudUtil class
+            // for cases S3, AZ, GCS, OCI we get Util from CloudUtil class
           case S3:
           case GCS:
           case AZ:
+          case OCI:
             CloudUtil cloudUtil = storageUtilFactory.getCloudUtil(customerConfig.getName());
             backupLocationsMap = BackupUtil.getBackupLocations(backup);
             int numRetries = 0;
             long sleepTimeInMilliSeconds = 5000;
             while (numRetries < BACKUP_DELETION_MAX_RETRIES_COUNT && !deletedSuccessfully) {
               if (cloudUtil.deleteKeyIfExists(
-                      customerConfig.getDataObject(),
+                      configData,
                       backupLocationsMap.get(YbcBackupUtil.DEFAULT_REGION_STRING).get(0))
-                  && cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocationsMap)) {
+                  && cloudUtil.deleteStorage(configData, backupLocationsMap)) {
                 deletedSuccessfully = true;
               }
               if (!deletedSuccessfully) {

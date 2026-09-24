@@ -84,12 +84,14 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DEFINE_RUNTIME_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
-             "evicted from the config.");
+             "evicted from the config. This value should match "
+             "log_min_seconds_to_retain.");
 TAG_FLAG(follower_unavailable_considered_failed_sec, advanced);
 DEFINE_validator(follower_unavailable_considered_failed_sec,
   FLAG_DELAYED_COND_VALIDATOR(
-      _value >= FLAGS_raft_heartbeat_interval_ms *
-                static_cast<double>(FLAGS_leader_failure_max_missed_heartbeat_periods) / 1000,
+      _value >= FINAL_FLAG_VALUE(raft_heartbeat_interval_ms) *
+                static_cast<double>(FINAL_FLAG_VALUE(leader_failure_max_missed_heartbeat_periods)) /
+                    1000,
       yb::Format("Must be >= ($0 * $1) / 1000",
                  "raft_heartbeat_interval_ms", "leader_failure_max_missed_heartbeat_periods")));
 
@@ -265,12 +267,11 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
       << queue_state_.ToString();
   CheckPeersInActiveConfigIfLeaderUnlocked();
 
-  // Reset last communication time with all peers to reset the clock on the
-  // failure timeout.
-  MonoTime now(MonoTime::Now());
+  // Leases are per leadership term. last_successful_communication_time is not: SetLeaderMode also
+  // runs on every config change, and restarting the failure clock there would make a dead follower
+  // look live again (blocking eviction and stepdown). Newly tracked peers already start at Now().
   for (const PeersMap::value_type& entry : peers_map_) {
     entry.second->ResetLeaderLeases();
-    entry.second->last_successful_communication_time = now;
   }
 }
 
@@ -1089,51 +1090,43 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
-  TrackedPeer* peer = nullptr;
-  const TrackedPeer* rbs_source = nullptr;
-  int64_t current_term;
-  OpId pending_config_op_id;
-  {
-    LockGuard lock(queue_lock_);
-    DCHECK_EQ(queue_state_.state, State::kQueueOpen);
-    DCHECK_NE(uuid, local_peer_uuid_);
-    peer = FindPtrOrNull(peers_map_, uuid);
-    if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
-      return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
-    }
+  // The whole request is populated under queue_lock_: rbs_source points into peers_map_, and
+  // UntrackPeer deletes those objects under the same lock.
+  LockGuard lock(queue_lock_);
+  DCHECK_EQ(queue_state_.state, State::kQueueOpen);
+  DCHECK_NE(uuid, local_peer_uuid_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
+  if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
+    return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
+  }
 
-    if (PREDICT_FALSE(!peer->needs_remote_bootstrap)) {
-      return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
-    }
+  if (PREDICT_FALSE(!peer->needs_remote_bootstrap)) {
+    return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
+  }
 
-    if (peer->member_type == PeerMemberType::VOTER ||
-        peer->member_type == PeerMemberType::OBSERVER) {
-      LOG(INFO) << "Remote bootstrapping peer " << uuid << " with type "
-                << PeerMemberType_Name(peer->member_type);
-    }
+  if (peer->member_type == PeerMemberType::VOTER ||
+      peer->member_type == PeerMemberType::OBSERVER) {
+    LOG(INFO) << "Remote bootstrapping peer " << uuid << " with type "
+              << PeerMemberType_Name(peer->member_type);
+  }
 
-    // Check if a closest follower can serve as the RBS source.
-    auto rbs_from_leader_only =
-        FLAGS_remote_bootstrap_from_leader_only ||
-        !peer->cloud_info.has_value() ||
-        peer->failed_bootstrap_attempts_from_non_leader >=
-            FLAGS_max_remote_bootstrap_attempts_from_non_leader;
+  // Check if a closest follower can serve as the RBS source.
+  auto rbs_from_leader_only =
+      FLAGS_remote_bootstrap_from_leader_only ||
+      !peer->cloud_info.has_value() ||
+      peer->failed_bootstrap_attempts_from_non_leader >=
+          FLAGS_max_remote_bootstrap_attempts_from_non_leader;
 
-    rbs_source = rbs_from_leader_only ? local_peer_
-                                      : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
-    current_term = queue_state_.current_term;
-    pending_config_op_id = queue_state_.pending_config_op_id;
+  const TrackedPeer* rbs_source =
+      rbs_from_leader_only ? local_peer_ : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
 
-    // Acess/Edit peer's fields within queue_lock_'s scope to avoid race. For instance, this peer's
-    // information could be accessed while finding RBS source for another newly added peer.
-    peer->needs_remote_bootstrap = false;
-    if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
-      CHECK_EQ(
-          TablespaceParser::GetLocalityLevel(
-              rbs_source->cloud_info.value(), peer->cloud_info.value()),
-          LocalityLevel::kZone)
-          << "Expected rbs source to be in same zone as new peer";
-    }
+  peer->needs_remote_bootstrap = false;
+  if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
+    CHECK_EQ(
+        TablespaceParser::GetLocalityLevel(
+            rbs_source->cloud_info.value(), peer->cloud_info.value()),
+        LocalityLevel::kZone)
+        << "Expected rbs source to be in same zone as new peer";
   }
 
   req->Clear();
@@ -1141,7 +1134,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   req->set_tablet_id(tablet_id_);
   // can use leader's current term as the bootstrap request is served by the leader or any other
   // closest peer that is in the same term (when FLAGS_remote_bootstrap_from_leader_only is false).
-  req->set_caller_term(current_term);
+  req->set_caller_term(queue_state_.current_term);
   // populate req with the closest peer's info for remote bootstrapping the tracked peer
   req->set_bootstrap_source_peer_uuid(rbs_source->uuid);
   *req->mutable_bootstrap_source_private_addr() = {
@@ -1151,11 +1144,11 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   if (rbs_source->cloud_info.has_value()) {
     *req->mutable_bootstrap_source_cloud_info() = rbs_source->cloud_info.value();
   }
-  if (pending_config_op_id.is_valid_not_empty()) {
-    pending_config_op_id.ToPB(req->mutable_pending_config_op_id());
+  if (queue_state_.pending_config_op_id.is_valid_not_empty()) {
+    queue_state_.pending_config_op_id.ToPB(req->mutable_pending_config_op_id());
   }
 
-  if (rbs_source->uuid != local_peer_->uuid) {
+  if (rbs_source->uuid != local_peer_uuid_) {
     // rbs source is not the leader, hence set the leader info.
     req->set_is_served_by_tablet_leader(false);
     req->set_tablet_leader_peer_uuid(uuid);
@@ -1645,12 +1638,6 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       majority_replicated.leader_lease_expiration = LeaderLeaseExpirationWatermark();
       majority_replicated.ht_lease_expiration = HybridTimeLeaseExpirationWatermark();
       majority_replicated.num_sst_files = NumSSTFilesWatermark();
-      // Report the peer only once it has received every appended op, not just every applied op.
-      // Async writes are acked at append, so this peer needs to have received all of those ops.
-      // Without async writes, acks happen at commit, which the last appended op also covers.
-      if (peer->last_received >= queue_state_.last_appended) {
-        majority_replicated.peer_got_all_ops = peer->uuid;
-      }
     }
 
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_op_id);
@@ -1936,6 +1923,18 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
         peer_uuid, queue_state_.majority_replicated_op_id, peer->last_received);
   }
   return peer_can_be_leader;
+}
+
+bool PeerMessageQueue::IsPeerLive(const std::string& peer_uuid) const {
+  std::lock_guard lock(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  // Untracked peers are treated as live so a just-added PRE_VOTER cannot race past this check
+  // before the queue starts tracking it.
+  if (peer == nullptr) {
+    return true;
+  }
+  return MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time).ToSeconds() <=
+         FLAGS_follower_unavailable_considered_failed_sec;
 }
 
 OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {

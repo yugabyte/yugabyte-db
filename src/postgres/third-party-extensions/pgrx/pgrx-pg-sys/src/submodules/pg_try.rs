@@ -8,9 +8,9 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use crate::errcodes::PgSqlErrorCode;
-use crate::panic::{downcast_panic_payload, CaughtError};
+use crate::panic::{CaughtError, downcast_panic_payload};
 use std::collections::BTreeMap;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe, RefUnwindSafe, UnwindSafe};
+use std::panic::{AssertUnwindSafe, RefUnwindSafe, UnwindSafe, catch_unwind, resume_unwind};
 
 /// [`PgTryBuilder`] is a mechanism to mimic Postgres C macros `PG_TRY` and `PG_CATCH`.
 ///

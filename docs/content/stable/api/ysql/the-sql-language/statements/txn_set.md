@@ -199,4 +199,4 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-- [`SHOW TRANSACTION`](../txn_show)
+- [SHOW TRANSACTION](../txn_show)

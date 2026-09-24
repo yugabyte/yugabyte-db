@@ -1271,9 +1271,6 @@ extern void _bt_check_third_page(Relation rel, Relation heap,
 								 bool needheaptidspace, Page page, IndexTuple newtup);
 extern bool _bt_allequalimage(Relation rel, bool debugmessage);
 
-extern int	_bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
-									bool reverse, Datum *elems, int nelems);
-
 /*
  * prototypes for functions in nbtvalidate.c
  */

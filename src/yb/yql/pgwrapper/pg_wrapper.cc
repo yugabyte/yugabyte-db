@@ -62,6 +62,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/to_stream.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -70,13 +71,15 @@
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_bool(openssl_require_fips);
+DECLARE_bool(enable_qos);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
 DEFINE_NON_RUNTIME_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_validator(postmaster_cgroup,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value.empty() || !yb::tserver::TServerCgroupManagementEnabled(),
+        _value.empty() ||
+            !yb::tserver::TServerCgroupManagementEnabled(FINAL_FLAG_VALUE(enable_qos)),
         "postmaster_cgroup cannot be set when tserver cgroup management is enabled "
         "(enable_qos)"));
 
@@ -357,9 +360,11 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 10,  /
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
 
-DEFINE_RUNTIME_PG_FLAG(uint32, yb_reorderbuffer_max_changes_in_memory, 4096,
-    "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
-    "streaming changes via logical replication . After that, changes are spooled to disk.");
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_reorderbuffer_max_memory_kb, 4096,
+    "Maximum reorder buffer memory in kilobytes before logical replication changes are streamed "
+    "or spilled to disk.");
+DEFINE_validator(ysql_yb_reorderbuffer_max_memory_kb, FLAG_GE_VALUE_VALIDATOR(64));
+DEPRECATE_FLAG(uint32, ysql_yb_reorderbuffer_max_changes_in_memory, "08_2026");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");
@@ -408,14 +413,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
     "upgrade. For example, IN, ANY, ALL.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_conn_mgr_selective_deallocate, true,
-    "When enabled, DEALLOCATE commands sent via YSQL Connection Manager only drop prepared "
-    "statements whose cached plans are invalid (e.g. stale due to schema changes or "
-    "search_path drift), while preserving valid statements that may be shared across "
-    "logical connections on the same backend. SQL-level statements (from PREPARE) are "
-    "always dropped since they make the connection sticky. When disabled, standard "
-    "PostgreSQL DEALLOCATE behavior is used: DEALLOCATE ALL unconditionally drops all "
-    "statements, and DEALLOCATE <name> will fail for protocol-level prepared statements");
+DEPRECATE_FLAG(bool, ysql_yb_conn_mgr_selective_deallocate, "07_2026");
 
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
@@ -547,13 +545,21 @@ Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
 }
 
 Status WriteConfigFile(const string& path, const vector<string>& lines) {
+  // Runtime flag callbacks reach this from a reactor thread, which disallows IO.
+  ThreadRestrictions::ScopedAllowIO allow_io;
+
+  // Build in a temporary file and publish with an atomic rename. A runtime PG flag change rewrites
+  // these files while the postmaster may be concurrently parsing them (at startup or on SIGHUP);
+  // an in-place truncate+rewrite lets it observe a partial file and silently drop settings such as
+  // shared_preload_libraries.
+  const string tmp_path = path + ".tmp";
   std::ofstream conf_file;
-  conf_file.open(path, std::ios_base::out | std::ios_base::trunc);
+  conf_file.open(tmp_path, std::ios_base::out | std::ios_base::trunc);
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to write ysql config file '%s': errno=$0: $1",
-        path,
+        "Failed to write ysql config file '$0': errno=$1: $2",
+        tmp_path,
         errno,
         ErrnoToString(errno));
   }
@@ -565,7 +571,7 @@ Status WriteConfigFile(const string& path, const vector<string>& lines) {
 
   conf_file.close();
 
-  return Status::OK();
+  return Env::Default()->RenameFile(tmp_path, path);
 }
 
 void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {

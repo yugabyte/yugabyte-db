@@ -46,6 +46,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/abort_source.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -497,14 +498,25 @@ Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_k
         root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
   }
 
-  auto cached_tombstone_time = doc_read_context_.table_tombstone_time();
-  if (cached_tombstone_time.has_value()) {
+  const auto read_ht = read_operation_data_.read_time.read;
+  const auto watermark_before = doc_read_context_.tombstone_cache_watermark();
+  const auto gen_before = doc_read_context_.tombstone_cache_generation();
+  if (auto cached_tombstone_time =
+          doc_read_context_.GetCachedTableTombstoneTime(read_ht)) {
     return *cached_tombstone_time;
   }
 
   auto doc_ht = VERIFY_RESULT(docdb::GetTableTombstoneTime(
       root_doc_key, doc_db_, txn_op_context_, read_operation_data_));
-  doc_read_context_.set_table_tombstone_time(doc_ht);
+  // Cache doc_ht only if this read is still eligible and watermark/generation did not change
+  // during the DocDB lookup. Stamp with gen_before so a mid-lookup truncate cannot make a
+  // pre-truncate "no tombstone" result look current.
+  const auto watermark_after = doc_read_context_.tombstone_cache_watermark();
+  const auto gen_after = doc_read_context_.tombstone_cache_generation();
+  if (doc_read_context_.IsTombstoneCacheEligible(read_ht) &&
+      watermark_before == watermark_after && gen_before == gen_after) {
+    doc_read_context_.set_table_tombstone_time(doc_ht, gen_before);
+  }
   return doc_ht;
 }
 
@@ -527,6 +539,11 @@ Status DocRowwiseIterator::InitIterator(
 
   DCHECK(!db_iter_) << "InitIterator should be called only once";
 
+  IntentAwareIteratorFlags flags;
+  flags.Set(IntentAwareIteratorFlag::kFastBackwardScan, use_fast_backward_scan_);
+  flags.Set(
+      IntentAwareIteratorFlag::kAvoidUselessNextInsteadOfSeek,
+      avoid_useless_next_instead_of_seek.get());
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       bloom_filter,
@@ -535,8 +552,7 @@ Status DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
-      FastBackwardScan{use_fast_backward_scan_},
-      avoid_useless_next_instead_of_seek);
+      flags);
   InitResult();
 
   const auto scan_choices_has_upperbound =
@@ -697,7 +713,9 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     prev_doc_found_ = DocReaderResult::kNotFound;
   }
 
-  RETURN_NOT_OK(pending_op_ref_.GetAbortedStatus());
+  if (doc_db_.abort_source) {
+    RETURN_NOT_OK(doc_db_.abort_source->AbortStatus());
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
     const auto column_names = schema().column_names();

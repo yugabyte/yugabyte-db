@@ -30,12 +30,15 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(enable_xcluster_wal_anchor_stream);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
+DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(TEST_xcluster_fail_table_stream_checkpoint);
 DECLARE_bool(xcluster_enable_ddl_replication);
 
 using namespace std::chrono_literals;
@@ -187,6 +190,13 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     return 2;
   }
 
+  int WalAnchorStreamsCount(int new_table_count) {
+    if (!UseAutomaticMode() || !IsXClusterWalAnchorStreamEnabled()) {
+      return 0;
+    }
+    return new_table_count;
+  }
+
   void CreateNamespace(const NamespaceName& namespace_name, const NamespaceId& namespace_id) {
     scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(namespace_id, /*tasks_tracker=*/nullptr);
     auto l = ns->LockForWrite();
@@ -205,7 +215,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
         continue;
       }
       RETURN_NOT_OK(outbound_replication_group->CreateStreamForNewTable(
-          table.namespace_id(), table.id(), kEpoch));
+          table.namespace_id(), table.id(), !table.IsXClusterDDLReplicationTable(), kEpoch));
       Synchronizer sync;
       RETURN_NOT_OK(outbound_replication_group->CheckpointNewTable(
           table.namespace_id(), table.id(), kEpoch, sync.AsStdStatusCallback()));
@@ -296,6 +306,28 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     return make_scoped_refptr<CDCStreamInfo>(stream_id);
   }
 
+  // Simulates the target deleting the stream of a table whose DDL it rolled back.
+  Status RemoveStream(
+      XClusterOutboundReplicationGroup& outbound_rg, const TableId& table_id,
+      const std::string& stream_id_str) {
+    auto stream = make_scoped_refptr<CDCStreamInfo>(
+        VERIFY_RESULT(xrepl::StreamId::FromString(stream_id_str)));
+    {
+      auto l = stream->LockForWrite();
+      l.mutable_data()->pb.add_table_id(table_id);
+      l.Commit();
+    }
+    return outbound_rg.RemoveStreams({stream.get()}, kEpoch);
+  }
+
+  // Mirrors what the source does when the target connects a table to replication.
+  Result<std::optional<NamespaceCheckpointInfo>> ConnectTable(
+      XClusterOutboundReplicationGroup& outbound_rg, const TableId& table_id) {
+    RETURN_NOT_OK(outbound_rg.CreateAndCheckpointStreamsForAnchoredTables(
+        kNamespaceId, {table_id}, kEpoch));
+    return outbound_rg.GetNamespaceCheckpointInfoForTableIds(kNamespaceId, {table_id});
+  }
+
   mutable std::shared_mutex mutex_;
   std::unordered_map<NamespaceId, std::vector<TableInfoPtr>> namespace_tables GUARDED_BY(mutex_);
   std::unordered_map<NamespaceId, scoped_refptr<NamespaceInfo>> namespace_infos;
@@ -348,7 +380,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       .is_automatic_mode_switchover_func = [](const NamespaceId&) { return false; },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&,
-                 bool /*automatic_ddl_mode*/) {
+                 bool /*automatic_ddl_mode*/, bool /*allow_hidden_table*/,
+                 bool /*is_wal_anchor*/) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();
             for (const auto& table_id : table_ids) {
               create_context->streams_.emplace_back(CreateXClusterStream(table_id));
@@ -371,6 +404,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
         }
         return resp;
       },
+      .get_alive_streams_func = [this](const std::vector<TableId>&) { return xcluster_streams; },
       .upsert_to_sys_catalog_func =
           [](const LeaderEpoch&, XClusterOutboundReplicationGroupInfo*,
              const std::vector<scoped_refptr<CDCStreamInfo>>&) { return Status::OK(); },
@@ -710,7 +744,9 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, AddTable) {
   const TableId table_id_3 = "table_id_3";
   auto table_info3 = ASSERT_RESULT(CreateTable(kNamespaceId, table_id_3, table_3, kPgSchemaName));
 
-  ASSERT_EQ(xcluster_streams.size(), 3 + OverheadStreamsCount());
+  ASSERT_EQ(
+      xcluster_streams.size(),
+      3 + OverheadStreamsCount() + WalAnchorStreamsCount(/*new_tables=*/1));
   ns_info = ASSERT_RESULT(outbound_rg->GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_TRUE(ns_info.has_value());
   ASSERT_EQ(ns_info->table_infos.size(), 3 + OverheadStreamsCount());
@@ -805,6 +841,104 @@ TEST_F(XClusterOutboundReplicationGroupMockedAutomaticDDLMode, AutoCreateSysTabl
   ASSERT_TRUE(TableExists(kPgSequencesDataNamespaceId, kPgSequencesDataTableId));
   ASSERT_TRUE(TableExists(kNamespaceId, /*table_id=*/xcluster::kDDLQueueTableName));
   ASSERT_TRUE(TableExists(kNamespaceId, /*table_id=*/xcluster::kDDLReplicatedTableName));
+}
+
+TEST_F(
+    XClusterOutboundReplicationGroupMockedAutomaticDDLMode,
+    ReconnectAfterRollbackCreatesTableStream) {
+  ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));
+  auto outbound_rg = CreateReplicationGroup();
+  ASSERT_OK(outbound_rg->AddNamespaceSync(kEpoch, kNamespaceId, kTimeout));
+
+  ASSERT_OK(CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2));
+
+  auto pb = ASSERT_RESULT(outbound_rg->GetMetadata());
+  const auto& initial_table_info =
+      pb.namespace_infos().at(kNamespaceId).table_infos().at(kTableId2);
+  const auto original_stream_id = initial_table_info.stream_id();
+  const auto anchor_stream_id = initial_table_info.wal_anchor_stream_id();
+  ASSERT_FALSE(anchor_stream_id.empty());
+  const auto streams_before = xcluster_streams.size();
+
+  // The target rolled back the DDL that added the table, so it deleted the table stream. The anchor
+  // keeps the table in the replication group.
+  ASSERT_OK(RemoveStream(*outbound_rg, kTableId2, original_stream_id));
+  pb = ASSERT_RESULT(outbound_rg->GetMetadata());
+  {
+    const auto& table_info = pb.namespace_infos().at(kNamespaceId).table_infos().at(kTableId2);
+    ASSERT_TRUE(table_info.stream_id().empty());
+    ASSERT_EQ(table_info.wal_anchor_stream_id(), anchor_stream_id);
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_stream_checkpoint) = true;
+
+  // The target connects the table again on its DDL retry. The new stream is durable even though its
+  // checkpoint failed, and it is not handed out until the checkpoint lands.
+  ASSERT_NOK(ConnectTable(*outbound_rg, kTableId2));
+
+  pb = ASSERT_RESULT(outbound_rg->GetMetadata());
+  const auto new_stream_id =
+      pb.namespace_infos().at(kNamespaceId).table_infos().at(kTableId2).stream_id();
+  ASSERT_NE(new_stream_id, original_stream_id);
+  ASSERT_EQ(xcluster_streams.size(), streams_before + 1);
+
+  // Connecting again while the checkpoint keeps failing must retry it instead of creating another
+  // stream.
+  ASSERT_NOK(ConnectTable(*outbound_rg, kTableId2));
+  pb = ASSERT_RESULT(outbound_rg->GetMetadata());
+  {
+    const auto& table_info = pb.namespace_infos().at(kNamespaceId).table_infos().at(kTableId2);
+    ASSERT_EQ(table_info.stream_id(), new_stream_id);
+    ASSERT_TRUE(table_info.is_checkpointing());
+  }
+  ASSERT_EQ(xcluster_streams.size(), streams_before + 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_stream_checkpoint) = false;
+
+  auto ns_info = ASSERT_RESULT(ConnectTable(*outbound_rg, kTableId2));
+  ASSERT_TRUE(ns_info.has_value());
+  ASSERT_EQ(ns_info->table_infos.size(), 1);
+  ASSERT_EQ(ns_info->table_infos.front().stream_id.ToString(), new_stream_id);
+
+  pb = ASSERT_RESULT(outbound_rg->GetMetadata());
+  const auto& final_table_info = pb.namespace_infos().at(kNamespaceId).table_infos().at(kTableId2);
+  ASSERT_EQ(final_table_info.stream_id(), new_stream_id);
+  ASSERT_EQ(final_table_info.wal_anchor_stream_id(), anchor_stream_id);
+  ASSERT_FALSE(final_table_info.is_checkpointing());
+  ASSERT_EQ(xcluster_streams.size(), streams_before + 1);
+
+  // Connecting a table that already has a checkpointed stream is a no-op.
+  ns_info = ASSERT_RESULT(ConnectTable(*outbound_rg, kTableId2));
+  ASSERT_TRUE(ns_info.has_value());
+  ASSERT_EQ(ns_info->table_infos.front().stream_id.ToString(), new_stream_id);
+  ASSERT_EQ(xcluster_streams.size(), streams_before + 1);
+}
+
+TEST_F(XClusterOutboundReplicationGroupMockedAutomaticDDLMode, DisableWalAnchorStream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_wal_anchor_stream) = false;
+
+  ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));
+  auto outbound_rg = CreateReplicationGroup();
+  ASSERT_OK(outbound_rg->AddNamespaceSync(kEpoch, kNamespaceId, kTimeout));
+
+  ASSERT_OK(CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2));
+  auto pb = ASSERT_RESULT(outbound_rg->GetMetadata());
+  ASSERT_TRUE(pb.namespace_infos()
+                  .at(kNamespaceId)
+                  .table_infos()
+                  .at(kTableId2)
+                  .wal_anchor_stream_id()
+                  .empty());
+
+  // Re-enabling only affects tables added after that point.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_wal_anchor_stream) = true;
+  const TableId kTableId3 = "table_id_3";
+  ASSERT_OK(CreateTable(kNamespaceId, kTableId3, "table3", kPgSchemaName2));
+
+  pb = ASSERT_RESULT(outbound_rg->GetMetadata());
+  const auto& table_infos = pb.namespace_infos().at(kNamespaceId).table_infos();
+  ASSERT_TRUE(table_infos.at(kTableId2).wal_anchor_stream_id().empty());
+  ASSERT_FALSE(table_infos.at(kTableId3).wal_anchor_stream_id().empty());
 }
 
 }  // namespace yb::master

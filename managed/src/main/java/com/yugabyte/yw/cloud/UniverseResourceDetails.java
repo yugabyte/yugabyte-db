@@ -20,6 +20,7 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO2_PIOPS;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO2_SIZE;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.oci.OCIPriceUtil;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
@@ -151,6 +152,23 @@ public class UniverseResourceDetails {
       }
       String instanceType = userIntent.getInstanceTypeForNode(nodeDetails);
 
+      // OCI prices are meter rates (OCPU/memory/block), not per-shape SKUs.
+      if (provider.getCloudCode().equals(Common.CloudType.oci)) {
+        if (!params.universePaused && !context.isNodeCounted(nodeDetails)) {
+          continue;
+        }
+        OciNodePrice ociNodePrice =
+            computeOciNodePrice(context, nodeDetails, userIntent, provider, region, instanceType);
+        if (!ociNodePrice.pricingKnown) {
+          setPricingKnown(false);
+        }
+        hourlyEBSPrice += ociNodePrice.storagePricePerHour;
+        if (!params.universePaused) {
+          hourlyPrice += ociNodePrice.instancePricePerHour;
+        }
+        continue;
+      }
+
       PriceComponent instancePrice =
           context.getPriceComponent(provider.getUuid(), region.getCode(), instanceType);
       if (instancePrice == null) {
@@ -276,6 +294,79 @@ public class UniverseResourceDetails {
     // Add price to details
     addCostPerHour(Double.parseDouble(String.format("%.4f", hourlyPrice)));
     addEBSCostPerHour(Double.parseDouble(String.format("%.4f", hourlyEBSPrice)));
+  }
+
+  private static OciNodePrice computeOciNodePrice(
+      Context context,
+      NodeDetails nodeDetails,
+      UserIntent userIntent,
+      Provider provider,
+      Region region,
+      String instanceTypeCode) {
+    OciNodePrice result = new OciNodePrice();
+    String family = OCIPriceUtil.familyFromShape(instanceTypeCode);
+    if (family == null) {
+      LOG.warn("No OCI pricing family mapping for shape {}", instanceTypeCode);
+      result.pricingKnown = false;
+      return result;
+    }
+
+    PriceComponent ocpuRate =
+        context.getPriceComponent(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode(family));
+    PriceComponent memoryRate =
+        context.getPriceComponent(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.memoryComponentCode(family));
+    if (ocpuRate == null) {
+      LOG.warn(
+          "Missing OCI OCPU meter {} for region {}",
+          OCIPriceUtil.ocpuComponentCode(family),
+          region.getCode());
+      result.pricingKnown = false;
+      return result;
+    }
+
+    InstanceType instanceType = context.getInstanceType(provider.getUuid(), instanceTypeCode);
+    if (instanceType == null) {
+      result.pricingKnown = false;
+      return result;
+    }
+
+    double ocpus = instanceType.getNumCores() != null ? instanceType.getNumCores() : 0.0;
+    double memGb = instanceType.getMemSizeGB() != null ? instanceType.getMemSizeGB() : 0.0;
+    double memPricePerHour = memoryRate != null ? memoryRate.getPriceDetails().pricePerHour : 0.0;
+    result.instancePricePerHour =
+        ocpus * ocpuRate.getPriceDetails().pricePerHour + memGb * memPricePerHour;
+
+    DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
+    if (deviceInfo != null
+        && deviceInfo.storageType != null
+        && deviceInfo.storageType.getCloudType() == Common.CloudType.oci) {
+      PriceComponent storageRate =
+          context.getPriceComponent(
+              provider.getUuid(), region.getCode(), OCIPriceUtil.blockStorageComponentCode());
+      PriceComponent vpuRate =
+          context.getPriceComponent(
+              provider.getUuid(), region.getCode(), OCIPriceUtil.blockVpuComponentCode());
+      if (storageRate == null || vpuRate == null) {
+        result.pricingKnown = false;
+      } else {
+        int numVolumes = deviceInfo.numVolumes != null ? deviceInfo.numVolumes : 0;
+        int volumeSize = deviceInfo.volumeSize != null ? deviceInfo.volumeSize : 0;
+        int vpusPerGb = OCIPriceUtil.vpusPerGb(deviceInfo.storageType);
+        result.storagePricePerHour +=
+            numVolumes * volumeSize * storageRate.getPriceDetails().pricePerHour;
+        result.storagePricePerHour +=
+            numVolumes * volumeSize * vpusPerGb * vpuRate.getPriceDetails().pricePerHour;
+      }
+    }
+    return result;
+  }
+
+  private static final class OciNodePrice {
+    double instancePricePerHour;
+    double storagePricePerHour;
+    boolean pricingKnown = true;
   }
 
   public static UniverseResourceDetails create(

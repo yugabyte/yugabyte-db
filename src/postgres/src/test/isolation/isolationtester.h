@@ -43,7 +43,8 @@ typedef enum
 {
 	PSB_ONCE,					/* force step to wait once */
 	PSB_OTHER_STEP,				/* wait for another step to complete first */
-	PSB_NUM_NOTICES				/* wait for N notices from another session */
+	PSB_NUM_NOTICES,			/* wait for N notices from another session */
+	PSB_YB_NEVER_WAITS			/* YB: step never waits on another session */
 } PermutationStepBlockerType;
 
 typedef struct

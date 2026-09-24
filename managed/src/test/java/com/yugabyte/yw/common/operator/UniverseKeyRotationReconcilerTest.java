@@ -25,7 +25,9 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
@@ -120,6 +122,14 @@ public class UniverseKeyRotationReconcilerTest extends FakeDBApplication {
     testUniverse = ModelFactory.createUniverse("test-universe", testCustomer.getId());
   }
 
+  // Universe key rotation requires encryption at rest to already be enabled on the universe.
+  private void enableEncryptionAtRest(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.encryptionAtRestConfig = new EncryptionAtRestConfig();
+    details.encryptionAtRestConfig.encryptionAtRestEnabled = true;
+    universe.setUniverseDetails(details);
+  }
+
   private UniverseKeyRotation createRotationCr(String name) {
     UniverseKeyRotation rotation = new UniverseKeyRotation();
     ObjectMeta metadata = new ObjectMeta();
@@ -138,6 +148,7 @@ public class UniverseKeyRotationReconcilerTest extends FakeDBApplication {
     UUID taskUUID = UUID.randomUUID();
     UUID configUUID = UUID.randomUUID();
     when(mockResource.get()).thenReturn(rotation);
+    enableEncryptionAtRest(testUniverse);
 
     doReturn(testUniverse)
         .when(mockOperatorUtils)
@@ -186,6 +197,26 @@ public class UniverseKeyRotationReconcilerTest extends FakeDBApplication {
   public void testCreateFailsWhenEarNotEnabled() throws Exception {
     UniverseKeyRotation rotation = createRotationCr("test-rotation");
     when(mockResource.get()).thenReturn(rotation);
+    // Universe is left with encryption at rest disabled.
+    doReturn(testUniverse)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("test-universe"), eq(namespace));
+
+    reconciler.createActionReconcile(rotation, testCustomer);
+
+    verify(mockUniverseActionsHandler, never()).setUniverseKey(any(), any(), any());
+    assertEquals("Failed", rotation.getStatus().getState());
+    org.junit.Assert.assertTrue(
+        rotation.getStatus().getMessage().contains("does not have encryption at rest enabled"));
+  }
+
+  @Test
+  public void testCreateFailsWhenNoActiveKey() throws Exception {
+    UniverseKeyRotation rotation = createRotationCr("test-rotation");
+    when(mockResource.get()).thenReturn(rotation);
+    // EAR is enabled, but the universe has no active universe key to rotate.
+    enableEncryptionAtRest(testUniverse);
     doReturn(testUniverse)
         .when(mockOperatorUtils)
         .getUniverseFromNameAndNamespace(
@@ -203,7 +234,7 @@ public class UniverseKeyRotationReconcilerTest extends FakeDBApplication {
     verify(mockUniverseActionsHandler, never()).setUniverseKey(any(), any(), any());
     assertEquals("Failed", rotation.getStatus().getState());
     org.junit.Assert.assertTrue(
-        rotation.getStatus().getMessage().contains("does not have encryption at rest enabled"));
+        rotation.getStatus().getMessage().contains("does not have an active universe key"));
   }
 
   @Test

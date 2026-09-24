@@ -116,6 +116,28 @@ public class GCPCloudInfo implements CloudInfoInterface {
       accessMode = AccessMode.READ_ONLY)
   private VPCType vpcType = VPCType.EXISTING;
 
+  @ApiModelProperty(
+      value =
+          "Enable S3-on-GCP cross-cloud federated IAM on this provider's DB nodes (AWS"
+              + " AssumeRoleWithWebIdentity). Requires the federated IAM role ARN and audience"
+              + " below.")
+  @EditableInUseProvider(name = "Enable federated IAM", allowed = true)
+  private boolean enableFederatedIam;
+
+  @ApiModelProperty(
+      value =
+          "AWS role ARN assumed via AssumeRoleWithWebIdentity when federated IAM is enabled (GCP DB"
+              + " node -> S3).")
+  @EditableInUseProvider(name = "Federated IAM role ARN", allowed = true)
+  private String federatedIamRoleArn;
+
+  @ApiModelProperty(
+      value =
+          "Audience requested from GCP for the web-identity token, used when federated IAM is"
+              + " enabled.")
+  @EditableInUseProvider(name = "Federated IAM audience", allowed = true)
+  private String federatedIamAudience;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();

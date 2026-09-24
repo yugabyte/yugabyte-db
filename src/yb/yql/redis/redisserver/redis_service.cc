@@ -13,6 +13,7 @@
 
 #include "yb/yql/redis/redisserver/redis_service.h"
 
+#include <semaphore>
 #include <thread>
 
 #include <boost/algorithm/string/case_conv.hpp>
@@ -41,6 +42,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
@@ -113,6 +115,11 @@ DEFINE_UNKNOWN_int32(redis_password_caching_duration_ms, 5000,
 
 DEFINE_UNKNOWN_bool(redis_safe_batch, true, "Use safe batching with Redis service");
 DEFINE_UNKNOWN_bool(enable_redis_auth, true, "Enable AUTH for the Redis service");
+
+DEFINE_test_flag(int32, redis_delay_session_release_ms, 0,
+                 "Delay before a completed block returns its session to the pool. Responses are "
+                 "already queued to the client at that point, so this widens the window in which "
+                 "the client sees a command as done while the session is still checked out.");
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -492,6 +499,7 @@ class Block : public std::enable_shared_from_this<Block> {
     auto allow_local_calls_in_curr_thread = false;
     if (session_) {
       allow_local_calls_in_curr_thread = session_->allow_local_calls_in_curr_thread();
+      AtomicFlagSleepMs(&FLAGS_TEST_redis_delay_session_release_ms);
       session_pool_->Release(session_);
       session_.reset();
     }
@@ -808,6 +816,35 @@ struct RedisServiceImplData : public RedisServiceData {
   MonoTime redis_cached_password_validity_expiry_;
   vector<string> redis_cached_passwords_;
 
+  // A batch context holds raw pointers into this object, session_pool_ among them, and its blocks
+  // are completed by YBClient flush callbacks running on client threads that server shutdown does
+  // not synchronize with. So this object has to outlive every context it handed itself to.
+  // outstanding_contexts_ counts those contexts plus one reference for the service itself;
+  // whoever drops it to zero posts contexts_drained_.
+  void RegisterContext() {
+    outstanding_contexts_.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  void UnregisterContext() {
+    if (outstanding_contexts_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      contexts_drained_.release();
+    }
+  }
+
+  // Every operation is bounded by redis_service_yb_client_timeout_millis, so all callbacks
+  // eventually run and this wait terminates.
+  void WaitForOutstandingContexts() {
+    // Drop the service's own reference, so the last context to go posts the semaphore.
+    UnregisterContext();
+    while (!contexts_drained_.try_acquire_for(1s)) {
+      LOG(WARNING) << "Waiting for " << outstanding_contexts_.load(std::memory_order_acquire)
+                   << " in-flight Redis batches to complete";
+    }
+  }
+
+  std::atomic<size_t> outstanding_contexts_{1};
+  std::binary_semaphore contexts_drained_{0};
+
   RedisServer* server_ = nullptr;
 };
 
@@ -823,9 +860,12 @@ class BatchContextImpl : public BatchContext {
         operations_(&arena_),
         lookups_left_(0),
         tablets_(&arena_) {
+    impl_data_->RegisterContext();
   }
 
-  virtual ~BatchContextImpl() {}
+  virtual ~BatchContextImpl() {
+    impl_data_->UnregisterContext();
+  }
 
   const RedisClientCommand& command(size_t idx) const override {
     return call_->client_batch()[idx];
@@ -990,10 +1030,7 @@ class RedisServiceImpl::Impl {
   Impl(RedisServer* server, string yb_tier_master_address);
 
   ~Impl() {
-    // Wait for DebugSleep to finish.
-    // We use DebugSleep only during tests.
-    // So just for long enough, giving extra 400ms for it.
-    std::this_thread::sleep_for(500ms);
+    data_.WaitForOutstandingContexts();
   }
 
   void Handle(yb::rpc::InboundCallPtr call_ptr);

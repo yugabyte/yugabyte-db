@@ -3084,6 +3084,9 @@ typedef struct IndexStmt
 
 	/* YB */
 	YbOptSplit *split_options;	/* SPLIT statement options */
+	Oid			yb_index_old_relfilenode;	/* relfilenode of the dropped index
+											 * this stmt recreates (ALTER
+											 * COLUMN TYPE), if any */
 } IndexStmt;
 
 /* ----------------------

@@ -154,7 +154,13 @@ export const InstanceSettings = forwardRef<
       earKmsConfig: earKMSConfig
     },
     resolver: yupResolver(
-      InstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code, !!useDedicatedNodes)
+      InstanceSettingsValidationSchema(
+        t,
+        useK8CustomResources,
+        provider?.code,
+        !!useDedicatedNodes,
+        maxVolumeCount
+      )
     )
   });
   usePersistStepFormValues(methods.watch, methods.getValues, saveInstanceSettings);
@@ -174,8 +180,10 @@ export const InstanceSettings = forwardRef<
   const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
   const zoneNames = zones.map((zone: Placement) => zone.name);
   const hasRegionsForZones = (resilienceAndRegionsSettings?.regions?.length ?? 0) > 0;
+  const instanceTypesQueryEnabled =
+    needsInstanceTypes && !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones;
 
-  const { isLoading: isLoadingInstanceTypes } = useQuery(
+  const { isFetched: isInstanceTypesFetched, isError: isInstanceTypesError } = useQuery(
     [
       QUERY_KEY.getInstanceTypes,
       provider?.uuid,
@@ -184,15 +192,21 @@ export const InstanceSettings = forwardRef<
     ],
     () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
     {
-      enabled: needsInstanceTypes && !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones
+      enabled: instanceTypesQueryEnabled,
+      refetchOnWindowFocus: false
     }
   );
 
+  // Don't paint the form until zones + the full instance-type list are ready.
+  // A disabled query is not "loading" in react-query v3, so isLoading alone
+  // lets the dropdown render empty and then jump when the list arrives.
   const showInstanceTypesLoader =
     needsInstanceTypes &&
     !!provider?.uuid &&
     hasRegionsForZones &&
-    (isLoadingZones || isLoadingInstanceTypes);
+    (isLoadingZones ||
+      zoneNames.length === 0 ||
+      (instanceTypesQueryEnabled && !isInstanceTypesFetched && !isInstanceTypesError));
 
   useEffect(() => {
     if (osPatchingEnabled && provider && !isImgBundleSupportedByProvider(provider)) {
@@ -270,7 +284,7 @@ export const InstanceSettings = forwardRef<
       ? 1
       : getNodeCount(nodesAvailabilitySettings?.availabilityZones ?? {}));
   const masterNodeCount = dedicatedCounts?.master ?? 0;
-  const goToPlacementRegions = () => setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
+  const goToNodesAvailibility = () => setActiveStep(CreateUniverseSteps.NODES_AVAILABILITY);
 
   // this file is also used in edit universe hardware tab. To match the design there we need to conditionally change Panel and Content components
   const Panel = editMode ? Box : StyledPanel;
@@ -279,7 +293,7 @@ export const InstanceSettings = forwardRef<
   if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading || showInstanceTypesLoader) {
     return (
       <Panel>
-        <StyledHeader />
+        {!editMode && <StyledHeader />}
         <Content>
           <PanelWrapper editMode={editMode}>
             <Box display="flex" alignItems="center" justifyContent="center" width="100%">
@@ -308,7 +322,7 @@ export const InstanceSettings = forwardRef<
                       : t(isK8s ? 'totalPods' : 'totalNodes')
                   }
                   count={tserverNodeCount}
-                  onEdit={goToPlacementRegions}
+                  onEdit={goToNodesAvailibility}
                   dataTestId={
                     useDedicatedNodes
                       ? 'instance-settings-total-tserver-nodes'
@@ -423,7 +437,11 @@ export const InstanceSettings = forwardRef<
                     </>
                   ))}
                 {deviceInfo && provider?.code === CloudType.gcp && useDedicatedNodes && (
-                  <StorageTypeField disabled={disableTserverFields} provider={provider} />
+                  <StorageTypeField
+                    disabled={disableTserverFields}
+                    isEditMode={editMode}
+                    provider={provider}
+                  />
                 )}
                 {ebsVolumeEnabled && provider?.code === CloudType.aws && (
                   <EBSVolumeField disabled={disableTserverFields || editMode} />
@@ -445,7 +463,7 @@ export const InstanceSettings = forwardRef<
                 <TotalNodesBadge
                   label={t(isK8s ? 'totalMasterServerPods' : 'totalMasterServerNodes')}
                   count={masterNodeCount}
-                  onEdit={goToPlacementRegions}
+                  onEdit={goToNodesAvailibility}
                   dataTestId="instance-settings-total-master-nodes"
                 />
               </Box>
@@ -521,11 +539,7 @@ export const InstanceSettings = forwardRef<
           }
 
           return (
-            <YBAccordion
-              defaultExpanded={!sameAsTserver}
-              titleContent={<>{t('master')}</>}
-              sx={{ width: '100%' }}
-            >
+            <YBAccordion defaultExpanded titleContent={<>{t('master')}</>} sx={{ width: '100%' }}>
               <Box>
                 {masterNodesBadge}
                 {sameCheckbox}

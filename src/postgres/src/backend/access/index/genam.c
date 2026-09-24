@@ -40,7 +40,7 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_special_scans.h"
 #include "executor/ybModifyTable.h"
 #include <pg_yb_utils.h>
 

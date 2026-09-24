@@ -18,12 +18,11 @@ description = "Standalone tool to update PGRX Cargo.toml versions and dependenci
 publish = false
 
 [dependencies]
-cargo_toml = "0.20.4"
+cargo_toml.workspace = true
 clap = { version = "4.4.2", features = [ "env", "derive" ] }
-owo-colors = "4"
+glob = "0.3"
+owo-colors.workspace = true
 rustc-hash = "2"
-toml = "0.8.19"
-toml_edit = { version = "0.22" }
-walkdir = "2"
-
-[workspace]
+toml.workspace = true
+toml_edit.workspace = true
+walkdir.workspace = true

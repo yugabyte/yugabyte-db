@@ -14,7 +14,7 @@ import {
 } from '../../create-universe/steps/resilence-regions/dtos';
 import { NodeAvailabilityProps, Zone } from '../../create-universe/steps/nodes-availability/dtos';
 import { REPLICATION_FACTOR } from '../../create-universe/fields/FieldNames';
-import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
+import { AZ_NOT_PREFERRED } from '../../create-universe/helpers/constants';
 import { EditPlacementContextProps } from './EditPlacementContext';
 
 export function isSingleAzMode(resilience: ResilienceAndRegionsProps): boolean {
@@ -65,8 +65,33 @@ function regionCodesMatchAvailabilityZones(
 }
 
 /**
+ * Expert RF buttons: 1, 3, 5, 7. An option is disabled when it is below region
+ * count (see ExpertNodesReplicationSection).
+ */
+const EXPERT_RF_OPTIONS = [1, 3, 5, 7] as const;
+
+export function minExpertRfForRegionCount(regionCount: number): number | undefined {
+  return EXPERT_RF_OPTIONS.find((rf) => rf >= regionCount);
+}
+
+function resolveExpertEditReplicationFactor(
+  regionCount: number,
+  currentRf: number | undefined,
+  expertDefaultRf: number | undefined,
+  resilienceFactor: number | undefined
+): number {
+  const seeded = currentRf ?? expertDefaultRf ?? resilienceFactor ?? 1;
+  const minRf = minExpertRfForRegionCount(regionCount);
+  if (minRf !== undefined && seeded < minRf) {
+    return minRf;
+  }
+  return seeded;
+}
+
+/**
  * Prefer existing (universe) AZ rows for regions that stay selected; only fill
  * missing/new regions from expert defaults (never guided assign).
+ * Keep the seeded universe RF unless it is below region count (disabled in the UI).
  */
 function recalculateExpertNodesAvailability(
   resilience: ResilienceAndRegionsProps,
@@ -97,11 +122,12 @@ function recalculateExpertNodesAvailability(
     ...nodesAndAvailability,
     useDedicatedNodes: nodesAndAvailability.useDedicatedNodes,
     availabilityZones: mergedZones,
-    [REPLICATION_FACTOR]:
-      expertPlacement.replicationFactor ??
-      nodesAndAvailability[REPLICATION_FACTOR] ??
-      resilience.resilienceFactor ??
-      1
+    [REPLICATION_FACTOR]: resolveExpertEditReplicationFactor(
+      (resilience.regions ?? []).length,
+      nodesAndAvailability[REPLICATION_FACTOR],
+      expertPlacement.replicationFactor,
+      resilience.resilienceFactor
+    )
   };
 }
 
@@ -125,7 +151,6 @@ function trimAzRowsToCount(
 ): NodeAvailabilityProps['availabilityZones'] {
   const result: NodeAvailabilityProps['availabilityZones'] = {};
   let remaining = targetCount;
-  let rank = AZ_PREFFERED_HIGHEST_RANK;
 
   for (const region of regions) {
     if (remaining <= 0) {
@@ -136,10 +161,7 @@ function trimAzRowsToCount(
       continue;
     }
     const take = Math.min(regionZones.length, remaining);
-    result[region.code] = regionZones.slice(0, take).map((zone) => ({
-      ...zone,
-      preffered: rank++
-    }));
+    result[region.code] = regionZones.slice(0, take).map((zone) => ({ ...zone }));
     remaining -= take;
   }
 
@@ -158,7 +180,6 @@ function overlayExistingOntoExpected(
   regions: Region[]
 ): NodeAvailabilityProps['availabilityZones'] {
   const result: NodeAvailabilityProps['availabilityZones'] = {};
-  let rank = AZ_PREFFERED_HIGHEST_RANK;
 
   for (const region of regions) {
     const expectedZones = expected[region.code] ?? [];
@@ -197,13 +218,17 @@ function overlayExistingOntoExpected(
         uuid: fromExisting.uuid || matchedExpected?.uuid,
         name: fromExisting.name || matchedExpected?.name,
         nodeCount: fromExisting.nodeCount ?? matchedExpected?.nodeCount ?? 1,
-        preffered: AZ_NOT_PREFERRED
+        // Preserve existing preferred ranks; default to not preferred when missing.
+        preffered:
+          typeof fromExisting.preffered === 'number'
+            ? fromExisting.preffered
+            : AZ_NOT_PREFERRED
       };
       merged.push(zone);
       markUsed(zone);
     }
 
-    // Fill remaining slots from expected, skipping already-selected AZs.
+    // Fill remaining slots from expected as not preferred (newly added AZs).
     for (const expectedZone of expectedZones) {
       if (merged.length >= expectedZones.length) {
         break;
@@ -215,10 +240,7 @@ function overlayExistingOntoExpected(
       markUsed(expectedZone);
     }
 
-    result[region.code] = merged.map((zone) => ({
-      ...zone,
-      preffered: rank++
-    }));
+    result[region.code] = merged;
   }
 
   return result;

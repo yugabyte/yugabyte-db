@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -33,9 +35,11 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -71,6 +75,10 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    // Leader blacklist is the default, but set it explicitly so these tests own the contract.
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybUpgradeBlacklistLeaders.getKey(), "true");
     lenient()
         .when(mockNodeManager.nodeCommand(any(), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "{}"));
@@ -130,6 +138,85 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
   public void testValidateParamsAwsProviderAllowed() {
     ProvisionUniverseNodesParams params = createTaskParams();
     TaskInfo taskInfo = submitTask(params);
+  }
+
+  // Stubs the ActiveState the node agent scope precheck reads from the yb user's systemd manager.
+  private void stubUserLevelNodeAgentState(String activeState) {
+    lenient()
+        .when(
+            mockNodeUniverseManager.runCommand(
+                any(),
+                any(),
+                argThat(
+                    (List<String> cmd) ->
+                        cmd != null && cmd.stream().anyMatch(a -> a.contains("ActiveState"))),
+                any()))
+        .thenReturn(ShellResponse.create(0, "Command output: " + activeState));
+  }
+
+  @Test
+  public void testUserScopedNodeAgentRejected() {
+    // A node agent under the yb user's systemd was installed by node-agent-provision.sh, not by
+    // YBA, so the node is user-provisioned and re-provisioning it must be rejected.
+    setupOnPremUniverse(false /* skipProvisioning */);
+    stubUserLevelNodeAgentState("active");
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    // The node agent scope precheck runs after the generic ones, which cannot pass in this
+    // environment; skipping them leaves this check as the only thing that can fail the task.
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // The parent task only reports that the precheck group failed; the reason is on the subtask.
+    Set<String> precheckErrors =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.RunNodeCommand)
+            .map(TaskInfo::getErrorMessage)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    assertTrue(
+        "Expected the node agent scope precheck to reject the node, got: " + precheckErrors,
+        precheckErrors.stream().anyMatch(m -> m.contains("user-level node agent")));
+  }
+
+  @Test
+  public void testRootScopedNodeAgentAllowed() {
+    // No user-scoped unit: `systemctl --user show` reports inactive for a unit it does not know.
+    setupOnPremUniverse(false /* skipProvisioning */);
+    stubUserLevelNodeAgentState("inactive");
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    // The task may still fail later for unrelated reasons in this environment; all that matters is
+    // that the node agent scope precheck is not what stopped it.
+    Set<String> precheckErrors =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.RunNodeCommand)
+            .map(TaskInfo::getErrorMessage)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    assertTrue(
+        "A root-scoped node agent must not be rejected, got: " + precheckErrors,
+        precheckErrors.isEmpty());
+  }
+
+  @Test
+  public void testInstallNodeAgentAlwaysReinstalls() {
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    Set<TaskInfo> installTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.InstallNodeAgent)
+            .collect(Collectors.toSet());
+    assertFalse("InstallNodeAgent subtasks should be created", installTasks.isEmpty());
+    assertTrue(
+        "Re-provisioning must reinstall the node agent regardless of its recorded state",
+        installTasks.stream().allMatch(t -> getBooleanParam(t, "reinstall")));
   }
 
   @Test
@@ -269,9 +356,126 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
         taskInfo.getSubTasks().stream().anyMatch(t -> t.getTaskType() == TaskType.SetupYNP));
   }
 
+  @Test
+  public void testLeaderBlacklistAddedBeforeStopAndRemovedAfterKeyInMemory() {
+    // Live nodes: stopProcessesOnNodes must leader-blacklist before stopping tserver, and the
+    // start path must clear the blacklist only after WaitForEncryptionKeyInMemory.
+    String nodeName = defaultUniverse.getNodes().iterator().next().getNodeName();
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.nodeNames = ImmutableSet.of(nodeName);
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
+    int addIdx = indexOfFirst(subTasks, ProvisionUniverseNodesTest::isLeaderBlacklistAdd);
+    int waitIdx =
+        indexOfFirst(subTasks, t -> t.getTaskType() == TaskType.WaitForLeaderBlacklistCompletion);
+    int stopIdx =
+        indexOfFirst(
+            subTasks,
+            t ->
+                t.getTaskType() == TaskType.AnsibleClusterServerCtl
+                    && "stop".equals(getStringParam(t, "command"))
+                    && "tserver".equals(getStringParam(t, "process")));
+    int keyInMemoryIdx =
+        indexOfFirst(subTasks, t -> t.getTaskType() == TaskType.WaitForEncryptionKeyInMemory);
+    int removeIdx = indexOfFirst(subTasks, ProvisionUniverseNodesTest::isLeaderBlacklistRemove);
+
+    assertTrue("Leader blacklist add should be created for Live nodes", addIdx >= 0);
+    assertTrue("Wait for leader blacklist completion should follow the add", waitIdx >= 0);
+    assertTrue("Tserver stop should be created", stopIdx >= 0);
+    assertTrue("WaitForEncryptionKeyInMemory should be created", keyInMemoryIdx >= 0);
+    assertTrue("Leader blacklist remove should be created after start", removeIdx >= 0);
+
+    assertTrue("Leader blacklist add must run before wait-for-completion", addIdx < waitIdx);
+    assertTrue("Wait-for-completion must run before tserver stop", waitIdx < stopIdx);
+    assertTrue(
+        "Leader blacklist remove must run after WaitForEncryptionKeyInMemory",
+        keyInMemoryIdx < removeIdx);
+  }
+
+  @Test
+  public void testLeaderBlacklistAddSkippedWhenNotLiveButRemoveStillCreated() {
+    // Retry path: stop/blacklist-add is skipped when the node is already past Live, but remove
+    // must still run on the start path so a prior attempt's blacklist cannot stick.
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe -> {
+          for (NodeDetails node : universe.getNodes()) {
+            node.state = NodeState.Reprovisioning;
+          }
+        });
+
+    String nodeName = defaultUniverse.getNodes().iterator().next().getNodeName();
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.nodeNames = ImmutableSet.of(nodeName);
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
+    assertFalse(
+        "Leader blacklist add should be skipped when nodes are not Live",
+        subTasks.stream().anyMatch(ProvisionUniverseNodesTest::isLeaderBlacklistAdd));
+    assertFalse(
+        "WaitForLeaderBlacklistCompletion should be skipped when add is skipped",
+        subTasks.stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.WaitForLeaderBlacklistCompletion));
+
+    int keyInMemoryIdx =
+        indexOfFirst(subTasks, t -> t.getTaskType() == TaskType.WaitForEncryptionKeyInMemory);
+    int removeIdx = indexOfFirst(subTasks, ProvisionUniverseNodesTest::isLeaderBlacklistRemove);
+    assertTrue("WaitForEncryptionKeyInMemory should still be created", keyInMemoryIdx >= 0);
+    assertTrue("Leader blacklist remove should still run on the start path", removeIdx >= 0);
+    assertTrue(
+        "Leader blacklist remove must run after WaitForEncryptionKeyInMemory",
+        keyInMemoryIdx < removeIdx);
+  }
+
   private static String getStringParam(TaskInfo taskInfo, String field) {
     JsonNode params = taskInfo.getTaskParams();
     return (params != null && params.hasNonNull(field)) ? params.get(field).textValue() : null;
+  }
+
+  private static boolean getBooleanParam(TaskInfo taskInfo, String field) {
+    JsonNode params = taskInfo.getTaskParams();
+    return params != null && params.hasNonNull(field) && params.get(field).booleanValue();
+  }
+
+  private static boolean isLeaderBlacklistAdd(TaskInfo taskInfo) {
+    if (taskInfo.getTaskType() != TaskType.ModifyBlackList) {
+      return false;
+    }
+    JsonNode params = taskInfo.getTaskParams();
+    return params != null
+        && params.path("isLeaderBlacklist").asBoolean(false)
+        && params.path("addNodes").isArray()
+        && params.path("addNodes").size() > 0;
+  }
+
+  private static boolean isLeaderBlacklistRemove(TaskInfo taskInfo) {
+    if (taskInfo.getTaskType() != TaskType.ModifyBlackList) {
+      return false;
+    }
+    JsonNode params = taskInfo.getTaskParams();
+    return params != null
+        && params.path("isLeaderBlacklist").asBoolean(false)
+        && params.path("removeNodes").isArray()
+        && params.path("removeNodes").size() > 0;
+  }
+
+  private static int indexOfFirst(List<TaskInfo> tasks, Predicate<TaskInfo> predicate) {
+    for (int i = 0; i < tasks.size(); i++) {
+      if (predicate.test(tasks.get(i))) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   // Collects the names of the nodes that the task actually re-provisioned, derived from the

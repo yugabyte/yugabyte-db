@@ -66,5 +66,5 @@ yugabyte=# SELECT * FROM sample ORDER BY k1;
 
 ## See also
 
-- [`DEALLOCATE`](../perf_deallocate)
-- [`EXECUTE`](../perf_execute)
+- [DEALLOCATE](../perf_deallocate)
+- [EXECUTE](../perf_execute)

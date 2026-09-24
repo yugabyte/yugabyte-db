@@ -45,7 +45,7 @@
 
 /* YB includes */
 #include "access/htup_details.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_constraint.h"
@@ -53,6 +53,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "executor/ybExpr.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
@@ -293,7 +294,7 @@ static YbBatchedNestLoop *make_YbBatchedNestLoop(List *tlist,
 												 List *joinclauses, List *otherclauses, List *nestParams,
 												 Plan *lefttree, Plan *righttree,
 												 JoinType jointype, bool inner_unique,
-												 double first_batch_factor, size_t num_hashClauseInfos,
+												 int first_batch_size, size_t num_hashClauseInfos,
 												 YbBNLHashClauseInfo *hashClauseInfos);
 static HashJoin *make_hashjoin(List *tlist,
 							   List *joinclauses, List *otherclauses,
@@ -358,7 +359,8 @@ static Group *make_group(List *tlist, List *qual, int numGroupCols,
 						 Plan *lefttree);
 static Unique *make_unique_from_sortclauses(Plan *lefttree, List *distinctList);
 static Unique *make_unique_from_pathkeys(Plan *lefttree,
-										 List *pathkeys, int numCols);
+										 List *pathkeys, int numCols,
+										 Relids yb_relids);
 static Gather *make_gather(List *qptlist, List *qpqual,
 						   int nworkers, int rescan_param, bool single_copy, Plan *subplan);
 static SetOp *make_setop(SetOpCmd cmd, SetOpStrategy strategy, Plan *lefttree,
@@ -2733,6 +2735,9 @@ create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path, int flag
 	Unique	   *plan;
 	Plan	   *subplan;
 
+	/* YB declarations */
+	Relids		yb_relids = best_path->subpath->parent->relids;
+
 	/*
 	 * Unique doesn't project, so tlist requirements pass through; moreover we
 	 * need grouping columns to be labeled.
@@ -2742,7 +2747,8 @@ create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path, int flag
 
 	plan = make_unique_from_pathkeys(subplan,
 									 best_path->path.pathkeys,
-									 best_path->numkeys);
+									 best_path->numkeys,
+									 yb_relids);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
@@ -4765,11 +4771,11 @@ create_indexscan_plan(PlannerInfo *root,
 
 	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
-	if (best_path->yb_index_path_info.merge_scan_saop_cols)
+	if (best_path->yb_index_path_info.merge_scan_stream_cols)
 	{
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
-		yb_merge_scan_info->saop_cols =
-			best_path->yb_index_path_info.merge_scan_saop_cols;
+		yb_merge_scan_info->stream_cols =
+			best_path->yb_index_path_info.merge_scan_stream_cols;
 	}
 
 	/* Finally ready to build the plan node */
@@ -4828,25 +4834,25 @@ create_indexscan_plan(PlannerInfo *root,
 
 	if (yb_merge_scan_info)
 	{
-		Bitmapset  *yb_saop_col_idxs = NULL;
+		Bitmapset  *yb_stream_col_idxs = NULL;
 		ListCell   *yb_lc;
 		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
 			makeNode(YbSortInfo);
 
-		foreach(yb_lc, yb_merge_scan_info->saop_cols)
+		foreach(yb_lc, yb_merge_scan_info->stream_cols)
 		{
-			YbMergeScanSaopColInfo *yb_saop_col_info =
-				lfirst_node(YbMergeScanSaopColInfo, yb_lc);
+			YbMergeScanStreamColInfo *yb_stream_col_info =
+				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
 
-			yb_saop_col_idxs = bms_add_member(yb_saop_col_idxs,
-											  yb_saop_col_info->indexcol);
+			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
+												yb_stream_col_info->indexcol);
 		}
 
 		yb_sort_info->type = T_YbSortInfo;
 		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
 									   best_path->path.pathkeys,
 									   best_path->path.parent->relids,
-									   yb_saop_col_idxs,
+									   yb_stream_col_idxs,
 									   &yb_sort_info->numCols,
 									   &yb_sort_info->sortColIdx,
 									   &yb_sort_info->sortOperators,
@@ -6259,7 +6265,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids		saveOuterRels = root->curOuterRels;
 
 	bool		yb_is_batched;
-	double		yb_first_batch_factor = 1.0;
+	int			yb_first_batch_size = 0;
 	size_t		yb_num_hashClauseInfos;
 	YbBNLHashClauseInfo *yb_hashClauseInfos;
 
@@ -6487,10 +6493,23 @@ create_nestloop_plan(PlannerInfo *root,
 			   batched_outerrelids,
 			   inner_relids));
 
-		/* If there is a limit and yb_bnl_optimize_first_batch is on. */
-		if (yb_bnl_optimize_first_batch && root->limit_tuples)
+		if (yb_enable_base_scans_cost_model)
 		{
+			if (best_path->yb_first_batch_size > 0 &&
+				best_path->yb_first_batch_size < yb_bnl_batch_size &&
+				root->limit_tuples > 0)
+				yb_first_batch_size = best_path->yb_first_batch_size;
+		}
+		else if (yb_bnl_optimize_first_batch && root->limit_tuples > 0)
+		{
+			/*
+			 * Legacy mode keeps its own sizing.  The path's yb_first_batch_size
+			 * is rounded and clamped to [1, yb_bnl_batch_size]; the legacy
+			 * ratio is not, and deriving it from the path would change
+			 * legacy-mode plans.
+			 */
 			SemiAntiJoinFactors semifactors;
+			double		output_tuple_per_outer_tuple;
 
 			compute_semi_anti_join_factors(root, best_path->jpath.path.parent,
 										   best_path->jpath.outerjoinpath->parent,
@@ -6499,10 +6518,16 @@ create_nestloop_plan(PlannerInfo *root,
 										   NULL,
 										   best_path->jpath.joinrestrictinfo,
 										   &semifactors);
-			double		output_tuple_per_outer_tuple = (semifactors.outer_match_frac *
-														semifactors.match_count);
+			output_tuple_per_outer_tuple = (semifactors.outer_match_frac *
+											semifactors.match_count);
+			if (output_tuple_per_outer_tuple > 0)
+			{
+				double		fbs = ceil(root->limit_tuples /
+									   output_tuple_per_outer_tuple);
 
-			yb_first_batch_factor = 1.0 / output_tuple_per_outer_tuple;
+				if (fbs >= 1.0 && fbs < yb_bnl_batch_size)
+					yb_first_batch_size = (int) fbs;
+			}
 		}
 	}
 
@@ -6550,7 +6575,7 @@ create_nestloop_plan(PlannerInfo *root,
 															 inner_plan,
 															 best_path->jpath.jointype,
 															 best_path->jpath.inner_unique,
-															 yb_first_batch_factor,
+															 yb_first_batch_size,
 															 yb_num_hashClauseInfos,
 															 yb_hashClauseInfos);
 
@@ -7392,21 +7417,22 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_saop_cols.  Add these to ..._indexquals as
-	 * well.
+	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_saop_cols)
+	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
 	{
-		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
 
 		if (info->derived)
 		{
 			Node	   *clause;
 
-			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			stripped_indexquals = lappend(stripped_indexquals, info->clause);
 			/* For now, row-array-compare merge scan is not supported. */
 			clause = fix_indexqual_clause(root, index, info->indexcol,
-										  (Node *) info->saop,
+										  (Node *) info->clause,
 										  list_make1_int(info->indexcol));
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}
@@ -8470,7 +8496,7 @@ make_YbBatchedNestLoop(List *tlist,
 					   Plan *righttree,
 					   JoinType jointype,
 					   bool inner_unique,
-					   double first_batch_factor,
+					   int first_batch_size,
 					   size_t num_hashClauseInfos,
 					   YbBNLHashClauseInfo *hashClauseInfos)
 {
@@ -8485,7 +8511,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.join.inner_unique = inner_unique;
 	node->nl.join.joinqual = joinclauses;
 	node->nl.nestParams = nestParams;
-	node->first_batch_factor = first_batch_factor;
+	node->first_batch_size = first_batch_size;
 	node->num_hashClauseInfos = num_hashClauseInfos;
 	node->hashClauseInfos = hashClauseInfos;
 
@@ -9262,9 +9288,20 @@ make_unique_from_sortclauses(Plan *lefttree, List *distinctList)
 
 /*
  * as above, but use pathkeys to identify the sort columns and semantics
+ *
+ * YB: 'yb_relids' is the set of rels scanned by 'lefttree', passed on so that
+ * find_ec_member_matching_expr() also considers child equivalence members of
+ * those rels. YB puts a Unique node directly above a baserel's distinct index
+ * scan (see yb_create_distinct_index_path); when that baserel is an appendrel
+ * child, its pathkeys are canonicalized against the parent appendrel's
+ * equivalence classes, in which the member matching the child's targetlist is a
+ * child member. PG's own callers build this node over a whole scan/join or
+ * upper relation, never over a single appendrel child, so a non-child member
+ * always matches there and the relids make no difference.
  */
 static Unique *
-make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols)
+make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols,
+						  Relids yb_relids)
 {
 	Unique	   *node = makeNode(Unique);
 	Plan	   *plan = &node->plan;
@@ -9327,7 +9364,7 @@ make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols)
 			foreach(j, plan->targetlist)
 			{
 				tle = (TargetEntry *) lfirst(j);
-				em = find_ec_member_matching_expr(ec, tle->expr, NULL);
+				em = find_ec_member_matching_expr(ec, tle->expr, yb_relids);
 				if (em)
 				{
 					/* found expr already in tlist */

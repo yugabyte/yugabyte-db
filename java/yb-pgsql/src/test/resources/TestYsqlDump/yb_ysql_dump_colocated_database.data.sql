@@ -2,6 +2,8 @@
 -- YSQL database dump
 --
 
+\restrict test
+
 -- Dumped from database version 15.12-YB-2.31.0.0-b0
 -- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
@@ -26,16 +28,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -45,9 +51,13 @@ BEGIN
   END IF;
 END $$;
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: htest; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -83,9 +93,13 @@ PARTITION BY HASH (k1)
 WITH (colocation_id='123456');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.htest OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -122,9 +136,13 @@ CREATE TABLE public.htest_1 (
 WITH (colocation_id='234567', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.htest_1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -162,9 +180,13 @@ CREATE TABLE public.tbl (
 WITH (colocation_id='20001', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -203,9 +225,13 @@ CREATE TABLE public.tbl2 (
 WITH (colocation_id='20002', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl3; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -238,9 +264,13 @@ WITH (colocation='false', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl4; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -274,9 +304,13 @@ WITH (colocation='false', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl5; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -308,9 +342,13 @@ CREATE TABLE public.tbl5 (
 WITH (colocation_id='20005', yb_presplit='');
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: htest_1; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
@@ -574,33 +612,45 @@ CREATE UNIQUE INDEX NONCONCURRENTLY tbl_v_idx ON public.tbl USING lsm (v DESC) W
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -754,4 +804,6 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

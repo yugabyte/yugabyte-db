@@ -112,6 +112,15 @@ class CatalogManagerUtil {
   // Validate placement information if passed.
   static Status IsPlacementInfoValid(const PlacementInfoPB& placement_info);
 
+  // Validates only the constraints introduced by explicit per-block maximums: each explicit
+  // maximum must be positive and at least the block's minimum, and the sum of effective maximums
+  // must cover num_replicas. Additionally, because enforcing a maximum requires unambiguously
+  // attributing each tserver to one block, a placement with any explicit maximum must consist
+  // solely of fully-specified (non-wildcard), non-duplicate placement blocks. Returns OK when no
+  // block specifies an explicit maximum, so it is safe to call on legacy placements that
+  // intentionally skip the stricter IsPlacementInfoValid checks.
+  static Status ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info);
+
   static Status SetPreferredZones(
       const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
 
@@ -243,9 +252,14 @@ int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement
 
 const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader);
 
+// Runs the given statements on the closest live tserver's local postgres via the AdminExecutePgsql
+// RPC. If yb_internal_conn_kind is non-empty, the tserver tags the internal PG connection with that
+// YbInternalConnKind wire name (see YbInternalConnKindWireName in libpq_utils.h); empty leaves it
+// as a generic internal connection.
 Status ExecutePgsqlStatements(
     const std::string& database_name, const std::vector<std::string>& statements,
-    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback);
+    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback,
+    std::string_view yb_internal_conn_kind = {});
 
 bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb);
 

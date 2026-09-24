@@ -46,16 +46,17 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     };
     indexes_.emplace_back(
         "usearch",
-        UsearchIndexFactory<Vector, DistanceResult>::Create(
-            vector_index::FactoryMode::kCreate, block_cache_, options,
-            HnswBackend::YB_HNSW_USEARCH, mem_tracker_));
+        ASSERT_RESULT((CreateUsearchIndexTraits<Vector, DistanceResult>(
+            block_cache_, options, HnswBackend::YB_HNSW_USEARCH, mem_tracker_)))
+            ->Create(vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kFalse));
     indexes_.emplace_back(
         "hnswlib",
-        HnswlibIndexFactory<Vector, DistanceResult>::Create(
-            vector_index::FactoryMode::kCreate, block_cache_, options,
-            HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_));
+        ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
+            block_cache_, options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
+            ->Create(vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kFalse));
     for (const auto& [_, index] : indexes_) {
-      ASSERT_OK(index->Reserve(count, 1, 1));
+      ASSERT_OK(index->Reserve(
+          count, 1, 1, rocksdb::Cache::ReservationMode::kAlways));
     }
 
     Vector holder;
@@ -76,7 +77,7 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     RandomVector(holder);
     auto uuid = vector_index::VectorId::GenerateRandom();
     for (const auto& [_, index] : indexes_) {
-      ASSERT_OK(index->Insert(uuid, holder));
+      ASSERT_OK(index->Insert(uuid, holder, Slice()));
     }
   }
 

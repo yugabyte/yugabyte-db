@@ -216,6 +216,25 @@ static bool get_actual_variable_endpoint(Relation heapRel,
 										 Datum *endpointDatum);
 static RelOptInfo *find_join_input_rel(PlannerInfo *root, Relids relids);
 
+/* YB declarations */
+static Selectivity yb_conditioned_cmp_selectivity(PlannerInfo *root,
+												  Oid opfamily,
+												  Oid collation,
+												  int cmpstrategy,
+												  Node *var,
+												  Oid vartype,
+												  Const *bound,
+												  List *baserestrictinfo);
+static void yb_clamp_scansel_by_other_side_bounds(PlannerInfo *root,
+												  Oid collation,
+												  Oid opfamily,
+												  VariableStatData *scanvar,
+												  Node *scanexpr,
+												  Oid scanvartype,
+												  VariableStatData *boundvar,
+												  bool clamp_end,
+												  Selectivity *fraction);
+
 
 /*
  *		eqsel			- Selectivity of "=" for any data types.
@@ -3129,6 +3148,21 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 		*rightend = selec;
 
 	/*
+	 * YB: range bounds enforced by the other input's baserestrictinfo are
+	 * hard limits on where the merge can stop, unlike the statistical
+	 * extrema above; fold them in before deciding which estimate to believe.
+	 */
+	if (!isgt)
+	{
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &leftvar, left, op_lefttype,
+											  &rightvar, true, leftend);
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &rightvar, right, op_righttype,
+											  &leftvar, true, rightend);
+	}
+
+	/*
 	 * Only one of the two "end" fractions can really be less than 1.0;
 	 * believe the smaller estimate and reset the other one to exactly 1.0. If
 	 * we get exactly equal estimates (as can easily happen with self-joins),
@@ -3157,6 +3191,17 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 						  leftmin, op_lefttype);
 	if (selec != DEFAULT_INEQ_SEL)
 		*rightstart = selec;
+
+	/* YB: likewise, enforced lower bounds raise the start fractions. */
+	if (!isgt)
+	{
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &leftvar, left, op_lefttype,
+											  &rightvar, false, leftstart);
+		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
+											  &rightvar, right, op_righttype,
+											  &leftvar, false, rightstart);
+	}
 
 	/*
 	 * Only one of the two "start" fractions can really be more than zero;
@@ -5270,8 +5315,8 @@ ReleaseDummy(HeapTuple tuple)
  *		this query.  (Caution: this should be trusted for statistical
  *		purposes only, since we do not check indimmediate nor verify that
  *		the exact same definition of equality applies.)
- *	acl_ok: true if current user has permission to read the column(s)
- *		underlying the pg_statistic entry.  This is consulted by
+ *	acl_ok: true if current user has permission to read all table rows from
+ *		the column(s) underlying the pg_statistic entry.  This is consulted by
  *		statistic_proc_security_check().
  *
  * Caller is responsible for doing ReleaseVariableStats() before exiting.
@@ -5450,78 +5495,32 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 
 							if (HeapTupleIsValid(vardata->statsTuple))
 							{
-								/* Get index's table for permission check */
-								RangeTblEntry *rte;
-								Oid			userid;
-
-								rte = planner_rt_fetch(index->rel->relid, root);
-								Assert(rte->rtekind == RTE_RELATION);
-
 								/*
-								 * Use checkAsUser if it's set, in case we're
-								 * accessing the table via a view.
-								 */
-								userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
-								/*
+								 * Test if user has permission to access all
+								 * rows from the index's table.
+								 *
 								 * For simplicity, we insist on the whole
 								 * table being selectable, rather than trying
 								 * to identify which column(s) the index
-								 * depends on.  Also require all rows to be
-								 * selectable --- there must be no
-								 * securityQuals from security barrier views
-								 * or RLS policies.
+								 * depends on.
+								 *
+								 * Note that for an inheritance child,
+								 * permissions are checked on the inheritance
+								 * root parent, and whole-table select
+								 * privilege on the parent doesn't quite
+								 * guarantee that the user could read all
+								 * columns of the child.  But in practice it's
+								 * unlikely that any interesting security
+								 * violation could result from allowing access
+								 * to the expression index's stats, so we
+								 * allow it anyway.  See similar code in
+								 * examine_simple_variable() for additional
+								 * comments.
 								 */
 								vardata->acl_ok =
-									rte->securityQuals == NIL &&
-									(pg_class_aclcheck(rte->relid, userid,
-													   ACL_SELECT) == ACLCHECK_OK);
-
-								/*
-								 * If the user doesn't have permissions to
-								 * access an inheritance child relation, check
-								 * the permissions of the table actually
-								 * mentioned in the query, since most likely
-								 * the user does have that permission.  Note
-								 * that whole-table select privilege on the
-								 * parent doesn't quite guarantee that the
-								 * user could read all columns of the child.
-								 * But in practice it's unlikely that any
-								 * interesting security violation could result
-								 * from allowing access to the expression
-								 * index's stats, so we allow it anyway.  See
-								 * similar code in examine_simple_variable()
-								 * for additional comments.
-								 */
-								if (!vardata->acl_ok &&
-									root->append_rel_array != NULL)
-								{
-									AppendRelInfo *appinfo;
-									Index		varno = index->rel->relid;
-
-									appinfo = root->append_rel_array[varno];
-									while (appinfo &&
-										   planner_rt_fetch(appinfo->parent_relid,
-															root)->rtekind == RTE_RELATION)
-									{
-										varno = appinfo->parent_relid;
-										appinfo = root->append_rel_array[varno];
-									}
-									if (varno != index->rel->relid)
-									{
-										/* Repeat access check on this rel */
-										rte = planner_rt_fetch(varno, root);
-										Assert(rte->rtekind == RTE_RELATION);
-
-										userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
-										vardata->acl_ok =
-											rte->securityQuals == NIL &&
-											(pg_class_aclcheck(rte->relid,
-															   userid,
-															   ACL_SELECT) == ACLCHECK_OK);
-									}
-								}
+									all_rows_selectable(root,
+														index->rel->relid,
+														NULL);
 							}
 							else
 							{
@@ -5581,8 +5580,6 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 				/* found a match, see if we can extract pg_statistic row */
 				if (equal(node, expr))
 				{
-					Oid			userid;
-
 					/*
 					 * XXX Not sure if we should cache the tuple somewhere.
 					 * Now we just create a new copy every time.
@@ -5593,66 +5590,26 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 					vardata->freefunc = ReleaseDummy;
 
 					/*
-					 * Use checkAsUser if it's set, in case we're accessing
-					 * the table via a view.
-					 */
-					userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
-					/*
+					 * Test if user has permission to access all rows from the
+					 * table.
+					 *
 					 * For simplicity, we insist on the whole table being
 					 * selectable, rather than trying to identify which
-					 * column(s) the statistics object depends on.  Also
-					 * require all rows to be selectable --- there must be no
-					 * securityQuals from security barrier views or RLS
-					 * policies.
+					 * column(s) the statistics object depends on.
+					 *
+					 * Note that for an inheritance child, permissions are
+					 * checked on the inheritance root parent, and whole-table
+					 * select privilege on the parent doesn't quite guarantee
+					 * that the user could read all columns of the child.  But
+					 * in practice it's unlikely that any interesting security
+					 * violation could result from allowing access to the
+					 * expression stats, so we allow it anyway.  See similar
+					 * code in examine_simple_variable() for additional
+					 * comments.
 					 */
-					vardata->acl_ok =
-						rte->securityQuals == NIL &&
-						(pg_class_aclcheck(rte->relid, userid,
-										   ACL_SELECT) == ACLCHECK_OK);
-
-					/*
-					 * If the user doesn't have permissions to access an
-					 * inheritance child relation, check the permissions of
-					 * the table actually mentioned in the query, since most
-					 * likely the user does have that permission.  Note that
-					 * whole-table select privilege on the parent doesn't
-					 * quite guarantee that the user could read all columns of
-					 * the child. But in practice it's unlikely that any
-					 * interesting security violation could result from
-					 * allowing access to the expression stats, so we allow it
-					 * anyway.  See similar code in examine_simple_variable()
-					 * for additional comments.
-					 */
-					if (!vardata->acl_ok &&
-						root->append_rel_array != NULL)
-					{
-						AppendRelInfo *appinfo;
-						Index		varno = onerel->relid;
-
-						appinfo = root->append_rel_array[varno];
-						while (appinfo &&
-							   planner_rt_fetch(appinfo->parent_relid,
-												root)->rtekind == RTE_RELATION)
-						{
-							varno = appinfo->parent_relid;
-							appinfo = root->append_rel_array[varno];
-						}
-						if (varno != onerel->relid)
-						{
-							/* Repeat access check on this rel */
-							rte = planner_rt_fetch(varno, root);
-							Assert(rte->rtekind == RTE_RELATION);
-
-							userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
-							vardata->acl_ok =
-								rte->securityQuals == NIL &&
-								(pg_class_aclcheck(rte->relid,
-												   userid,
-												   ACL_SELECT) == ACLCHECK_OK);
-						}
-					}
+					vardata->acl_ok = all_rows_selectable(root,
+														  onerel->relid,
+														  NULL);
 
 					break;
 				}
@@ -5708,92 +5665,20 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 
 		if (HeapTupleIsValid(vardata->statsTuple))
 		{
-			Oid			userid;
-
 			/*
-			 * Check if user has permission to read this column.  We require
-			 * all rows to be accessible, so there must be no securityQuals
-			 * from security barrier views or RLS policies.  Use checkAsUser
-			 * if it's set, in case we're accessing the table via a view.
+			 * Test if user has permission to read all rows from this column.
+			 *
+			 * This requires that the user has the appropriate SELECT
+			 * privileges and that there are no securityQuals from security
+			 * barrier views or RLS policies.  If that's not the case, then we
+			 * only permit leakproof functions to be passed pg_statistic data
+			 * in vardata, otherwise the functions might reveal data that the
+			 * user doesn't have permission to see --- see
+			 * statistic_proc_security_check().
 			 */
-			userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
 			vardata->acl_ok =
-				rte->securityQuals == NIL &&
-				((pg_class_aclcheck(rte->relid, userid,
-									ACL_SELECT) == ACLCHECK_OK) ||
-				 (pg_attribute_aclcheck(rte->relid, var->varattno, userid,
-										ACL_SELECT) == ACLCHECK_OK));
-
-			/*
-			 * If the user doesn't have permissions to access an inheritance
-			 * child relation or specifically this attribute, check the
-			 * permissions of the table/column actually mentioned in the
-			 * query, since most likely the user does have that permission
-			 * (else the query will fail at runtime), and if the user can read
-			 * the column there then he can get the values of the child table
-			 * too.  To do that, we must find out which of the root parent's
-			 * attributes the child relation's attribute corresponds to.
-			 */
-			if (!vardata->acl_ok && var->varattno > 0 &&
-				root->append_rel_array != NULL)
-			{
-				AppendRelInfo *appinfo;
-				Index		varno = var->varno;
-				int			varattno = var->varattno;
-				bool		found = false;
-
-				appinfo = root->append_rel_array[varno];
-
-				/*
-				 * Partitions are mapped to their immediate parent, not the
-				 * root parent, so must be ready to walk up multiple
-				 * AppendRelInfos.  But stop if we hit a parent that is not
-				 * RTE_RELATION --- that's a flattened UNION ALL subquery, not
-				 * an inheritance parent.
-				 */
-				while (appinfo &&
-					   planner_rt_fetch(appinfo->parent_relid,
-										root)->rtekind == RTE_RELATION)
-				{
-					int			parent_varattno;
-
-					found = false;
-					if (varattno <= 0 || varattno > appinfo->num_child_cols)
-						break;	/* safety check */
-					parent_varattno = appinfo->parent_colnos[varattno - 1];
-					if (parent_varattno == 0)
-						break;	/* Var is local to child */
-
-					varno = appinfo->parent_relid;
-					varattno = parent_varattno;
-					found = true;
-
-					/* If the parent is itself a child, continue up. */
-					appinfo = root->append_rel_array[varno];
-				}
-
-				/*
-				 * In rare cases, the Var may be local to the child table, in
-				 * which case, we've got to live with having no access to this
-				 * column's stats.
-				 */
-				if (!found)
-					return;
-
-				/* Repeat the access check on this parent rel & column */
-				rte = planner_rt_fetch(varno, root);
-				Assert(rte->rtekind == RTE_RELATION);
-
-				userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
-				vardata->acl_ok =
-					rte->securityQuals == NIL &&
-					((pg_class_aclcheck(rte->relid, userid,
-										ACL_SELECT) == ACLCHECK_OK) ||
-					 (pg_attribute_aclcheck(rte->relid, varattno, userid,
-											ACL_SELECT) == ACLCHECK_OK));
-			}
+				all_rows_selectable(root, var->varno,
+									bms_make_singleton(var->varattno - FirstLowInvalidHeapAttributeNumber));
 		}
 		else
 		{
@@ -5918,16 +5803,207 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 }
 
 /*
+ * all_rows_selectable
+ *		Test whether the user has permission to select all rows from a given
+ *		relation.
+ *
+ * Inputs:
+ *	root: the planner info
+ *	varno: the index of the relation (assumed to be an RTE_RELATION)
+ *	varattnos: the attributes for which permission is required, or NULL if
+ *		whole-table access is required
+ *
+ * Returns true if the user has the required select permissions, and there are
+ * no securityQuals from security barrier views or RLS policies.
+ *
+ * Note that if the relation is an inheritance child relation, securityQuals
+ * and access permissions are checked against the inheritance root parent (the
+ * relation actually mentioned in the query) --- see the comments in
+ * expand_single_inheritance_child() for an explanation of why it has to be
+ * done this way.
+ *
+ * If varattnos is non-NULL, its attribute numbers should be offset by
+ * FirstLowInvalidHeapAttributeNumber so that system attributes can be
+ * checked.  If varattnos is NULL, only table-level SELECT privileges are
+ * checked, not any column-level privileges.
+ *
+ * Note: if the relation is accessed via a view, this function actually tests
+ * whether the view owner has permission to select from the relation.  To
+ * ensure that the current user has permission, it is also necessary to check
+ * that the current user has permission to select from the view, which we do
+ * at planner-startup --- see subquery_planner().
+ *
+ * This is exported so that other estimation functions can use it.
+ */
+bool
+all_rows_selectable(PlannerInfo *root, Index varno, Bitmapset *varattnos)
+{
+	RangeTblEntry *rte = planner_rt_fetch(varno, root);
+	int			varattno;
+	Oid			userid;
+
+	Assert(rte->rtekind == RTE_RELATION);
+
+	/*
+	 * Permissions and securityQuals must be checked on the table actually
+	 * mentioned in the query, so if this is an inheritance child, navigate up
+	 * to the inheritance root parent.  If the user can read the whole table
+	 * or the required columns there, then they can read from the child table
+	 * too.  For per-column checks, we must find out which of the root
+	 * parent's attributes the child relation's attributes correspond to.
+	 */
+	if (root->append_rel_array != NULL)
+	{
+		AppendRelInfo *appinfo;
+
+		appinfo = root->append_rel_array[varno];
+
+		/*
+		 * Partitions are mapped to their immediate parent, not the root
+		 * parent, so must be ready to walk up multiple AppendRelInfos.  But
+		 * stop if we hit a parent that is not RTE_RELATION --- that's a
+		 * flattened UNION ALL subquery, not an inheritance parent.
+		 */
+		while (appinfo &&
+			   planner_rt_fetch(appinfo->parent_relid,
+								root)->rtekind == RTE_RELATION)
+		{
+			Bitmapset  *parent_varattnos = NULL;
+
+			/*
+			 * For each child attribute, find the corresponding parent
+			 * attribute.  In rare cases, the attribute may be local to the
+			 * child table, in which case, we've got to live with having no
+			 * access to this column.
+			 */
+			varattno = -1;
+			while ((varattno = bms_next_member(varattnos, varattno)) >= 0)
+			{
+				AttrNumber	attno;
+				AttrNumber	parent_attno;
+
+				attno = varattno + FirstLowInvalidHeapAttributeNumber;
+
+				if (attno == InvalidAttrNumber)
+				{
+					/*
+					 * Whole-row reference, so must map each column of the
+					 * child to the parent table.
+					 */
+					for (attno = 1; attno <= appinfo->num_child_cols; attno++)
+					{
+						parent_attno = appinfo->parent_colnos[attno - 1];
+						if (parent_attno == 0)
+							return false;	/* attr is local to child */
+						parent_varattnos =
+							bms_add_member(parent_varattnos,
+										   parent_attno - FirstLowInvalidHeapAttributeNumber);
+					}
+				}
+				else
+				{
+					if (attno < 0)
+					{
+						/* System attnos are the same in all tables */
+						parent_attno = attno;
+					}
+					else
+					{
+						if (attno > appinfo->num_child_cols)
+							return false;	/* safety check */
+						parent_attno = appinfo->parent_colnos[attno - 1];
+						if (parent_attno == 0)
+							return false;	/* attr is local to child */
+					}
+					parent_varattnos =
+						bms_add_member(parent_varattnos,
+									   parent_attno - FirstLowInvalidHeapAttributeNumber);
+				}
+			}
+
+			/* If the parent is itself a child, continue up */
+			varno = appinfo->parent_relid;
+			varattnos = parent_varattnos;
+			appinfo = root->append_rel_array[varno];
+		}
+
+		/* Perform the access check on this parent rel */
+		rte = planner_rt_fetch(varno, root);
+		Assert(rte->rtekind == RTE_RELATION);
+	}
+
+	/*
+	 * For all rows to be accessible, there must be no securityQuals from
+	 * security barrier views or RLS policies.
+	 */
+	if (rte->securityQuals != NIL)
+		return false;
+
+	/*
+	 * Use checkAsUser for privilege checks if it's set, in case we're
+	 * accessing the table via a view.
+	 */
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+
+	/*
+	 * Test for table-level SELECT privilege.
+	 *
+	 * If varattnos is non-NULL, this is sufficient to give access to all
+	 * requested attributes, even for a child table, since we have verified
+	 * that all required child columns have matching parent columns.
+	 *
+	 * If varattnos is NULL (whole-table access requested), this doesn't
+	 * necessarily guarantee that the user can read all columns of a child
+	 * table, but we allow it anyway (see comments in examine_variable()) and
+	 * don't bother checking any column privileges.
+	 */
+	if (pg_class_aclcheck(rte->relid, userid, ACL_SELECT) == ACLCHECK_OK)
+		return true;
+
+	if (varattnos == NULL)
+		return false;			/* whole-table access requested */
+
+	/*
+	 * Don't have table-level SELECT privilege, so check per-column
+	 * privileges.
+	 */
+	varattno = -1;
+	while ((varattno = bms_next_member(varattnos, varattno)) >= 0)
+	{
+		AttrNumber	attno = varattno + FirstLowInvalidHeapAttributeNumber;
+
+		if (attno == InvalidAttrNumber)
+		{
+			/* Whole-row reference, so must have access to all columns */
+			if (pg_attribute_aclcheck_all(rte->relid, userid, ACL_SELECT,
+										  ACLMASK_ALL) != ACLCHECK_OK)
+				return false;
+		}
+		else
+		{
+			if (pg_attribute_aclcheck(rte->relid, attno, userid,
+									  ACL_SELECT) != ACLCHECK_OK)
+				return false;
+		}
+	}
+
+	/* If we reach here, have all required column privileges */
+	return true;
+}
+
+/*
  * Check whether it is permitted to call func_oid passing some of the
- * pg_statistic data in vardata.  We allow this either if the user has SELECT
- * privileges on the table or column underlying the pg_statistic data or if
- * the function is marked leak-proof.
+ * pg_statistic data in vardata.  We allow this if either of the following
+ * conditions is met: (1) the user has SELECT privileges on the table or
+ * column underlying the pg_statistic data and there are no securityQuals from
+ * security barrier views or RLS policies, or (2) the function is marked
+ * leakproof.
  */
 bool
 statistic_proc_security_check(VariableStatData *vardata, Oid func_oid)
 {
 	if (vardata->acl_ok)
-		return true;
+		return true;			/* have SELECT privs and no securityQuals */
 
 	if (!OidIsValid(func_oid))
 		return false;
@@ -8347,4 +8423,383 @@ brincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		statsData.pagesPerRange;
 
 	*indexPages = index->pages;
+}
+
+/*
+ * yb_bnl_outer_skip_selectivity
+ *	  Filter-aware estimate of the fraction of the FILTERED outer rows that a
+ *	  YB Batched Nested Loop pulls before it reaches the inner's first matching
+ *	  join key, when the outer is sorted on that key.
+ *
+ * mergejoinscansel() derives the outer "scan start" selectivity from the FULL
+ * outer-column histogram below the inner's minimum (ASC) / above the inner's
+ * maximum (DESC) join key.  That fraction ignores the outer scan's own
+ * restriction, so multiplying it by the (already restricted) outer row count
+ * over-counts the leading mismatch whenever the outer is itself restricted to
+ * start at or above the inner's matching range -- e.g. "outer.k >= c" with
+ * c >= min(inner.k) has no leading mismatch at all, yet the full-column
+ * fraction is large.
+ *
+ * We instead condition that fraction on the outer relation's baserestrictinfo:
+ *
+ *	  P(outer.k < inner_min | restrict)
+ *		= clauselist_selectivity([outer.k < inner_min] + restrict)
+ *		  / clauselist_selectivity(restrict)
+ *
+ * The inner's histogram contributes only the boundary value inner_min
+ * (inner_max for DESC, via get_variable_range); both probabilities are then
+ * evaluated against the OUTER's own statistics.
+ *
+ * clauselist_selectivity() range-merges inequality clauses on the same
+ * variable, so a lower-bound restriction on the join key (the common
+ * ORDER BY ... LIMIT case) collapses the leading-mismatch fraction to ~0 when
+ * the outer already starts at/above the inner range, while a genuine low-key
+ * prefix (no restriction, or one whose bound is below the inner range) is left
+ * essentially unchanged.  With no outer restriction the conditioned value
+ * equals the unconditional mergejoinscansel fraction.
+ *
+ * Returns the conditioned fraction in [0, 1], or -1.0 when no usable
+ * comparison operator or inner-range statistic is available, so the caller can
+ * fall back to the conservative no-skip (0) estimate that plain merge join
+ * also uses.
+ */
+double
+yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
+							  Oid opfamily, int strategy,
+							  Relids outer_relids,
+							  List *outer_baserestrictinfo)
+{
+	OpExpr	   *opclause;
+	Node	   *left;
+	Node	   *right;
+	Node	   *outervar;
+	Node	   *innervar;
+	bool		outer_on_left;
+	Oid			opno;
+	Oid			collation;
+	int			op_strategy;
+	Oid			op_lefttype;
+	Oid			op_righttype;
+	Oid			outertype;
+	Oid			innertype;
+	Oid			innerltop;
+	bool		isgt;
+	VariableStatData innervardata;
+	Datum		innermin;
+	Datum		innermax;
+	Datum		bound;
+	int16		typlen;
+	bool		typbyval;
+	Const	   *boundconst;
+
+	if (!is_opclause(clause))
+		return -1.0;
+	opclause = (OpExpr *) clause;
+	opno = opclause->opno;
+	collation = opclause->inputcollid;
+	left = get_leftop((Expr *) clause);
+	right = get_rightop((Expr *) clause);
+	if (left == NULL || right == NULL)
+		return -1.0;
+
+	/* Identify which side of the mergeclause belongs to the outer relation. */
+	if (bms_is_subset(pull_varnos(root, left), outer_relids))
+	{
+		outervar = left;
+		innervar = right;
+		outer_on_left = true;
+	}
+	else if (bms_is_subset(pull_varnos(root, right), outer_relids))
+	{
+		outervar = right;
+		innervar = left;
+		outer_on_left = false;
+	}
+	else
+		return -1.0;
+
+	/* The "=" operator's declared input types, in left/right order. */
+	get_op_opfamily_properties(opno, opfamily, false,
+							   &op_strategy, &op_lefttype, &op_righttype);
+	outertype = outer_on_left ? op_lefttype : op_righttype;
+	innertype = outer_on_left ? op_righttype : op_lefttype;
+
+	/* ASC sort: skip outer < inner_min; DESC sort: skip outer > inner_max. */
+	isgt = (strategy == BTGreaterStrategyNumber);
+
+	/* '<' on the inner type, so get_variable_range can read its histogram. */
+	innerltop = get_opfamily_member(opfamily, innertype, innertype,
+									BTLessStrategyNumber);
+	if (!OidIsValid(innerltop))
+		return -1.0;
+
+	examine_variable(root, innervar, 0, &innervardata);
+	if (!get_variable_range(root, &innervardata, innerltop, collation,
+							&innermin, &innermax))
+	{
+		ReleaseVariableStats(innervardata);
+		return -1.0;
+	}
+	bound = isgt ? innermax : innermin;
+	get_typlenbyval(innertype, &typlen, &typbyval);
+	boundconst = makeConst(innertype, -1, collation, (int) typlen,
+						   datumCopy(bound, typbyval, typlen),
+						   false, typbyval);
+	ReleaseVariableStats(innervardata);
+
+	/*
+	 * Leading-mismatch fraction: P(outer < inner_min | outer restrictions)
+	 * for ASC (outer > inner_max for DESC).
+	 */
+	return yb_conditioned_cmp_selectivity(root, opfamily, collation,
+										  isgt ? BTGreaterStrategyNumber :
+										  BTLessStrategyNumber,
+										  outervar, outertype, boundconst,
+										  outer_baserestrictinfo);
+}
+
+/*
+ * yb_join_key_bound_from_rinfo
+ *	  If 'rinfo' is an enforced range restriction "var OP Const" (or
+ *	  commuted) on 'varnode', with OP in the merge ordering's operator
+ *	  family 'opfamily' and comparing under its collation 'collation',
+ *	  return the bound Const when it caps the requested side: upper
+ *	  (<, <=, =) when 'upper' is true, lower (>, >=, =) otherwise.
+ *	  '*strict' is set to true for < / >.
+ */
+static Const *
+yb_join_key_bound_from_rinfo(RestrictInfo *rinfo, Node *varnode,
+							 Oid opfamily, Oid collation, bool upper,
+							 bool *strict)
+{
+	OpExpr	   *opclause;
+	Node	   *arg1;
+	Node	   *arg2;
+	Const	   *bound;
+	bool		varonleft;
+	int			strategy;
+
+	if (rinfo->pseudoconstant || !IsA(rinfo->clause, OpExpr))
+		return NULL;
+	opclause = (OpExpr *) rinfo->clause;
+	if (list_length(opclause->args) != 2)
+		return NULL;
+
+	arg1 = (Node *) linitial(opclause->args);
+	while (arg1 && IsA(arg1, RelabelType))
+		arg1 = (Node *) ((RelabelType *) arg1)->arg;
+	arg2 = (Node *) lsecond(opclause->args);
+	while (arg2 && IsA(arg2, RelabelType))
+		arg2 = (Node *) ((RelabelType *) arg2)->arg;
+
+	if (arg1 && arg2 && equal(arg1, varnode) && IsA(arg2, Const))
+	{
+		varonleft = true;
+		bound = (Const *) arg2;
+	}
+	else if (arg1 && arg2 && equal(arg2, varnode) && IsA(arg1, Const))
+	{
+		varonleft = false;
+		bound = (Const *) arg1;
+	}
+	else
+		return NULL;
+
+	if (bound->constisnull)
+		return NULL;
+
+	/*
+	 * The comparison has to sort the way the merge does: another collation
+	 * orders the same values differently, so its bound says nothing about
+	 * where the merge may start or stop.
+	 */
+	if (opclause->inputcollid != collation)
+		return NULL;
+
+	/*
+	 * Interpret the operator in the merge ordering's opfamily; operators
+	 * from other families need not agree with the sort order.
+	 */
+	strategy = get_op_opfamily_strategy(opclause->opno, opfamily);
+	if (strategy == InvalidStrategy)
+		return NULL;
+	if (!varonleft)
+		strategy = BTMaxStrategyNumber + 1 - strategy;	/* commute */
+
+	switch (strategy)
+	{
+		case BTLessStrategyNumber:
+		case BTLessEqualStrategyNumber:
+			if (!upper)
+				return NULL;
+			*strict = (strategy == BTLessStrategyNumber);
+			break;
+		case BTGreaterStrategyNumber:
+		case BTGreaterEqualStrategyNumber:
+			if (upper)
+				return NULL;
+			*strict = (strategy == BTGreaterStrategyNumber);
+			break;
+		default:				/* BTEqualStrategyNumber bounds both sides */
+			*strict = false;
+			break;
+	}
+
+	return bound;
+}
+
+/*
+ * yb_scansel_baserel_var
+ *	  Peel RelabelType from a VariableStatData's expression, returning NULL
+ *	  unless its relation is a base relation, i.e. one whose
+ *	  baserestrictinfo clauses are enforced at its scan.
+ */
+static Node *
+yb_scansel_baserel_var(VariableStatData *vardata)
+{
+	Node	   *node;
+
+	if (vardata->rel == NULL || vardata->rel->relid == 0 ||
+		(vardata->rel->reloptkind != RELOPT_BASEREL &&
+		 vardata->rel->reloptkind != RELOPT_OTHER_MEMBER_REL))
+		return NULL;
+
+	node = vardata->var;
+	while (node && IsA(node, RelabelType))
+		node = (Node *) ((RelabelType *) node)->arg;
+	return node;
+}
+
+/*
+ * yb_conditioned_cmp_selectivity
+ *	  P(var CMP bound | baserestrictinfo): selectivity of comparing 'var'
+ *	  against the Const 'bound' with the opfamily operator for 'cmpstrategy',
+ *	  conditioned on the variable's relation restrictions.
+ *
+ * clauselist_selectivity() range-merges the comparison with restrictions on
+ * the same column, so a restriction implying (or contradicting) the
+ * comparison yields ~1 (~0) instead of double-counting it; with no
+ * restrictions this is the plain comparison selectivity.  Callers ensure
+ * 'var' has usable statistics.  Returns -1.0 when the opfamily has no
+ * (vartype, boundtype) operator or the restrictions are estimated
+ * impossible.
+ */
+static Selectivity
+yb_conditioned_cmp_selectivity(PlannerInfo *root, Oid opfamily, Oid collation,
+							   int cmpstrategy, Node *var, Oid vartype,
+							   Const *bound, List *baserestrictinfo)
+{
+	Oid			cmpop;
+	Expr	   *cmpexpr;
+	List	   *condclauses;
+	Selectivity sel_restrict;
+	Selectivity sel_cond;
+	Selectivity result;
+
+	cmpop = get_opfamily_member(opfamily, vartype, bound->consttype,
+								cmpstrategy);
+	if (!OidIsValid(cmpop))
+		return -1.0;
+
+	cmpexpr = make_opclause(cmpop, BOOLOID, false,
+							(Expr *) var, (Expr *) bound,
+							InvalidOid, collation);
+
+	/*
+	 * Both estimates must come from the same model for their ratio to be a
+	 * conditional probability, so extended statistics are kept out of both:
+	 * they apply to a list of two or more RestrictInfos, which the numerator
+	 * and the denominator are not both guaranteed to be.
+	 */
+	sel_restrict = clauselist_selectivity_ext(root, baserestrictinfo,
+											  0, JOIN_INNER, NULL, false);
+	if (sel_restrict <= 0.0)
+		return -1.0;
+
+	/* list_copy keeps the caller's list intact. */
+	condclauses = lappend(list_copy(baserestrictinfo), cmpexpr);
+	sel_cond = clauselist_selectivity_ext(root, condclauses, 0, JOIN_INNER,
+										  NULL, false);
+	list_free(condclauses);
+
+	result = sel_cond / sel_restrict;
+	CLAMP_PROBABILITY(result);
+	return result;
+}
+
+/*
+ * yb_clamp_scansel_by_other_side_bounds
+ *	  Tighten a mergejoinscansel fraction using enforced range bounds on the
+ *	  other input's join variable.
+ *
+ * The stock estimate takes the other side's extremum from whole-column
+ * statistics, so a restriction such as "other.k < c" is invisible there and
+ * the scanned side is charged all the way to the statistical maximum even
+ * though the merge is guaranteed to stop at the enforced bound.  Each bound
+ * folds in monotonically (Min into "end" fractions, Max into "start"
+ * fractions) as P(scanvar CMP bound | scanvar's own restrictions), so a
+ * same-column restriction on the scanned side, already reflected in its row
+ * estimate, is not double-counted.  Ascending (!isgt) orders only, where
+ * upper bounds map to scan ends and lower bounds to scan starts.
+ *
+ * 'scanexpr' is the scanned side of the merge clause as the planner built it,
+ * of declared type 'scanvartype'; 'scanvar' holds its statistics, whose var
+ * examine_variable() has stripped of any binary-compatible relabeling.
+ */
+static void
+yb_clamp_scansel_by_other_side_bounds(PlannerInfo *root, Oid collation,
+									  Oid opfamily,
+									  VariableStatData *scanvar,
+									  Node *scanexpr,
+									  Oid scanvartype,
+									  VariableStatData *boundvar,
+									  bool clamp_end,
+									  Selectivity *fraction)
+{
+	Node	   *boundnode;
+	List	   *scanrestrict = NIL;
+	ListCell   *lc;
+
+	boundnode = yb_scansel_baserel_var(boundvar);
+	if (boundnode == NULL)
+		return;
+
+	if (yb_scansel_baserel_var(scanvar) != NULL)
+		scanrestrict = scanvar->rel->baserestrictinfo;
+
+	foreach(lc, boundvar->rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		Const	   *bound;
+		bool		strict;
+		int			cmpstrategy;
+		Selectivity selec;
+
+		bound = yb_join_key_bound_from_rinfo(rinfo, boundnode, opfamily,
+											 collation, clamp_end, &strict);
+		if (bound == NULL)
+			continue;
+
+		/*
+		 * The scan runs until passing the other side's last value (end), or
+		 * skips values below its first one (start): a strict upper bound
+		 * caps the end at P(scanvar < C), a strict lower bound floors the
+		 * start at P(scanvar <= C), and non-strict bounds map the other way
+		 * around.
+		 */
+		cmpstrategy = (strict == clamp_end) ? BTLessStrategyNumber :
+			BTLessEqualStrategyNumber;
+
+		selec = yb_conditioned_cmp_selectivity(root, opfamily, collation,
+											   cmpstrategy,
+											   scanexpr, scanvartype,
+											   bound, scanrestrict);
+		if (selec < 0.0)
+			continue;
+
+		if (clamp_end)
+			*fraction = Min(*fraction, selec);
+		else
+			*fraction = Max(*fraction, selec);
+	}
 }

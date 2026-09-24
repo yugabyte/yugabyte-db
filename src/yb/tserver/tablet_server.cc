@@ -87,6 +87,7 @@
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/thin_client_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
@@ -99,10 +100,12 @@
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -161,6 +164,11 @@ DEFINE_NON_RUNTIME_int32(pg_client_svc_queue_length,
              yb::tserver::TabletServer::kDefaultSvcQueueLength,
              "RPC queue length for the Pg Client service.");
 TAG_FLAG(pg_client_svc_queue_length, advanced);
+
+DEFINE_NON_RUNTIME_int32(thin_client_svc_queue_length,
+             yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the Thin Client service.");
+TAG_FLAG(thin_client_svc_queue_length, advanced);
 
 DEFINE_NON_RUNTIME_bool(enable_direct_local_tablet_server_call,
             true,
@@ -242,10 +250,17 @@ DEPRECATE_FLAG(uint32, ysql_min_new_version_ignored_count, "2026_05");
 DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_min_seconds, 30,
     "Minimum duration in seconds that a tserver may receive only older per-db catalog versions "
     "(without ever seeing an advance) from the master before crashing itself to resync. A "
-    "random per-episode threshold is picked from [min, min+150]. Replaces the count-based check "
+    "random per-episode threshold is picked from [min, min + "
+    "ysql_stale_catalog_version_random_extra_seconds]. Replaces the count-based check "
     "controlled by ysql_min_new_version_ignored_count, which was sensitive to heartbeat "
     "frequency (a burst of zero-delay heartbeats could trip the count even though the master "
     "had only been stale for tens of milliseconds).");
+
+DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_random_extra_seconds, 150,
+    "Width of the random window added on top of ysql_stale_catalog_version_min_seconds when "
+    "picking a per-episode fatal threshold. The randomization exists so that all tservers do "
+    "not crash at the same moment. Set to 0 to make the threshold exactly "
+    "ysql_stale_catalog_version_min_seconds, which tests use to bound their runtime.");
 
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
@@ -267,6 +282,16 @@ DEFINE_RUNTIME_int32(min_invalidation_message_retention_time_secs, 60,
     "Minimal time at which a catalog version with invalidation message is retained.");
 TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
+DEFINE_RUNTIME_int32(history_retention_pins_persist_interval_sec, 60,
+    "Interval at which the cluster-wide per-database history retention pins received in the "
+    "heartbeat response are persisted to local disk, so that they can be applied on startup "
+    "before the first heartbeat response arrives.");
+TAG_FLAG(history_retention_pins_persist_interval_sec, advanced);
+DEFINE_validator(history_retention_pins_persist_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
+
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(enable_update_local_peer_min_index);
@@ -286,10 +311,10 @@ constexpr auto kYsqlIdentConfCsvFlag = "ysql_ident_conf_csv";
 
 namespace {
 
-uint16_t GetPostgresPort() {
+uint16_t GetPostgresPort(const std::string& pgsql_proxy_bind_address) {
   yb::HostPort postgres_address;
   CHECK_OK(postgres_address.ParseString(
-      FLAGS_pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
+      pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
   return postgres_address.port();
 }
 
@@ -298,10 +323,10 @@ bool PostgresAndYsqlConnMgrPortValidator(const char* flag_name, uint32 value) {
   // pgsql_proxy_bind_address.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (!FLAGS_enable_ysql_conn_mgr) {
+  if (!FINAL_FLAG_VALUE(enable_ysql_conn_mgr)) {
     return true;
   }
-  const auto pg_port = GetPostgresPort();
+  const auto pg_port = GetPostgresPort(FINAL_FLAG_VALUE(pgsql_proxy_bind_address));
   if (value == pg_port) {
     if (pg_port != pgwrapper::PgProcessConf::kDefaultPort) {
       LOG_FLAG_VALIDATION_ERROR(flag_name, value)
@@ -326,7 +351,7 @@ bool ValidateEnableYsqlConnMgr(const char* flag_name, bool value) {
   // This validation depends on the value of other flag(s): start_pgsql_proxy, enable_ysql.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (!FLAGS_start_pgsql_proxy && !FLAGS_enable_ysql) {
+  if (!FINAL_FLAG_VALUE(start_pgsql_proxy) && !FINAL_FLAG_VALUE(enable_ysql)) {
     LOG_FLAG_VALIDATION_ERROR(flag_name, value)
         << "YSQL must be enabled to start the YSQL connection manager.";
     return false;
@@ -383,14 +408,18 @@ bool MinimalRetentionTimePassed(CoarseTimePoint message_time, CoarseTimePoint no
   return message_time + FLAGS_min_invalidation_message_retention_time_secs * 1s < now;
 }
 
+bool ObjectLockFastpathEnabled() {
+  return FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks;
+}
+
 }  // namespace
 
 struct TabletServer::PgClientServiceHolder {
   template <class... Args>
   explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
 
-  PgClientServiceImpl impl;
   std::optional<PgClientServiceMockImpl> mock;
+  PgClientServiceImpl impl;
 };
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
@@ -405,7 +434,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       xcluster_context_(new TserverXClusterContext()),
       object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
       object_lock_shared_state_manager_(
-          new docdb::ObjectLockSharedStateManager(object_lock_tracker_))
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_, metric_entity()))
 #ifdef __linux__
       ,
       cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)
@@ -609,6 +638,14 @@ Status TabletServer::Init() {
     RETURN_NOT_OK(SkipSharedMemoryNegotiation());
   }
 
+  // Must happen before tablet_manager_->Init(), which opens tablets and thereby makes their
+  // compactions (and the history cutoff those pick) eligible to run.
+  if (FLAGS_enable_db_history_retention_pins) {
+    WARN_NOT_OK(
+        LoadClusterYsqlDbOldestPinnedReadTimes(),
+        "Could not load persisted YSQL DB history retention pins");
+  }
+
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 
@@ -627,8 +664,8 @@ Status TabletServer::Init() {
   shared->SetTserverUuid(fs_manager()->uuid());
 
   shared_mem_manager_->SetReadyCallback([this] {
-    if (auto* object_lock_state = shared_mem_manager_->SharedData()->object_lock_state()) {
-      object_lock_shared_state_manager_->SetupShared(*object_lock_state);
+    if (ObjectLockFastpathEnabled()) {
+      CHECK_OK(object_lock_shared_state_manager_->SetupShared(shared_mem_manager_->allocator()));
     }
   });
 
@@ -833,6 +870,7 @@ Status TabletServer::RegisterServices() {
   if (PREDICT_FALSE(FLAGS_TEST_enable_pg_client_mock)) {
     pg_client_service_holder->mock.emplace(metric_entity(), pg_client_service_if);
     pg_client_service_if = &pg_client_service_holder->mock.value();
+    pg_client_service_holder->impl.TEST_SetMockService(&pg_client_service_holder->mock.value());
     LOG(INFO) << "Mock created for yb::tserver::PgClientServiceImpl";
   }
 
@@ -840,6 +878,13 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RegisterService(
       FLAGS_pg_client_svc_queue_length, std::shared_ptr<PgClientServiceIf>(
           std::move(pg_client_service_holder), pg_client_service_if)));
+
+  auto thin_client_service = std::make_shared<ThinClientServiceImpl>(
+      tablet_manager_->client_future(), clock(), metric_entity(), messenger(),
+      &pg_node_level_mutation_counter_);
+  LOG(INFO) << "yb::tserver::ThinClientServiceImpl created at " << thin_client_service.get();
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_thin_client_svc_queue_length, std::move(thin_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -1637,7 +1682,8 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
             existing_entry.stale_fatal_threshold =
                 MonoDelta::FromSeconds(RandomUniformInt<uint32_t>(
                     FLAGS_ysql_stale_catalog_version_min_seconds,
-                    FLAGS_ysql_stale_catalog_version_min_seconds + 150));
+                    FLAGS_ysql_stale_catalog_version_min_seconds +
+                        FLAGS_ysql_stale_catalog_version_random_extra_seconds));
           }
           const auto stale_for = MonoTime::Now() - existing_entry.stale_since;
           const bool fatal = stale_for >= existing_entry.stale_fatal_threshold;
@@ -2357,7 +2403,8 @@ Status TabletServer::CreateXClusterConsumer() {
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
     return CreateInternalPGConn(
-        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
+        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+        pgwrapper::YbInternalConnKindWireName::kXClusterDdlQueue);
   };
   auto get_namespace_info =
       [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
@@ -2555,6 +2602,8 @@ void TabletServer::RegisterConnectionManagerRestarter(std::function<Status(void)
 Status TabletServer::StartYSQLLeaseRefresher() {
   return ysql_lease_manager_->StartYSQLLeaseRefresher();
 }
+
+void TabletServer::ShutdownYSQLLeaseManager() { ysql_lease_manager_->Shutdown(); }
 
 Status TabletServer::SetCDCServiceEnabled() {
   if (!cdc_service_) {
@@ -2764,6 +2813,11 @@ master::DbOidToHybridTimeMap TabletServer::GetYsqlDbOldestPinnedReadTimes() {
 
 void TabletServer::UpdateClusterYsqlDbOldestPinnedReadTimes(
   const master::TSHeartbeatResponsePB& resp) {
+  // The master's aggregated map may be incomplete (e.g. after failover, before every live tserver
+  // has heartbeated). Keep the last complete map until it is ready again.
+  if (!resp.cluster_ysql_db_pins_ready()) {
+    return;
+  }
   master::DbOidToHybridTimeMap pins;
   pins.reserve(resp.cluster_ysql_db_oldest_pinned_read_times().size());
   for (const auto& [db_oid, db_pins] : resp.cluster_ysql_db_oldest_pinned_read_times()) {
@@ -2772,8 +2826,62 @@ void TabletServer::UpdateClusterYsqlDbOldestPinnedReadTimes(
       pins.emplace(static_cast<PgOid>(db_oid), pin);
     }
   }
+  PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(pins);
   std::lock_guard lock(cluster_ysql_db_oldest_pinned_read_times_mutex_);
   cluster_ysql_db_oldest_pinned_read_times_ = std::move(pins);
+}
+
+Status TabletServer::LoadClusterYsqlDbOldestPinnedReadTimes() {
+  YsqlDbHistoryRetentionPinsPB pb;
+  auto status = fs_manager()->ReadYsqlDbHistoryRetentionPins(&pb);
+  if (!status.ok()) {
+    // No pins persisted yet: a fresh node, or the feature was enabled since the last write.
+    if (status.IsNotFound()) {
+      return Status::OK();
+    }
+    return status;
+  }
+
+  master::DbOidToHybridTimeMap pins;
+  pins.reserve(pb.db_oldest_pinned_read_times().size());
+  for (const auto& [db_oid, pin_value] : pb.db_oldest_pinned_read_times()) {
+    auto pin = HybridTime::FromPB(pin_value);
+    if (pin.is_valid()) {
+      pins.emplace(static_cast<PgOid>(db_oid), pin);
+    }
+  }
+
+  LOG(INFO) << "Loaded " << pins.size() << " YSQL DB history retention pins";
+  std::lock_guard lock(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+  cluster_ysql_db_oldest_pinned_read_times_ = std::move(pins);
+  return Status::OK();
+}
+
+void TabletServer::PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(
+    const master::DbOidToHybridTimeMap& pins) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return;
+  }
+  const auto interval_sec = FLAGS_history_retention_pins_persist_interval_sec;
+  const auto now = CoarseMonoClock::Now();
+  if (now < last_ysql_db_pins_persist_time_ + interval_sec * 1s) {
+    return;
+  }
+  last_ysql_db_pins_persist_time_ = now;
+
+  // Transactions that started since the last write are missing from the persisted map. They are
+  // covered by the timestamp_history_retention_interval_sec safety window that
+  // TSTabletManager::ComputeDbHistoryRetentionPinCutoff applies on top of the pins, which is well
+  // above this interval plus db_history_retention_pin_min_txn_age_sec (the age at which a
+  // transaction first becomes eligible to be reported as a pin), so they need no special handling.
+  YsqlDbHistoryRetentionPinsPB pb;
+  auto& pb_pins = *pb.mutable_db_oldest_pinned_read_times();
+  for (const auto& [db_oid, pin] : pins) {
+    pb_pins[db_oid] = pin.ToPB();
+  }
+  WARN_NOT_OK(
+      fs_manager()->WriteYsqlDbHistoryRetentionPins(&pb),
+      "Could not persist YSQL DB history retention pins");
 }
 
 HybridTime TabletServer::GetClusterYsqlDbOldestPinnedReadTime(PgOid db_oid) const {
@@ -2794,6 +2902,18 @@ PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {
 PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
   auto holder = pg_client_service_.lock();
   return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
+}
+
+std::optional<docdb::ObjectLockSharedStateHolder>
+TabletServer::AllocateObjectLockSharedState() const {
+  if (ObjectLockFastpathEnabled()) {
+    auto result = object_lock_shared_state_manager_->AllocateShared();
+    if (result.ok()) {
+      return std::move(*result);
+    }
+    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+  }
+  return std::nullopt;
 }
 
 ConnectivityStateResponsePB TabletServer::ConnectivityState() {

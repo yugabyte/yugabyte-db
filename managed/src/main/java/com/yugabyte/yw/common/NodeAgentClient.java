@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.api.client.util.Throwables;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -27,6 +28,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
+import com.yugabyte.yw.nodeagent.ConfigureCloudFederationOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
@@ -113,6 +116,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.StringTokenizer;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -129,9 +133,9 @@ import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.slf4j.MDC;
@@ -146,6 +150,10 @@ public class NodeAgentClient {
   public static final String NODE_AGENT_SERVICE_CONFIG_FILE = "node_agent/service_config.json";
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
   public static final int MAX_TRANSIENT_FAILURES = 2;
+  // Cap captured node-agent output included in task failures shown in the UI.
+  private static final int MAX_ERROR_OUTPUT_CHARS = 4000;
+  // Node-agent can stream a single chunk up to ~1MB; cap each stored line.
+  private static final int MAX_ERROR_OUTPUT_LINE_CHARS = 1024;
 
   // Cache of the channels for re-use.
   private final LoadingCache<ChannelConfig, ManagedChannel> cachedChannels;
@@ -219,7 +227,7 @@ public class NodeAgentClient {
 
   @Builder
   public static class NodeAgentUpgradeParam {
-    @NonNull private String certDir;
+    @Nullable private String certDir;
     @Nullable private Path packagePath;
   }
 
@@ -549,9 +557,11 @@ public class NodeAgentClient {
         stdErr.append(errMsg);
         onError(
             new RuntimeException(
-                String.format(
-                    "Error(%d) %s",
-                    response.getError().getCode(), response.getError().getMessage())));
+                formatNodeAgentFailure(
+                    String.format(
+                        "Error(%d) %s",
+                        response.getError().getCode(), response.getError().getMessage()),
+                    stdOut.toString())));
       } else {
         String msg = response.getOutput();
         if (logOutput) {
@@ -611,11 +621,14 @@ public class NodeAgentClient {
   static class DescribeTaskResponseObserver<T> extends BaseResponseObserver<DescribeTaskResponse> {
     private final Class<T> responseClass;
     private final AtomicReference<T> resultRef;
+    private final CircularFifoQueue<String> outputBuffer;
 
-    DescribeTaskResponseObserver(String id, Class<T> responseClass) {
+    DescribeTaskResponseObserver(
+        String id, Class<T> responseClass, CircularFifoQueue<String> outputBuffer) {
       super(id);
       this.responseClass = responseClass;
       this.resultRef = new AtomicReference<>();
+      this.outputBuffer = outputBuffer;
     }
 
     public T waitForResponse() {
@@ -628,13 +641,12 @@ public class NodeAgentClient {
       try {
         super.onNext(response);
         if (response.hasError()) {
-          com.yugabyte.yw.nodeagent.Error error = response.getError();
-          onError(
-              new RuntimeException(
-                  String.format("Code: %d, Error: %s", error.getCode(), error.getMessage())));
+          onError(new RuntimeException(formatDescribeTaskError(response)));
         } else {
           if (response.hasOutput()) {
-            log.info(response.getOutput());
+            String chunk = response.getOutput();
+            addOutputLines(outputBuffer, chunk);
+            log.info(chunk);
           } else {
             for (Map.Entry<FieldDescriptor, Object> entry : response.getAllFields().entrySet()) {
               if (entry.getValue() == null) {
@@ -651,10 +663,48 @@ public class NodeAgentClient {
         onError(e);
       }
     }
+
+    private String formatDescribeTaskError(DescribeTaskResponse response) {
+      com.yugabyte.yw.nodeagent.Error error = response.getError();
+      StringBuilder sb = new StringBuilder();
+      sb.append("Code: ").append(error.getCode());
+      sb.append(", Error: ").append(error.getMessage());
+      if (StringUtils.isNotBlank(response.getState())) {
+        sb.append(", State: ").append(response.getState());
+      }
+      return formatNodeAgentFailure(sb.toString(), String.join("\n", outputBuffer));
+    }
+  }
+
+  private static void addOutputLines(CircularFifoQueue<String> outputBuffer, String chunk) {
+    if (StringUtils.isEmpty(chunk)) {
+      return;
+    }
+    StringTokenizer tokenizer = new StringTokenizer(chunk, "\n");
+    while (tokenizer.hasMoreTokens()) {
+      String line = tokenizer.nextToken();
+      if (StringUtils.isBlank(line)) {
+        continue;
+      }
+      outputBuffer.add(StringUtils.abbreviateMiddle(line, "...", MAX_ERROR_OUTPUT_LINE_CHARS));
+    }
+  }
+
+  @VisibleForTesting
+  static String formatNodeAgentFailure(String summary, String output) {
+    String captured = StringUtils.trimToEmpty(output);
+    if (StringUtils.isBlank(captured)) {
+      return summary;
+    }
+    StringBuilder sb = new StringBuilder();
+    sb.append(summary);
+    sb.append(", Output:\n");
+    sb.append(StringUtils.abbreviateMiddle(captured, "...", MAX_ERROR_OUTPUT_CHARS));
+    return sb.toString();
   }
 
   public static String getNodeAgentJWT(NodeAgent nodeAgent, Duration tokenLifetime) {
-    PrivateKey privateKey = nodeAgent.getPrivateKey();
+    PrivateKey privateKey = nodeAgent.getSignerPrivateKey();
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
@@ -707,7 +757,7 @@ public class NodeAgentClient {
       log.debug("Node agent {} is not in active state", nodeAgent);
       return Optional.empty();
     }
-    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid())) {
       nodeAgent.refresh();
     }
     return optional;
@@ -783,30 +833,37 @@ public class NodeAgentClient {
   // This checks if node agent is enabled for the universe with additional provider check.
   public Optional<Boolean> isNodeAgentEnabled(
       Universe universe, Predicate<Provider> additionalProviderPredicate) {
-    Map<String, Boolean> providerEnabledMap = new HashMap<>();
+
+    Map<UUID, Boolean> providerEnabledMap = new HashMap<>();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (cluster.userIntent == null
-          || cluster.userIntent.providerType == CloudType.kubernetes
-          || cluster.userIntent.provider == null) {
+
+      boolean isK8s =
+          cluster.userIntent != null
+              && cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+
+      if (cluster.userIntent == null || cluster.userIntent.getAllCloudTypes().isEmpty() || isK8s) {
         // Unsupported cluster is found.
         return Optional.empty();
       }
-      boolean enabled =
-          providerEnabledMap.computeIfAbsent(
-              cluster.userIntent.provider,
-              k -> {
-                Provider provider =
-                    Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                boolean isEnabled =
-                    additionalProviderPredicate == null
-                        || additionalProviderPredicate.test(provider);
-                if (!isEnabled) {
-                  log.debug(
-                      "Node agent is not enabled for provider {} in additional check",
-                      provider.getUuid());
-                }
-                return isEnabled;
-              });
+      boolean enabled = true;
+      for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
+        enabled =
+            enabled
+                && providerEnabledMap.computeIfAbsent(
+                    providerUUID,
+                    k -> {
+                      Provider provider = Provider.getOrBadRequest(providerUUID);
+                      boolean isEnabled =
+                          additionalProviderPredicate == null
+                              || additionalProviderPredicate.test(provider);
+                      if (!isEnabled) {
+                        log.debug(
+                            "Node agent is not enabled for provider {} in additional check",
+                            provider.getUuid());
+                      }
+                      return isEnabled;
+                    });
+      }
       if (!enabled) {
         return Optional.of(false);
       }
@@ -1088,7 +1145,10 @@ public class NodeAgentClient {
   public void startUpgrade(NodeAgent nodeAgent, NodeAgentUpgradeParam param) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
-    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder().setCertDir(param.certDir);
+    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder();
+    if (StringUtils.isNotBlank(param.certDir)) {
+      builder.setCertDir(param.certDir);
+    }
     if (param.packagePath != null) {
       builder.setPackagePath(param.packagePath.toString());
     }
@@ -1214,6 +1274,18 @@ public class NodeAgentClient {
     return runAsyncTask(nodeAgent, builder.build(), InstallOtelCollectorOutput.class);
   }
 
+  public ConfigureCloudFederationOutput runConfigureCloudFederation(
+      NodeAgent nodeAgent, ConfigureCloudFederationInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setConfigureCloudFederationInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ConfigureCloudFederationOutput.class);
+  }
+
   public SetupCGroupOutput runSetupCGroupInput(
       NodeAgent nodeAgent, SetupCGroupInput input, String user) {
     SubmitTaskRequest.Builder builder =
@@ -1289,12 +1361,15 @@ public class NodeAgentClient {
     Objects.requireNonNull(request.getTaskId(), "Task ID must be set");
     long pollDeadlineMs =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDescribePollDeadline).toMillis();
+    int maxOutputBufferLines =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDescribeMaxOutputBufferLines);
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     SubmitTaskResponse response = NodeAgentGrpc.newBlockingStub(channel).submitTask(request);
     String taskId = response.getTaskId();
     String id = String.format("%s-%s", nodeAgent.getUuid(), taskId);
     DescribeTaskRequest describeTaskRequest =
         DescribeTaskRequest.newBuilder().setTaskId(taskId).build();
+    CircularFifoQueue<String> outputBuffer = new CircularFifoQueue<>(maxOutputBufferLines);
     int transientFailures = 0;
     while (true) {
       try {
@@ -1303,7 +1378,7 @@ public class NodeAgentClient {
         channel = getManagedChannel(nodeAgent, true);
         NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
         DescribeTaskResponseObserver<T> responseObserver =
-            new DescribeTaskResponseObserver<>(id, responseClass);
+            new DescribeTaskResponseObserver<>(id, responseClass, outputBuffer);
         stub.withDeadlineAfter(pollDeadlineMs, TimeUnit.MILLISECONDS)
             .describeTask(describeTaskRequest, responseObserver);
         return responseObserver.waitForResponse();

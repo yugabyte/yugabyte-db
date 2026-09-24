@@ -1,32 +1,30 @@
 import { useEffect, useState } from 'react';
 import { RunTimeConfig } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  isNewUniverseExperienceForAllUsers,
+  isV2CreateEditUniverseEnabled
+} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import { isRbacEnabled, isSuperAdminUser } from '@app/redesign/features/rbac/common/RbacUtils';
 import { UserPermission } from '@app/redesign/features/rbac/common/rbac_constants';
+import {
+  ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT,
+  isOnboardingNewExperienceEnabled,
+  isOnboardingNewExperienceHydrated,
+  setOnboardingNewExperienceEnabled,
+  syncOnboardingNewExperienceEnabled
+} from './tour-progress';
 
-export const ONBOARDING_NEW_EXPERIENCE_KEY = 'yb_onboarding_new_experience_enabled';
-export const ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT = 'yb-onboarding-new-experience-change';
-export const ONBOARDING_BANNER_DISMISS_KEY = 'yb_onboarding_banner_dismissed';
+export { ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT };
+export {
+  isOnboardingNewExperienceEnabled,
+  isOnboardingNewExperienceHydrated,
+  setOnboardingNewExperienceEnabled,
+  syncOnboardingNewExperienceEnabled
+};
 
 export const ONBOARDING_FULLSCREEN_OVERLAY_EVENT = 'yb-onboarding-fullscreen-overlay-change';
 export const EDIT_PLACEMENT_OVERLAY_ID = 'edit-placement';
 export const UNIVERSE_FORM_OVERLAY_ID = 'universe-form';
-
-/** All onboarding localStorage keys — cleared on logout. Keep in sync with tip/modal modules. */
-const UNIVERSE_REVAMP_ONBOARDING_STORAGE_KEYS = [
-  ONBOARDING_NEW_EXPERIENCE_KEY,
-  ONBOARDING_BANNER_DISMISS_KEY,
-  'yb_before_new_experience_popover_dismissed',
-  'yb_after_new_experience_popover_dismissed',
-  'yb_universe_creation_popover_dismissed',
-  'yb_detail_settings_popover_dismissed',
-  'yb_advanced_placement_popover_dismissed',
-  'yb_guided_expert_mode_popover_dismissed',
-  'yb_before_proceed_with_new_modal_dismissed',
-  'yb_what_changed_modal_dismissed',
-  'yb_what_new_in_placement_modal_dismissed',
-  'yb_where_things_moved_modal_dismissed'
-];
 
 const openFullscreenOverlayIds = new Set<string>();
 
@@ -50,23 +48,6 @@ export const setOnboardingFullscreenOverlayOpen = (id: string, open: boolean): v
 
 export const isOnboardingFullscreenOverlayOpen = (): boolean => openFullscreenOverlayIds.size > 0;
 
-/** Clears onboarding localStorage keys. Call on logout. */
-export const resetUniverseRevampOnboardingStorage = (): void => {
-  UNIVERSE_REVAMP_ONBOARDING_STORAGE_KEYS.forEach((key) => {
-    localStorage.removeItem(key);
-  });
-};
-
-export const isOnboardingNewExperienceEnabled = (): boolean =>
-  localStorage.getItem(ONBOARDING_NEW_EXPERIENCE_KEY) === 'true';
-
-export const setOnboardingNewExperienceEnabled = (enabled: boolean): void => {
-  localStorage.setItem(ONBOARDING_NEW_EXPERIENCE_KEY, String(enabled));
-  window.dispatchEvent(
-    new CustomEvent(ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT, { detail: { enabled } })
-  );
-};
-
 export const subscribeOnboardingNewExperienceChange = (
   onChange: (enabled: boolean) => void
 ): (() => void) => {
@@ -79,9 +60,13 @@ export const subscribeOnboardingNewExperienceChange = (
 
 /** React helper for SuperAdmin opt-in toggle state. */
 export const useOnboardingNewExperienceEnabled = (): boolean => {
-  const [enabled, setEnabled] = useState(isOnboardingNewExperienceEnabled);
+  // Tracks the unhydrated state too, so hydrating to false still re-renders subscribers
+  // that distinguish "unknown" from "off".
+  const [enabled, setEnabled] = useState<boolean | null>(() =>
+    isOnboardingNewExperienceHydrated() ? isOnboardingNewExperienceEnabled() : null
+  );
   useEffect(() => subscribeOnboardingNewExperienceChange(setEnabled), []);
-  return enabled;
+  return enabled === true;
 };
 
 export const useOnboardingFullscreenOverlayOpen = (): boolean => {
@@ -105,14 +90,30 @@ export const isCurrentUserSuperAdmin = (currentUserRole?: string): boolean => {
 };
 
 /**
- * True when V2 runtime is on, or SuperAdmin has opted in via localStorage.
- * Pass `onboardingOptInEnabled` from `useOnboardingNewExperienceEnabled()` so UI
- * updates when the banner toggle changes.
+ * True when enable_new_universe_experience is on and either
+ * enable_new_universe_experience_for_all_users is on or the user is SuperAdmin.
+ *
+ * SuperAdmin uses the in-memory mirror (hydrated from runtime config, updated by
+ * the banner toggle) so the UI flips immediately without waiting for refetch.
+ *
+ * Returns undefined while neither source has loaded: callers must not route on an
+ * unhydrated flag, or a click during page load lands on the v1 UI with nothing to
+ * redirect it.
  */
 export const isUniverseRevampExperienceEnabled = (
   runtimeConfigs?: RunTimeConfig,
-  currentUserRole?: string,
-  onboardingOptInEnabled: boolean = isOnboardingNewExperienceEnabled()
-): boolean =>
-  isV2CreateEditUniverseEnabled(runtimeConfigs as RunTimeConfig) ||
-  (isCurrentUserSuperAdmin(currentUserRole) && onboardingOptInEnabled);
+  currentUserRole?: string
+): boolean | undefined => {
+  const isSuperAdmin = isCurrentUserSuperAdmin(currentUserRole);
+  if (isSuperAdmin && isOnboardingNewExperienceHydrated()) {
+    return isOnboardingNewExperienceEnabled();
+  }
+  if (!runtimeConfigs?.configEntries) {
+    return undefined;
+  }
+  // What the banner's mirror sync derives the SuperAdmin value from.
+  const isFeatureEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs);
+  return isSuperAdmin
+    ? isFeatureEnabled
+    : isFeatureEnabled && isNewUniverseExperienceForAllUsers(runtimeConfigs);
+};

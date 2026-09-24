@@ -70,6 +70,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 
@@ -2022,28 +2023,32 @@ Result<std::unique_ptr<IndexReader>> BlockBasedTable::CreateDataBlockIndexReader
 
 uint64_t BlockBasedTable::ApproximateOffsetOf(const Slice& key) {
   std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
-
   index_iter->Seek(key);
-  uint64_t result;
-  if (index_iter->Valid()) {
-    BlockHandle handle;
-    Slice input = index_iter->value();
-    Status s = handle.DecodeFrom(&input);
-    if (s.ok()) {
-      result = handle.offset();
-    } else {
-      // Strange: we can't decode the block handle in the index block.
-      // We'll just return the offset of the metaindex block, which is
-      // close to the whole file size for this case.
-      result = rep_->footer.metaindex_handle().offset();
+  const Status seek_status = index_iter->status();
+  if (!seek_status.ok() || !index_iter->Valid()) {
+    // Either the index could not be read, or "key" is past the last key in the file. Both
+    // approximate to the end of the data. This is a size estimate with no error channel -- see
+    // VersionSet::ApproximateSize, reachable from DB::GetApproximateSizes and from compaction
+    // sizing -- so degrade rather than fail.
+    if (!seek_status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Approximating offset as data end after index seek failed: " << seek_status;
     }
-  } else {
-    // key is past the last key in the file. If table_properties is not
-    // available, approximate the offset by returning the offset of the
-    // metaindex block (which is right near the end of the file).
-    result = ApproximateOffsetOfDataEnd();
+    return ApproximateOffsetOfDataEnd();
   }
-  return result;
+
+  BlockHandle handle;
+  Slice input = index_iter->value();
+  const Status decode_status = handle.DecodeFrom(&input);
+  if (!decode_status.ok()) {
+    // The block handle in the index entry did not decode. Fall back to the metaindex offset, which
+    // sits just past the last data block and so is close to the whole file size.
+    YB_LOG_EVERY_N_SECS(WARNING, 30)
+        << "Approximating offset as metaindex offset after index handle decode failed: "
+        << decode_status;
+    return rep_->footer.metaindex_handle().offset();
+  }
+  return handle.offset();
 }
 
 Result<uint64_t> BlockBasedTable::SeekOffsetOf(const Slice& key) {
@@ -2361,6 +2366,11 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey(Slice lower_bound_internal
   // data block (consequently the top-level index block has only one entry).
   // If a lower bound was used, we reach here when the SST has only one data block with user keys
   // in them. There may be several index levels and data blocks.
+  return GetFirstDataBlockMiddleKey(lower_bound_internal_key);
+}
+
+yb::Result<std::string> BlockBasedTable::GetFirstDataBlockMiddleKey(
+    Slice lower_bound_internal_key) {
   std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
   RETURN_NOT_OK_PREPEND(index_iter->status(), "Index iterator creation failed");
   if (!lower_bound_internal_key.empty()) {
@@ -2389,6 +2399,64 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey(Slice lower_bound_internal
     delete data_block.value;
   }
   return middle_key_res;
+}
+
+yb::Result<std::string> BlockBasedTable::GetMiddleKeyWithinBounds(
+    Slice lower_bound_key, Slice upper_bound_key) {
+  if (lower_bound_key.empty() || upper_bound_key.empty()) {
+    return STATUS(
+        InvalidArgument, "GetMiddleKeyWithinBounds() requires both lower and upper bounds");
+  }
+
+  std::unique_ptr<DataBlockAwareIndexInternalIterator> index_iter(
+      NewDataBlockAwareIndexIterator(ReadOptions::kDefault));
+  auto index_middle_key = index_iter->GetMiddleKey(lower_bound_key, upper_bound_key);
+  if (!index_middle_key.ok() && !index_middle_key.status().IsIncomplete() &&
+      !index_middle_key.status().IsNotSupported()) {
+    return index_middle_key.status().CloneAndPrepend(
+        "Failed to locate a middle key in index SST file");
+  }
+
+  std::string seek_target;
+  if (index_middle_key.ok()) {
+    seek_target = std::move(*index_middle_key);
+  } else {
+    // The index cannot offer an interior midpoint: too few entries in the bounds (Incomplete), or
+    // an index type that cannot search bounded at all (NotSupported). Fall back to the middle of
+    // the data block covering the lower bound, chosen without reference to either bound.
+    auto block_middle_key = GetFirstDataBlockMiddleKey(lower_bound_key);
+    if (block_middle_key.ok()) {
+      seek_target = std::move(*block_middle_key);
+    } else if (block_middle_key.status().IsIncomplete()) {
+      // That block holds a single record, so it has no middle. Seeking from the lower bound below
+      // still yields the one candidate this file has to offer.
+      seek_target = lower_bound_key.ToBuffer();
+    } else {
+      return block_middle_key.status();
+    }
+  }
+
+  // Neither source is bound by lower_bound_key: index separators are shortened so the key may not
+  // exist at all, index bounds resolve at restart granularity, and a data block can start below the
+  // bound. Seek from whichever of the two is higher and step past an exact match, so the result is
+  // a real key strictly above the lower bound.
+  const auto& icmp = *rep_->comparator;
+  std::unique_ptr<InternalIterator> iter(
+      NewIterator(ReadOptions::kDefault, nullptr, /* skip_filters = */ true));
+  iter->Seek(icmp.Compare(seek_target, lower_bound_key) > 0 ? Slice(seek_target) : lower_bound_key);
+  if (VERIFY_RESULT(iter->CheckedValid()) && iter->key().compare(lower_bound_key) == 0) {
+    iter->Next();
+  }
+  if (!VERIFY_RESULT(iter->CheckedValid())) {
+    return STATUS(Incomplete, "No data key above the lower bound");
+  }
+
+  // Nothing can pull a key back under the upper bound, so decline rather than return one outside
+  // the range this promised to search.
+  if (!upper_bound_key.empty() && icmp.Compare(iter->key(), upper_bound_key) > 0) {
+    return STATUS(Incomplete, "No data key within the bounds");
+  }
+  return iter->key().ToBuffer();
 }
 
 yb::Result<IndexReaderCleanablePtr> BlockBasedTable::TEST_GetIndexReader() {

@@ -157,6 +157,13 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         );
       }
 
+      // A failed attempt only refreshes the catcache of the physical backend that served it.
+      // With ConnMgr the next statement of this logical connection can run on a different,
+      // still stale backend of the same node, and a DDL commit only waits for its own node's
+      // shared memory catalog version. So let the heartbeat deliver the new version to
+      // connection 2's node, which makes every backend there refresh before it parses.
+      waitForTServerHeartbeatIfConnMgrEnabled();
+
       // Second attempt should always succeed.
       statement2.execute("INSERT INTO cache_test2(a,b) VALUES (false, 12)");
       expectedRows.add(new Row(false, 12));
@@ -291,16 +298,17 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Force a cache refresh on connection 2.
       statement2.execute("SELECT * FROM test_table");
 
-      // For the non-ConnMgr path, disable heartbeats so that catalog version
-      // updates from each ALTER on connection 1 are not propagated to
-      // connection 2's tserver during the loop. Without this, the prologue
-      // check in YBCheckSharedCatalogCacheVersion may refresh connection 2's
-      // catcache before the SELECT runs, hiding the expected "Catalog Version
+      // Disable heartbeats so that catalog version updates from each ALTER on
+      // connection 1 are not propagated to connection 2's tserver during the
+      // loop. Without this, the prologue check in
+      // YBCheckSharedCatalogCacheVersion may refresh connection 2's catcache
+      // before the SELECT runs, hiding the expected "Catalog Version
       // Mismatch" error. The race window is widened under TSAN where ALTER
-      // runtimes span multiple heartbeat intervals. The ConnMgr path
-      // intentionally waits for the heartbeat (DDL sleeps), so keep heartbeats
-      // enabled there to preserve the separate "no failures" assertion below.
-      final boolean disableHeartbeats = !isTestRunningWithConnectionManager();
+      // runtimes span multiple heartbeat intervals. This applies to the
+      // ConnMgr path as well: a DDL commit only waits for its own node's
+      // shared memory catalog version, so connection 2's node learns about
+      // each ALTER through the heartbeat, the same as without ConnMgr.
+      final boolean disableHeartbeats = true;
 
       final int attempts = 5;
       final List<Throwable> errors;
@@ -336,25 +344,17 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         }
       }
 
-      if (isTestRunningWithConnectionManager()) {
-        // Due to DDL sleeps with Connection Manager, all select statements
-        // should succeed.
-        assertEquals("No failures are expected with Connection Manager enabled",
-         errors.size(),
-         0);
-      } else {
-        // Expect at least one of the select statements to fail (the transparent retry can mask
-        // most of them, but the very first attempt typically races the heartbeat).
-        assertGreaterThanOrEqualTo(
-            String.format(
-                "Expected at least 1 failure out of %d attempts, got %d",
-                attempts,
-                errors.size()
-              ),
-            errors.size(),
-            1
-          );
-      }
+      // Expect at least one of the select statements to fail (the transparent retry can mask
+      // most of them, but the very first attempt typically races the heartbeat).
+      assertGreaterThanOrEqualTo(
+          String.format(
+              "Expected at least 1 failure out of %d attempts, got %d",
+              attempts,
+              errors.size()
+            ),
+          errors.size(),
+          1
+        );
 
       // All errors should be due to a stale catalog cache (either the new column is not yet
       // visible in pg's parser, or docdb returns a schema version mismatch).
@@ -844,8 +844,25 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         final int endPartition = 10 * (part_idx + 1);
 
         stmt1.execute("BEGIN");
-        stmt1.executeUpdate(String.format("INSERT INTO prt(a,b) VALUES (%d, 'abc')",
-                                          startPartition + 1));
+        // The previous iteration's DDL ran on connection 2's node and bumped the DocDB schema
+        // version of prt_default. Until its catalog version reaches this node, the insert is
+        // rejected with a retryable stale schema version error instead of reaching the commit.
+        for (int attempt = 0; ; ++attempt) {
+          try {
+            stmt1.executeUpdate(String.format("INSERT INTO prt(a,b) VALUES (%d, 'abc')",
+                                              startPartition + 1));
+            break;
+          } catch (PSQLException e) {
+            if (attempt == 30 || !e.getMessage().contains("schema version mismatch")) {
+              throw e;
+            }
+            LOG.info(String.format("Iteration %d: retrying insert after attempt %d: %s",
+                                   part_idx, attempt, e.getMessage()));
+            stmt1.execute("ROLLBACK");
+            Thread.sleep(100);
+            stmt1.execute("BEGIN");
+          }
+        }
 
         // Alternatively test creating a new partition and attaching a new partition.
         if (part_idx % 2 == 0) {

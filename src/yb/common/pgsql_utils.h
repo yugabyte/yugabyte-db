@@ -24,3 +24,8 @@ bool HasSkipIntents(const PB& pb) {
     return pb.skip_intents_read();
   }
 }
+
+template<class PB>
+bool ReadAtInTxnLimit(const PB& pb) {
+  return pb.read_at_in_txn_limit();
+}

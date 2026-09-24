@@ -48,8 +48,6 @@ class SkipIntentsMetricTest : public pgwrapper::LibPqTestBase {
 
     options->extra_tserver_flags.emplace_back(
         "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=true");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
 
     // Set a high max batch size to ensure metric tests stay reliable.
     // If the batch size is too low, inserting rows into a single table might
@@ -63,18 +61,62 @@ class SkipIntentsMetricTest : public pgwrapper::LibPqTestBase {
   Result<int64_t> GetSkipIntentsCount() {
     int64_t result = 0;
     for (auto* tserver : cluster_->tserver_daemons()) {
-      int64_t count = CHECK_RESULT(tserver->GetMetric<int64>(
+      auto count_res = tserver->GetMetric<int64>(
           &METRIC_ENTITY_server, "yb.tabletserver", &METRIC_skip_intents_writes,
-          "value"));
-      result += count;
+          "value");
+      // The metric might not be instantiated on a tablet server if it hasn't
+      // handled any relevant operations yet, causing GetMetric to return NotFound.
+      // We gracefully treat NotFound as a count of 0.
+      if (count_res.ok()) {
+        result += *count_res;
+      } else if (!count_res.status().IsNotFound()) {
+        RETURN_NOT_OK(count_res);
+      }
     }
     return result;
   }
 };
 
+// Fixture for tests whose outcome must not depend on the isolation level. The parameter is the
+// value for default_transaction_isolation. Serializable is left out: the optimization does not
+// apply to it inside a transaction block, so those tests would assert something different.
+class SkipIntentsIsolationTest : public SkipIntentsMetricTest,
+                                 public ::testing::WithParamInterface<const char*> {
+ protected:
+  Result<PGConn> ConnectAtIsolation() {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", GetParam()));
+    return conn;
+  }
+};
+
+// gtest only accepts alphanumerics and underscores in an instantiated test name.
+std::string IsolationSuffix(const ::testing::TestParamInfo<const char*>& info) {
+  std::string name;
+  for (const char* c = info.param; *c; ++c) {
+    name += (*c == ' ') ? '_' : *c;
+  }
+  return name;
+}
+
+INSTANTIATE_TEST_SUITE_P(, SkipIntentsIsolationTest,
+    ::testing::Values("READ COMMITTED", "REPEATABLE READ"), IsolationSuffix);
+
 class SkipIntentsBasicTest : public SkipIntentsMetricTest,
                             public ::testing::WithParamInterface<const char*> {
 };
+
+namespace {
+
+// Whether the optimization applies to a relation created inside an explicit transaction block at
+// this isolation level. Serializable is the only one left out: it carries no read time, so its
+// operations cannot be pointed at in_txn_limit, and the optimization stays
+// restricted to a top-level statement, which is the whole transaction and has no later read.
+bool SkipIntentsAppliesInTxnBlock(const char* isolation_level) {
+  return strcmp(isolation_level, "SERIALIZABLE") != 0;
+}
+
+}  // namespace
 
 TEST_P(SkipIntentsBasicTest, TestCTASMetricsWithIsolation) {
   const char* isolation_level = GetParam();
@@ -321,7 +363,7 @@ TEST_P(SkipIntentsBasicTest, TestCreateLikeInsertMetrics) {
             << " | Writes: " << initial_writes << " -> " << final_writes;
 
   // 3. Assertions
-  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
     // final_writes should be at least initial_writes + 2 (1 for heap, 1 for index)
     ASSERT_GE(final_writes, initial_writes + 2);
   } else {
@@ -353,13 +395,320 @@ TEST_P(SkipIntentsBasicTest, TestIsolationLevelBehavior) {
   LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
             << " | Writes: " << baseline_writes << " -> " << final_writes;
 
-  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
     // Optimization should trigger here
     ASSERT_GT(final_writes, baseline_writes);
   } else {
-    // For Repeatable Read / Serializable, we expect optimization to be OFF
+    // For Serializable, we expect optimization to be OFF
     ASSERT_EQ(final_writes, baseline_writes);
   }
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedOperationsInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_tb (id INT PRIMARY KEY, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute("INSERT INTO chained_tb SELECT g, g % 10 FROM generate_series(1, 100) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. CREATE MV
+  ASSERT_OK(conn.Execute(
+      "CREATE MATERIALIZED VIEW chained_mv AS SELECT val, count(*) FROM chained_tb GROUP BY val"));
+  auto writes_after_create_mv = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_tb SELECT g, g % 10 FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 5. REFRESH MV
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW chained_mv"));
+  auto writes_after_refresh = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << ", after insert: " << writes_after_insert
+            << ", after create mv: " << writes_after_create_mv
+            << ", after dml: " << writes_after_dml
+            << ", after refresh mv: " << writes_after_refresh;
+
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    ASSERT_GT(writes_after_create_mv, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_create_mv);
+    ASSERT_GT(writes_after_refresh, writes_after_dml);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+    ASSERT_EQ(writes_after_create_mv, baseline_writes);
+    ASSERT_EQ(writes_after_dml, baseline_writes);
+    ASSERT_EQ(writes_after_refresh, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_tb"));
+  ASSERT_EQ(tb_count, 150);
+
+  auto mv_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT sum(count)::bigint FROM chained_mv"));
+  ASSERT_EQ(mv_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedCreateIndexInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_idx_tb (id INT, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_idx_tb SELECT g, g % 10 FROM generate_series(1, 100) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. CREATE INDEX
+  ASSERT_OK(conn.Execute("CREATE INDEX ON chained_idx_tb(val)"));
+  auto writes_after_create_idx = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_idx_tb SELECT g, g % 10 FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_create_idx: " << writes_after_create_idx
+            << " -> after_dml: " << writes_after_dml;
+
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    // Inside a transaction block an implicitly concurrent CREATE INDEX is transparently
+    // turned into a non-concurrent one (see ProcessUtilitySlow's T_IndexStmt case). A
+    // non-concurrent build populates the index from this backend through ybcinbuild, and
+    // those writes target an index relation created by this transaction, so they take the
+    // skip intents path. (A concurrent build would instead be backfilled by DocDB itself
+    // and would contribute nothing to this metric.)
+    ASSERT_GT(writes_after_create_idx, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_create_idx);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+    ASSERT_EQ(writes_after_create_idx, baseline_writes);
+    ASSERT_EQ(writes_after_dml, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_idx_tb"));
+  ASSERT_EQ(tb_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedAlterTableInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_alter_tb (id INT, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_alter_tb SELECT g, g % 10 FROM generate_series(1, 100) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. ALTER TABLE
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE chained_alter_tb ADD COLUMN gen_val INT GENERATED ALWAYS AS (val * 2) STORED"));
+  auto writes_after_alter = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_alter_tb (id, val) SELECT g, g % 10 FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_alter: " << writes_after_alter
+            << " -> after_dml: " << writes_after_dml;
+
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    // Adding a stored generated column rewrites the table into a new relfilenode created by
+    // this same transaction, so every copied row is written via the fastpath.
+    ASSERT_GT(writes_after_alter, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_alter);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+    ASSERT_EQ(writes_after_alter, baseline_writes);
+    ASSERT_EQ(writes_after_dml, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_alter_tb"));
+  ASSERT_EQ(tb_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedDropIdentityInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE chained_ident_tb (id INT GENERATED ALWAYS AS IDENTITY, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute("INSERT INTO chained_ident_tb (val) SELECT generate_series(1, 100)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. ALTER TABLE DROP IDENTITY
+  // ADD IDENTITY, SET IDENTITY, and DROP IDENTITY do NOT cause a table rewrite.
+  // They are purely metadata operations (catalog changes) that create/drop/modify
+  // the internal sequence and update the pg_attribute catalog entry.
+  // Because they don't cause a table rewrite, they neither create a new relfilenode
+  // nor write any row of the user table, so the INSERT that follows still targets a
+  // relfilenode created earlier in this transaction and stays on the fastpath.
+  ASSERT_OK(conn.Execute("ALTER TABLE chained_ident_tb ALTER COLUMN id DROP IDENTITY"));
+  auto writes_after_alter = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_ident_tb (id, val) SELECT g, g FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_alter: " << writes_after_alter
+            << " -> after_dml: " << writes_after_dml;
+
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    // DROP IDENTITY writes no row of the user table, so the count is unchanged.
+    ASSERT_EQ(writes_after_alter, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_alter);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_ident_tb"));
+  ASSERT_EQ(tb_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedForeignKeyInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLES
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_fk_parent (id INT PRIMARY KEY, val INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE chained_fk_child (id INT PRIMARY KEY, "
+      "parent_id INT REFERENCES chained_fk_parent(id), val INT)"));
+
+  // 2. INSERT INTO PARENT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_fk_parent SELECT g, g FROM generate_series(1, 100) g"));
+  auto writes_after_parent_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. INSERT INTO CHILD (triggers a referential integrity read on parent)
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_fk_child SELECT g, g, g FROM generate_series(1, 50) g"));
+  auto writes_after_child_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT INTO PARENT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_fk_parent SELECT g, g FROM generate_series(101, 150) g"));
+  auto writes_after_second_parent_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_parent_insert: " << writes_after_parent_insert
+            << " -> after_child_insert: " << writes_after_child_insert
+            << " -> after_second_parent_insert: " << writes_after_second_parent_insert;
+
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
+    ASSERT_GT(writes_after_parent_insert, baseline_writes);
+    // The child insert's foreign key check reads the parent rows that were written via
+    // the fastpath, and its own writes still take the fastpath.
+    ASSERT_GT(writes_after_child_insert, writes_after_parent_insert);
+    ASSERT_GT(writes_after_second_parent_insert, writes_after_child_insert);
+  } else {
+    ASSERT_EQ(writes_after_parent_insert, baseline_writes);
+    ASSERT_EQ(writes_after_child_insert, baseline_writes);
+    ASSERT_EQ(writes_after_second_parent_insert, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_fk_child"));
+  ASSERT_EQ(tb_count, 50);
+}
+
+TEST_P(SkipIntentsBasicTest, TestPartitionedTableMetrics) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE part_tb (id INT, val INT) PARTITION BY RANGE (id)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part_tb_p1 PARTITION OF part_tb FOR VALUES FROM (1) TO (100)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part_tb_p2 PARTITION OF part_tb FOR VALUES FROM (100) TO (200)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO part_tb SELECT g, g FROM generate_series(1, 199) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> writes_after_insert: " << writes_after_insert;
+
+  if (SkipIntentsAppliesInTxnBlock(isolation_level)) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+  }
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM part_tb"));
+  ASSERT_EQ(count, 199);
 }
 
 INSTANTIATE_TEST_SUITE_P(, SkipIntentsBasicTest,
@@ -446,9 +795,6 @@ class SkipIntentsPublicationTest : public SkipIntentsMetricTest {
 
 TEST_F(SkipIntentsPublicationTest, TestSkipIntentsDisabledWithPublication) {
   auto conn = ASSERT_RESULT(Connect());
-
-  // Use READ COMMITTED so that skip-intents is active inside transaction blocks.
-  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
 
   // Step 1: Baseline - CTAS should use skip-intents when no publication exists.
   ASSERT_OK(conn.Execute("CREATE TABLE base_t1 AS SELECT generate_series(1, 100) AS id"));
@@ -582,12 +928,15 @@ TEST_F(SkipIntentsCDCSDKTest, TestSkipIntentsDisabledWithLegacyCDCStream) {
 }
 
 /*
- * Same-transaction-created relation reads vs skip-intents (Halloween guard):
- * a standalone SELECT on a table created in the current txn must not flip
- * disable_skip_intents for later statements, while read+write shapes (modifying
- * CTE, self INSERT..SELECT, etc.) must still disable the optimization.
+ * Reads of a relation created in the current transaction vs skip-intents.
+ * Reading such a relation - standalone, from a modifying CTE, or from a self
+ * referencing INSERT..SELECT - must neither disable the optimization for later
+ * statements nor produce an anomaly, because fastpath operations read at
+ * in_txn_limit. Only a subtransaction (an explicit SAVEPOINT or a
+ * PL/pgSQL EXCEPTION block) still disables the optimization, since writes to the
+ * regular db cannot be rolled back.
  */
-class SkipIntentsSameTxnCreatedReadGuardTest : public SkipIntentsMetricTest {
+class SkipIntentsSameTxnCreatedRelationTest : public SkipIntentsIsolationTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
@@ -595,9 +944,11 @@ class SkipIntentsSameTxnCreatedReadGuardTest : public SkipIntentsMetricTest {
   }
 };
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelectBetweenInsertsStillSkips) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
+INSTANTIATE_TEST_SUITE_P(, SkipIntentsSameTxnCreatedRelationTest,
+    ::testing::Values("READ COMMITTED", "REPEATABLE READ"), IsolationSuffix);
+
+TEST_P(SkipIntentsSameTxnCreatedRelationTest, SelectBetweenInsertsStillSkips) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE si_txn_select_relax (id INT PRIMARY KEY)"));
@@ -624,9 +975,8 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelectBetweenInsertsStillSkips) {
   ASSERT_EQ(n, 80);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ModifyingCteDisablesFollowingInsert) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
+TEST_P(SkipIntentsSameTxnCreatedRelationTest, ModifyingCteStillSkips) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE si_mcte_guard (id INT PRIMARY KEY)"));
@@ -650,18 +1000,15 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ModifyingCteDisablesFollowingInse
             << ", after modifying-CTE SELECT " << m_after_mcte_select
             << ", after tail INSERT " << m_after_tail_insert;
 
-  ASSERT_EQ(m_after_mcte_select, m_after_seed)
-      << "INSERT inside CTE should not use skip-intents because the query is a modifying CTE";
-  ASSERT_EQ(m_after_tail_insert, m_after_mcte_select)
-      << "INSERT after a SELECT that has a modifying CTE should not use skip-intents";
+  ASSERT_GT(m_after_mcte_select, m_after_seed);
+  ASSERT_GT(m_after_tail_insert, m_after_mcte_select);
 
   auto n = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM si_mcte_guard"));
   ASSERT_EQ(n, 3);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelfInsertSelectDisablesFollowingInsert) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
+TEST_P(SkipIntentsSameTxnCreatedRelationTest, SelfInsertSelectStillSkips) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE si_self_ins (id INT PRIMARY KEY)"));
@@ -681,18 +1028,15 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelfInsertSelectDisablesFollowing
             << ", after INSERT..SELECT self " << m_after_self_scan_insert
             << ", after tail INSERT " << m_after_tail_insert;
 
-  ASSERT_EQ(m_after_self_scan_insert, m_after_seed)
-      << "INSERT..SELECT from the same txn-created table should not use skip-intents";
-  ASSERT_EQ(m_after_tail_insert, m_after_self_scan_insert)
-      << "INSERT after INSERT..SELECT from the same txn-created table should not use skip-intents";
+  ASSERT_GT(m_after_self_scan_insert, m_after_seed);
+  ASSERT_GT(m_after_tail_insert, m_after_self_scan_insert);
 
   auto n = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM si_self_ins"));
   ASSERT_EQ(n, 51);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ExceptionBlockDisablesFollowingInsert) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
+TEST_P(SkipIntentsSameTxnCreatedRelationTest, ExceptionBlockDisablesFollowingInsert) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE si_exc_guard (id INT PRIMARY KEY)"));
@@ -727,9 +1071,8 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ExceptionBlockDisablesFollowingIn
   ASSERT_EQ(n, 27);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ExplicitSavepointDisablesOptimization) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
+TEST_P(SkipIntentsSameTxnCreatedRelationTest, ExplicitSavepointDisablesOptimization) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE si_sp_guard (id INT PRIMARY KEY)"));
@@ -769,8 +1112,12 @@ class SkipIntentsSafetyTest : public SkipIntentsMetricTest {
         "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     options->extra_tserver_flags.emplace_back(
         "--ysql_yb_enable_ddl_savepoint_support=true");
-    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "ysql_yb_enable_ddl_savepoint_support");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_master_flags.emplace_back(
+        "--ysql_yb_enable_ddl_savepoint_support=true");
+    options->extra_master_flags.emplace_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
   }
 };
 
@@ -826,6 +1173,203 @@ TEST_F(SkipIntentsSafetyTest, TestTopLevelConditions) {
   auto writes_after_trig = ASSERT_RESULT(GetSkipIntentsCount());
   ASSERT_EQ(writes_after_trig, writes_before_trig)
       << "Optimization should be disabled inside a trigger";
+}
+
+// Runs DDL autonomously, in a transaction of its own, by turning ysql_yb_ddl_transaction_block_
+// enabled off. That flag is off by default in fastdebug builds and on in release, so it and the
+// two flags whose validators require it are all set explicitly here to get the same behaviour
+// either way.
+class SkipIntentsAutonomousDdlTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Deliberately does not chain to SkipIntentsMetricTest, which turns DDL transaction blocks on.
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+      // These all default to on in release builds and form a requirement chain ending at DDL
+      // transaction blocks, so each has to be turned off alongside it or the daemons reject their
+      // own flags: concurrent DDL requires object locking, which requires DDL transaction blocks,
+      // and DDL savepoint support requires them too.
+      flags->emplace_back("--ysql_enable_concurrent_ddl=false");
+      flags->emplace_back("--enable_object_locking_for_table_locks=false");
+      flags->emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+      flags->emplace_back("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+      // ysql_enable_concurrent_ddl is a preview flag, and in a release build false is not its
+      // default, so turning it off has to be acknowledged like any other preview change.
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+    }
+
+    // Keep each CTAS in a single write batch so the metric comparisons below are exact.
+    options->extra_tserver_flags.emplace_back("--ysql_session_max_batch_size=100000");
+  }
+
+  // Asserts that the CTAS wrote every row and that it did not take the write fastpath, which is
+  // the precondition for the code path these tests cover: the relation is still one the current
+  // transaction created, so read_at_in_txn_limit is set, but skip_intents is not. If this
+  // assertion ever fails the test has stopped covering that path.
+  void VerifyCtasBypassedFastpath(
+      PGConn* conn, const std::string& table, int64_t writes_before, int64_t writes_after) {
+    LOG(INFO) << CURRENT_TEST_NAME() << " | skip_intents_writes: " << writes_before << " -> "
+              << writes_after;
+    ASSERT_EQ(writes_after, writes_before)
+        << "A non-top-level CTAS must not use the write fastpath if transactional DDL disabled";
+
+    auto rows = ASSERT_RESULT(conn->FetchRows<int32_t>(
+        Format("SELECT id FROM $0 ORDER BY id", table)));
+    ASSERT_EQ(rows.size(), 100);
+    ASSERT_EQ(rows.front(), 1);
+    ASSERT_EQ(rows.back(), 100);
+  }
+
+  struct FlipScenarioResult {
+    // What each probe call saw, keyed by the row it ran for.
+    std::vector<std::tuple<int32_t, int64_t>> probes;
+    // skip_intents_writes attributable to the CTAS.
+    int64_t fastpath_writes = 0;
+  };
+
+  // Runs a top-level CTAS whose target list function turns the optimization off partway through.
+  // Uses its own connection so that yb_enable_new_relation_fastpath_write can be set before any
+  // query has run in the transaction, which its check hook requires. `suffix` keeps the objects of
+  // separate runs apart.
+  Result<FlipScenarioResult> RunMidStatementFlipScenario(
+      const std::string& suffix, bool fastpath_enabled) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET yb_enable_new_relation_fastpath_write = $0", fastpath_enabled ? "on" : "off"));
+
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE flip_src_$0 (id INT PRIMARY KEY)", suffix));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO flip_src_$0 SELECT generate_series(1, 3)", suffix));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE flip_log_$0 (id INT PRIMARY KEY, seen BIGINT)", suffix));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE FUNCTION flip_probe_$0(v INT) RETURNS INT AS $$$$\n"
+        "DECLARE c BIGINT;\n"
+        "BEGIN\n"
+        "  IF v = 2 THEN\n"
+        "    BEGIN\n"
+        "      -- Inside this subtransaction IsTransactionBlock() is true, so the read below is\n"
+        "      -- not top level and latches the optimization off for the rest of the txn.\n"
+        "      SELECT count(*) INTO c FROM flip_target_$0;\n"
+        "    EXCEPTION WHEN OTHERS THEN NULL;\n"
+        "    END;\n"
+        "  END IF;\n"
+        "  SELECT count(*) INTO c FROM flip_target_$0;\n"
+        "  INSERT INTO flip_log_$0 VALUES (v, c);\n"
+        "  RETURN v;\n"
+        "END; $$$$ LANGUAGE plpgsql VOLATILE;", suffix));
+
+    const auto writes_before = VERIFY_RESULT(GetSkipIntentsCount());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE flip_target_$0 AS "
+        "SELECT flip_probe_$0(id) AS k FROM (SELECT id FROM flip_src_$0 ORDER BY id) s", suffix));
+    const auto writes_after = VERIFY_RESULT(GetSkipIntentsCount());
+
+    FlipScenarioResult result;
+    result.fastpath_writes = writes_after - writes_before;
+    result.probes = VERIFY_RESULT((conn.FetchRows<int32_t, int64_t>(
+        Format("SELECT id, seen FROM flip_log_$0 ORDER BY id", suffix))));
+
+    // Logged here rather than at the call site so that a run which fails partway still reports
+    // what the earlier run observed.
+    LOG(INFO) << CURRENT_TEST_NAME() << " | " << suffix << ": fastpath writes "
+              << result.fastpath_writes;
+    for (const auto& [id, seen] : result.probes) {
+      LOG(INFO) << CURRENT_TEST_NAME() << " | " << suffix << ": probe for row " << id << " saw "
+                << seen << " row(s)";
+    }
+    return result;
+  }
+};
+
+// An autonomous DDL reached from inside a transaction block is not top level, so it does not take
+// the optimization and writes its rows to the intents db as usual. The two tests below reach that
+// state by the two different routes YbGetSkipIntentsOptimizationInfo recognises.
+TEST_F(SkipIntentsAutonomousDdlTest, CtasInTxnBlockSkipsOptimization) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Inside an explicit transaction block IsTransactionBlock() is true, so the CTAS is not
+  // top level.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE autonomous_txn_ctas AS SELECT g AS id FROM generate_series(1, 100) g"));
+  auto writes_after = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_NO_FATALS(
+      VerifyCtasBypassedFastpath(&conn, "autonomous_txn_ctas", writes_before, writes_after));
+}
+
+TEST_F(SkipIntentsAutonomousDdlTest, CtasInTriggerSkipsOptimization) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE autonomous_trig_src (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION autonomous_trig_func() RETURNS TRIGGER AS $$\n"
+      "BEGIN\n"
+      "  CREATE TABLE autonomous_trig_ctas AS SELECT g AS id FROM generate_series(1, 100) g;\n"
+      "  RETURN NEW;\n"
+      "END; $$ LANGUAGE plpgsql;"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TRIGGER autonomous_trig AFTER INSERT ON autonomous_trig_src\n"
+      "FOR EACH ROW EXECUTE PROCEDURE autonomous_trig_func();"));
+
+  auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Reaches the CTAS with YbGetTriggerDepth() > 0, so it is not top level. This variant does not
+  // depend on DDL being permitted inside an explicit transaction block.
+  ASSERT_OK(conn.Execute("INSERT INTO autonomous_trig_src VALUES (1)"));
+  auto writes_after = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_NO_FATALS(
+      VerifyCtasBypassedFastpath(&conn, "autonomous_trig_ctas", writes_before, writes_after));
+}
+
+/*
+ * Consider the case of an autonomous DDL where the skip intents optimization is used
+ * initially and then turns off part-way through the DDL. The reads after the optimization is
+ * turned off would still have to read with a time set to the in_txn_limit to see the rows
+ * that were written directly to regular DB. However, for autonomous DDLs, no in_txn_limit
+ * exists. So, "Now()" is picked as the read time in such cases instead of leaving it at the
+ * transaction snapshot for the DDL which would miss reading the regular DB rows.
+ *
+ * The below test will fail if "Now()" is not picked when in_txn_limit doesn't exist for a
+ * transaction (e.g., autonomous DDL). The test uses a PL/pgSQL EXCEPTION block that will
+ * turn-off the optimization part-way in the DDL.
+ *
+ * Rather than hard-code what the probes should see, the same statement is run twice and compared.
+ * With the optimization off every row goes to the intents db, so that run is by definition the
+ * answer the optimization has to preserve -- including any YugabyteDB deviation from PostgreSQL
+ * around in_txn_limit (GHI #10142), which is not what this test is about.
+ *
+ * Picking "Now()" rather than clearing the read time matters as well. Clearing would leave the
+ * tserver to pick one and report it back through used_read_time, which
+ * YBTransaction::Impl::Flushed DFATALs on before overwriting the read point of the whole
+ * transaction -- fatal in a debug build. The two tests above reach the same fallback and are what
+ * catch that: to confirm all three still cover it, make AsyncRpcBase clear the read time on that
+ * path and watch them fail.
+ */
+TEST_F(SkipIntentsAutonomousDdlTest, CtasSeesSameRowsAfterMidStatementFlip) {
+  const auto baseline =
+      ASSERT_RESULT(RunMidStatementFlipScenario("base", /* fastpath_enabled = */ false));
+  const auto optimized =
+      ASSERT_RESULT(RunMidStatementFlipScenario("opt", /* fastpath_enabled = */ true));
+
+  // Both premises. Without them the two runs took the same path and the comparison proves nothing.
+  ASSERT_EQ(baseline.fastpath_writes, 0)
+      << "The baseline run must not use the write fastpath at all";
+  ASSERT_GT(optimized.fastpath_writes, 0)
+      << "The optimized run must start on the write fastpath before the subtransaction flips it";
+  ASSERT_EQ(baseline.probes.size(), 3);
+
+  ASSERT_EQ(optimized.probes, baseline.probes)
+      << "The optimization changed what a read of the new relation sees. Rows written to the "
+      << "regular db before the optimization was disabled are missing from the reads after it.";
 }
 
 class SkipIntentsPITRTest : public SkipIntentsMetricTest {
@@ -1065,6 +1609,618 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   auto val4 = ASSERT_RESULT(conn.FetchRow<std::string>(
       "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks"));
   ASSERT_EQ(val4, "off");
+}
+
+// Startup must not depend on where the GUC and yb_ddl_transaction_block_enabled land in
+// ysql_pg.conf. Settings from --ysql_pg_conf_csv are written ahead of the block that
+// AppendPgGFlags generates from the PG gflags, so the GUC here is assigned while
+// yb_ddl_transaction_block_enabled still holds its compiled-in default rather than the value the
+// cluster runs with. That default is false in debug builds, where the dependency check used to
+// reject this configuration and the postmaster refused to start even though the cluster does run
+// with transactional DDL on. Release builds compile the default to true, which masks the
+// ordering, so this test only bites in debug.
+class SkipIntentsGucConfOrderingTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    // Set the GUC through ysql_pg_conf_csv, and drop the gflag the base class sets so that
+    // AppendPgGFlags leaves it at its default: postgres applies only the last occurrence of a
+    // parameter in the file, so a gflag line would re-assign the GUC after
+    // yb_ddl_transaction_block_enabled and hide the ordering.
+    std::erase_if(options->extra_tserver_flags, [](const std::string& flag) {
+      return flag.starts_with("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=");
+    });
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_enable_new_relation_fastpath_write_in_txn_blocks=true");
+  }
+};
+
+TEST_F(SkipIntentsGucConfOrderingTest, TestGucSetBeforeDdlTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_ddl_transaction_block_enabled")), "on");
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>(
+          "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks")),
+      "on");
+}
+
+// The scenario below needs two DDL transactions to run concurrently, which requires concurrent
+// DDL. That flag defaults on only in release builds, so pin it: with it off the CREATE INDEX
+// fails on a plain sys_catalog write conflict that never reaches the query layer retry logic, and
+// the error carries no reason at all.
+class SkipIntentsRetryReasonTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+  }
+};
+
+// A statement that cannot be retried for a reason of its own reports that reason even when the
+// transaction has already taken the write fastpath. This mirrors the second permutation of the
+// yb.orig.inplace_catalog_updates isolation test: the GRANT updates pg_class first, so the CREATE
+// INDEX in the other transaction fails on its own inplace catalog update, after its backfill has
+// already skipped intents.
+TEST_F(SkipIntentsRetryReasonTest, TestRetryReasonPrefersStatementOverSkippedIntents) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE retry_reason_tb (k INT, v INT)"));
+  ASSERT_OK(setup_conn.Execute(
+      "INSERT INTO retry_reason_tb SELECT i, i FROM generate_series(1, 10) AS i"));
+  ASSERT_OK(setup_conn.Execute("CREATE ROLE retry_reason_role"));
+
+  auto grant_conn = ASSERT_RESULT(Connect());
+  auto index_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(grant_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(index_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(grant_conn.Execute("GRANT DELETE ON TABLE retry_reason_tb TO retry_reason_role"));
+
+  // The index is a relation this transaction created, so its backfill takes the fastpath and sets
+  // the skipped-intents state before the catalog update conflicts.
+  auto result = index_conn.Execute(
+      "CREATE INDEX NONCONCURRENTLY retry_reason_idx ON retry_reason_tb(v)");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "could not serialize access due to concurrent update");
+  ASSERT_STR_CONTAINS(result.ToString(), "retry of CREATE INDEX has not been validated");
+}
+
+// ysql_yb_enable_new_relation_fastpath_write is the kill switch for the optimization as a whole,
+// so turning it off has to be enough on its own: the cluster comes up with
+// ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks left on, and nothing takes the
+// fastpath. Both parameters land in ysql_pg.conf and postgres assigns them in the order they
+// appear there, so the dependency check between them must not reject this pair or the postmaster
+// refuses to start.
+class SkipIntentsFastpathDisabledTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_new_relation_fastpath_write=false");
+  }
+};
+
+TEST_F(SkipIntentsFastpathDisabledTest, TestKillSwitchDisablesFastpath) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_enable_new_relation_fastpath_write")),
+      "off");
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>(
+          "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks")),
+      "on");
+
+  // The parent gates the optimization, so no write takes the fastpath whatever this GUC says.
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("CREATE TABLE parent_off_tb AS SELECT generate_series(1, 100) AS id"));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), initial_writes);
+
+  // Enabling it explicitly is still rejected, since that value comes from the user.
+  auto set_conn = ASSERT_RESULT(Connect());
+  auto result = set_conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "yb_enable_new_relation_fastpath_write is disabled");
+}
+
+// Cluster without transactional DDL, where the in-txn-block fastpath cannot apply.
+class SkipIntentsNoDdlTxnBlockTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+      // DDL savepoints and object locking both require transactional DDL, and concurrent DDL
+      // requires object locking, so keep the flags consistent. ysql_enable_concurrent_ddl
+      // defaults to on in release builds, so leaving it out kills every daemon on flag
+      // validation there.
+      flags->emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+      flags->emplace_back("--enable_object_locking_for_table_locks=false");
+      flags->emplace_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      // ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks also requires transactional DDL;
+      // leaving it at the base class value of true, or at its release-build default of true,
+      // would fail flag validation at startup.
+      flags->emplace_back("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+    }
+  }
+};
+
+TEST_F(SkipIntentsNoDdlTxnBlockTest, TestGucRequiresDdlTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto result = conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "yb_ddl_transaction_block_enabled is disabled");
+}
+
+TEST_P(SkipIntentsIsolationTest, TestSkipIntentsInDoBlock) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute a DO block that creates a table and inserts multiple rows.
+  // We expect this to use skip-intents.
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN\n"
+      "  CREATE TABLE do_block_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO do_block_test SELECT generate_series(1, 100);\n"
+      "END $$;"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_P(SkipIntentsIsolationTest, TestSkipIntentsInCallProcedure) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  // Create the procedure outside
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE my_procedure() AS $$\n"
+      "BEGIN\n"
+      "  CREATE TABLE call_proc_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO call_proc_test SELECT generate_series(1, 100);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute the CALL statement. We expect this to use skip-intents.
+  ASSERT_OK(conn.Execute("CALL my_procedure()"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_P(SkipIntentsIsolationTest, TestSkipIntentsInNestedDoBlock) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE inner_procedure_for_do() AS $$\n"
+      "BEGIN\n"
+      "  CREATE TABLE nested_do_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO nested_do_test SELECT generate_series(1, 100);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute a DO block that calls the procedure, so the CREATE TABLE and the INSERT run
+  // two SPI levels deep. Nesting does not disable the optimization: the inner INSERT is a
+  // statement of its own and reads/writes at its own in_txn_limit.
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN\n"
+      "  CALL inner_procedure_for_do();\n"
+      "END $$;"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_P(SkipIntentsIsolationTest, TestSkipIntentsInNestedCallProcedure) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE inner_procedure_for_call() AS $$\n"
+      "BEGIN\n"
+      "  CREATE TABLE nested_call_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO nested_call_test SELECT generate_series(1, 100);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE outer_procedure_for_call() AS $$\n"
+      "BEGIN\n"
+      "  CALL inner_procedure_for_call();\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute the CALL statement, which calls the inner procedure, so the CREATE TABLE and the
+  // INSERT run two SPI levels deep and must still use the optimization.
+  ASSERT_OK(conn.Execute("CALL outer_procedure_for_call()"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_P(SkipIntentsIsolationTest, TestSkipIntentsWithBuiltinVolatileFunctions) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE new_table_builtin (id UUID PRIMARY KEY, "
+      "created_at TIMESTAMP, random_val DOUBLE PRECISION)"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO new_table_builtin (id, created_at, random_val)\n"
+      "SELECT gen_random_uuid(), clock_timestamp(), random()\n"
+      "FROM generate_series(1, 10000)"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_P(SkipIntentsIsolationTest, TestSkipIntentsWithUserVolatileFunctionInReturning) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE new_table_user_vol (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION my_func_that_reads_new_table() RETURNS INT AS $$\n"
+      "BEGIN\n"
+      "  RETURN (SELECT count(*) FROM new_table_user_vol);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql VOLATILE;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // INSERT with a user-defined volatile function in the RETURNING clause that reads the
+  // table just written via the fastpath. The read is the first read operation of the
+  // statement, so the in_txn_limit is picked only after the buffered INSERT has been
+  // flushed and the read observes the inserted row (see the in_txn_limit section of
+  // src/yb/yql/pggate/README and GHI #10142).
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "INSERT INTO new_table_user_vol VALUES (1) RETURNING my_func_that_reads_new_table()"));
+  ASSERT_EQ(res, 1); // RETURNING is evaluated after the tuple is inserted
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_P(SkipIntentsIsolationTest, TestAlterTableRewriteWithTrigger) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  // 1. Setup: Create a table with a trigger and populate it
+  ASSERT_OK(conn.Execute("CREATE TABLE rewrite_trigger_test (id INT PRIMARY KEY, val INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION dummy_trigger_func() RETURNS TRIGGER AS $$\n"
+      "BEGIN\n"
+      "  RETURN NEW;\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TRIGGER my_dummy_trigger BEFORE INSERT ON rewrite_trigger_test "
+      "FOR EACH ROW EXECUTE PROCEDURE dummy_trigger_func()"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO rewrite_trigger_test SELECT g, g FROM generate_series(1, 100) g"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 2. Trigger Rewrite: Add a new column with a volatile default
+  // This requires a table rewrite. The original relation has a trigger, and the
+  // DEFAULT expression uses a volatile function (random()).
+  //
+  // During an ALTER TABLE rewrite (ATRewriteTable), PostgreSQL creates a *transient*
+  // physical heap to copy the data into, and that heap is created by this transaction,
+  // so its rows are written via the fastpath. Neither the trigger on the original
+  // relation nor the volatile default can observe an inconsistent state, because the
+  // rewrite scan reads the original relation while the writes go to the transient heap.
+  auto s = conn.Execute(
+      "ALTER TABLE rewrite_trigger_test "
+      "ADD COLUMN rand_val DOUBLE PRECISION DEFAULT random()");
+
+  // Verify the statement succeeded
+  ASSERT_OK(s);
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: "
+            << initial_writes << " -> " << final_writes;
+
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_P(SkipIntentsIsolationTest, TestAlterTableRewriteWithUserVolatileFunction) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  // 1. Setup: Create a table
+  ASSERT_OK(conn.Execute("CREATE TABLE rewrite_user_vol_test (id INT PRIMARY KEY, val INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO rewrite_user_vol_test SELECT g, g FROM generate_series(1, 100) g"));
+
+  // Create a user-defined volatile function
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION my_volatile_func() RETURNS DOUBLE PRECISION AS $$\n"
+      "BEGIN\n"
+      "  RETURN random();\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql VOLATILE;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 2. Trigger Rewrite: Add a new column whose default calls a user-defined volatile
+  // function. The rewrite must still use the optimization for the transient heap.
+  auto s = conn.Execute(
+      "ALTER TABLE rewrite_user_vol_test "
+      "ADD COLUMN rand_val DOUBLE PRECISION DEFAULT my_volatile_func()");
+
+  // Verify the statement succeeded
+  ASSERT_OK(s);
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: "
+            << initial_writes << " -> " << final_writes;
+
+  // The rewrite copies all 100 rows into the transient heap created by ATRewriteTable in
+  // this transaction, so each of them is written via the fastpath.
+  ASSERT_EQ(final_writes, initial_writes + 100);
+}
+
+TEST_P(SkipIntentsIsolationTest, TestCursorOnFastpathRelation) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE cursor_tb (id INT PRIMARY KEY)"));
+
+  // The cursor is declared before any row exists. The portal picks the in_txn_limit for
+  // its reads at the first FETCH rather than at DECLARE, so the rows written below are
+  // visible to it.
+  ASSERT_OK(conn.Execute("DECLARE cur CURSOR FOR SELECT id FROM cursor_tb ORDER BY id"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO cursor_tb SELECT generate_series(1, 100)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  auto first_batch = ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH 10 FROM cur"));
+  ASSERT_EQ(first_batch.size(), 10);
+  ASSERT_EQ(first_batch.front(), 1);
+  ASSERT_EQ(first_batch.back(), 10);
+
+  // Reading a fastpath relation through a cursor must not disable the optimization, so
+  // the writes of this second INSERT still take the fastpath.
+  ASSERT_OK(conn.Execute("INSERT INTO cursor_tb SELECT generate_series(101, 150)"));
+  auto writes_after_second_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // The portal's in_txn_limit was frozen by the first FETCH, so the rows written after
+  // that FETCH are not visible to the remaining FETCHes.
+  auto rest = ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH ALL FROM cur"));
+  ASSERT_EQ(rest.size(), 90);
+  ASSERT_EQ(rest.front(), 11);
+  ASSERT_EQ(rest.back(), 100);
+
+  ASSERT_OK(conn.Execute("CLOSE cur"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_second_insert: " << writes_after_second_insert;
+
+  ASSERT_GT(writes_after_insert, baseline_writes);
+  ASSERT_GT(writes_after_second_insert, writes_after_insert);
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM cursor_tb"));
+  ASSERT_EQ(count, 150);
+}
+
+TEST_P(SkipIntentsIsolationTest, TestCursorWithHoldOnFastpathRelation) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE cursor_hold_tb (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO cursor_hold_tb SELECT generate_series(1, 100)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // COMMIT converts the holdable portal into a static one: PersistHoldablePortal runs the
+  // cursor's query and drains every row into the portal's tuplestore. That run happens
+  // inside CommitTransaction, while the transaction that created the relation is still
+  // open, so it reads the rows written via the fastpath. The FETCH below then only reads
+  // back the tuplestore.
+  ASSERT_OK(conn.Execute(
+      "DECLARE cur_hold CURSOR WITH HOLD FOR SELECT id FROM cursor_hold_tb ORDER BY id"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: " << baseline_writes << " -> "
+            << writes_after_insert;
+
+  ASSERT_GT(writes_after_insert, baseline_writes);
+
+  // This FETCH runs after COMMIT and serves entirely from the tuplestore, so it issues no
+  // DocDB read. It is a plain PostgreSQL check that materialization preserved every row,
+  // not a check of the optimization: the rows are ordinary committed rows by now.
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH ALL FROM cur_hold"));
+  ASSERT_EQ(rows.size(), 100);
+  ASSERT_EQ(rows.front(), 1);
+  ASSERT_EQ(rows.back(), 100);
+  ASSERT_OK(conn.Execute("CLOSE cur_hold"));
+}
+
+TEST_P(SkipIntentsIsolationTest, TestAbortedSubtxnWrite) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  for (bool fastpath_enabled : {true, false}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "SET yb_enable_new_relation_fastpath_write_in_txn_blocks = $0", fastpath_enabled));
+
+    std::string table = fastpath_enabled ? "subtxn_abort_t" : "subtxn_abort_ctl_t";
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", table));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0)", table));
+    auto skips_before = ASSERT_RESULT(GetSkipIntentsCount());
+    ASSERT_OK(conn.ExecuteFormat(
+        "DO $$$$ BEGIN\n"
+        "  INSERT INTO $0 VALUES (1);\n"
+        "  PERFORM 1 / 0;\n"
+        "EXCEPTION WHEN division_by_zero THEN NULL;\n"
+        "END $$$$", table));
+    auto skips_after = ASSERT_RESULT(GetSkipIntentsCount());
+    ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Machine check: the INSERT inside the EXCEPTION block must not have used the fastpath
+    // due to implicit savepoint associated with EXCEPTION block.
+    ASSERT_EQ(skips_after - skips_before, 0);
+
+    // Correctness check (PostgreSQL semantics): only row 0 must be visible.
+    auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(
+        Format("SELECT k FROM $0 ORDER BY k", table)));
+    ASSERT_EQ(rows, (std::vector<int32_t>{0}))
+        << "a row written inside an aborted subtransaction is visible after commit with fastpath="
+        << fastpath_enabled;
+  }
+}
+
+/*
+ * A statement that stops taking the fastpath -- after a savepoint, a non-top-level DDL or CDC --
+ * carries the transaction again, and the transaction's read time can be below the hybrid time at
+ * which an earlier fastpath write landed in the regular db. Reading at the statement's
+ * in_txn_limit instead is what keeps those rows visible. Each test below fails without it.
+ *
+ * The gap is widest under Repeatable Read, which holds one read time for the life of the
+ * transaction, but nothing here depends on that: the rows have to be visible at either level.
+ */
+TEST_P(SkipIntentsIsolationTest, VisibilityAfterSavepoint) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE rr_savepoint (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO rr_savepoint SELECT generate_series(1, 100)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(writes_after_insert, baseline_writes)
+      << "The fastpath should apply inside a transaction block";
+
+  // The savepoint disables the optimization for the rest of the transaction.
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM rr_savepoint")), 100)
+      << "Rows written via the fastpath must stay visible after the optimization is disabled";
+
+  // This write goes to the intents db. The reads below have to see both it and the rows that are
+  // already in the regular db.
+  ASSERT_OK(conn.Execute("INSERT INTO rr_savepoint SELECT generate_series(101, 150)"));
+  auto writes_after_second_insert = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_EQ(writes_after_second_insert, writes_after_insert)
+      << "A write after a savepoint must not take the fastpath";
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM rr_savepoint")), 150);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM rr_savepoint")), 150);
+}
+
+TEST_P(SkipIntentsIsolationTest, CursorAcrossSavepoint) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE rr_cursor (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("DECLARE cur CURSOR FOR SELECT id FROM rr_cursor ORDER BY id"));
+  ASSERT_OK(conn.Execute("INSERT INTO rr_cursor SELECT generate_series(1, 20)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(writes_after_insert, baseline_writes);
+
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+
+  // The portal picks its in_txn_limit at this first FETCH, above the fastpath write. Collapsing
+  // the uncertainty window onto that read time also keeps the FETCH from asking for a read
+  // restart, which the query layer cannot honour once the transaction has skipped intents.
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH ALL FROM cur"));
+  ASSERT_EQ(rows.size(), 20);
+  ASSERT_EQ(rows.front(), 1);
+  ASSERT_EQ(rows.back(), 20);
+
+  ASSERT_OK(conn.Execute("CLOSE cur"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM rr_cursor"));
+  ASSERT_EQ(count, 20);
+}
+
+TEST_P(SkipIntentsIsolationTest, RollbackToSavepoint) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE rr_rollback (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO rr_rollback SELECT generate_series(1, 10)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(writes_after_insert, baseline_writes);
+
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+  ASSERT_OK(conn.Execute("INSERT INTO rr_rollback SELECT generate_series(11, 20)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp"));
+
+  // The rows written before the savepoint are in the regular db and cannot be rolled back, which
+  // is precisely why the savepoint disabled the optimization; the ones written after it were
+  // intents and are gone.
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT id FROM rr_rollback ORDER BY id"));
+  ASSERT_EQ(rows.size(), 10);
+  ASSERT_EQ(rows.back(), 10);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM rr_rollback"));
+  ASSERT_EQ(count, 10);
+}
+
+// A write's own reads -- the uniqueness check here -- have to cross the boundary too. Row 1 is
+// written through the fastpath into the regular db, above the transaction read time; the savepoint
+// then disables the optimization, so the second INSERT is transactional. Its duplicate key check
+// only finds row 1 if the operation reads at in_txn_limit rather than at the
+// transaction read time, so without that the duplicate is silently accepted.
+TEST_P(SkipIntentsIsolationTest, DuplicateKeyCheckCrossesFastpathBoundary) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE dup_key_t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO dup_key_t VALUES (1)"));
+  auto writes_after_first = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(writes_after_first, baseline_writes)
+      << "The first INSERT should take the write fastpath";
+
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+
+  auto status = conn.Execute("INSERT INTO dup_key_t VALUES (1)");
+  ASSERT_NOK(status) << "The duplicate key must be detected across the fastpath boundary";
+  ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
+
+  auto writes_after_second = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_EQ(writes_after_second, writes_after_first)
+      << "The INSERT after the savepoint must not use the fastpath";
+
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // The row written before the savepoint is in the regular db and survives the rollback of the
+  // aborted statement; the transaction as a whole is rolled back, so the table is gone.
+  ASSERT_NOK(conn.Fetch("SELECT k FROM dup_key_t"));
 }
 
 } // namespace pgwrapper

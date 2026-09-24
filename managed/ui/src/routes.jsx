@@ -35,7 +35,7 @@ import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/Objec
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
-import { resetUniverseRevampOnboardingStorage } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import { resetTourProgress } from '@app/redesign/features-v2/onboarding/universe-revamp/tour-progress';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
@@ -73,7 +73,7 @@ export const clearCredentials = () => {
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
   localStorage.removeItem(testFeatureFlagsLocalStorageKey);
-  resetUniverseRevampOnboardingStorage();
+  resetTourProgress();
   clearRbacCreds();
 
   /*

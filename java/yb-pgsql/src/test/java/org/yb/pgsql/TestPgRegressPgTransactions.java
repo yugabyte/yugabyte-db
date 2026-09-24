@@ -42,8 +42,7 @@ public class TestPgRegressPgTransactions extends BasePgRegressTestPorted {
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     flags.put("enable_object_locking_for_table_locks", "true");
     flags.put("ysql_enable_concurrent_ddl", "true");
-    flags.merge("allowed_preview_flags_csv",
-        "ysql_yb_enable_ddl_savepoint_support,ysql_enable_concurrent_ddl", (e, a) -> e + "," + a);
+    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl", (e, a) -> e + "," + a);
     return flags;
   }
 
@@ -53,8 +52,6 @@ public class TestPgRegressPgTransactions extends BasePgRegressTestPorted {
     flags.put("ysql_yb_enable_ddl_savepoint_support", "true");
     // Savepoint requires the transactional DDL flag to be enabled. Therefore, set it as well.
     flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flags.merge("allowed_preview_flags_csv", "ysql_yb_enable_ddl_savepoint_support",
-        (e, a) -> e + "," + a);
     return flags;
   }
 

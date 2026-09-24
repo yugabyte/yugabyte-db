@@ -9,17 +9,23 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import api.v2.mappers.UserIntentMapper;
+import api.v2.models.AvailabilityZoneNodeSpec;
 import api.v2.models.ClusterEditSpec;
+import api.v2.models.ClusterGFlags;
 import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterPerProcessNodeSpec;
+import api.v2.models.ClusterResizeNodeSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -168,8 +174,11 @@ public class UserIntentMapperTest {
     UserIntent userIntent = new UserIntent();
     userIntent.instanceType = "c5.xlarge";
 
+    Map<String, String> masterFlags = Map.of("master-flag", "some");
+    Map<String, String> tserverFlags = Map.of("tserver-flag", "other");
     UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
     resizeCluster.setUuid(UUID.randomUUID());
+    resizeCluster.gflags(new ClusterGFlags().tserver(tserverFlags).master(masterFlags));
     // gflags-only: no node_spec / provider_nodes_specs
 
     UserIntent mapped =
@@ -177,5 +186,105 @@ public class UserIntentMapperTest {
             resizeCluster, userIntent);
 
     assertEquals("c5.xlarge", mapped.instanceType);
+    assertEquals(
+        tserverFlags, mapped.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER));
+    assertEquals(
+        masterFlags, mapped.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER));
+  }
+
+  @Test
+  public void testNoGflagsResizeDoesNotEraseFlags() {
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(Map.of("tserver-flag", "foo"), Map.of("master-flag", "bar"));
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "c5.xlarge";
+    userIntent.specificGFlags = specificGFlags;
+
+    UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
+    resizeCluster.setUuid(UUID.randomUUID());
+    resizeCluster.setNodeSpec(new ClusterResizeNodeSpec().instanceType("c6.large"));
+    UserIntent mapped =
+        UserIntentMapper.INSTANCE.toV1UserIntentFromUniverseResizeNodesCluster(
+            resizeCluster, userIntent);
+
+    assertEquals("c6.large", mapped.instanceType);
+    assertEquals(specificGFlags, mapped.specificGFlags);
+  }
+
+  @Test
+  public void testEditAzNodeSpecReplacesExistingAzOverrides() {
+    UUID az1 = UUID.randomUUID();
+    UUID az2 = UUID.randomUUID();
+    UserIntent userIntent = userIntentWithAzOverrides(az1, "c5.2xlarge", az2, "c5.4xlarge");
+
+    AvailabilityZoneNodeSpec az1Spec = new AvailabilityZoneNodeSpec();
+    az1Spec.setInstanceType("c6.2xlarge");
+    ClusterNodeSpec nodeSpec =
+        new ClusterNodeSpec()
+            .instanceType("c5.xlarge")
+            .azNodeSpec(Collections.singletonMap(az1.toString(), az1Spec));
+
+    UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(
+        new ClusterEditSpec().uuid(UUID.randomUUID()).nodeSpec(nodeSpec), userIntent);
+
+    Map<UUID, AZOverrides> result = userIntent.getUserIntentOverrides().getAzOverrides();
+    // Az2 is removed and Az1
+    assertEquals(1, result.size());
+    assertTrue(result.containsKey(az1));
+    assertFalse(result.containsKey(az2));
+    assertEquals("c6.2xlarge", result.get(az1).getInstanceType());
+  }
+
+  @Test
+  public void testEditRemoveAzNodeSpec() {
+    UUID az1 = UUID.randomUUID();
+    UUID az2 = UUID.randomUUID();
+    UserIntent userIntent = userIntentWithAzOverrides(az1, "c5.2xlarge", az2, "c5.4xlarge");
+
+    ClusterNodeSpec nodeSpec =
+        new ClusterNodeSpec().instanceType("c5.xlarge").azNodeSpec(Collections.emptyMap());
+
+    UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(
+        new ClusterEditSpec().uuid(UUID.randomUUID()).nodeSpec(nodeSpec), userIntent);
+
+    Map<UUID, AZOverrides> result = userIntent.getUserIntentOverrides().getAzOverrides();
+    assertNotNull(result);
+    assertTrue(result.isEmpty());
+  }
+
+  @Test
+  public void testEditOmittingAzNodeSpecPreservesExistingAzOverrides() {
+    UUID az1 = UUID.randomUUID();
+    UUID az2 = UUID.randomUUID();
+    UserIntent userIntent = userIntentWithAzOverrides(az1, "c5.2xlarge", az2, "c5.4xlarge");
+
+    // node_spec present but az_node_spec omitted - AZ overrides remain the same.
+    ClusterNodeSpec nodeSpec = new ClusterNodeSpec().instanceType("c5.large");
+
+    UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(
+        new ClusterEditSpec().uuid(UUID.randomUUID()).nodeSpec(nodeSpec), userIntent);
+
+    Map<UUID, AZOverrides> result = userIntent.getUserIntentOverrides().getAzOverrides();
+    assertEquals(2, result.size());
+    assertEquals("c5.2xlarge", result.get(az1).getInstanceType());
+    assertEquals("c5.4xlarge", result.get(az2).getInstanceType());
+    assertEquals("c5.large", userIntent.instanceType);
+  }
+
+  private static UserIntent userIntentWithAzOverrides(
+      UUID az1, String az1InstanceType, UUID az2, String az2InstanceType) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "c5.xlarge";
+    AZOverrides az1Override = new AZOverrides();
+    az1Override.setInstanceType(az1InstanceType);
+    AZOverrides az2Override = new AZOverrides();
+    az2Override.setInstanceType(az2InstanceType);
+    Map<UUID, AZOverrides> existing = new HashMap<>();
+    existing.put(az1, az1Override);
+    existing.put(az2, az2Override);
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    overrides.setAzOverrides(existing);
+    userIntent.setUserIntentOverrides(overrides);
+    return userIntent;
   }
 }

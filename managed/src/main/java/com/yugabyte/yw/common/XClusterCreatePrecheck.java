@@ -40,9 +40,15 @@ public class XClusterCreatePrecheck {
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
+  /**
+   * @param automaticDdlMode whether the config being created replicates DDLs automatically; only db
+   *     scoped configs can be in automatic DDL mode, and it decides whether materialized views may
+   *     be part of the replication config
+   */
   public void xClusterCreatePreChecks(
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       XClusterConfig.ConfigType configType,
+      boolean automaticDdlMode,
       Universe sourceUniverse,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       Universe targetUniverse,
@@ -120,9 +126,17 @@ public class XClusterCreatePrecheck {
       }
     }
 
+    // Materialized views are replicated only in automatic DDL mode on supported YBDB versions.
+    XClusterUtil.checkMatviewReplicationSupported(
+        requestedTableInfoList, automaticDdlMode, sourceUniverse, targetUniverse);
+    boolean matviewSupported =
+        XClusterUtil.isMatviewReplicationSupported(
+            automaticDdlMode, sourceUniverse, targetUniverse);
+
     // Make sure only supported relations types are passed in by the user.
     Map<Boolean, List<String>> tableIdsPartitionedByIsXClusterSupported =
-        XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(requestedTableInfoList);
+        XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
+            requestedTableInfoList, matviewSupported);
     if (!tableIdsPartitionedByIsXClusterSupported.get(false).isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -130,7 +144,7 @@ public class XClusterCreatePrecheck {
               "Only the following relation types are supported for xCluster replication: %s; The"
                   + " following tables have different relation types or is a colocated child table:"
                   + " %s",
-              XClusterConfigTaskBase.X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET,
+              XClusterConfigTaskBase.getSupportedTableRelationTypes(matviewSupported),
               tableIdsPartitionedByIsXClusterSupported.get(false)));
     }
 

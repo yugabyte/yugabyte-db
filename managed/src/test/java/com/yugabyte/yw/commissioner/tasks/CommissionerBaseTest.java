@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.LdapUtil;
@@ -79,6 +80,7 @@ import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -119,6 +121,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -131,6 +134,7 @@ import io.prometheus.metrics.model.snapshots.HistogramSnapshot;
 import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.Label;
 import io.prometheus.metrics.model.snapshots.Labels;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -232,6 +236,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
   protected GFlagsAuditHandler mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
   protected RestoreManagerYb restoreManagerYb = mock(RestoreManagerYb.class);
+  protected FileHelperService mockFileHelperService = mock(FileHelperService.class);
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -409,11 +414,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     builder.packagePath(Paths.get("/opt/yugabyte"));
     builder.certDir("/opt/yugabyte/certs");
     lenient()
-        .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any()))
         .thenReturn(builder.build());
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
+    lenient()
+        .when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            inv ->
+                Files.createTempFile(
+                    inv.getArgument(0, String.class), inv.getArgument(1, String.class)));
     lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
     lenient()
         .doAnswer(
@@ -446,10 +457,20 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                       })
                   .when(nodeAgent)
                   .saveState(any());
+              lenient()
+                  .doAnswer(
+                      inv1 -> {
+                        NodeAgent.DeployContext ctx = inv1.getArgument(0);
+                        nodeAgent.setState(NodeAgent.State.REGISTERED);
+                        nodeAgent.setCertificateUuid(ctx.getCertificateUuid());
+                        return null;
+                      })
+                  .when(nodeAgent)
+                  .finalizeRegistration(any());
               return nodeAgent;
             })
         .when(mockNodeAgentManager)
-        .create(any(), anyBoolean());
+        .create(any(), any(), anyBoolean());
     Map<String, Set<String>> reservationsByGroup = new HashMap<>();
     lenient()
         .when(
@@ -575,6 +596,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(
                     bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
+        .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
@@ -1479,6 +1501,60 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
 
     // validateMetrics(Common.CloudType.gcp, nodesCounts, 0);
+  }
+
+  /**
+   * Adds the Azure LUN metadata that the devops host-info ("list") command reports for a node. YNP
+   * provisioning recovers Azure LUNs from that output (see YNPProvisioning.ensureAzureLunIndexes),
+   * so node command stubs have to model it for Azure nodes: the persisted LUNs when present,
+   * otherwise one LUN per volume in attachment order. Returns false, leaving the response
+   * untouched, when the node is not an Azure node.
+   */
+  protected boolean addAzureLunIndexes(ObjectNode respJson, NodeTaskParams params) {
+    if (params.getUniverseUUID() == null || params.nodeName == null) {
+      return false;
+    }
+    Universe universe = Universe.maybeGet(params.getUniverseUUID()).orElse(null);
+    if (universe == null) {
+      return false;
+    }
+    NodeDetails node = universe.getNode(params.nodeName);
+    if (node == null) {
+      return false;
+    }
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    if (cluster == null) {
+      return false;
+    }
+    // Resolve the provider per node like YNPProvisioning does: a cluster may mix providers and
+    // a read replica intent may not carry providerType.
+    Provider provider;
+    try {
+      provider = Util.getProviderForNode(node, cluster);
+    } catch (RuntimeException e) {
+      return false;
+    }
+    if (provider == null || provider.getCloudCode() != Common.CloudType.azu) {
+      return false;
+    }
+    ArrayNode lunIndexes = respJson.putArray("lun_indexes");
+    Integer[] persisted = node.cloudInfo == null ? null : node.cloudInfo.lun_indexes;
+    if (persisted != null && persisted.length > 0) {
+      for (Integer lun : persisted) {
+        lunIndexes.add(lun);
+      }
+      return true;
+    }
+    DeviceInfo deviceInfo =
+        params.deviceInfo != null
+            ? params.deviceInfo
+            : cluster.userIntent.getDeviceInfoForNode(node);
+    int numVolumes =
+        deviceInfo != null && deviceInfo.numVolumes != null ? deviceInfo.numVolumes : 1;
+    for (int lun = 0; lun < numVolumes; lun++) {
+      lunIndexes.add(lun);
+    }
+    return true;
   }
 
   protected void verifyNodeInteractionsCapacityReservation(

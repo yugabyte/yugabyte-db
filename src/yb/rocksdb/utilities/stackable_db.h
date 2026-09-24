@@ -285,7 +285,20 @@ class StackableDB : public DB {
 
   yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
     return db_->GetMiddleKey(lower_bound_key);
-  };
+  }
+
+  yb::Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override {
+    return db_->FindTargetKey(lower_bound_key, upper_bound_key, target_size);
+  }
+
+  yb::Result<uint64_t> Cross(Slice key) override {
+    return db_->Cross(key);
+  }
+
+  yb::Result<uint64_t> TotalDataSize() override {
+    return db_->TotalDataSize();
+  }
 
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle *column_family,
@@ -335,8 +348,9 @@ class StackableDB : public DB {
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(
       ColumnFamilyHandle* column_family,
-      TablePropertiesCollection* props) override {
-    return db_->GetPropertiesOfAllTables(column_family, props);
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override {
+    return db_->GetPropertiesOfAllTables(column_family, props, error_handling);
   }
 
   using DB::GetPropertiesOfTablesInRange;

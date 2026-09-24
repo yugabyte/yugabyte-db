@@ -41,6 +41,8 @@ These steps prepare the node for use by YugabyteDB Anywhere, including setting u
 
 Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/stable/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
+For existing universes (v2026.1.2.0 and later) that lack THP or have THP mis-configured, you can re-apply provisioning on nodes, see [Reprovision universe nodes](../../../manage-deployments/reprovision-nodes/).
+
 ### Download the package
 
 To begin, download the YugabyteDB Anywhere node agent package to the node you want to provision.
@@ -191,10 +193,10 @@ You can use the `--config_override` flag to override settings in the configurati
 
 Examples:
 
-Override the FQDN (string type) under ynp:
+Override the FQDN (string type) under yba:
 
 ```sh
-./node-agent-provision.sh --config_override ynp.node_external_fqdn=\"my-new-fqdn\"
+./node-agent-provision.sh --config_override yba.node_external_fqdn=\"my-new-fqdn\"
 ```
 
 Override chrony servers (list of strings) under ynp:

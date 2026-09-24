@@ -1268,9 +1268,27 @@ Refer to [#5680](https://github.com/yugabyte/yugabyte-db/issues/5680) for limita
 
 ## Row-level explicit locking clauses
 
-The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on-Conflict` mode as there is no waiting. It does apply to the `Wait-on-Conflict` policy but is currently supported only for Read Committed isolation. [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166) will extend support for this in the `Wait-on-Conflict` mode for the other isolation levels.
+YugabyteDB supports PostgreSQL's row-level explicit locking clauses, which provide advanced control over lock acquisition behavior in the presence of conflicts. The behavior of these clauses depends on the concurrency control policy:
 
-The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction with the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
+### NOWAIT clause
+
+The `NOWAIT` clause causes a SELECT FOR UPDATE/SHARE to fail immediately with an error if the row is already locked, rather than waiting.
+
+- **Supported in:** Wait-on-Conflict policy with Read Committed isolation
+- **Not supported in:** Fail-on-Conflict policy (which never waits anyway), and Serializable isolation ([#12166](https://github.com/yugabyte/yugabyte-db/issues/12166))
+
+### SKIP LOCKED clause
+
+The `SKIP LOCKED` clause allows a transaction to skip rows that are already locked by other transactions, returning only the unlocked rows. This is useful for workloads that can process any available rows.
+
+- **Supported in:** Both Fail-on-Conflict and Wait-on-Conflict concurrency control policies
+- **Not supported in:** Serializable isolation ([#5683](https://github.com/yugabyte/yugabyte-db/issues/5683))
+
+YugabyteDB provides the following configuration parameter to optimize SKIP LOCKED performance:
+
+- [yb_explicit_row_locking_batch_size](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-locking-batch-size): Controls the number of lock requests batched together. Default is 1024. Larger batches improve throughput; smaller batches reduce memory usage and latency.
+
+For detailed examples and configuration guidance, refer to [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 
 ## Advisory locks
 
@@ -1346,7 +1364,7 @@ Finally, advisory locks can be blocking or non-blocking:
 
 {{<tags/feature/tp idea="1114">}} Table-level locks for YSQL (available in {{<release "2025.1.1.0">}} and later) provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
 
-Support for table-level locks is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag [enable_object_locking_for_table_locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks) to true.
+Support for table-level locks is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag [enable_object_locking_for_table_locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks) to true. Do not enable table-level locks on a cluster that uses CDC; table-level locks depend on Transactional DDL, which currently doesn't support CDC.
 
 Table-level locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same modes and API. Refer to [Table-level locks](https://www.postgresql.org/docs/15/explicit-locking.html#LOCKING-TABLES) in the PostgreSQL documentation.
 

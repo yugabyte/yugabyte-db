@@ -58,6 +58,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/tools/xcluster_verify.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 
@@ -725,7 +726,8 @@ Status list_tablets_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 }
 
 const auto modify_table_placement_info_args =
-    "<table> <placement_info> <replication_factor> [<placement_uuid>]";
+    "<table> <placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_table_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 3 || args.size() > 5) {
@@ -755,7 +757,9 @@ Status modify_table_placement_info_action(
   return Status::OK();
 }
 
-const auto modify_placement_info_args = "<placement_info> <replication_factor> [<placement_uuid>]";
+const auto modify_placement_info_args =
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -780,7 +784,8 @@ Status clear_placement_info_action(
 }
 
 const auto add_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status add_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -795,7 +800,8 @@ Status add_read_replica_placement_info_action(
 }
 
 const auto modify_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -2173,25 +2179,6 @@ Status get_change_data_stream_info_action(
   return Status::OK();
 }
 
-const auto ysql_backfill_change_data_stream_with_replication_slot_args =
-    "<stream_id> <replication_slot_name>";
-Status ysql_backfill_change_data_stream_with_replication_slot_action(
-    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 2) {
-    return ClusterAdminCli::kInvalidArguments;
-  }
-
-  const string stream_id = args[0];
-  const string replication_slot_name = args[1];
-
-  RETURN_NOT_OK_PREPEND(
-      client->YsqlBackfillReplicationSlotNameToCDCSDKStream(stream_id, replication_slot_name),
-      Format(
-          "Unable to backfill CDC stream $0 with replication slot $1", stream_id,
-          replication_slot_name));
-  return Status::OK();
-}
-
 const auto disable_dynamic_table_addition_on_change_data_stream_args = "<stream_id>";
 Status disable_dynamic_table_addition_on_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2233,6 +2220,24 @@ Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
       Format("Failed to validate and sync cdc state table entries for CDC stream $0", stream_id);
 
   RETURN_NOT_OK_PREPEND(client->ValidateAndSyncCDCStateEntriesForCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
+const auto cleanup_stale_cdc_streams_args = "[dry_run] (default false)";
+Status cleanup_stale_cdc_streams_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  bool dry_run = false;
+  if (args.size() > 0) {
+    if (IsEqCaseInsensitive(args[0], "dry_run")) {
+      dry_run = true;
+    } else {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->CleanupStaleCDCStreams(dry_run),
+      "Failed to cleanup stale CDC streams");
   return Status::OK();
 }
 
@@ -2846,7 +2851,8 @@ Status get_universe_replication_info_action(
   const auto& namespace_map = VERIFY_RESULT_REF(client->GetNamespaceMap());
 
   std::cout << "Replication Group Id: " << replication_group_id << std::endl;
-  std::cout << "Source master addresses: " << group_info.source_master_addrs << std::endl;
+  std::cout << "Source master addresses: " << group_info.deprecated_source_master_addresses
+            << std::endl;
   std::cout << "Type: " << xcluster::ShortReplicationType(group_info.replication_type) << std::endl;
 
   if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
@@ -3019,25 +3025,10 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
-// Decodes a hex-encoded partition-key argument, rejecting malformed input rather than silently
-// truncating it: strings::a2b_hex drops a trailing odd nibble and turns non-hex bytes into garbage,
-// which would quietly hash the wrong range instead of reporting a bad argument.
-Result<std::string> DecodeHexPartitionKey(const std::string& arg) {
-  SCHECK(
-      arg.size() % 2 == 0, InvalidArgument,
-      Format("hex key '$0' must have an even number of digits", arg));
-  for (const char c : arg) {
-    SCHECK(
-        ascii_isxdigit(static_cast<unsigned char>(c)), InvalidArgument,
-        Format("hex key '$0' contains a non-hex character", arg));
-  }
-  return strings::a2b_hex(arg);
-}
-
-const auto get_table_hash_args = "<table_id> [read_ht] [start_key_hex] [end_key_hex]";
+const auto get_table_hash_args = "<table_id> [read_ht] [start_key_hex] [end_key_hex] [max_rows]";
 Status get_table_hash_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1 || args.size() > 4) {
+  if (args.size() < 1 || args.size() > 5) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
@@ -3057,13 +3048,119 @@ Status get_table_hash_action(
   if (args.size() >= 4 && !args[3].empty()) {
     end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[3]));
   }
-  // start_key is inclusive and end_key exclusive, so a bounded range must have start_key < end_key
-  // (raw partition-key byte order, matching the server's comparison). An empty bound is unbounded
-  // on that side and imposes no ordering constraint.
+  uint64_t max_rows = 0;
+  if (args.size() >= 5 && !args[4].empty()) {
+    max_rows = VERIFY_RESULT(CheckedStoull(args[4]));
+  }
+  // The start < end ordering check lives in ComputeTableXorHash: a bound may be a continuation key
+  // from a capped scan, and only the server-side encoding makes such a bound comparable against a
+  // plain partition key.
+  return client->GetTableXorHash(table_id, read_ht, start_key, end_key, max_rows);
+}
+
+// Verifies one slice of one table pair and prints the outcome as JSON. The target is
+// --master_addresses; source_master_addresses names the source.
+//
+// read_ht is optional. Omitted, the command resolves one hybrid time -- the target's xCluster safe
+// time -- and hashes both sides at it, reporting it back as read_ht. A long-running verify should
+// let each slice resolve its own: one time reused across a whole run eventually falls behind the
+// source's history retention and every later slice comes back kTryAgain. Pass one explicitly only
+// to reproduce an earlier slice exactly.
+//
+// Exit status reports only whether the slice ran, not what it found: a kDiverged slice still exits
+// 0, and the verdict is in the JSON. This is the opposite of verify_xcluster_group, deliberately --
+// this command is the primitive a driver walks a table with, and a driver reads the verdict to
+// decide where to go next. Anything invoking it from a shell has to read `result`, not $?.
+const auto verify_xcluster_slice_args =
+    "<source_table_id> <target_table_id> <source_master_addresses> "
+    "[read_ht] [start_key_hex] [end_key_hex] [max_rows]";
+Status verify_xcluster_slice_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 3 || args.size() > 7) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  SliceVerifyRequest req;
+  req.source_table_id = args[0];
+  req.target_table_id = args[1];
+  const auto& source_master_addresses = args[2];
   SCHECK(
-      start_key.empty() || end_key.empty() || start_key < end_key, InvalidArgument,
-      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
-  return client->GetTableXorHash(table_id, read_ht, start_key, end_key);
+      !source_master_addresses.empty(), InvalidArgument,
+      "source_master_addresses must not be empty");
+  if (args.size() >= 4 && !args[3].empty()) {
+    const auto read_ht = VERIFY_RESULT(CheckedStoll(args[3]));
+    // 0 is the sentinel for "resolve one for me", set by omitting the argument, so a literal 0 is a
+    // caller who thinks they pinned a time and did not. The negative half guards the conversion to
+    // unsigned, which would turn one into a hybrid time past every write either cluster will take.
+    SCHECK_GT(read_ht, 0, InvalidArgument,
+              "read_ht must be a positive hybrid time; omit it to have one resolved from the "
+              "target's xCluster safe time");
+    req.read_ht = static_cast<uint64_t>(read_ht);
+  }
+  if (args.size() >= 5 && !args[4].empty()) {
+    req.start_key = VERIFY_RESULT(DecodeHexPartitionKey(args[4]));
+  }
+  if (args.size() >= 6 && !args[5].empty()) {
+    req.end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[5]));
+  }
+  if (args.size() >= 7 && !args[6].empty()) {
+    req.max_rows = VERIFY_RESULT(CheckedStoull(args[6]));
+  }
+  // As in get_table_hash, ComputeTableXorHash owns the start < end check, since a bound may be a
+  // continuation key that only compares correctly once encoded. A bad range surfaces as a kError
+  // result rather than a CLI argument error.
+  ClusterAdminClient source_client(
+      source_master_addresses, MonoDelta::FromMilliseconds(FLAGS_timeout_ms));
+  RETURN_NOT_OK_PREPEND(
+      source_client.Init(),
+      Format("Unable to connect to source masters at [$0]", source_master_addresses));
+
+  auto outcome = VERIFY_RESULT(client->VerifyXClusterSliceAgainst(&source_client, req));
+  std::cout << SliceVerifyOutcomeToJson(outcome) << std::endl;
+  return Status::OK();
+}
+
+// Sweeps every table in one inbound replication group, printing one JSON outcome per slice followed
+// by a JSON summary. The group supplies the source addresses and table pairs.
+//
+// An invocation always sweeps the whole group. max_rows caps a single scan so no one read time is
+// held open across a whole table, and max_concurrent_ranges controls how many key ranges are in
+// flight. Nothing is written to disk.
+//
+// Exit status is non-zero for any summary result but kMatch, so cron and CI need only check $?.
+// verify_xcluster_slice deliberately does the opposite; see its comment.
+const auto verify_xcluster_group_args =
+    "<replication_group_id> [max_rows] [max_concurrent_ranges] [skip_source_table_ids]";
+Status verify_xcluster_group_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.empty() || args.size() > 4) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  GroupVerifyOptions options;
+  if (args.size() >= 2 && !args[1].empty()) {
+    options.max_rows = VERIFY_RESULT(CheckedStoull(args[1]));
+  }
+  if (args.size() >= 3 && !args[2].empty()) {
+    options.max_concurrent_ranges = VERIFY_RESULT(CheckedStoi(args[2]));
+  }
+  SCHECK_GE(
+      options.max_concurrent_ranges, 1, InvalidArgument,
+      "max_concurrent_ranges must be at least 1");
+
+  std::unordered_set<TableId> skip_tables;
+  if (args.size() >= 4 && !args[3].empty()) {
+    std::vector<std::string> skip_ids;
+    boost::split(skip_ids, args[3], boost::is_any_of(","));
+    for (auto& id : skip_ids) {
+      boost::trim(id);
+      if (!id.empty()) {
+        skip_tables.insert(id);
+      }
+    }
+  }
+  return client->VerifyXClusterGroup(
+      xcluster::ReplicationGroupId(args[0]), options, skip_tables);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";
@@ -3170,16 +3267,18 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
   REGISTER_COMMAND(get_table_hash);
+  REGISTER_COMMAND(verify_xcluster_slice);
+  REGISTER_COMMAND(verify_xcluster_group);
 
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_change_data_stream);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
-  REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
+  REGISTER_COMMAND(cleanup_stale_cdc_streams);
   // xCluster Source commands
   REGISTER_COMMAND(bootstrap_cdc_producer);
   REGISTER_COMMAND(list_cdc_streams);

@@ -26,6 +26,7 @@
 #include "yb/util/status_log.h"
 
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_payload_map.h"
 
 using namespace yb::size_literals;
 
@@ -58,6 +59,10 @@ using NeighborsType = std::ranges::subrange<VectorNoPtr, VectorNoPtr>;
 
 class YbHnswIndexAdapter {
  public:
+  // payloads is null when the chunk does not store payloads.
+  explicit YbHnswIndexAdapter(const vector_index::VectorPayloadMap* payloads)
+      : payloads_(payloads) {}
+
   virtual size_t Size() = 0;
   virtual size_t Entry() = 0;
   virtual Header MakeHeader() = 0;
@@ -68,7 +73,20 @@ class YbHnswIndexAdapter {
   virtual NeighborsType Neighbors(size_t index, size_t level) = 0;
   virtual NeighborsType NeighborsBase(size_t index) = 0;
 
+  // Returns the payload attached to the vector, empty slice when the chunk does not store
+  // payloads. index is the implementation-assigned slot of the vector, matching the payload map
+  // indexing.
+  Result<Slice> NodePayload(size_t index) {
+    if (!payloads_) {
+      return Slice();
+    }
+    return payloads_->Get(index);
+  }
+
   virtual ~YbHnswIndexAdapter() = default;
+
+ private:
+  const vector_index::VectorPayloadMap* payloads_;
 };
 
 namespace {
@@ -195,7 +213,9 @@ class YbHnswBuilder {
       size_t aux_data_size = 0;
       size_t aux_data_block = NextBlockId();
       for (auto& v  : vectors_) {
-        size_t vector_aux_data_size = sizeof(vector_index::VectorId);
+        // Aux data of a vector is its id followed by the attached payload (see SearchCache).
+        size_t vector_aux_data_size =
+            sizeof(vector_index::VectorId) + VERIFY_RESULT(inspector_.NodePayload(v.index)).size();
         if (aux_data_size + vector_aux_data_size > header_.max_block_size) {
           CHECK_GT(aux_data_size, 0);
           aux_data_block_sizes.push_back(aux_data_size);
@@ -226,6 +246,10 @@ class YbHnswBuilder {
       }
       vector_index::VectorId key = inspector_.NodeKey(v.index);
       writer.AppendBytes(key.data(), sizeof(vector_index::VectorId));
+      auto payload = VERIFY_RESULT(inspector_.NodePayload(v.index));
+      if (!payload.empty()) {
+        writer.AppendBytes(payload.data(), payload.size());
+      }
     }
 
     return Status::OK();
@@ -384,9 +408,10 @@ void InitVectorDataAmountPerBlock(Header& header, size_t size) {
 
 class YbHnswUsearchIndexAdapter : public YbHnswIndexAdapter {
  public:
-  explicit YbHnswUsearchIndexAdapter(
-      std::reference_wrapper<const unum::usearch::index_dense_gt<vector_index::VectorId>> index)
-      : index_(index) {}
+  YbHnswUsearchIndexAdapter(
+      std::reference_wrapper<const unum::usearch::index_dense_gt<vector_index::VectorId>> index,
+      const vector_index::VectorPayloadMap* payloads)
+      : YbHnswIndexAdapter(payloads), index_(index) {}
 
   size_t Size() override {
     return index_.size();
@@ -456,8 +481,9 @@ YbHnsw::YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache)
 YbHnsw::~YbHnsw() = default;
 
 Status YbHnsw::Import(
-    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path) {
-  YbHnswUsearchIndexAdapter inspector(index);
+    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
+    const vector_index::VectorPayloadMap* payloads) {
+  YbHnswUsearchIndexAdapter inspector(index, payloads);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
   return Status::OK();
@@ -465,9 +491,10 @@ Status YbHnsw::Import(
 
 class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
  public:
-  explicit YbHnswHnswlibIndexAdapter(
-      std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index)
-      : index_(index) {}
+  YbHnswHnswlibIndexAdapter(
+      std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index,
+      const vector_index::VectorPayloadMap* payloads)
+      : YbHnswIndexAdapter(payloads), index_(index) {}
 
   size_t Size() override {
     return index_.getCurrentElementCount();
@@ -530,8 +557,9 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
 
 Status YbHnsw::Import(
     const HnswlibIndex<DistanceType>& index,
-    const std::string& path) {
-  YbHnswHnswlibIndexAdapter inspector(index);
+    const std::string& path,
+    const vector_index::VectorPayloadMap* payloads) {
+  YbHnswHnswlibIndexAdapter inspector(index, payloads);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
   return Status::OK();
@@ -561,8 +589,9 @@ YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext&
   return vector_index::MakeResult<DistanceType>(
       max_results, context.top.data(),
       [&](const auto& entry) {
+        auto [vector_id, payload] = context.search_cache.GetVectorIdAndPayload(entry.second);
         return vector_index::VectorWithDistance<DistanceType>(
-            context.search_cache.GetVectorData(entry.second), entry.first);
+            vector_id, entry.first, ValueBuffer(payload));
       });
 }
 
@@ -615,7 +644,7 @@ void YbHnsw::SearchInBaseLayer(
   auto extra_top_limit = std::max<size_t>(
       options.ef, options.max_num_results) - options.max_num_results;
   next.push({best_dist, best_vector});
-  if (!options.filter || options.filter(cache.GetVectorData(best_vector))) {
+  if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(best_vector))) {
     top.push({best_dist, best_vector});
   }
   visited.set(best_vector);
@@ -639,7 +668,7 @@ void YbHnsw::SearchInBaseLayer(
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
         next.push({neighbor_dist, neighbor});
-        if (!options.filter || options.filter(cache.GetVectorData(neighbor))) {
+        if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(neighbor))) {
           if (top.size() == top_limit) {
             auto extra_push = top.top().first;
             if (neighbor_dist < extra_push) {
@@ -769,8 +798,11 @@ Slice SearchCache::GetVectorDataSlice(size_t vector) {
   return Slice(base_ptr + begin, base_ptr + end);
 }
 
-vector_index::VectorId SearchCache::GetVectorData(size_t vector) {
-  return vector_index::TryFullyDecodeVectorId(GetVectorDataSlice(vector));
+std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size_t vector) {
+  auto data = GetVectorDataSlice(vector);
+  return {
+      vector_index::TryFullyDecodeVectorId(data.Prefix(sizeof(vector_index::VectorId))),
+      data.WithoutPrefix(sizeof(vector_index::VectorId))};
 }
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {

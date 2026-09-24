@@ -20,6 +20,7 @@ unstructured_pytesseract
 pytesseract
 pi_heif
 pdf2image
+pikepdf
 
 # Database connectivity (choose one based on your preference)
 asyncpg  # Async PostgreSQL driver (recommended for YugabyteDB)

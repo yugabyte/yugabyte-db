@@ -1351,6 +1351,8 @@ constexpr std::size_t default_allocator_entry_bytes() { return 64; }
  *          Includes the main `::connectivity` parameter (`M` in the paper)
  *          and two expansion factors - for construction and search.
  */
+using neighbors_count_t = std::uint32_t;
+
 struct index_config_t {
     /// @brief Number of neighbors per graph node.
     /// Defaults to 32 in FAISS and 16 in hnswlib.
@@ -1364,6 +1366,21 @@ struct index_config_t {
 
     inline index_config_t() = default;
     inline index_config_t(std::size_t c, std::size_t cb = 0) noexcept : connectivity(c), connectivity_base(cb) {}
+
+    /// @brief Expected number of levels per node above the base one, see `choose_random_level_`.
+    inline double inverse_log_connectivity() const noexcept {
+        return 1.0 / std::log(static_cast<double>(connectivity));
+    }
+
+    /// @brief Bytes of a non-base level neighbors list for the given slot type size.
+    inline std::size_t neighbors_bytes(std::size_t slot_size) const noexcept {
+        return connectivity * slot_size + sizeof(neighbors_count_t);
+    }
+
+    /// @brief Bytes of a base level neighbors list for the given slot type size.
+    inline std::size_t neighbors_base_bytes(std::size_t slot_size) const noexcept {
+        return connectivity_base * slot_size + sizeof(neighbors_count_t);
+    }
 
     /**
      *  @brief  Validates the configuration settings, updating them in-place.
@@ -2068,7 +2085,7 @@ class index_gt {
      *          multi-level graph. It's selected to be `std::uint32_t` to improve the
      *          alignment in most common cases.
      */
-    using neighbors_count_t = std::uint32_t;
+    using neighbors_count_t = unum::usearch::neighbors_count_t;
     using level_t = std::int16_t;
 
     /**
@@ -3190,6 +3207,20 @@ class index_gt {
 
     std::size_t memory_usage_per_node(level_t level) const noexcept { return node_bytes_(level); }
 
+    // Instance independent versions of the accessors below, computed from the config and
+    // the slot type of this index.
+    static std::size_t memory_usage_per_node(index_config_t const& config, level_t level) noexcept {
+        return node_head_bytes_() + neighbors_base_bytes(config) + neighbors_bytes(config) * level;
+    }
+
+    static std::size_t neighbors_base_bytes(index_config_t const& config) noexcept {
+        return config.neighbors_base_bytes(sizeof(compressed_slot_t));
+    }
+
+    static std::size_t neighbors_bytes(index_config_t const& config) noexcept {
+        return config.neighbors_bytes(sizeof(compressed_slot_t));
+    }
+
     double inverse_log_connectivity() const {
         return pre_.inverse_log_connectivity;
     }
@@ -3682,9 +3713,9 @@ class index_gt {
   private:
     inline static precomputed_constants_t precompute_(index_config_t const& config) noexcept {
         precomputed_constants_t pre;
-        pre.inverse_log_connectivity = 1.0 / std::log(static_cast<double>(config.connectivity));
-        pre.neighbors_bytes = config.connectivity * sizeof(compressed_slot_t) + sizeof(neighbors_count_t);
-        pre.neighbors_base_bytes = config.connectivity_base * sizeof(compressed_slot_t) + sizeof(neighbors_count_t);
+        pre.inverse_log_connectivity = config.inverse_log_connectivity();
+        pre.neighbors_bytes = neighbors_bytes(config);
+        pre.neighbors_base_bytes = neighbors_base_bytes(config);
         return pre;
     }
 

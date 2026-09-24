@@ -73,6 +73,11 @@ class TSInformationPB;
 using TSCountCallback = std::function<void()>;
 using TSDescriptorMap = std::map<std::string, TSDescriptorPtr>;
 
+struct ClusterYsqlDbPins {
+  DbOidToHybridTimeMap pins;
+  bool ready = false;
+};
+
 using LeaseExpiredCallback = std::function<void(const std::string&, uint64_t, LeaderEpoch)>;
 
 // Tracks the servers that the master has heard from, along with their
@@ -163,20 +168,33 @@ class TSManager {
   size_t NumLiveDescriptors() const;
 
   // Iterates over all live TSDescriptors and returns the oldest read HybridTime pin for each
-  // database with at least one live transaction on any live tserver.
+  // database with at least one live transaction on any live tserver. Tservers heartbeat only the
+  // leader, so this is empty on a master follower.
   //
-  // Once every live tserver has reported its pins to the master at least once, each database's
-  // aggregated pin advances monotonically. Before that initial round of heartbeats is complete,
-  // the pin may move in either direction as additional tservers report their state. In practice,
-  // this should not affect compaction: heartbeats arrive every second, while the unconditional
-  // history-retention window is 15 minutes (timestamp_history_retention_interval_sec), giving
-  // each live tserver plenty of time to report or be considered dead before compaction can
-  // discard relevant history.
-  //
-  // Given these conditions, a tserver should never compact history away, and then receive an
-  // earlier pin that requires the discarded history: the global pins should stabilize long
-  // before the minimum retention window allows that history to be compacted.
+  // Each database's pin will only increase monotonically once master has received at least one
+  // heartbeat from every live tserver. It is possible for a database's pin to decrease if a new
+  // tserver sends its first heartbeat, but given that live tservers will send a heartbeat every
+  // second and we have a 15 minute hard cap on compaction
+  // (timestamp_history_retention_interval_sec), we assume that by the time compaction is
+  // triggered, each tserver would have either heartbeated the master once with its local pins,
+  // or have been dropped from the cluster.
   DbOidToHybridTimeMap GetClusterYsqlDbOldestPinnedReadTimes() const;
+
+  // The same map, plus whether it is complete enough to hand to a consumer that will hold on to
+  // it: tservers cache it, and the pin published to the sys catalog outlives this leader.
+  // Publishing an incomplete map to either drops a pin a live transaction still needs.
+  //
+  // Leader only -- time_since_elected_leader is meaningless on a master that was never elected.
+  // A caller that just reads the pins for its own immediate use wants the overload above.
+  //
+  // After a re-election, if persist_tserver_registry is enabled, the new master loads the previous
+  // master's live TSDescriptors, so it knows which tservers it has not heard from yet and holds
+  // ready false until each has heartbeated. Tservers dropped during the re-election are marked
+  // unresponsive after a minute of silence and so cannot hold ready false indefinitely. If
+  // persist_tserver_registry is disabled the new leader cannot tell that an absent tserver exists
+  // at all, so it waits out initial_tserver_registration_duration_secs instead, similar to the
+  // load balancer's initial delay.
+  ClusterYsqlDbPins GetClusterYsqlDbPinsForPublishing(MonoDelta time_since_elected_leader) const;
 
   // Find TServers that are currently in the state LIVE but have not heartbeated for a long time.
   // Transition all such TServers into the UNRESPONSIVE state.
