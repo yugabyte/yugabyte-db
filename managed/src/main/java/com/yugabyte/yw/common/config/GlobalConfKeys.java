@@ -2124,6 +2124,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCrossCloudFederatedIam =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_cross_cloud_federated_iam",
+          ScopeType.GLOBAL,
+          "Enable Cross-Cloud Federated IAM",
+          "Exposes the cross-cloud federated IAM fields on the provider and backup storage"
+              + " configuration pages. Off by default while the feature is in preview; a provider"
+              + " or storage config that already has it set keeps working regardless.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_s3_backup_proxy",

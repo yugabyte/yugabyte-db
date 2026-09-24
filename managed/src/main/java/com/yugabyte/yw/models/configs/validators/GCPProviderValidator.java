@@ -35,12 +35,12 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface.VPCType;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -74,10 +74,6 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   // when the provider is saved, instead of failing later on every node in ManageCloudFederation.
   // The ARN is restricted to the standard 'aws' partition because both YBA and the node use the
   // global STS endpoint, which aws-cn and aws-us-gov do not serve.
-  private static final Pattern FEDERATED_IAM_ROLE_ARN_PATTERN =
-      Pattern.compile("^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9._/+=,@-]{1,256}$");
-  private static final Pattern FEDERATED_IAM_AUDIENCE_PATTERN =
-      Pattern.compile("^[A-Za-z0-9._:/-]{1,512}$");
 
   @Override
   public void validate(Provider provider) {
@@ -781,8 +777,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       return;
     }
     String roleArn = gcpInfo.getFederatedIamRoleArn();
-    if (StringUtils.isBlank(roleArn)
-        || !FEDERATED_IAM_ROLE_ARN_PATTERN.matcher(roleArn).matches()) {
+    if (!CrossCloudFederationTarget.isValidRoleArn(roleArn)) {
       throwBeanProviderValidatorError(
           "FEDERATED_IAM_ROLE_ARN",
           "Federated IAM is enabled but the role ARN is missing or malformed. Expected"
@@ -790,8 +785,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           null);
     }
     String audience = gcpInfo.getFederatedIamAudience();
-    if (StringUtils.isBlank(audience)
-        || !FEDERATED_IAM_AUDIENCE_PATTERN.matcher(audience).matches()) {
+    if (!CrossCloudFederationTarget.isValidAudience(audience)) {
       throwBeanProviderValidatorError(
           "FEDERATED_IAM_AUDIENCE",
           "Federated IAM is enabled but the audience is missing or contains unsupported"

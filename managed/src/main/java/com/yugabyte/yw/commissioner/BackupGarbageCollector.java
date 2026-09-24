@@ -393,7 +393,8 @@ public class BackupGarbageCollector {
           && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
         String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
         if (StringUtils.isNotBlank(snapshotAudience)) {
-          ((CustomerConfigStorageGCSData) configData).federationAudience = snapshotAudience;
+          ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience =
+              snapshotAudience;
         } else {
           Universe.maybeGet(backup.getUniverseUUID())
               .ifPresent(u -> backupHelper.applyCrossCloudFederationAudience(configData, u));
@@ -407,8 +408,8 @@ public class BackupGarbageCollector {
         String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
         String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
         if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
-          s3.federationAudience = snapshotAudience;
-          s3.federationRoleArn = snapshotRoleArn;
+          s3.crossCloudFederationAudience = snapshotAudience;
+          s3.crossCloudFederationRoleArn = snapshotRoleArn;
         } else {
           Universe.maybeGet(backup.getUniverseUUID())
               .ifPresent(u -> backupHelper.applyCrossCloudFederationAudience(configData, u));

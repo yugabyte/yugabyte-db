@@ -4,7 +4,7 @@ import { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
-import { SubmissionError } from 'redux-form';
+import { formValueSelector, SubmissionError } from 'redux-form';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -32,7 +32,8 @@ import {
   isPathStyleAccess,
   isChunkedEncodingEnabled,
   isSigningRegionEnabled,
-  isS3BackupProxyEnabled
+  isS3BackupProxyEnabled,
+  isCrossCloudFederatedIamEnabled
 } from '../../backupv2/common/BackupUtils';
 
 const storageToggleTrue = (v) => v === true || v === 'true';
@@ -101,9 +102,6 @@ class StorageConfiguration extends Component {
         az: false,
         oci: false
       },
-      iamRoleEnabled: false,
-      federatedIamEnabled: false,
-      useGcpIam: false,
       useAzureIam: false,
       useOciIam: false,
       listView: {
@@ -175,11 +173,19 @@ class StorageConfiguration extends Component {
 
       case 'gcs': {
         let FIELDS;
-        if (values['USE_GCP_IAM']) {
+        if (values['USE_GCP_IAM'] || values['GCS_FEDERATED_IAM']) {
           configName = dataPayload['GCS_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
-          dataPayload['USE_GCP_IAM'] = dataPayload['USE_GCP_IAM'].toString();
+          // Federation is only meaningful on top of an instance identity, so it implies GCP IAM -
+          // the same way FEDERATED_IAM implies IAM_INSTANCE_PROFILE on the S3 config.
+          dataPayload['USE_GCP_IAM'] = 'true';
           FIELDS = ['BACKUP_LOCATION', 'USE_GCP_IAM'];
+          // Only when YBA itself must federate to reach the bucket (YBA on AWS). A YBA on GCP
+          // reaches GCS with its own identity and must not be sent this.
+          if (values['GCS_FEDERATED_IAM']) {
+            dataPayload['USE_CROSS_CLOUD_FEDERATION'] = true;
+            FIELDS.push('USE_CROSS_CLOUD_FEDERATION');
+          }
         } else {
           configName = dataPayload['GCS_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
@@ -236,9 +242,10 @@ class StorageConfiguration extends Component {
       default: {
         let FIELDS;
         if (values['FEDERATED_IAM']) {
-          // Cross-cloud federated IAM: a GCP database node backing up to S3. The backend marks a
-          // config as federation by the credential source, not by IAM_INSTANCE_PROFILE, but helpers
-          // that predate federation still read the latter - so send both.
+          // Cross-cloud federated IAM. USE_CROSS_CLOUD_FEDERATION is what the backend keys off;
+          // IAM_INSTANCE_PROFILE is sent too because helpers predating federation still read it.
+          // FIELDS is an allow-list for the _.pick below - a field missing here is silently
+          // dropped, which is how the config would end up saved as a plain IAM-role config.
           configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
           dataPayload['IAM_INSTANCE_PROFILE'] = 'true';
@@ -247,7 +254,7 @@ class StorageConfiguration extends Component {
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
             'IAM_INSTANCE_PROFILE',
-            'IAM_CONFIGURATION'
+            'USE_CROSS_CLOUD_FEDERATION'
           ];
         } else if (values['IAM_INSTANCE_PROFILE']) {
           configName = dataPayload['S3_CONFIGURATION_NAME'];
@@ -326,8 +333,8 @@ class StorageConfiguration extends Component {
 
             // Change to list view if form is successfully submitted.
             this.setState({
-              ...this.state,
               listView: {
+                ...this.state.listView,
                 [props.activeTab]: true
               }
             });
@@ -380,6 +387,7 @@ class StorageConfiguration extends Component {
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           USE_GCP_IAM: row.data?.USE_GCP_IAM,
+          GCS_FEDERATED_IAM: storageToggleTrue(row.data?.USE_CROSS_CLOUD_FEDERATION),
           GCS_CREDENTIALS_JSON: row.data?.GCS_CREDENTIALS_JSON
         };
         break;
@@ -421,7 +429,7 @@ class StorageConfiguration extends Component {
           type: 'update',
           configUUID: row?.configUUID,
           IAM_INSTANCE_PROFILE: row.data?.IAM_INSTANCE_PROFILE,
-          FEDERATED_IAM: row.data?.USE_CROSS_CLOUD_FEDERATION === true,
+          FEDERATED_IAM: storageToggleTrue(row.data?.USE_CROSS_CLOUD_FEDERATION),
           AWS_ACCESS_KEY_ID: row.data?.AWS_ACCESS_KEY_ID || '',
           AWS_SECRET_ACCESS_KEY: row.data?.AWS_SECRET_ACCESS_KEY || '',
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
@@ -449,9 +457,6 @@ class StorageConfiguration extends Component {
         ...this.state.editView,
         [activeTab]: true
       },
-      iamRoleEnabled: row.data['IAM_INSTANCE_PROFILE'] || false,
-      federatedIamEnabled: row.data['USE_CROSS_CLOUD_FEDERATION'] === true,
-      useGcpIam: row.data['USE_GCP_IAM'] || false,
       useAzureIam: row.data['USE_AZURE_IAM'] || false,
       useOciIam: storageToggleTrue(row.data['USE_OCI_IAM']),
       listView: {
@@ -474,9 +479,7 @@ class StorageConfiguration extends Component {
     if (this.props.enableChunkedEncoding) {
       initialValues.USE_CHUNKED_ENCODING = true;
     }
-    if (Object.keys(initialValues).length > 0) {
-      this.props.setInitialValues(initialValues);
-    }
+    this.props.setInitialValues(initialValues);
     this.setState({
       listView: {
         ...this.state.listView,
@@ -497,9 +500,6 @@ class StorageConfiguration extends Component {
         ...this.state.editView,
         [activeTab]: false
       },
-      iamRoleEnabled: false,
-      federatedIamEnabled: false,
-      useGcpIam: false,
       useAzureIam: false,
       useOciIam: false,
       listView: {
@@ -507,24 +507,6 @@ class StorageConfiguration extends Component {
         [activeTab]: true
       }
     });
-  };
-
-  /**
-   * This method will disbale the access key and secret key
-   * field if IAM role is enabled.
-   *
-   * @param {event} event Toggle input value.
-   */
-  iamInstanceToggle = (event) => {
-    this.setState({ iamRoleEnabled: event.target.checked });
-  };
-
-  federatedIamToggle = (event) => {
-    this.setState({ federatedIamEnabled: event.target.checked });
-  };
-
-  gcpIamToggle = (event) => {
-    this.setState({ useGcpIam: event.target.checked });
   };
 
   azureIamToggle = (event) => {
@@ -543,17 +525,14 @@ class StorageConfiguration extends Component {
       enablePathStyleAccess,
       enableChunkedEncoding,
       enableSigningRegion,
-      enableS3BackupProxy
-    } = this.props;
-    const {
+      enableS3BackupProxy,
+      enableFederatedIam,
       iamRoleEnabled,
       federatedIamEnabled,
       useGcpIam,
-      useAzureIam,
-      useOciIam,
-      editView,
-      listView
-    } = this.state;
+      gcsFederatedIamEnabled
+    } = this.props;
+    const { useAzureIam, useOciIam, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
 
     if (getPromiseState(customerConfigs).isLoading()) {
@@ -580,9 +559,8 @@ class StorageConfiguration extends Component {
           {!listView.s3 && (
             <AwsStorageConfiguration
               iamRoleEnabled={iamRoleEnabled}
-              iamInstanceToggle={this.iamInstanceToggle}
+              showFederatedIam={enableFederatedIam}
               federatedIamEnabled={federatedIamEnabled}
-              federatedIamToggle={this.federatedIamToggle}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
               enableChunkedEncoding={enableChunkedEncoding}
@@ -595,7 +573,8 @@ class StorageConfiguration extends Component {
           {!listView.gcs && (
             <GcsStorageConfiguration
               useGcpIam={useGcpIam}
-              gcpIamToggle={this.gcpIamToggle}
+              gcsFederatedIamEnabled={gcsFederatedIamEnabled}
+              showFederatedIam={enableFederatedIam}
               isEdited={editView[activeTab]}
             />
           )}
@@ -696,11 +675,23 @@ function mapStateToProps(state) {
   const enableChunkedEncoding = isChunkedEncodingEnabled(runtimeConfigs?.data);
   const enableSigningRegion = isSigningRegionEnabled(runtimeConfigs?.data);
   const enableS3BackupProxy = isS3BackupProxyEnabled(runtimeConfigs?.data);
+  // Preview feature: hide the federated IAM toggles unless switched on. An existing config that
+  // already has it set keeps working - this gates the form, not the behaviour.
+  const enableFederatedIam = isCrossCloudFederatedIamEnabled(runtimeConfigs?.data);
+  // Read the toggles off the form rather than mirroring them in component state: the mirror
+  // survived this.props.reset() on a successful save, so the next create form greyed out its
+  // credential fields while the toggle it belonged to rendered off.
+  const selector = formValueSelector('storageConfigForm');
   return {
     enablePathStyleAccess,
     enableChunkedEncoding,
     enableSigningRegion,
-    enableS3BackupProxy
+    enableS3BackupProxy,
+    enableFederatedIam,
+    iamRoleEnabled: storageToggleTrue(selector(state, 'IAM_INSTANCE_PROFILE')),
+    federatedIamEnabled: storageToggleTrue(selector(state, 'FEDERATED_IAM')),
+    useGcpIam: storageToggleTrue(selector(state, 'USE_GCP_IAM')),
+    gcsFederatedIamEnabled: storageToggleTrue(selector(state, 'GCS_FEDERATED_IAM'))
   };
 }
 

@@ -101,6 +101,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -874,11 +875,16 @@ public class UniverseCRUDHandler {
       }
       // Record the intended cross-cloud federated IAM state on the cluster's UserIntent (like
       // providerType/rootCA), so CreateUniverse and later edit/add-node/replace key off this one
-      // flag. TODO(multi-cloud): resolve per provider for clusters that span multiple clouds.
+      // flag.
       Provider federationProvider =
           Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-      c.userIntent.setFederationConfigured(
-          CloudInfoInterface.getCrossCloudFederationAudience(federationProvider) != null);
+      boolean federationConfigured =
+          !CloudInfoInterface.getCrossCloudFederationTargets(federationProvider).isEmpty();
+      if (federationConfigured && c.userIntent.isMulticloudSupport()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
+      }
+      c.userIntent.setFederationConfigured(federationConfigured);
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       // Enforce user tags.
