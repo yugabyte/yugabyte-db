@@ -725,6 +725,7 @@ build_index_pathkeys(PlannerInfo *root,
 					 * known only from the path's index clauses, so gate the
 					 * column like a redundancy without a constant.  That may
 					 * cut a merge that an index condition makes safe.
+					 * TODO(#34173): keep such a merge.
 					 */
 					if (yb_gap_cut < 0 && i >= index->nhashcolumns &&
 						!yb_merge_scan_gap_covered(root, index, i,
