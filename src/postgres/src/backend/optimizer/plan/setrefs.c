@@ -189,8 +189,8 @@ static List *set_windowagg_runcondition_references(PlannerInfo *root,
 
 /* YB declarations */
 static void yb_fix_merge_scan_stream_conds(PlannerInfo *root,
-									YbMergeScanInfo *yb_merge_scan_info,
-									int rtoffset, double num_exec);
+										   YbMergeScanInfo *yb_merge_scan_info,
+										   int rtoffset, double num_exec);
 
 /*****************************************************************************
  *
