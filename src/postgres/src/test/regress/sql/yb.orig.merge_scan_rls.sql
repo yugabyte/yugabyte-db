@@ -94,6 +94,15 @@ RESET yb_enable_expression_pushdown;
 -- condition, and d is a stream key.
 \set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
 \i :run_query
+-- With expression pushdown off, d = t runs after the merge.  d is still bound
+-- to one value by its index condition, so each stream stays sorted by c, and a
+-- merge scan on s and d would return the rows in order.  The pathkeys walk
+-- cannot see the index conditions, so it cuts the merge at d as for the query
+-- without d = 2020-01-02, and the plan sorts instead.  TODO(#34173): keep the
+-- merge scan.
+SET yb_enable_expression_pushdown = off;
+\i :run_query
+RESET yb_enable_expression_pushdown;
 RESET ROLE;
 
 -- A hash column in a broken EquivalenceClass.  rls_ec_hash_tbl has the rows and
@@ -117,11 +126,32 @@ SET ROLE regress_merge_scan_rls_user;
 \i :run_query
 \set query ':P :Q SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
 \i :run_query
-\unset Q3
 RESET ROLE;
 
+-- A policy operator that cannot be pushed down.  rls_tz_tbl is rls_ec_tbl with
+-- d timestamp and t timestamptz.  timestamp = timestamptz is not leakproof, so
+-- under RLS it breaks the class like date = timestamp.  It is also stable, so
+-- the policy's filter stays local with expression pushdown on.  The merge scan
+-- must not sort past d, so no merge scan is chosen.
+SET TimeZone = 'UTC';
+CREATE TABLE rls_tz_tbl (s int, d timestamp, c int, t timestamptz,
+    PRIMARY KEY (s ASC, d ASC, c ASC));
+INSERT INTO rls_tz_tbl SELECT s, d, c, t FROM rls_ec_tbl;
+ANALYZE rls_tz_tbl;
+GRANT SELECT ON rls_tz_tbl TO regress_merge_scan_rls_user;
+ALTER TABLE rls_tz_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY rls_tz_tbl_policy ON rls_tz_tbl
+    FOR SELECT TO regress_merge_scan_rls_user USING (d = t);
+
+SET ROLE regress_merge_scan_rls_user;
+\set query ':P :Q SELECT c, s, d FROM rls_tz_tbl WHERE s IN (1, 2) AND t = timestamptz \'2020-01-02 00:00:00+00\' ORDER BY c LIMIT 4;'
+\i :run_query
+\unset Q3
+RESET ROLE;
+RESET TimeZone;
+
 -- Cleanup
-DROP TABLE rls_ec_tbl, rls_ec_hash_tbl;
+DROP TABLE rls_ec_tbl, rls_ec_hash_tbl, rls_tz_tbl;
 DROP POLICY bkt_tbl_rls_policy ON bkt_tbl;
 ALTER TABLE bkt_tbl DISABLE ROW LEVEL SECURITY;
 REVOKE SELECT ON bkt_tbl FROM regress_merge_scan_rls_user;
