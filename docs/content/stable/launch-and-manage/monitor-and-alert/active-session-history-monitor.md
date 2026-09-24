@@ -171,6 +171,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | MVCC_WaitForSafeTime | WaitOnCondition | Tablet ID | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
 | LockedBatchEntry_Lock | WaitOnCondition | Tablet ID | A read/write RPC is waiting for a DocDB row-level lock. |
 | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | Tablet ID | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
+| BackfillIndex_WaitToBackfillTablet | WaitOnCondition | Tablet ID | Waiting for an index backfill chunk to be processed. <br> Supported in v2026.1.2 or later. |
 | CreatingNewTablet | DiskIO | Tablet ID | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
 | SaveRaftGroupMetadataToDisk | DiskIO | Tablet ID | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
 | TransactionStatusCache_DoGetCommitData | RPCWait | Tablet ID | An RPC needs to look up the commit status of a particular transaction. |
@@ -197,6 +198,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | WAL_Append | DiskIO | Tablet ID | A write RPC is persisting WAL edits. |
 | WAL_Sync | DiskIO | Tablet ID | A write RPC is synchronizing WAL edits. |
 | Raft_WaitingForReplication | RPCWait | Tablet ID | A write RPC is waiting for Raft replication. |
+| Raft_WaitingForPipelinedReplication | RPCWait | Tablet ID | A WaitForAsyncWrite RPC is waiting for a pipelined write to be Raft replicated. <br> Supported in v2026.1.2 or later. |
 | Raft_ApplyingEdits | WaitOnCondition/CPU | Tablet ID | A write RPC is applying Raft edits locally. |
 | ConsensusMeta_Flush | DiskIO | Tablet ID | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
 | ReplicaState_TakeUpdateLock | WaitOnCondition | Tablet ID | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
@@ -241,8 +243,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | :--------- | :--- | :---------- |
 | YBClient_WaitingOnDocDB | RPCWait | YB Client is waiting on DocDB to return a response. |
 | YBClient_LookingUpTablet | RPCWait | YB Client is looking up tablet information from the master. |
-| YBClient_WaitingForPipelinedWrites | RPCWait | YB Client is waiting for its pipelined writes to be Raft replicated before it can commit the transaction. |
-| BackfillIndex_WaitToBackfillTablet | RPCWait | Waiting for an index backfill chunk to be processed. |
+| YBClient_WaitingForPipelinedWrites | RPCWait | YB Client is waiting for its pipelined writes to be Raft replicated before it can commit the transaction. <br> Supported in v2026.1.2 or later. |
 
 ## Limitations
 
