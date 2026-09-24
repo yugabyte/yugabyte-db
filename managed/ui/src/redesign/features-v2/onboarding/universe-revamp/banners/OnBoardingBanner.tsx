@@ -529,65 +529,59 @@ export const OnBoardingBanner: FC = () => {
                   sx={{ marginBottom: '-6px' }}
                 />
                 <ToggleLabel>{t('tryItFirst')}</ToggleLabel>
-                {!enabled ? (
-                  <YBTooltip
-                    placement="bottom-start"
-                    enterDelay={200}
-                    leaveDelay={200}
-                    PopperProps={{
-                      sx: { zIndex: 2200 }
-                    }}
-                    componentsProps={{
-                      tooltip: {
-                        sx: {
-                          maxWidth: 267,
-                          padding: '10px',
-                          backgroundColor: '#FFFFFF',
-                          color: '#4E5F6D',
-                          border: '1px solid #E9EDF0',
-                          borderRadius: '8px',
-                          boxShadow: '0px 0px 8px 0px rgba(0, 0, 0, 0.1)'
-                        }
+                <YBTooltip
+                  placement="bottom-start"
+                  enterDelay={200}
+                  leaveDelay={200}
+                  PopperProps={{
+                    sx: { zIndex: 2200 }
+                  }}
+                  componentsProps={{
+                    tooltip: {
+                      sx: {
+                        maxWidth: 267,
+                        padding: '10px',
+                        backgroundColor: '#FFFFFF',
+                        color: '#4E5F6D',
+                        border: '1px solid #E9EDF0',
+                        borderRadius: '8px',
+                        boxShadow: '0px 0px 8px 0px rgba(0, 0, 0, 0.1)'
                       }
-                    }}
-                    title={
-                      <TooltipContent>
-                        <Box>
-                          <TooltipHeadline>{t('tryItFirstInfoHeadline')}</TooltipHeadline>
-                          <TooltipBody>
-                            <Trans
-                              t={t}
-                              i18nKey="tryItFirstInfoBody"
-                              values={{
-                                runtimeConfig: RuntimeConfigKey.ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS
-                              }}
-                              components={{ bold: <TooltipBold /> }}
-                            />
-                          </TooltipBody>
-                        </Box>
-                        <TooltipLink
-                          href={DEFAULT_RELEASE_NOTES_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {t('findOutMore')}
-                        </TooltipLink>
-                      </TooltipContent>
                     }
+                  }}
+                  title={
+                    <TooltipContent>
+                      <Box>
+                        <TooltipHeadline>{t('tryItFirstInfoHeadline')}</TooltipHeadline>
+                        <TooltipBody>
+                          <Trans
+                            t={t}
+                            i18nKey="tryItFirstInfoBody"
+                            values={{
+                              runtimeConfig: RuntimeConfigKey.ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS
+                            }}
+                            components={{ bold: <TooltipBold /> }}
+                          />
+                        </TooltipBody>
+                      </Box>
+                      <TooltipLink
+                        href={DEFAULT_RELEASE_NOTES_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {t('findOutMore')}
+                      </TooltipLink>
+                    </TooltipContent>
+                  }
+                >
+                  <Box
+                    component="span"
+                    sx={{ display: 'inline-flex', cursor: 'pointer', color: 'grey.600' }}
                   >
-                    <Box
-                      component="span"
-                      sx={{ display: 'inline-flex', cursor: 'pointer', color: 'grey.600' }}
-                    >
-                      <InfoIcon width={16} height={16} />
-                    </Box>
-                  </YBTooltip>
-                ) : (
-                  <Box component="span" sx={{ display: 'inline-flex', color: 'grey.600' }}>
                     <InfoIcon width={16} height={16} />
                   </Box>
-                )}
+                </YBTooltip>
               </ToggleGroup>
             </BannerRow>
           </YBPromotionalBanner>
