@@ -586,13 +586,17 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * YB: 'yb_merge_scan_stream_cols' is an out-param.  List of
  * YbMergeScanStreamColInfo.  If NULL is passed, disallow merge scan.
  * Otherwise, an empty list should be passed.
+ *
+ * YB: 'yb_index_clauses' is the path's list of IndexClauses, which merge scan
+ * consults.  It is ignored when merge scan is disallowed.
  */
 List *
 build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
 					 ScanDirection scandir,
 					 int *yb_distinct_nkeys,
-					 List **yb_merge_scan_stream_cols)
+					 List **yb_merge_scan_stream_cols,
+					 List *yb_index_clauses)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
@@ -603,8 +607,8 @@ build_index_pathkeys(PlannerInfo *root,
 	List	   *yb_const_cols = NIL;
 	Bitmapset  *yb_broken_cols = NULL;
 	int			yb_gap_cut = -1;
-	bool		yb_can_merge = (yb_merge_scan_stream_cols &&
-								yb_merge_scan_enabled(index));
+	bool		yb_can_merge_scan = (yb_merge_scan_stream_cols &&
+									 yb_merge_scan_enabled(index));
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -721,16 +725,17 @@ build_index_pathkeys(PlannerInfo *root,
 					yb_broken_cols = bms_add_member(yb_broken_cols, i);
 
 					/*
-					 * A broken EquivalenceClass may leave the column without an
-					 * index condition, held constant only by filters on its
-					 * original clauses.  Whether an index condition binds it is
-					 * known only from the path's index clauses, so gate the
-					 * column like a redundancy without a constant.  That may
-					 * cut a merge that an index condition makes safe.
-					 * TODO(#34173): keep such a merge.
+					 * A broken EquivalenceClass builds no index condition on
+					 * the column, but one of its original clauses can still be
+					 * one, such as a leakproof equality in the query.  Without
+					 * such a clause, filters on the original clauses hold the
+					 * column constant, so gate the column like a redundancy
+					 * without a constant.
 					 */
-					if (yb_can_merge && yb_gap_cut < 0 &&
+					if (yb_can_merge_scan && yb_gap_cut < 0 &&
 						i >= index->nhashcolumns &&
+						!yb_has_equality_index_clause(index, yb_index_clauses,
+													  i) &&
 						!yb_merge_scan_gap_covered(root, index, i,
 												   cpathkey->pk_eclass))
 						yb_gap_cut = list_length(retval);
@@ -742,7 +747,7 @@ build_index_pathkeys(PlannerInfo *root,
 			 * filter runs within each stream before the merge.  Otherwise,
 			 * remember where to cut the merge scan's pathkeys, see below.
 			 */
-			else if (yb_can_merge && yb_gap_cut < 0 &&
+			else if (yb_can_merge_scan && yb_gap_cut < 0 &&
 					 i >= index->nhashcolumns &&
 					 !yb_merge_scan_gap_covered(root, index, i,
 												cpathkey->pk_eclass))

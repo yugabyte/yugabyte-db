@@ -43,6 +43,9 @@ extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   int *merge_scan_cardinality,
 									   List **merge_scan_stream_cols);
 
+extern bool yb_has_equality_index_clause(IndexOptInfo *index,
+										 List *indexclauses, int indexcol);
+
 extern bool yb_merge_scan_gap_covered(PlannerInfo *root, IndexOptInfo *index,
 									  int indexcol, EquivalenceClass *ec);
 

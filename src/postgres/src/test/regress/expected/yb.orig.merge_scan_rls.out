@@ -386,11 +386,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
 (output identical to previous)
 -- With expression pushdown off, d = t runs after the merge.  d is still bound
--- to one value by its index condition, so each stream stays sorted by c, and a
--- merge scan on s and d would return the rows in order.  The pathkeys walk
--- cannot see the index conditions, so it cuts the merge at d as for the query
--- without d = 2020-01-02, and the plan sorts instead.  TODO(#34173): keep the
--- merge scan.
+-- to one value by its index condition, so each stream stays sorted by c, and
+-- the merge scan on s and d returns the rows in order.
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 \set _echo_run_query :ECHO
@@ -417,7 +414,23 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
 (output identical to previous)
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
-(output identical to previous)
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=4 loops=1)
+   Output: c, s, d
+   ->  Index Scan using rls_ec_tbl_pkey on public.rls_ec_tbl (actual rows=4 loops=1)
+         Output: c, s, d
+         Index Cond: ((rls_ec_tbl.s = ANY ('{1,2}'::integer[])) AND (rls_ec_tbl.d = '01-02-2020'::date) AND (rls_ec_tbl.d = '01-02-2020'::date))
+         Merge Sort Key: rls_ec_tbl.c
+         Merge Stream Key: rls_ec_tbl.s, rls_ec_tbl.d
+         Merge Streams: 2
+         Merge Cond: ((rls_ec_tbl.s = ANY ('{1,2}'::integer[])) AND (rls_ec_tbl.d = '01-02-2020'::date))
+         Filter: ((rls_ec_tbl.d = rls_ec_tbl.t) AND (rls_ec_tbl.t = 'Thu Jan 02 00:00:00 2020'::timestamp without time zone))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 2
+         Storage Table Rows Scanned: 51
+(13 rows)
+
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
  c  | s |     d      
 ----+---+------------

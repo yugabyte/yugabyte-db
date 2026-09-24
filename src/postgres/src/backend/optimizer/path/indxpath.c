@@ -1616,7 +1616,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		index_pathkeys = build_index_pathkeys(root, index,
 											  ForwardScanDirection,
 											  &yb_distinct_nkeys,
-											  &yb_merge_scan_stream_cols);
+											  &yb_merge_scan_stream_cols,
+											  index_clauses);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
@@ -1755,7 +1756,8 @@ yb_step_4:
 			index_pathkeys = build_index_pathkeys(root, index,
 												  ForwardScanDirection,
 												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
+												  NULL,	/* yb_merge_scan_stream_cols */
+												  NIL);	/* yb_index_clauses */
 			useful_pathkeys = truncate_useless_pathkeys(root, rel,
 														index_pathkeys,
 														yb_distinct_nkeys);
@@ -1787,7 +1789,8 @@ yb_step_4:
 		index_pathkeys = build_index_pathkeys(root, index,
 											  BackwardScanDirection,
 											  &yb_distinct_nkeys,
-											  &yb_merge_scan_stream_cols);
+											  &yb_merge_scan_stream_cols,
+											  index_clauses);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
@@ -1873,7 +1876,8 @@ yb_step_5:
 			index_pathkeys = build_index_pathkeys(root, index,
 												  BackwardScanDirection,
 												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
+												  NULL,	/* yb_merge_scan_stream_cols */
+												  NIL);	/* yb_index_clauses */
 			useful_pathkeys = truncate_useless_pathkeys(root, rel,
 														index_pathkeys,
 														yb_distinct_nkeys);

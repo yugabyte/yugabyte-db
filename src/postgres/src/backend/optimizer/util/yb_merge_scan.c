@@ -632,6 +632,20 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
 }
 
 /*
+ * Whether indexclauses, a list of IndexClauses, holds an equality index clause
+ * on index column indexcol.
+ */
+bool
+yb_has_equality_index_clause(IndexOptInfo *index, List *indexclauses,
+							 int indexcol)
+{
+	Expr	   *expr = ((TargetEntry *) list_nth(index->indextlist,
+												 indexcol))->expr;
+
+	return ybEqualityIndexClause(index, indexclauses, indexcol, expr) != NULL;
+}
+
+/*
  * Whether check_index_predicates dropped an equality on the index column from
  * the index conditions because the partial index predicate implies it: such a
  * clause is in the relation's baserestrictinfo but not in indrestrictinfo.

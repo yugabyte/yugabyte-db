@@ -95,11 +95,8 @@ RESET yb_enable_expression_pushdown;
 \set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
 \i :run_query
 -- With expression pushdown off, d = t runs after the merge.  d is still bound
--- to one value by its index condition, so each stream stays sorted by c, and a
--- merge scan on s and d would return the rows in order.  The pathkeys walk
--- cannot see the index conditions, so it cuts the merge at d as for the query
--- without d = 2020-01-02, and the plan sorts instead.  TODO(#34173): keep the
--- merge scan.
+-- to one value by its index condition, so each stream stays sorted by c, and
+-- the merge scan on s and d returns the rows in order.
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
