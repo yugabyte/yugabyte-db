@@ -7850,9 +7850,10 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indkeys = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
 			parseOidArray(PQgetvalue(res, j, i_indkey),
 						  indxinfo[j].indkeys, indxinfo[j].indnattrs);
-			indxinfo[j].indoptions = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
+			/* YB */
+			indxinfo[j].indoptions = (Oid *) pg_malloc(indxinfo[j].indnkeyattrs * sizeof(Oid));
 			parseOidArray(PQgetvalue(res, j, i_indoption),
-						  indxinfo[j].indoptions, indxinfo[j].indnattrs);
+						  indxinfo[j].indoptions, indxinfo[j].indnkeyattrs);
 			indxinfo[j].indisclustered = (PQgetvalue(res, j, i_indisclustered)[0] == 't');
 			indxinfo[j].indisreplident = (PQgetvalue(res, j, i_indisreplident)[0] == 't');
 			indxinfo[j].indnullsnotdistinct = (PQgetvalue(res, j, i_indnullsnotdistinct)[0] == 't');
