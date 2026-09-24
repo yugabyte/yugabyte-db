@@ -325,6 +325,30 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
+  it('omits cleared IOPS/throughput from edit-universe when storage type no longer supports them', async () => {
+    // Universe currently GP3 with IOPS/throughput; form cleared them on switch to GP2.
+    mockState.settings = vmSettings({
+      instanceType: 'c5.xlarge',
+      deviceInfo: {
+        ...vmSettings().deviceInfo!,
+        storageType: 'GP2',
+        diskIops: null,
+        throughput: null
+      }
+    });
+    mockState.resizeOptions = [ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'migrate';
+
+    renderModal(makeNonGeoUniverse());
+    await submitAndConfirm();
+
+    const storageSpec = getFirstEditPayload().node_spec.storage_spec;
+    expect(storageSpec.storage_type).toBe('GP2');
+    expect(storageSpec).not.toHaveProperty('disk_iops');
+    expect(storageSpec).not.toHaveProperty('throughput');
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+  });
+
   it('routes migrate strategy to edit-universe when both options are available', async () => {
     mockState.strategy = 'migrate';
     renderModal(makeNonGeoUniverse());
