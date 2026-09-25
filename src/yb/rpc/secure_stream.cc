@@ -576,7 +576,7 @@ Result<SSLPtr> SecureContext::Impl::Create(
 
   auto ssl = SSLPtr(SSL_new(context_.get()));
   if (use_certificate_key_pair) {
-    DCHECK(!certificates.empty());
+    SCHECK(!certificates.empty(), IllegalState, "No certificate loaded to present");
     auto res = SSL_use_certificate(ssl.get(), certificates[0].get());
     if (res != 1) {
       return SSL_STATUS(InvalidArgument, "Failed to use certificate: $0");

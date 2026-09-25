@@ -74,6 +74,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -2078,6 +2079,17 @@ TEST_F(AdminCliTestWithYSQL, TestVerifyXClusterRejectsInvalidArguments) {
   ASSERT_STR_CONTAINS(
       ASSERT_RESULT(ok_root["detail"].GetString()),
       "unable to resolve the target's xCluster safe time");
+
+  // --source_certs_dir_name has to reach the source connection and only it. This cluster serves
+  // plaintext, so naming certificates for the source makes that one connection attempt TLS and it
+  // fails, while the target connection, made without certificates, still succeeds. Were the flag
+  // ignored, or applied to both, the failure would not be this one.
+  auto source_certs = CallAdmin(
+      "--source_certs_dir_name", GetCertsDir(),
+      "--yb_client_admin_rpc_timeout_sec", "5",
+      "verify_xcluster_slice", table_id, table_id, GetMasterAddresses());
+  ASSERT_NOK(source_certs);
+  ASSERT_STR_CONTAINS(source_certs.status().ToString(), "Unable to connect to source masters");
 }
 
 
