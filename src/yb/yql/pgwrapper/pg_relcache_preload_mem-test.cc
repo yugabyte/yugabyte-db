@@ -15,6 +15,7 @@
 #include <thread>
 
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
@@ -23,6 +24,8 @@
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -136,6 +139,67 @@ TEST_F(PgRelcachePreloadMemMinimalTest, YB_DISABLE_TEST_ON_MACOS(TotalPgMemorySt
   ASSERT_LT(delta, kAllConnsMaxRssMb)
       << "a single fresh connection added too much to total PG memory: added " << delta
       << " MB; limit is " << kAllConnsMaxRssMb << " MB";
+}
+
+// Full catalog preload builds every relcache entry from full scans of pg_class,
+// pg_attribute, pg_index and the catalogs cached alongside them. Each row the
+// scans decode (the tuple plus the per-column copies made while decoding it)
+// must be released once that row has been processed. Rows kept until the whole
+// relcache is built are live at the backend's startup peak, which then grows
+// with the size of the catalog.
+class PgRelcachePreloadScratchTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    // The heap snapshot comes from tcmalloc, which sanitizer builds replace.
+    YB_SKIP_TEST_IN_SANITIZERS();
+    // Build the whole relcache from the catalog on every connect.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // Sample finely enough for the peak snapshot to attribute a few MB reliably.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_tcmalloc_sample_period=64kB";
+    PgMiniTestBase::SetUp();
+  }
+
+  size_t NumTabletServers() override { return 1; }
+};
+
+TEST_F(PgRelcachePreloadScratchTest, YB_DISABLE_TEST_ON_MACOS(DecodedRowsNotLiveAtStartupPeak)) {
+  auto setup = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup.Execute("CREATE DATABASE wide WITH colocation = true"));
+  auto conn = ASSERT_RESULT(ConnectToDB("wide"));
+  // 16k pg_attribute rows and 8k pg_attrdef rows.
+  constexpr int kNumTables = 20;
+  constexpr int kNumColumns = 800;
+  for (int t = 0; t < kNumTables; ++t) {
+    std::string ddl = Format("CREATE TABLE w$0 (k INT PRIMARY KEY", t);
+    for (int c = 0; c < kNumColumns; ++c) {
+      ddl += c % 2 ? Format(", c$0 INT DEFAULT $0", c) : Format(", c$0 TEXT", c);
+    }
+    ddl += ")";
+    ASSERT_OK(conn.Execute(ddl));
+  }
+
+  auto fresh = ASSERT_RESULT(ConnectToDB("wide"));
+  // Allocations made while decoding a scanned row happen under
+  // ybc_getnext_heaptuple. The catcache preload keeps its decoded rows until the
+  // startup transaction commits, so it is excluded.
+  constexpr auto kDecodedRowsFilter =
+      "call_stack LIKE '%ybc_getnext_heaptuple%' "
+      "AND call_stack NOT LIKE '%YbPreloadCatalogCache%'";
+  const auto decoded_bytes = ASSERT_RESULT(fresh.FetchRow<int64_t>(Format(
+      "SELECT COALESCE(SUM(estimated_bytes), 0)::int8 FROM yb_backend_heap_snapshot_peak() "
+      "WHERE $0", kDecodedRowsFilter)));
+  const auto peak_bytes = ASSERT_RESULT(fresh.FetchRow<int64_t>(
+      "SELECT SUM(estimated_bytes)::int8 FROM yb_backend_heap_snapshot_peak()"));
+  const auto pid = ASSERT_RESULT(fresh.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  LOG(INFO) << "Fresh backend startup peak: heap " << peak_bytes / 1_KB << " kB, of which "
+            << decoded_bytes / 1_KB << " kB are decoded relcache preload rows; VmHWM "
+            << ASSERT_RESULT(PeakRssMb(pid)) << " MB";
+  // Keeping every row until the build ends leaves about 16 MB of them live at the
+  // peak for this schema. Freeing each row leaves at most one, well under 1 MB
+  // even with sampling error.
+  ASSERT_LT(decoded_bytes, 4_MB);
 }
 
 }  // namespace yb::pgwrapper
