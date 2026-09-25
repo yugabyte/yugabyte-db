@@ -109,6 +109,11 @@ DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
 DEFINE_NON_RUNTIME_bool(ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
+DEFINE_NON_RUNTIME_bool(ysql_catcache_share_preloaded_tuples, true,
+    "When preloading the PG catalog caches, store one copy of each catalog row and share it "
+    "between all catcaches and catcache lists built on that catalog, instead of copying the "
+    "row once per cache. Kill switch: set to false to restore per-cache copies.");
+
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching_connect_higher_version, "2026_02");
@@ -299,6 +304,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
       .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+      .ysql_catcache_share_preloaded_tuples = &FLAGS_ysql_catcache_share_preloaded_tuples,
   };
   // clang-format on
   return &accessor;

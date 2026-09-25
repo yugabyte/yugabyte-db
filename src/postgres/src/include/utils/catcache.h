@@ -133,6 +133,9 @@ typedef struct catctup
 	struct catclist *c_list;	/* containing CatCList, or NULL if none */
 
 	CatCache   *my_cache;		/* link to owning catcache */
+
+	/* YB fields */
+	struct YbCatCTupBody *yb_body;	/* shared tuple body, or NULL if inline */
 	/* properly aligned tuple data follows, unless a negative entry */
 } CatCTup;
 
@@ -186,6 +189,27 @@ typedef struct
 	CatCList   *list;
 	int			index;
 } YbCatCListIterator;
+
+/*
+ * A tuple body shared by several CatCTups.
+ *
+ * Preload inserts every row of a catalog into each catcache built on that
+ * catalog (e.g. PROCOID and PROCNAMEARGSNSP) and into the CatCLists built
+ * over it.  Instead of copying the tuple once per entry, those entries point
+ * their HeapTupleData.t_data (and t_ybctid) at one body.  The body is freed
+ * when the last referencing CatCTup is removed.  Entries created on the
+ * lookup-miss path keep the tuple inline and have yb_body == NULL.
+ */
+typedef struct YbCatCTupBody
+{
+	int			refcount;		/* number of CatCTups referencing this body */
+	uint32		t_len;			/* length of the tuple data that follows */
+	Datum		t_ybctid;		/* ybctid datum, or 0 */
+	/* MAXALIGN'd HeapTupleHeader + tuple data follows */
+} YbCatCTupBody;
+
+#define YB_CATCTUP_BODY_DATA(body) \
+	((HeapTupleHeader) (((char *) (body)) + MAXALIGN(sizeof(YbCatCTupBody))))
 
 
 typedef struct catcacheheader
@@ -241,7 +265,10 @@ extern void PrintCatCacheListLeakWarning(CatCList *list);
 /* Yugabyte support */
 /* Used in IsYugaByteEnabled() mode only */
 extern void SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc tupdesc);
-extern void SetCatCacheList(CatCache *cache, int nkeys, List *fnlist);
+extern CatCTup *YbSetCatCacheTupleShared(CatCache *cache, HeapTuple tup,
+										 TupleDesc tupdesc,
+										 YbCatCTupBody **body);
+extern void SetCatCacheList(CatCache *cache, int nkeys, List *members);
 
 extern bool RelationHasCachedLists(Relation relation);
 extern long YbGetCatCacheMisses();

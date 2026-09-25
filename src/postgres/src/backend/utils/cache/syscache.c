@@ -1241,6 +1241,20 @@ static int	SysCacheSupportingRelOidSize;
 static int	oid_compare(const void *a, const void *b);
 
 /*
+ * Insert one catalog row into two caches built on its catalog, sharing a
+ * single copy of the tuple between the two entries.
+ */
+static void
+YbSetSysCacheTuplePair(int cache_id, int idx_cache_id, HeapTuple tup,
+					   TupleDesc tupdesc)
+{
+	YbCatCTupBody *body = NULL;
+
+	YbSetCatCacheTupleShared(SysCache[cache_id], tup, tupdesc, &body);
+	YbSetCatCacheTupleShared(SysCache[idx_cache_id], tup, tupdesc, &body);
+}
+
+/*
  * Utility function for YugaByte mode. Is used to automatically add entries
  * from common catalog tables to the cache immediately after they are inserted.
  */
@@ -1252,20 +1266,16 @@ YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 	switch (RelationGetRelid(rel))
 	{
 		case RelationRelationId:
-			SetCatCacheTuple(SysCache[RELOID], tup, tupdesc);
-			SetCatCacheTuple(SysCache[RELNAMENSP], tup, tupdesc);
+			YbSetSysCacheTuplePair(RELOID, RELNAMENSP, tup, tupdesc);
 			break;
 		case TypeRelationId:
-			SetCatCacheTuple(SysCache[TYPEOID], tup, tupdesc);
-			SetCatCacheTuple(SysCache[TYPENAMENSP], tup, tupdesc);
+			YbSetSysCacheTuplePair(TYPEOID, TYPENAMENSP, tup, tupdesc);
 			break;
 		case ProcedureRelationId:
-			SetCatCacheTuple(SysCache[PROCOID], tup, tupdesc);
-			SetCatCacheTuple(SysCache[PROCNAMEARGSNSP], tup, tupdesc);
+			YbSetSysCacheTuplePair(PROCOID, PROCNAMEARGSNSP, tup, tupdesc);
 			break;
 		case AttributeRelationId:
-			SetCatCacheTuple(SysCache[ATTNUM], tup, tupdesc);
-			SetCatCacheTuple(SysCache[ATTNAME], tup, tupdesc);
+			YbSetSysCacheTuplePair(ATTNUM, ATTNAME, tup, tupdesc);
 			break;
 		case PartitionedRelationId:
 			SetCatCacheTuple(SysCache[PARTRELID], tup, tupdesc);
@@ -1323,6 +1333,23 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	Relation	relation = table_open(cache->cc_reloid, AccessShareLock);
 	TupleDesc	tupdesc = RelationGetDescr(relation);
 
+	/*
+	 * The cache that receives the CatCLists built below.  Its entries are the
+	 * list members, so the loop keeps the CatCTup created in it for each row.
+	 */
+	CatCache   *dest_cache = cache;
+
+	switch (cache_id)
+	{
+		case PROCOID:
+		case CONSTROID:
+			Assert(idx_cache);
+			dest_cache = idx_cache;
+			break;
+		default:
+			break;
+	}
+
 	SysScanDesc scandesc = systable_beginscan(relation,
 											  cache->cc_indexoid,
 											  false /* indexOK */ ,
@@ -1338,11 +1365,25 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 
 	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 	{
+		/*
+		 * With an index cache both caches (and any CatCList built here) share
+		 * one copy of the tuple through body; a single cache keeps it inline.
+		 */
+		YbCatCTupBody *body = NULL;
+		CatCTup    *ct;
+		CatCTup    *dest_ct;
+
 		scanned++;
-		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
+		ct = YbSetCatCacheTupleShared(cache, ntp, tupdesc,
+									  idx_cache ? &body : NULL);
+		dest_ct = ct;
 
 		if (idx_cache)
-			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
+		{
+			ct = YbSetCatCacheTupleShared(idx_cache, ntp, tupdesc, &body);
+			if (dest_cache == idx_cache)
+				dest_ct = ct;
+		}
 
 		/*
 		 * In minimal-preload mode preload only the pg_rewrite (RULERELNAME)
@@ -1386,7 +1427,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					foreach(lc, list_of_lists)
 					{
 						List	   *fnlist = lfirst(lc);
-						HeapTuple	otp = linitial(fnlist);
+						HeapTuple	otp = &((CatCTup *) linitial(fnlist))->tuple;
 						Datum		odt = heap_getattr(otp, key.sk_attno, tupdesc, &is_null);
 						Datum		key_matches = FunctionCall2Coll(&key.sk_func,
 																	key.sk_collation,
@@ -1409,7 +1450,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					 */
 					if (dest_list)
 					{
-						HeapTuple	ltp = llast(dest_list);
+						HeapTuple	ltp = &((CatCTup *) llast(dest_list))->tuple;
 						Form_pg_rewrite ltp_struct = (Form_pg_rewrite) GETSTRUCT(ltp);
 						Form_pg_rewrite ntp_struct = (Form_pg_rewrite) GETSTRUCT(ntp);
 
@@ -1426,7 +1467,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					 */
 					if (dest_list)
 					{
-						HeapTuple	ltp = llast(dest_list);
+						HeapTuple	ltp = &((CatCTup *) llast(dest_list))->tuple;
 						Form_pg_amop ltp_struct = (Form_pg_amop) GETSTRUCT(ltp);
 						Form_pg_amop ntp_struct = (Form_pg_amop) GETSTRUCT(ntp);
 
@@ -1447,7 +1488,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					}
 					if (dest_list)
 					{
-						HeapTuple	ltp = llast(dest_list);
+						HeapTuple	ltp = &((CatCTup *) llast(dest_list))->tuple;
 						Form_pg_constraint ltp_struct = (Form_pg_constraint) GETSTRUCT(ltp);
 						Form_pg_constraint ntp_struct = (Form_pg_constraint) GETSTRUCT(ntp);
 
@@ -1468,12 +1509,12 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 				List	   *old_dest_list = dest_list;
 
 				(void) old_dest_list;
-				dest_list = lappend(dest_list, ntp);
+				dest_list = lappend(dest_list, dest_ct);
 				Assert(dest_list == old_dest_list);
 			}
 			else
 			{
-				dest_list = list_make1(ntp);
+				dest_list = list_make1(dest_ct);
 				list_of_lists = lappend(list_of_lists, dest_list);
 			}
 		}
@@ -1486,24 +1527,10 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	if (list_of_lists)
 	{
 		/* Load up the lists computed above into the catalog cache. */
-		CatCache   *dest_cache = cache;
-
-		switch (cache_id)
-		{
-			case PROCOID:
-			case CONSTROID:
-				Assert(idx_cache);
-				dest_cache = idx_cache;
-				break;
-			case RULERELNAME:
-			case AMOPOPID:
-				break;
-			default:
-				Assert(false);
-				break;
-		}
 		ListCell   *lc;
 
+		Assert(cache_id == PROCOID || cache_id == CONSTROID ||
+			   cache_id == RULERELNAME || cache_id == AMOPOPID);
 		foreach(lc, list_of_lists)
 			SetCatCacheList(dest_cache, 1, lfirst(lc));
 		list_free_deep(list_of_lists);

@@ -23,6 +23,8 @@
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
+DECLARE_bool(ysql_catcache_share_preloaded_tuples);
 
 namespace yb::pgwrapper {
 
@@ -136,6 +138,47 @@ TEST_F(PgRelcachePreloadMemMinimalTest, YB_DISABLE_TEST_ON_MACOS(TotalPgMemorySt
   ASSERT_LT(delta, kAllConnsMaxRssMb)
       << "a single fresh connection added too much to total PG memory: added " << delta
       << " MB; limit is " << kAllConnsMaxRssMb << " MB";
+}
+
+// Preload inserts each catalog row into every catcache built on that catalog
+// (e.g. PROCOID and PROCNAMEARGSNSP for pg_proc). With
+// ysql_catcache_share_preloaded_tuples the entries share one tuple body per
+// row; without it each cache holds its own copy. Compare a fresh backend's
+// CacheMemoryContext in both modes: the shared layout must be smaller by at
+// least the pg_proc duplication, about 1.6 MB on an empty database.
+class PgCatcacheTupleSharingTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    // Rebuild the caches from the catalog on every connect (no init file), and
+    // include pg_proc, the largest two-cache catalog, in the preload set.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    PgMiniTestBase::SetUp();
+  }
+
+  size_t NumTabletServers() override { return 1; }
+
+  Result<int64_t> FreshBackendCacheMemoryContextBytes() {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.FetchRow<int32_t>("SELECT length('x')"));
+    return conn.FetchRow<int64_t>(
+        "SELECT used_bytes FROM pg_backend_memory_contexts "
+        "WHERE name = 'CacheMemoryContext'");
+  }
+};
+
+TEST_F(PgCatcacheTupleSharingTest, SharedBodiesShrinkCacheMemoryContext) {
+  const auto shared_bytes = ASSERT_RESULT(FreshBackendCacheMemoryContextBytes());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catcache_share_preloaded_tuples) = false;
+  ASSERT_OK(RestartCluster());
+  const auto unshared_bytes = ASSERT_RESULT(FreshBackendCacheMemoryContextBytes());
+
+  LOG(INFO) << "CacheMemoryContext used bytes of a fresh backend: shared=" << shared_bytes
+            << ", unshared=" << unshared_bytes;
+  constexpr int64_t kMinSavingsBytes = 1024 * 1024;
+  ASSERT_GT(unshared_bytes - shared_bytes, kMinSavingsBytes);
 }
 
 }  // namespace yb::pgwrapper
