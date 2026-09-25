@@ -642,10 +642,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                               const std::string& server_uuid);
 
   // Increment the term to the next term, resetting the current leader, etc.
-  Status IncrementTermUnlocked();
+  Status IncrementTermUnlocked(FlushConsensusMeta flush);
 
   // Handle when the term has advanced beyond the current term.
-  Status HandleTermAdvanceUnlocked(ConsensusTerm new_term);
+  Status HandleTermAdvanceUnlocked(
+      ConsensusTerm new_term, FlushConsensusMeta flush = FlushConsensusMeta::kTrue);
 
   // Notify the tablet peer that the consensus configuration
   // has changed, thus reporting it back to the master. This is performed inline.

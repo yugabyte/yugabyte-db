@@ -488,6 +488,7 @@ class TabletBootstrap {
                             "Unable to load Consensus metadata");
       cmeta_ = cmeta_holder_.get();
     }
+    const auto cmeta_before_replay = cmeta_->GetConsensusMetadataPB();
 
     // Make sure we don't try to locally bootstrap a tablet that was in the middle of a remote
     // bootstrap. It's likely that not all files were copied over successfully.
@@ -587,8 +588,8 @@ class TabletBootstrap {
       cmeta_->set_current_term(consensus_info->last_id.term);
     }
 
-    // Flush the consensus metadata once at the end to persist our changes, if any.
-    RETURN_NOT_OK(cmeta_->Flush());
+    // Replay may have advanced the term or the committed config.
+    RETURN_NOT_OK(cmeta_->FlushIfChanged(cmeta_before_replay));
 
     RETURN_NOT_OK(RemoveRecoveryDir());
 

@@ -53,6 +53,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_test_flag(double, fault_crash_before_cmeta_flush, 0.0,
               "Fraction of the time when the server will crash just before flushing "
@@ -335,6 +336,7 @@ Status ConsensusMetadata::Flush() {
         IOError, "Failed to flush due to FLAGS_TEST_error_before_flushing_consensus_metadata");
   }
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500, LogPrefix(), "flushing consensus metadata");
+  TEST_SYNC_POINT_CALLBACK("ConsensusMetadata::Flush", this);
   // Sanity test to ensure we never write out a bad configuration.
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(pb_.committed_config(), COMMITTED_QUORUM),
                         "Invalid config in ConsensusMetadata, cannot flush to disk");
@@ -350,6 +352,14 @@ Status ConsensusMetadata::Flush() {
                                    tablet_id_, meta_file_path));
   RETURN_NOT_OK(UpdateOnDiskSize());
   return Status::OK();
+}
+
+Status ConsensusMetadata::FlushIfChanged(const ConsensusMetadataPB& previous) {
+  // Serialization of the same message type is deterministic within a process.
+  if (pb_.SerializeAsString() == previous.SerializeAsString()) {
+    return Status::OK();
+  }
+  return Flush();
 }
 
 ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
