@@ -501,7 +501,7 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
   return true;
 }
 
-Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
+Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term, FlushConsensusMeta flush) {
   TRACE_EVENT1("consensus", "ReplicaState::SetCurrentTermUnlocked",
                "term", new_term);
   DCHECK(IsLocked());
@@ -514,7 +514,7 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
   cmeta_->clear_voted_for();
   ClearLeaderUnlocked();
   last_received_op_id_current_leader_ = yb::OpId();
-  return cmeta_->Flush();
+  return flush ? cmeta_->Flush() : Status::OK();
 }
 
 const int64_t ReplicaState::GetCurrentTermUnlocked() const {

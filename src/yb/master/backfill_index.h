@@ -16,10 +16,12 @@
 #include <float.h>
 
 #include <chrono>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -63,16 +65,32 @@ class CatalogManager;
 //
 class MultiStageAlterTable {
  public:
-  // Launches the next stage of the multi stage schema change. Updates the
-  // table info, upon the completion of an alter table round if we are in the
-  // middle of an index backfill. Will update the IndexPermission from
-  // INDEX_PERM_DELETE_ONLY -> INDEX_PERM_WRITE_AND_DELETE -> BACKFILL
-  static Status LaunchNextTableInfoVersionIfNecessary(
-      CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version,
-      const LeaderEpoch& epoch,
-      std::optional<TransactionMetadata> requester_transaction,
-      bool respect_backfill_deferrals = true,
-      bool update_ysql_to_backfill = false);
+  // Advance a YSQL index from WRITE_AND_DELETE to DO_BACKFILL on postgres's request through
+  // CatalogManager::BackfillIndex, and alert tservers.  The backfill launches from
+  // HandleSchemaVersionReported once every tablet has applied the new permission.  If
+  // requester_transaction is provided, it is stored so that the backfill can monitor the liveness
+  // of the PG backend that initiated it.
+  static Status AdvanceYsqlIndexToBackfill(
+      CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
+      uint32_t current_version, const LeaderEpoch& epoch,
+      std::optional<TransactionMetadata> requester_transaction);
+
+  // Advance YCQL indexes through the multi stage permission state machine
+  // (INDEX_PERM_DELETE_ONLY -> INDEX_PERM_WRITE_AND_DELETE -> INDEX_PERM_DO_BACKFILL, and
+  // the removal stages), launching backfill or deletion when an index reaches the
+  // corresponding permission.  Driven by the yb-admin backfill trigger through
+  // CatalogManager::LaunchBackfillIndexForTable, so backfill deferrals are ignored: launching
+  // deferred backfills is what the trigger is for.
+  static Status AdvanceYcqlIndexPermissions(
+      CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
+      uint32_t current_version, const LeaderEpoch& epoch);
+
+  // React to all tablets having applied the given schema version: continue the permission
+  // state machine for YCQL, resume or launch pending backfills, and clear the fully applied
+  // state when there is nothing left to do.
+  static Status HandleSchemaVersionReported(
+      CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
+      uint32_t current_version, const LeaderEpoch& epoch);
 
   // Clears the fully_applied_* state for the given table and optionally sets it to RUNNING.
   // If the version has changed and does not match the expected version no
@@ -97,9 +115,79 @@ class MultiStageAlterTable {
       std::optional<uint32_t> current_version = std::nullopt);
 
  private:
-  // Start Index Backfill process/step for the specified table/index.
-  // If requester_transaction is provided it will be used to monitor the liveness of the
-  // PG backend that initiated the backfill.
+  // What ClassifyIndexes found in the indexed table, bucketed by the transition each index is
+  // eligible for.  It records no decisions: which buckets become work is up to the entry point.
+  struct IndexClassification {
+    // YCQL indexes at any permission other than READ_WRITE_AND_DELETE, DO_BACKFILL, and
+    // INDEX_UNUSED, with the permission each moves to next.  The master drives these transitions
+    // on its own.
+    std::unordered_map<TableId, IndexPermissions> ycql_permission_updates;
+    // YSQL indexes below INDEX_PERM_DO_BACKFILL, with the permission each moves to next.  In
+    // practice, that is WRITE_AND_DELETE moving to DO_BACKFILL, since YSQL indexes are created at
+    // WRITE_AND_DELETE.  Postgres drives these transitions, so they become work only when postgres
+    // asks through CatalogManager::BackfillIndex.
+    std::unordered_map<TableId, IndexPermissions> ysql_permission_updates;
+    // Indexes at INDEX_PERM_DO_BACKFILL, in table order.  deferrable marks the ones an entry point
+    // that honors backfill deferrals holds back for a later trigger.
+    struct ReadyIndex {
+      IndexInfoPB info;
+      bool deferrable;
+    };
+    std::vector<ReadyIndex> ready_to_backfill;
+    // YCQL indexes at INDEX_PERM_INDEX_UNUSED.  A YSQL index at that permission is ignored with a
+    // warning, see ClassifyIndexes.
+    std::vector<IndexInfoPB> indexes_to_delete;
+    // The indexes of the table's recorded backfill job when no backfill is running: the job was
+    // lost, most likely to a master failover, and must restart with exactly that set.
+    std::optional<std::vector<IndexInfoPB>> lost_backfill;
+    // Whether the table already has a backfill running.  Read before the indexed table's read lock
+    // is taken.  It only decides whether ApplyIndexStateMachineActions treats a nonempty backfill
+    // list as work to launch, and StartBackfillingData re-checks it in SetIsBackfilling.
+    bool is_backfilling = false;
+    bool is_ysql_table = false;
+  };
+
+  // The one decision an entry point makes from a classification: which ready indexes to back fill
+  // now, and which to hold back as riders that launch only alongside them.
+  struct BackfillChoice {
+    std::vector<IndexInfoPB> indexes_to_backfill;
+    std::vector<IndexInfoPB> deferred_indexes;
+  };
+
+  // Examine the indexed table under its read lock and bucket its indexes.  Returns nullopt if the
+  // table's version differs from current_version, meaning another thread already launched the
+  // next version.
+  static std::optional<IndexClassification> ClassifyIndexes(
+      const scoped_refptr<TableInfo>& indexed_table, uint32_t current_version);
+
+  // Act on a classification and the entry point's backfill choice, for the two entry points that
+  // carry backfill work.  Restarts a lost backfill in place of whatever the entry point chose,
+  // truncates the list when batching is off, clears the fully applied state when there is nothing
+  // to do, and otherwise hands the work to the per-table-type step below.
+  static Status ApplyIndexStateMachineActions(
+      CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+      const IndexClassification& classification, BackfillChoice choice, uint32_t current_version,
+      const LeaderEpoch& epoch);
+
+  // The YSQL step, reached only from the schema version report: start backfilling the ready
+  // indexes.  Postgres drives YSQL permissions, so the report carries no permission update, and the
+  // master deletes and defers only YCQL indexes.
+  static Status LaunchYsqlBackfill(
+      CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+      const IndexClassification& classification, BackfillChoice choice, uint32_t current_version,
+      const LeaderEpoch& epoch);
+
+  // The master drives YCQL index permissions itself: persist the next permission for every index
+  // that has one and alert tservers, delete an index that reached INDEX_PERM_INDEX_UNUSED, or start
+  // backfilling the ready indexes together with any deferred ones being released.
+  static Status ApplyYcqlActions(
+      CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+      const IndexClassification& classification, BackfillChoice choice, uint32_t current_version,
+      const LeaderEpoch& epoch);
+
+  // Start Index Backfill process/step for the specified table/index.  If requester_transaction is
+  // provided, it will be used to monitor the liveness of the PG backend that initiated the
+  // backfill.
   static Status StartBackfillingData(
       CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
       const std::vector<IndexInfoPB>& idx_infos, std::optional<uint32_t> expected_version,

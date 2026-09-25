@@ -287,17 +287,8 @@ class StackableDB : public DB {
     return db_->GetMiddleKey(lower_bound_key);
   }
 
-  yb::Result<std::string> FindTargetKey(
-      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override {
-    return db_->FindTargetKey(lower_bound_key, upper_bound_key, target_size);
-  }
-
-  yb::Result<uint64_t> Cross(Slice key) override {
-    return db_->Cross(key);
-  }
-
-  yb::Result<uint64_t> TotalDataSize() override {
-    return db_->TotalDataSize();
+  std::unique_ptr<PinnedVersion> PinCurrentVersion() override {
+    return db_->PinCurrentVersion();
   }
 
   virtual void GetColumnFamilyMetaData(

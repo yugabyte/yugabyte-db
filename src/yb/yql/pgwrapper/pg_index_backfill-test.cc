@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cmath>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -2024,68 +2025,96 @@ class PgIndexBackfillClientDeadline : public PgIndexBackfillBlockDoBackfill {
   }
 };
 
-// https://github.com/yugabyte/yugabyte-db/issues/28849
-TEST_P(PgIndexBackfillTest, MultipleIndexesFirstOneInvalid) {
-  auto conn = CHECK_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE table foo(id int, id2 int)"));
-  // Insert values so that id contain duplicate values, id2 contais unique values.
-  ASSERT_OK(conn.Execute("INSERT INTO foo values (1, 1), (2, 2)"));
-  ASSERT_OK(conn.Execute("INSERT INTO foo values (1, 3), (2, 4)"));
-  // Do CONCURRENTLY to trigger the multi-stage index creation.
+// A failed YSQL unique index sits at WRITE_AND_DELETE_WHILE_REMOVING until DROP INDEX removes it,
+// and a later CREATE INDEX on the table leaves it there (#28849).  One that a build with the #28849
+// regression walked further, to DELETE_ONLY_WHILE_REMOVING or INDEX_UNUSED, is left there too: a
+// later CREATE INDEX neither advances nor deletes it, the table keeps working, and DROP INDEX
+// removes it (#34162).  TEST_ysql_walk_removing_index_permissions restores the regression's walk so
+// the stranded states can be built on fixed code.
+TEST_P(PgIndexBackfillTest, StrandedRemovingPermissionIndexIsLeftAlone) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id int, id2 int)"));
+  // Duplicate id values make the unique index below fail its backfill.
+  ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 1), (2, 2), (1, 3), (2, 4)"));
   auto status = conn.Execute("CREATE UNIQUE INDEX CONCURRENTLY id_idx ON foo(id)");
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
 
-  // Before fixing 28849, this moved the permission of id_idx from
-  // INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING to INDEX_PERM_DELETE_ONLY_WHILE_REMOVING
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo"));
+  const auto index_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "id_idx"));
+  auto index_permission = [&]() -> Result<IndexPermissions> {
+    auto info = std::make_shared<client::YBTableInfo>();
+    Synchronizer sync;
+    RETURN_NOT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    RETURN_NOT_OK(sync.Wait());
+    return VERIFY_RESULT(info->index_map.FindIndex(index_id))->index_permissions();
+  };
+  auto docdb_indexes = [&]() -> Result<std::set<std::string>> {
+    std::set<std::string> names;
+    for (const auto& table : VERIFY_RESULT(client->ListTables())) {
+      if (table.namespace_name() == kDatabaseName && table.table_name().starts_with("id_idx")) {
+        names.insert(table.table_name());
+      }
+    }
+    return names;
+  };
+  ASSERT_EQ(ASSERT_RESULT(index_permission()),
+            IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING);
+
+  // Fixed code leaves the failed index where it is.  It still takes writes there, so it still
+  // enforces uniqueness on id even though postgres considers it invalid.
   ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX CONCURRENTLY id_idx2 ON foo(id2)"));
-
-  // Before fixing 28849, this moved the permission of id_idx from
-  // INDEX_PERM_DELETE_ONLY_WHILE_REMOVING to INDEX_PERM_INDEX_UNUSED, INDEX_PERM_INDEX_UNUSED
-  // caused the docdb table for id_idx to be deleted.
-  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX CONCURRENTLY id_idx3 ON foo(id2)"));
-
-  // As a result, this INSERT failed with OBJECT_NOT_FOUND error.
+  ASSERT_EQ(ASSERT_RESULT(index_permission()),
+            IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING);
   ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (5, 5)"));
   status = conn.Execute("INSERT INTO foo VALUES (5, 6)");
-  // Although id_idx is in an invalid state, it still enforces that new values inserted
-  // must be unique according to id_idx, id_idx2 and id_idx3. We have already inserted
-  // a new value 5 for id, a second insertion of 5 for id causes id_idx to detect
-  // unique constraint violation.
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto count_indexes_fn = [&client]() -> int {
-    auto tables = CHECK_RESULT(client->ListTables());
-    int count = 0;
-    for (const auto& table : tables) {
-      if (table.namespace_name() != kDatabaseName)
-        continue;
-      const auto& table_name = table.table_name();
-      if (table_name == "id_idx" || table_name == "id_idx2" || table_name == "id_idx3") {
-        count++;
-      }
-    }
-    return count;
-  };
+  // Walk it one step the way the regression did.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_ysql_walk_removing_index_permissions", "true"));
+  ASSERT_OK(conn.Execute("CREATE INDEX CONCURRENTLY id_idx3 ON foo(id2)"));
+  ASSERT_EQ(ASSERT_RESULT(index_permission()),
+            IndexPermissions::INDEX_PERM_DELETE_ONLY_WHILE_REMOVING);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_ysql_walk_removing_index_permissions", "false"));
 
-  // Make sure that the indexes exists in DocDB metadata.
-  ASSERT_EQ(count_indexes_fn(), 3);
+  // Fixed code leaves it there.
+  ASSERT_OK(conn.Execute("CREATE INDEX CONCURRENTLY id_idx4 ON foo(id2)"));
+  ASSERT_EQ(ASSERT_RESULT(index_permission()),
+            IndexPermissions::INDEX_PERM_DELETE_ONLY_WHILE_REMOVING);
 
-  // Make sure drop index works.
+  // Walk it to INDEX_UNUSED, the state whose DocDB table the regression deleted.  The master logs
+  // the index instead.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_ysql_walk_removing_index_permissions", "true"));
+  LogWaiter ignored_waiter(cluster_->GetLeaderMaster(), "Ignoring YSQL index");
+  ASSERT_OK(conn.Execute("CREATE INDEX CONCURRENTLY id_idx5 ON foo(id2)"));
+  ASSERT_OK(ignored_waiter.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+  ASSERT_EQ(ASSERT_RESULT(index_permission()), IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_ysql_walk_removing_index_permissions", "false"));
+
+  // The table keeps working with the stranded index in place: schema version reports are processed,
+  // another index builds, and DML runs.
+  ASSERT_OK(conn.Execute("CREATE INDEX CONCURRENTLY id_idx6 ON foo(id2)"));
+  ASSERT_EQ(ASSERT_RESULT(index_permission()), IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+  ASSERT_TRUE(ASSERT_RESULT(docdb_indexes()).contains("id_idx"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (6, 6)"));
+
+  // DROP INDEX is how it goes away.
   ASSERT_OK(conn.Execute("DROP INDEX id_idx"));
-  ASSERT_OK(conn.Execute("DROP INDEX id_idx2"));
-  ASSERT_OK(conn.Execute("DROP INDEX id_idx3"));
+  ASSERT_FALSE(ASSERT_RESULT(docdb_indexes()).contains("id_idx"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (7, 7)"));
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM foo"));
+  ASSERT_EQ(count, 7);
 
-  // Make sure that the index is gone.
-  // Check postgres metadata.
-  auto value = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
-      "SELECT COUNT(*) FROM pg_class WHERE relname like 'id_idx%'"));
-  ASSERT_EQ(value, 0);
-
-  // Check DocDB metadata.
-  ASSERT_EQ(count_indexes_fn(), 0);
+  // The healthy indexes drop as usual, from postgres and from DocDB.
+  for (int i = 2; i <= 6; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("DROP INDEX id_idx$0", i));
+  }
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_class WHERE relname LIKE 'id_idx%'"));
+  ASSERT_EQ(count, 0);
+  ASSERT_TRUE(ASSERT_RESULT(docdb_indexes()).empty());
 }
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillClientDeadline, ::testing::Bool());

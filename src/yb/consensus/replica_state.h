@@ -238,7 +238,8 @@ class ReplicaState {
 
   // Checks if the term change is legal. If so, sets 'current_term'
   // to 'new_term' and sets 'has voted' to no for the current term.
-  Status SetCurrentTermUnlocked(int64_t new_term);
+  // Without flush the caller must flush the consensus metadata before acting on the new term.
+  Status SetCurrentTermUnlocked(int64_t new_term, FlushConsensusMeta flush);
 
   // Returns the term set in the last config change round.
   const int64_t GetCurrentTermUnlocked() const;

@@ -505,12 +505,7 @@ class DBImpl : public DB {
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
-  Result<std::string> FindTargetKey(
-      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override;
-
-  Result<uint64_t> Cross(Slice key) override;
-
-  Result<uint64_t> TotalDataSize() override;
+  std::unique_ptr<PinnedVersion> PinCurrentVersion() override;
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 
@@ -608,6 +603,8 @@ class DBImpl : public DB {
 
   class TaskPriorityUpdater;
   friend class TaskPriorityUpdater;
+
+  class PinnedVersionImpl;
 
   Status NewDB();
 

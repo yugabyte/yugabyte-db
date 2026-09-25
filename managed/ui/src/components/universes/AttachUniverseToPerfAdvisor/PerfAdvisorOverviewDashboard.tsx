@@ -55,11 +55,12 @@ export const PerfAdvisorOverviewDashboard = ({
   const onSelectedQuery = (selectedQueryId: string | null, params?: QueryPageParams) => {
     if (!selectedQueryId) {
       setQueryId(null);
-      const urlParams = new URLSearchParams(window.location.search);
-      urlParams.delete('queryId');
+      // Leave queryId in the URL: the library navigates next and, without it, drops the last path
+      // segment instead - which after a tab switch is the Performance tab itself.
       const cleanedPath = window.location.pathname.replace(/\/queries\/[^/]+$/, '');
-      const qs = urlParams.toString();
-      browserHistory.replace(qs ? `${cleanedPath}?${qs}` : cleanedPath);
+      if (cleanedPath !== window.location.pathname) {
+        browserHistory.replace(`${cleanedPath}${window.location.search}`);
+      }
       return;
     }
 

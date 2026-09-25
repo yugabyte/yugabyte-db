@@ -123,6 +123,35 @@ enum class TablePropertiesErrorHandling {
 
 using UserFrontierRange = yb::storage::UserFrontierRange;
 
+// Holds the DB's version as of its creation, for size-based queries over that version's SST files.
+// Results from different versions are not comparable, so a caller whose results must agree pins
+// once and runs every query against the same PinnedVersion; the answers stay consistent with each
+// other even if a flush or compaction runs concurrently. A PinnedVersion keeps its SST files on
+// disk until it is destroyed, so it should be held no longer than the computation that needs it,
+// and it must be destroyed before the DB is.
+class PinnedVersion {
+ public:
+  virtual ~PinnedVersion() {}
+
+  // Returns the total size of the data (excluding metadata/index/filter blocks) across all SSTs
+  // in the pinned version.
+  virtual yb::Result<uint64_t> TotalDataSize() = 0;
+
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the pinned version.
+  // `key` is a user key; empty means the start of the keyspace.
+  virtual yb::Result<uint64_t> Cross(Slice key) = 0;
+
+  // Returns an existing user key inside [lower_bound_key; upper_bound_key) whose Cross() value is
+  // close to `target_size` -- an absolute Cross value, not one relative to the lower bound.
+  // "Close" is bounded by FLAGS_find_target_key_max_deviation_ratio.
+  // An empty bound means no corresponding bound. The lower bound also happens to be exclusive,
+  // but callers needing strictly increasing results must still check for themselves.
+  // Returns Status(Incomplete) when no suitable key exists; callers that can tolerate a worse cut
+  // should fall back to DB::GetMiddleKey() on it. Any other status is a real failure.
+  virtual yb::Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) = 0;
+};
+
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
 // any external synchronization.
@@ -979,23 +1008,8 @@ class DB {
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
 
-  // Returns an existing user key inside [lower_bound_key; upper_bound_key) whose Cross() value is
-  // close to `target_size` -- an absolute Cross value, not one relative to the lower bound.
-  // "Close" is bounded by FLAGS_find_target_key_max_deviation_ratio.
-  // An empty bound means no corresponding bound. The lower bound also happens to be exclusive,
-  // but callers needing strictly increasing results must still check for themselves.
-  // Returns Status(Incomplete) when no suitable key exists; callers that can tolerate a worse cut
-  // should fall back to GetMiddleKey() on it. Any other status is a real failure.
-  virtual yb::Result<std::string> FindTargetKey(
-      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) = 0;
-
-  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
-  // `key` is a user key; empty means the start of the keyspace.
-  virtual yb::Result<uint64_t> Cross(Slice key) = 0;
-
-  // Returns the total size of the data (excluding metadata/index/filter blocks) across all
-  // SSTs in the current version.
-  virtual yb::Result<uint64_t> TotalDataSize() = 0;
+  // Pins the current version for size-based queries over its SST files.
+  virtual std::unique_ptr<PinnedVersion> PinCurrentVersion() = 0;
 
   // If true, will allow compactions to fail without setting bg_error and not causing writes to
   // fail. Should only be used with extra care for troubleshooting when/while there are no other

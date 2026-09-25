@@ -19,6 +19,7 @@
 
 DECLARE_bool(TEST_pause_perform_with_paging_state);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
+DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 
 namespace yb::pgwrapper {
 
@@ -26,6 +27,7 @@ class PgReadTimeResponseCacheTest : public PgMiniTestBase {
  protected:
   void BeforePgProcessStart() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_prefetch_row_limit) = 1024;
   }
 };
 
@@ -38,10 +40,9 @@ class PgReadTimeResponseCacheTest : public PgMiniTestBase {
 // "cache lookup failed for attribute 1 of relation N".
 TEST_F(PgReadTimeResponseCacheTest, ReadTimePreloadConsistentUnderCacheInvalidation) {
   auto conn = ASSERT_RESULT(Connect());
-  // Push pg_attribute beyond one prefetch page (yb_fetch_row_limit rows) while pg_class stays
-  // within one page. The pg_class rows of the temp tables created below are then fetched by the
-  // first RPC of the preload chain while their pg_attribute rows are fetched by continuation
-  // RPCs.
+  // Push pg_attribute beyond the configured row limit while pg_class stays within it. The
+  // pg_class rows of the temp tables created below are then fetched by the first RPC of the
+  // preload chain while their pg_attribute rows are fetched by continuation RPCs.
   std::string create_wide = "CREATE TABLE wide(c0 int";
   for (int i = 1; i < 1100; ++i) {
     create_wide += Format(", c$0 int", i);

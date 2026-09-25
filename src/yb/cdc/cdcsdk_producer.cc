@@ -888,16 +888,6 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
   }
 }
 
-bool SchemaPackingStorageContainsVersion(
-    SchemaPackingStorage* schema_packing_storage, uint32_t schema_version) {
-  auto result = schema_packing_storage->GetPacking(schema_version);
-  if (!result.ok()) {
-    DCHECK(result.status().IsNotFound());
-    return false;
-  }
-  return true;
-}
-
 Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& table_id,
     uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details,
@@ -910,8 +900,8 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     // Check if packed row schema version is present in the schema_packing_storage. If not
     // present, invalidate the cached_schema_details so that we fetch schema with required
     // version from sys catalog.
-    update_schema_packing_storage = !SchemaPackingStorageContainsVersion(
-        schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version));
+    update_schema_packing_storage =
+        !schema_packing_storage->HasVersion(narrow_cast<SchemaVersion>(pr_schema_version));
 
     // The cached entry holds a single schema version per table, but with transactional DDL, a
     // transaction containing DDL writes rows under more than one version. A schema from a different
@@ -3183,8 +3173,7 @@ Status GetChangesForCDCSDK(
             }
 
             auto schema_packing_storage = &schema_packing_storages->at(table_id);
-            if (!SchemaPackingStorageContainsVersion(
-                    schema_packing_storage, changed_schema_version)) {
+            if (!schema_packing_storage->HasVersion(changed_schema_version)) {
               schema_packing_storage->AddSchema(changed_schema_version, current_schema);
             }
 

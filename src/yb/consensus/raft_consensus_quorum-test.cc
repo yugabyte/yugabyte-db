@@ -63,6 +63,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -1205,6 +1206,46 @@ struct CatchupProbeObservation {
   // The leader's own log end; the follower's conflicting op lies beyond it.
   OpId leader_last_received;
 };
+
+// An election persists the new term and the vote for self with a single flush.
+TEST_F(RaftConsensusQuorumTest, ElectionFlushesConsensusMetadataOnce) {
+  ASSERT_OK(BuildAndStartConfig(3));
+  shared_ptr<RaftConsensus> leader;
+  ASSERT_OK(peers_->GetPeerByIdx(2, &leader));
+  shared_ptr<RaftConsensus> candidate;
+  ASSERT_OK(peers_->GetPeerByIdx(0, &candidate));
+  // Catch the candidate up with the leader's log and term first: otherwise the pre-election is
+  // denied for a stale log, and the term update would count as a flush below.
+  OpIdPB last_op_id;
+  vector<scoped_refptr<ConsensusRound>> rounds;
+  REPLICATE_SEQUENCE_OF_MESSAGES(1, 2, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id,
+                                 &rounds);
+  WaitForCommitIfNotAlreadyPresent(last_op_id, 0, 2);
+  const auto term_before = leader->LeaderTerm();
+  ASSERT_EQ(ReadConsensusMetadataFromDisk(0)->current_term(), term_before);
+
+  std::atomic<int> candidate_flushes{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("ConsensusMetadata::Flush", [&](void* arg) {
+    if (static_cast<ConsensusMetadata*>(arg)->peer_uuid() == candidate->peer_uuid()) {
+      ++candidate_flushes;
+    }
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(candidate->StartElection(LeaderElectionData{
+      .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+      .pending_commit = false,
+      .must_be_committed_opid = OpId()}));
+  ASSERT_OK(candidate->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
+
+  ASSERT_EQ(candidate_flushes.load(), 1);
+  AssertDurableTermAndVote(0, term_before + 1, candidate->peer_uuid());
+}
 
 class RaftConsensusCatchupProbeTest : public RaftConsensusQuorumTest {
  public:

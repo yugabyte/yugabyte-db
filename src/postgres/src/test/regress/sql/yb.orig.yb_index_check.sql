@@ -52,7 +52,16 @@ CREATE TEMP TABLE mytemp(a int unique);
 SELECT yb_index_check('mytemp_a_key'::regclass::oid);
 
 -- Non index relation oid
-SELECT yb_index_check('abcd'::regclass::oid);
+-- Mask the OID: it is allocated at run time and is not stable across runs.
+DO $$
+BEGIN
+    PERFORM yb_index_check('abcd'::regclass::oid);
+EXCEPTION WHEN undefined_object THEN
+    RAISE NOTICE '%', regexp_replace(SQLERRM, '\d+', 'N');
+END $$;
+
+-- Nonexistent relation oid
+SELECT yb_index_check(999999999);
 
 -- Types without equality operator
 CREATE TABLE json_table (a TEXT, b JSON, c INT);

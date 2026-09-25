@@ -88,6 +88,8 @@ To import the script, use the ysqlsh command line tool, as follows:
 
 *sql_script* is the path to the SQL script to be imported.
 
+Dumps taken with ysql_dump or ysql_dumpall in v2025.2.7.0+ or v2026.1.2.0+ begin with the [`\restrict`](../../../api/ysqlsh-meta-commands/#restrict-restrict) meta-command. Replay them with ysqlsh from the same or a later version. See [ysql_dump Notes](../../../admin/ysql-dump/#notes).
+
 You can also use the `\i` meta-command in the ysqlsh shell to import a SQL script, as follows:
 
 ```sql
