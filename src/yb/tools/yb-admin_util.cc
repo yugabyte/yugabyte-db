@@ -18,6 +18,9 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/util.h"
+
 #include "yb/rpc/outbound_call.h"
 
 #include "yb/util/flags.h"
@@ -25,6 +28,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/string_case.h"
 
 DEFINE_NON_RUNTIME_bool(yb_admin_force_use_private_ip, false,
     "Prefer the private RPC address over the broadcast address when a server has registered "
@@ -37,28 +41,6 @@ using std::string;
 using master::ListTabletServersResponsePB;
 
 namespace {
-
-std::vector<string> SplitOnUnderscore(const string& s) {
-  std::vector<string> tokens;
-  size_t start = 0;
-  while (start <= s.size()) {
-    auto end = s.find('_', start);
-    if (end == string::npos) {
-      end = s.size();
-    }
-    if (end > start) {
-      tokens.push_back(s.substr(start, end - start));
-    }
-    start = end + 1;
-  }
-  return tokens;
-}
-
-bool EitherIsPrefix(const string& a, const string& b) {
-  const auto& shorter = a.size() <= b.size() ? a : b;
-  const auto& longer = a.size() <= b.size() ? b : a;
-  return longer.compare(0, shorter.size(), shorter) == 0;
-}
 
 int GetTabletServerAliveRank(const ListTabletServersResponsePB::Entry& server) {
   if (!server.has_alive()) {
@@ -99,15 +81,8 @@ bool CompareListTabletServersEntries(
 }  // namespace
 
 bool IsUnsupportedRpcError(const Status& s) {
-  // Messenger::Handle() answers a call it cannot route with ERROR_NO_SUCH_METHOD when the service
-  // is registered but the method is not, and ERROR_NO_SUCH_SERVICE when the service itself is
-  // absent. A cluster that predates the operation produces one or the other depending on whether
-  // the RPC was added to an existing service, so both carry the framing RunCommand() applies.
-  //
-  // Read the code off the Status rather than matching Status::ToString(): OutboundCall::SetFailed()
-  // attaches it with CloneAndAddErrorCode(RpcError(...)), which is how client.cc and
-  // client_master_rpc.cc test the same condition. A status with no rpc code decodes to 0, so it
-  // never matches.
+  // A cluster that predates the operation answers ERROR_NO_SUCH_METHOD if the RPC was added to an
+  // existing service, or ERROR_NO_SUCH_SERVICE if the whole service is new.
   const auto rpc_error = rpc::RpcError(s);
   return rpc_error == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD ||
          rpc_error == rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE;
@@ -115,21 +90,23 @@ bool IsUnsupportedRpcError(const Status& s) {
 
 std::vector<string> SuggestByNameTokens(
     const string& op, const std::vector<string>& names, size_t max_results) {
-  const auto op_tokens = SplitOnUnderscore(op);
+  const std::vector<string> op_tokens =
+      strings::Split(ToLowerCase(op), "_", strings::SkipEmpty());
   if (op_tokens.empty()) {
     return {};
   }
-  // Rank is the number of name tokens no typed token covers; sorting the (rank, name) pairs
-  // orders the most fully covered names first and breaks ties alphabetically.
+  // (number of name tokens left uncovered, name), so sorting puts the closest names first.
   std::vector<std::pair<size_t, string>> ranked;
   for (const auto& name : names) {
-    const auto name_tokens = SplitOnUnderscore(name);
+    const std::vector<string> name_tokens =
+        strings::Split(ToLowerCase(name), "_", strings::SkipEmpty());
     std::vector<bool> covered(name_tokens.size(), false);
     bool all_op_tokens_covered = true;
     for (const auto& op_token : op_tokens) {
       bool op_token_covered = false;
       for (size_t i = 0; i < name_tokens.size(); ++i) {
-        if (EitherIsPrefix(op_token, name_tokens[i])) {
+        if (HasPrefixString(op_token, name_tokens[i]) ||
+            HasPrefixString(name_tokens[i], op_token)) {
           covered[i] = true;
           op_token_covered = true;
         }
@@ -139,10 +116,9 @@ std::vector<string> SuggestByNameTokens(
         break;
       }
     }
-    if (!all_op_tokens_covered) {
-      continue;
+    if (all_op_tokens_covered) {
+      ranked.emplace_back(std::count(covered.begin(), covered.end(), false), name);
     }
-    ranked.emplace_back(std::count(covered.begin(), covered.end(), false), name);
   }
   std::sort(ranked.begin(), ranked.end());
   if (ranked.size() > max_results) {
