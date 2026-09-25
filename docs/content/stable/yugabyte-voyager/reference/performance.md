@@ -67,15 +67,25 @@ The router sits between the ordered change stream and the parallel channels. Eac
 
 ### Three routing strategies
 
-You choose one of these routing strategies with [`--cdc-partition-key`](../data-migration/import-data/#arguments), or for a single table with `--cdc-partition-key-overrides`. The three strategies sit on a spectrum: `pk` parallelizes everything and relies on conflict detection; `table` serializes everything and needs no detection; a custom key serializes only the events that can actually conflict and parallelizes everything else.
+yb-voyager provides three strategies for routing change events: `pk` can spread different rows across every channel and relies on [conflict detection](#unique-key-conflict-detection); `table` sends a table's events down one channel and does not need conflict detection; and a custom key keeps conflicting events on one channel and can spread the rest.
 
-The global default `--cdc-partition-key auto` picks `pk` for most tables and `table` when primary key hashing isn't safe. The following table compares the three routing strategies, how much parallelism you get, and whether conflict detection runs.
+The following table compares the three routing strategies, how much parallelism you get, and whether conflict detection runs.
 
-| Strategy | Routing rule | Parallelism | Conflict detection | Best for |
+| Strategy | Routing rule | Parallelism | [Conflict detection](#unique-key-conflict-detection) | Best for |
 | :------- | :----------- | :---------- | :----------------- | :------- |
-| `pk` | Hash of primary key | All channels share every table's events | On, guards unique indexes | Most tables; high-throughput tables with few conflicts |
-| Custom key `(cols)` | Hash of chosen immutable columns | Distinct key values spread across channels | On, but idle in steady state | Hot tables where conflicting columns are immutable |
+| `pk` | Hash of primary key | Different rows can use every channel | On, guards unique indexes | Most tables; high-throughput tables with few conflicts |
+| Custom key `(cols)` | Hash of specified immutable columns | Distinct key values spread across channels | On, but idle in steady state | Hot tables where conflicting columns are immutable |
 | `table` | Table name | One channel per table | Off | Tables with mutable conflict columns, or expression-based unique indexes |
+
+Set the strategy for every table with [`--cdc-partition-key`](../data-migration/import-data/#arguments). [Override it for one table](#partition-the-hot-table-by-an-immutable-key-column) with `--cdc-partition-key-overrides`.
+
+The global default is `--cdc-partition-key auto`, which picks `pk` for most tables, and `table` when primary key hashing isn't safe.
+
+{{< note title="Live migration with fall-back or fall-forward" >}}
+
+`--cdc-partition-key` and `--cdc-partition-key-overrides` apply only to import data to target. In [live migration with fall-back](../../migrate/live-fall-back/) and [live migration with fall-forward](../../migrate/live-fall-forward/), [import data to source](../data-migration/import-data/#import-data-to-source) and [import data to source-replica](../data-migration/import-data/#import-data-to-source-replica) partition every table by table name and turn conflict detection off. Custom keys are neither needed nor accepted on those commands.
+
+{{< /note >}}
 
 ### How events are partitioned by default
 
@@ -92,7 +102,7 @@ Tables that can't be partitioned by primary key (when primary key hashing isn't 
 
 ### Unique key conflict detection
 
-A unique value such as an email can be freed by one row and taken by another. Those events touch different rows, so they can land on different channels, but they still have to be applied in that order. For this reason, yb-voyager runs _conflict detection_ for primary-key-partitioned tables that have a unique index. It compares unique-key values across in-flight events and, when an incoming event's new value matches an in-flight event's old value, holds the incoming event until the earlier one is fully applied. The result matches the source, at the cost of a short wait.
+A unique value such as an email can be freed by one row and taken by another. Those events touch different rows, so they can land on different channels, but they still have to be applied in that order. For this reason, yb-voyager runs _conflict detection_ for `pk` and custom-key tables that have a unique index. It compares unique-key values across in-flight events and, when an incoming event's new value matches an in-flight event's old value, holds the incoming event until the earlier one is fully applied. The result matches the source, at the cost of a short wait.
 
 Consider a `users` table with primary key `id` and a unique `email`. Two changes commit in this order:
 
@@ -139,36 +149,29 @@ A high volume of these lines for one table is the signal to change that table's 
 
 ### Partition the hot table by an immutable key column
 
-If the columns responsible for the conflicts are _immutable_ (never changed by an update), route that table's events by those columns instead of by primary key. Every event that could ever collide then shares a channel and applies in commit order, while unrelated rows still spread across all channels. In the status-history example, both halves of every transition share the same `order_id`.
+If the columns responsible for the conflicts are _immutable_ (never changed by an update), use the _custom key_ strategy to route that table's events by those columns instead of by primary key. Every event that could ever collide then shares a channel and applies in commit order, while unrelated rows still spread across all channels. In the status-history example, both halves of every transition share the same `order_id`.
 
 ![Route hot table](/images/migrate/route-hot-table.png)
 
-`--cdc-partition-key-overrides` sets a per-table CDC partition key on the [import data to target](../data-migration/import-data/#import-data) command. Pass a semicolon-separated list of `schema.table:strategy` pairs as follows:
+To do this, use `--cdc-partition-key-overrides` to set a per-table CDC partition key on the [import data to target](../data-migration/import-data/#import-data) command. For example, to route one hot table by the immutable column `order_id`, while every other table keeps the default `auto`, use the following command:
 
 ```sh
-# Route one hot table by an immutable column; every other table keeps the default (by primary key).
 yb-voyager import data to target \
         --cdc-partition-key-overrides 'public.order_status_history:(order_id)'
 ```
 
-The strategy is one of:
+`--cdc-partition-key-overrides` supports the same three strategies:
 
-- `(col1,col2)`: Partition the table by the given immutable column values (the custom key).
+- `(col1,col2)`: Partition the table by the values of the given immutable columns (the custom key).
 - `pk`: Partition by primary key.
 - `table`: Send all of the table's events to a single channel.
 
-Tables not listed keep the global `--cdc-partition-key` (default `auto`). For example, the following partitions one table by a custom key, forces another to a single channel, and leaves the rest on the default:
+You can pass a semicolon-separated list of `schema.table:strategy` pairs. Tables not listed keep the global `--cdc-partition-key` (default `auto`). For example, the following command partitions one table by a custom key, forces another to a single channel, and leaves the rest on the default:
 
 ```sh
 yb-voyager import data to target \
         --cdc-partition-key-overrides 'public.order_status_history:(order_id);public.audit_log:table'
 ```
-
-{{< note title="Live migration with fall-back or fall-forward" >}}
-
-`--cdc-partition-key` and `--cdc-partition-key-overrides` apply only to import data to target. In [live migration with fall-back](../../migrate/live-fall-back/) and [live migration with fall-forward](../../migrate/live-fall-forward/), [import data to source](../data-migration/import-data/#import-data-to-source) and [import data to source-replica](../data-migration/import-data/#import-data-to-source-replica) partition every table by table name and turn conflict detection off. Custom keys are neither needed nor accepted on those commands.
-
-{{< /note >}}
 
 ### Choose a good partition key
 
