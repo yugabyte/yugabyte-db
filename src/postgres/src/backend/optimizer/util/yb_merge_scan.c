@@ -643,7 +643,7 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
  *     order relies on that.
  *   - A range column without an equality index clause, not a stream key.  It
  *     is one of:
- *     - A duplicate index column.
+ *     - A copy of an earlier index column, possibly relabeled.
  *     - A column a partial index predicate implies.
  *     - A column tied by filters, not a bind, to one of:
  *       - A constant, as in a broken EquivalenceClass.
@@ -703,6 +703,7 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 		last_sort_indexcol = Max(last_sort_indexcol, indexcol);
 	}
 
+	/* Construct the result in index column order. */
 	for (int indexcol = 0; indexcol < last_sort_indexcol; indexcol++)
 	{
 		Expr	   *expr;
