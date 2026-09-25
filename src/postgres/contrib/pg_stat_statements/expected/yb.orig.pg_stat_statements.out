@@ -74,10 +74,10 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 -- Unprivileged user access: execution metrics visible, query/queryid hidden
 -- for other users' entries. Matches vanilla PostgreSQL behavior.
 --
-SELECT pg_stat_statements_reset();
- pg_stat_statements_reset 
---------------------------
- 
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
 (1 row)
 
 CREATE ROLE pgss_unpriv LOGIN;
@@ -145,7 +145,7 @@ SELECT query, queryid IS NOT NULL AS has_queryid, calls, rows
  SELECT $1 + $2 AS superuser_math                              | t           |     1 |    1
  SELECT $1 AS superuser_query                                  | t           |     1 |    1
  SELECT $1 AS unpriv_query                                     | t           |     1 |    1
- SELECT pg_stat_statements_reset()                             | t           |     1 |    1
+ SELECT pg_stat_statements_reset() IS NOT NULL AS t            | t           |     1 |    1
  SELECT query,                                                +| t           |     1 |    6
         queryid IS NOT NULL AS has_queryid,                   +|             |       | 
         calls > $1 AS has_calls,                              +|             |       | 
@@ -156,7 +156,7 @@ SELECT query, queryid IS NOT NULL AS has_queryid, calls, rows
         mean_exec_time >= $6 AS has_mean_time,                +|             |       | 
         yb_latency_histogram IS NOT NULL AS has_histogram     +|             |       | 
    FROM pg_stat_statements                                    +|             |       | 
-   WHERE query IN ($7, $8)                                    +|             |       | 
+   WHERE query IN ($7 /*, ... */)                             +|             |       | 
    ORDER BY query COLLATE "C", calls                           |             |       | 
  SELECT query, queryid IS NOT NULL AS has_queryid, calls, rows+| t           |     0 |    0
    FROM pg_stat_statements                                    +|             |       | 

@@ -40,7 +40,7 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 -- Unprivileged user access: execution metrics visible, query/queryid hidden
 -- for other users' entries. Matches vanilla PostgreSQL behavior.
 --
-SELECT pg_stat_statements_reset();
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
 CREATE ROLE pgss_unpriv LOGIN;
 
 -- Superuser runs queries to populate PGSS

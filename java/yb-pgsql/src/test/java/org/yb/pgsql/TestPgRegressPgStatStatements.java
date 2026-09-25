@@ -22,6 +22,11 @@ public class TestPgRegressPgStatStatements extends BasePgRegressTest {
     // Disable auto analyze because ANALYZE-related statements recorded in pg_stat_statements make
     // the test flaky.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    // yb_enable_read_committed_isolation defaults to true only in release builds, which makes
+    // yb.port.utility's SET TRANSACTION ISOLATION LEVEL READ COMMITTED emit a "read committed
+    // isolation is disabled" warning on every other build type. Pin it on so the ported test
+    // exercises the isolation level that ships.
+    flagMap.put("yb_enable_read_committed_isolation", "true");
     return flagMap;
   }
 

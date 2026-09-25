@@ -580,8 +580,6 @@ RESET enable_seqscan;
 -- SET TRANSACTION ISOLATION
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-WARNING:  read committed isolation is disabled
-DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 COMMIT;
