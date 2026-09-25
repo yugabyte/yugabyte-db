@@ -780,22 +780,21 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 }
 
 /*
- * Add to sort_info, in index column order, every range column before its last
- * merge sort column that is not a merge stream key, a merge sort column, or a
- * copy of an earlier index column.  Each stream returns its rows in index
- * order, so merging on these columns too keeps the merged rows in index order.
- * Such a column is redundant for the pathkeys only because filters tie it to a
- * constant or to an earlier merge sort column, and filters only remove rows.
- * So the merged rows keep the order of the pathkeys wherever those filters
- * run, even after the merge.  Each added column compares with its index
- * ordering operator, collation, and nulls order for scandir.
+ * Add to sort_info, in index column order, every index column before its last
+ * merge sort column that is not a merge stream key in stream_col_idxs, a merge
+ * sort column, or a copy of an earlier index column.  Each stream returns its
+ * rows in index order, so merging on these columns too keeps the merged rows
+ * in index order.  Such a column is redundant for the pathkeys only because
+ * filters tie it to a constant or to an earlier merge sort column, and filters
+ * only remove rows.  So the merged rows keep the order of the pathkeys
+ * wherever those filters run, even after the merge.  Each added column
+ * compares with its index ordering operator, collation, and nulls order for
+ * scandir.
  */
 void
 yb_add_merge_gap_sort_cols(IndexOptInfo *index, ScanDirection scandir,
-						   List *stream_cols, YbSortInfo *sort_info)
+						   Bitmapset *stream_col_idxs, YbSortInfo *sort_info)
 {
-	Bitmapset  *stream_col_idxs = NULL;
-	ListCell   *lc;
 	int			last_sort_indexcol = -1;
 	int			numsortkeys = 0;
 	int			k = 0;
@@ -804,13 +803,6 @@ yb_add_merge_gap_sort_cols(IndexOptInfo *index, ScanDirection scandir,
 	Oid		   *collations;
 	bool	   *nullsFirst;
 
-	foreach(lc, stream_cols)
-	{
-		YbMergeScanStreamColInfo *info = lfirst_node(YbMergeScanStreamColInfo,
-													 lc);
-
-		stream_col_idxs = bms_add_member(stream_col_idxs, info->indexcol);
-	}
 	/* sortColIdx holds index tlist resnos, in index column order. */
 	for (int i = 0; i < sort_info->numCols; i++)
 		last_sort_indexcol = Max(last_sort_indexcol,
@@ -836,8 +828,7 @@ yb_add_merge_gap_sort_cols(IndexOptInfo *index, ScanDirection scandir,
 			k++;
 			continue;
 		}
-		if (indexcol < index->nhashcolumns ||
-			bms_is_member(indexcol, stream_col_idxs) ||
+		if (bms_is_member(indexcol, stream_col_idxs) ||
 			ybIsCopyOfEarlierIndexCol(index, indexcol))
 			continue;
 
