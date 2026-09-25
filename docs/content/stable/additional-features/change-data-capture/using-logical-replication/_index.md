@@ -134,11 +134,11 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
     To handle updates/deletes with a non-CHANGE replica identity when no before image is available, set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC sends a null before-image instead of failing with an error.
 
-- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To proceed by ignoring such an erroneous addition to the publication, user should set the the YB-TServer flag [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) to `true`.
+- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To have CDC proceed by skipping unqualified tables, set the the [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) YB-TServer flag to `true`.
  
-When the flag is set to `true`, the virtual WAL skips unqualified tables and keeps streaming the qualified ones. A skipped table is not polled again, so its changes are never streamed by this slot.
+    When the flag is set to `true`, the virtual WAL skips unqualified tables and keeps streaming the qualified ones. A skipped table is not polled again, so its changes are never streamed by this slot.
 
-If the errors due to addition of unqualified tables to the publication are not resolved within the stream expiry duration, the replication slot would be rendered unusable.
+    If errors due to addition of unqualified tables are not resolved within the stream expiry duration, the replication slot would be rendered unusable.
 
 ### CDC with point-in-time recovery
 
