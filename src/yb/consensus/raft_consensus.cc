@@ -1310,8 +1310,8 @@ Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<Consensu
   return AppendNewRoundsToQueueUnlocked({ round }, &processed_rounds);
 }
 
-Status RaftConsensus::CheckLeasesUnlocked(const ConsensusRoundPtr& round) {
-  auto op_type = round->replicate_msg()->op_type();
+Status RaftConsensus::CheckLeasesUnlocked(const LWReplicateMsg& replicate_msg) {
+  auto op_type = replicate_msg.op_type();
   // When we do not have a hybrid time leader lease we allow 2 operation types to be added to RAFT.
   // NO_OP - because even empty heartbeat messages could be used to obtain the lease.
   // CHANGE_CONFIG_OP - because we should be able to update consensus even w/o lease.
@@ -1321,7 +1321,7 @@ Status RaftConsensus::CheckLeasesUnlocked(const ConsensusRoundPtr& round) {
   }
 
   auto lease_status = state_->GetHybridTimeLeaseStatusAtUnlocked(
-      HybridTime(round->replicate_msg()->hybrid_time()).GetPhysicalValueMicros());
+      HybridTime(replicate_msg.hybrid_time()).GetPhysicalValueMicros());
   static_assert(LeaderLeaseStatus_ARRAYSIZE == 3, "Please update logic below to adapt new state");
   if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
     return STATUS_FORMAT(LeaderHasNoLease,
@@ -1381,26 +1381,6 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return status;
 }
 
-Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
-  const auto& msg = *round->replicate_msg();
-  if (msg.op_type() != OperationType::WRITE_OP) {
-    return Status::OK();
-  }
-  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
-  if (!fence) {
-    return Status::OK();
-  }
-  // clock_, not the op's own hybrid time, which AddLeaderPending has not assigned yet. Nor
-  // state_->Clock(), which is the coarse clock and not in the fence's time domain.
-  const auto now = clock_->Now();
-  if (fence > now) {
-    return Status::OK();
-  }
-  return STATUS_EC_FORMAT(
-      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
-      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, now);
-}
-
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     const ConsensusRounds& rounds, size_t* processed_rounds,
     std::vector<ReplicateMsgPtr>* replicate_msgs) {
@@ -1420,18 +1400,6 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
         round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
         continue;
       }
-
-      // After RegisterRetryableRequest, so a resend of an already-replicated id answers
-      // AlreadyPresent -- that write committed inside its fence -- rather than a fence rejection.
-      // Before NotifyAddedToLeader, whose side effects rolling back the op id does not undo.
-      // Rejection goes through ReplicaState, not round->NotifyReplicationFinished, to undo the
-      // registration made just above.
-      if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
-        state_->NotifyReplicationFinishedUnlocked(
-            round, s, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
-        round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
-        continue;
-      }
     }
 
     // Reject ops the operation filter won't allow BEFORE NotifyAddedToLeader runs, so that side
@@ -1448,7 +1416,20 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
+    //
+    // A failure here (a write past its ignore_after_hybrid_time fence, judged against the hybrid
+    // time just assigned; or the tablet shutting down) happens before the op has any effect, so it
+    // fails only this round: roll back its op id and notify through ReplicaState, which also undoes
+    // the retryable-request registration made above.  Doing so after RegisterRetryableRequest means
+    // a resend of an already-replicated id still answers AlreadyPresent rather than a fence
+    // rejection.
+    if (auto s = round->NotifyAddedToLeader(op_id, committed_op_id); !s.ok()) {
+      state_->CancelPendingOperation(op_id, /* should_exist = */ false);
+      state_->NotifyReplicationFinishedUnlocked(
+          round, s, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
+      round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
+      continue;
+    }
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
@@ -1464,8 +1445,9 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
   }
 
   // Could check lease just for the latest operation in batch, because it will have greatest
-  // hybrid time, so requires most advanced lease.
-  auto s = CheckLeasesUnlocked(rounds.back());
+  // hybrid time, so requires most advanced lease.  The last message being appended, not the last
+  // round: a round rejected above was never assigned a hybrid time.
+  auto s = CheckLeasesUnlocked(*replicate_msgs->back());
 
   if (s.ok()) {
     s = queue_->AppendOperations(*replicate_msgs, committed_op_id, state_->Clock().Now());

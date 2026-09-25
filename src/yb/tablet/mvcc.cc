@@ -39,6 +39,8 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/compare_util.h"
@@ -60,6 +62,8 @@ DEFINE_test_flag(int64, mvcc_op_trace_num_items, 32,
 
 DEFINE_test_flag(int32, inject_mvcc_delay_add_leader_pending_ms, 0,
                  "Inject delay after MvccManager::AddLeaderPending read clock.");
+DEFINE_test_flag(int32, inject_mvcc_delay_before_add_leader_pending_ms, 0,
+                 "Inject delay before MvccManager::AddLeaderPending reads clock.");
 
 namespace yb {
 namespace tablet {
@@ -318,9 +322,18 @@ bool BadNextOpId(const OpId& prev, const OpId& next) {
   return false;
 }
 
-HybridTime MvccManager::AddLeaderPending(const OpId& op_id) {
+Result<HybridTime> MvccManager::AddLeaderPending(const OpId& op_id, HybridTime write_fence) {
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_mvcc_delay_before_add_leader_pending_ms);
   std::lock_guard lock(mutex_);
   auto ht = clock_->Now();
+  // The fence bounds the time at which the write takes effect, which is ht, so it has to be judged
+  // against ht itself rather than an earlier clock reading: nothing bounds how long a thread can
+  // stall between the two.
+  if (write_fence && write_fence <= ht) {
+    return STATUS_EC_FORMAT(
+        Expired, tserver::TabletServerError(tserver::TabletServerErrorPB::WRITE_FENCE_EXPIRED),
+        "Write is fenced: ignore_after_hybrid_time $0 is not after $1", write_fence, ht);
+  }
   AtomicFlagSleepMs(&FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms);
   VLOG_WITH_PREFIX(1) << __func__ << "(" << op_id << "), time: " << ht;
   AddPending(ht, op_id, /* is_follower_side= */ false);

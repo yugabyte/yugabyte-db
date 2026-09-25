@@ -214,6 +214,12 @@ class Operation {
     return false;
   }
 
+  // Hybrid time at or after which this operation must not take effect; invalid means no fence.
+  // Only consulted when use_mvcc() is true.
+  virtual HybridTime WriteFence() const {
+    return HybridTime::kInvalid;
+  }
+
   // Initialize operation at leader side.
   // op_id - operation id.
   // committed_op_id - current committed operation id.

@@ -83,7 +83,7 @@ TEST_F(MvccTest, Basic) {
   constexpr size_t kTotalEntries = 10;
   vector<HybridTime> hts(kTotalEntries);
   for (int i = 0; i != kTotalEntries; ++i) {
-    hts[i] = manager_.AddLeaderPending(OpId(1, i));
+    hts[i] = ASSERT_RESULT(manager_.AddLeaderPending(OpId(1, i)));
   }
   for (int i = 0; i != kTotalEntries; ++i) {
     manager_.Replicated(hts[i], OpId(1, i));
@@ -111,7 +111,7 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
   manager_.AddFollowerPending(ht1, OpId(1, 1));
   ASSERT_EQ(ht1.Decremented(), ASSERT_RESULT(manager_.SafeTime(FixedHybridTimeLease())));
 
-  HybridTime ht2 = manager_.AddLeaderPending(OpId(1, 2));
+  HybridTime ht2 = ASSERT_RESULT(manager_.AddLeaderPending(OpId(1, 2)));
   ASSERT_EQ(ht1.Decremented(), ASSERT_RESULT(manager_.SafeTime(FixedHybridTimeLease())));
 
   manager_.Replicated(ht1, OpId(1, 1));
@@ -137,7 +137,7 @@ TEST_F(MvccTest, Abort) {
   constexpr size_t kTotalEntries = 10;
   vector<HybridTime> hts(kTotalEntries);
   for (int i = 0; i != kTotalEntries; ++i) {
-    hts[i] = manager_.AddLeaderPending(OpId(1, i));
+    hts[i] = ASSERT_RESULT(manager_.AddLeaderPending(OpId(1, i)));
   }
   size_t begin = 0;
   size_t end = hts.size();
@@ -244,7 +244,7 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
     if (rnd < kTargetConcurrency) {
       // Start a new operation.
       OpId op_id(1, ++op_idx);
-      HybridTime ht = manager_.AddLeaderPending(op_id);
+      HybridTime ht = ASSERT_RESULT(manager_.AddLeaderPending(op_id));
       alive.push_back(Op {.type = OpType::kAdd, .ht = ht, .op_id = op_id});
       queue.emplace(alive.back().ht, alive.size() - 1);
       ops.push_back(alive.back());
@@ -334,7 +334,7 @@ TEST_F(MvccTest, WaitForSafeTime) {
   clock_->Update(AddLogical(limit, kDelta));
   HybridTime ht1 = clock_->Now();
   manager_.AddFollowerPending(ht1, OpId(1, 1));
-  HybridTime ht2 = manager_.AddLeaderPending(OpId(1, 2));
+  HybridTime ht2 = ASSERT_RESULT(manager_.AddLeaderPending(OpId(1, 2)));
   std::atomic<bool> t1_done(false);
   std::thread t1([this, ht2, &t1_done] {
     [[maybe_unused]] auto result =
@@ -364,7 +364,7 @@ TEST_F(MvccTest, WaitForSafeTime) {
   t1.join();
   t2.join();
 
-  HybridTime ht3 = manager_.AddLeaderPending(OpId(1, 3));
+  HybridTime ht3 = ASSERT_RESULT(manager_.AddLeaderPending(OpId(1, 3)));
   ASSERT_FALSE(manager_.SafeTime(ht3, CoarseMonoClock::now() + 100ms, FixedHybridTimeLease()).ok());
 }
 

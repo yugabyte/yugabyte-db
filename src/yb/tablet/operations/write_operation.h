@@ -109,6 +109,8 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
 
   HybridTime WriteHybridTime() const override;
 
+  HybridTime WriteFence() const override;
+
   AsyncWriteCallback async_write_callback_;
 
   bool apply_completed_ = false;
