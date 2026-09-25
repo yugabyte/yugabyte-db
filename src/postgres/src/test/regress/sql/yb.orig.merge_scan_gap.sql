@@ -219,3 +219,18 @@ INSERT INTO gap_expr_tbl VALUES
 ANALYZE gap_expr_tbl;
 \i :run_query
 DROP TABLE gap_expr_tbl;
+
+-- The same with the gap column c2::text, a relabeled varchar column, which is
+-- also an expression column of the index.
+\set Q1 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_relabel_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
+CREATE TABLE gap_relabel_tbl (k int, s int, c1 text, c2 varchar, c3 int,
+    PRIMARY KEY (k ASC));
+CREATE INDEX NONCONCURRENTLY gap_relabel_tbl_idx ON gap_relabel_tbl (s ASC, c1 ASC, (c2::text) ASC, c3 ASC);
+INSERT INTO gap_relabel_tbl VALUES
+    (1, 1, 'b', 'a', 9), (2, 1, 'b', 'b', 0), (3, 2, 'b', 'b', 4), (4, 1, 'e', 'e', 1),
+    (5, 2, 'e', 'e', 2);
+ANALYZE gap_relabel_tbl;
+\i :run_query
+DROP TABLE gap_relabel_tbl;

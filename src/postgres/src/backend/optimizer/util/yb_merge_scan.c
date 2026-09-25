@@ -763,9 +763,7 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 			 * sort columns in the table row, which has no value for an
 			 * expression column.
 			 */
-			if (IsA(expr, RelabelType))
-				expr = ((RelabelType *) expr)->arg;
-			if (embedded && !IsA(expr, Var) &&
+			if (embedded && index->indexkeys[indexcol] == 0 &&
 				!ybIsCopyOfEarlierIndexCol(index, indexcol))
 				return NIL;
 			continue;
@@ -864,6 +862,8 @@ yb_add_merge_gap_sort_cols(IndexOptInfo *index, ScanDirection scandir,
 		collations[numsortkeys] = index->indexcollations[indexcol];
 		numsortkeys++;
 	}
+	if (k != sort_info->numCols)
+		elog(ERROR, "merge sort columns are not in index column order");
 
 	sort_info->numCols = numsortkeys;
 	sort_info->sortColIdx = sortColIdx;
