@@ -59,7 +59,7 @@ Use one or more of the following techniques to improve import data performance:
 
 ## Improve import CDC streaming performance
 
-During [live migration](../../migrate/live-migrate/), after importing the snapshot, yb-voyager continuously applies change events captured from your source database. To apply changes quickly, the importer captures every insert, update, and delete in commit order and spreads them across many parallel channels (workers). The rule that decides which channel an event goes to is the CDC partition key, and choosing it well is the main lever for streaming throughput on write-heavy workloads.
+During [live migration](../../migrate/live-migrate/), after importing the snapshot, yb-voyager continuously applies change events captured from your source database. To apply changes quickly, the importer captures every insert, update, and delete in commit order and spreads them across many parallel channels (workers). Events are assigned to channels by hashing a CDC partition key, and choosing that key well is the main lever for streaming throughput on write-heavy workloads.
 
 ![Router CDC](/images/migrate/router-cdc.png)
 
@@ -67,18 +67,20 @@ The router sits between the ordered change stream and the parallel channels. Eac
 
 ### How events are partitioned by default
 
-By default (`--cdc-partition-key auto`), yb-voyager partitions most tables by primary key: every event is routed by a hash of the row's primary key. Tables that can't be partitioned by primary key (when primary key hashing isn't safe) are partitioned by table instead.
+By default (`--cdc-partition-key auto`), yb-voyager partitions most tables by primary key: every event is routed by a hash of the row's primary key. This means:
 
 - Events for the _same row_ always land on the _same channel_, so that row's history is applied in commit order.
-- Events for _different rows_ spread across _all channels_, so a single busy table can keep every channel working. This is what lets a distributed target like YugabyteDB absorb writes at full speed.
+- Events for _different rows_ can be spread across _all channels_, so a single busy table can keep every channel working. Parallel channels apply those writes concurrently, and a distributed target like YugabyteDB can take them on many nodes at once.
+
+In the following example, the `users` table's events are different rows, so they can be spread across channels 1 and 2. The two events on the `orders` table with `id` 7 touch the same row, so they hash to the same channel (3) and stay in order.
 
 ![Route by hash of the primary key](/images/migrate/route-by-hash.png)
 
-In this example, `users` rows land on all three channels. The two events on `orders` with `id` 7 touch the same row, so they hash to the same channel and stay in order.
+Tables that can't be partitioned by primary key (when primary key hashing isn't safe) are partitioned by table instead.
 
-Because two different rows can still depend on each other (for example, when a unique value such as an email is shared across several rows of the table at a given point in time, those events must be applied in order), yb-voyager runs _conflict detection_ for primary-key-partitioned tables that have a unique index. It compares unique-key values across in-flight events and, when an incoming event's new value matches an in-flight event's old value, holds the incoming event until the earlier one is fully applied. The result matches the source, at the cost of a short wait.
+### Unique key conflict detection
 
-**Example: the unique-key race**
+A unique value such as an email can be freed by one row and taken by another. Those events touch different rows, so they can land on different channels, but they still have to be applied in that order. For this reason, yb-voyager runs _conflict detection_ for primary-key-partitioned tables that have a unique index. It compares unique-key values across in-flight events and, when an incoming event's new value matches an in-flight event's old value, holds the incoming event until the earlier one is fully applied. The result matches the source, at the cost of a short wait.
 
 Consider a `users` table with primary key `id` and a unique `email`. Two changes commit in this order:
 
@@ -110,7 +112,7 @@ Conflict detection is cheap when conflicts are rare. On some workloads, however,
       WHERE is_current;
   ```
 
-Every status change emits an _update and insert pair on two different rows_: the old current row steps down (`is_current` becomes false) and a new current row takes its place. Because the two rows have different primary keys, they hash to different channels, and the unique index makes them a genuine conflict — so detection holds the insert on every single transition as per the following illustration:
+Every status change emits an _update and insert pair on two different rows_: the old current row steps down (`is_current` becomes false) and a new current row takes its place. Because the two rows have different primary keys, they hash to different channels, and the unique index makes them a genuine conflict. As a result, detection holds the insert on every single transition as per the following illustration:
 
 ![update + insert pair](/images/migrate/old-new-row.png)
 
@@ -160,13 +162,13 @@ yb-voyager import data to target \
 
 For a custom key to eliminate conflicts without breaking correctness or throughput, it should satisfy the following:
 
-- **It must be immutable (required for correctness)** If an update could change the key column, the same logical row would hash to different channels before and after the change, breaking per-row ordering. Primary keys give this guarantee for free; verify a custom key yourself.
-- **It should appear in every unique index on the table (for effectiveness)** If the key is one of an index's columns, any two rows that collide on that index share the key, route to the same channel, and apply in order. Covering every unique index this way makes every possible collision intra-channel; missing any index can still collide on that index, and detection will still fire.
+- **It must be immutable (required for correctness)**. If an update could change the key column, the same logical row would hash to different channels before and after the change, breaking per-row ordering. Primary keys give this guarantee for free; verify a custom key yourself.
+- **It should appear in every unique index on the table (for effectiveness)**. If the key is one of an index's columns, any two rows that collide on that index share the key, route to the same channel, and apply in order. Covering every unique index this way makes every possible collision intra-channel; missing any index can still collide on that index, and detection will still fire.
 
   For example, `order_id` is part of both `UNIQUE (order_id, sort_key)` and `UNIQUE (order_id, is_current)`, so partitioning by `order_id` drives conflicts to zero. An uncovered index such as `UNIQUE (tracking_code)` can still trigger detection.
 
   If the key misses a unique index, correctness is still preserved (conflict detection keeps guarding cross-channel events), but detection keeps tripping on that index, and the waits return.
-- **High cardinality, not-null, and low-skew (for performance).** Parallelism becomes the number of distinct key values in flight. Many distinct values spread evenly across channels; a single very hot value or NULL funnels its traffic into one channel, degrading toward single-channel apply for that slice.
+- **High cardinality, not-null, and low-skew (for performance).** A table can keep at most as many channels busy as there are distinct key values among the events being applied. Many distinct values spread evenly across channels. Events that share one very common value, or that have a NULL key, all hash to one channel and are applied one after another; the rest of the table can still use the other channels.
 
 ### (Alternative) Partition by table name
 
