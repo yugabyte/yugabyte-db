@@ -3,12 +3,23 @@ package com.yugabyte.yw.cloud.oci;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.NOT_FOUND;
 
+import com.oracle.bmc.core.ComputeClient;
+import com.oracle.bmc.core.model.Image;
+import com.oracle.bmc.core.requests.GetImageRequest;
+import com.oracle.bmc.core.responses.GetImageResponse;
+import com.oracle.bmc.model.BmcException;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -26,6 +37,9 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class OCICloudImplTest extends FakeDBApplication {
+
+  private static final String REGION = "us-ashburn-1";
+  private static final String IMAGE_ID = "ocid1.image.oc1.iad.example";
 
   private OCICloudImpl ociCloudImpl;
   private Provider defaultProvider;
@@ -139,5 +153,35 @@ public class OCICloudImplTest extends FakeDBApplication {
                     new NLBHealthCheckConfiguration(
                         Arrays.asList(5433), Protocol.TCP, Arrays.asList())));
     assertEquals("OCI load balancer management is not yet supported", exception.getMessage());
+  }
+
+  @Test
+  public void testGetImageOrBadRequestReturnsImage() {
+    Image image = Image.builder().id(IMAGE_ID).build();
+    ComputeClient computeClient = mockComputeClient();
+    when(computeClient.getImage(any(GetImageRequest.class)))
+        .thenReturn(GetImageResponse.builder().image(image).build());
+
+    assertEquals(image, ociCloudImpl.getImageOrBadRequest(defaultProvider, REGION, IMAGE_ID));
+  }
+
+  @Test
+  public void testGetImageOrBadRequestWrapsNotFound() {
+    BmcException notFound = mock(BmcException.class);
+    when(notFound.getStatusCode()).thenReturn(NOT_FOUND);
+    when(mockComputeClient().getImage(any(GetImageRequest.class))).thenThrow(notFound);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> ociCloudImpl.getImageOrBadRequest(defaultProvider, REGION, IMAGE_ID));
+    assertEquals(NOT_FOUND, e.getHttpStatus());
+    assertEquals("Image not found: " + IMAGE_ID, e.getMessage());
+  }
+
+  private ComputeClient mockComputeClient() {
+    ComputeClient computeClient = mock(ComputeClient.class);
+    doReturn(computeClient).when(ociCloudImpl).getComputeClient(defaultProvider, REGION);
+    return computeClient;
   }
 }
