@@ -53,6 +53,7 @@
 #include "portability/instr_time.h"
 #include "storage/procarray.h"
 #include "utils/catcache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include <string.h>
 
 /*
@@ -131,12 +132,20 @@ static void CatCacheRemoveCList(CatCache *cache, CatCList *cl);
 static void CatalogCacheInitializeCache(CatCache *cache);
 static CatCTup *CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp,
 										Datum *arguments,
-										uint32 hashValue, Index hashIndex);
+										uint32 hashValue, Index hashIndex,
+										YbCatCTupBody *yb_body);
 
 static void CatCacheFreeKeys(TupleDesc tupdesc, int nkeys, int *attnos,
 							 Datum *keys);
 static void CatCacheCopyKeys(TupleDesc tupdesc, int nkeys, int *attnos,
 							 Datum *srckeys, Datum *dstkeys);
+
+/* YB declarations */
+static YbCatCTupBody *YbCatCTupBodyCreate(CatCache *cache, HeapTuple ntp);
+static void YbCatCTupBodyRelease(CatCache *cache, YbCatCTupBody *body);
+static CatCTup *YbCatalogCacheCreateSharedEntry(CatCache *cache, HeapTuple ntp,
+												uint32 hashValue,
+												YbCatCTupBody *body);
 
 
 /*
@@ -576,11 +585,14 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	/*
 	 * Free keys when we're dealing with a negative entry, normal entries just
 	 * point into tuple, allocated together with the CatCTup.
-	 * YB Note: for normal entries we may need to free ybctid.
+	 * YB Note: for normal entries we may need to free ybctid, unless the
+	 * tuple body (and its ybctid) is shared and released separately below.
 	 */
 	if (ct->negative)
 		CatCacheFreeKeys(cache->cc_tupdesc, cache->cc_nkeys,
 						 cache->cc_keyno, ct->keys);
+	else if (ct->yb_body)
+		YbCatCTupBodyRelease(cache, ct->yb_body);
 	else if (IsYugaByteEnabled() && HEAPTUPLE_YBCTID(&ct->tuple))
 		need_to_free_ybctid = true;
 
@@ -589,7 +601,7 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	 * In negative cache entry, only header is allocated. Keys are ignored for
 	 * now.
 	 */
-	if (ct->negative)
+	if (ct->negative || ct->yb_body)
 		cache->yb_cc_size_bytes -= sizeof(CatCTup);
 	else
 	{
@@ -1242,22 +1254,25 @@ CatalogCacheInitializeCache(CatCache *cache)
  * and for rewrite rules).
  * Code basically takes the second part of SearchCatCacheList (which sets the
  * data if no entry is found).
+ *
+ * members is a List of CatCTup pointers that already live in this cache
+ * (as returned by YbSetCatCacheTupleShared).  A member that is not yet part
+ * of a CatCList joins this one directly; a member that already belongs to
+ * another list gets a duplicate entry sharing its tuple body.
  */
 void
 SetCatCacheList(CatCache *cache,
 				int nkeys,
-				List *current_list)
+				List *members)
 {
 	ScanKeyData cur_skey[CATCACHE_MAXKEYS];
 	Datum		arguments[CATCACHE_MAXKEYS];
 	uint32		lHashValue;
-	dlist_iter	iter;
 	CatCList   *cl = NULL;
 	CatCTup    *ct = NULL;
 	List	   *volatile ctlist = NULL;
 	ListCell   *ctlist_item = NULL;
 	int			nmembers;
-	HeapTuple	ntp = NULL;
 	MemoryContext oldcxt = NULL;
 	int			i;
 
@@ -1269,7 +1284,7 @@ SetCatCacheList(CatCache *cache,
 
 	Assert(nkeys > 0 && nkeys < cache->cc_nkeys);
 	memcpy(cur_skey, cache->cc_skey, sizeof(cur_skey));
-	HeapTuple	tup = linitial(current_list);
+	HeapTuple	tup = &((CatCTup *) linitial(members))->tuple;
 
 	for (i = 0; i < nkeys; i++)
 	{
@@ -1331,63 +1346,27 @@ SetCatCacheList(CatCache *cache,
 		do
 		{
 			/*
-			 * YB: unlike SearchCatCacheList, we already did the scan and have
-			 * the entries in current_list.  This replaces the while loop in
-			 * SearchCatCacheList.
+			 * YB: unlike SearchCatCacheList, we already did the scan and the
+			 * entries are in this cache; members holds them.  This replaces the
+			 * while loop in SearchCatCacheList.
 			 */
-			foreach(lc, current_list)
+			foreach(lc, members)
 			{
-				uint32		hashValue;
-				Index		hashIndex;
-				bool		found = false;
-				dlist_head *bucket;
-
-				ntp = (HeapTuple) lfirst(lc);
+				ct = (CatCTup *) lfirst(lc);
+				Assert(ct->my_cache == cache);
+				Assert(!ct->negative);
 
 				/*
-				 * See if there's an entry for this tuple already.
+				 * An entry can belong to at most one list, so a member that is
+				 * already in another list gets a duplicate sharing its body.
 				 */
-				ct = NULL;
-				hashValue = CatalogCacheComputeTupleHashValue(cache, cache->cc_nkeys, ntp);
-				hashIndex = HASH_INDEX(hashValue, cache->cc_nbuckets);
-
-				bucket = &cache->cc_bucket[hashIndex];
-				/* Cannot rely on ctid comparison in YB mode */
-				if (!IsYugaByteEnabled())
+				if (ct->c_list)
 				{
-					dlist_foreach(iter, bucket)
-					{
-						ct = dlist_container(CatCTup, cache_elem, iter.cur);
-
-						if (ct->dead || ct->negative)
-							continue;	/* ignore dead and negative entries */
-
-						if (ct->hash_value != hashValue)
-							continue;	/* quickly skip entry if wrong hash
-										 * val */
-
-						if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
-							continue;	/* not same tuple */
-
-						/*
-						 * Found a match, but can't use it if it belongs to
-						 * another list already
-						 */
-						if (ct->c_list)
-							continue;
-
-						found = true;
-						break;	/* A-OK */
-					}
-				}
-
-				if (!found)
-				{
-					/* We didn't find a usable entry, so make a new one */
-					ct = CatalogCacheCreateEntry(cache, ntp, NULL,
-												 hashValue, hashIndex);
-
-					/* upon failure, we must start the scan over */
+					ct = CatalogCacheCreateEntry(cache, &ct->tuple, NULL,
+												 ct->hash_value,
+												 HASH_INDEX(ct->hash_value,
+															cache->cc_nbuckets),
+												 ct->yb_body);
 					Assert(ct != NULL);
 				}
 
@@ -1600,6 +1579,24 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 void
 SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc desc)
 {
+	(void) YbSetCatCacheTupleShared(cache, tup, desc, NULL);
+}
+
+/*
+ * Like SetCatCacheTuple, but lets several caches built on the same catalog
+ * share one copy of the tuple.  Returns the entry found or created.
+ *
+ * *body is an in/out handle owned by the caller for one catalog row.  Pass
+ * body == NULL to keep the tuple inline (no sharing).  Otherwise, start with
+ * *body == NULL: the first cache that has to create an entry allocates the
+ * body and hands it back, and every later cache called with the same handle
+ * creates its entry against that body instead of copying the tuple.  A cache
+ * that already has the row hands back that entry's body, if it has one.
+ */
+CatCTup *
+YbSetCatCacheTupleShared(CatCache *cache, HeapTuple tup, TupleDesc desc,
+						 YbCatCTupBody **body)
+{
 	ScanKeyData key[CATCACHE_MAXKEYS];
 	Datum		arguments[CATCACHE_MAXKEYS];
 	uint32		hashValue;
@@ -1678,15 +1675,27 @@ SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc desc)
 			continue;
 
 		/*
-		 * We found a match in the cache -- nothing to do.
+		 * We found a match in the cache -- nothing to do, other than letting
+		 * the caller share this entry's body with the remaining caches.
 		 */
-		return;
+		if (body && *body == NULL)
+			*body = ct->yb_body;
+		return ct;
 	}
 
 	/*
 	 * Tuple was not found in cache, so we should add it.
 	 */
-	CatalogCacheCreateEntry(cache, tup, NULL, hashValue, hashIndex);
+	if (body && IsYugaByteEnabled() &&
+		*YBCGetGFlags()->ysql_catcache_share_preloaded_tuples)
+	{
+		if (*body == NULL)
+			*body = YbCatCTupBodyCreate(cache, tup);
+		return CatalogCacheCreateEntry(cache, tup, NULL, hashValue, hashIndex,
+									   *body);
+	}
+	return CatalogCacheCreateEntry(cache, tup, NULL, hashValue, hashIndex,
+								   NULL);
 }
 
 /*
@@ -2134,7 +2143,8 @@ SearchCatCacheMiss(CatCache *cache,
 			while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 			{
 				ct = CatalogCacheCreateEntry(cache, ntp, NULL,
-											 hashValue, hashIndex);
+											 hashValue, hashIndex,
+											 NULL /* yb_body */ );
 				/* upon failure, we must start the scan over */
 				if (ct == NULL)
 				{
@@ -2187,7 +2197,8 @@ SearchCatCacheMiss(CatCache *cache,
 		}
 
 		ct = CatalogCacheCreateEntry(cache, NULL, arguments,
-									 hashValue, hashIndex);
+									 hashValue, hashIndex,
+									 NULL /* yb_body */ );
 
 		/* Creating a negative cache entry shouldn't fail */
 		Assert(ct != NULL);
@@ -2341,11 +2352,15 @@ YbBuildCatCacheListFromPreloadedCache(CatCache *cache, int nkeys,
 
 			if (ct->c_list)
 			{
-				/* If the entry already belongs to a list, create a new entry */
+				/*
+				 * If the entry already belongs to a list, create a new entry,
+				 * sharing the tuple body when the existing entry has one.
+				 */
 				ct = CatalogCacheCreateEntry(cache, &ct->tuple, NULL,
 											 ct->hash_value,
 											 HASH_INDEX(ct->hash_value,
-														cache->cc_nbuckets));
+														cache->cc_nbuckets),
+											 ct->yb_body);
 				Assert(ct != NULL);
 			}
 
@@ -2688,7 +2703,8 @@ SearchCatCacheList(CatCache *cache,
 				{
 					/* We didn't find a usable entry, so make a new one */
 					ct = CatalogCacheCreateEntry(cache, ntp, NULL,
-												 hashValue, hashIndex);
+												 hashValue, hashIndex,
+												 NULL /* yb_body */ );
 
 					/* upon failure, we must start the scan over */
 					if (ct == NULL)
@@ -2830,12 +2846,19 @@ ReleaseCatCacheList(CatCList *list)
  */
 static CatCTup *
 CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
-						uint32 hashValue, Index hashIndex)
+						uint32 hashValue, Index hashIndex,
+						YbCatCTupBody *yb_body)
 {
 	CatCTup    *ct;
 	MemoryContext oldcxt;
 
-	if (ntp)
+	if (yb_body)
+	{
+		/* YB: the entry shares an existing tuple body instead of copying ntp */
+		Assert(ntp);
+		ct = YbCatalogCacheCreateSharedEntry(cache, ntp, hashValue, yb_body);
+	}
+	else if (ntp)
 	{
 		int			i;
 		HeapTuple	dtp = NULL;
@@ -2983,6 +3006,7 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 	ct->dead = false;
 	ct->negative = (ntp == NULL);
 	ct->hash_value = hashValue;
+	ct->yb_body = yb_body;		/* YB */
 
 	dlist_push_head(&cache->cc_bucket[hashIndex], &ct->cache_elem);
 
@@ -3348,4 +3372,112 @@ yb_log_catcache_stats(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Allocate a shared tuple body in CacheMemoryContext holding a copy of ntp
+ * (toast-compressed like an inline entry would be) and its ybctid.  The
+ * body starts with refcount 0; every CatCTup created against it takes a
+ * reference in YbCatalogCacheCreateSharedEntry.
+ */
+static YbCatCTupBody *
+YbCatCTupBodyCreate(CatCache *cache, HeapTuple ntp)
+{
+	HeapTuple	dtp = ntp;
+	YbCatCTupBody *body;
+	MemoryContext oldcxt;
+
+	Assert(!HeapTupleHasExternal(ntp));
+	if (yb_toast_catcache_threshold > 0 &&
+		ntp->t_len > yb_toast_catcache_threshold)
+		dtp = yb_toast_compress_tuple(ntp, cache->cc_tupdesc);
+
+	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+	body = (YbCatCTupBody *) palloc(MAXALIGN(sizeof(YbCatCTupBody)) +
+									dtp->t_len);
+	body->refcount = 0;
+	body->t_len = dtp->t_len;
+	COPY_YBCTID(HEAPTUPLE_YBCTID(dtp), body->t_ybctid);
+	memcpy((char *) YB_CATCTUP_BODY_DATA(body),
+		   (const char *) dtp->t_data,
+		   dtp->t_len);
+	MemoryContextSwitchTo(oldcxt);
+#ifdef CATCACHE_STATS
+	cache->yb_cc_size_bytes += MAXALIGN(sizeof(YbCatCTupBody)) + body->t_len;
+	if (body->t_ybctid)
+		cache->yb_cc_size_bytes += VARSIZE(body->t_ybctid);
+#endif
+
+	if (dtp != ntp)
+		heap_freetuple(dtp);
+	return body;
+}
+
+/*
+ * Drop one CatCTup's reference to a shared body, freeing the body (and its
+ * ybctid) with the last reference.
+ */
+static void
+YbCatCTupBodyRelease(CatCache *cache, YbCatCTupBody *body)
+{
+	Assert(body->refcount > 0);
+	if (--body->refcount > 0)
+		return;
+
+#ifdef CATCACHE_STATS
+	/*
+	 * The bytes were charged to the cache that created the body; the last
+	 * referencing cache may be a different one, so per-cache totals are only
+	 * approximate for shared bodies.
+	 */
+	cache->yb_cc_size_bytes -= MAXALIGN(sizeof(YbCatCTupBody)) + body->t_len;
+	if (body->t_ybctid)
+		cache->yb_cc_size_bytes -= VARSIZE(body->t_ybctid);
+#endif
+	if (body->t_ybctid)
+		pfree(DatumGetPointer(body->t_ybctid));
+	pfree(body);
+}
+
+/*
+ * Allocate a positive CatCTup whose tuple data lives in a shared body.  Only
+ * the header is allocated; t_data and t_ybctid alias the body.  ntp supplies
+ * the per-tuple fields that are not part of the body (t_self, t_tableOid).
+ * The caller (CatalogCacheCreateEntry) finishes the header and links the
+ * entry into the cache.
+ */
+static CatCTup *
+YbCatalogCacheCreateSharedEntry(CatCache *cache, HeapTuple ntp,
+								uint32 hashValue, YbCatCTupBody *body)
+{
+	CatCTup    *ct;
+	MemoryContext oldcxt;
+
+	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+	ct = (CatCTup *) palloc(sizeof(CatCTup));
+	MemoryContextSwitchTo(oldcxt);
+#ifdef CATCACHE_STATS
+	cache->yb_cc_size_bytes += sizeof(CatCTup);
+#endif
+
+	ct->tuple.t_len = body->t_len;
+	ct->tuple.t_self = ntp->t_self;
+	ct->tuple.t_tableOid = ntp->t_tableOid;
+	HEAPTUPLE_YBCTID(&ct->tuple) = body->t_ybctid;
+	ct->tuple.t_data = YB_CATCTUP_BODY_DATA(body);
+	body->refcount++;
+
+	/* extract keys - they'll point into the shared body if not by-value */
+	for (int i = 0; i < cache->cc_nkeys; i++)
+	{
+		bool		isnull;
+
+		ct->keys[i] = heap_getattr(&ct->tuple,
+								   cache->cc_keyno[i],
+								   cache->cc_tupdesc,
+								   &isnull);
+		Assert(!isnull);
+	}
+
+	return ct;
 }
