@@ -641,12 +641,13 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
     }
     const bool off = has_value && (value.empty() || value == "false" || value == "f" ||
                                    value == "0" || value == "no" || value == "n");
-    // yb::ParseCommandLineFlags() prints these and exits before gflags looks at --help.
+    // yb::ParseCommandLineFlags() prints these and exits before gflags looks at --help (--version
+    // through its callback in init.cc).
     static constexpr std::string_view kYbDumpFlags[] = {
-        "dump_flags_xml", "dump_metrics_json", "help_auto_flag_json", "helpxml"};
+        "dump_flags_xml", "dump_metrics_json", "help_auto_flag_json", "helpxml", "version"};
     // gflags prints these unless --help or --helpshort is also given.
     static constexpr std::string_view kGflagsHelpFlags[] = {
-        "helpfull", "helpmatch", "helpon", "helppackage", "version"};
+        "helpfull", "helpmatch", "helpon", "helppackage"};
     if (!off && std::ranges::find(kYbDumpFlags, name) != std::end(kYbDumpFlags)) {
       return std::nullopt;
     }
