@@ -29,6 +29,23 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.9.3 - September 25, 2026
+
+### New features
+
+- {{<tags/feature/tp>}} Added the [schema detect-drift](../reference/schema-migration/detect-drift/) command, which reports how the source PostgreSQL schema changed while a migration was running. To support this, [export schema](../reference/schema-migration/export-schema/) and [export data](../reference/data-migration/export-data/) now capture periodic source schema snapshots by default for PostgreSQL sources. Turn this off with `--disable-schema-snapshot-capture true`. Reports are written as HTML and JSON to `<export-dir>/reports/`.
+
+### Enhancements
+
+- All installation methods (RHEL 8, RHEL 9, Ubuntu, Homebrew, Docker, and airgapped) now bundle PostgreSQL 18 client tools (`pg_dump`) instead of PostgreSQL 17, so you can migrate PostgreSQL 18 sources. Assessment reports don't yet include incompatibilities between PostgreSQL 18 and YugabyteDB; that reporting is planned for a later release. See [Assessment and schema analysis limitations](../known-issues/#postgresql-features-after-version-17).
+- Sizing recommendations from [assess-migration](../reference/assess-migration/) now use YugabyteDB v2026.1 experiment data by default, instead of the v2025.2 numbers used earlier.
+- Upgraded the bundled [YugabyteDB CDC gRPC connector](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#connector-compatibility) to 2026.1.2.0.1.
+
+### Bug fixes
+
+- Fixed an issue where a custom `--cdc-partition-key` or `--cdc-partition-key-overrides` set on the first iteration of an [iterative cutover](../reference/iterative-cutover/) was silently dropped in subsequent iterations, so CDC routing fell back to the primary key.
+- Fixed a crash in the fall-back exporter ([export data from target](../reference/data-migration/export-data/#export-data-from-target)) when a YugabyteDB tablet split occurred during CDC streaming.
+
 ## v2026.9.2 - September 15, 2026
 
 ### New features

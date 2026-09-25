@@ -56,7 +56,8 @@ The following illustration describes the workflow for live migration using YB Vo
 | | [Export data](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | | [Import data](#import-data-to-target) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
 | | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
-| CUTOVER TO TARGET | [Initiate cutover and prepare for fall-back to target DB](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
+| CUTOVER TO TARGET | [Detect schema drift](#detect-schema-drift-optional) {{<tags/feature/tp>}} | Optional. If the source schema might have changed during the migration, list every table and column change on the source since export schema, and the step to bring the target in line. |
+| | [Initiate cutover and prepare for fall-back to target DB](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
 | | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
 | | [Verify target DB](#cutover-to-the-target) | Check if the live migration is successful on both the source and the target databases. |
 | | [(Manual) Disable triggers and foreign keys on source DB](#cutover-to-the-target) | Run PL/SQL commands to ensure that triggers and foreign key checks are disabled so the data can be imported correctly from the target YugabyteDB database to the source database.  |
@@ -802,6 +803,41 @@ yb-voyager archive changes --export-dir <EXPORT-DIR> --policy <POLICY-TYPE>
 
 Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for more information.
 
+### Detect schema drift (optional)
+
+{{<tags/feature/tp>}} If the source schema might have changed during the migration, run the [yb-voyager schema detect-drift](../../reference/schema-migration/detect-drift/) command before cutover. It lists every table and column change made on the source since export schema, with the step needed to bring the target in line.
+
+You can run it at any point while export data is running. It is read-only and doesn't interrupt export or import.
+
+Run the command as follows:
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Config file" lang="config" %}}
+
+```sh
+yb-voyager schema detect-drift --config-file <path-to-config-file>
+```
+
+  {{% /tab %}}
+
+  {{% tab header="CLI" lang="cli" %}}
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager schema detect-drift --export-dir <EXPORT_DIR> \
+        --source-db-host <SOURCE_DB_HOST> \
+        --source-db-user <SOURCE_DB_USER> \
+        --source-db-name <SOURCE_DB_NAME> \
+        --source-db-schema <SOURCE_DB_SCHEMA>
+```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+Refer to [schema detect-drift](../../reference/schema-migration/detect-drift/) for more information.
+
 ### Cutover to the target
 
 During cutover, you switch your application over from the source database to the target YugabyteDB database.
@@ -1200,6 +1236,7 @@ DROP USER ybvoyager;
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
+- Schema changes on the source database are not applied to the target during the live migration. Use [schema detect-drift](../../reference/schema-migration/detect-drift/) to find them and to see the corrective step for each.
 - For [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
 - For YugabyteDB gRPC Connector, [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported. For target YugabyteDB clusters with node-to-node TLS only, see [SSL mode options](../../reference/data-migration/export-data/#ssl-mode-options) for the required configuration.
 - For YugabyteDB gRPC Connector, the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE, CITEXT, LTREE, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, XML, TIMETZ, user-defined types, and array of user-defined types.
