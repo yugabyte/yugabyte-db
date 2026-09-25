@@ -229,9 +229,9 @@ TEST_F(AdminCliTest, UnsupportedRpcErrorDetection) {
   ASSERT_TRUE(IsUnsupportedRpcError(RemoteErrorWithCode(
       "Call on service X received from Y with an invalid method name: Z",
       rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD)));
-  ASSERT_TRUE(IsUnsupportedRpcError(RemoteErrorWithCode(
-      "Service X not registered on Y", rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE)));
 
+  ASSERT_FALSE(IsUnsupportedRpcError(RemoteErrorWithCode(
+      "Service X not registered on Y", rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE)));
   ASSERT_FALSE(IsUnsupportedRpcError(RemoteErrorWithCode(
       "Leader not ready to serve requests", rpc::ErrorStatusPB::ERROR_APPLICATION)));
   ASSERT_FALSE(IsUnsupportedRpcError(STATUS(RemoteError, "Leader not ready to serve requests")));
@@ -561,8 +561,9 @@ TEST_F(AdminCliTest, HelpNeedsNoCluster) {
 
 TEST_F(AdminCliTest, TokenMatchSuggestions) {
   const std::vector<std::string> names = {
-      "compact_table", "list_all_masters", "list_all_tablet_servers", "list_tables",
-      "list_tablet_server_log_locations", "list_tablet_servers", "master_leader_stepdown"};
+      "compact_table", "is_encryption_enabled", "list_all_masters", "list_all_tablet_servers",
+      "list_tables", "list_tablet_server_log_locations", "list_tablet_servers",
+      "master_leader_stepdown", "write_universe_key_to_file"};
 
   const std::vector<std::string> expected = {
       "list_tablet_servers", "list_all_tablet_servers", "list_tablet_server_log_locations"};
@@ -578,7 +579,14 @@ TEST_F(AdminCliTest, TokenMatchSuggestions) {
       SuggestByNameTokens("leader", names, 5),
       (std::vector<std::string>{"master_leader_stepdown"}));
 
+  ASSERT_EQ(
+      SuggestByNameTokens("compact_tables", names, 5),
+      (std::vector<std::string>{"compact_table"}));
+
   ASSERT_TRUE(SuggestByNameTokens("list_server_zzz", names, 5).empty());
+  // A word that merely starts with a short name token ("is", "to") is not a match.
+  ASSERT_TRUE(SuggestByNameTokens("isolate", names, 5).empty());
+  ASSERT_TRUE(SuggestByNameTokens("tomorrow", names, 5).empty());
 
   ASSERT_TRUE(SuggestByNameTokens("", names, 5).empty());
   ASSERT_TRUE(SuggestByNameTokens("___", names, 5).empty());

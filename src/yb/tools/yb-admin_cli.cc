@@ -782,8 +782,8 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 
   if (cmd == command_indexes_.end()) {
     ReportUnknownOperation(op);
-    // The targeted error and suggestions above are more helpful than the full command list, so
-    // return a non-InvalidArgument status to keep main() from additionally dumping the usage.
+    // The targeted error and suggestions above are more helpful than the overview, so return a
+    // non-InvalidArgument status to keep main() from also printing it.
     return STATUS_FORMAT(RuntimeError, "Invalid operation: $0", op);
   }
 
@@ -843,7 +843,8 @@ void ClusterAdminCli::SetUsage() {
       {prog_name_ + " help <operation>", "Usage of one operation"},
       {prog_name_ + " help <text>", "Operations whose name contains <text>"},
       {prog_name_ + " --helpshort", prog_name_ + "'s own global flags"},
-      {prog_name_ + " --helpmatch=<substring>", "Inherited flags matching a substring"},
+      {prog_name_ + " --helpmatch=<substring>",
+       "Flags defined in source files whose path contains <substring>"},
       {prog_name_ + " --helpfull", "All flags (long)"},
   };
   size_t width = 0;
@@ -3661,7 +3662,8 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  if (s.IsInvalidArgument()) {
+  // Without a usage message set, gflags would print "Warning: SetUsageMessage() never called".
+  if (s.IsInvalidArgument() && yb::IsUsageMessageSet()) {
     yb::tools::ClusterAdminCli::PrintOverview(yb::BaseName(argv[0]), std::cout);
   }
 

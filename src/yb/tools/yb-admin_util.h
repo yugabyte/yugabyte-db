@@ -27,11 +27,11 @@
 namespace yb {
 namespace tools {
 
-// Returns true when the cluster does not implement the requested RPC, i.e. predates the operation.
+// Returns true when the server does not implement the requested RPC method, i.e. predates it.
 bool IsUnsupportedRpcError(const Status& s);
 
-// Returns the names whose '_'-separated tokens cover every token of op (case-insensitive), where
-// a token covers another when either is a prefix of the other. Ranked by fewest uncovered name
+// Returns the names whose '_'-separated tokens cover every token of op (case-insensitive), where a
+// typed token covers a name token it abbreviates or pluralizes. Ranked by fewest uncovered name
 // tokens, then alphabetically, and capped at max_results.
 std::vector<std::string> SuggestByNameTokens(
     const std::string& op, const std::vector<std::string>& names, size_t max_results);
