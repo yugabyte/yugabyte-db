@@ -329,6 +329,11 @@ void OutboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& 
       std::lock_guard lock(sent_on_connection_mutex_);
       sent_on_connection_ = conn;
     }
+    if (otel_span_ && conn) {
+      const auto& local = conn->local();
+      otel_span_->SetAttribute("network.local.address", local.address().to_string());
+      otel_span_->SetAttribute("network.local.port", static_cast<int64_t>(local.port()));
+    }
   } else {
     VLOG_WITH_PREFIX(1) << "Connection torn down: " << status;
     SetFailed(status);
