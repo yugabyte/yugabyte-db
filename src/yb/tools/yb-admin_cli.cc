@@ -613,6 +613,7 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
     int argc, char** argv) const {
   bool help_requested = false;
   bool helpshort = false;
+  bool gflags_help = false;
   std::vector<std::string> positionals;
   bool positional_only = false;
   for (int i = 1; i < argc; ++i) {
@@ -640,12 +641,17 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
     }
     const bool off = has_value && (value.empty() || value == "false" || value == "f" ||
                                    value == "0" || value == "no" || value == "n");
-    // yb::ParseCommandLineFlags() prints these and exits, so they win over any help request.
-    static constexpr std::string_view kParseRenderedFlags[] = {
-        "dump_flags_xml", "dump_metrics_json", "help_auto_flag_json", "helpfull", "helpmatch",
-        "helpon", "helppackage", "helpxml", "version"};
-    if (!off && std::ranges::find(kParseRenderedFlags, name) != std::end(kParseRenderedFlags)) {
+    // yb::ParseCommandLineFlags() prints these and exits before gflags looks at --help.
+    static constexpr std::string_view kYbDumpFlags[] = {
+        "dump_flags_xml", "dump_metrics_json", "help_auto_flag_json", "helpxml"};
+    // gflags prints these unless --help or --helpshort is also given.
+    static constexpr std::string_view kGflagsHelpFlags[] = {
+        "helpfull", "helpmatch", "helpon", "helppackage", "version"};
+    if (!off && std::ranges::find(kYbDumpFlags, name) != std::end(kYbDumpFlags)) {
       return std::nullopt;
+    }
+    if (!off && std::ranges::find(kGflagsHelpFlags, name) != std::end(kGflagsHelpFlags)) {
+      gflags_help = true;
     }
     if (name == "help" || name == "h" || name == "helpshort") {
       if (!off) {
@@ -673,6 +679,9 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
       }
     }
     return request;
+  }
+  if (gflags_help) {
+    return std::nullopt;
   }
   // Only a leading "help" counts: in "list_tables help", it is an argument to list_tables.
   if (!positionals.empty() && positionals.front() == kHelpOperation) {
