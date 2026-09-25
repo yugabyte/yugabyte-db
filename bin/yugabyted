@@ -3124,7 +3124,8 @@ class ControlScript(object):
         status_details = [(Output.make_yellow("Admin operation"),
                            "Find the response below."),]
         Output.print_out(self.get_status_string_common(status_details))
-        # yb-admin prints usage errors to stdout and exits non-zero, often with nothing on stderr.
+        # yb-admin can exit non-zero after writing useful output to stdout, e.g. the full usage
+        # when --command names no operation.
         if out:
           Output.print_out(out)
         if 0 != ret_code and err:
