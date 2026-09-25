@@ -95,6 +95,7 @@
 #include "utils/catcache.h"
 #include "utils/yb_inheritscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include <poll.h>
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -113,8 +114,17 @@ static void process_settings(Oid databaseid, Oid roleid);
 
 /* YB functions */
 static void YbPresetDatabaseCollation(HeapTuple tuple);
+static void YbEnableStartupClientConnectionCheck(void);
+static void YbDisableStartupClientConnectionCheck(void);
+static void YbCheckClientConnectionFromSignalHandler(void);
 
 static long YbNumAuthorizedConnections = 0L;
+
+/*
+ * Set while InitPostgres runs with the client connection check armed; see
+ * YbEnableStartupClientConnectionCheck.
+ */
+static volatile sig_atomic_t yb_startup_client_connection_check = false;
 
 /*** InitPostgres support ***/
 
@@ -1130,6 +1140,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* Connect to YugaByte cluster. */
 	YBInitPostgresBackend("postgres", yb_init_info);
 
+	/* YB: Disabled by YbInitPostgres. */
+	if (IsUnderPostmaster)
+		YbEnableStartupClientConnectionCheck();
+
 	if (!bootstrap && MyProcPort != NULL &&
 		MyProcPort->yb_dist_traceparent != NULL &&
 		MyProcPort->yb_dist_traceparent[0] != '\0')
@@ -1778,13 +1792,102 @@ YbInitPostgres(const char *in_dbname, Oid dboid,
 	}
 	PG_CATCH();
 	{
+		YbDisableStartupClientConnectionCheck();
 		YbEnsureSysTablePrefetchingStopped();
 		YBCUpdateInitPostgresMetrics();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+	YbDisableStartupClientConnectionCheck();
 	YbEnsureSysTablePrefetchingStopped();
 	YBCUpdateInitPostgresMetrics();
+}
+
+/*
+ * PG's client_connection_check_interval normally applies only after the
+ * backend has initialized.  In YB, initialization RPCs such as the catalog
+ * preload can take a while, so this check honors the GUC during those RPCs
+ * too.  They run before the per-database and per-role values of
+ * client_connection_check_interval are loaded, so only the server-wide
+ * setting (ysql_pg_conf_csv) is respected here.
+ */
+static void
+YbEnableStartupClientConnectionCheck(void)
+{
+	/*
+	 * MyProcPort is not set for other types of workers, which don't process
+	 * queries.
+	 */
+	if (!*YBCGetGFlags()->ysql_enable_startup_client_connection_check ||
+		client_connection_check_interval <= 0 || MyProcPort == NULL)
+		return;
+
+	yb_startup_client_connection_check = true;
+	/* Set up a signal handler to fire periodically (SIGALRM). */
+	enable_timeout_every(CLIENT_CONNECTION_CHECK_TIMEOUT,
+						 TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
+													 client_connection_check_interval),
+						 client_connection_check_interval);
+}
+
+static void
+YbDisableStartupClientConnectionCheck(void)
+{
+	if (!yb_startup_client_connection_check)
+		return;
+
+	disable_timeout(CLIENT_CONNECTION_CHECK_TIMEOUT, false);
+	yb_startup_client_connection_check = false;
+}
+
+/*
+ * The goal is to do the same work as pq_check_connection, but in signal
+ * context.  pq_check_connection is not safe to run inside a signal handler.
+ *
+ * On a lost client this does what die() does, but sets ClientConnectionLost
+ * instead of ProcDiePending, so that ProcessInterrupts reports the lost
+ * client.  Interrupting pggate fails the pending request, and the error path
+ * runs CHECK_FOR_INTERRUPTS, which exits with FATAL.  The timer is still armed
+ * when InitPostgres exits with FATAL; after proc_exit destroys pggate,
+ * IsYugaByteEnabled() returns false.
+ */
+static void
+YbCheckClientConnectionFromSignalHandler(void)
+{
+	struct pollfd pfd;
+	short		hangup_events = POLLHUP | POLLERR;
+
+	if (ClientConnectionLost || proc_exit_inprogress)
+		return;
+
+	/*
+	 * MyProcPort is non-NULL only in backends started for a client
+	 * connection: regular backends and walsenders.  Background workers,
+	 * parallel workers and autovacuum have none, so the check is never armed
+	 * for them.
+	 */
+	pfd.fd = MyProcPort->sock;
+	/*
+	 * POLLRDHUP is a Linux-only flag that captures graceful close of conn. The
+	 * other poll flags capture errors on the socket. This means that the
+	 * client connection check cannot detect graceful client close on MacOS.
+	 */
+#ifdef POLLRDHUP
+	hangup_events |= POLLRDHUP;
+#endif
+	pfd.events = hangup_events;
+	pfd.revents = 0;
+	if (poll(&pfd, 1, 0) > 0 && (pfd.revents & hangup_events) != 0)
+	{
+		ClientConnectionLost = true;
+		InterruptPending = true;
+
+
+		if (IsYugaByteEnabled())
+			YBCInterruptPgGate(); /* abort pending RPCs, if any */
+
+		SetLatch(MyLatch); /* wake up PG waits, if any */
+	}
 }
 
 /*
@@ -2073,6 +2176,12 @@ IdleStatsUpdateTimeoutHandler(void)
 static void
 ClientCheckTimeoutHandler(void)
 {
+	if (yb_startup_client_connection_check)
+	{
+		YbCheckClientConnectionFromSignalHandler();
+		return;
+	}
+
 	CheckClientConnectionPending = true;
 	InterruptPending = true;
 	SetLatch(MyLatch);
