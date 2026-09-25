@@ -168,7 +168,7 @@ For a custom key to eliminate conflicts without breaking correctness or throughp
   For example, `order_id` is part of both `UNIQUE (order_id, sort_key)` and `UNIQUE (order_id, is_current)`, so partitioning by `order_id` drives conflicts to zero. An uncovered index such as `UNIQUE (tracking_code)` can still trigger detection.
 
   If the key misses a unique index, correctness is still preserved (conflict detection keeps guarding cross-channel events), but detection keeps tripping on that index, and the waits return.
-- **High cardinality, not-null, and low-skew (for performance).** Parallelism becomes the number of distinct key values in flight. Many distinct values spread evenly across channels; a single very hot value or NULL funnels its traffic into one channel, degrading toward single-channel apply for that slice.
+- **High cardinality, not-null, and low-skew (for performance).** A table can keep at most as many channels busy as there are distinct key values among the events being applied. Many distinct values spread evenly across channels. Events that share one very common value, or that have a NULL key, all hash to one channel and are applied one after another; the rest of the table can still use the other channels.
 
 ### (Alternative) Partition by table name
 
