@@ -623,39 +623,39 @@ void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
 
 Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId query_id,
                                 Statistics* statistics)  {
-  absl::MutexLock l(&mutex_);
-  LRUHandle* e = table_.Lookup(key, hash);
-  if (e != nullptr) {
-    assert(e->in_cache);
-    // Since the entry is now referenced externally, cannot be evicted, so remove from LRU.
-    if (e->refs == 1) {
-      LRU_Remove(e);
-    }
-    // Increase the number of references and move to state 1. (in cache and not in LRU)
-    e->refs++;
+  LRUHandle* e;
+  {
+    absl::MutexLock l(&mutex_);
+    e = table_.Lookup(key, hash);
+    if (e != nullptr) {
+      assert(e->in_cache);
+      // Since the entry is now referenced externally, cannot be evicted, so remove from LRU.
+      if (e->refs == 1) {
+        LRU_Remove(e);
+      }
+      // Increase the number of references and move to state 1. (in cache and not in LRU)
+      e->refs++;
 
-    // Now the handle will be added to the multi touch pool only if it exists.
-    if (FLAGS_cache_single_touch_ratio < 1 && e->GetSubCacheType() != MULTI_TOUCH &&
-        e->query_id != query_id) {
-      {
-        LRUHandleDeleter multi_touch_eviction_list(cache_usage_.get());
-        EvictFromLRU(e->charge, &multi_touch_eviction_list, MULTI_TOUCH);
-      }
-      // Cannot have any single touch elements in this case.
-      assert(FLAGS_cache_single_touch_ratio != 0);
-      if (!strict_capacity_limit_ ||
-          multi_touch_sub_cache_.Usage() - multi_touch_sub_cache_.LRU_Usage() + e->charge <=
-          multi_touch_capacity_) {
-        e->query_id = kInMultiTouchId;
-        single_touch_sub_cache_.DecrementUsage(e->charge);
-        multi_touch_sub_cache_.IncrementUsage(e->charge);
+      // Now the handle will be added to the multi touch pool only if it exists.
+      if (FLAGS_cache_single_touch_ratio < 1 && e->GetSubCacheType() != MULTI_TOUCH &&
+          e->query_id != query_id) {
+        {
+          LRUHandleDeleter multi_touch_eviction_list(cache_usage_.get());
+          EvictFromLRU(e->charge, &multi_touch_eviction_list, MULTI_TOUCH);
+        }
+        // Cannot have any single touch elements in this case.
+        assert(FLAGS_cache_single_touch_ratio != 0);
+        if (!strict_capacity_limit_ ||
+            multi_touch_sub_cache_.Usage() - multi_touch_sub_cache_.LRU_Usage() + e->charge <=
+            multi_touch_capacity_) {
+          e->query_id = kInMultiTouchId;
+          single_touch_sub_cache_.DecrementUsage(e->charge);
+          multi_touch_sub_cache_.IncrementUsage(e->charge);
+        }
       }
     }
-    RecordTick(statistics, BLOCK_CACHE_HIT);
-  } else {
-    RecordTick(statistics, BLOCK_CACHE_MISS);
   }
-
+  RecordTick(statistics, e ? BLOCK_CACHE_HIT : BLOCK_CACHE_MISS);
   return reinterpret_cast<Cache::Handle*>(e);
 }
 
@@ -806,19 +806,18 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
       }
       s = Status::OK();
     }
-    if (statistics != nullptr) {
-      if (s.ok()) {
-        RecordTick(statistics, BLOCK_CACHE_ADD);
-        RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
-      } else {
-        RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
-      }
-    }
-    if (cache_usage_ != nullptr) {
-      cache_usage_->IncrementBy(charge);
+  }
+  if (statistics != nullptr) {
+    if (s.ok()) {
+      RecordTick(statistics, BLOCK_CACHE_ADD);
+      RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
+    } else {
+      RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
     }
   }
-
+  if (cache_usage_ != nullptr) {
+    cache_usage_->IncrementBy(charge);
+  }
   return s;
 }
 
