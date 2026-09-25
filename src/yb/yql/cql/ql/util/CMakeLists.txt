@@ -16,7 +16,8 @@ set(YB_PCH_PATH ../)
 
 ADD_YB_LIBRARY(
     ql_util
-    SRCS cql_message.cc errcodes.cc statement_params.cc statement_result.cc ql_env.cc
+    SRCS cql_message.cc errcodes.cc password_redaction.cc statement_params.cc statement_result.cc
+         ql_env.cc
     DEPS yb_client yb_util lz4 snappy)
 
 add_dependencies(ql_util ql_parser_flex_bison_output)

@@ -29,6 +29,7 @@
 #include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/util/password_redaction.h"
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
@@ -908,6 +909,27 @@ TEST_F(TestQLRole, TestRoleQuerySimple) {
   CheckCreateAndDropRole(processor, "test_role1", "test_pw", true, true);
   // Test no password set
   CheckCreateAndDropRole(processor, "test_role2", nullptr, false, true);
+}
+
+// The statement echoed into an error message reaches the tserver log, the client, and the audit
+// record, so it must not carry the password.
+TEST_F(TestQLRole, TestErrorMessageRedactsPassword) {
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
+
+  const string password = "s3cr3t_echo_pw";
+  const string create = Substitute("CREATE ROLE echo_role WITH PASSWORD = '$0'", password);
+  EXEC_VALID_STMT(create);
+
+  // Rejected at execution with DUPLICATE_ROLE, and during analysis for the repeated clause.
+  for (const string& stmt : {create,
+                             Substitute("CREATE ROLE echo_role2 WITH PASSWORD = '$0' AND "
+                                        "PASSWORD = '$0'", password)}) {
+    PROCESSOR_RUN(s, stmt);
+    ASSERT_NOK(s);
+    ASSERT_EQ(s.ToString().find(password), string::npos) << s;
+    ASSERT_NE(s.ToString().find(kRedactedPlaceholder), string::npos) << s;
+  }
 }
 
 TEST_F(TestQLRole, TestQLCreateRoleSimple) {

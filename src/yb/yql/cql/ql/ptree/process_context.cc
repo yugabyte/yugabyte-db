@@ -15,11 +15,17 @@
 
 #include "yb/yql/cql/ql/ptree/process_context.h"
 
+#include <algorithm>
+#include <cstring>
+#include <string>
+#include <vector>
+
 #include "yb/util/logging.h"
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/util/password_redaction.h"
 
 namespace yb {
 namespace ql {
@@ -27,6 +33,140 @@ namespace ql {
 using std::endl;
 using std::istream;
 using std::string;
+
+namespace {
+
+// Appends `stmt` to `msg` line by line, and after each line that the error token spans, a marker
+// line with '^' under it. Positions are 0-based; the end column is exclusive. Returns whether a
+// marker line was written.
+bool AppendStmtWithErrorMarker(const std::string& stmt,
+                               int err_begin_line,
+                               int err_begin_column,
+                               int err_end_line,
+                               int err_end_column,
+                               MCString* msg) {
+  bool wrote_token = false;
+  int curr_line = 0;
+  int curr_col = 0;
+  const char *stmt_begin = stmt.c_str();
+  const char *stmt_end = stmt_begin + stmt.length();
+  const char *curr_char = stmt_begin;
+
+  while (curr_char <= stmt_end) {
+    if (curr_char == stmt_end || *curr_char == '\n') { // End of stmt/line char.
+      *msg += '\n';
+
+      // If in error-token range, try writing line marking error location with '^'.
+      if (curr_line >= err_begin_line && curr_line <= err_end_line) {
+        const char *line_start = curr_char - curr_col; // Inclusive, first char of line.
+        const char *line_end = curr_char - 1; // Inclusive, last char of line.
+
+        // Line start and end should be within statement bounds.
+        DCHECK_GE(line_start, stmt_begin);
+        DCHECK_LT(line_start, stmt_end);
+        DCHECK_GE(line_end, stmt_begin);
+        DCHECK_LT(line_end, stmt_end);
+
+        // Finding error-token start, left-trim spaces if this is first line of the error token.
+        const char *error_start = line_start; // Inclusive, first char of error token.
+        if (curr_line == err_begin_line) {
+          error_start += err_begin_column;
+        }
+        if (!wrote_token) {
+          while (error_start <= line_end && isspace(*error_start)) {
+            error_start++;
+          }
+        }
+
+        // Finding error-token end, right-trim spaces if this is last line of the error token.
+        const char *error_end = line_end; // Inclusive, last char of error token.
+        if (curr_line == err_end_line) {
+          // The end-column location reported by Bison is generally exclusive (i.e. character
+          // after the error token) so by default we subtract one from reported value.
+          // ENG-2052: End-column value may be wrong/out-of-bounds so we cap value to line end.
+          error_end = std::min(line_start + err_end_column - 1, line_end);
+
+          while (error_end >= error_start && isspace(*error_end)) {
+            error_end--;
+          }
+        }
+
+        // If we found a valid token range write a marker line.
+        if (error_end >= error_start) {
+          msg->append(error_start - line_start, ' ');
+          msg->append(error_end - error_start + 1, '^'); // +1 since both limits are inclusive.
+          *msg += '\n';
+          wrote_token = true;
+        }
+      }
+
+      curr_line++;
+      curr_col = 0;
+    } else {
+      *msg += *curr_char;
+      curr_col++;
+    }
+    curr_char++;
+  }
+  return wrote_token;
+}
+
+// Moves a 0-based (line, column) position in `stmt` to the same token position in
+// `redacted_stmt`, the result of RedactPasswordLiterals(stmt) that replaced `ranges`. Lines are
+// split on '\n' as in AppendStmtWithErrorMarker, and an out-of-range position (ENG-2052) is capped
+// to the end of its line, or of the statement. A position inside a redacted range lands on the
+// start of its placeholder, or just past it if `is_end`, so a marker over the value covers the
+// whole placeholder.
+void ShiftPositionOntoRedacted(const std::string& stmt,
+                               const std::string& redacted_stmt,
+                               const std::vector<RedactedRange>& ranges,
+                               bool is_end,
+                               int* line,
+                               int* column) {
+  size_t line_start = 0;
+  size_t offset = stmt.size();
+  bool line_found = true;
+  for (int l = 0; l < *line; ++l) {
+    const size_t newline = stmt.find('\n', line_start);
+    if (newline == std::string::npos) {
+      line_found = false;
+      break;
+    }
+    line_start = newline + 1;
+  }
+  if (line_found) {
+    const size_t line_end = std::min(stmt.find('\n', line_start), stmt.size());
+    offset = std::min(line_start + static_cast<size_t>(*column), line_end);
+  }
+
+  const auto placeholder_len = static_cast<ptrdiff_t>(strlen(kRedactedPlaceholder));
+  ptrdiff_t shifted = static_cast<ptrdiff_t>(offset);
+  for (const auto& range : ranges) {
+    const auto begin = static_cast<ptrdiff_t>(range.begin);
+    const auto end = static_cast<ptrdiff_t>(range.end);
+    if (static_cast<ptrdiff_t>(offset) >= end) {
+      shifted += placeholder_len - (end - begin);
+      continue;
+    }
+    if (static_cast<ptrdiff_t>(offset) > begin) {
+      shifted += begin - static_cast<ptrdiff_t>(offset) + (is_end ? placeholder_len : 0);
+    }
+    break;
+  }
+
+  int redacted_line = 0;
+  size_t redacted_line_start = 0;
+  for (size_t newline = redacted_stmt.find('\n');
+       newline != std::string::npos && newline < static_cast<size_t>(shifted);
+       newline = redacted_stmt.find('\n', newline + 1)) {
+    ++redacted_line;
+    redacted_line_start = newline + 1;
+  }
+  *line = redacted_line;
+  *column = static_cast<int>(static_cast<size_t>(shifted) - redacted_line_start);
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------------------------------
 // ProcessContextBase
@@ -105,67 +245,26 @@ Status ProcessContextBase::Error(const YBLocation& loc,
       DCHECK_GE(err_end_line, 0);
       DCHECK_GE(err_end_column, 0);
 
-      int curr_line = 0;
-      int curr_col = 0;
-      const char *stmt_begin = stmt().c_str();
-      const char *stmt_end = stmt_begin + stmt().length();
-      const char *curr_char = stmt_begin;
-
-      while (curr_char <= stmt_end) {
-        if (curr_char == stmt_end || *curr_char == '\n') { // End of stmt/line char.
-          msg += '\n';
-
-          // If in error-token range, try writing line marking error location with '^'.
-          if (curr_line >= err_begin_line && curr_line <= err_end_line) {
-            const char *line_start = curr_char - curr_col; // Inclusive, first char of line.
-            const char *line_end = curr_char - 1; // Inclusive, last char of line.
-
-            // Line start and end should be within statement bounds.
-            DCHECK_GE(line_start, stmt_begin);
-            DCHECK_LT(line_start, stmt_end);
-            DCHECK_GE(line_end, stmt_begin);
-            DCHECK_LT(line_end, stmt_end);
-
-            // Finding error-token start, left-trim spaces if this is first line of the error token.
-            const char *error_start = line_start; // Inclusive, first char of error token.
-            if (curr_line == err_begin_line) {
-              error_start += err_begin_column;
-            }
-            if (!wrote_token) {
-              while (error_start <= line_end && isspace(*error_start)) {
-                error_start++;
-              }
-            }
-
-            // Finding error-token end, right-trim spaces if this is last line of the error token.
-            const char *error_end = line_end; // Inclusive, last char of error token.
-            if (curr_line == err_end_line) {
-              // The end-column location reported by Bison is generally exclusive (i.e. character
-              // after the error token) so by default we subtract one from reported value.
-              // ENG-2052: End-column value may be wrong/out-of-bounds so we cap value to line end.
-              error_end = std::min(line_start + err_end_column - 1, line_end);
-
-              while (error_end >= error_start && isspace(*error_end)) {
-                error_end--;
-              }
-            }
-
-            // If we found a valid token range write a marker line.
-            if (error_end >= error_start) {
-              msg.append(error_start - line_start, ' ');
-              msg.append(error_end - error_start + 1, '^'); // +1 since both limits are inclusive.
-              msg += '\n';
-              wrote_token = true;
-            }
-          }
-
-          curr_line++;
-          curr_col = 0;
-        } else {
-          msg += *curr_char;
-          curr_col++;
-        }
-        curr_char++;
+      // The echo reaches the WARNING log below, the returned Status (and so the client and the
+      // audit record), so a password value in the statement must not be echoed verbatim. The
+      // marker position is in terms of the original statement; shift it onto the redacted text.
+      std::vector<RedactedRange> redacted_ranges;
+      const std::string redacted_stmt = RedactPasswordLiterals(stmt(), &redacted_ranges);
+      if (redacted_ranges.empty()) {
+        wrote_token = AppendStmtWithErrorMarker(
+            stmt(), err_begin_line, err_begin_column, err_end_line, err_end_column, &msg);
+      } else {
+        int begin_line = err_begin_line;
+        int begin_column = err_begin_column;
+        int end_line = err_end_line;
+        int end_column = err_end_column;
+        ShiftPositionOntoRedacted(
+            stmt(), redacted_stmt, redacted_ranges, /* is_end */ false, &begin_line,
+            &begin_column);
+        ShiftPositionOntoRedacted(
+            stmt(), redacted_stmt, redacted_ranges, /* is_end */ true, &end_line, &end_column);
+        wrote_token = AppendStmtWithErrorMarker(
+            redacted_stmt, begin_line, begin_column, end_line, end_column, &msg);
       }
     }
 
