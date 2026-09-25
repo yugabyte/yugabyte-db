@@ -41,12 +41,6 @@ extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   int *merge_scan_cardinality,
 									   List **merge_scan_stream_cols);
 
-extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
-												Relids relids,
-												List *stream_cols,
-												List *indexclauses,
-												List *pathkeys);
-
 extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   List *pathkeys,
 										   Relids relids,
@@ -56,3 +50,9 @@ extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   Oid **p_sortOperators,
 										   Oid **p_collations,
 										   bool **p_nullsFirst);
+
+extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
+												Relids relids,
+												List *stream_cols,
+												List *indexclauses,
+												List *pathkeys);
