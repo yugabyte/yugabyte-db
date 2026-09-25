@@ -637,6 +637,11 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
       name = name.substr(0, eq);
       has_value = true;
     }
+    // gflags renders these during the parse, so they take precedence over a leading "help" too.
+    if (name == "helpfull" || name == "helpmatch" || name == "helpon" || name == "helppackage" ||
+        name == "helpxml" || name == "version") {
+      return std::nullopt;
+    }
     if (name == "help" || name == "h" || name == "helpshort") {
       if (!has_value ||
           (value != "false" && value != "f" && value != "0" && value != "no" && value != "n")) {
