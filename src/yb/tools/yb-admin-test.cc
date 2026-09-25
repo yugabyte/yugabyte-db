@@ -32,8 +32,10 @@
 // Tests for the yb-admin command-line tool.
 
 #include <algorithm>
+#include <fstream>
 #include <map>
 #include <regex>
+#include <sstream>
 #include <thread>
 #include <tuple>
 #include <unordered_set>
@@ -63,12 +65,16 @@
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/rpc/outbound_call.h"
+
 #include "yb/tools/admin-test-base.h"
+#include "yb/tools/yb-admin_util.h"
 
 #include "yb/tools/tools_test_utils.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
@@ -211,16 +217,35 @@ class AdminCliTest : public AdminTestBase {
   TmpDirProvider tmp_dir_;
 };
 
+namespace {
+
+Status RemoteErrorWithCode(const std::string& message, rpc::ErrorStatusPB::RpcErrorCodePB code) {
+  return STATUS(RemoteError, message).CloneAndAddErrorCode(rpc::RpcError(code));
+}
+
+}  // namespace
+
+TEST_F(AdminCliTest, UnsupportedRpcErrorDetection) {
+  ASSERT_TRUE(IsUnsupportedRpcError(RemoteErrorWithCode(
+      "Call on service X received from Y with an invalid method name: Z",
+      rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD)));
+
+  ASSERT_FALSE(IsUnsupportedRpcError(RemoteErrorWithCode(
+      "Service X not registered on Y", rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE)));
+  ASSERT_FALSE(IsUnsupportedRpcError(RemoteErrorWithCode(
+      "Leader not ready to serve requests", rpc::ErrorStatusPB::ERROR_APPLICATION)));
+  ASSERT_FALSE(IsUnsupportedRpcError(STATUS(RemoteError, "Leader not ready to serve requests")));
+  ASSERT_FALSE(IsUnsupportedRpcError(STATUS(TimedOut, "no response")));
+}
+
 // Verify the "did you mean" help for a misspelled operation, none of which needs a running
 // cluster (the operation is checked before yb-admin connects to the master): prefix matches,
 // fuzzy (edit-distance) matches, and that an invalid operation no longer dumps the full command
-// list (the original complaint in the issue) while running with no operation still prints the
-// full usage as help.
+// list (the original complaint in the issue) while running with no operation still prints help.
 TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   const auto exe_path = GetAdminToolPath();
   constexpr auto kUnusedMasterAddress = "127.0.0.1:0";
-  // This marker only appears in the full usage/command listing (which is printed to stdout).
-  constexpr auto kFullUsageMarker = "<operation> must be one of";
+  constexpr auto kOperationListMarker = "Operations (";
   std::string output;
   std::string error;
 
@@ -233,16 +258,16 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   ASSERT_STR_CONTAINS(error, "list_snapshot_schedules");
 
   // Prefix match: a prefix of several commands lists every candidate and a hint, and must not dump
-  // the full command list on either stream.
+  // the operation list on either stream.
   ASSERT_NOK(Subprocess::Call(
       ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_table"), &output,
       &error));
   ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
   ASSERT_STR_CONTAINS(error, "list_tables");
   ASSERT_STR_CONTAINS(error, "list_tablets");
-  ASSERT_STR_CONTAINS(error, "to see all available operations");
-  ASSERT_STR_NOT_CONTAINS(output, kFullUsageMarker);
-  ASSERT_STR_NOT_CONTAINS(error, kFullUsageMarker);
+  ASSERT_STR_CONTAINS(error, "help' to list all operations");
+  ASSERT_STR_NOT_CONTAINS(output, kOperationListMarker);
+  ASSERT_STR_NOT_CONTAINS(error, kOperationListMarker);
 
   // Fuzzy match: a transposition ("tabels" instead of "tables") is not a prefix but is close.
   ASSERT_NOK(Subprocess::Call(
@@ -257,6 +282,14 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
       &error));
   ASSERT_STR_CONTAINS(error, "list_tables");
 
+  // Token match: an abbreviation too far from any command for the fuzzy match.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_server"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tablet_servers");
+  ASSERT_STR_CONTAINS(error, "list_all_tablet_servers");
+
   // An empty operation is a prefix of every command, but should not list all of them.
   ASSERT_NOK(Subprocess::Call(
       ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, ""), nullptr, &error));
@@ -268,10 +301,334 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
       nullptr, &error));
   ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
 
-  // Running with no operation at all should still print the full usage as help on stdout.
+  // Running with no operation prints the short overview, without the gflags dump.
   ASSERT_NOK(Subprocess::Call(
       ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress), &output, &error));
-  ASSERT_STR_CONTAINS(output, kFullUsageMarker);
+  ASSERT_STR_CONTAINS(output, "Usage:");
+  ASSERT_STR_CONTAINS(output, "Get help:");
+  ASSERT_STR_CONTAINS(output, "Common global flags:");
+  ASSERT_STR_CONTAINS(output, "Example:");
+  ASSERT_STR_NOT_CONTAINS(output, kOperationListMarker);
+  ASSERT_STR_NOT_CONTAINS(output, "Flags from");
+  ASSERT_STR_NOT_CONTAINS(output, "yb-admin_cli.cc:");
+  ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+  ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
+  ASSERT_LE(std::count(output.begin(), output.end(), '\n'), 25);
+}
+
+// A malformed --init_master_addrs gets a targeted error, not the overview or a crash (#33435).
+TEST_F(AdminCliTest, MalformedInitMasterAddrs) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+
+  for (const auto& bad_value : {"host:99999", "host:abc", ",", ",,"}) {
+    output.clear();
+    error.clear();
+    ASSERT_NOK(Subprocess::Call(
+        ToStringVector(exe_path, "--init_master_addrs", bad_value, "list_tables"), &output,
+        &error))
+        << "--init_master_addrs=" << bad_value << " unexpectedly succeeded";
+    ASSERT_STR_CONTAINS(error, "Invalid --init_master_addrs");
+    ASSERT_STR_NOT_CONTAINS(output, "Get help:");
+    ASSERT_STR_NOT_CONTAINS(output, "Operations (");
+    ASSERT_STR_NOT_CONTAINS(error, "Operations (");
+  }
+}
+
+namespace {
+
+std::vector<std::string> SplitLines(const std::string& text) {
+  std::vector<std::string> lines;
+  std::istringstream stream(text);
+  std::string line;
+  while (std::getline(stream, line)) {
+    lines.push_back(line);
+  }
+  return lines;
+}
+
+}  // namespace
+
+TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+
+  for (const auto* help_flag : {"--help", "-help", "--h", "-h", "--help=true"}) {
+    output.clear();
+    error.clear();
+    SCOPED_TRACE(help_flag);
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, help_flag), &output, &error));
+    ASSERT_STR_CONTAINS(output, "administer a YugabyteDB universe");
+    ASSERT_STR_CONTAINS(output, "Get help:");
+    ASSERT_STR_CONTAINS(output, "Common global flags:");
+    ASSERT_STR_NOT_CONTAINS(output, "Flags from");
+    ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+    ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
+    ASSERT_LE(std::count(output.begin(), output.end(), '\n'), 25) << help_flag;
+  }
+
+  // --help=false is not a help request: this is the bare invocation, which exits 1.
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "--help=false"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Get help:");
+
+  // Here --help is the value of --master_addresses.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", "--help"), &output, &error));
+
+  // --helpshort adds yb-admin's own flags to the overview.
+  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "--helpshort"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Get help:");
+  ASSERT_STR_CONTAINS(output, "own flags:");
+  ASSERT_STR_CONTAINS(output, "--timeout_ms");
+  ASSERT_STR_CONTAINS(output, "--certs_dir_name");
+  ASSERT_STR_NOT_CONTAINS(output, "No modules matched");
+  ASSERT_STR_NOT_CONTAINS(output, "Flags from");
+  // Hidden flags such as --TEST_metadata_file_format_version are excluded.
+  ASSERT_STR_NOT_CONTAINS(output, "--TEST_");
+
+  // --helpfull is still the gflags dump, headed by the overview.
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "--helpfull"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Flags from");
+  ASSERT_STR_CONTAINS(output, "administer a YugabyteDB universe");
+  ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+  ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
+
+  // gflags help flags win over a leading "help" but not over --help, as in gflags itself.
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "--helpfull", "help"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Flags from");
+  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "--help", "--helpfull"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Get help:");
+  ASSERT_STR_NOT_CONTAINS(output, "Flags from");
+  // yb's dump flags and --version win over --help too.
+  for (const auto* flag : {"--help_auto_flag_json", "--version"}) {
+    SCOPED_TRACE(flag);
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "--help", flag), &output, &error));
+    ASSERT_STR_NOT_CONTAINS(output, "Get help:");
+  }
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "--helpfull=false", "help"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Operations (");
+}
+
+TEST_F(AdminCliTest, HelpListsAllOperations) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "help"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Operations (");
+  ASSERT_STR_CONTAINS(output, "help <operation>' for the usage of one operation");
+  ASSERT_STR_NOT_CONTAINS(output, "Flags from");
+  ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+  ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
+
+  std::vector<int> numbers;
+  std::vector<std::string> names;
+  std::regex entry_re(R"(\n\s*(\d+)\. (\S+))");
+  for (std::sregex_iterator it(output.begin(), output.end(), entry_re), end; it != end; ++it) {
+    numbers.push_back(std::stoi((*it)[1].str()));
+    names.push_back((*it)[2].str());
+  }
+  ASSERT_GE(numbers.size(), 100);
+  for (size_t idx = 0; idx < numbers.size(); ++idx) {
+    ASSERT_EQ(numbers[idx], static_cast<int>(idx) + 1)
+        << "gap or duplicate in operation numbering at position " << idx;
+  }
+  ASSERT_TRUE(std::is_sorted(names.begin(), names.end())) << "operation list is not alphabetical";
+  ASSERT_TRUE(std::find(names.begin(), names.end(), "help") != names.end());
+  ASSERT_TRUE(
+      std::find(names.begin(), names.end(), "unsafe_release_object_locks_global") == names.end());
+
+  // Long entries are truncated; help <operation> shows the full syntax.
+  for (const auto& line : SplitLines(output)) {
+    ASSERT_LE(line.size(), 100) << line;
+  }
+  ASSERT_TRUE(std::regex_search(
+      output, std::regex(R"(alter_universe_replication [^\n]*\.\.\.)")))
+      << "expected a truncated entry";
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "alter_universe_replication"), &output, &error));
+  const auto usage_line = SplitLines(output).front();
+  ASSERT_STR_CONTAINS(usage_line, "Usage: yb-admin alter_universe_replication");
+  ASSERT_GT(usage_line.size(), 100);
+}
+
+// `help <arg>`: exact operation, then substring filter, then typo suggestions.
+TEST_F(AdminCliTest, HelpOperationDispatch) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "help", "snapshot"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Operations matching 'snapshot' (");
+  ASSERT_STR_CONTAINS(output, "\n  * abort_snapshot_restore");
+  ASSERT_STR_CONTAINS(output, "create_snapshot");
+  ASSERT_STR_CONTAINS(output, "restore_snapshot_schedule");
+  ASSERT_FALSE(std::regex_search(output, std::regex(R"(\n\s*\d+\. )")));
+
+  // Hidden operations' usage is available by exact name.
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "unsafe_release_object_locks_global"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Usage: yb-admin unsafe_release_object_locks_global");
+
+  // Numbers in the list are not operation names.
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "help", "42"), &output, &error));
+  ASSERT_STR_CONTAINS(error, "Invalid operation: 42");
+
+  // No match falls back to the typo suggestions.
+  output.clear();
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "help", "delete_tabel"), &output, &error));
+  ASSERT_STR_CONTAINS(error, "Invalid operation: delete_tabel");
+  ASSERT_STR_CONTAINS(error, "delete_table");
+  ASSERT_STR_CONTAINS(error, "help' to list all operations");
+  ASSERT_STR_NOT_CONTAINS(error, "Error running help");
+  ASSERT_TRUE(output.empty()) << output;
+
+  // Far-off garbage gets no suggestions.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "zzzzzzzzzzzzzzzzzz"), nullptr, &error));
+  ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
+
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "hepl"), nullptr, &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_TRUE(std::regex_search(error, std::regex(R"(\n  help\n)"))) << error;
+
+  output.clear();
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "extra1", "extra2"), &output, &error));
+  ASSERT_STR_CONTAINS(error, "Usage: yb-admin help [<operation>]");
+  ASSERT_STR_NOT_CONTAINS(output, "Get help:");
+}
+
+// Help is answered before the flag parse and without a client.
+TEST_F(AdminCliTest, HelpNeedsNoCluster) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+
+  // Must not wait out --timeout_ms (60s by default) on an unreachable master.
+  const auto start = MonoTime::Now();
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "--master_addresses", "127.0.0.1:1"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Operations (");
+  ASSERT_LT((MonoTime::Now() - start).ToSeconds(), 30);
+
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "--init_master_addrs=host:badport"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Operations (");
+
+  // The operation to show help for may follow flags.
+  const auto flagfile_path = tmp_dir_ / "flagfile.conf";
+  std::ofstream flagfile(flagfile_path);
+  flagfile << "--master_addresses=127.0.0.1:1\n";
+  flagfile.close();
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "--flagfile", flagfile_path, "delete_table", "--help"), &output,
+      &error));
+  ASSERT_STR_CONTAINS(output, "Usage: yb-admin delete_table <table>");
+
+  const std::vector<std::string> parse_breakers = {
+      "--flagfile=/nonexistent/server.conf",  // gflags: "No such file or directory"
+      "--timeout_ms=not_a_number",            // gflags: "illegal value ... for int64 flag"
+      "--no_such_flag_exists",                // gflags: "unknown command line flag"
+  };
+  for (const auto& breaker : parse_breakers) {
+    SCOPED_TRACE(breaker);
+
+    output.clear();
+    error.clear();
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, breaker, "help"), &output, &error));
+    ASSERT_STR_CONTAINS(output, "Operations (");
+
+    output.clear();
+    error.clear();
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, breaker, "--help"), &output, &error));
+    ASSERT_STR_CONTAINS(output, "Get help:");
+
+    output.clear();
+    error.clear();
+    ASSERT_OK(Subprocess::Call(
+        ToStringVector(exe_path, breaker, "help", "delete_table"), &output, &error));
+    ASSERT_STR_CONTAINS(output, "Usage: yb-admin delete_table <table>");
+  }
+
+  // "help" as an argument to another operation.
+  output.clear();
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", "127.0.0.1:1", "--timeout_ms", "1000",
+                     "flush_table", "help"),
+      &output, &error));
+  ASSERT_STR_NOT_CONTAINS(output, "Operations (");
+
+  // "help" as the value of a flag.
+  output.clear();
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--certs_dir_name", "help", "--master_addresses", "127.0.0.1:1",
+                     "--timeout_ms", "1000", "list_tables"),
+      &output, &error));
+  ASSERT_STR_NOT_CONTAINS(output, "Operations (");
+}
+
+TEST_F(AdminCliTest, TokenMatchSuggestions) {
+  const std::vector<std::string> names = {
+      "compact_table", "is_encryption_enabled", "list_all_masters", "list_all_tablet_servers",
+      "list_tables", "list_tablet_server_log_locations", "list_tablet_servers",
+      "master_leader_stepdown", "write_universe_key_to_file"};
+
+  const std::vector<std::string> expected = {
+      "list_tablet_servers", "list_all_tablet_servers", "list_tablet_server_log_locations"};
+  ASSERT_EQ(SuggestByNameTokens("list_server", names, 5), expected);
+
+  ASSERT_EQ(SuggestByNameTokens("servers_list", names, 5), expected);
+  ASSERT_EQ(SuggestByNameTokens("LIST_Server", names, 5), expected);
+  ASSERT_EQ(
+      SuggestByNameTokens("list_server", names, 2),
+      (std::vector<std::string>{"list_tablet_servers", "list_all_tablet_servers"}));
+
+  ASSERT_EQ(
+      SuggestByNameTokens("leader", names, 5),
+      (std::vector<std::string>{"master_leader_stepdown"}));
+
+  ASSERT_EQ(
+      SuggestByNameTokens("compact_tables", names, 5),
+      (std::vector<std::string>{"compact_table"}));
+
+  ASSERT_TRUE(SuggestByNameTokens("list_server_zzz", names, 5).empty());
+  // A word that merely starts with a name token is not a match.
+  for (const auto& word : {"isolate", "tomorrow", "allow", "login"}) {
+    ASSERT_TRUE(SuggestByNameTokens(word, names, 5).empty()) << word;
+  }
+
+  ASSERT_TRUE(SuggestByNameTokens("", names, 5).empty());
+  ASSERT_TRUE(SuggestByNameTokens("___", names, 5).empty());
+}
+
+// `help <operation>`, `<operation> --help`, and the bad-argument error print the same usage.
+TEST_F(AdminCliTest, HelpMatchesBadArgumentUsage) {
+  const auto exe_path = GetAdminToolPath();
+  std::string help_output;
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "delete_table"), &help_output, /* stderr_str */ nullptr));
+  ASSERT_STR_CONTAINS(help_output, "Usage: yb-admin delete_table <table>");
+  ASSERT_STR_CONTAINS(help_output, "Definitions: <table>");
+  ASSERT_STR_CONTAINS(help_output, "[(ycql|ysql).]<namespace_name>");
+
+  std::string flag_output;
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "delete_table", "--help"), &flag_output, nullptr));
+  ASSERT_EQ(help_output, flag_output);
+
+  BuildAndStart();
+  const auto status = CallAdmin("delete_table");
+  ASSERT_NOK(status);
+  boost::trim_right(help_output);
+  ASSERT_STR_CONTAINS(status.ToString(), help_output);
 }
 
 // Test yb-admin config change while running a workload.
@@ -3047,14 +3404,17 @@ TEST_F(AdminCliTest, TestListNamespaces) {
 }
 
 TEST_F(AdminCliTest, PrintArgumentExpressions) {
-  const auto namespace_expression = "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
-  const auto table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
-  const auto index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+  const auto namespace_expression =
+      "<namespace>\n  [(ycql|ysql).]<namespace_name> (default: ycql.)";
+  const auto table_expression = "<table>\n  <namespace> <table_name> | tableid.<table_id>";
+  const auto index_expression = "<index>\n  <namespace> <index_name> | tableid.<index_id>";
 
   BuildAndStart();
   auto status = CallAdmin("delete_table");
   ASSERT_NOK(status);
   ASSERT_NE(status.ToString().find(table_expression), std::string::npos);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+  ASSERT_LT(status.ToString().find(table_expression), status.ToString().find(namespace_expression));
 
   status = CallAdmin("delete_namespace");
   ASSERT_NOK(status);
@@ -3063,12 +3423,22 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   status = CallAdmin("delete_index");
   ASSERT_NOK(status);
   ASSERT_NE(status.ToString().find(index_expression), std::string::npos);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
 
   status = CallAdmin("add_universe_key_to_all_masters");
   ASSERT_NOK(status);
   ASSERT_EQ(status.ToString().find(namespace_expression), std::string::npos);
   ASSERT_EQ(status.ToString().find(table_expression), std::string::npos);
   ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
+
+  // Placeholders inside [] are defined too.
+  status = CallAdmin("import_snapshot");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+
+  status = CallAdmin("list_change_data_streams", "extra_arg_1", "extra_arg_2");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
 }
 
 TEST_F(AdminCliTest, TestCompactionStatusBeforeCompaction) {

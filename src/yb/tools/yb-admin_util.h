@@ -13,15 +13,28 @@
 #pragma once
 
 #include <set>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 namespace tools {
+
+// Returns true when the server does not implement the requested RPC method, i.e. predates it.
+bool IsUnsupportedRpcError(const Status& s);
+
+// Returns the names whose '_'-separated tokens cover every token of op (case-insensitive), where a
+// typed token covers a name token it abbreviates or pluralizes. Ranked by fewest uncovered name
+// tokens, then alphabetically, and capped at max_results.
+std::vector<std::string> SuggestByNameTokens(
+    const std::string& op, const std::vector<std::string>& names, size_t max_results);
 
 std::string SnapshotIdToString(const SnapshotId& snapshot_id);
 
