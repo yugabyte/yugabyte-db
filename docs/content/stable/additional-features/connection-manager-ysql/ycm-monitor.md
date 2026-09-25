@@ -88,9 +88,9 @@ The following metrics are reported per pool, labelled with the `database` and `u
 
 Available in v2026.1.2 and later. {{<issue 31862>}}
 
-When YSQL Connection Manager is enabled, your application connects to Connection Manager, and each YSQL backend keeps a physical connection to Connection Manager over a Unix socket. [`pg_stat_activity`](../../../explore/observability/pg-stat-activity/) shows the logical client's connection details on that backend.
+When YSQL Connection Manager is enabled, [`pg_stat_activity`](../../../explore/observability/pg-stat-activity/) shows, for each backend, the client whose transaction was last executed on that backend. By design, the connection details of that client are exposed on the row for that backend. They remain until a new client's transaction overrides them, or until the backend is closed and the row is removed. The row is removed when the backend closes, whether or not the client connection has ended.
 
-Connection Manager sends the logical client's IP address and TCP port to the backend each time that client attaches. The backend records those values, and `pg_stat_activity` returns them in the existing client columns:
+The row uses these columns:
 
 | Column | Description |
 | :----- | :---------- |
@@ -98,9 +98,7 @@ Connection Manager sends the logical client's IP address and TCP port to the bac
 | `client_port` | TCP port of the logical client. |
 | `client_hostname` | Hostname from a reverse DNS lookup of `client_addr`. Populated only when [`log_hostname`](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-HOSTNAME) is on. The lookup runs once, during authentication of that logical client. |
 
-These columns are updated on each attach. Until the next attach, they keep the address and port of the logical client that attached last, including while the physical connection is idle in the pool.
-
-When the backend has no logical client address, `client_addr` and `client_hostname` are null and `client_port` is `-1` (the Unix socket between Connection Manager and the backend).
+Until a client transaction has run on the backend, `client_addr` and `client_hostname` are null and `client_port` is `-1`.
 
 To list Connection Manager worker backends:
 
