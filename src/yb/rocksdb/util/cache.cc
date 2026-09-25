@@ -655,27 +655,9 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
         }
       }
     }
-    if (statistics != nullptr) {
-      // overall cache hit
-      statistics->recordTick(BLOCK_CACHE_HIT);
-      if (e->GetSubCacheType() == SubCacheType::SINGLE_TOUCH) {
-        statistics->recordTick(BLOCK_CACHE_SINGLE_TOUCH_HIT);
-      } else if (e->GetSubCacheType() == SubCacheType::MULTI_TOUCH) {
-        statistics->recordTick(BLOCK_CACHE_MULTI_TOUCH_HIT);
-      }
-    }
+    RecordTick(statistics, BLOCK_CACHE_HIT);
   } else {
     RecordTick(statistics, BLOCK_CACHE_MISS);
-  }
-
-  if (metrics_ != nullptr) {
-    metrics_->lookups->Increment();
-    bool was_hit = (e != nullptr);
-    if (was_hit) {
-      metrics_->cache_hits->Increment();
-    } else {
-      metrics_->cache_misses->Increment();
-    }
   }
   return reinterpret_cast<Cache::Handle*>(e);
 }
@@ -832,10 +814,8 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
         RecordTick(statistics, BLOCK_CACHE_ADD);
         RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
         if (subcache_type == SubCacheType::SINGLE_TOUCH) {
-          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_ADD);
           RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, charge);
         } else if (subcache_type == SubCacheType::MULTI_TOUCH) {
-          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_ADD);
           RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, charge);
         }
       } else {
