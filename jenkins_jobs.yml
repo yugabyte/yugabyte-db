@@ -58,14 +58,14 @@ jobs:
     when:
      - full
 
- - os: mac15
-   compiler: clang21
-   build_type: release
-   architecture: x86_64
-   test_opts: YB_COMPILE_ONLY=1
-   release_artifact: true
-   when:
-    - full
+  - os: mac15
+    compiler: clang21
+    build_type: release
+    architecture: x86_64
+    test_opts: YB_COMPILE_ONLY=1
+    release_artifact: true
+    when:
+     - full
 
   - os: ubuntu22.04
     compiler: clang21
