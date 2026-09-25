@@ -3005,6 +3005,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_fail_client_connection_check", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the client connection check performed while "
+						 "waiting on a tserver reply fails with an error instead "
+						 "of probing the socket."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_client_connection_check,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_fail_table_rewrite_after_creation", PGC_USERSET,
 			DEVELOPER_OPTIONS,
 			gettext_noop("When set, DDLs that rewrite tables/indexes will"

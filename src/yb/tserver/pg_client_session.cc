@@ -2170,6 +2170,9 @@ class PgClientSession::Impl {
   void FinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
       rpc::RpcContext&& context, PgSessionGuard& guard) {
+    // Lets tests hold the commit while the backend is blocked waiting for it.
+    TEST_SYNC_POINT("PgClientSession::FinishTransaction:Start");
+    TEST_SYNC_POINT("PgClientSession::FinishTransaction:Proceed");
     TransitOwner context_owner{std::move(context)};
     const auto opt_status = DoFinishTransaction(req, resp, context_owner, guard);
     if (opt_status) {
@@ -2356,6 +2359,9 @@ class PgClientSession::Impl {
   Status FetchData(
       const PgFetchDataRequestPB& req, PgFetchDataResponsePB* resp,
       rpc::RpcContext* context) {
+    // Lets tests hold the fetch while the backend is blocked waiting for it.
+    TEST_SYNC_POINT("PgClientSession::FetchData:Start");
+    TEST_SYNC_POINT("PgClientSession::FetchData:Proceed");
     size_t data_id = req.data_id();
     std::lock_guard lock(pending_data_mutex_);
     if (data_id >= pending_data_.size() || pending_data_[data_id].empty()) {

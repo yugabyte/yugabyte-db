@@ -8501,6 +8501,103 @@ YBHasProcessableAbortInterrupt()
 	return false;
 }
 
+/*
+ * YbClientConnectionLost:
+ *
+ * Called by pggate while the backend is blocked waiting on a tserver reply,
+ * where no CHECK_FOR_INTERRUPTS() runs and the client socket is never touched.
+ * Probes the socket the way ProcessInterrupts() does for
+ * client_connection_check_interval and records the loss so that the next
+ * ProcessInterrupts() call terminates the backend.
+ *
+ * Runs in the middle of a pggate call, whose C++ frames own the RPC state
+ * (a stack latch the reactor will count down, a held mutex), so an ERROR must
+ * not longjmp out of here. pq_check_connection() raises one only if
+ * epoll/kqueue syscalls fail. Such an error is contained here, and:
+ *
+ * - The interrupt holdoff counters are restored. errfinish() zeroes them
+ *   before jumping to the catch block, but the caller may be inside
+ *   HOLD_INTERRUPTS() (CommitTransaction() is), and its RESUME_INTERRUPTS()
+ *   would underflow the counter and disable interrupts for good.
+ *
+ * - Probing is disabled for the rest of this backend's life. ModifyWaitEvent()
+ *   records the new event mask before the kernel call, so after a failure
+ *   FeBeWaitSet may claim to watch for WL_SOCKET_CLOSED while the kernel does
+ *   not; a repeat probe would short-circuit on the cached mask and miss the
+ *   disconnect. Postgres repairs the set when it next reads from the client
+ *   with a different mask. Until then, the RPC deadline bounds the wait, as it
+ *   did before this check existed.
+ */
+bool
+YbClientConnectionLost(void)
+{
+	static bool probe_disabled = false;
+
+	uint32		saved_wait_event_info;
+	uint32		saved_interrupt_holdoff_count;
+	uint32		saved_query_cancel_holdoff_count;
+	MemoryContext oldcontext;
+	volatile bool connected = true;
+
+	if (ClientConnectionLost)
+		return true;
+
+	if (probe_disabled)
+		return false;
+
+	/*
+	 * Same preconditions as the CheckClientConnectionPending branch of
+	 * ProcessInterrupts(). Background and parallel workers have no client
+	 * socket. Idle sessions detect disconnects via ReadCommand() themselves.
+	 */
+	if (!IsUnderPostmaster || !MyProcPort || DoingCommandRead ||
+		whereToSendOutput != DestRemote)
+		return false;
+
+	if (!WaitEventSetCanReportClosed())
+		return false;
+
+	/*
+	 * WaitEventSetWait() reports its own (empty) wait event and clears it on
+	 * exit, which would wipe the WaitingOnTServer event pggate published for
+	 * the blocked RPC from pg_stat_activity and ASH for the rest of the wait.
+	 */
+	saved_wait_event_info = *my_wait_event_info;
+	saved_interrupt_holdoff_count = InterruptHoldoffCount;
+	saved_query_cancel_holdoff_count = QueryCancelHoldoffCount;
+	oldcontext = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		if (yb_test_fail_client_connection_check)
+			elog(ERROR, "client connection check failed for testing");
+		connected = pq_check_connection();
+	}
+	PG_CATCH();
+	{
+		MemoryContextSwitchTo(oldcontext);
+		FlushErrorState();
+		InterruptHoldoffCount = saved_interrupt_holdoff_count;
+		QueryCancelHoldoffCount = saved_query_cancel_holdoff_count;
+		probe_disabled = true;
+		/*
+		 * Not elog(): errfinish() ends with CHECK_FOR_INTERRUPTS() even for
+		 * LOG, and a pending cancel would longjmp out of here after all.
+		 */
+		YBC_LOG_WARNING("client connection check failed, disabling it for this backend");
+	}
+	PG_END_TRY();
+
+	*(volatile uint32 *) my_wait_event_info = saved_wait_event_info;
+
+	if (connected)
+		return false;
+
+	ClientConnectionLost = true;
+	InterruptPending = true;
+	return true;
+}
+
 long
 YbGetCatCacheRefreshes()
 {

@@ -1044,6 +1044,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
+			.ClientConnectionLost = &YbClientConnectionLost,
 			.IsInParallelMode = &IsInParallelMode,
 		};
 
@@ -2297,6 +2298,8 @@ bool		yb_test_analyze_dont_reset_mutations = false;
 bool		yb_test_invalidate_relcache_in_planner = false;
 
 bool		yb_test_fail_next_inc_catalog_version = false;
+
+bool		yb_test_fail_client_connection_check = false;
 
 double		yb_test_ybgin_disable_cost_factor = 2.0;
 
