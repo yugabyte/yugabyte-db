@@ -586,6 +586,8 @@ static void yb_set_cached_hints(uint64 client_query_id,
 								const char *hints,
 								HTAB *hint_cache);
 static void YbInvalidateHintCacheCallback(Datum argument, Oid relationId);
+static void YbInvalidatePlpgsqlOidCallback(Datum argument, int cacheid,
+										   uint32 hashvalue);
 static void YbInvalidateHintCache(void);
 static void YbRefreshHintCache(void);
 static YbHintCacheEntry *YbTupleToHintCacheEntry(TupleDesc tupleDescriptor, HeapTuple heapTuple);
@@ -767,10 +769,19 @@ pg_hint_plan_is_plpgsql_function(Oid funcoid)
 
 	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
 
+	/*
+	 * YB: DROP EXTENSION plpgsql is a DDL, and committing a DDL increments
+	 * the catalog version through a SQL-language function.  fmgr sets that
+	 * function up in the transaction that deleted the language, so the
+	 * lookup must tolerate a missing language.  Nothing is lost: no
+	 * function can outlive its language, so a missing plpgsql means "not
+	 * PL/pgSQL" exactly.
+	 */
 	if (!OidIsValid(pg_hint_plan_plpgsql_oid))
-		pg_hint_plan_plpgsql_oid = get_language_oid("plpgsql", false);
+		pg_hint_plan_plpgsql_oid = get_language_oid("plpgsql", true);	/* YB */
 
-	result = (procStruct->prolang == pg_hint_plan_plpgsql_oid);
+	result = (OidIsValid(pg_hint_plan_plpgsql_oid) &&	/* YB */
+			  procStruct->prolang == pg_hint_plan_plpgsql_oid);
 
 	ReleaseSysCache(procTuple);
 
@@ -844,6 +855,9 @@ _PG_init(void)
 {
 	if (yb_enable_hint_table_cache)
 		CacheRegisterRelcacheCallback(YbInvalidateHintCacheCallback, (Datum) 0);
+
+	CacheRegisterSyscacheCallback(LANGNAME, YbInvalidatePlpgsqlOidCallback,
+								  (Datum) 0);
 
 	/* Define custom GUC variables. */
 	DefineCustomBoolVariable("pg_hint_plan.enable_hint",
@@ -3149,6 +3163,17 @@ YbInvalidateHintCacheCallback(Datum argument, Oid relationId)
 		 */
 		ResetPlanCache();
 	}
+}
+
+/*
+ * YB: Forget the cached PL/pgSQL language OID whenever pg_language changes,
+ * so that it is looked up again after plpgsql is dropped and re-created with
+ * a new OID.
+ */
+static void
+YbInvalidatePlpgsqlOidCallback(Datum argument, int cacheid, uint32 hashvalue)
+{
+	pg_hint_plan_plpgsql_oid = InvalidOid;
 }
 
 /*
