@@ -2114,10 +2114,11 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
         << cfd->current()->storage_info()->LevelSummary(&tmp);
   }
 
-  if (!file_number_holder.ok() && !file_number_holder.status().IsShutdownInProgress()
-      && db_options_.paranoid_checks && bg_error_.ok()) {
-    // if a bad error happened (not ShutdownInProgress) and paranoid_checks is
-    // true, mark DB read-only
+  if (!file_number_holder.ok() && bg_error_.ok() &&
+      (flush_job.filter_failed() ||
+       (!file_number_holder.status().IsShutdownInProgress() && db_options_.paranoid_checks))) {
+    // A failed dependency cannot be retried indefinitely, even with paranoid checks disabled or
+    // when the dependency (rather than this DB) is shutting down. Wake waiters with the error.
     bg_error_.TrySet(file_number_holder.status());
   }
   RETURN_NOT_OK(file_number_holder);
@@ -3242,6 +3243,13 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
   return s;
 }
 
+void DBImpl::WaitForFlushJobs() {
+  InstrumentedMutexLock lock(&mutex_);
+  while (bg_flush_scheduled_ != 0 || unscheduled_flushes_ != 0) {
+    bg_cv_.Wait();
+  }
+}
+
 Status DBImpl::WaitForFlushMemTable(ColumnFamilyData* cfd) {
   Status s;
   // Wait until the flush completes
@@ -3588,6 +3596,7 @@ void DBImpl::WaitAfterBackgroundError(
             "Waiting after background $0 error: $1, Accumulated background error counts: $2",
             job_name, s, error_cnt).c_str());
     LogFlush(db_options_.info_log);
+    TEST_SYNC_POINT_CALLBACK("DBImpl::WaitAfterBackgroundError", this);
     env_->SleepForMicroseconds(1000000);
     mutex_.Lock();
   }
@@ -3628,6 +3637,7 @@ void DBImpl::BackgroundJobComplete(
 }
 
 void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
+  TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCallFlush:Start", this);
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
 
