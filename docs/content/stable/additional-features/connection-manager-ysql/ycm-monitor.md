@@ -86,7 +86,7 @@ The following metrics are reported per pool, labelled with the `database` and `u
 
 ## Logical clients in pg_stat_activity
 
-Available in v2026.1.2 and later. {{<issue 31862>}}
+Available in v2026.1.2 and later.
 
 When YSQL Connection Manager is enabled, [`pg_stat_activity`](../../../explore/observability/pg-stat-activity/) shows, for each backend, the client whose transaction was last executed on that backend. By design, the connection details of that client are exposed on the row for that backend. They remain until a new client's transaction overrides them, or until the backend is closed and the row is removed. The row is removed when the backend closes, whether or not the client connection has ended.
 
