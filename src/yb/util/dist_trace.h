@@ -32,69 +32,88 @@ namespace yb::dist_trace {
 namespace nostd = opentelemetry::nostd;
 namespace trace = opentelemetry::trace;
 
-// OTel service.name for the ysql (postgres backend) process, passed to InitDistTrace at startup.
+// OTel service.name for the ysql (postgres backend) process, passed to DistTrace::Init at startup.
 inline constexpr char kYsqlServiceName[] = "ysql";
 
-void InitDistTrace(
-    opentelemetry::nostd::string_view service_name, opentelemetry::nostd::string_view node_uuid);
-void ShutdownDistTrace();
-nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
+// Process-wide distributed-tracing surface over the OTel SDK. Static-only: the tracer provider is
+// a process singleton, and the state here is set once at startup from gflags and DistTrace::Init.
+class DistTrace {
+ public:
+  DistTrace() = delete;
 
-namespace internal {
-// Set from otel_collector_traces_endpoint by a flag callback during gflag initialization.
-extern bool g_dist_trace_enabled;
-}  // namespace internal
+  static void Init(nostd::string_view service_name, nostd::string_view node_uuid);
+  static void Shutdown();
+  static nostd::shared_ptr<trace::Tracer> GetTracer();
 
-inline bool IsDistTraceEnabled() { return internal::g_dist_trace_enabled; }
+  static bool IsEnabled() { return enabled_; }
 
-// Sets otel_collector_traces_endpoint and refreshes g_dist_trace_enabled, for in-process tests.
-void TEST_SetOtelCollectorEndpoint(const std::string& endpoint);
+  // Sets otel_collector_traces_endpoint and refreshes IsEnabled(), for in-process tests.
+  static void TEST_SetOtelCollectorEndpoint(const std::string& endpoint);
 
-trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
+  static trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
 
-// The active span as a W3C traceparent string, empty if there is no active span.
-std::string GetActiveTraceparent();
+  // The active span as a W3C traceparent string, empty if there is no active span.
+  static std::string GetActiveTraceparent();
 
-// The active span's context, or nullopt if there is no active span.
-std::optional<trace::SpanContext> GetActiveSpanContext();
+  // The active span's context, or nullopt if there is no active span.
+  static std::optional<trace::SpanContext> GetActiveSpanContext();
 
-bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
+  static bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
 
-// Returns true if distributed tracing is enabled and there is an active span in the OTEL context.
-bool HasActiveContext();
-nostd::shared_ptr<trace::Span> StartSpan(
-    std::string_view op_name,
-    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
-    trace::StartSpanOptions options);
-nostd::shared_ptr<trace::Span> StartSpan(
-    std::string_view op_name,
-    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs);
-nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
+  // Returns true if distributed tracing is enabled and there is an active span in the OTEL context.
+  static bool HasActiveContext();
 
-// Client span for an outbound RPC, draining the pending attrs onto it; nullptr when tracing is
-// off or no context is active. Not made current -- use ScopedAdoptSpan where that is needed.
-nostd::shared_ptr<trace::Span> StartClientSpan(std::string_view op_name);
+  static nostd::shared_ptr<trace::Span> StartSpan(
+      std::string_view op_name,
+      const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
+          attrs,
+      trace::StartSpanOptions options);
+  static nostd::shared_ptr<trace::Span> StartSpan(
+      std::string_view op_name,
+      const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
+          attrs);
+  static nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 
-// Server span as a remote child of parent_context; needs no local active context.
-nostd::shared_ptr<trace::Span> StartServerSpan(
-    std::string_view op_name, const trace::SpanContext& parent_context);
+  // Client span for an outbound RPC, draining the pending attrs onto it; nullptr when tracing is
+  // off or no context is active. Not made current -- use ScopedAdoptSpan where that is needed.
+  static nostd::shared_ptr<trace::Span> StartClientSpan(std::string_view op_name);
 
-// Buffers an attribute for the next RPC span started on this thread.
-void AddPendingRpcStringAttr(std::string key, std::string value);
+  // Server span as a remote child of parent_context; needs no local active context.
+  static nostd::shared_ptr<trace::Span> StartServerSpan(
+      std::string_view op_name, const trace::SpanContext& parent_context);
 
-// Masks any active trace context by attaching an empty one for the returned token's lifetime.
-inline nostd::unique_ptr<opentelemetry::context::Token> DetachTraceContext() {
-  if (!IsDistTraceEnabled()) {
-    return nullptr;
+  // Buffers an attribute for the next RPC span started on this thread.
+  static void AddPendingRpcStringAttr(std::string key, std::string value);
+
+  // Masks any active trace context by attaching an empty one for the returned token's lifetime.
+  static nostd::unique_ptr<opentelemetry::context::Token> DetachTraceContext() {
+    if (!IsEnabled()) {
+      return nullptr;
+    }
+    return opentelemetry::context::RuntimeContext::Attach(opentelemetry::context::Context{});
   }
-  return opentelemetry::context::RuntimeContext::Attach(opentelemetry::context::Context{});
-}
+
+ private:
+  // Pending RPC span attributes, owned as plain (key, value) strings.
+  using PendingRpcSpanAttrs = std::vector<std::pair<std::string, std::string>>;
+
+  // otel_collector_traces_endpoint flag callback in dist_trace.cc; the only writer of enabled_.
+  friend void UpdateDistTraceEnabled();
+
+  static uint32_t EffectiveBatchMaxQueueSize();
+  static PendingRpcSpanAttrs ConsumePendingRpcAttrs();
+
+  static inline bool enabled_ = false;
+  // Service name for the tracing resource and tracer (e.g. "ysql", "Master", "TabletServer").
+  static inline std::string service_name_;
+  static inline thread_local PendingRpcSpanAttrs pending_rpc_attrs_;
+};
 
 // Holds the span context captured where it is constructed, so work that runs on another thread can
 // re-parent itself under it. Copying carries the captured context; it does not re-capture.
 class TraceParent {
  public:
-  TraceParent() : parent_(GetActiveSpanContext()) {}
+  TraceParent() : parent_(DistTrace::GetActiveSpanContext()) {}
 
   const std::optional<trace::SpanContext>& context() const { return parent_; }
 

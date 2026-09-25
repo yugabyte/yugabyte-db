@@ -133,7 +133,7 @@ Slice FetchTableId(const PgsqlOp& op) {
 }
 
 void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache& table_cache) {
-  if (!dist_trace::HasActiveContext() || ops.empty()) {
+  if (!dist_trace::DistTrace::HasActiveContext() || ops.empty()) {
     return;
   }
 
@@ -143,8 +143,8 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
   for (const auto& op : ops) {
     (op->is_read() ? reads : writes)++;
   }
-  dist_trace::AddPendingRpcStringAttr("rpc.read_ops", std::to_string(reads));
-  dist_trace::AddPendingRpcStringAttr("rpc.write_ops", std::to_string(writes));
+  dist_trace::DistTrace::AddPendingRpcStringAttr("rpc.read_ops", std::to_string(reads));
+  dist_trace::DistTrace::AddPendingRpcStringAttr("rpc.write_ops", std::to_string(writes));
 
   std::string joined_names;
   joined_names.reserve(128);
@@ -172,7 +172,7 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
     joined_names += it->second->table_name().table_name();
   }
   if (!joined_names.empty()) {
-    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
+    dist_trace::DistTrace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
   }
 }
 

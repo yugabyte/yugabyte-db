@@ -983,8 +983,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     if (trace_context_size > 0) {
       auto trace_context = rpc::ParseTraceContext(Slice(input, trace_context_size));
       if (trace_context.ok()) {
-        if (dist_trace::IsDistTraceEnabled()) {
-          trace_span_ = dist_trace::StartServerSpan(
+        if (dist_trace::DistTrace::IsEnabled()) {
+          trace_span_ = dist_trace::DistTrace::StartServerSpan(
               GetSharedMemSpanName(T::kReqType), *trace_context);
           if (trace_span_) {
             trace_span_->SetAttribute("rpc.system", "yb_shmem");

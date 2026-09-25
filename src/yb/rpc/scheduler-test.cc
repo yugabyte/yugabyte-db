@@ -157,9 +157,9 @@ TEST_F(SchedulerTraceTest, TraceContextCarriedToScheduledTask) {
   auto future = promise.get_future();
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     scheduler_->Schedule([&observed, &promise](const Status& status) {
-      observed = dist_trace::GetActiveSpanContext();
+      observed = dist_trace::DistTrace::GetActiveSpanContext();
       promise.set_value(status);
     }, 0s);
   }
@@ -179,9 +179,9 @@ TEST_F(SchedulerTraceTest, TraceContextCarriedToScheduledTaskWithId) {
   auto future = promise.get_future();
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     scheduler_->Schedule([&observed, &promise](ScheduledTaskId task_id, const Status& status) {
-      observed = dist_trace::GetActiveSpanContext();
+      observed = dist_trace::DistTrace::GetActiveSpanContext();
       promise.set_value(status);
     }, 0s);
   }
@@ -198,7 +198,7 @@ TEST_F(SchedulerTraceTest, NoTraceContextCarriedWhenNoneActive) {
   std::promise<Status> promise;
   auto future = promise.get_future();
   scheduler_->Schedule([&observed, &promise](const Status& status) {
-    observed = dist_trace::GetActiveSpanContext();
+    observed = dist_trace::DistTrace::GetActiveSpanContext();
     promise.set_value(status);
   }, 0s);
   ASSERT_OK(future.get());
