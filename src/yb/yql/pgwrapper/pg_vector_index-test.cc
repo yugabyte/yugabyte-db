@@ -5122,9 +5122,9 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
     sync_point->ClearTrace();
   });
 
-  // Retry as soon as possible: a retry that lands while the truncate still holds the pause just
-  // reschedules itself.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_retry_delay_ms) = 100 * kTimeMultiplier;
+  // Retry rapidly, so that retries land all over the truncate: while it still holds the pause, and
+  // in the window where it has torn the vector indexes down and not re-opened them yet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_retry_delay_ms) = 10 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, 1, kNumRows));

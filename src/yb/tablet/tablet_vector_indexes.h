@@ -215,8 +215,14 @@ class TabletVectorIndexes :
   ShutdownController shutdown_controller_;
 
   rpc::Scheduler* scheduler_ = nullptr;
+  // Serializes ScheduledTaskTracker::Schedule, which aborts the pending task and overwrites its id
+  // without any synchronization of its own. Never held across CompleteShutdown, which waits for a
+  // running retry that takes this mutex itself.
+  std::mutex backfill_retry_mutex_;
   rpc::ScheduledTaskTracker backfill_retry_task_;
   std::atomic<bool> backfills_launched_{false};
+  // A backfill asked for a retry and no retry has evaluated the indexes since.
+  std::atomic<bool> backfill_retry_pending_{false};
 };
 
 }  // namespace yb::tablet
