@@ -483,10 +483,10 @@ ERROR:  merge scan stream key column "f4" has no usable bound condition
 DETAIL:  The chosen query plan is not executable as declared. This is a bug.
 HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
 DROP INDEX num_tbl_f4_hash_idx;
--- A duplicate index column: f4 = :R becomes an index condition on the first
--- f4 only, and the second f4 holds the same value in every index row.  The
--- second f4 should not be declared a stream key, so R1 stays clean while R2
--- still errors on the first.
+-- A duplicate index column.  f4 = :R becomes an index condition on the first f4
+-- only, and the second f4 holds the same value in every index row.  The second
+-- f4 should not be declared a stream key, so R1 stays clean while R2 still
+-- errors on the first.
 CREATE INDEX NONCONCURRENTLY num_tbl_dup_idx ON num_tbl (i2 ASC, f4 ASC, f4 ASC, id ASC);
 \set Q1 '/*+IndexScan(num_tbl num_tbl_dup_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(num_tbl num_tbl_dup_idx) Set(yb_max_merge_scan_streams 64)*/'
@@ -582,10 +582,9 @@ ERROR:  merge scan stream key column "f4" has no usable bound condition
 DETAIL:  The chosen query plan is not executable as declared. This is a bug.
 HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
 DROP INDEX num_tbl_dup_idx;
--- A partial index whose predicate implies the equality: the planner drops
--- f4 = :R from the index conditions, and every index row carries the
--- constant anyway, so f4 should not be declared a stream key.  Neither R
--- errors.
+-- A partial index whose predicate implies the equality.  The planner drops the
+-- index condition f4 = :R, and every index row carries the constant anyway, so
+-- f4 should not be declared a stream key.  Neither R errors.
 CREATE INDEX NONCONCURRENTLY num_tbl_part_idx ON num_tbl (i2 ASC, f4 ASC, id ASC) WHERE f4 = '2.5'::real;
 \set Q1 '/*+IndexScan(num_tbl num_tbl_part_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(num_tbl num_tbl_part_idx) Set(yb_max_merge_scan_streams 64)*/'
@@ -658,3 +657,276 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 /*+IndexScan(num_tbl num_tbl_part_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT f4, id, i2, x FROM num_tbl WHERE i2 IN (1, 2) AND f4 = '2.5'::float8 ORDER BY id LIMIT 10;
 (output identical to previous)
 DROP INDEX num_tbl_part_idx;
+-- An integer equality whose value the column's type cannot hold, which no row
+-- matches.  The scan returns no rows without binding it, so the merge scan does
+-- not error on the unbound stream key.  R1 fits the smallint column i2, and R2
+-- does not.
+SELECT $$1$$ AS "R1" \gset
+SELECT $$100000$$ AS "R2" \gset
+CREATE INDEX NONCONCURRENTLY num_tbl_f4_i2_id_idx ON num_tbl (f4 ASC, i2 ASC, id ASC);
+\set Q1 '/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY(\'{1.5,2.5}\'::real[]) AND i2 = :R ORDER BY id LIMIT 10;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, i2
+   ->  Sort (actual rows=10 loops=1)
+         Output: id, f4, i2
+         Sort Key: num_tbl.id
+         Sort Method: top-N heapsort
+         ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=1334 loops=1)
+               Output: id, f4, i2
+               Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 1))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 1334
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 1334
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   Output: id, f4, i2
+   ->  Sort (actual rows=0 loops=1)
+         Output: id, f4, i2
+         Sort Key: num_tbl.id
+         Sort Method: quicksort
+         ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=0 loops=1)
+               Output: id, f4, i2
+               Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 100000))
+(9 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, i2
+   ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=10 loops=1)
+         Output: id, f4, i2
+         Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 1))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4, num_tbl.i2
+         Merge Streams: 2
+         Merge Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 19
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 2
+         Storage Index Rows Scanned: 20
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   Output: id, f4, i2
+   ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=0 loops=1)
+         Output: id, f4, i2
+         Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 100000))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4, num_tbl.i2
+         Merge Streams: 2
+         Merge Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 100000))
+(9 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+ id | f4  | i2 
+----+-----+----
+  1 | 2.5 |  1
+ 10 | 1.5 |  1
+ 16 | 2.5 |  1
+ 25 | 1.5 |  1
+ 31 | 2.5 |  1
+ 40 | 1.5 |  1
+ 46 | 2.5 |  1
+ 55 | 1.5 |  1
+ 61 | 2.5 |  1
+ 70 | 1.5 |  1
+(10 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+ id | f4 | i2 
+----+----+----
+(0 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+ id | f4  | i2 
+----+-----+----
+  1 | 2.5 |  1
+ 10 | 1.5 |  1
+ 16 | 2.5 |  1
+ 25 | 1.5 |  1
+ 31 | 2.5 |  1
+ 40 | 1.5 |  1
+ 46 | 2.5 |  1
+ 55 | 1.5 |  1
+ 61 | 2.5 |  1
+ 70 | 1.5 |  1
+(10 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+ id | f4 | i2 
+----+----+----
+(0 rows)
+
+-- test yb_enable_advanced_index_cond_fold flag off
+SET yb_enable_advanced_index_cond_fold = off;
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, i2
+   ->  Sort (actual rows=10 loops=1)
+         Output: id, f4, i2
+         Sort Key: num_tbl.id
+         Sort Method: top-N heapsort
+         ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=1334 loops=1)
+               Output: id, f4, i2
+               Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 1))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 1334
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 1334
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   Output: id, f4, i2
+   ->  Sort (actual rows=0 loops=1)
+         Output: id, f4, i2
+         Sort Key: num_tbl.id
+         Sort Method: quicksort
+         ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=0 loops=1)
+               Output: id, f4, i2
+               Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 100000))
+(9 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, i2
+   ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=10 loops=1)
+         Output: id, f4, i2
+         Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 1))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4, num_tbl.i2
+         Merge Streams: 2
+         Merge Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 19
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 2
+         Storage Index Rows Scanned: 20
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   Output: id, f4, i2
+   ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=0 loops=1)
+         Output: id, f4, i2
+         Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 100000))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4, num_tbl.i2
+         Merge Streams: 2
+         Merge Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 100000))
+(9 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+ id | f4  | i2 
+----+-----+----
+  1 | 2.5 |  1
+ 10 | 1.5 |  1
+ 16 | 2.5 |  1
+ 25 | 1.5 |  1
+ 31 | 2.5 |  1
+ 40 | 1.5 |  1
+ 46 | 2.5 |  1
+ 55 | 1.5 |  1
+ 61 | 2.5 |  1
+ 70 | 1.5 |  1
+(10 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+ id | f4 | i2 
+----+----+----
+(0 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 1 ORDER BY id LIMIT 10;
+ id | f4  | i2 
+----+-----+----
+  1 | 2.5 |  1
+ 10 | 1.5 |  1
+ 16 | 2.5 |  1
+ 25 | 1.5 |  1
+ 31 | 2.5 |  1
+ 40 | 1.5 |  1
+ 46 | 2.5 |  1
+ 55 | 1.5 |  1
+ 61 | 2.5 |  1
+ 70 | 1.5 |  1
+(10 rows)
+
+/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = 100000 ORDER BY id LIMIT 10;
+ id | f4 | i2 
+----+----+----
+(0 rows)
+
+RESET yb_enable_advanced_index_cond_fold;
+-- The same with the value as a parameter of a generic plan, known only when the
+-- scan runs.
+SET plan_cache_mode = force_generic_plan;
+PREPARE oor(int) AS /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = $1 ORDER BY id LIMIT 10;
+EXPLAIN (COSTS OFF) EXECUTE oor(100000);
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Limit
+   ->  Index Scan using num_tbl_f4_i2_id_idx on num_tbl
+         Index Cond: ((f4 = ANY ('{1.5,2.5}'::real[])) AND (i2 = $1))
+         Merge Sort Key: id
+         Merge Stream Key: f4, i2
+         Merge Streams: 2
+(6 rows)
+
+EXECUTE oor(1);
+ id | f4  | i2 
+----+-----+----
+  1 | 2.5 |  1
+ 10 | 1.5 |  1
+ 16 | 2.5 |  1
+ 25 | 1.5 |  1
+ 31 | 2.5 |  1
+ 40 | 1.5 |  1
+ 46 | 2.5 |  1
+ 55 | 1.5 |  1
+ 61 | 2.5 |  1
+ 70 | 1.5 |  1
+(10 rows)
+
+EXECUTE oor(100000);
+ id | f4 | i2 
+----+----+----
+(0 rows)
+
+DEALLOCATE oor;
+RESET plan_cache_mode;
+DROP INDEX num_tbl_f4_i2_id_idx;
