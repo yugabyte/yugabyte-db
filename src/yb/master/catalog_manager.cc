@@ -387,6 +387,10 @@ DEFINE_test_flag(bool, hang_on_namespace_transition, false,
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
+DEFINE_test_flag(bool, crash_before_index_unlink_in_delete_table, false,
+    "Crash yb-master after a table with indexes is marked DELETING and before its indexes "
+    "are unlinked from it.");
+
 DEPRECATE_FLAG(bool, master_drop_table_after_task_response, "11_2022");
 
 DEFINE_test_flag(bool, tablegroup_master_only, false,
@@ -7008,10 +7012,13 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
   // multiple tables. So all those tables should be already collected into data_map_ptr.
   if (data_map_ptr) {
     auto it = data_map_ptr->find(indexed_table_id);
-    RSTATUS_DCHECK(
-        it != data_map_ptr->end(), IllegalState,
-        "Cannot find indexed table: $0", indexed_table_id);
-    indexed_table = it->second.table_info_with_write_lock.info;
+    // The indexed table is missing from the map when it was deleted and removed from memory
+    // before this index was deleted. This happens when a DROP TABLE is rolled forward after a
+    // master restart: the indexed table is deleted first and its indexes are deleted later, once
+    // their DDL transaction verification runs. There is no index info left to update then.
+    if (it != data_map_ptr->end()) {
+      indexed_table = it->second.table_info_with_write_lock.info;
+    }
   } else {
     indexed_table = GetTableInfo(indexed_table_id);
   }
@@ -7019,6 +7026,12 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
   if (indexed_table == nullptr) {
     LOG(WARNING) << "Indexed table " << indexed_table_id << " for index "
                  << index_table_id << " not found";
+    return Status::OK();
+  }
+
+  if (!multi_stage && indexed_table->LockForRead()->started_deleting()) {
+    LOG(INFO) << "Indexed table " << indexed_table_id << " for index " << index_table_id
+              << " is already being deleted, not updating its index info";
     return Status::OK();
   }
 
@@ -7740,6 +7753,11 @@ Status CatalogManager::DeleteTableInMemory(
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_crash_after_table_marked_deleting)) {
     return Status::OK();
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_index_unlink_in_delete_table) &&
+      !is_index_table && !l->pb.indexes().empty()) {
+    LOG(FATAL) << "Crash due to FLAGS_TEST_crash_before_index_unlink_in_delete_table";
   }
 
   if (!s.ok()) {

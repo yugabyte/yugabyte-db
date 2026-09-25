@@ -330,16 +330,19 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       RemoveDdlTransactionState(table->id(), {txn});
       continue;
     }
-    if (table->is_index() && is_committed.has_value()) {
-      // This is an index. If the indexed table is being deleted or marked for deletion, then skip
-      // doing anything as the deletion of the table will delete this index.
+    if (table->is_index() && is_committed.has_value() &&
+        table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
+      // An index that is still running while its indexed table has already started
+      // deleting or is gone must drop itself.
       const auto& indexed_table_id = table->indexed_table_id();
-      auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
-      if (table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
-          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
+      auto indexed_table = GetTableInfo(indexed_table_id);
+      const bool index_deletion_started = table->LockForRead()->started_deleting();
+      const bool indexed_table_drop_pending =
+          indexed_table && indexed_table->LockForRead()->is_running() &&
+          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed);
+      if (index_deletion_started || indexed_table_drop_pending) {
         LOG(INFO) << "Skipping DDL transaction verification for index " << table->ToString()
-                << " as the indexed table " << indexed_table->ToString()
-                << " is also being dropped";
+                  << " as it is dropped together with its indexed table " << indexed_table_id;
         continue;
       }
     }
