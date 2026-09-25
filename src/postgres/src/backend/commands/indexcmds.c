@@ -988,6 +988,10 @@ DefineIndex(Oid relationId,
 								" indexed table")));
 		}
 	}
+	else if (IsYBRelation(rel) && OidIsValid(parentIndexId))
+	{
+		tablespaceId = rel->rd_rel->reltablespace;
+	}
 	else if (stmt->tableSpace)
 	{
 		tablespaceId = get_tablespace_oid(stmt->tableSpace, false);
