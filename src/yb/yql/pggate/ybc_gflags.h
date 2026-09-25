@@ -76,6 +76,8 @@ typedef struct {
   const bool*     ysql_enable_relcache_init_optimization;
   const int64_t*  TEST_delay_after_table_analyze_ms;
   const bool*     TEST_enable_obj_tuple_locks;
+  const uint64_t* ysql_catalog_prefetch_row_limit;
+  const uint64_t* ysql_catalog_prefetch_size_limit;
   const bool*     ysql_enable_startup_client_connection_check;
 } YbcPgGFlagsAccessor;
 
