@@ -4336,6 +4336,9 @@ show_storage_info(char *maxStorageType, int64 maxSpaceUsed, ExplainState *es)
 {
 	int64		maxSpaceUsedKB = BYTES_TO_KILOBYTES(maxSpaceUsed);
 
+	if (IsYugaByteEnabled() && yb_explain_hide_non_deterministic_fields)
+		return;
+
 	if (es->format != EXPLAIN_FORMAT_TEXT)
 	{
 		ExplainPropertyText("Storage", maxStorageType, es);

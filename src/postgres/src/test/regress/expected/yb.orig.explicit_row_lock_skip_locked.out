@@ -607,7 +607,6 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER 
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  CTE Scan on cte (actual rows=5.00 loops=1)
-   Storage: Memory  Maximum Storage: 17kB
    CTE cte
      ->  Limit (actual rows=5.00 loops=1)
            ->  LockRows (actual rows=5.00 loops=1)
@@ -623,7 +622,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER 
  Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(17 rows)
+(16 rows)
 
 SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte');
  yb_lockrows_max_read_aheads 

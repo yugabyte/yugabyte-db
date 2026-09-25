@@ -404,9 +404,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, COUNT(
    Group Key: r1, count(r1) OVER w1
    ->  WindowAgg (actual rows=2000.00 loops=1)
          Window: w1 AS (PARTITION BY r1)
-         Storage: Memory  Maximum Storage: 48kB
          ->  Index Scan using t_pkey on t (actual rows=2000.00 loops=1)
-(6 rows)
+(5 rows)
 
 SELECT DISTINCT r1, COUNT(r1) OVER (PARTITION BY r1) FROM t;
  r1 | count 
