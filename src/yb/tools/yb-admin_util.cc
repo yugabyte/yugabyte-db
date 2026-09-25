@@ -78,16 +78,17 @@ bool CompareListTabletServersEntries(
   return a.instance_id().permanent_uuid() < b.instance_id().permanent_uuid();
 }
 
-// A typed token covers a name token it abbreviates ("serv" for "servers") or extends by a plural
-// ending ("servers" for "server"). Longer extensions are rejected so an unrelated word does not
-// match a short name token: "isolate" must not match "is".
+// A typed token covers a name token it abbreviates ("serv" for "servers") or pluralizes ("servers"
+// for "server"), but not a longer word that merely starts with it ("setup" for "set").
 bool TokenCovers(const string& op_token, const string& name_token) {
-  constexpr size_t kMinExtendedTokenSize = 3;
-  constexpr size_t kMaxExtension = 2;
-  return HasPrefixString(name_token, op_token) ||
-         (name_token.size() >= kMinExtendedTokenSize &&
-          op_token.size() <= name_token.size() + kMaxExtension &&
-          HasPrefixString(op_token, name_token));
+  if (HasPrefixString(name_token, op_token)) {
+    return true;
+  }
+  if (!HasPrefixString(op_token, name_token)) {
+    return false;
+  }
+  const auto suffix = op_token.substr(name_token.size());
+  return suffix == "s" || suffix == "es";
 }
 
 }  // namespace

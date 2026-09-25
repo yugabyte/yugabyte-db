@@ -584,9 +584,10 @@ TEST_F(AdminCliTest, TokenMatchSuggestions) {
       (std::vector<std::string>{"compact_table"}));
 
   ASSERT_TRUE(SuggestByNameTokens("list_server_zzz", names, 5).empty());
-  // A word that merely starts with a short name token ("is", "to") is not a match.
-  ASSERT_TRUE(SuggestByNameTokens("isolate", names, 5).empty());
-  ASSERT_TRUE(SuggestByNameTokens("tomorrow", names, 5).empty());
+  // A word that merely starts with a name token is not a match.
+  for (const auto& word : {"isolate", "tomorrow", "allow", "login"}) {
+    ASSERT_TRUE(SuggestByNameTokens(word, names, 5).empty()) << word;
+  }
 
   ASSERT_TRUE(SuggestByNameTokens("", names, 5).empty());
   ASSERT_TRUE(SuggestByNameTokens("___", names, 5).empty());
