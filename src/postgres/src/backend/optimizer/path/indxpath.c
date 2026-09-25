@@ -1763,16 +1763,11 @@ yb_step_4:
 		 */
 		if (yb_merge_scan_stream_cols != NIL)
 		{
-			/* Get useful_pathkeys without merge scan. */
-			yb_distinct_nkeys =
-				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
-			index_pathkeys = build_index_pathkeys(root, index,
-												  ForwardScanDirection,
-												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
-			useful_pathkeys = truncate_useless_pathkeys(root, rel,
-														index_pathkeys,
-														yb_distinct_nkeys);
+			useful_pathkeys =
+				yb_useful_pathkeys_without_merge_scan(root, rel, index,
+													  ForwardScanDirection,
+													  yb_distinct_prefixlen,
+													  &yb_distinct_nkeys);
 			yb_merge_scan_stream_cols = NIL;
 
 			goto yb_step_4;
@@ -1881,16 +1876,11 @@ yb_step_5:
 		 */
 		if (yb_merge_scan_stream_cols != NIL)
 		{
-			/* Get useful_pathkeys without merge scan. */
-			yb_distinct_nkeys =
-				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
-			index_pathkeys = build_index_pathkeys(root, index,
-												  BackwardScanDirection,
-												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
-			useful_pathkeys = truncate_useless_pathkeys(root, rel,
-														index_pathkeys,
-														yb_distinct_nkeys);
+			useful_pathkeys =
+				yb_useful_pathkeys_without_merge_scan(root, rel, index,
+													  BackwardScanDirection,
+													  yb_distinct_prefixlen,
+													  &yb_distinct_nkeys);
 			yb_merge_scan_stream_cols = NIL;
 
 			goto yb_step_5;
