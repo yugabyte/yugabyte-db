@@ -623,11 +623,11 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
 }
 
 /*
- * Settle the stream key columns of an index path, the columns each merge stream
- * binds to one value.  stream_cols holds the SAOP columns the pathkeys walk
- * picked.  build_index_paths calls this once the path's pathkeys are final,
- * after truncate_useless_pathkeys, with the path's index clauses, so that the
- * path's costing and its plan see the same stream keys.
+ * Settle the stream key columns of an index path, the columns each merge
+ * stream binds to one value.  stream_cols holds the SAOP columns the pathkeys
+ * walk picked.  build_index_paths calls this once the path's pathkeys are
+ * final, after truncate_useless_pathkeys, with the path's index clauses, so
+ * that the path's costing and its plan see the same stream keys.
  *
  * Each index column before the last merge sort column is one of:
  *
@@ -639,10 +639,10 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
  *     ybValidateMergeScanBinds reports a hash column without an equality index
  *     clause.  TODO(#34120): merge without such a condition.
  *   - A range column with an equality index clause, a single-value stream key
- *     with that clause.  It holds one value in each stream, and the merge order
- *     relies on that.
- *   - A range column without an equality index clause, not a stream key.  It is
- *     one of:
+ *     with that clause.  It holds one value in each stream, and the merge
+ *     order relies on that.
+ *   - A range column without an equality index clause, not a stream key.  It
+ *     is one of:
  *     - A duplicate index column.
  *     - A column a partial index predicate implies.
  *     - A column tied by filters, not a bind, to one of:
@@ -656,8 +656,8 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
  * merge order does not depend on it.  That includes a SAOP column the pathkeys
  * walk picked there, whose streams the merge does not need.
  *
- * Returns a new list in index column order, which EXPLAIN shows, or NIL when no
- * stream key column remains, and the path is then not a merge scan.
+ * Returns a new list in index column order, which EXPLAIN shows, or NIL when
+ * no stream key column remains, and the path is then not a merge scan.
  */
 List *
 yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
@@ -671,11 +671,14 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 	int			last_sort_indexcol = -1;
 
 	foreach(lc, stream_cols)
-		saop_idxs =
-			bms_add_member(saop_idxs,
-						   lfirst_node(YbMergeScanStreamColInfo, lc)->indexcol);
+	{
+		YbMergeScanStreamColInfo *info = lfirst_node(YbMergeScanStreamColInfo,
+													 lc);
 
-	/* Find each merge sort column the way yb_get_sort_info_from_pathkeys does. */
+		saop_idxs = bms_add_member(saop_idxs, info->indexcol);
+	}
+
+	/* Find the merge sort columns as yb_get_sort_info_from_pathkeys does. */
 	foreach(lc, pathkeys)
 	{
 		EquivalenceClass *ec = lfirst_node(PathKey, lc)->pk_eclass;

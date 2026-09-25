@@ -1634,13 +1634,12 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
-		useful_pathkeys = yb_finalize_merge_scan_path(root, rel, index,
-													  ForwardScanDirection,
-													  index_clauses,
-													  yb_distinct_prefixlen,
-													  &yb_distinct_nkeys,
-													  useful_pathkeys,
-													  &yb_merge_scan_stream_cols);
+		useful_pathkeys =
+			yb_finalize_merge_scan_path(root, rel, index,
+										ForwardScanDirection, index_clauses,
+										yb_distinct_prefixlen,
+										&yb_distinct_nkeys, useful_pathkeys,
+										&yb_merge_scan_stream_cols);
 		orderbyclauses = NIL;
 		orderbyclausecols = NIL;
 	}
@@ -1800,13 +1799,12 @@ yb_step_4:
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
-		useful_pathkeys = yb_finalize_merge_scan_path(root, rel, index,
-													  BackwardScanDirection,
-													  index_clauses,
-													  yb_distinct_prefixlen,
-													  &yb_distinct_nkeys,
-													  useful_pathkeys,
-													  &yb_merge_scan_stream_cols);
+		useful_pathkeys =
+			yb_finalize_merge_scan_path(root, rel, index,
+										BackwardScanDirection, index_clauses,
+										yb_distinct_prefixlen,
+										&yb_distinct_nkeys, useful_pathkeys,
+										&yb_merge_scan_stream_cols);
 yb_step_5:
 		if (useful_pathkeys != NIL)
 		{
@@ -5662,9 +5660,9 @@ yb_useful_pathkeys_without_merge_scan(PlannerInfo *root, RelOptInfo *rel,
 	List	   *index_pathkeys;
 
 	*yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
+	/* No stream key list disallows merge scan. */
 	index_pathkeys = build_index_pathkeys(root, index, scandir,
-										  yb_distinct_nkeys,
-										  NULL);	/* yb_merge_scan_stream_cols */
+										  yb_distinct_nkeys, NULL);
 	return truncate_useless_pathkeys(root, rel, index_pathkeys,
 									 *yb_distinct_nkeys);
 }
@@ -5672,9 +5670,9 @@ yb_useful_pathkeys_without_merge_scan(PlannerInfo *root, RelOptInfo *rel,
 /*
  * YB: Settle a merge scan path once truncate_useless_pathkeys has trimmed its
  * pathkeys.  Returns the path's useful pathkeys and sets
- * *yb_merge_scan_stream_cols to its stream key columns.  When the pathkeys walk
- * picked SAOP columns, trim the pathkeys to those an embedded index can merge
- * on, then settle the stream key columns against the result, see
+ * *yb_merge_scan_stream_cols to its stream key columns.  When the pathkeys
+ * walk picked SAOP columns, trim the pathkeys to those an embedded index can
+ * merge on, then settle the stream key columns against the result, see
  * yb_finalize_merge_scan_stream_cols.  With none left, the path is not a merge
  * scan and takes the pathkeys the index gives without merge scan.
  */
