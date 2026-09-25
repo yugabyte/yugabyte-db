@@ -11,14 +11,15 @@ import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 
 import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
-import { api } from '@app/redesign/helpers/api';
 import {
   useRefreshCustomerTasks,
   useRefreshUniverseTasksCache
 } from '@app/redesign/helpers/cacheUtils';
-import { YBPTask } from '@app/redesign/helpers/dtos';
 import { handleServerError } from '@app/utils/errorHandlingUtils';
-import { rollbackTask as rollbackCustomerTask } from '@app/v2/api/task/task';
+import {
+  rollbackTask as rollbackCustomerTask,
+  retryTask as retryCustomerTask
+} from '@app/v2/api/task/task';
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import type { YBATaskRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
@@ -94,14 +95,14 @@ export const useTaskActionMutations = (
     );
   };
 
-  const retryTaskMutation = useMutation<YBPTask, Error | AxiosError>(
-    () => api.retryTask(taskUuid),
+  const retryTaskMutation = useMutation<YBATaskRespResponse, Error | AxiosError>(
+    () => retryCustomerTask(taskUuid, {}),
     {
       onSuccess: (response) => {
         refreshTaskRelatedContext();
-        if (response?.taskUUID) {
+        if (response?.task_uuid) {
           pollSubmittedTask(
-            response.taskUUID,
+            response.task_uuid,
             messages?.retryCompleted ?? t('messages.taskRetryCompleted')
           );
         }

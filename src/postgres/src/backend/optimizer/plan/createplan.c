@@ -4773,9 +4773,19 @@ create_indexscan_plan(PlannerInfo *root,
 
 	if (best_path->yb_index_path_info.merge_scan_stream_cols)
 	{
+		ListCell   *yb_lc;
+
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
-		yb_merge_scan_info->stream_cols =
-			best_path->yb_index_path_info.merge_scan_stream_cols;
+		/* setrefs.c repoints each entry's clause, so copy the entries. */
+		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		{
+			YbMergeScanStreamColInfo *yb_info =
+				makeNode(YbMergeScanStreamColInfo);
+
+			*yb_info = *lfirst_node(YbMergeScanStreamColInfo, yb_lc);
+			yb_merge_scan_info->stream_cols =
+				lappend(yb_merge_scan_info->stream_cols, yb_info);
+		}
 	}
 
 	/* Finally ready to build the plan node */
@@ -4836,7 +4846,6 @@ create_indexscan_plan(PlannerInfo *root,
 	{
 		Bitmapset  *yb_stream_col_idxs = NULL;
 		ListCell   *yb_lc;
-		int			yb_last_sort_indexcol;
 		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
 			makeNode(YbSortInfo);
 
@@ -4859,20 +4868,6 @@ create_indexscan_plan(PlannerInfo *root,
 									   &yb_sort_info->sortOperators,
 									   &yb_sort_info->collations,
 									   &yb_sort_info->nullsFirst);
-
-		/*
-		 * Prune the stream key columns here, where the plan's last merge sort
-		 * column is known.  sortColIdx holds index tlist resnos.
-		 */
-		yb_last_sort_indexcol = -1;
-		for (int yb_i = 0; yb_i < yb_sort_info->numCols; yb_i++)
-			yb_last_sort_indexcol = Max(yb_last_sort_indexcol,
-										yb_sort_info->sortColIdx[yb_i] - 1);
-		yb_merge_scan_info->stream_cols =
-			yb_prune_merge_scan_stream_cols(indexinfo,
-											yb_merge_scan_info->stream_cols,
-											best_path->indexclauses,
-											yb_last_sort_indexcol);
 	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);

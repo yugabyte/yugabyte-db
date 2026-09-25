@@ -586,17 +586,13 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * YB: 'yb_merge_scan_stream_cols' is an out-param.  List of
  * YbMergeScanStreamColInfo.  If NULL is passed, disallow merge scan.
  * Otherwise, an empty list should be passed.
- *
- * YB: 'yb_index_clauses' is the path's list of IndexClauses, which merge scan
- * consults.  It is ignored when merge scan is disallowed.
  */
 List *
 build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
 					 ScanDirection scandir,
 					 int *yb_distinct_nkeys,
-					 List **yb_merge_scan_stream_cols,
-					 List *yb_index_clauses)
+					 List **yb_merge_scan_stream_cols)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
@@ -604,11 +600,6 @@ build_index_pathkeys(PlannerInfo *root,
 	int			yb_distinct_prefixlen;
 	int			yb_merge_scan_cardinality = 1;
 	PathKey	   *yb_pathkey = NULL;
-	List	   *yb_const_cols = NIL;
-	Bitmapset  *yb_broken_cols = NULL;
-	int			yb_gap_cut = -1;
-	bool		yb_can_merge_scan = (yb_merge_scan_stream_cols &&
-									 yb_merge_scan_enabled(index));
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -715,43 +706,6 @@ build_index_pathkeys(PlannerInfo *root,
 			 */
 			if (!pathkey_is_redundant(cpathkey, retval))
 				retval = lappend(retval, cpathkey);
-			/* YB: Collect const cols for merge scan logic below. */
-			else if (yb_merge_scan_stream_cols &&
-					 EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass))
-			{
-				yb_const_cols = lappend_int(yb_const_cols, i);
-				if (cpathkey->pk_eclass->ec_broken)
-				{
-					yb_broken_cols = bms_add_member(yb_broken_cols, i);
-
-					/*
-					 * A broken EquivalenceClass builds no index condition on
-					 * the column, but one of its original clauses can still be
-					 * one, such as a leakproof equality in the query.  Without
-					 * such a clause, filters on the original clauses hold the
-					 * column constant, so gate the column like a redundancy
-					 * without a constant.
-					 */
-					if (yb_can_merge_scan && yb_gap_cut < 0 &&
-						i >= index->nhashcolumns &&
-						!yb_has_equality_index_clause(index, yb_index_clauses,
-													  i) &&
-						!yb_merge_scan_gap_covered(root, index, i,
-												   cpathkey->pk_eclass))
-						yb_gap_cut = list_length(retval);
-				}
-			}
-			/*
-			 * YB: A redundancy without a constant (c1 = c2) is enforced by a
-			 * filter, not a bind.  A merge scan may sort past it only if that
-			 * filter runs within each stream before the merge.  Otherwise,
-			 * remember where to cut the merge scan's pathkeys, see below.
-			 */
-			else if (yb_can_merge_scan && yb_gap_cut < 0 &&
-					 i >= index->nhashcolumns &&
-					 !yb_merge_scan_gap_covered(root, index, i,
-												cpathkey->pk_eclass))
-				yb_gap_cut = list_length(retval);
 		}
 		else
 		{
@@ -784,74 +738,6 @@ build_index_pathkeys(PlannerInfo *root,
 		/* YB: For later use in creating a UpperUniquePath node. */
 		if (i == yb_distinct_prefixlen)
 			*yb_distinct_nkeys = list_length(retval);
-	}
-
-	/*
-	 * YB: The rest applies only when the walk pinned a merge scan stream key.
-	 */
-	if (yb_merge_scan_stream_cols && *yb_merge_scan_stream_cols != NIL)
-	{
-		ListCell   *yb_col_lc;
-
-		/*
-		 * Cut the pathkeys at the first gap whose filter does not run within
-		 * each stream, so that no merge sort key forms past it.  The pathkeys
-		 * built without merge scan keep the gap, since a single stream filters
-		 * before it emits.
-		 */
-		if (yb_gap_cut >= 0)
-		{
-			retval = list_truncate(retval, yb_gap_cut);
-			if (*yb_distinct_nkeys > yb_gap_cut)
-				*yb_distinct_nkeys = -1;
-		}
-
-		/*
-		 * Const columns ahead of the last merge sort column are stream keys
-		 * too: each stream holds them at one value, and the merge order relies
-		 * on that.  Two things are not known here:
-		 *
-		 * - The column's condition.  Unlike a SAOP column, whose SAOP
-		 *   yb_indexcol_can_merge_scan picks from the restriction clauses under
-		 *   the rules match_clause_to_indexcol applies, a const column's
-		 *   condition is one the planner builds from the EquivalenceClass and
-		 *   may leave out (a duplicate index column, a partial index predicate
-		 *   implying it, or a broken EquivalenceClass), which only the path's
-		 *   index clauses show.
-		 * - The last merge sort column, which is known only once
-		 *   truncate_useless_pathkeys has trimmed the pathkeys built here.
-		 *
-		 * So every const column is recorded here without a clause, and
-		 * create_indexscan_plan fills in the clause or drops the entry, see
-		 * yb_prune_merge_scan_stream_cols.
-		 */
-		foreach(yb_col_lc, yb_const_cols)
-		{
-			int			yb_col = lfirst_int(yb_col_lc);
-			YbMergeScanStreamColInfo *yb_const_info;
-			int			yb_pos;
-			ListCell   *yb_lc;
-
-			/* The clause is filled in by create_indexscan_plan, see above. */
-			yb_const_info = makeNode(YbMergeScanStreamColInfo);
-			yb_const_info->indexcol = yb_col;
-			yb_const_info->num_elems = 1;
-			yb_const_info->derived = false;
-			yb_const_info->broken_ec = bms_is_member(yb_col, yb_broken_cols);
-
-			/* Keep the list in index column order because EXPLAIN shows it. */
-			yb_pos = 0;
-			foreach(yb_lc, *yb_merge_scan_stream_cols)
-			{
-				if (lfirst_node(YbMergeScanStreamColInfo, yb_lc)->indexcol >
-					yb_col)
-					break;
-				yb_pos++;
-			}
-			*yb_merge_scan_stream_cols =
-				list_insert_nth(*yb_merge_scan_stream_cols, yb_pos,
-								yb_const_info);
-		}
 	}
 	return retval;
 }

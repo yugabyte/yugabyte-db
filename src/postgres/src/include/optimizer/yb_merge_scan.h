@@ -34,25 +34,12 @@
 extern PGDLLIMPORT bool yb_enable_derived_saops;
 extern PGDLLIMPORT int yb_max_merge_scan_streams;
 
-extern bool yb_merge_scan_enabled(IndexOptInfo *index);
-
 extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   IndexOptInfo *index,
 									   Expr *expr,
 									   int indexcol,
 									   int *merge_scan_cardinality,
 									   List **merge_scan_stream_cols);
-
-extern bool yb_has_equality_index_clause(IndexOptInfo *index,
-										 List *indexclauses, int indexcol);
-
-extern bool yb_merge_scan_gap_covered(PlannerInfo *root, IndexOptInfo *index,
-									  int indexcol, EquivalenceClass *ec);
-
-extern List *yb_prune_merge_scan_stream_cols(IndexOptInfo *index,
-											 List *stream_cols,
-											 List *indexclauses,
-											 int last_sort_indexcol);
 
 extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   List *pathkeys,
@@ -63,3 +50,9 @@ extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   Oid **p_sortOperators,
 										   Oid **p_collations,
 										   bool **p_nullsFirst);
+
+extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
+												Relids relids,
+												List *stream_cols,
+												List *indexclauses,
+												List *pathkeys);

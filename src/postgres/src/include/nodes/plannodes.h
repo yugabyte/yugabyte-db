@@ -44,10 +44,12 @@ typedef struct
 /*
  * YB: info used by IndexScan and IndexOnlyScan nodes.
  *
- * Holds info used for merge scans.  'stream_cols' is the ordered list of merge
- * stream keys after pruning by yb_prune_merge_scan_stream_cols: the executor
- * must bind these columns to constants per stream, as pggate expects
- * (PgDmlRead::IsMergeSortColumn).
+ * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
+ * in index column order (see yb_finalize_merge_scan_stream_cols).  The
+ * executor must bind each of them per stream, and ybValidateMergeScanBinds
+ * checks that it does.  pggate treats every key column before the last merge
+ * sort column as a stream key (PgDmlRead::IsMergeSortColumn), including the
+ * columns this list leaves out.
  */
 typedef struct
 {

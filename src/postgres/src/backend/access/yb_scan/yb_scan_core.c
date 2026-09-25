@@ -1414,6 +1414,24 @@ YbCheckScanTypes(YbOpaque ybScan, YbScanPlan scan_plan, int i)
 }
 
 /*
+ * Whether scan key i is an equality to an integer that its column's type
+ * cannot hold, which no row matches.
+ */
+static bool
+ybIsOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan, int i)
+{
+	ScanKey		key = ybScan->keys[i];
+	Oid			col_typid;
+
+	if (key->sk_strategy != BTEqualStrategyNumber || key->sk_flags != 0 ||
+		!OidIsValid(key->sk_subtype))
+		return false;
+	col_typid = ybc_get_atttypid(scan_plan->bind_desc,
+								 scan_plan->bind_key_attnums[i]);
+	return YbIsValueOutOfRange(col_typid, key->sk_subtype, key->sk_argument);
+}
+
+/*
  * Per-column fold state used by ybBindOrdinaryScanKeys to merge all
  * same-column conditions (equality, inequality, SAOP, IS (NOT) NULL)
  * into a single final type for that column.
@@ -2397,6 +2415,8 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 
 			if (!YbCheckScanTypes(ybScan, scan_plan, i))
 			{
+				if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
+					return false;
 				ybScan->needs_recheck = true;
 				continue;
 			}
@@ -2735,12 +2755,12 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 					AttrNumber	attnum;
 
 					/*
-					 * Only SAOPs pre-bind.  A single-value equality stream
-					 * key column binds through the ordinary priority loop,
-					 * where a Row IN on the same column outranks it, as it
-					 * does on the fold path, and the validation below then
-					 * errors.  TODO(#32734): pre-bind declared equalities too
-					 * once such a plan is reachable.
+					 * Only SAOPs pre-bind.  A single-value equality stream key
+					 * column binds through the ordinary priority loop, where a
+					 * Row IN on the same column outranks it, as it does on the
+					 * fold path, and the validation below then errors.
+					 * TODO(#32734): pre-bind declared equalities too once such
+					 * a plan is reachable.
 					 */
 					if (!info->clause || !IsA(info->clause, ScalarArrayOpExpr))
 						continue;
@@ -2912,6 +2932,9 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 		 * -- needed for hash code search below.
 		 */
 		Assert(idx > 0);
+
+		if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
+			return false;
 
 		/* Do not bind more than one condition to a column */
 		if (is_column_bound[idx] ||

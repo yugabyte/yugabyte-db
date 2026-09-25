@@ -31,6 +31,7 @@ import {
   mapUniversePayloadToResilienceAndRegionsProps
 } from '../EditUniverseUtils';
 import { isDefinedNotNull } from '@yugabytedb/perf-advisor-ui';
+import { toClusterStorageSpec } from '../edit-hardware/EditHardwareStorageUtils';
 
 export const useGetEditPlacementContext = (): EditPlacementContextMethods => {
   const context = useContext(EditPlacementContext);
@@ -267,20 +268,6 @@ export type MasterAllocationEditMutationCluster = {
   partitions_spec?: ClusterPartitionSpec[];
 };
 
-const toClusterStorageSpec = (
-  currentStorageSpec: NonNullable<ClusterSpec['node_spec']>['storage_spec'] | undefined,
-  deviceInfo: InstanceSettingProps['deviceInfo'] | undefined
-) => ({
-  ...currentStorageSpec,
-  volume_size: deviceInfo?.volumeSize ?? currentStorageSpec?.volume_size,
-  num_volumes: deviceInfo?.numVolumes ?? currentStorageSpec?.num_volumes,
-  disk_iops: deviceInfo?.diskIops ?? currentStorageSpec?.disk_iops,
-  throughput: deviceInfo?.throughput ?? currentStorageSpec?.throughput,
-  storage_class: deviceInfo?.storageClass ?? currentStorageSpec?.storage_class,
-  storage_type: deviceInfo?.storageType ?? currentStorageSpec?.storage_type,
-  mount_points: deviceInfo?.mountPoints ?? currentStorageSpec?.mount_points
-});
-
 const toK8sResourceSpec = (resourceSpec: InstanceSettingProps['tserverK8SNodeResourceSpec']) =>
   resourceSpec
     ? {
@@ -311,7 +298,7 @@ export const buildMasterAllocationEditPayload = (
 
   if (instanceSettings) {
     const tserverInstanceType = instanceSettings.instanceType ?? node_spec.instance_type;
-    const tserverStorageSpec = toClusterStorageSpec(node_spec.storage_spec, instanceSettings.deviceInfo);
+    const tserverStorageSpec = toClusterStorageSpec(instanceSettings.deviceInfo, node_spec.storage_spec);
 
     node_spec.instance_type = tserverInstanceType;
     node_spec.storage_spec = tserverStorageSpec;
@@ -346,8 +333,8 @@ export const buildMasterAllocationEditPayload = (
 
       const masterInstanceType = instanceSettings.masterInstanceType ?? tserverInstanceType;
       const masterStorageSpec = toClusterStorageSpec(
-        node_spec.master?.storage_spec ?? tserverStorageSpec,
-        instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo
+        instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo,
+        node_spec.master?.storage_spec ?? tserverStorageSpec
       );
 
       node_spec.master = {

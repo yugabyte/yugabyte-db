@@ -47,14 +47,14 @@ export const editUniverseRollbackTaskBannerMswHandlers = (
       return HttpResponse.json({ error: 'Universe is locked' }, { status: 400 });
     }
     return HttpResponse.json({
-      taskUUID: EDIT_UNIVERSE_ROLLBACK_RETRY_TASK_ID,
-      resourceUUID: EDIT_UNIVERSE_TASK_UNIVERSE_UUID
+      task_uuid: EDIT_UNIVERSE_ROLLBACK_RETRY_TASK_ID,
+      resource_uuid: EDIT_UNIVERSE_TASK_UNIVERSE_UUID
     });
   };
 
   return [
-    http.post(`${V1_CUSTOMER_ROOT}/tasks/${EDIT_UNIVERSE_ROLLBACK_TASK_ID}/retry`, respondToRetry),
-    http.post(`${V1_CUSTOMER_ROOT}/tasks/${EDIT_UNIVERSE_TASK_ID}/retry`, respondToRetry),
+    http.post(`${V2_CUSTOMER_ROOT}/tasks/${EDIT_UNIVERSE_ROLLBACK_TASK_ID}/retry`, respondToRetry),
+    http.post(`${V2_CUSTOMER_ROOT}/tasks/${EDIT_UNIVERSE_TASK_ID}/retry`, respondToRetry),
     http.get(`${V1_CUSTOMER_ROOT}/tasks/${EDIT_UNIVERSE_ROLLBACK_RETRY_TASK_ID}`, () =>
       HttpResponse.json({ percent: 100, status: 'Success' })
     ),

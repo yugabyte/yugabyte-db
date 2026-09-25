@@ -4126,7 +4126,6 @@ _outYbMergeScanStreamColInfo(StringInfo str,
 	WRITE_INT_FIELD(indexcol);
 	WRITE_INT_FIELD(num_elems);
 	WRITE_BOOL_FIELD(derived);
-	WRITE_BOOL_FIELD(broken_ec);
 }
 
 static void

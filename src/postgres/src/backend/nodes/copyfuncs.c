@@ -5398,7 +5398,6 @@ _copyYbMergeScanStreamColInfo(const YbMergeScanStreamColInfo *from)
 	COPY_SCALAR_FIELD(indexcol);
 	COPY_SCALAR_FIELD(num_elems);
 	COPY_SCALAR_FIELD(derived);
-	COPY_SCALAR_FIELD(broken_ec);
 
 	return newnode;
 }

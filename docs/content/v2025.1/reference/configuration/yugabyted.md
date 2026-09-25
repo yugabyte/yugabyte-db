@@ -289,7 +289,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the fault tolerance for the universe. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the universe, placing the nodes in three different zones, if available.
 
 --constraint_value *data-placement-constraint-value*
-: Specify the data placement and preferred region(s) for the YugabyteDB universe. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone:priority`. The priority is an integer and is optional, and determines the preferred region(s) in order of preference. You must specify the same number of data placement values as the [replication factor](../../../architecture/key-concepts/#replication-factor-rf).
+: Specify replica placement and, optionally, tablet-leader preference. Comma-separated `cloud.region.zone[:priority]` values. Each placement must match a node's `--cloud_location` exactly; wildcards (`*`) are not supported. You must specify the same number of placement values as the [replication factor](../../../architecture/key-concepts/#replication-factor-rf). The optional `:priority` integer is passed to [`yb-admin set_preferred_zones`](../../../admin/yb-admin/#set-preferred-zones); entries without it are placement-only. This is separate from `--fault_tolerance`, which can also move YB-Master processes.
 
 --rf *replication-factor*
 : Specify the replication factor for the universe. This is an optional flag which takes a value of `3` or `5`.
@@ -1793,7 +1793,7 @@ The preceding command automatically determines the data placement constraint bas
 
 The replication factor of the universe defaults to 3.
 
-You can set the data placement constraint manually and specify preferred regions using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone:priority`. For example:
+You can set the data placement constraint manually and specify preferred regions using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone[:priority]`. For example:
 
 ```sh
 ./bin/yugabyted configure data_placement \
@@ -1801,7 +1801,7 @@ You can set the data placement constraint manually and specify preferred regions
     --constraint_value=aws.us-east-1.us-east-1a:1,aws.us-west-1.us-west-1a,aws.us-central-1.us-central-1a:2
 ```
 
-This indicates that us-east is the preferred region, with a fallback option to us-central.
+This places replicas in all three zones, prefers `us-east-1a` (priority 1) for tablet leaders, and falls back to `us-central-1a` (priority 2). `us-west-1a` is a replica location only.
 
 You can set the replication factor of the universe manually using the `--rf` flag. For example:
 
@@ -1916,7 +1916,7 @@ The preceding command automatically determines the data placement constraint bas
 
 The replication factor of the universe defaults to 3.
 
-You can set the data placement constraint manually and specify preferred regions using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone:priority`. For example:
+You can set the data placement constraint manually and specify preferred regions using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone[:priority]`. For example:
 
 ```sh
 ./bin/yugabyted configure data_placement \
@@ -1924,7 +1924,7 @@ You can set the data placement constraint manually and specify preferred regions
     --constraint_value=aws.us-east-1.us-east-1a:1,aws.us-west-1.us-west-1a,aws.us-central-1.us-central-1a:2
 ```
 
-This indicates that us-east is the preferred region, with a fallback option to us-central.
+This places replicas in all three zones, prefers `us-east-1a` (priority 1) for tablet leaders, and falls back to `us-central-1a` (priority 2). `us-west-1a` is a replica location only.
 
 You can set the replication factor of the universe manually using the `--rf` flag. For example:
 

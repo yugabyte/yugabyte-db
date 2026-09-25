@@ -726,7 +726,8 @@ Status list_tablets_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 }
 
 const auto modify_table_placement_info_args =
-    "<table> <placement_info> <replication_factor> [<placement_uuid>]";
+    "<table> <placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_table_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 3 || args.size() > 5) {
@@ -756,7 +757,9 @@ Status modify_table_placement_info_action(
   return Status::OK();
 }
 
-const auto modify_placement_info_args = "<placement_info> <replication_factor> [<placement_uuid>]";
+const auto modify_placement_info_args =
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -781,7 +784,8 @@ Status clear_placement_info_action(
 }
 
 const auto add_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status add_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -796,7 +800,8 @@ Status add_read_replica_placement_info_action(
 }
 
 const auto modify_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
