@@ -450,6 +450,32 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 }
 
 /*
+ * The first entry of tlist, an index target list, whose expression is a member
+ * of ec, skipping the index columns in skip_idxs.  Those are the stream key
+ * columns, which can belong to a sort EquivalenceClass when they equal a sort
+ * column.  Sets *p_em to the member and returns NULL when no entry matches.
+ */
+static TargetEntry *
+ybFindPathkeyTle(List *tlist, EquivalenceClass *ec, Relids relids,
+				 Bitmapset *skip_idxs, EquivalenceMember **p_em)
+{
+	ListCell   *lc;
+	int			indexcol = 0;
+
+	foreach(lc, tlist)
+	{
+		TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+		if (bms_is_member(indexcol++, skip_idxs))
+			continue;
+		*p_em = find_ec_member_matching_expr(ec, tle->expr, relids);
+		if (*p_em)
+			return tle;
+	}
+	return NULL;
+}
+
+/*
  * Get sort info for given pathkeys corresponding to tlist.  In case a pathkey
  * matches multiple columns in tlist, avoid the columns that are pinned as
  * stream key columns.
@@ -493,7 +519,6 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 		TargetEntry *tle = NULL;
 		Oid			pk_datatype = InvalidOid;
 		Oid			sortop;
-		ListCell   *j;
 
 		{
 			/*
@@ -512,27 +537,9 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 			 * in the same equivalence class...)  Not clear that we ever will
 			 * have an interesting choice in practice, so it may not matter.
 			 */
-			int			indexcol = 0;
-
-			foreach(j, tlist)
-			{
-				/*
-				 * YB: skip over stream key cols, which may be part of sort ECs
-				 * in case they are equal to other columns part of sort.
-				 */
-				if (bms_is_member(indexcol++, stream_col_idxs))
-					continue;
-
-				tle = (TargetEntry *) lfirst(j);
-				em = find_ec_member_matching_expr(ec, tle->expr, relids);
-				if (em)
-				{
-					/* found expr already in tlist */
-					pk_datatype = em->em_datatype;
-					break;
-				}
-				tle = NULL;
-			}
+			tle = ybFindPathkeyTle(tlist, ec, relids, stream_col_idxs, &em);
+			if (tle)
+				pk_datatype = em->em_datatype;
 		}
 
 		if (!tle)
@@ -568,8 +575,10 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 }
 
 /*
- * Whether the operator clause is an equality, per the index column's
- * opfamily, between the given index column expression and anything else.
+ * Whether the operator clause is an equality, per the index column's opfamily,
+ * between the given index column expression and anything else.  A RelabelType
+ * on either side is ignored, so that a column matches its relabeled expression
+ * index column, such as varchar v and (v::text).
  */
 static bool
 ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *expr,
@@ -591,6 +600,8 @@ ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *expr,
 		lhs = ((RelabelType *) lhs)->arg;
 	if (IsA(rhs, RelabelType))
 		rhs = ((RelabelType *) rhs)->arg;
+	if (IsA(expr, RelabelType))
+		expr = ((RelabelType *) expr)->arg;
 	return equal(lhs, expr) || equal(rhs, expr);
 }
 
@@ -681,26 +692,17 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 	/* Find the merge sort columns as yb_get_sort_info_from_pathkeys does. */
 	foreach(lc, pathkeys)
 	{
-		EquivalenceClass *ec = lfirst_node(PathKey, lc)->pk_eclass;
-		int			indexcol = -1;
-		ListCell   *lc2;
+		PathKey    *pathkey = lfirst_node(PathKey, lc);
+		EquivalenceMember *em;
+		TargetEntry *tle = ybFindPathkeyTle(index->indextlist,
+											pathkey->pk_eclass, relids,
+											saop_idxs, &em);
 
-		foreach(lc2, index->indextlist)
-		{
-			TargetEntry *tle = lfirst_node(TargetEntry, lc2);
-
-			if (!bms_is_member(tle->resno - 1, saop_idxs) &&
-				find_ec_member_matching_expr(ec, tle->expr, relids))
-			{
-				indexcol = tle->resno - 1;
-				break;
-			}
-		}
 		/* Not an ordering the merge can compare on. */
-		if (indexcol < 0)
+		if (!tle)
 			return NIL;
-		sort_idxs = bms_add_member(sort_idxs, indexcol);
-		last_sort_indexcol = Max(last_sort_indexcol, indexcol);
+		sort_idxs = bms_add_member(sort_idxs, tle->resno - 1);
+		last_sort_indexcol = Max(last_sort_indexcol, tle->resno - 1);
 	}
 
 	/* Construct the result in index column order. */

@@ -80,3 +80,24 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 \i :run_query
 
 DROP INDEX idx;
+
+--
+-- Index 4: a relabeled expression column held at one value, ahead of the stream
+-- column i2.  With v = '1', the single-value stream key (v::text) matches its
+-- equality index condition only if the RelabelType on the index expression is
+-- stripped too.  It then shows under Merge Stream Key and Merge Cond, and the
+-- bind validation covers it.  With v IN, (v::text) streams by its SAOP instead.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+\set query ':P :Q SELECT i4, n, v, i2 FROM tv_tbl WHERE v :R AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;'
+\i :run_query
+DROP INDEX idx;
+
+--
+-- Index 5: the same as a hash column, which stays a stream key either way and
+-- shows its equality index condition under Merge Cond.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) HASH, i2 ASC, i4 ASC);
+\i :run_query
+DROP INDEX idx;
