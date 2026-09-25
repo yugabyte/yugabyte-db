@@ -64,12 +64,7 @@ class ClusterAdminCli {
 
   static const Status kInvalidArguments;
 
-  // Returned by an action that has already written its complete error report to stderr.
-  // RunCommand() adds nothing on top of it; main() still exits non-zero.
-  static const Status kErrorReported;
-
-  // Writes the short overview: the usage message prefixed with the program name, exactly as
-  // gflags renders it in the --help* headers.
+  // Prints the usage message prefixed with the program name, as gflags does in --help* headers.
   static void PrintOverview(const std::string& prog_name, std::ostream& out);
 
  protected:
@@ -80,63 +75,43 @@ class ClusterAdminCli {
     std::string usage_arguments_;
     Action action_;
     bool hidden_;
-    // Whether Run() must construct and connect a ClusterAdminClient before dispatching to
-    // action_. False for operations like `help` that must work with no reachable cluster.
-    bool needs_client_ = true;
   };
 
   void Register(
-      std::string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden = false,
-      bool needs_client = true);
-  void SetUsage(const std::string& prog_name);
+      std::string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden = false);
+  void SetUsage();
 
   virtual void RegisterCommandHandlers();
 
  private:
-  // A help request found in raw argv before the flag parse (see ScanForHelpRequest).
   struct HelpRequest {
-    // Set when the request is the `help` operation rather than a --help* flag. Run() then
-    // dispatches it through RunCommand() so that answering it early changes nothing about its
-    // output or its error framing, and help_args holds the operation's own arguments.
+    // The `help` operation, with its arguments in help_args, rather than a --help* flag.
     bool help_operation = false;
     std::vector<std::string> help_args;
-    // First token that names a registered operation, or empty for the plain overview. Unused for
-    // a help_operation request, which carries its target in help_args.
+    // For a --help* flag: the operation to show usage for, or empty for the overview.
     std::string operation;
-    // Whether --helpshort was requested, adding yb-admin's own flags to the overview.
     bool helpshort = false;
   };
 
-  // Scans raw argv for --help/-h/--helpshort and for a leading `help` operation before the flag
-  // parse, so those surfaces answer even when the parse would fail on a malformed --flagfile, an
-  // unparsable flag value, or an unknown flag. The surfaces gflags renders (--helpfull,
-  // --helpmatch, --helpon, --helppackage) are not scanned and still die with the parse. Returns
-  // nullopt when help was not requested.
+  // Scans raw argv for --help/-h/--helpshort or a leading `help` operation, so help answers even
+  // when the flag parse would fail. Returns nullopt when help was not requested.
   std::optional<HelpRequest> ScanForHelpRequest(int argc, char** argv) const;
-  void PrintHelpRequest(const HelpRequest& request, const std::string& prog_name,
-                        std::ostream& out);
-  // Prints "Usage: <prog> <operation> <args>" plus the argument-placeholder definitions -- the
-  // one code path behind `help <operation>`, `<operation> --help`, and the bad-argument error.
-  void PrintCommandUsage(const Command& command, const std::string& prog_name, std::ostream& out);
-  // Prints the visible operations alphabetically -- numbered when filter is empty, or the
-  // case-insensitive substring matches when it is not. Returns how many entries were printed;
-  // prints nothing (not even a header) when a non-empty filter matches nothing.
+  void PrintHelpRequest(const HelpRequest& request, std::ostream& out);
+  Status RunHelp(const CLIArguments& args);
+  void PrintCommandUsage(const Command& command, std::ostream& out);
+  // Prints the visible operations whose name contains filter (case-insensitive), numbered when
+  // filter is empty. Returns the number printed.
   size_t PrintOperationNames(std::ostream& out, const std::string& filter = "") const;
-  // Prints "Invalid operation: <op>" with closest-match suggestions to stderr.
-  void ReportUnknownOperation(const std::string& op, const std::string& prog_name) const;
-  Status RunCommand(
-      const Command& command, const CLIArguments& command_args, const std::string& program_name);
+  void ReportUnknownOperation(const std::string& op) const;
+  Status RunCommand(const Command& command, const CLIArguments& command_args);
   std::string GetArgumentExpressions(const std::string& usage_arguments);
   // Returns the command names to suggest for an operation that did not match any registered
-  // command, or an empty vector when there is no good suggestion. Three tiers, first non-empty
-  // wins: commands the operation is a prefix of; the closest commands by edit distance; then
-  // SuggestByNameTokens() for abbreviations like "list_server".
+  // command, or an empty vector when there is no good suggestion. Commands that the operation is a
+  // prefix of are preferred, then the closest commands by edit distance, then token matches.
   std::vector<std::string> GetSuggestedCommands(const std::string& op) const;
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;
   std::unique_ptr<ClusterAdminClient> client_;
-  // BaseName(argv[0]), set at the top of Run(); actions (the `help` lambda) need it and only
-  // receive (args, client).
   std::string prog_name_;
 };
 

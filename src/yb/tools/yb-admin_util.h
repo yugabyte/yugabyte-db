@@ -27,17 +27,12 @@
 namespace yb {
 namespace tools {
 
-// Returns true when a command failed because the cluster does not implement the requested RPC —
-// either the method (ERROR_NO_SUCH_METHOD) or the whole service (ERROR_NO_SUCH_SERVICE) is
-// unknown to it, i.e. the cluster predates the operation.
+// Returns true when the cluster does not implement the requested RPC, i.e. predates the operation.
 bool IsUnsupportedRpcError(const Status& s);
 
-// Suggestions for an abbreviated operation name (#32640): the names whose '_'-separated tokens
-// cover every token of op, ranked by fewest uncovered name tokens (the closest command first),
-// then alphabetically, capped at max_results. A token covers another when either is a prefix of
-// the other, so "server" finds "servers" and vice versa. Requiring every typed token to be
-// covered is the precision guard: the alternative — widening the edit-distance tolerance of the
-// fuzzy tier — makes arbitrary garbage match random commands.
+// Returns the names whose '_'-separated tokens cover every token of op (case-insensitive), where
+// a token covers another when either is a prefix of the other. Ranked by fewest uncovered name
+// tokens, then alphabetically, and capped at max_results.
 std::vector<std::string> SuggestByNameTokens(
     const std::string& op, const std::vector<std::string>& names, size_t max_results);
 
