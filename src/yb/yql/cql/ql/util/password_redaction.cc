@@ -42,13 +42,91 @@ std::string RedactPasswordLiterals(
   };
 
   // scanner_lex.l `ident_cont`: a character that continues an unquoted identifier. `$` is one, so
-  // a `$` or `E'` that follows such a character is part of the identifier, not a token start.
+  // a `$` or `E'` that follows such a character is usually part of the identifier.
   const auto is_ident_cont = [](char c) {
     const auto u = static_cast<unsigned char>(c);
     return std::isalnum(u) || c == '_' || c == '$' || u >= 0x80;
   };
+  const auto is_digit = [](char c) {
+    return std::isdigit(static_cast<unsigned char>(c)) != 0;
+  };
+  // Whether a token starts at operation[i]. Adjacency to an ident_cont character is not enough to
+  // say no: a digit begins a number token (`integer`, `real`), not an identifier, so in `1$$` or
+  // `1E'..'` the `$` / `E` does start a new token. Re-lex the run of ident_cont characters before
+  // i the way the lexer would: numbers and lone `$` end at a token boundary, while an identifier
+  // (anything else) swallows the rest of the run, i included.
   const auto at_token_start = [&](size_t i) {
-    return i == 0 || !is_ident_cont(operation[i - 1]);
+    size_t j = i;
+    while (j > 0 && is_ident_cont(operation[j - 1])) {
+      --j;
+    }
+    while (j < i) {
+      if (is_digit(operation[j])) {
+        while (j < i && is_digit(operation[j])) {
+          ++j;
+        }
+        // Exponent (`real`); a bare [Ee] is thrown back (`realfail1`) and starts an identifier.
+        if (j + 1 < i && lower(operation[j]) == 'e' && is_digit(operation[j + 1])) {
+          j += 2;
+          while (j < i && is_digit(operation[j])) {
+            ++j;
+          }
+        }
+      } else if (operation[j] == '$') {
+        ++j;  // A `$` at a token start that did not open a dollar quote is a token of its own.
+      } else {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // If a comment starts at operation[i] -- `--` to end of line, or a nested /* */ -- returns the
+  // index just past it (n if a block comment is unterminated); otherwise std::string::npos.
+  const auto comment_end = [&](size_t i) -> size_t {
+    if (i + 1 >= n) {
+      return std::string::npos;
+    }
+    if (operation[i] == '-' && operation[i + 1] == '-') {
+      size_t j = i + 2;
+      while (j < n && operation[j] != '\n' && operation[j] != '\r') {
+        ++j;
+      }
+      return j;
+    }
+    if (operation[i] == '/' && operation[i + 1] == '*') {
+      size_t j = i + 2;
+      int depth = 1;
+      while (j < n && depth > 0) {
+        if (operation[j] == '/' && j + 1 < n && operation[j + 1] == '*') {
+          depth++;
+          j += 2;
+        } else if (operation[j] == '*' && j + 1 < n && operation[j + 1] == '/') {
+          depth--;
+          j += 2;
+        } else {
+          ++j;
+        }
+      }
+      return j;
+    }
+    return std::string::npos;
+  };
+
+  // Skips what the lexer treats as `whitespace` between tokens: spaces and comments.
+  const auto skip_whitespace = [&](size_t j) {
+    while (j < n) {
+      if (std::isspace(static_cast<unsigned char>(operation[j]))) {
+        ++j;
+        continue;
+      }
+      const size_t end = comment_end(j);
+      if (end == std::string::npos) {
+        break;
+      }
+      j = end;
+    }
+    return j;
   };
 
   // If a `dolqdelim` ($$ or $tag$, where the tag follows `dolq_start` / `dolq_cont`) starts at
@@ -168,34 +246,10 @@ std::string RedactPasswordLiterals(
   while (i < n) {
     const char c = operation[i];
 
-    // Line comment: -- to end of line.
-    if (c == '-' && i + 1 < n && operation[i + 1] == '-') {
-      size_t j = i + 2;
-      while (j < n && operation[j] != '\n') {
-        ++j;
-      }
-      result.append(operation, i, j - i);
-      i = j;
-      continue;
-    }
-
-    // Block comment: /* ... */, which nests in the CQL lexer.
-    if (c == '/' && i + 1 < n && operation[i + 1] == '*') {
-      size_t j = i + 2;
-      int depth = 1;
-      while (j < n && depth > 0) {
-        if (operation[j] == '/' && j + 1 < n && operation[j + 1] == '*') {
-          depth++;
-          j += 2;
-        } else if (operation[j] == '*' && j + 1 < n && operation[j + 1] == '/') {
-          depth--;
-          j += 2;
-        } else {
-          ++j;
-        }
-      }
-      result.append(operation, i, j - i);
-      i = j;
+    const size_t comment = comment_end(i);
+    if (comment != std::string::npos) {
+      result.append(operation, i, comment - i);
+      i = comment;
       continue;
     }
 
@@ -250,10 +304,10 @@ std::string RedactPasswordLiterals(
     }
 
     // Password clause at top level: `password` (case-insensitive; matching as a suffix is fine,
-    // so HASHED PASSWORD is covered too) followed by optional whitespace, '=', optional
-    // whitespace, and a string-constant value in any form (see sconst_end), which is replaced with
-    // the placeholder. Redact *every* occurrence: a rejected statement can carry two password
-    // clauses, and stopping after the first would leave the rest in cleartext.
+    // so HASHED PASSWORD is covered too) followed by optional whitespace or comments, '=',
+    // optional whitespace or comments, and a string-constant value in any form (see sconst_end),
+    // which is replaced with the placeholder. Redact *every* occurrence: a rejected statement can
+    // carry two password clauses, and stopping after the first would leave the rest in cleartext.
     if (lower(c) == kKeyword[0] && i + kKeyword.size() <= n) {
       bool keyword = true;
       for (size_t k = 0; k < kKeyword.size(); ++k) {
@@ -263,15 +317,9 @@ std::string RedactPasswordLiterals(
         }
       }
       if (keyword) {
-        size_t j = i + kKeyword.size();
-        while (j < n && std::isspace(static_cast<unsigned char>(operation[j]))) {
-          ++j;
-        }
+        size_t j = skip_whitespace(i + kKeyword.size());
         if (j < n && operation[j] == '=') {
-          ++j;
-          while (j < n && std::isspace(static_cast<unsigned char>(operation[j]))) {
-            ++j;
-          }
+          j = skip_whitespace(j + 1);
           const size_t end = sconst_end(j);
           if (end != std::string::npos) {
             result.append(operation, i, j - i);  // `password` + ws + '=' + ws, kept verbatim.

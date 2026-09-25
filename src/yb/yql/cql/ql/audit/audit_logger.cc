@@ -734,8 +734,7 @@ Status AuditLogger::LogStatementError(const TreeNode* tnode,
     return Status::OK();
   }
 
-  // Pass the raw statement: the overload below redacts it unconditionally, and it needs the
-  // original text to find the statement's echo inside the error message.
+  // The overload below redacts the statement unconditionally.
   return LogStatementError(statement, error_status, error_is_formatted);
 }
 
@@ -762,24 +761,26 @@ Status AuditLogger::LogStatementError(const std::string& statement,
   }
 
   // `error_message` carries the statement as well, not just the error: ProcessContextBase::Error
-  // echoes the offending statement verbatim after the error text, with a caret marker line. The
-  // strip above does not deal with it -- execution failures reach here with
-  // ErrorIsFormatted::kFalse, where the strip does not run at all, and even when it does run it
-  // drops exactly three trailing lines, which removes the echo only for a single-line statement.
-  // Without redacting this field a CREATE ROLE rejected with DUPLICATE_ROLE, or an ALTER ROLE with
-  // ROLE_NOT_FOUND, is audited with its password in cleartext.
+  // echoes the offending statement after the error text, with a caret marker line. It already
+  // redacts that echo; this is a backstop for any error text that embeds the statement without
+  // going through it. The strip above can't serve that role -- execution failures reach here with
+  // ErrorIsFormatted::kFalse, where it does not run at all, and even when it does run it drops
+  // exactly three trailing lines, which removes the echo only for a single-line statement.
   //
   // Only the echo is CQL. The error text in front of it ("<ErrorText>. <msg>" followed by a
   // newline) is prose -- e.g. "Role o'brien already exists", "You aren't allowed..." -- and an
   // apostrophe there would open a phantom string literal in the scanner that swallows the echoed
-  // PASSWORD clause. So scan from where the echo starts: the statement's first line, searched for
-  // after the first newline (msg may itself span lines), falling back to that first newline.
+  // PASSWORD clause. So scan from where the echo starts: the statement's first line as the echo
+  // shows it (redacted), searched for after the first newline (msg may itself span lines), falling
+  // back to that first newline.
   const size_t first_newline = error_message.find('\n');
   if (first_newline == std::string::npos) {
     error_message = RedactPasswordLiterals(error_message);
   } else {
     size_t echo_start = first_newline + 1;
-    const std::string first_line = statement.substr(0, statement.find('\n'));
+    const std::string redacted_statement = RedactPasswordLiterals(statement);
+    const std::string first_line =
+        redacted_statement.substr(0, redacted_statement.find('\n'));
     if (!first_line.empty()) {
       const size_t pos = error_message.find(first_line, echo_start);
       if (pos != std::string::npos) {

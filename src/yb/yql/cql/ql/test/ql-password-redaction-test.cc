@@ -51,6 +51,20 @@ TEST_F(PasswordRedactionTest, RedactsEveryPasswordValue) {
     // A $ inside an unquoted identifier doesn't open a dollar-quoted string.
     {"CREATE ROLE a$b$ WITH LOGIN = true AND PASSWORD = 'secret'",
      "CREATE ROLE a$b$ WITH LOGIN = true AND PASSWORD = <REDACTED>"},
+    {"CREATE ROLE r WITH login = 1a$$ AND PASSWORD = 'secret'",
+     "CREATE ROLE r WITH login = 1a$$ AND PASSWORD = <REDACTED>"},
+    // After a number, $ and E' do start a token, as in the lexer.
+    {"CREATE ROLE r WITH login = 1$$'$$ AND PASSWORD = 'secret'",
+     "CREATE ROLE r WITH login = 1$$'$$ AND PASSWORD = <REDACTED>"},
+    {"CREATE ROLE r WITH login = 1e5$$'$$ AND PASSWORD = 'secret'",
+     "CREATE ROLE r WITH login = 1e5$$'$$ AND PASSWORD = <REDACTED>"},
+    {"CREATE ROLE r WITH login = 1E'\\'' AND PASSWORD = 'secret'",
+     "CREATE ROLE r WITH login = 1E'\\'' AND PASSWORD = <REDACTED>"},
+    // Comments are whitespace to the lexer, including around the '='.
+    {"CREATE ROLE r WITH PASSWORD /* a /* b */ c */ = /* x */ 'secret' AND login = true",
+     "CREATE ROLE r WITH PASSWORD /* a /* b */ c */ = /* x */ <REDACTED> AND login = true"},
+    {"CREATE ROLE r WITH PASSWORD -- c\n= -- d\n'secret' AND login = true",
+     "CREATE ROLE r WITH PASSWORD -- c\n= -- d\n<REDACTED> AND login = true"},
     // Text that only looks like a password clause, inside a string constant, is left alone.
     {"SELECT * FROM t WHERE v = 'password = x'", "SELECT * FROM t WHERE v = 'password = x'"},
   };
