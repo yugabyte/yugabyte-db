@@ -219,7 +219,7 @@ message PgsqlWriteRequestPB {
   optional PgsqlStmtType stmt_type = 3;    // required
 
   // Table id.
-  optional bytes table_id = 4; // required
+  optional bytes table_id = 4 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}]; // required
 
   // Table schema version.
   optional uint32 schema_version = 5; // required
@@ -454,8 +454,8 @@ message PgsqlReadRequestPB {
   // Statement info. There's only SELECT, so we don't need different request type.
   optional uint64 stmt_id = 2; // required
 
-  // Table id.
-  optional bytes table_id = 19; // required
+  // Table id. Required.
+  optional bytes table_id = 19 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Table schema version
   optional uint32 schema_version = 3; // required
