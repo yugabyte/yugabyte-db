@@ -39,6 +39,7 @@ struct PlacementInfo {
   struct PlacementBlock {
     int32_t min_replicas;
     std::string_view placement;
+    std::optional<int32_t> max_replicas = std::nullopt;
   };
   std::vector<PlacementBlock> blocks;
 
@@ -53,6 +54,9 @@ struct PlacementInfo {
     for (const auto& block : blocks) {
       auto* placement_block = out.add_placement_blocks();
       placement_block->set_min_num_replicas(block.min_replicas);
+      if (block.max_replicas) {
+        placement_block->set_max_num_replicas(*block.max_replicas);
+      }
 
       auto [cloud, region_zone] = SplitString(block.placement, '.');
       std::string_view region = "*"sv, zone = "*"sv;
@@ -237,6 +241,92 @@ TEST(TestPlacementInfoContainsPlacementInfo, TestUUID) {
       { .replicas = 1,
         .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }},
         .uuid = "00000000-0000-0000-0000-000000000000" }));
+}
+
+TEST(TestPlacementInfoContainsPlacementInfo, TestMaxReplicas) {
+  ASSERT_TRUE(PlacementInfoContains(
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 }} },
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 2 }} }));
+  ASSERT_TRUE(PlacementInfoContains(
+      { .replicas = 3,
+        .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }} },
+      { .replicas = 3,
+        .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 3 }} }));
+  ASSERT_FALSE(PlacementInfoContains(
+      { .replicas = 3,
+        .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 1 }} },
+      { .replicas = 3,
+        .blocks = {{ .min_replicas = 3, .placement = "c1.r1.z1", .max_replicas = 3 }} }));
+
+  // A placement with a higher replication factor and per-block caps can still contain a smaller
+  // placement whose blocks all fit under the caps.
+  ASSERT_TRUE(PlacementInfoContains(
+      { .replicas = 5,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z3", .max_replicas = 2 }} },
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z3", .max_replicas = 1 }} }));
+  // Containment is asymmetric: the smaller placement cannot contain the larger one.
+  ASSERT_FALSE(PlacementInfoContains(
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z3", .max_replicas = 1 }} },
+      { .replicas = 5,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z3", .max_replicas = 2 }} }));
+
+  // Matching minimums are insufficient: rhs may place two replicas in z1, which lhs caps at one.
+  ASSERT_FALSE(PlacementInfoContains(
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 }} },
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 }} }));
+  // But a tighter rhs cap fits under a looser lhs cap.
+  ASSERT_TRUE(PlacementInfoContains(
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 2 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 }} },
+      { .replicas = 3,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 2 }} }));
+
+  // Explicit maxima combined with wildcard blocks (on either side) are conservatively treated as
+  // not contained.
+  ASSERT_FALSE(PlacementInfoContains(
+      { .replicas = 2,
+        .blocks = {{ .min_replicas = 1, .placement = "c1.r1", .max_replicas = 2 }} },
+      { .replicas = 2,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 1 }} }));
+  ASSERT_FALSE(PlacementInfoContains(
+      { .replicas = 2,
+        .blocks = {
+            { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 1 },
+            { .min_replicas = 1, .placement = "c1.r1.z2", .max_replicas = 1 }} },
+      { .replicas = 2,
+        .blocks = {{ .min_replicas = 1, .placement = "c1.r1", .max_replicas = 2 }} }));
 }
 
 TEST(TestPlacementInfoContainsPlacementInfo, TestSlack) {

@@ -8,17 +8,17 @@ import { OperationBannerVariant, YBOperationBanner } from '@yugabyte-ui-library/
 
 import { showTaskInDrawer } from '@app/actions/tasks';
 import { YBButton } from '@app/redesign/components';
+import { YBProgressBarState } from '@app/redesign/components/YBProgress/YBLinearProgress';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL } from '@app/redesign/features/universe/universe-actions/software-upgrade/constants';
 import { dbUpgradeMetadataQueryKey } from '@app/redesign/helpers/api';
 import { useRefreshUniverseDetailsCache } from '@app/redesign/helpers/cacheUtils';
 import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
+import { retryTask } from '@app/v2/api/task/task';
 import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
-import { YBProgressBarState } from '@app/redesign/components/YBProgress/YBLinearProgress';
 import { Task, TaskState } from '../../dtos';
 import { getIsDbUpgradeFinalizeTask } from '../../TaskUtils';
-import { retryTasks } from '../drawerComp/api';
 import { RetryConfirmModal } from '../drawerComp/TaskDetailActions';
 import { OperationBannerProgressContent } from './OperationBannerProgressContent';
 import { OperationBannerLoadingIcon } from './operationBannerIcons';
@@ -60,7 +60,7 @@ export const DbUpgradeFinalizeTaskBanner = ({
     ...ApiPermissionMap.RETRY_TASKS
   };
 
-  const retryTaskMutation = useMutation(() => retryTasks(task.id), {
+  const retryTaskMutation = useMutation(() => retryTask(task.id, {}), {
     onSuccess: () => {
       refreshUniverseDetailsCache();
       setIsRetryConfirmModalOpen(false);

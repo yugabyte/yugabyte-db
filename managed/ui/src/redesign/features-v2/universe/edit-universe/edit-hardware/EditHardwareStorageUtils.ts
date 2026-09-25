@@ -75,15 +75,21 @@ export const toClusterStorageSpec = (
   ...(deviceInfo?.storageType ?? currentSpec?.storage_type
     ? { storage_type: deviceInfo?.storageType ?? currentSpec?.storage_type }
     : {}),
-  ...(deviceInfo?.diskIops !== undefined && deviceInfo?.diskIops !== null
-    ? { disk_iops: deviceInfo.diskIops }
-    : currentSpec?.disk_iops !== undefined && currentSpec?.disk_iops !== null
-      ? { disk_iops: currentSpec.disk_iops }
+  // Prefer form values. null means cleared (storage type no longer supports the field) —
+  // omit so edit-universe does not resurrect previous universe values.
+  ...(deviceInfo !== null
+    ? deviceInfo?.diskIops !== null
+      ? { disk_iops: deviceInfo?.diskIops }
+      : {}
+    : currentSpec?.disk_iops !== null
+      ? { disk_iops: currentSpec?.disk_iops }
       : {}),
-  ...(deviceInfo?.throughput !== undefined && deviceInfo?.throughput !== null
-    ? { throughput: deviceInfo.throughput }
-    : currentSpec?.throughput !== undefined && currentSpec?.throughput !== null
-      ? { throughput: currentSpec.throughput }
+  ...(deviceInfo !== null
+    ? deviceInfo?.throughput !== null
+      ? { throughput: deviceInfo?.throughput }
+      : {}
+    : currentSpec?.throughput !== null
+      ? { throughput: currentSpec?.throughput }
       : {}),
   ...(currentSpec?.cloud_volume_encryption
     ? { cloud_volume_encryption: currentSpec.cloud_volume_encryption }

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "yb/common/common_net.pb.h"
@@ -22,6 +23,11 @@ namespace yb {
 HostPortPB MakeHostPortPB(std::string&& host, uint32_t port);
 
 CloudInfoPB MakeCloudInfoPB(std::string&& cloud, std::string&& region, std::string&& zone);
+
+// Returns the active placement-block maximum, or the resolved placement RF before AutoFlag
+// promotion and when the maximum is absent.
+int32_t GetEffectiveMaxNumReplicas(
+    const PlacementBlockPB& placement_block, int32_t resolved_placement_rf);
 
 bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
 

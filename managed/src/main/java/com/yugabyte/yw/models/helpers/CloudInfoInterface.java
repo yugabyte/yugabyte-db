@@ -59,9 +59,12 @@ public interface CloudInfoInterface {
   }
 
   /**
-   * Returns the GCP Workload Identity Federation audience configured on the provider for
-   * cross-cloud federated IAM, or null when federation is not enabled or no audience is set. Only
-   * AWS and on-prem (AWS-backed) providers carry this config.
+   * Returns the cross-cloud federated IAM audience configured on the provider, or null when
+   * federation is not enabled or incompletely configured. AWS/on-prem (AWS-backed) providers carry
+   * a GCP Workload Identity Federation audience (GCS-on-AWS); GCP providers carry the audience used
+   * for the web-identity token (S3-on-GCP), which is only usable together with a role ARN, so the
+   * GCP audience is treated as resolvable only when the role ARN is also set. This keeps callers'
+   * "audience != null" federation check correct across both directions.
    */
   public static String getCrossCloudFederationAudience(Provider provider) {
     CloudType cloud = provider.getCloudCode();
@@ -76,8 +79,31 @@ public interface CloudInfoInterface {
       if (info != null && info.enableFederatedIam) {
         audience = info.federatedIamAudience;
       }
+    } else if (cloud == CloudType.gcp) {
+      GCPCloudInfo info = get(provider);
+      if (info != null
+          && info.isEnableFederatedIam()
+          && info.getFederatedIamRoleArn() != null
+          && !info.getFederatedIamRoleArn().trim().isEmpty()) {
+        audience = info.getFederatedIamAudience();
+      }
     }
     return (audience == null || audience.trim().isEmpty()) ? null : audience;
+  }
+
+  /**
+   * Returns the AWS role ARN assumed via AssumeRoleWithWebIdentity for S3-on-GCP federation on a
+   * GCP provider, or null when not enabled / not set. There is no analog for AWS/on-prem:
+   * GCS-on-AWS binds the node's identity directly to the bucket, with no intermediate role.
+   */
+  public static String getCrossCloudFederationRoleArn(Provider provider) {
+    if (provider.getCloudCode() != CloudType.gcp) {
+      return null;
+    }
+    GCPCloudInfo info = get(provider);
+    String roleArn =
+        (info != null && info.isEnableFederatedIam()) ? info.getFederatedIamRoleArn() : null;
+    return (roleArn == null || roleArn.trim().isEmpty()) ? null : roleArn;
   }
 
   public static <T extends CloudInfoInterface> T get(Region region) {

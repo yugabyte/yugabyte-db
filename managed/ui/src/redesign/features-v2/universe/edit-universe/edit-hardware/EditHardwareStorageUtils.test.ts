@@ -4,6 +4,7 @@ import type { InstanceSettingProps } from '../../create-universe/steps/hardware-
 import {
   getK8sResizeOptions,
   onlyVolumeSizeIncreased,
+  toClusterStorageSpec,
   type NormalizedStorage
 } from './EditHardwareStorageUtils';
 
@@ -54,6 +55,57 @@ describe('onlyVolumeSizeIncreased', () => {
     expect(
       onlyVolumeSizeIncreased(baseStorage(), baseStorage({ volumeSize: 200, numVolumes: 2 }))
     ).toBe(false);
+  });
+});
+
+describe('toClusterStorageSpec', () => {
+  const currentSpec = {
+    volume_size: 100,
+    num_volumes: 1,
+    disk_iops: 3000,
+    throughput: 125,
+    storage_type: 'GP3' as const
+  };
+
+  it('omits cleared IOPS/throughput when switching to a type that does not support them', () => {
+    // Form clears these to null on GP3→GP2 / IO1→IO2 (throughput) etc.
+    const spec = toClusterStorageSpec(
+      {
+        volumeSize: 100,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageType: 'GP2'
+      },
+      currentSpec
+    );
+
+    expect(spec.storage_type).toBe('GP2');
+    expect(spec).not.toHaveProperty('disk_iops');
+    expect(spec).not.toHaveProperty('throughput');
+  });
+
+  it('keeps IOPS when the new type supports it but clears unsupported throughput', () => {
+    const spec = toClusterStorageSpec(
+      {
+        volumeSize: 100,
+        numVolumes: 1,
+        diskIops: 1000,
+        throughput: null,
+        storageType: 'IO1'
+      },
+      currentSpec
+    );
+
+    expect(spec.storage_type).toBe('IO1');
+    expect(spec.disk_iops).toBe(1000);
+    expect(spec).not.toHaveProperty('throughput');
+  });
+
+  it('preserves current IOPS/throughput when deviceInfo is absent', () => {
+    const spec = toClusterStorageSpec(null, currentSpec);
+    expect(spec.disk_iops).toBe(3000);
+    expect(spec.throughput).toBe(125);
   });
 });
 

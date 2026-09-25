@@ -2114,7 +2114,7 @@ Number of minutes to wait before no longer displaying a dead node (no heartbeat)
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
 {{% tags/feature/t-server %}}
-Default: `true`
+Default: `false`
 {{% /tags/wrap %}}
 
 Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
