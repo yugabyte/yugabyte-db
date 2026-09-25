@@ -69,7 +69,8 @@ target_link_libraries(yb-cql
   # cql_service.h keeps the memory context as void*, so the header is ybgate-free and this is
   # PRIVATE (not re-exported to yb-cql's consumers).
   PRIVATE
-  yb_pgbackend)
+  yb_pgbackend
+  hdr_histogram)
 add_dependencies(yb-cql postgres)
 
 # Tests
