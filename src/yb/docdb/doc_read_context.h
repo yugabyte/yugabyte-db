@@ -44,6 +44,11 @@ struct DocReadContext {
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
 
+  // The next two rebuild the context of the same table data: the first replaces schema properties
+  // without a version change (backfill done), the second drops old schema packings (schema GC).
+  // Both carry rhs's tombstone-cache state, so the rebuilt context stays armed and warm. The
+  // caller must hold the lock that serializes table-tombstone notifies with the TableInfo swap
+  // (RaftGroupMetadata::data_mutex_), otherwise a notify that lands on rhs after the copy is lost.
   DocReadContext(const DocReadContext& rhs, const Schema& schema);
 
   DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version);
@@ -118,7 +123,7 @@ struct DocReadContext {
 
   // Monotone watermark advance. kMax is an "unarmed" sentinel (not a numeric max): the first
   // advance replaces it with ht; later advances take max(current, ht). Used to arm at SafeTime
-  // and to bump on table-tombstone apply. Bumps tombstone_cache_generation_ so any previously
+  // and to bump on table-tombstone apply. Bumps the cache generation so any previously
   // stored cache entry is treated as a miss. Does not clear the cache slot by itself.
   void AdvanceTombstoneCacheWatermark(HybridTime ht) const;
 
@@ -203,6 +208,7 @@ struct DocReadContext {
   void LogAfterLoad();
   void LogAfterMerge(dockv::OverwriteSchemaPacking overwrite);
   void UpdateKeyPrefix();
+  void CarryTombstoneCacheFrom(const DocReadContext& rhs);
 
   const std::string& LogPrefix() const {
     return log_prefix_;
@@ -243,23 +249,28 @@ struct DocReadContext {
   // interleave with OnTableTombstoneWritten and pair a stale value with the current generation.
   mutable simple_spinlock tombstone_cache_mutex_;
 
-  // Cached colocated-table tombstone time (kMax = uncached). Consume/populate gated by
-  // tombstone_cache_watermark_ (see IsTombstoneCacheEligible).
-  mutable DocHybridTime table_tombstone_time_ = DocHybridTime::kMax;
+  // Tombstone-cache state, guarded by tombstone_cache_mutex_. Kept in one struct so that the plain
+  // copy constructor resets all of it and CarryTombstoneCacheFrom copies all of it.
+  struct TombstoneCacheState {
+    // Cached colocated-table tombstone time (kMax = uncached). Consume/populate gated by
+    // watermark (see IsTombstoneCacheEligible).
+    DocHybridTime table_tombstone_time = DocHybridTime::kMax;
 
-  // Generation stamped with the cached value. Hits require a match with
-  // tombstone_cache_generation_. Kept even under the spinlock: the RocksDB lookup still runs
-  // outside the lock, and the generation rejects a populate that raced a truncate during that
-  // window (watermark alone cannot reject a "no tombstone" stamp).
-  mutable uint64_t tombstone_cache_entry_generation_ = 0;
+    // Generation stamped with the cached value. Hits require a match with generation. Kept even
+    // under the spinlock: the RocksDB lookup still runs outside the lock, and the generation
+    // rejects a populate that raced a truncate during that window (watermark alone cannot reject
+    // a "no tombstone" stamp).
+    uint64_t entry_generation = 0;
 
-  // Global epoch bumped when Advance actually raises the watermark, and on every
-  // OnTableTombstoneWritten (including same-ht re-notify).
-  mutable uint64_t tombstone_cache_generation_ = 0;
+    // Global epoch bumped when Advance actually raises the watermark, and on every
+    // OnTableTombstoneWritten (including same-ht re-notify).
+    uint64_t generation = 0;
 
-  // Default kMax = unarmed: both gates reject, so an unarmed context is cache-off (correct
-  // cold-path behavior). Forgotten construction sites therefore fail closed (perf only).
-  mutable HybridTime tombstone_cache_watermark_ = HybridTime::kMax;
+    // Default kMax = unarmed: both gates reject, so an unarmed context is cache-off (correct
+    // cold-path behavior). Forgotten construction sites therefore fail closed (perf only).
+    HybridTime watermark = HybridTime::kMax;
+  };
+  mutable TombstoneCacheState tombstone_cache_;
 };
 
 } // namespace yb::docdb
