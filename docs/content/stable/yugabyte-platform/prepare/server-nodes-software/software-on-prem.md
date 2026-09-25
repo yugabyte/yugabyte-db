@@ -167,9 +167,43 @@ If the preflight check fails, rebooting the node may solve some issues (for exam
 
 #### Run root or non-root
 
-Use the `--noroot` flag to run only the modules specific to the `yugabyte` user. The script must be run as the user `yugabyte`.
+By default (no flag), `sudo ./node-agent-provision.sh` performs a full provision as root. Use this when a single administrator can run the entire flow.
 
-Use the `--root` flag to run only the modules that require root privileges. Modules which do not require root are skipped. The script must be run as the user `root`.
+To separate privileged OS work from user-scoped YugabyteDB Anywhere onboarding, use the `--root` and `--noroot` flags:
+
+- `--root` — Run only the modules that require root privileges. Modules that do not require root are skipped. The script must be run as `root`.
+- `--noroot` — Run only the modules specific to the `yugabyte` user. The script must be run as `yugabyte`.
+
+**Use case: split-team provisioning without giving the DB team sudo**
+
+Many on-premises customers separate duties between teams:
+
+1. **OS / infrastructure** — Has root or sudo on the VM. Hardens the host and prepares OS-level prerequisites.
+2. **DB / platform** — Runs as `yugabyte` with no sudo. Installs and registers node agent with YugabyteDB Anywhere.
+
+A full `sudo ./node-agent-provision.sh` mixes both kinds of work. That forces either the DB team to get sudo, or the OS team to own the entire YugabyteDB Anywhere registration flow. `--root` and `--noroot` split one script into two privilege-aligned runs.
+
+**How it works**
+
+Both teams download the node agent package from the running YugabyteDB Anywhere instance and use the same `node-agent-provision.sh` script and configuration (YugabyteDB Anywhere URL, API token, node identity, and provider details).
+
+1. The OS team runs `--root` as root. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, root systemd units, and firewall/packages as applicable). Non-root modules are skipped.
+
+   ```sh
+   sudo ./node-agent-provision.sh --root
+   ```
+
+2. The DB team runs `--noroot` as the `yugabyte` user. This runs only user-scoped work (user systemd, cgroups where applicable, network/node-agent setup, and registering the node with YugabyteDB Anywhere). Root modules are skipped.
+
+   ```sh
+   ./node-agent-provision.sh --noroot
+   ```
+
+This approach provides the following:
+
+- **Least privilege** — DB operators never need sudo after OS prep.
+- **Clear handoff** — OS owns the host; DB owns YugabyteDB Anywhere onboarding.
+- **Same tooling** — Both steps use the same package and YugabyteDB Anywhere-backed flow; no separate tooling is required.
 
 #### Verify provisioning
 
@@ -191,13 +225,32 @@ Use the `--preflight_check_out_file` flag (v2025.2.4.0 and later) to specify the
 
 You can use the `--config_override` flag to override settings in the configuration file from the command line. You can pass as many overrides as needed. The data types are validated strictly. Use periods to indicate the nesting level for the override. (Available in v2025.2.4.0 and later.)
 
-Examples:
+Note this only overrides fields like `yba.url` that are used for fetching data from YugabyteDB Anywhere, not the data fetched from YugabyteDB Anywhere.
 
-Override the FQDN (string type) under yba:
+**Use case: one shared YAML, per-node overrides on the CLI**
 
-```sh
-./node-agent-provision.sh --config_override yba.node_external_fqdn=\"my-new-fqdn\"
-```
+Customers often want a single `node-agent-provision.yaml` for a fleet (YugabyteDB Anywhere URL, API token, chrony servers, home directories, provider defaults) and only vary a few fields per VM—node IP/FQDN, node name, zone, mount points, and so on.
+
+Without `--config_override`, that means either:
+
+- Maintaining a separate YAML copy per node, or
+- Editing the shared file before every run (error-prone and awkward for automation).
+
+**How it works**
+
+1. Keep one common provision YAML checked into ops tooling or shared across the OS/DB teams.
+2. For each node, run the script with that file and pass only the node-specific deltas:
+
+   ```sh
+   ./node-agent-provision.sh \
+     --config_override yba.node_external_fqdn=\"db-node-03.example.com\" \
+     --config_override ynp.node_ip=\"10.1.2.3\" \
+     --config_override yba.node_name=\"db-node-03\"
+   ```
+
+3. Types are validated; nested keys use dotted paths. Multiple overrides can be stacked on one invocation.
+
+Additional examples:
 
 Override chrony servers (list of strings) under ynp:
 
@@ -205,13 +258,11 @@ Override chrony servers (list of strings) under ynp:
 ./node-agent-provision.sh --config_override ynp.chrony_servers=[\"s1\",\"s2\"]
 ```
 
-Override FQDN and YBA URL at the same time:
+Override FQDN and YugabyteDB Anywhere URL at the same time:
 
 ```sh
-./node-agent-provision.sh --config_override ynp.node_external_fqdn=\"my-new-fqdn\" --config_override yba.url=\"https://new-yba-url.com\"
+./node-agent-provision.sh --config_override yba.node_external_fqdn=\"my-new-fqdn\" --config_override yba.url=\"https://new-yba-url.com\"
 ```
-
-Note this only overrides fields like yba.url that are used for fetching data from YugabyteDB Anywhere, not the data fetched from YugabyteDB Anywhere.
 
 #### Generate a configuration file
 
