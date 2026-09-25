@@ -629,25 +629,35 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
  * after truncate_useless_pathkeys, with the path's index clauses, so that the
  * path's costing and its plan see the same stream keys.
  *
- * Every index column before the last merge sort column is a SAOP column, a
- * merge sort column, or a column the pathkeys walk skipped as redundant.  A
- * skipped column with an equality index clause holds one value in each stream,
- * and the merge order relies on that, so it is a single-value stream key with
- * that clause.  A skipped range column without an equality index clause is not
- * a stream key.  Such a column is a duplicate index column, a column a partial
- * index predicate implies, or a column whose value filters determine, as in a
- * broken EquivalenceClass or with c1 = c2.  For the last kind, the merge order
- * holds only if those filters run within each stream, before the merge.
- * TODO(#33384): ensure that.
+ * Each index column before the last merge sort column is one of:
  *
- * A hash column stays a stream key either way, since pggate cannot merge
- * without a condition on every hash column, and ybValidateMergeScanBinds
- * reports it when it has none.  TODO(#34120): merge without such a condition.
+ * - A SAOP column, a stream key with its SAOP.
+ * - A merge sort column, not a stream key.
+ * - A column the pathkeys walk skipped as redundant, one of:
+ *   - A hash column, a stream key with its equality index clause, since pggate
+ *     cannot merge without a condition on every hash column.
+ *     ybValidateMergeScanBinds reports a hash column without an equality index
+ *     clause.  TODO(#34120): merge without such a condition.
+ *   - A range column with an equality index clause, a single-value stream key
+ *     with that clause.  It holds one value in each stream, and the merge order
+ *     relies on that.
+ *   - A range column without an equality index clause, not a stream key.  It is
+ *     one of:
+ *     - A duplicate index column.
+ *     - A column a partial index predicate implies.
+ *     - A column tied by filters, not a bind, to one of:
+ *       - A constant, as in a broken EquivalenceClass.
+ *       - An earlier merge sort column.
  *
- * A SAOP column at or after the last merge sort column does not affect the
- * order and fans out no streams, so it is left out too.  Returns a new list in
- * index column order, which EXPLAIN shows, or NIL when no stream key column
- * remains, and the path is then not a merge scan.
+ *       The merge order then holds only if those filters run within each
+ *       stream, before the merge.  TODO(#33384): ensure that.
+ *
+ * No column at or after the last merge sort column is a stream key, since the
+ * merge order does not depend on it.  That includes a SAOP column the pathkeys
+ * walk picked there, whose streams the merge does not need.
+ *
+ * Returns a new list in index column order, which EXPLAIN shows, or NIL when no
+ * stream key column remains, and the path is then not a merge scan.
  */
 List *
 yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
