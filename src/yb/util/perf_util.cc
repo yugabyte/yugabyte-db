@@ -33,6 +33,8 @@ DEFINE_RUNTIME_int32(perf_record_timeout_sec, 120,
 namespace yb {
 
 namespace {
+std::mutex active_profiler_mutex;
+
 // Runs a command and returns the stdout. Logs the command to INFO logs.
 Result<std::string> LogAndRunCommand(const std::vector<std::string>& cmd) {
   std::string out, err;
@@ -52,6 +54,10 @@ PerfProfiler::~PerfProfiler() {
 Status PerfProfiler::Start(int freq, const std::string& storage_dir) {
   if (perf_proc_) {
     return STATUS(IllegalState, "Perf profiling is already running");
+  }
+  std::unique_lock lock(active_profiler_mutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    return STATUS(IllegalState, "Another perf profile is already being collected by this process");
   }
 
   storage_dir_ = storage_dir;
@@ -82,6 +88,7 @@ Status PerfProfiler::Start(int freq, const std::string& storage_dir) {
   perf_proc_ = std::make_unique<Subprocess>("perf", record_cmd);
   RETURN_NOT_OK(perf_proc_->Start());
 
+  active_lock_ = std::move(lock);
   return Status::OK();
 }
 
@@ -89,6 +96,7 @@ Result<PerfProfilerStopResult> PerfProfiler::Stop() {
   if (!perf_proc_) {
     return STATUS(IllegalState, "Perf profiling is not running");
   }
+  auto lock = std::move(active_lock_);
 
   // Send SIGINT to stop recording
   RETURN_NOT_OK(perf_proc_->Kill(SIGINT));
