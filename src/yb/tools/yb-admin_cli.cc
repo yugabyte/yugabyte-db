@@ -36,6 +36,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -637,14 +638,17 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
       name = name.substr(0, eq);
       has_value = true;
     }
-    // gflags renders these during the parse, so they take precedence over a leading "help" too.
-    if (name == "helpfull" || name == "helpmatch" || name == "helpon" || name == "helppackage" ||
-        name == "helpxml" || name == "version") {
+    const bool off = has_value && (value.empty() || value == "false" || value == "f" ||
+                                   value == "0" || value == "no" || value == "n");
+    // yb::ParseCommandLineFlags() prints these and exits, so they win over any help request.
+    static constexpr std::string_view kParseRenderedFlags[] = {
+        "dump_flags_xml", "dump_metrics_json", "help_auto_flag_json", "helpfull", "helpmatch",
+        "helpon", "helppackage", "helpxml", "version"};
+    if (!off && std::ranges::find(kParseRenderedFlags, name) != std::end(kParseRenderedFlags)) {
       return std::nullopt;
     }
     if (name == "help" || name == "h" || name == "helpshort") {
-      if (!has_value ||
-          (value != "false" && value != "f" && value != "0" && value != "no" && value != "n")) {
+      if (!off) {
         help_requested = true;
         helpshort |= name == "helpshort";
       }

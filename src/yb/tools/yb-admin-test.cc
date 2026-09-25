@@ -395,9 +395,15 @@ TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
   ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
   ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
 
-  // A gflags help flag also wins over a leading "help".
+  // Flags the parse renders win over a leading "help" or --help, unless set to false.
   ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "--helpfull", "help"), &output, &error));
   ASSERT_STR_CONTAINS(output, "Flags from");
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "--help_auto_flag_json", "--help"), &output, &error));
+  ASSERT_STR_NOT_CONTAINS(output, "Get help:");
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "--helpfull=false", "help"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Operations (");
 }
 
 TEST_F(AdminCliTest, HelpListsAllOperations) {

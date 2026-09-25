@@ -78,8 +78,7 @@ bool CompareListTabletServersEntries(
   return a.instance_id().permanent_uuid() < b.instance_id().permanent_uuid();
 }
 
-// A typed token covers a name token it abbreviates ("serv" for "servers") or pluralizes ("servers"
-// for "server"), but not a longer word that merely starts with it ("setup" for "set").
+// Only a plural suffix extends a name token, so "setup" does not match "set".
 bool TokenCovers(const string& op_token, const string& name_token) {
   if (HasPrefixString(name_token, op_token)) {
     return true;
@@ -94,8 +93,8 @@ bool TokenCovers(const string& op_token, const string& name_token) {
 }  // namespace
 
 bool IsUnsupportedRpcError(const Status& s) {
-  // Not ERROR_NO_SUCH_SERVICE, as in client.cc: Messenger::Handle() returns it (as
-  // ServiceUnavailable) whenever the service isn't registered, which needn't mean an older version.
+  // Not ERROR_NO_SUCH_SERVICE, as in client.cc: servers also return it for a service that isn't
+  // registered yet.
   return rpc::RpcError(s) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD;
 }
 
