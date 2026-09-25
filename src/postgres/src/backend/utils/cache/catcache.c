@@ -594,7 +594,7 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	else
 	{
 		cache->yb_cc_size_bytes -=
-			sizeof(CatCTup) + MAXIMUM_ALIGNOF + ct->tuple.t_len;
+			MAXALIGN(sizeof(CatCTup)) + ct->tuple.t_len;
 		if (need_to_free_ybctid)
 			cache->yb_cc_size_bytes -= VARSIZE(HEAPTUPLE_YBCTID(&ct->tuple));
 	}
@@ -2912,10 +2912,16 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		/* Allocate memory for CatCTup and the cached tuple in one go */
 		oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 
-		ct = (CatCTup *) palloc(sizeof(CatCTup) +
-								MAXIMUM_ALIGNOF + dtp->t_len);
+		/*
+		 * YB: MAXALIGN the header rather than padding it by MAXIMUM_ALIGNOF.
+		 * YB's HeapTupleData is larger than upstream's, and with the pad a
+		 * typical pg_attribute entry no longer fits the 256-byte AllocSet
+		 * chunk class and doubles to 512 bytes.  palloc returns MAXALIGNed
+		 * memory, so t_data below still lands inside the allocation.
+		 */
+		ct = (CatCTup *) palloc(MAXALIGN(sizeof(CatCTup)) + dtp->t_len);
 #ifdef CATCACHE_STATS			/* YB added */
-		cache->yb_cc_size_bytes += sizeof(CatCTup) + MAXIMUM_ALIGNOF + dtp->t_len;
+		cache->yb_cc_size_bytes += MAXALIGN(sizeof(CatCTup)) + dtp->t_len;
 #endif
 		ct->tuple.t_len = dtp->t_len;
 		ct->tuple.t_self = dtp->t_self;
