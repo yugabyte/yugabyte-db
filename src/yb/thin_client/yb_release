@@ -23,6 +23,7 @@
 # The .so depends only on system libraries, exports only the ybthin_* ABI, and uses libc malloc
 # (see --no-tcmalloc) so it does not interpose the allocator of the process that loads it.
 #
+# It first builds all of YugabyteDB except tests and Java, which dominates the time on a cold tree.
 # The whole-program link needs ~13 GiB of free RAM (same gate as yb_release's server link).
 #
 # usage: src/yb/thin_client/yb_release [build_type]     (build_type defaults to "release")
@@ -53,14 +54,45 @@ set_pythonpath
 readonly lib_name="libyb_thin_client.so"
 readonly cmake_target="yb_thin_client"
 
-# Configure only; the closure is compiled below. Building the yb_thin_client .so *target* would drag
-# in ~14000 files never linked into the client, because in ninja it carries order-only edges onto
-# the whole server (master/tablet/docdb) and the PostgreSQL backend.
+# Build everything except tests and Java first. The link-command step below reads
+# postgres_build/src/common/libpgcommon_srv.a, which the PostgreSQL make produces with no ninja edge
+# of its own, and building PostgreSQL pulls in the server closure anyway (the postgres target
+# depends on yb_pggate and server_process).
 #
-# --no-tcmalloc: servers link Google tcmalloc as the process allocator, but this .so is loaded into
-# a process that owns its own; the code is #ifdef-guarded to fall back to libc malloc/free.
-# --force-run-cmake so --no-tcmalloc is (re)applied to an already-configured tree.
-log "Configuring the full-LTO tree (no tcmalloc, $build_type)"
+# This build runs with tcmalloc on. Without tcmalloc every shared library links with
+# --no-undefined, which libyb_pggate_util.so cannot satisfy: it calls into yb_dockv, which depends
+# on it in turn, a cycle CMake cannot declare. YB_TCMALLOC_ENABLED=1 is set explicitly because
+# yb_build.sh otherwise keeps the cached value, which is 0 after any earlier run of this script.
+log "Building YugabyteDB without tests or Java ($build_type)"
+YB_TCMALLOC_ENABLED=1 YB_LINKING_TYPE=full-lto YB_BUILD_TESTS=false \
+  "$yb_src_root/yb_build.sh" "$build_type" --force-run-cmake --skip-java
+
+# The client links src/common objects from this build, and they were compiled with the tcmalloc
+# defines: CMakeLists.txt copies the C++ flags into CMAKE_C_FLAGS, which PostgreSQL builds from, and
+# PostgreSQL's make does not recompile when flags change. That matches a build without tcmalloc
+# only while nothing those objects are compiled from tests the macros, so check it: src/common,
+# PostgreSQL's headers, and the YugabyteDB headers they include, followed transitively.
+pg_src="$yb_src_root/src/postgres/src"
+mapfile -t tc_inputs < <( find "$pg_src/common" "$pg_src/include" -name '*.[ch]' )
+declare -A yb_headers=()
+queue=( "${tc_inputs[@]}" )
+while (( ${#queue[@]} )); do
+  f=${queue[-1]}; unset 'queue[-1]'
+  while read -r h; do
+    p="$yb_src_root/src/$h"
+    if [[ -f "$p" && -z "${yb_headers[$p]:-}" ]]; then yb_headers[$p]=1; queue+=( "$p" ); fi
+  done < <( sed -nE 's/^[[:space:]]*#[[:space:]]*include[[:space:]]+"(yb\/[^"]+)".*/\1/p' "$f" )
+done
+tc_inputs+=( "${!yb_headers[@]}" )
+if grep -lwE 'YB_TCMALLOC_ENABLED|YB_GOOGLE_TCMALLOC|YB_GPERFTOOLS_TCMALLOC' "${tc_inputs[@]}"; then
+  fatal "the files above test a tcmalloc macro, so the PostgreSQL objects built with tcmalloc on \
+differ from what the client needs; build them without the tcmalloc defines instead"
+fi
+
+# Reconfigure the same tree without tcmalloc for the client. Servers link Google tcmalloc as the
+# process allocator, but this .so is loaded into a process that owns its own; the code is
+# #ifdef-guarded to fall back to libc malloc/free. The closure is recompiled with these flags below.
+log "Reconfiguring the full-LTO tree without tcmalloc ($build_type)"
 build_log=$( mktemp )
 YB_LINKING_TYPE=full-lto YB_BUILD_TESTS=false \
   "$yb_src_root/yb_build.sh" "$build_type" --no-tcmalloc --force-run-cmake --cmake-only \
@@ -71,8 +103,9 @@ log "Full-LTO build root: $build_root"
 
 lto_out="$build_root/lib/$lib_name"
 
-# Emit the link command without running the linker. Needs only the configured build graph, not built
-# objects (--incomplete-build), and it names every object the client links -- our build work-list.
+# Emit the link command without running the linker. Apart from the PostgreSQL archive and
+# link-canary.o built above, it needs only the configured build graph (--incomplete-build), and it
+# names every object the client links -- our build work-list.
 log "Computing the whole-program link command (and the real object closure) for $lib_name"
 "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
   --build-root="$build_root" \
@@ -86,41 +119,21 @@ log "Computing the whole-program link command (and the real object closure) for 
 link_args_file="${lto_out}_lto_link_cmd_args.txt"
 [[ -f "$link_args_file" ]] || fatal "Whole-program link did not emit args file: $link_args_file"
 
-# libpgcommon/libpgport are byproducts of the monolithic postgres target, so request the archives
-# rather than the individual objects.
-log "Building the client's real link closure only (not the full server/PG tree)"
+# Recompile the client's object closure without tcmalloc. The PostgreSQL archives it links came from
+# the full build above; requesting them again would force the postgres target, whose dependencies
+# cannot link without tcmalloc. YB_BUILD_ROOT must be exported: several closure objects
+# order-only-depend on configure_postgres/genbki, and build_postgres aborts without it.
+log "Recompiling the client's link closure without tcmalloc"
+# The args file names objects both relative to the build root (the shim's own object, taken from the
+# original link command) and as absolute paths under it; keep both, as build-root-relative paths.
 mapfile -t closure_objs < <(
-  grep -oE '[^ ]+\.cc\.o' "$link_args_file" | grep -F "$build_root/" |
-    sed "s#${build_root}/##" | sort -u )
-[[ ${#closure_objs[@]} -gt 0 ]] || fatal "Could not extract the object closure from $link_args_file"
-pg_targets=()
-grep -qE 'postgres_build/src/common/' "$link_args_file" && \
-  pg_targets+=( "postgres_build/src/common/libpgcommon.a" )
-grep -qE 'postgres_build/src/port/' "$link_args_file" && \
-  pg_targets+=( "postgres_build/src/port/libpgport.a" )
-log "Closure: ${#closure_objs[@]} objects + ${#pg_targets[@]} PostgreSQL static lib(s)"
-# Two guards against shipping a .so built from a STALE object:
-#
-# YB_BUILD_ROOT must be exported -- several closure objects order-only-depend on
-# configure_postgres/genbki (via yb_pggate_util) and build_postgres aborts without it, after which
-# ninja skips the dependent objects and the link silently reuses whatever was there before.
-#
-# Build the shim's own object alone first, because the batched build below needs -k 0 (a non-closure
-# byproduct trips the --no-undefined check that --no-tcmalloc turns on) and -k 0 would likewise
-# tolerate skipping yb_thin_client.cc.o.
-shim_obj_target="src/yb/thin_client/CMakeFiles/yb_thin_client.dir/yb_thin_client.cc.o"
-( cd "$build_root" && YB_BUILD_ROOT="$build_root" ninja "$shim_obj_target" ) \
-  || fatal "failed to compile $shim_obj_target -- see ninja output above"
-( cd "$build_root" && YB_BUILD_ROOT="$build_root" \
-    ninja -k 0 "${closure_objs[@]}" "${pg_targets[@]}" ) || \
-  log "note: a non-closure byproduct failed to link (expected with --no-tcmalloc); continuing"
-
-# Belt-and-braces on the above: if the object is older than its source, ninja skipped it.
-shim_obj="$build_root/src/yb/thin_client/CMakeFiles/yb_thin_client.dir/yb_thin_client.cc.o"
-if [[ ! -f "$shim_obj" || "$shim_obj" -ot "$script_dir/yb_thin_client.cc" ]]; then
-  fatal "stale/missing yb_thin_client.cc.o (older than its source) -- postgres prereqs likely \
-failed; the link would ship a mismatched .so. Check the ninja output above."
-fi
+  grep -oE '[^ ]+\.cc\.o' "$link_args_file" | sed "s#^${build_root}/##" | grep -v '^/' | sort -u )
+shim_obj="src/yb/thin_client/CMakeFiles/yb_thin_client.dir/yb_thin_client.cc.o"
+printf '%s\n' "${closure_objs[@]}" | grep -qxF "$shim_obj" ||
+  fatal "$shim_obj is missing from the object closure in $link_args_file"
+log "Closure: ${#closure_objs[@]} objects"
+( cd "$build_root" && YB_BUILD_ROOT="$build_root" ninja "${closure_objs[@]}" ) ||
+  fatal "failed to recompile the link closure -- see ninja output above"
 
 # Localize everything but the ybthin_* ABI, so the shim cannot collide with or interpose symbols
 # (protobuf/absl/OpenSSL/...) in the host process.
