@@ -132,6 +132,193 @@ public class TestAudit extends BaseCQLTest {
                   null /* batchId */, null /* keyspace */, null /* scope */,
                   "ALTER ROLE user2 WITH PaSswORd   =<REDACTED>")));
     }
+
+    // A ' that is not a string delimiter must not shift the PASSWORD clause out of alignment and
+    // leak it. Quote-parity redaction counted the ' inside a double-quoted identifier or a comment
+    // as a string delimiter, so the real password clause was mistaken for a mis-fired match and
+    // logged verbatim. Cover both the identifier and comment cases.
+    {
+      assertAudit(
+          "CREATE ROLE \"o'brien\" WITH login = true AND PASSWORD = 'hide me!'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "CREATE ROLE \"o'brien\" WITH login = true AND PASSWORD = <REDACTED>")));
+
+      assertAudit(
+          "/* don't log me */ ALTER ROLE \"o'brien\" WITH PASSWORD = 'hide me too!'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "/* don't log me */ ALTER ROLE \"o'brien\" WITH PASSWORD = <REDACTED>")));
+    }
+
+    // A $ inside an unquoted identifier is part of it, not a dollar-quote opener that would swallow
+    // the rest of the statement.
+    {
+      assertAudit(
+          "CREATE ROLE a$$ WITH login = true AND PASSWORD = 'hide me!'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "CREATE ROLE a$$ WITH login = true AND PASSWORD = <REDACTED>")));
+    }
+
+    // Every string-constant form the grammar accepts as a password value is redacted, including a
+    // dollar-quoted string and a quoted literal continued onto the next line.
+    {
+      assertAudit(
+          "ALTER ROLE a$$ WITH PASSWORD = $tag$hide me too!$tag$",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "ALTER ROLE a$$ WITH PASSWORD = <REDACTED>")));
+
+      assertAudit(
+          "ALTER ROLE a$$ WITH PASSWORD = 'hide me'\n'too!' AND login = true",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "ALTER ROLE a$$ WITH PASSWORD = <REDACTED> AND login = true")));
+    }
+
+    // A statement that is *rejected* is still audited, as a REQUEST_FAILURE carrying the statement
+    // text. Redaction used to happen only on paths that had a parse tree to identify the statement
+    // type, so a rejected CREATE ROLE was logged with its password in cleartext. Two PASSWORD
+    // clauses in one statement is the simplest way to be rejected while still carrying a password,
+    // and it also covers redacting every occurrence rather than only the first.
+    {
+      final String first = "first_pl4int3xt";
+      final String second = "second_pl4int3xt";
+      auditRecords.discard();
+      String cql = "CREATE ROLE user_dup_pw WITH PASSWORD = '" + first
+          + "' AND PASSWORD = '" + second + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE with two PASSWORD clauses to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE user_dup_pw WITH PASSWORD = <REDACTED> AND PASSWORD = <REDACTED>",
+          first, second);
+    }
+
+    // Same regression on the error-message path (the rejected statement is echoed into
+    // error_message as well): an apostrophe in the double-quoted role name must not defeat it.
+    {
+      final String first = "quoted_first_s3cr3t";
+      final String second = "quoted_second_s3cr3t";
+      auditRecords.discard();
+      String cql = "CREATE ROLE \"a'b\" WITH PASSWORD = '" + first
+          + "' AND PASSWORD = '" + second + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE with two PASSWORD clauses to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE \"a'b\" WITH PASSWORD = <REDACTED> AND PASSWORD = <REDACTED>",
+          first, second);
+    }
+
+    // The statement is echoed in the error message too, not only in the operation field, and an
+    // execution-time rejection is reported with ErrorIsFormatted::kFalse, so nothing strips that
+    // echo. user1 already exists, so this is rejected with DUPLICATE_ROLE after analysis.
+    {
+      final String password = "dup_role_pl4int3xt";
+      auditRecords.discard();
+      String cql = "CREATE ROLE user1 WITH login = true AND PASSWORD = '" + password + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE for an already existing role to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE user1 WITH login = true AND PASSWORD = <REDACTED>", password);
+    }
+
+    // The error text in front of the echo is prose, not CQL, and the master prints the role name
+    // unquoted: "Role o'brien already exists". That apostrophe must not open a phantom literal that
+    // swallows the echoed PASSWORD clause.
+    {
+      final String password = "dup_quoted_role_pl4int3xt";
+      auditRecords.discard();
+      String cql = "CREATE ROLE \"o'brien\" WITH PASSWORD = '" + password + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE for an already existing role to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE \"o'brien\" WITH PASSWORD = <REDACTED>", password);
+    }
+
+    // A client-supplied HASHED PASSWORD is credential material too and must be redacted the same
+    // way as a plaintext PASSWORD.
+    {
+      final String hash = "$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW";
+      assertAudit(
+          "CREATE ROLE user3 WITH login = true AND HaSHeD pAsSWorD =  '" + hash + "'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "CREATE ROLE user3 WITH login = true AND HaSHeD pAsSWorD =  <REDACTED>")));
+
+      assertAudit(
+          "ALTER ROLE user3 WITH HASHED PASSWORD='" + hash + "'",
+          (cql) -> Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "ALTER ROLE user3 WITH HASHED PASSWORD=<REDACTED>")));
+    }
+
+    // Combining PASSWORD and HASHED PASSWORD is rejected in Analyze, but the rejected statement is
+    // still audited -- so *every* password clause has to be redacted, not just the first one the
+    // regex happens to find.
+    {
+      final String hash = "$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW";
+      final String plaintext = "pl4int3xt_pw";
+      auditRecords.discard();
+      String cql = "CREATE ROLE user4 WITH PASSWORD = '" + plaintext
+          + "' AND HASHED PASSWORD = '" + hash + "'";
+      try {
+        session.execute(cql);
+        fail("Expected CREATE ROLE with both PASSWORD and HASHED PASSWORD to be rejected");
+      } catch (RuntimeException e) {
+        // Expected.
+      }
+      assertNoPasswordInAudit(
+          "CREATE ROLE user4 WITH PASSWORD = <REDACTED> AND HASHED PASSWORD = <REDACTED>",
+          plaintext, hash);
+    }
+  }
+
+  /**
+   * Asserts that the audit records captured since the last discard contain none of {@code secrets},
+   * and that at least one of them carries {@code expectedRedactedPrefix}. The second half matters:
+   * asserting only absence would pass vacuously if nothing were captured at all, which is exactly
+   * the failure mode a redaction test has to exclude.
+   */
+  private void assertNoPasswordInAudit(String expectedRedactedPrefix, String... secrets)
+      throws Exception {
+    List<AuditLogEntry> records = auditRecords.popAll();
+    assertFalse("No audit record was captured for the rejected statement", records.isEmpty());
+    boolean sawRedacted = false;
+    for (AuditLogEntry entry : records) {
+      String text = entry.operationAndErrorMessage;
+      assertNotNull("Audit record carries no operation text: " + entry, text);
+      for (String secret : secrets) {
+        assertFalse("Audited record leaked a password: " + text, text.contains(secret));
+      }
+      if (text.startsWith(expectedRedactedPrefix)) {
+        sawRedacted = true;
+      }
+    }
+    assertTrue("No audit record carried the redacted statement. Captured: " + records, sawRedacted);
   }
 
   /** Issuing DML batch as YCQL plaintext: {@code START TXN; DML1; DML2; COMMIT} */

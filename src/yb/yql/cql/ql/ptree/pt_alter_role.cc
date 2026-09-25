@@ -17,10 +17,6 @@
 
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/util/crypt.h"
-
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
@@ -31,10 +27,6 @@ DEFINE_RUNTIME_bool(ycql_allow_non_authenticated_password_reset, false,
 
 namespace yb {
 namespace ql {
-
-using strings::Substitute;
-using yb::util::bcrypt_hashpw;
-using yb::util::kBcryptHashSize;
 
 //--------------------------------------------------------------------------------------------------
 // Alter Role.
@@ -81,17 +73,13 @@ Status PTAlterRole::Analyze(SemContext* sem_context) {
           break;
         }
         case PTRoleOptionType::kPassword : {
+          // A second PASSWORD/HASHED PASSWORD (both map to kPassword) in one statement is rejected
+          // here, which also covers mixing plaintext and hashed forms.
           if (seen_password) {
             return sem_context->Error(roleOption, ErrorCode::INVALID_ROLE_DEFINITION);
           }
           PTRolePassword *passwordOpt = static_cast<PTRolePassword*>(roleOption.get());
-
-          char hash[kBcryptHashSize];
-          int ret = bcrypt_hashpw(passwordOpt->password(), hash);
-          if (ret != 0) {
-            return STATUS(IllegalState, Substitute("Could not hash password, reason: $0", ret));
-          }
-          salted_hash_ = MCMakeShared<MCString>(sem_context->PSemMem(), hash , kBcryptHashSize);
+          RETURN_NOT_OK(passwordOpt->BuildSaltedHash(sem_context, &salted_hash_));
           seen_password = true;
           break;
         }
@@ -120,7 +108,9 @@ Status PTAlterRole::Analyze(SemContext* sem_context) {
 
 void PTAlterRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
   MCString sem_output("\tAlter Role ", sem_context->PTempMem());
-  sem_output = sem_output + " role_name  " + role_name() + " salted_hash = " + *salted_hash_;
+  // Never emit the salted_hash: it is the (bcrypt) password material, sensitive whether it was
+  // hashed here from a plaintext PASSWORD or supplied verbatim via HASHED PASSWORD.
+  sem_output = sem_output + " role_name  " + role_name() + " salted_hash = <REDACTED>";
   sem_output = sem_output + " login = " + (login() ? "true" : "false");
   sem_output = sem_output + " superuser = " + (superuser() ? "true" : "false");
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;

@@ -122,7 +122,11 @@ Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
   }
 
   // This must either be a new cluster or a cluster upgrading with a deleted cassandra user
-  char hash[kBcryptHashSize];
+  // Zero-initialize: the hash is stored as a fixed-width kBcryptHashSize string, so the bytes past
+  // the kBcryptHashStrLen-char bcrypt string would otherwise be uninitialized stack. That trailing
+  // garbage is what makes `SELECT * FROM system_auth.roles` fail to decode in ycqlsh (#27523), and
+  // the default cassandra role is present on every cluster.
+  char hash[kBcryptHashSize] = {};
   // TODO: refactor interface to be more c++ like...
   int ret = bcrypt_hashpw(kDefaultCassandraPassword, hash);
   if (ret != 0) {

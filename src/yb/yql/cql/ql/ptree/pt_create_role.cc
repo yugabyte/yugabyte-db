@@ -16,6 +16,9 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
 
+#include <cctype>
+#include <cstring>
+
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/crypt.h"
@@ -32,13 +35,99 @@ using strings::Substitute;
 using yb::util::bcrypt_hashpw;
 using yb::util::kBcryptHashSize;
 
+namespace {
+
+// bcrypt's radix-64 alphabet (OpenBSD variant): '.', '/', 'A'-'Z', 'a'-'z', '0'-'9'.
+// Returns the 6-bit value of a bcrypt base64 character, or -1 if `c` is not in the alphabet.
+int BcryptBase64Value(char c) {
+  if (c == '.') return 0;
+  if (c == '/') return 1;
+  if (c >= 'A' && c <= 'Z') return c - 'A' + 2;
+  if (c >= 'a' && c <= 'z') return c - 'a' + 28;
+  if (c >= '0' && c <= '9') return c - '0' + 54;
+  return -1;
+}
+
+bool IsBcryptBase64(char c) {
+  return BcryptBase64Value(c) >= 0;
+}
+
+}  // namespace
+
+bool PTRolePassword::IsValidBcryptHash(const char* hash) {
+  // $2[abxy]$<cost:2 digits>$<salt:22><checksum:31> == kBcryptHashStrLen chars total.
+  if (hash == nullptr || strlen(hash) != kBcryptHashStrLen) {
+    return false;
+  }
+  if (hash[0] != '$' || hash[1] != '2') {
+    return false;
+  }
+  // The variants crypt_blowfish understands. Cassandra's hash_password emits $2a$.
+  if (hash[2] != 'a' && hash[2] != 'b' && hash[2] != 'x' && hash[2] != 'y') {
+    return false;
+  }
+  if (hash[3] != '$' ||
+      !isdigit(static_cast<unsigned char>(hash[4])) ||
+      !isdigit(static_cast<unsigned char>(hash[5])) ||
+      hash[6] != '$') {
+    return false;
+  }
+  // Two well-formed digits are not enough: crypt_blowfish refuses to compute a cost outside
+  // [kBcryptMinWorkFactor, kBcryptMaxWorkFactor], so storing e.g. "$2a$99$..." would leave a role
+  // that exists but whose password can never be verified, with no error at DDL time.
+  const int cost = (hash[4] - '0') * 10 + (hash[5] - '0');
+  if (cost < kBcryptMinWorkFactor || cost > kBcryptMaxWorkFactor) {
+    return false;
+  }
+  for (size_t i = 7; i < kBcryptHashStrLen; ++i) {
+    if (!IsBcryptBase64(hash[i])) {
+      return false;
+    }
+  }
+  // Layout after the "$2a$<cost>$" prefix (7 chars): 22-char salt, then 31-char checksum. The
+  // 16-byte salt and 23-byte digest don't fill a whole radix-64 group, so the last character of
+  // each carries padding bits that crypt_blowfish always writes as zero. bcrypt_checkpw recomputes
+  // the hash and compares it byte-for-byte, so a value whose padding bits are non-zero -- a
+  // hand-edited or corrupted hash -- can never verify. That is the same "role exists but can never
+  // authenticate" failure the cost range check above guards against, so reject it at DDL time too.
+  constexpr size_t kSaltLastIdx = 7 + 22 - 1;            // 28: low 4 bits are padding.
+  constexpr size_t kChecksumLastIdx = 7 + 22 + 31 - 1;   // 59: low 2 bits are padding.
+  if ((BcryptBase64Value(hash[kSaltLastIdx]) & 0x0F) != 0 ||
+      (BcryptBase64Value(hash[kChecksumLastIdx]) & 0x03) != 0) {
+    return false;
+  }
+  return true;
+}
+
+Status PTRolePassword::BuildSaltedHash(SemContext* sem_context,
+                                       MCSharedPtr<MCString>* salted_hash) const {
+  char hash[kBcryptHashSize] = {};
+  if (is_hashed()) {
+    const char* client_hash = password();
+    if (!IsValidBcryptHash(client_hash)) {
+      return sem_context->Error(
+          this, "Invalid bcrypt hash provided for HASHED PASSWORD", ErrorCode::INVALID_REQUEST);
+    }
+    memcpy(hash, client_hash, kBcryptHashStrLen);
+  } else {
+    int ret = bcrypt_hashpw(password(), hash);
+    if (ret != 0) {
+      return STATUS(IllegalState, Substitute("Could not hash password, reason: $0", ret));
+    }
+  }
+  *salted_hash = MCMakeShared<MCString>(sem_context->PSemMem(), hash, kBcryptHashSize);
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // Password.
 PTRolePassword::PTRolePassword(MemoryContext* memctx,
                                YBLocation::SharedPtr loc,
-                               const MCSharedPtr<MCString>& password)
+                               const MCSharedPtr<MCString>& password,
+                               bool is_hashed)
     : PTRoleOption(memctx, loc),
-      password_(password) {
+      password_(password),
+      is_hashed_(is_hashed) {
 }
 
 PTRolePassword::~PTRolePassword() {
@@ -115,17 +204,13 @@ Status PTCreateRole::Analyze(SemContext* sem_context) {
           break;
         }
         case PTRoleOptionType::kPassword : {
+          // A second PASSWORD/HASHED PASSWORD (both map to kPassword) in one statement is rejected
+          // here, which also covers mixing plaintext and hashed forms.
           if (seen_password) {
             return sem_context->Error(roleOption, ErrorCode::INVALID_ROLE_DEFINITION);
           }
           PTRolePassword *passwordOpt = static_cast<PTRolePassword*>(roleOption.get());
-
-          char hash[kBcryptHashSize];
-          int ret = bcrypt_hashpw(passwordOpt->password(), hash);
-          if (ret != 0) {
-            return STATUS(IllegalState, Substitute("Could not hash password, reason: $0", ret));
-          }
-          salted_hash_ = MCMakeShared<MCString>(sem_context->PSemMem(), hash , kBcryptHashSize);
+          RETURN_NOT_OK(passwordOpt->BuildSaltedHash(sem_context, &salted_hash_));
           seen_password = true;
           break;
         }
@@ -155,7 +240,9 @@ Status PTCreateRole::Analyze(SemContext* sem_context) {
 void PTCreateRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
 
   MCString sem_output("\tRole ", sem_context->PTempMem());
-  sem_output = sem_output + " role_name  " + role_name() + " salted_hash =  " + *salted_hash_;
+  // Never emit the salted_hash: it is the (bcrypt) password material, sensitive whether it was
+  // hashed here from a plaintext PASSWORD or supplied verbatim via HASHED PASSWORD.
+  sem_output = sem_output + " role_name  " + role_name() + " salted_hash =  <REDACTED>";
   sem_output = sem_output + " login = " + (login() ? "true" : "false");
   sem_output = sem_output + " superuser = " + (superuser() ? "true" : "false");
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
