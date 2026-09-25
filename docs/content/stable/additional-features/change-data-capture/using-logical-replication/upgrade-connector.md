@@ -91,9 +91,7 @@ A re-snapshot rebuilds the stream from scratch. Instead of resuming from stored 
 A re-snapshot is required when the existing replication slot can't be reused:
 
 - The target release notes call out a breaking change that isn't backward compatible with existing slots or offsets.
-- The replication slot has expired or become invalid (for example, after certain DDL changes or after point-in-time recovery). Adding an expired or not-of-interest table to the publication also invalidates the slot.
-
-    Starting in v2026.1.2.0, set the YB-TServer flag [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) to `true` so Virtual WAL skips unqualified tables and keeps streaming the qualified tables. Changes to a skipped table are never streamed on this slot; create a new slot to stream that table. When the flag is `false` (the default), adding such a table still makes the slot unusable, and a re-snapshot is required. See [Unqualified tables](../advanced-topic/#unqualified-tables).
+- The replication slot has expired or become invalid (for example, after certain DDL changes, after point-in-time recovery, or, in versions earlier than v2026.1.2.0, after you add an expired or not-of-interest table to the publication).
 - You are planning a YSQL major upgrade (PostgreSQL 11 to PostgreSQL 15); see [Upgrade across a YSQL major version](#ysql-major-upgrade) for the supported flow that avoids a full re-snapshot.
 
 To re-snapshot:

@@ -1499,7 +1499,7 @@ When this flag is `false` (the default), VWAL refuses to add the unqualified tab
 
 A table is unqualified if its tablets have expired (not polled within [--cdc_intent_retention_ms](#cdc-intent-retention-ms)) or are not of interest (not polled within [--cdcsdk_tablet_not_of_interest_timeout_secs](#cdcsdk-tablet-not-of-interest-timeout-secs) of stream or slot creation).
 
-For more information, refer to [Unqualified tables](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#unqualified-tables).
+For more information, refer to [Limitations](../../../additional-features/change-data-capture/using-logical-replication/#limitations).
 
 ##### --timestamp_syscatalog_history_retention_interval_sec
 
