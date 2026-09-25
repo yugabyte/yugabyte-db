@@ -394,6 +394,10 @@ TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
   ASSERT_STR_CONTAINS(output, "administer a YugabyteDB universe");
   ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
   ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
+
+  // A gflags help flag also wins over a leading "help".
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "--helpfull", "help"), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Flags from");
 }
 
 TEST_F(AdminCliTest, HelpListsAllOperations) {
