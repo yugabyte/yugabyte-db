@@ -187,7 +187,7 @@ A full `sudo ./node-agent-provision.sh` mixes both kinds of work. That forces ei
 
 Both teams download the node agent package from the running YugabyteDB Anywhere instance and use the same `node-agent-provision.sh` script and configuration (YugabyteDB Anywhere URL, API token, node identity, and provider details).
 
-1. The OS team runs `--root` as root. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, root systemd units, and packages as applicable). Non-root modules are skipped.
+1. The OS team runs `--root` as root. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, root systemd units, and firewall/packages as applicable). Non-root modules are skipped.
 
    ```sh
    sudo ./node-agent-provision.sh --root
@@ -224,8 +224,6 @@ Use the `--preflight_check_out_file` flag (v2025.2.4.0 and later) to specify the
 #### Override configuration
 
 You can use the `--config_override` flag to override settings in the configuration file from the command line. You can pass as many overrides as needed. The data types are validated strictly. Use periods to indicate the nesting level for the override. (Available in v2025.2.4.0 and later.)
-
-Note this only overrides fields like `yba.url` that are used for fetching data from YugabyteDB Anywhere, not the data fetched from YugabyteDB Anywhere.
 
 **Use case: one shared YAML, per-node overrides on the CLI**
 
@@ -267,6 +265,8 @@ Override FQDN and YugabyteDB Anywhere URL at the same time:
 #### Generate a configuration file
 
 Use the `--generate_config` flag to generate a new yaml config by pulling information from YugabyteDB Anywhere without actually executing any other command. Use this for brownfield use-cases where the nodes are already added to the node instances of the provider and they need to be _re-provisioned_. This option allows you to generate the configuration YAML file without having to manually create it. The YugabyteDB Anywhere URL, API token, and the node FQDN/IP added to node instances in the provider minimally are required in `node-agent-provision.yaml`. (Available in v2025.2.4.0 and later.)
+
+When you combine `--config_override` with `--generate_config`, overrides apply to fields used to contact YugabyteDB Anywhere (for example, `yba.url`), not to values that YugabyteDB Anywhere returns into the generated file.
 
 The generated file is named `node-agent-provision-generated.yaml`.
 
