@@ -915,6 +915,8 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
   CreateSingleTablet();
   ASSERT_OK(WriteRows(kNumRows, 1));
   ASSERT_OK(CheckRowsCount(kNumRows));
+  // Intents are applied asynchronously; flushing before apply leaves no SST to pick a split key.
+  ASSERT_OK(WaitForTestTableIntentsApplied());
 
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
 
