@@ -1492,11 +1492,10 @@ Default: `false`
 
 Available in v2026.1.2.0 and later.
 
-When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed on this slot. To stream the table, create a new replication slot.
+When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
 
 When this flag is `false` (the default), VWAL refuses to add the unqualified tablet to the polling list and returns `Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>`. The tablet is not polled.
 
-The flag does not apply to tablets already on the polling list. If one of those tablets expires later, streaming can still fail with a WAL or intents garbage collection error.
 
 A table is unqualified if its tablets have expired (not polled within [--cdc_intent_retention_ms](#cdc-intent-retention-ms)) or are not of interest (not polled within [--cdcsdk_tablet_not_of_interest_timeout_secs](#cdcsdk-tablet-not-of-interest-timeout-secs) of stream or slot creation).
 
