@@ -336,7 +336,8 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       const auto& indexed_table_id = table->indexed_table_id();
       auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
       if (table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
-          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
+          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
+          !indexed_table->GetIndexInfo(table->id()).table_id().empty()) {
         LOG(INFO) << "Skipping DDL transaction verification for index " << table->ToString()
                 << " as the indexed table " << indexed_table->ToString()
                 << " is also being dropped";
@@ -1155,7 +1156,8 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
       const auto& indexed_table_id = table->indexed_table_id();
       auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
       if (table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id) &&
-          indexed_table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id)) {
+          indexed_table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id) &&
+          !indexed_table->GetIndexInfo(table->id()).table_id().empty()) {
         LOG(INFO) << "Will skip rollback to sub-transaction for index " << table->ToString()
                   << " as the indexed table " << indexed_table->ToString()
                   << " is also being dropped";

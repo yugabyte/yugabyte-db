@@ -387,6 +387,9 @@ DEFINE_test_flag(bool, hang_on_namespace_transition, false,
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
+DEFINE_test_flag(bool, crash_before_add_index_info_to_table, false,
+    "Crash yb-master before adding the index info to the indexed table.");
+
 DEPRECATE_FLAG(bool, master_drop_table_after_task_response, "11_2022");
 
 DEFINE_test_flag(bool, tablegroup_master_only, false,
@@ -2917,6 +2920,9 @@ Status CatalogManager::AddIndexInfoToTable(TableInfoWithWriteLock& indexed_table
                                            CreateTableResponsePB* resp) {
   LOG(INFO) << "AddIndexInfoToTable to " << indexed_table->ToString() << "  IndexInfo "
             << AsString(index_info);
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_add_index_info_to_table)) {
+    LOG(FATAL) << "Crash due to FLAGS_TEST_crash_before_add_index_info_to_table";
+  }
   auto& l = indexed_table.lock;
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
