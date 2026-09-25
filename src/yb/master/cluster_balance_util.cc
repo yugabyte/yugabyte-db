@@ -97,7 +97,7 @@ bool CBTabletMetadata::CanAddTSToMissingPlacements(
 std::string CBTabletMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       running, starting, is_under_replicated, under_replicated_placements,
-      is_over_replicated, over_replicated_tablet_servers,
+      is_over_replicated, over_replicated_tablet_servers, over_max_placements,
       wrong_placement_tablet_servers, blacklisted_tablet_servers, leader_blacklisted_tablet_servers,
       leader_uuid, leader_stepdown_failures, size);
 }
@@ -395,6 +395,10 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       }
     }
 
+    for (const auto& [cloud_info, replicas] : placement_to_replicas) {
+      tablet_meta.placement_replica_counts[cloud_info] = replicas.size();
+    }
+
     if (VLOG_IS_ON(3)) {
       std::stringstream out;
       out << "Dumping placement to replica map for tablet " << tablet_id;
@@ -412,7 +416,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       VLOG(3) << out.str();
     }
 
-    // Loop over the data and populate extra replica as well as missing replica information.
+    // Loop over the data and populate missing replica and maximum-violation information.
     for (const auto& [cloud_info, replicas] : placement_to_replicas) {
       const size_t min_num_replicas = placement_to_min_replicas[cloud_info];
       if (min_num_replicas > replicas.size()) {
@@ -420,11 +424,28 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
                 << " " << min_num_replicas - replicas.size() << " count";
         // Placements that are under-replicated should be handled ASAP.
         tablet_meta.under_replicated_placements.insert(cloud_info);
-      } else if (tablet_meta.is_over_replicated && min_num_replicas < replicas.size()) {
-        // If this tablet is over-replicated, consider all the placements that have more than the
-        // minimum number of tablets, as candidates for removing a replica.
-        VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " is over-replicated by"
-                << " " << replicas.size() - min_num_replicas << " count";
+      } else if (const size_t max_num_replicas = PlacementBlockMaxReplicas(cloud_info);
+                 replicas.size() > max_num_replicas) {
+        VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " exceeds its maximum by "
+                << replicas.size() - max_num_replicas << " replicas";
+        tablet_meta.over_max_placements.insert(cloud_info);
+      }
+    }
+
+    // If this tablet is over-replicated, choose the removal candidates. If any placement exceeds
+    // its maximum, only its replicas are candidates, so the remove fixes the maximum violation.
+    // Otherwise, consider all the placements that have more than the minimum number of replicas
+    // (as that means there is at least one of them we can remove, and still respect the minimum).
+    if (tablet_meta.is_over_replicated) {
+      for (const auto& [cloud_info, replicas] : placement_to_replicas) {
+        const bool is_candidate = tablet_meta.has_over_max_placements()
+            ? tablet_meta.over_max_placements.contains(cloud_info)
+            : replicas.size() > implicit_cast<size_t>(placement_to_min_replicas[cloud_info]);
+        if (!is_candidate) {
+          continue;
+        }
+        VLOG(3) << "Placement " << cloud_info.ShortDebugString()
+                << " is a removal candidate for over-replicated tablet";
         for (const auto& [ts_uuid, _] : replicas) {
           tablet_meta.over_replicated_tablet_servers.insert(ts_uuid);
         }
@@ -441,6 +462,13 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   }
   if (tablet_meta.is_over_replicated) {
     tablets_over_replicated_.insert(tablet_id);
+  }
+  // A maximum violation is only repaired by an add-before-remove move if nothing else owns the
+  // tablet: missing replicas are added first (ProcessUnderReplicatedTablets), and an
+  // over-replicated tablet has its removal steered to the offending block instead.
+  if (tablet_meta.has_over_max_placements() && !tablet_meta.is_over_replicated &&
+      !tablet_meta.is_missing_replicas()) {
+    tablets_over_max_placements_.insert(tablet_id);
   }
   if (tablet_meta.has_wrong_placements()) {
     tablets_wrong_placement_.insert(tablet_id);
@@ -539,7 +567,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
 }
 
 Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts) {
+    const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts) {
   const auto& ts_meta = per_ts_meta_[to_ts];
 
   // If this server is deemed DEAD then don't add it.
@@ -568,10 +596,28 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
 
   // If we ask to use placement information, check against it.
-  if (placement_.placement_blocks_size() > 0 && !GetValidPlacement(to_ts).has_value()) {
+  const auto to_placement = GetValidPlacement(to_ts);
+  if (placement_.placement_blocks_size() > 0 && !to_placement.has_value()) {
     YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 4) << "tablet server " << to_ts << " has placement info "
         << "incompatible with tablet " << tablet_id << ". Not allowing it to host this tablet.";
     return false;
+  }
+
+  if (to_placement) {
+    auto projected_count = FindWithDefault(
+        per_tablet_meta_.at(tablet_id).placement_replica_counts, *to_placement, 0uz);
+    if (!from_ts.empty()) {
+      const auto from_placement = GetValidPlacement(from_ts);
+      if (from_placement && cloud_equal_to()(*from_placement, *to_placement)) {
+        DCHECK_GT(projected_count, 0);
+        --projected_count;
+      }
+    }
+    if (projected_count >= PlacementBlockMaxReplicas(*to_placement)) {
+      VLOG(4) << "Placement " << to_placement->ShortDebugString()
+              << " is at its maximum for tablet " << tablet_id;
+      return false;
+    }
   }
 
   auto& ts_global_meta = global_state_->per_ts_global_meta_.at(to_ts);
@@ -606,6 +652,21 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If all checks pass, return true.
   return true;
+}
+
+void PerTableLoadState::CachePlacementBlockMaxReplicas() {
+  placement_block_max_replicas_.clear();
+  for (const auto& pb : placement_.placement_blocks()) {
+    placement_block_max_replicas_[pb.cloud_info()] =
+        GetEffectiveMaxNumReplicas(pb, placement_.num_replicas());
+  }
+}
+
+size_t PerTableLoadState::PlacementBlockMaxReplicas(const CloudInfoPB& cloud_info) const {
+  // No matching block (e.g. no placement policy, where GetValidPlacement returns the tserver's
+  // own cloud info): only the replication factor bounds the placement.
+  return FindWithDefault(
+      placement_block_max_replicas_, cloud_info, implicit_cast<size_t>(placement_.num_replicas()));
 }
 
 std::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(const TabletServerId& ts_uuid) {
@@ -649,12 +710,12 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       // just try to move the load to the same placement. However, if the from_uuid was
       // previously invalidly placed, then we should ignore its placement.
       if (invalid_placement &&
-          VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
+          VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, from_uuid))) {
         VLOG(3) << "Found destination " << to_uuid << " where replica can be added"
                 << ". Blacklisted tserver is also in an invalid placement";
         found_match = true;
       } else {
-        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
+        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, from_uuid))) {
           // If we have placement information, we want to only pick the tablet if it's moving
           // to the same placement, so we guarantee we're keeping the same type of distribution.
           // Since we allow prefixes as well, we can still respect the placement of this tablet
@@ -718,8 +779,9 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       VLOG(3) << out.str();
     }
     for (const auto& to_uuid : sorted_load_) {
-      if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
-        *out_from_ts = *tablet_meta.wrong_placement_tablet_servers.begin();
+      const auto& from_uuid = *tablet_meta.wrong_placement_tablet_servers.begin();
+      if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, from_uuid))) {
+        *out_from_ts = from_uuid;
         *out_to_ts = to_uuid;
         VLOG(3) << "Found " << to_uuid << " for tablet " << tablet_id << " source "
                 << *out_from_ts;
