@@ -1523,6 +1523,9 @@ class Tablet : public AbstractTablet,
   // readers are running.
   mutable std::mutex sst_stats_mutex_;
   std::shared_ptr<docdb::SstStatsAggregator> sst_stats_ GUARDED_BY(sst_stats_mutex_);
+  // The docdb_sst_* gauges over sst_stats_. CompleteShutdownStorages resets this before clearing
+  // the tablet's current aggregator so the entity cannot expose values from a destroyed DB.
+  std::unique_ptr<docdb::SstStatsMetrics> sst_stats_metrics_;
 
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
