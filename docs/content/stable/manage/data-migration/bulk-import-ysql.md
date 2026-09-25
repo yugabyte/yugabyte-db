@@ -158,7 +158,7 @@ To import an entire database from a `pg_dump` or `ysql_dump` export, use ysqlsh 
 ysqlsh -f <database_name>.sql
 ```
 
-Dumps taken with ysql_dump or ysql_dumpall (v2025.2.7.0 or later, v2026.1.2.0 or later) begin with the [`\restrict`](../../../api/ysqlsh-meta-commands/#restrict-restrict) meta-command. Replay them with ysqlsh from the same or a later version. See [ysql_dump Notes](../../../admin/ysql-dump/#notes).
+Dumps taken with ysql_dump or ysql_dumpall (v2025.2.7.0+ and v2026.1.2.0+) begin with the [`\restrict`](../../../api/ysqlsh-meta-commands/#restrict-restrict) meta-command. Replay them with ysqlsh from the same or a later version. See [ysql_dump Notes](../../../admin/ysql-dump/#notes).
 
 {{< note title="Note" >}}
 After the data import step, remember to recreate any constraints and triggers that might have been disabled to speed up loading the data. This ensures that the database will perform relational integrity checking for data going forward.

@@ -91,11 +91,11 @@ The YugabyteDB clients are released with every version of [YugabyteDB](../ybdb-r
 
 ### v2025.2.7.0 - November 5, 2026 (tentative) {#v2025.2.7.0}
 
-* Restricts psql meta-commands in plain-text dumps from `ysql_dump` and `ysql_dumpall`. Replaying such a dump requires ysqlsh from this release or later.
+* Updated ysqlsh to add support for replaying dumps that use the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict) meta-command.
 
 ### v2026.1.2.0 - September 21, 2026 {#v2026.1.2.0}
 
-* Restricts psql meta-commands in plain-text dumps from `ysql_dump` and `ysql_dumpall`. Replaying such a dump requires ysqlsh from this release or later.
+* Updated ysqlsh to add support for replaying dumps that use the [`\restrict`](../../api/ysqlsh-meta-commands/#restrict-restrict) meta-command.
 
 ### v2025.2.1.0 - February 12, 2025 {#v2025.2.1.0}
 
