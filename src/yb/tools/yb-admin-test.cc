@@ -398,13 +398,15 @@ TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
   // gflags help flags win over a leading "help" but not over --help, as in gflags itself.
   ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "--helpfull", "help"), &output, &error));
   ASSERT_STR_CONTAINS(output, "Flags from");
-  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "--help", "--version"), &output, &error));
+  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "--help", "--helpfull"), &output, &error));
   ASSERT_STR_CONTAINS(output, "Get help:");
   ASSERT_STR_NOT_CONTAINS(output, "Flags from");
-  // yb's dump flags win over --help too.
-  ASSERT_OK(Subprocess::Call(
-      ToStringVector(exe_path, "--help_auto_flag_json", "--help"), &output, &error));
-  ASSERT_STR_NOT_CONTAINS(output, "Get help:");
+  // yb's dump flags and --version win over --help too.
+  for (const auto* flag : {"--help_auto_flag_json", "--version"}) {
+    SCOPED_TRACE(flag);
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "--help", flag), &output, &error));
+    ASSERT_STR_NOT_CONTAINS(output, "Get help:");
+  }
   ASSERT_OK(Subprocess::Call(
       ToStringVector(exe_path, "--helpfull=false", "help"), &output, &error));
   ASSERT_STR_CONTAINS(output, "Operations (");
