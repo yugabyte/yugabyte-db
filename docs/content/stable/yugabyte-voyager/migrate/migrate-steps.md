@@ -714,6 +714,8 @@ The `import schema --post-snapshot-import` command is deprecated. Use [finalize-
 
 After the schema and data import is complete, manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. For example, you can validate the databases by running queries to check the row count of each table.
 
+If the source schema may have changed while data was exported, [schema detect-drift](../../reference/schema-migration/detect-drift/) lists those changes.
+
 {{< warning title = "Caveat associated with rows reported by import data status" >}}
 
 Suppose you have the following scenario:

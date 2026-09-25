@@ -79,7 +79,7 @@ YugabyteDB Voyager relies on the following dependencies on supported Ubuntu syst
 | oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
 | oracle-instantclient-tools | = 21.5.0.0.0-1 |
 | ora2pg | = 23.2-yb.2 |
-| postgresql-client-17 | – |
+| postgresql-client-18 | – |
 | sqlite3 | – |
 
 ### Upgrade yb-voyager

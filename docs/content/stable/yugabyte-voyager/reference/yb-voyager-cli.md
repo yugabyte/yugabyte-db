@@ -56,6 +56,7 @@ The list of commands for various phases of migration are as follows:
 - [Assess migration](../../reference/assess-migration)
 - [Export schema](../../reference/schema-migration/export-schema/)
 - [Analyze schema](../../reference/schema-migration/analyze-schema/)
+- [Detect drift](../../reference/schema-migration/detect-drift/)
 - [Import schema](../../reference/schema-migration/import-schema/)
 - [Export data](../../reference/data-migration/export-data/)
 - [Export data status](../../reference/data-migration/export-data/#export-data-status)

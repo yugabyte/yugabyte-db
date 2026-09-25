@@ -96,7 +96,7 @@ YugabyteDB Voyager relies on the following dependencies on RHEL 8 and RHEL 9 sys
 | oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
 | oracle-instantclient-tools | = 21.5.0.0.0-1 |
 | ora2pg | = 23.2-yb.2 |
-| postgresql17 | – |
+| postgresql18 | – |
 | sqlite | – |
 
 ### Upgrade yb-voyager
@@ -209,7 +209,7 @@ YugabyteDB Voyager relies on the following dependencies on RHEL 8 and RHEL 9 sys
 | oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
 | oracle-instantclient-tools | = 21.5.0.0.0-1 |
 | ora2pg | = 23.2-yb.2 |
-| postgresql17 | – |
+| postgresql18 | – |
 | sqlite | – |
 
 ### Upgrade yb-voyager
