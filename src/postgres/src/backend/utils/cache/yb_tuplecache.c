@@ -23,7 +23,9 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/htup_details.h"
 #include "access/table.h"
+#include "utils/memutils.h"
 #include "utils/yb_tuplecache.h"
 
 void
@@ -44,9 +46,27 @@ YbLoadTupleCache(YbTupleCache *cache, Oid relid,
 
 	YbTupleCacheEntry *entry = NULL;
 	HeapTuple	htup;
+	MemoryContext cache_cxt = CurrentMemoryContext;
 
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	/*
+	 * Decoding a row also leaves per-column copies behind, several times the
+	 * size of the tuple, so decode in a scratch context and keep only a copy
+	 * of the tuple.
+	 */
+	MemoryContext row_cxt = AllocSetContextCreate(cache_cxt,
+												  "tuple cache row",
+												  ALLOCSET_DEFAULT_SIZES);
+
+	for (;;)
 	{
+		MemoryContextReset(row_cxt);
+		MemoryContextSwitchTo(row_cxt);
+		htup = systable_getnext(scandesc);
+		MemoryContextSwitchTo(cache_cxt);
+		if (!HeapTupleIsValid(htup))
+			break;
+		htup = heap_copytuple(htup);
+
 		Oid			key = key_extractor(htup);
 
 		if (!entry || entry->key != key)
@@ -60,6 +80,7 @@ YbLoadTupleCache(YbTupleCache *cache, Oid relid,
 		}
 		entry->tuples = lappend(entry->tuples, htup);
 	}
+	MemoryContextDelete(row_cxt);
 	systable_endscan(scandesc);
 }
 

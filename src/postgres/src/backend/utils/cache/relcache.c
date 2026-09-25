@@ -1405,6 +1405,36 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 	YbCleanupTupleCache(&state->pg_policy_cache);
 }
 
+static MemoryContext
+YbCreatePreloadRowContext(void)
+{
+	return AllocSetContextCreate(CurrentMemoryContext,
+								 "relcache preload row",
+								 ALLOCSET_DEFAULT_SIZES);
+}
+
+/*
+ * Fetch the next row of a relcache preload scan into row_cxt, first
+ * discarding the previous row.  A decoded catalog row leaves behind the
+ * per-column copies pggate makes while decoding it, several times the size
+ * of the tuple itself, so the full-catalog scans below must not accumulate
+ * them.  Everything a relcache entry keeps is allocated explicitly in
+ * CacheMemoryContext (or a child of it), the same as when RelationBuildDesc
+ * runs in a throwaway workspace context.
+ */
+static HeapTuple
+YbSystableGetNextInContext(SysScanDesc scandesc, MemoryContext row_cxt)
+{
+	MemoryContext oldcxt;
+	HeapTuple	htup;
+
+	MemoryContextReset(row_cxt);
+	oldcxt = MemoryContextSwitchTo(row_cxt);
+	htup = systable_getnext(scandesc);
+	MemoryContextSwitchTo(oldcxt);
+	return htup;
+}
+
 /*
  * YugaByte-mode only utility used to load up the relcache on initialization
  * to minimize the number on YB-master queries needed.
@@ -1439,8 +1469,11 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 
 	HeapTuple	pg_class_tuple;
 	int			num_tuples = 0;
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
 
-	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
+	while (HeapTupleIsValid(pg_class_tuple =
+							YbSystableGetNextInContext(scandesc, row_cxt)))
 	{
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
@@ -1590,6 +1623,9 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		state->has_partitioned_tables |= (relation->rd_rel->relkind ==
 										  RELKIND_PARTITIONED_TABLE);
 	}
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
+
 	if (yb_debug_log_catcache_events)
 		elog(LOG, "Inserted %d entries into relcache", num_tuples);
 
@@ -2009,8 +2045,16 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 	const bool	sys_rel_update_required = cache_update_state->sys_relations_update_required;
 
 	HeapTuple	htup;
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
 
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	/*
+	 * The row that ends one relation's attributes is also the first attribute
+	 * of the next relation, so a row may be discarded only once the next row
+	 * is fetched, not at a relation boundary.
+	 */
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
+															  row_cxt)))
 	{
 		if (!YbApplyAttr(&state, attrel, htup))
 		{
@@ -2020,6 +2064,8 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 		}
 	}
 	YbCompleteAttrProcessing(&state);
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
 	systable_endscan(scandesc);
 	table_close(attrel, AccessShareLock);
 }
@@ -2033,8 +2079,11 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 											  NULL);
 
 	HeapTuple	htup;
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
 
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
+															  row_cxt)))
 	{
 		Form_pg_partitioned_table part_table_form = (Form_pg_partitioned_table) GETSTRUCT(htup);
 		Relation	relation;
@@ -2051,6 +2100,8 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 			RelationBuildPartitionDesc(relation, true /* omit_detached */ );
 		}
 	}
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
 
 	systable_endscan(scandesc);
 	table_close(partrel, AccessShareLock);
@@ -2209,8 +2260,14 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 											 NULL);
 	HeapTuple	htup;
 	YbIndexProcessorState state = {0};
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
 
-	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
+	/*
+	 * Only the fetch runs in row_cxt: state.result accumulates across all the
+	 * rows of a relation.
+	 */
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(indscan,
+															  row_cxt)))
 	{
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
 
@@ -2232,6 +2289,7 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 		}
 	}
 	YbCompleteIndexProcessing(&state);
+	MemoryContextDelete(row_cxt);
 	systable_endscan(indscan);
 	table_close(indrel, AccessShareLock);
 }
