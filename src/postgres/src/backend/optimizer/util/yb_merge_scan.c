@@ -782,14 +782,15 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 /*
  * Add to sort_info, in index column order, every index column before its last
  * merge sort column that is not a merge stream key in stream_col_idxs, a merge
- * sort column, or a copy of an earlier index column.  Each stream returns its
- * rows in index order, so merging on these columns too keeps the merged rows
- * in index order.  Such a column is redundant for the pathkeys only because
- * filters tie it to a constant or to an earlier merge sort column, and filters
- * only remove rows.  So the merged rows keep the order of the pathkeys
- * wherever those filters run, even after the merge.  Each added column
- * compares with its index ordering operator, collation, and nulls order for
- * scandir.
+ * sort column, or a copy of an earlier index column.  These must be the gap
+ * columns that yb_finalize_merge_scan_stream_cols checks when it decides
+ * whether the path can merge.  Each stream returns its rows in index order, so
+ * merging on these columns too keeps the merged rows in index order.  Such a
+ * column is redundant for the pathkeys only because filters tie it to a
+ * constant or to an earlier merge sort column, and filters only remove rows.
+ * So the merged rows keep the order of the pathkeys wherever those filters
+ * run, even after the merge.  Each added column compares with its index
+ * ordering operator, collation, and nulls order for scandir.
  */
 void
 yb_add_merge_gap_sort_cols(IndexOptInfo *index, ScanDirection scandir,
