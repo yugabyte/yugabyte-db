@@ -14,6 +14,8 @@
 
 #include "yb/yql/cql/ql/audit/audit_logger.h"
 
+#include <string>
+
 #include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
@@ -38,6 +40,7 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/util/password_redaction.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -439,40 +442,16 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
 }
 
 // Replace sensitive information in a CQL command string with <REDACTED> placeholders.
-// We only do this for CREATE/ALTER ROLE.
+// This is the success path, and it is the only one that checks the opcode, so only CREATE/ALTER
+// ROLE is touched. Every failure path redacts unconditionally in LogStatementError below, whether
+// or not it has a parse tree -- so a failed statement carrying a password clause is redacted even
+// where the same statement succeeding would not be.
 std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operation) {
   if (tnode.opcode() != TreeNodeOpcode::kPTCreateRole &&
       tnode.opcode() != TreeNodeOpcode::kPTAlterRole) {
     return operation;
   }
-
-  static const auto replacement = "<REDACTED>";
-  // Using somewhat tricky code to account for escaped quotes ('') in a password.
-  // We replace an entire string, including quotes.
-  static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'", std::regex_constants::icase);
-  std::smatch m;
-  if (!regex_search(operation, m, pwd_start_regex)) {
-    return operation;
-  }
-  size_t pwd_start_idx = m.position() + m.length() - 1;
-  ssize_t pwd_length = -1;
-  for (auto i = pwd_start_idx + 1; i < operation.length(); ++i) {
-    if (operation[i] == '\'') {
-      // If the next character is a quote too - this is an escaped quote.
-      if (i < operation.length() - 1 && operation[i + 1] == '\'') {
-        ++i; // Skip both quotes.
-      } else {
-        pwd_length = i - pwd_start_idx + 1;
-        break;
-      }
-    }
-  }
-  if (pwd_length == -1) {
-    return operation;
-  }
-  std::string copy(operation);
-  copy.replace(pwd_start_idx, pwd_length, replacement);
-  return copy;
+  return RedactPasswordLiterals(operation);
 }
 
 // Follows Cassandra's view format for prettified binary log.
@@ -755,7 +734,8 @@ Status AuditLogger::LogStatementError(const TreeNode* tnode,
     return Status::OK();
   }
 
-  return LogStatementError(ObfuscateOperation(*tnode, statement), error_status, error_is_formatted);
+  // The overload below redacts the statement unconditionally.
+  return LogStatementError(statement, error_status, error_is_formatted);
 }
 
 Status AuditLogger::LogStatementError(const std::string& statement,
@@ -780,11 +760,46 @@ Status AuditLogger::LogStatementError(const std::string& statement,
     error_message = boost::algorithm::join(split, "\n");
   }
 
+  // `error_message` carries the statement as well, not just the error: ProcessContextBase::Error
+  // echoes the offending statement after the error text, with a caret marker line. It already
+  // redacts that echo; this is a backstop for any error text that embeds the statement without
+  // going through it. The strip above can't serve that role -- execution failures reach here with
+  // ErrorIsFormatted::kFalse, where it does not run at all, and even when it does run it drops
+  // exactly three trailing lines, which removes the echo only for a single-line statement.
+  //
+  // Only the echo is CQL. The error text in front of it ("<ErrorText>. <msg>" followed by a
+  // newline) is prose -- e.g. "Role o'brien already exists", "You aren't allowed..." -- and an
+  // apostrophe there would open a phantom string literal in the scanner that swallows the echoed
+  // PASSWORD clause. So scan from where the echo starts: the statement's first line as the echo
+  // shows it (redacted), searched for after the first newline (msg may itself span lines), falling
+  // back to that first newline.
+  const size_t first_newline = error_message.find('\n');
+  if (first_newline == std::string::npos) {
+    error_message = RedactPasswordLiterals(error_message);
+  } else {
+    size_t echo_start = first_newline + 1;
+    const std::string redacted_statement = RedactPasswordLiterals(statement);
+    const std::string first_line =
+        redacted_statement.substr(0, redacted_statement.find('\n'));
+    if (!first_line.empty()) {
+      const size_t pos = error_message.find(first_line, echo_start);
+      if (pos != std::string::npos) {
+        echo_start = pos;
+      }
+    }
+    error_message = error_message.substr(0, echo_start) +
+                    RedactPasswordLiterals(error_message.substr(echo_start));
+  }
+
   // For failed requests, we do not log keyspace and scope even if we have them.
+  // Redact the statement here rather than relying on the caller: every failure path funnels
+  // through this overload, including those with no parse tree to identify the statement type
+  // (syntax errors, failed PREPARE). Callers that already redacted are unaffected -- no literal is
+  // left to match.
   auto entry = VERIFY_RESULT(CreateLogEntry(type,
                                             "" /* keyspace */,
                                             "" /* scope */,
-                                            statement,
+                                            RedactPasswordLiterals(statement),
                                             std::move(error_message)));
 
   if (!ShouldBeLogged(entry)) {
