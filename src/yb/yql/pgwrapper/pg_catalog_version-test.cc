@@ -2151,7 +2151,9 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
 }
 
 TEST_F(PgCatalogVersionTest, AnalyzeInsideDdlEventTrigger) {
-  RestartClusterWithInvalMessageEnabled();
+  // Under TSAN the script can outlast the default 10s expiration, purging early versions.
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_yb_invalidation_message_expiration_secs=36000" });
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
   const string query =
