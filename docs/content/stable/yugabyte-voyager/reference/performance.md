@@ -112,7 +112,7 @@ Conflict detection is cheap when conflicts are rare. On some workloads, however,
       WHERE is_current;
   ```
 
-Every status change emits an _update and insert pair on two different rows_: the old current row steps down (`is_current` becomes false) and a new current row takes its place. Because the two rows have different primary keys, they hash to different channels, and the unique index makes them a genuine conflict — so detection holds the insert on every single transition as per the following illustration:
+Every status change emits an _update and insert pair on two different rows_: the old current row steps down (`is_current` becomes false) and a new current row takes its place. Because the two rows have different primary keys, they hash to different channels, and the unique index makes them a genuine conflict. As a result, detection holds the insert on every single transition as per the following illustration:
 
 ![update + insert pair](/images/migrate/old-new-row.png)
 
@@ -162,8 +162,8 @@ yb-voyager import data to target \
 
 For a custom key to eliminate conflicts without breaking correctness or throughput, it should satisfy the following:
 
-- **It must be immutable (required for correctness)** If an update could change the key column, the same logical row would hash to different channels before and after the change, breaking per-row ordering. Primary keys give this guarantee for free; verify a custom key yourself.
-- **It should appear in every unique index on the table (for effectiveness)** If the key is one of an index's columns, any two rows that collide on that index share the key, route to the same channel, and apply in order. Covering every unique index this way makes every possible collision intra-channel; missing any index can still collide on that index, and detection will still fire.
+- **It must be immutable (required for correctness)**. If an update could change the key column, the same logical row would hash to different channels before and after the change, breaking per-row ordering. Primary keys give this guarantee for free; verify a custom key yourself.
+- **It should appear in every unique index on the table (for effectiveness)**. If the key is one of an index's columns, any two rows that collide on that index share the key, route to the same channel, and apply in order. Covering every unique index this way makes every possible collision intra-channel; missing any index can still collide on that index, and detection will still fire.
 
   For example, `order_id` is part of both `UNIQUE (order_id, sort_key)` and `UNIQUE (order_id, is_current)`, so partitioning by `order_id` drives conflicts to zero. An uncovered index such as `UNIQUE (tracking_code)` can still trigger detection.
 
