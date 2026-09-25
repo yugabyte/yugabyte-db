@@ -98,7 +98,7 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
 
     if (file->service_count() != 0) {
       Generate<ServiceGenerator>(file, gen_context, &subs, name_info.service());
-      Generate<ProxyGenerator>(file, gen_context, &subs, name_info.proxy());
+      Generate<ProxyGenerator>(file, gen_context, &subs, name_info.proxy(), need_messages);
     }
 
     if (need_messages) {

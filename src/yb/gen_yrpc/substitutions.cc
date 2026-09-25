@@ -199,7 +199,7 @@ std::string DefaultValueToString(
     case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
       return "::" + ReplaceNamespaceDelimiters(field->default_value_enum()->full_name());
     case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
-      return field->default_value_string();
+      return "\"" + google::protobuf::CEscape(field->default_value_string()) + "\"";
     case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
       return "NOT SUPPORTED";
   }

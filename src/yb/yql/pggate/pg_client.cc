@@ -398,6 +398,13 @@ ExchangeFuture<Data>::Result ExchangeFuture<Data>::get() {
   return *value_;
 }
 
+// True iff T has a generated TracingAttributes() (emitted only for (yb.rpc.trace)-tagged messages).
+template <class T, class = void>
+struct HasTracingAttributes : std::false_type {};
+template <class T>
+struct HasTracingAttributes<
+    T, std::void_t<decltype(std::declval<const T&>().TracingAttributes())>> : std::true_type {};
+
 template <class LWReqPB, class LWRespPB, class ResTp, tserver::PgSharedExchangeReqType ShExcReqType>
 struct PgClientData : public FetchBigDataCallback {
   using RequestType = LWReqPB;
@@ -426,6 +433,13 @@ struct PgClientData : public FetchBigDataCallback {
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void StartSharedMemorySpan() {
+    if constexpr (HasTracingAttributes<LWReqPB>::value) {
+      if (dist_trace::HasActiveContext()) {
+        for (auto& p : req.TracingAttributes()) {
+          dist_trace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));
+        }
+      }
+    }
     otel_span = dist_trace::StartClientSpan(
         tserver::GetSharedMemSpanName(kSharedExchangeRequestType));
     if (otel_span) {
@@ -1214,26 +1228,6 @@ class PgClient::Impl : public BigDataFetcher {
     const auto lock_type = static_cast<tserver::ObjectLockMode>(mode);
     req.set_lock_type(lock_type);
     req.set_is_session_lock(is_session_lock);
-
-    // Publish the details of AcquireObjectLock.
-    if (dist_trace::HasActiveContext()) {
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.database_oid", std::to_string(lock_id.db_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.relation_oid", std::to_string(lock_id.relation_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.object_oid", std::to_string(lock_id.object_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.object_sub_oid", std::to_string(lock_id.object_sub_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.lock_mode", tserver::ObjectLockMode_Name(lock_type));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.is_session_lock", is_session_lock ? "true" : "false");
-      if (tablespace_oid) {
-        dist_trace::AddPendingRpcStringAttr(
-            "rpc.object_lock.tablespace_oid", std::to_string(*tablespace_oid));
-      }
-    }
 
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
