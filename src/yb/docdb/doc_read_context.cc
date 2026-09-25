@@ -96,19 +96,16 @@ DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_sche
 void DocReadContext::CarryTombstoneCacheFrom(const DocReadContext& rhs) {
   // This context is not published yet, so only rhs needs the lock.
   std::lock_guard lock(rhs.tombstone_cache_mutex_);
-  table_tombstone_time_ = rhs.table_tombstone_time_;
-  tombstone_cache_entry_generation_ = rhs.tombstone_cache_entry_generation_;
-  tombstone_cache_generation_ = rhs.tombstone_cache_generation_;
-  tombstone_cache_watermark_ = rhs.tombstone_cache_watermark_;
+  tombstone_cache_ = rhs.tombstone_cache_;
 }
 
 std::optional<DocHybridTime> DocReadContext::table_tombstone_time() const {
   std::lock_guard lock(tombstone_cache_mutex_);
-  if (table_tombstone_time_ == DocHybridTime::kMax ||
-      tombstone_cache_entry_generation_ != tombstone_cache_generation_) {
+  if (tombstone_cache_.table_tombstone_time == DocHybridTime::kMax ||
+      tombstone_cache_.entry_generation != tombstone_cache_.generation) {
     return std::nullopt; // Not yet cached, or invalidated by a watermark advance.
   }
-  return table_tombstone_time_;
+  return tombstone_cache_.table_tombstone_time;
 }
 
 void DocReadContext::set_table_tombstone_time(
@@ -116,7 +113,7 @@ void DocReadContext::set_table_tombstone_time(
   DCHECK(schema_.has_colocation_id());
   std::lock_guard lock(tombstone_cache_mutex_);
   // Reject a populate that raced a truncate: its entry_generation is from before the bump.
-  if (entry_generation != tombstone_cache_generation_) {
+  if (entry_generation != tombstone_cache_.generation) {
     return;
   }
   // A cached tombstone must not sit above the watermark. Otherwise a concurrent read with
@@ -124,29 +121,29 @@ void DocReadContext::set_table_tombstone_time(
   // that predates the truncate (commit-to-apply window second polarity). Absence (kInvalid) has
   // no hybrid time to compare.
   if (table_tombstone_time.is_valid() &&
-      (tombstone_cache_watermark_ == HybridTime::kMax ||
-       table_tombstone_time.hybrid_time() > tombstone_cache_watermark_)) {
+      (tombstone_cache_.watermark == HybridTime::kMax ||
+       table_tombstone_time.hybrid_time() > tombstone_cache_.watermark)) {
     return;
   }
   // Both fields under the same lock so readers never observe a stale value paired with the
   // current generation (the two-store race without the lock).
-  tombstone_cache_entry_generation_ = entry_generation;
-  table_tombstone_time_ = table_tombstone_time;
+  tombstone_cache_.entry_generation = entry_generation;
+  tombstone_cache_.table_tombstone_time = table_tombstone_time;
 }
 
 void DocReadContext::clear_table_tombstone_time() const {
   std::lock_guard lock(tombstone_cache_mutex_);
-  table_tombstone_time_ = DocHybridTime::kMax;
+  tombstone_cache_.table_tombstone_time = DocHybridTime::kMax;
 }
 
 HybridTime DocReadContext::tombstone_cache_watermark() const {
   std::lock_guard lock(tombstone_cache_mutex_);
-  return tombstone_cache_watermark_;
+  return tombstone_cache_.watermark;
 }
 
 uint64_t DocReadContext::tombstone_cache_generation() const {
   std::lock_guard lock(tombstone_cache_mutex_);
-  return tombstone_cache_generation_;
+  return tombstone_cache_.generation;
 }
 
 void DocReadContext::AdvanceTombstoneCacheWatermark(HybridTime ht) const {
@@ -158,9 +155,9 @@ void DocReadContext::AdvanceTombstoneCacheWatermark(HybridTime ht) const {
   // kMax is the unarmed sentinel, not a comparable upper bound: replace it on first advance.
   // Only bump generation when the watermark actually moves, so arming/re-arming with an
   // equal-or-older SafeTime does not spuriously drop a warm cache.
-  if (tombstone_cache_watermark_ == HybridTime::kMax || ht > tombstone_cache_watermark_) {
-    ++tombstone_cache_generation_;
-    tombstone_cache_watermark_ = ht;
+  if (tombstone_cache_.watermark == HybridTime::kMax || ht > tombstone_cache_.watermark) {
+    ++tombstone_cache_.generation;
+    tombstone_cache_.watermark = ht;
   }
 }
 
@@ -173,11 +170,11 @@ void DocReadContext::OnTableTombstoneWritten(HybridTime write_ht) const {
   // re-notify on the xCluster external-intents path). Clearing alone is not enough if a concurrent
   // populate already decided to store under the current generation; the bump forces that entry to
   // miss. When write_ht is higher, also raise the watermark.
-  ++tombstone_cache_generation_;
-  if (tombstone_cache_watermark_ == HybridTime::kMax || write_ht > tombstone_cache_watermark_) {
-    tombstone_cache_watermark_ = write_ht;
+  ++tombstone_cache_.generation;
+  if (tombstone_cache_.watermark == HybridTime::kMax || write_ht > tombstone_cache_.watermark) {
+    tombstone_cache_.watermark = write_ht;
   }
-  table_tombstone_time_ = DocHybridTime::kMax;
+  tombstone_cache_.table_tombstone_time = DocHybridTime::kMax;
 }
 
 bool DocReadContext::IsTombstoneCacheEligible(HybridTime read_ht) const {
@@ -187,8 +184,8 @@ bool DocReadContext::IsTombstoneCacheEligible(HybridTime read_ht) const {
   std::lock_guard lock(tombstone_cache_mutex_);
   // Reject unarmed watermark (kMax): kMax.is_valid() is true and read_ht >= kMax would otherwise
   // make an unarmed context eligible (e.g. ReadHybridTime::Max()).
-  return tombstone_cache_watermark_ != HybridTime::kMax &&
-         read_ht >= tombstone_cache_watermark_;
+  return tombstone_cache_.watermark != HybridTime::kMax &&
+         read_ht >= tombstone_cache_.watermark;
 }
 
 std::optional<DocHybridTime> DocReadContext::GetCachedTableTombstoneTime(
@@ -200,15 +197,15 @@ std::optional<DocHybridTime> DocReadContext::GetCachedTableTombstoneTime(
   // Same eligibility gate as IsTombstoneCacheEligible, then the hit check from
   // table_tombstone_time - under one lock so a concurrent OnTableTombstoneWritten
   // cannot invalidate between the two.
-  if (tombstone_cache_watermark_ == HybridTime::kMax ||
-      read_ht < tombstone_cache_watermark_) {
+  if (tombstone_cache_.watermark == HybridTime::kMax ||
+      read_ht < tombstone_cache_.watermark) {
     return std::nullopt;
   }
-  if (table_tombstone_time_ == DocHybridTime::kMax ||
-      tombstone_cache_entry_generation_ != tombstone_cache_generation_) {
+  if (tombstone_cache_.table_tombstone_time == DocHybridTime::kMax ||
+      tombstone_cache_.entry_generation != tombstone_cache_.generation) {
     return std::nullopt;
   }
-  return table_tombstone_time_;
+  return tombstone_cache_.table_tombstone_time;
 }
 
 void DocReadContext::LogAfterLoad() {
