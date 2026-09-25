@@ -57,10 +57,9 @@ RESET ROLE;
 -- uses the date = timestamp operator, which is not leakproof, so under RLS,
 -- the planner cannot build d = 2020-01-02 from the query's t = 2020-01-02 and
 -- keeps d = t and t = 2020-01-02 as they are.  The pathkeys walk still sees d
--- as a constant, but d has no index condition, so it must not be a stream key.
--- The d = t filter holds it constant instead.  With expression pushdown on, it
--- runs within each stream as a storage filter, so the merge order holds.  The
--- first row of each stream is a decoy that fails d = t.
+-- as a constant, but d has no index condition, so it must not be a stream key,
+-- and the merge sorts on d as well.  The first row of each stream is a decoy
+-- that fails d = t.
 CREATE TABLE rls_ec_tbl (s int, d date, c int, t timestamp,
     PRIMARY KEY (s ASC, d ASC, c ASC));
 INSERT INTO rls_ec_tbl
@@ -83,9 +82,7 @@ SET ROLE regress_merge_scan_rls_user;
 \set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
 \i :run_query
--- With expression pushdown off, d = t runs after the merge, so a merge scan
--- cannot sort past d.  The only merge sort column c is past d, so no merge scan
--- is chosen.
+-- With expression pushdown off, d = t runs after the merge.
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
@@ -128,8 +125,7 @@ RESET ROLE;
 -- A policy operator that cannot be pushed down.  rls_tz_tbl is rls_ec_tbl with
 -- d timestamp and t timestamptz.  timestamp = timestamptz is not leakproof, so
 -- under RLS it breaks the class like date = timestamp.  It is also stable, so
--- the policy's filter stays local with expression pushdown on.  The merge scan
--- must not sort past d, so no merge scan is chosen.
+-- the policy's filter stays local with expression pushdown on.
 SET TimeZone = 'UTC';
 CREATE TABLE rls_tz_tbl (s int, d timestamp, c int, t timestamptz,
     PRIMARY KEY (s ASC, d ASC, c ASC));

@@ -1,8 +1,8 @@
 --
--- See yb_merge_scan_schedule for details about the test.  Tests that a merge
--- scan does not sort past a gap column whose covering equality runs after the
--- streams are merged, and what cutting the merge at such a gap does to the
--- plans built on it.
+-- See yb_merge_scan_schedule for details about the test.  Tests a merge scan
+-- whose sort columns skip an index column that a filter holds equal to an
+-- earlier column.  Such a gap column varies within each stream, so the merge
+-- also sorts on it, and the merge order holds wherever the filter runs.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
@@ -15,7 +15,8 @@ SET enable_sort = off;
 -- than in yb.orig.merge_scan_setup.  Unless a section says otherwise, c1 = c2
 -- makes c2 redundant for ORDER BY c1, c3 on the index (s, c1, c2, c3), and the
 -- first row is a decoy that fails c1 = c2, sorts first within its stream, and
--- sorts last by (c1, c3), so that a merge past the gap misorders the survivors.
+-- sorts last by (c1, c3), so that a merge that does not sort on c2 misorders
+-- the survivors.
 
 --
 -- Local filter: expression pushdown off
@@ -65,7 +66,7 @@ RESET TimeZone;
 --
 -- d is not in the index, and the equalities the planner generates from c2 = d
 -- and c1 = d reference it, so they are pushed to the table.  With c1 = c2
--- instead, the filter runs on the index and the merge may sort past the gap.
+-- instead, the filter runs on the index.
 CREATE TABLE gap_idx_tbl (k int, s int, c1 int, c2 int, c3 int, d int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_idx_tbl_idx ON gap_idx_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
@@ -82,9 +83,9 @@ ANALYZE gap_idx_tbl;
 --
 -- DISTINCT over a local filter gap
 --
--- The distinct index scan needs pathkeys for its whole prefix, (s, c1, c2, c3),
--- and the cut at c2 leaves only c1.  So no Unique node sits on the scan, and
--- the rows are deduplicated above it.  k repeats each (s, c1, c2, c3).
+-- The merge sorts on c2 as well, so the scan returns the rows in (c1, c3)
+-- order, and the Unique node sits directly on the scan.  Each (s, c1, c2, c3)
+-- has three rows, one for each k.
 CREATE TABLE gap_dist_tbl (s int, c1 int, c2 int, c3 int, k int,
     PRIMARY KEY (s ASC, c1 ASC, c2 ASC, c3 ASC, k ASC));
 INSERT INTO gap_dist_tbl SELECT s, c1, c2, c3, k
@@ -100,9 +101,69 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
+--
+-- Descending gap column, forward and backward scans
+--
+-- The index sorts c2 in descending order.  Each scan direction has its own
+-- decoy, (1, 1, 2, 9) for the forward scan and (1, 1, 0, -1) for the backward
+-- scan.
+CREATE TABLE gap_desc_tbl (s int, c1 int, c2 int, c3 int,
+    PRIMARY KEY (s ASC, c1 ASC, c2 DESC, c3 ASC));
+INSERT INTO gap_desc_tbl VALUES
+    (1, 1, 2, 9), (1, 1, 0, -1), (1, 1, 1, 0), (1, 1, 1, 6), (2, 1, 1, 4),
+    (1, 5, 5, 1), (2, 5, 5, 2);
+ANALYZE gap_desc_tbl;
+
+SET yb_enable_expression_pushdown = off;
+\set Q1 ':off'
+\set Q2 ':on'
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_desc_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
+\i :run_query
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_desc_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1 DESC, c3 DESC;'
+\i :run_query
+RESET yb_enable_expression_pushdown;
+
+--
+-- Gap column with NULLs first
+--
+-- The index sorts c2 with NULLs first, and the decoy's c2 is NULL.
+CREATE TABLE gap_null_tbl (k int, s int, c1 int, c2 int, c3 int,
+    PRIMARY KEY (k ASC));
+CREATE INDEX NONCONCURRENTLY gap_null_tbl_idx ON gap_null_tbl (s ASC, c1 ASC, c2 ASC NULLS FIRST, c3 ASC);
+INSERT INTO gap_null_tbl VALUES
+    (1, 1, 1, NULL, 9), (2, 1, 1, 1, 0), (3, 2, 1, 1, 4), (4, 1, 5, 5, 1),
+    (5, 2, 5, 5, 2);
+ANALYZE gap_null_tbl;
+
+SET yb_enable_expression_pushdown = off;
+\set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_null_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
+\i :run_query
+RESET yb_enable_expression_pushdown;
+
+--
+-- Expression gap column
+--
+-- c1 = c2 + 0 makes the index expression c2 + 0 redundant, and the merge sorts
+-- on the expression's values in the index rows.
+\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
+CREATE TABLE gap_expr_tbl (k int, s int, c1 int, c2 int, c3 int,
+    PRIMARY KEY (k ASC));
+CREATE INDEX NONCONCURRENTLY gap_expr_tbl_idx ON gap_expr_tbl (s ASC, c1 ASC, (c2 + 0) ASC, c3 ASC);
+INSERT INTO gap_expr_tbl VALUES
+    (1, 1, 1, 0, 9), (2, 1, 1, 1, 0), (3, 2, 1, 1, 4), (4, 1, 5, 5, 1),
+    (5, 2, 5, 5, 2);
+ANALYZE gap_expr_tbl;
+\i :run_query
+DROP TABLE gap_expr_tbl;
+
 RESET enable_sort;
 
-DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl;
+DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl,
+    gap_desc_tbl, gap_null_tbl;
 
 --
 -- Decoded primary key column: filter kept local on an index-only scan
@@ -143,3 +204,18 @@ INSERT INTO gap_pk_tbl VALUES
 ANALYZE gap_pk_tbl;
 \i :run_query
 DROP TABLE gap_pk_tbl;
+
+-- The same expression gap column on a colocated index.  pggate cannot compare
+-- an expression column of an embedded index, so the scan is not a merge scan.
+\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
+CREATE TABLE gap_expr_tbl (k int, s int, c1 int, c2 int, c3 int,
+    PRIMARY KEY (k ASC));
+CREATE INDEX NONCONCURRENTLY gap_expr_tbl_idx ON gap_expr_tbl (s ASC, c1 ASC, (c2 + 0) ASC, c3 ASC);
+INSERT INTO gap_expr_tbl VALUES
+    (1, 1, 1, 0, 9), (2, 1, 1, 1, 0), (3, 2, 1, 1, 4), (4, 1, 5, 5, 1),
+    (5, 2, 5, 5, 2);
+ANALYZE gap_expr_tbl;
+\i :run_query
+DROP TABLE gap_expr_tbl;

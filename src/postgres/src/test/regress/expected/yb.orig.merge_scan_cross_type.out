@@ -621,7 +621,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
    ->  Index Scan using num_tbl_part_idx on public.num_tbl (actual rows=10 loops=1)
          Output: f4, id, i2, x
          Index Cond: (num_tbl.i2 = ANY ('{1,2}'::integer[]))
-         Merge Sort Key: num_tbl.id
+         Merge Sort Key: num_tbl.f4, num_tbl.id
          Merge Stream Key: num_tbl.i2
          Merge Streams: 2
          Merge Cond: (num_tbl.i2 = ANY ('{1,2}'::integer[]))

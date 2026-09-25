@@ -26,8 +26,10 @@
 #include "postgres.h"
 
 #include "access/attnum.h"
+#include "access/sdir.h"
 #include "nodes/pathnodes.h"
 #include "nodes/pg_list.h"
+#include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
 
 /* GUC options */
@@ -55,4 +57,10 @@ extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
 												Relids relids,
 												List *stream_cols,
 												List *indexclauses,
-												List *pathkeys);
+												List *pathkeys,
+												bool embedded);
+
+extern void yb_add_merge_gap_sort_cols(IndexOptInfo *index,
+									   ScanDirection scandir,
+									   List *stream_cols,
+									   YbSortInfo *sort_info);

@@ -214,8 +214,8 @@ CREATE INDEX NONCONCURRENTLY r5n_r1_r4_r3_r2_idx ON r5n (r1 ASC, r4 ASC, r3 ASC,
 DROP INDEX r5n_r1_r4_r3_r2_idx;
 
 -- =-var equivalence covering a gap between sort columns
--- The merge order relies on the r2 = r3 filter running in storage.  With the
--- filter local, the merge scan sorts only up to the gap (issue #33384).
+-- r2 = r3 makes r3 redundant for the ORDER BY, and the merge also sorts on r3.
+-- The filter runs in storage, or locally with expression pushdown off.
 \set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
 \i :run_query
 SET yb_enable_expression_pushdown = off;

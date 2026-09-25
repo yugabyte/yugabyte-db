@@ -4868,6 +4868,9 @@ create_indexscan_plan(PlannerInfo *root,
 									   &yb_sort_info->sortOperators,
 									   &yb_sort_info->collations,
 									   &yb_sort_info->nullsFirst);
+		yb_add_merge_gap_sort_cols(indexinfo, best_path->indexscandir,
+								   yb_merge_scan_info->stream_cols,
+								   yb_sort_info);
 	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);

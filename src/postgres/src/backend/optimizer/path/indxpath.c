@@ -236,9 +236,9 @@ static List *yb_useful_pathkeys_without_merge_scan(PlannerInfo *root,
 												  ScanDirection scandir,
 												  int yb_distinct_prefixlen,
 												  int *yb_distinct_nkeys);
-static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
-												 RelOptInfo *rel,
-												 IndexOptInfo *index,
+static bool ybScansEmbeddedIndex(PlannerInfo *root, RelOptInfo *rel,
+								 IndexOptInfo *index);
+static List *yb_truncate_embedded_index_pathkeys(RelOptInfo *rel,
 												 List *useful_pathkeys);
 static IndexClause *yb_match_clause_to_index(PlannerInfo *root,
 											 RestrictInfo *rinfo,
@@ -5242,30 +5242,15 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
  * Expression columns in the Yugabyte's embedded (i.e. colocated) indexess are
  * useless for merge sort purposes, because DocDB returns data from the base
  * table only, and has no mechanism to return the data from the index.
- * Therefore, if the index is an embedded index, we iterate over the pathkeys
- * to check if there are equivalent columns in the base table. If not, we
- * truncate the pathkeys list to exclude the expression columns.
+ * Therefore, for an embedded index, we iterate over the pathkeys to check if
+ * there are equivalent columns in the base table. If not, we truncate the
+ * pathkeys list to exclude the expression columns.
  */
 static List *
-yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
-									IndexOptInfo *index, List *useful_pathkeys)
+yb_truncate_embedded_index_pathkeys(RelOptInfo *rel, List *useful_pathkeys)
 {
 	ListCell   *lc;
 	int			useful;
-	Relation	table_rel;
-	Relation	index_rel;
-	bool		is_embedded_index;
-
-	table_rel = RelationIdGetRelation(planner_rt_fetch(rel->relid, root)->relid);
-	index_rel = RelationIdGetRelation(index->indexoid);
-	is_embedded_index = YbIsScanningEmbeddedIdx(table_rel, index_rel);
-	RelationClose(table_rel);
-	RelationClose(index_rel);
-	/* Regular index queried directly, all the passkey are useful */
-	if (!is_embedded_index)
-	{
-		return useful_pathkeys;
-	}
 
 	useful = 0;
 	foreach(lc, useful_pathkeys)
@@ -5681,20 +5666,44 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 							int *yb_distinct_nkeys, List *useful_pathkeys,
 							List **yb_merge_scan_stream_cols)
 {
+	bool		embedded;
+
 	if (*yb_merge_scan_stream_cols == NIL)
 		return useful_pathkeys;
 
-	if (useful_pathkeys != NIL)
-		useful_pathkeys = yb_truncate_embedded_index_pathkeys(root, rel, index,
+	embedded = ybScansEmbeddedIndex(root, rel, index);
+	if (embedded && useful_pathkeys != NIL)
+		useful_pathkeys = yb_truncate_embedded_index_pathkeys(rel,
 															  useful_pathkeys);
 	*yb_merge_scan_stream_cols =
 		yb_finalize_merge_scan_stream_cols(index, rel->relids,
 										   *yb_merge_scan_stream_cols,
-										   index_clauses, useful_pathkeys);
+										   index_clauses, useful_pathkeys,
+										   embedded);
 	if (*yb_merge_scan_stream_cols == NIL)
 		useful_pathkeys =
 			yb_useful_pathkeys_without_merge_scan(root, rel, index, scandir,
 												  yb_distinct_prefixlen,
 												  yb_distinct_nkeys);
 	return useful_pathkeys;
+}
+
+/*
+ * YB: Whether YbIsScanningEmbeddedIdx considers the scan of index on rel an
+ * embedded index scan, as it does for a colocated index.
+ */
+static bool
+ybScansEmbeddedIndex(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index)
+{
+	Oid			table_relid = planner_rt_fetch(rel->relid, root)->relid;
+	Relation	table_rel;
+	Relation	index_rel;
+	bool		embedded;
+
+	table_rel = RelationIdGetRelation(table_relid);
+	index_rel = RelationIdGetRelation(index->indexoid);
+	embedded = YbIsScanningEmbeddedIdx(table_rel, index_rel);
+	RelationClose(table_rel);
+	RelationClose(index_rel);
+	return embedded;
 }
