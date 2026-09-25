@@ -110,7 +110,7 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
   | kubectl apply -f -
 ```
 
-**Global Restricted** can grant access to only the specific cluster roles required to create and manage YugabyteDB universes across all namespaces in a cluster. Contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
+**Global Restricted** can grant access to only the specific cluster roles required to create and manage YugabyteDB universes across all namespaces in a cluster. The `platform-global.yaml` manifest contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
 ```sh
 export YBA_NAMESPACE="yb-platform"

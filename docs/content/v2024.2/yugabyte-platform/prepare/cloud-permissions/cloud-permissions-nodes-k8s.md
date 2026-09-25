@@ -104,7 +104,7 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
   | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
-**Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
+**Global Restricted** can grant access to only the specific cluster roles required to create and manage YugabyteDB universes across all namespaces in a cluster. The `platform-global.yaml` manifest contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
 ```sh
 export YBA_NAMESPACE="yb-platform"
@@ -113,8 +113,6 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
   | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
-
-This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
 **Namespace Admin** can grant namespace-level admin access by using the following command:
 
