@@ -442,18 +442,6 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_TABLE_CACHE_ITERATORS] =
 	BUILD_METRIC_LABEL("rocksdb_no_table_cache_iterators"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MISS] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_HIT] =
@@ -598,18 +586,6 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_TABLE_CACHE_ITERATORS] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_table_cache_iterators"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS] =
 	BUILD_METRIC_LABEL("active_write_query_objects"),
 };
