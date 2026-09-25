@@ -5691,8 +5691,9 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 
 /*
  * YB: Whether YbIsScanningEmbeddedIdx considers the scan of index on rel an
- * embedded index scan, as it does for a colocated index.  A hypothetical index
- * has no relation to check, and its plan never runs.
+ * embedded index scan, as it does for a colocated index.  The answer is kept
+ * in index, so that each index is checked once per planning.  A hypothetical
+ * index has no relation to check, and its plan never runs.
  */
 static bool
 ybScansEmbeddedIndex(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index)
@@ -5700,15 +5701,21 @@ ybScansEmbeddedIndex(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index)
 	Oid			table_relid = planner_rt_fetch(rel->relid, root)->relid;
 	Relation	table_rel;
 	Relation	index_rel;
-	bool		embedded;
 
+	if (index->yb_is_embedded_known)
+		return index->yb_is_embedded;
+
+	index->yb_is_embedded_known = true;
 	if (index->hypothetical)
+	{
+		index->yb_is_embedded = false;
 		return false;
+	}
 
 	table_rel = RelationIdGetRelation(table_relid);
 	index_rel = RelationIdGetRelation(index->indexoid);
-	embedded = YbIsScanningEmbeddedIdx(table_rel, index_rel);
+	index->yb_is_embedded = YbIsScanningEmbeddedIdx(table_rel, index_rel);
 	RelationClose(table_rel);
 	RelationClose(index_rel);
-	return embedded;
+	return index->yb_is_embedded;
 }
