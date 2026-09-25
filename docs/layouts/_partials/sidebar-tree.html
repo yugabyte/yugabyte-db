@@ -12,12 +12,14 @@
 <div class="left-sidebar-wrap {{$menuName}}">
   <div class="left-sidebar-wrap-inner">
     <nav>
+      {{/* Products dropdown hidden
       {{- range (index .context.Site.Menus $menuName).ByWeight -}}
         {{- if .Params.productsDropdown -}}
           {{- partial "products-dropdown.html" (dict "pageUrl" $pageUrl "productsMenu" $productsMenu "versionDir" $versionDir) -}}
         {{- end -}}
         {{- break -}}
       {{- end -}}
+      */}}
       <ul class="list pa0 nl2">
         {{- range (index .context.Site.Menus $menuName).ByWeight -}}
           {{- if .Params.productsDropdown -}}
