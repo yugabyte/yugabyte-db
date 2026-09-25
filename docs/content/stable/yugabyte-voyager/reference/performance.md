@@ -65,6 +65,18 @@ During [live migration](../../migrate/live-migrate/), after importing the snapsh
 
 The router sits between the ordered change stream and the parallel channels. Each channel applies its own events strictly in order. Ordering between channels is not guaranteed, which is why the partition key matters.
 
+### Three routing strategies
+
+You choose one of these routing strategies with [`--cdc-partition-key`](../data-migration/import-data/#arguments), or for a single table with `--cdc-partition-key-overrides`. The three strategies sit on a spectrum: `pk` parallelizes everything and relies on conflict detection; `table` serializes everything and needs no detection; a custom key serializes only the events that can actually conflict and parallelizes everything else.
+
+The global default `--cdc-partition-key auto` picks `pk` for most tables and `table` when primary key hashing isn't safe. The following table compares the three routing strategies, how much parallelism you get, and whether conflict detection runs.
+
+| Strategy | Routing rule | Parallelism | Conflict detection | Best for |
+| :------- | :----------- | :---------- | :----------------- | :------- |
+| `pk` | Hash of primary key | All channels share every table's events | On, guards unique indexes | Most tables; high-throughput tables with few conflicts |
+| Custom key `(cols)` | Hash of chosen immutable columns | Distinct key values spread across channels | On, but idle in steady state | Hot tables where conflicting columns are immutable |
+| `table` | Table name | One channel per table | Off | Tables with mutable conflict columns, or expression-based unique indexes |
+
 ### How events are partitioned by default
 
 By default (`--cdc-partition-key auto`), yb-voyager partitions most tables by primary key: every event is routed by a hash of the row's primary key. This means:
@@ -76,7 +88,7 @@ In the following example, the `users` table's events are different rows, so they
 
 ![Route by hash of the primary key](/images/migrate/route-by-hash.png)
 
-Tables that can't be partitioned by primary key (when primary key hashing isn't safe) are partitioned by table instead.
+Tables that can't be partitioned by primary key (when primary key hashing isn't safe) are [partitioned by table](#partition-by-table-name) instead.
 
 ### Unique key conflict detection
 
@@ -87,7 +99,7 @@ Consider a `users` table with primary key `id` and a unique `email`. Two changes
 1. **E1** — delete row `id` 1, which frees the email `a@x.com`.
 1. **E2** — insert row `id` 2, reusing `a@x.com`.
 
-They touch different rows, so under partition-by-primary-key they hash to different channels. Conflict detection then ensures that E1 is applied before E2, so you don't get a duplicate-key violation.
+They touch different rows, so under partition-by-primary-key they hash to different channels. In the following illustration, E1 is the delete of `id` 1 (`users · id 1`) and E2 is the insert of `id` 2 (`users · id 2`) that reuses `a@x.com`. Without conflict detection, that insert can reach the target first and fail with a duplicate key, because row 1 still holds the email. Conflict detection holds E2 until E1 is fully applied.
 
 ![Conflict detection](/images/migrate/conflict-detection.png)
 
@@ -170,7 +182,7 @@ For a custom key to eliminate conflicts without breaking correctness or throughp
   If the key misses a unique index, correctness is still preserved (conflict detection keeps guarding cross-channel events), but detection keeps tripping on that index, and the waits return.
 - **High cardinality, not-null, and low-skew (for performance).** A table can keep at most as many channels busy as there are distinct key values among the events being applied. Many distinct values spread evenly across channels. Events that share one very common value, or that have a NULL key, all hash to one channel and are applied one after another; the rest of the table can still use the other channels.
 
-### (Alternative) Partition by table name
+### Partition by table name
 
 If a table's conflicting columns are _not immutable_, or you want a quick, blunt fix, partition it by table name instead. With `table`, all of a table's events go to one channel, so races are impossible by construction and conflict detection is skipped entirely for that table.
 
@@ -178,16 +190,6 @@ If a table's conflicting columns are _not immutable_, or you want a quick, blunt
 - Globally, for all tables: `--cdc-partition-key table`
 
 The trade-off is throughput: a table partitioned by table name is capped at one channel's speed. Prefer a custom immutable key when one exists, and fall back to `table` only when it doesn't.
-
-The three strategies sit on a spectrum: `pk` parallelizes everything and relies on conflict detection; `table` serializes everything and needs no detection; a custom key serializes only the events that can actually conflict and parallelizes everything else.
-
-The global default `--cdc-partition-key auto` picks `pk` for most tables and `table` when primary key hashing isn’t safe. The following table compares the three routing strategies, how much parallelism you get, and whether conflict detection runs.
-
-| Strategy | Routing rule | Parallelism | Conflict detection | Best for |
-| :------- | :----------- | :---------- | :----------------- | :------- |
-| `pk` | Hash of primary key | All channels share every table's events | On — guards unique indexes | Most tables; high-throughput tables with few conflicts |
-| Custom key `(cols)` | Hash of chosen immutable columns | Distinct key values spread across channels | On, but idle in steady state | Hot tables where conflicting columns are immutable |
-| `table` | Table name | One channel per table | Off | Tables with mutable conflict columns, or expression-based unique indexes |
 
 ## Improve export performance
 
