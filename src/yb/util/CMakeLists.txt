@@ -113,7 +113,6 @@ set(UTIL_SRCS
   bitmap.cc
   bloom_filter.cc
   bytes_formatter.cc
-  cache_metrics.cc
   cgroups.cc
   coding.cc
   concurrent_value.cc
