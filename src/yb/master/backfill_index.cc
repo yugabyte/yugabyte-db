@@ -407,26 +407,95 @@ IndexPermissions NextPermission(IndexPermissions perm) {
   return INDEX_PERM_DELETE_ONLY;
 }
 
-Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+Status MultiStageAlterTable::AdvanceYsqlIndexToBackfill(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
     uint32_t current_version, const LeaderEpoch& epoch,
-    std::optional<TransactionMetadata> requester_transaction, bool respect_backfill_deferrals,
-    bool update_ysql_to_backfill) {
-  DVLOG_WITH_FUNC(3)
-      << Format("$0, version: $1, respect_deferrals: $2, update_ysql_to_backfill: $3",
-                *indexed_table, current_version, respect_backfill_deferrals,
-                update_ysql_to_backfill);
+    std::optional<TransactionMetadata> requester_transaction) {
+  DVLOG_WITH_FUNC(3) << Format("$0, version: $1", *indexed_table, current_version);
+  auto classification = ClassifyIndexes(indexed_table, current_version);
+  if (!classification) {
+    return Status::OK();
+  }
+  RSTATUS_DCHECK(
+      classification->is_ysql_table, IllegalState,
+      "CatalogManager::BackfillIndex only accepts YSQL indexes: $0", indexed_table->ToString());
+  // CatalogManager::BackfillIndex has verified the requested index is at WRITE_AND_DELETE at
+  // current_version, and every permission change bumps the version, so at this version it is
+  // still there and belongs in the YSQL update map.
+  RSTATUS_DCHECK(
+      !classification->ysql_permission_updates.empty(), IllegalState,
+      "No YSQL index awaiting DO_BACKFILL at version $0 on $1", current_version,
+      indexed_table->ToString());
+  // Bump to DO_BACKFILL.  The backfill launches from HandleSchemaVersionReported once every
+  // tablet has applied the new permission.
+  VLOG(1) << "Updating index permissions for "
+          << yb::ToString(classification->ysql_permission_updates) << " on "
+          << indexed_table->ToString();
+  const bool permissions_updated = VERIFY_RESULT(UpdateIndexPermission(
+      catalog_manager, indexed_table, classification->ysql_permission_updates, epoch,
+      current_version));
+  if (!permissions_updated) {
+    return Status::OK();
+  }
+  VLOG(1) << "Sending alter table request with updated permissions";
+  // Store the requester transaction so StartBackfillingData can retrieve it when the
+  // permission change reaches DO_BACKFILL and the second call launches backfill.
+  // Store current_version+1 (the new version after this permission update)
+  // so TakePendingBackfillRequesterTransaction can verify the transaction
+  // belongs to this exact backfill attempt and not a stale one.
+  if (requester_transaction) {
+    indexed_table->SetPendingBackfillRequesterTransaction(
+        std::move(requester_transaction), current_version + 1);
+  }
+  return catalog_manager->SendAlterTableRequest(indexed_table, epoch);
+}
 
-  const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
+Status MultiStageAlterTable::AdvanceYcqlIndexPermissions(
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+    uint32_t current_version, const LeaderEpoch& epoch) {
+  DVLOG_WITH_FUNC(3) << Format("$0, version: $1", *indexed_table, current_version);
+  auto classification = ClassifyIndexes(indexed_table, current_version);
+  if (!classification) {
+    return Status::OK();
+  }
+  BackfillChoice choice;
+  // The yb-admin trigger exists to launch deferred backfills, so deferrals are ignored.
+  for (const auto& ready : classification->ready_to_backfill) {
+    choice.indexes_to_backfill.push_back(ready.info);
+  }
+  return ApplyIndexStateMachineActions(
+      catalog_manager, indexed_table, *classification, std::move(choice), current_version, epoch);
+}
+
+Status MultiStageAlterTable::HandleSchemaVersionReported(
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+    uint32_t current_version, const LeaderEpoch& epoch) {
+  DVLOG_WITH_FUNC(3) << Format("$0, version: $1", *indexed_table, current_version);
+  auto classification = ClassifyIndexes(indexed_table, current_version);
+  if (!classification) {
+    return Status::OK();
+  }
+  BackfillChoice choice;
+  for (const auto& ready : classification->ready_to_backfill) {
+    if (ready.deferrable) {
+      LOG(INFO) << "Deferring index-backfill for " << ready.info.table_id();
+      choice.deferred_indexes.push_back(ready.info);
+    } else {
+      choice.indexes_to_backfill.push_back(ready.info);
+    }
+  }
+  return ApplyIndexStateMachineActions(
+      catalog_manager, indexed_table, *classification, std::move(choice), current_version, epoch);
+}
+
+std::optional<MultiStageAlterTable::IndexClassification> MultiStageAlterTable::ClassifyIndexes(
+    const scoped_refptr<TableInfo>& indexed_table, uint32_t current_version) {
+  IndexClassification classification;
+  classification.is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
   // For YSQL, master won't automatically move the index permission to DO_BACKFILL unless
   // postgres calls CatalogManager::BackfillIndex() because postgres drives permission changes.
-  const bool defer_backfill = !is_ysql_table && FLAGS_defer_index_backfill;
-  const bool is_backfilling = indexed_table->IsBackfilling();
-
-  std::unordered_map<TableId, IndexPermissions> indexes_to_update;
-  vector<IndexInfoPB> indexes_to_backfill;
-  vector<IndexInfoPB> deferred_indexes;
-  vector<IndexInfoPB> indexes_to_delete;
+  const bool defer_backfill = !classification.is_ysql_table && FLAGS_defer_index_backfill;
+  classification.is_backfilling = indexed_table->IsBackfilling();
   {
     TRACE("Locking indexed table");
     VLOG(1) << ("Locking indexed table");
@@ -434,7 +503,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     VLOG(1) << ("Locked indexed table");
     if (current_version != l->pb.version()) {
       LOG(WARNING) << "Somebody launched the next version before we got to it.";
-      return Status::OK();
+      return std::nullopt;
     }
 
     // Attempt to find an index that requires us to just launch the next state (i.e. not backfill)
@@ -444,27 +513,24 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         continue;
       }
       if (idx_pb.index_permissions() == INDEX_PERM_DO_BACKFILL) {
-        if (respect_backfill_deferrals && (defer_backfill || idx_pb.is_backfill_deferred())) {
-          LOG(INFO) << "Deferring index-backfill for " << idx_pb.table_id();
-          deferred_indexes.emplace_back(idx_pb);
-        } else {
-          indexes_to_backfill.emplace_back(idx_pb);
-        }
+        classification.ready_to_backfill.push_back(
+            {idx_pb, defer_backfill || idx_pb.is_backfill_deferred()});
       } else if (idx_pb.index_permissions() == INDEX_PERM_INDEX_UNUSED) {
-        if (is_ysql_table) {
-          // Postgres owns a YSQL index's lifecycle and the master never moves one to
-          // INDEX_UNUSED.  One that is there was left by a build with the #28849 regression,
-          // before its fix in b6efa55e7247da85f50ab77ed4d1151e49fd9101.  Deleting its DocDB
-          // table here breaks the postgres side that still references it, so leave it to
-          // DROP INDEX.
+        if (classification.is_ysql_table) {
+          // Postgres owns a YSQL index's lifecycle: the master never moves one to INDEX_UNUSED,
+          // and one that got there was left by a build with the #28849 regression, before its
+          // fix in b6efa55e7247da85f50ab77ed4d1151e49fd9101.  Deleting its DocDB table here
+          // would break the postgres side that still references it.  Leave it to DROP INDEX.
           LOG(WARNING) << "Ignoring YSQL index " << idx_pb.table_id() << " on "
                        << indexed_table->ToString() << " at INDEX_PERM_INDEX_UNUSED";
         } else {
-          indexes_to_delete.emplace_back(idx_pb);
+          classification.indexes_to_delete.emplace_back(idx_pb);
         }
-      } else if (!is_ysql_table && idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE) {
-        indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
-      } else if (update_ysql_to_backfill &&
+      } else if (!classification.is_ysql_table &&
+                 idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE) {
+        classification.ycql_permission_updates.emplace(
+            idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
+      } else if (classification.is_ysql_table &&
                  (FLAGS_TEST_ysql_walk_removing_index_permissions
                       ? idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE
                       : idx_pb.index_permissions() < INDEX_PERM_DO_BACKFILL)) {
@@ -472,89 +538,112 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         // YSQL index at a removing permission stays where it is until DROP INDEX removes it.  The
         // test flag selects the condition from before b6efa55e7247da85f50ab77ed4d1151e49fd9101
         // instead, so tests can build the states that code left behind.
-        indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
+        classification.ysql_permission_updates.emplace(
+            idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       }
     }
 
-    if (!is_backfilling && l.data().pb.backfill_jobs_size() > 0) {
-      // If a backfill job was started for a set of indexes and then the leader
-      // fails over, we should be careful that we are restarting the backfill job
-      // with the same set of indexes.
-      // A new index could have been added since the time the last backfill job started on
-      // the old master. The safe time calculated for the earlier set of indexes may not be
-      // valid for the new index(es) to use.
+    if (!classification.is_backfilling && l.data().pb.backfill_jobs_size() > 0) {
       DCHECK(l.data().pb.backfill_jobs_size() == 1) << "For now we only expect to have up to 1 "
                                                         "outstanding backfill job.";
       const BackfillJobPB& backfill_job = l.data().pb.backfill_jobs(0);
       VLOG(3) << "Found an in-progress backfill-job " << AsString(backfill_job);
-      // Do not allow for any other indexes to piggy back with this backfill.
-      indexes_to_backfill.assign(backfill_job.indexes().begin(), backfill_job.indexes().end());
-      deferred_indexes.clear();
+      classification.lost_backfill.emplace(
+          backfill_job.indexes().begin(), backfill_job.indexes().end());
     }
   }
+  return classification;
+}
 
-  if (indexes_to_update.empty() &&
-      indexes_to_delete.empty() &&
-      (is_backfilling || indexes_to_backfill.empty())) {
+Status MultiStageAlterTable::ApplyIndexStateMachineActions(
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+    const IndexClassification& classification, BackfillChoice choice, uint32_t current_version,
+    const LeaderEpoch& epoch) {
+  if (classification.lost_backfill) {
+    // If a backfill job was started for a set of indexes and then the leader
+    // fails over, we should be careful that we are restarting the backfill job
+    // with the same set of indexes.
+    // A new index could have been added since the time the last backfill job started on
+    // the old master. The safe time calculated for the earlier set of indexes may not be
+    // valid for the new index(es) to use.
+    // Do not allow for any other indexes to piggy back with this backfill.
+    choice.indexes_to_backfill = *classification.lost_backfill;
+    choice.deferred_indexes.clear();
+  }
+
+  const bool batch_backfill_req =
+      FLAGS_allow_batching_non_deferred_indexes && !classification.is_ysql_table;
+  if (choice.indexes_to_backfill.size() > 1 && !batch_backfill_req) {
+    LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
+                 "one index at a time.";
+    choice.indexes_to_backfill.resize(1);
+  }
+
+  if (classification.ycql_permission_updates.empty() &&
+      classification.indexes_to_delete.empty() &&
+      (classification.is_backfilling || choice.indexes_to_backfill.empty())) {
     TRACE("Not necessary to launch next version");
     VLOG(1) << "Not necessary to launch next version";
     return ClearFullyAppliedAndUpdateState(
         catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true, epoch);
   }
 
-  const bool batch_backfill_req = FLAGS_allow_batching_non_deferred_indexes && !is_ysql_table;
-  if (indexes_to_backfill.size() > 1 && !batch_backfill_req) {
-    LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
-                 "one index at a time.";
-    indexes_to_backfill.resize(1);
+  if (classification.is_ysql_table) {
+    return LaunchYsqlBackfill(
+        catalog_manager, indexed_table, classification, std::move(choice), current_version, epoch);
   }
+  return ApplyYcqlActions(
+      catalog_manager, indexed_table, classification, std::move(choice), current_version, epoch);
+}
 
-  // For YSQL online schema migration of indexes, instead of master driving the schema changes,
-  // postgres will drive it.  Postgres will use four of the DocDB index permissions:
-  //
-  // - INDEX_PERM_WRITE_AND_DELETE (set from the start)
-  // - INDEX_PERM_DO_BACKFILL (set by master, when postgres initiates BackfillIndex)
-  // - INDEX_PERM_READ_WRITE_AND_DELETE (set by master)
-  // - INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING (set by master)
-  //
-  // This changes how we treat indexes_to_foo:
-  //
-  // - indexes_to_update: used for moving from WRITE_AND_DELETE to DO_BACKFILL.
-  // - indexes_to_delete: never holds a YSQL index.  A YSQL index at INDEX_PERM_INDEX_UNUSED is
-  //   logged above and left to DROP INDEX, which removes it through DeleteTable.
-  // - indexes_to_backfill: used to launch StartBackfillingData once the index ready to backfill.
+Status MultiStageAlterTable::LaunchYsqlBackfill(
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+    const IndexClassification& classification, BackfillChoice choice, uint32_t current_version,
+    const LeaderEpoch& epoch) {
+  // Only the schema version report gets here for a YSQL table, and postgres drives YSQL
+  // permissions, so the report never carries a permission update.  ClassifyIndexes never queues
+  // a YSQL index for deletion, and YSQL indexes are never deferred, since is_backfill_deferred is
+  // a YCQL CREATE INDEX option.
+  RSTATUS_DCHECK(
+      classification.ycql_permission_updates.empty(), IllegalState,
+      "YCQL permission update for YSQL table $0", indexed_table->ToString());
+  RSTATUS_DCHECK(
+      classification.indexes_to_delete.empty(), IllegalState,
+      "YSQL index at INDEX_UNUSED on $0", indexed_table->ToString());
+  RSTATUS_DCHECK(
+      choice.deferred_indexes.empty(), IllegalState,
+      "Deferred YSQL index on $0", indexed_table->ToString());
+  if (!choice.indexes_to_backfill.empty()) {
+    VLOG(3) << "Backfilling " << yb::ToString(choice.indexes_to_backfill);
+    WARN_NOT_OK(
+        StartBackfillingData(
+            catalog_manager, indexed_table.get(), choice.indexes_to_backfill, current_version,
+            epoch, /* requester_transaction */ std::nullopt),
+        yb::Format("Could not launch backfill for $0", indexed_table->ToString()));
+  }
+  return Status::OK();
+}
 
-  if (!indexes_to_update.empty()) {
-    VLOG(1) << "Updating index permissions for " << yb::ToString(indexes_to_update) << " on "
+Status MultiStageAlterTable::ApplyYcqlActions(
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+    const IndexClassification& classification, BackfillChoice choice, uint32_t current_version,
+    const LeaderEpoch& epoch) {
+  if (!classification.ycql_permission_updates.empty()) {
+    VLOG(1) << "Updating index permissions for "
+            << yb::ToString(classification.ycql_permission_updates) << " on "
             << indexed_table->ToString();
-    Result<bool> permissions_updated = VERIFY_RESULT(UpdateIndexPermission(
-        catalog_manager, indexed_table, indexes_to_update, epoch, current_version));
-
-    if (!permissions_updated.ok()) {
-      LOG(WARNING) << "Could not update index permissions."
-                   << " Possible that the master-leader has changed, or a race "
-                   << "with another thread trying to launch next version: "
-                   << permissions_updated.ToString();
-    }
-
-    if (permissions_updated.ok() && *permissions_updated) {
+    const bool permissions_updated = VERIFY_RESULT(UpdateIndexPermission(
+        catalog_manager, indexed_table, classification.ycql_permission_updates, epoch,
+        current_version));
+    if (permissions_updated) {
       VLOG(1) << "Sending alter table request with updated permissions";
-      // Store the requester transaction so StartBackfillingData can retrieve it when the
-      // permission change reaches DO_BACKFILL and the second call launches backfill.
-      // Store current_version+1 (the new version after this permission update)
-      // so TakePendingBackfillRequesterTransaction can verify the transaction
-      // belongs to this exact backfill attempt and not a stale one.
-      if (requester_transaction) {
-        indexed_table->SetPendingBackfillRequesterTransaction(
-            std::move(requester_transaction), current_version + 1);
-      }
       RETURN_NOT_OK(catalog_manager->SendAlterTableRequest(indexed_table, epoch));
       return Status::OK();
     }
   }
 
-  if (!indexes_to_delete.empty()) {
-    const auto& index_info_to_update = indexes_to_delete[0];
+  if (!classification.indexes_to_delete.empty()) {
+    const auto& index_info_to_update = classification.indexes_to_delete[0];
     VLOG(3) << "Deleting the index and the entry in the indexed table for "
             << yb::ToString(index_info_to_update);
     DeleteTableRequestPB req;
@@ -565,22 +654,21 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     return Status::OK();
   }
 
-  if (!indexes_to_backfill.empty()) {
-    VLOG(3) << "Backfilling " << yb::ToString(indexes_to_backfill)
-            << (deferred_indexes.empty()
+  if (!choice.indexes_to_backfill.empty()) {
+    VLOG(3) << "Backfilling " << yb::ToString(choice.indexes_to_backfill)
+            << (choice.deferred_indexes.empty()
                  ? ""
                  : yb::Format(" along with deferred indexes $0",
-                              yb::ToString(deferred_indexes)));
-    for (auto& deferred_idx : deferred_indexes) {
-      indexes_to_backfill.emplace_back(deferred_idx);
+                              yb::ToString(choice.deferred_indexes)));
+    for (auto& deferred_idx : choice.deferred_indexes) {
+      choice.indexes_to_backfill.emplace_back(deferred_idx);
     }
     WARN_NOT_OK(
         StartBackfillingData(
-            catalog_manager, indexed_table.get(), indexes_to_backfill, current_version, epoch,
-            std::move(requester_transaction)),
+            catalog_manager, indexed_table.get(), choice.indexes_to_backfill, current_version,
+            epoch, /* requester_transaction */ std::nullopt),
         yb::Format("Could not launch backfill for $0", indexed_table->ToString()));
   }
-
   return Status::OK();
 }
 
