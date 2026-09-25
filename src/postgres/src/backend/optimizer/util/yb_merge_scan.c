@@ -630,13 +630,15 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
  * path's costing and its plan see the same stream keys.
  *
  * Every index column before the last merge sort column is a SAOP column, a
- * merge sort column, or one the pathkeys walk skipped as redundant.  A skipped
- * column with an equality index clause holds one value in each stream, and the
- * merge order relies on that, so it is a single-value stream key with that
- * clause.  A skipped range column without one is left out, such as a duplicate
- * index column, one a partial index predicate implies, or one a broken
- * EquivalenceClass leaves to filters.  The merge order then holds only if those
- * filters run within each stream, before the merge.  TODO(#33384): ensure that.
+ * merge sort column, or a column the pathkeys walk skipped as redundant.  A
+ * skipped column with an equality index clause holds one value in each stream,
+ * and the merge order relies on that, so it is a single-value stream key with
+ * that clause.  A skipped range column without an equality index clause is not
+ * a stream key.  Such a column is a duplicate index column, a column a partial
+ * index predicate implies, or a column whose value filters determine, as in a
+ * broken EquivalenceClass or with c1 = c2.  For the last kind, the merge order
+ * holds only if those filters run within each stream, before the merge.
+ * TODO(#33384): ensure that.
  *
  * A hash column stays a stream key either way, since pggate cannot merge
  * without a condition on every hash column, and ybValidateMergeScanBinds
