@@ -337,8 +337,9 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 
 	/*
 	 * If same expr already used in stream_cols, then redundant.  Every entry
-	 * here carries a SAOP: the single-value equality entries are appended
-	 * after the pathkeys walk that calls this function.
+	 * here carries a SAOP, since yb_finalize_merge_scan_stream_cols adds the
+	 * single-value equality entries only after the pathkeys walk that calls
+	 * this function.
 	 */
 	foreach(lc, *merge_scan_stream_cols)
 	{
@@ -622,138 +623,100 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
 }
 
 /*
- * Whether check_index_predicates dropped an equality on the index column from
- * the index conditions because the partial index predicate implies it: such a
- * clause is in the relation's baserestrictinfo but not in indrestrictinfo.
- */
-static bool
-ybEqualityImpliedByIndexPredicate(IndexOptInfo *index, int indexcol,
-								  Expr *expr)
-{
-	ListCell   *lc;
-
-	if (index->indpred == NIL)
-		return false;
-	foreach(lc, index->rel->baserestrictinfo)
-	{
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
-
-		if (list_member_ptr(index->indrestrictinfo, rinfo))
-			continue;
-		if (ybIsEqualityOnIndexCol(index, indexcol, expr, rinfo->clause))
-			return true;
-	}
-	return false;
-}
-
-/*
- * Prune the stream key columns of an index path whose bind the merge order does
- * not need, and set the clause of each single-value equality column kept to its
- * equality index clause.  build_index_paths calls this once the path's pathkeys
- * are final, after truncate_useless_pathkeys, with the path's index clauses, so
- * that the path's costing and its plan see the same stream keys.  Returns NIL
- * when no stream key column remains, and the path is then not a merge scan.
- * Dropped:
+ * Settle the stream key columns of an index path, the columns each merge stream
+ * binds to one value.  stream_cols holds the SAOP columns the pathkeys walk
+ * picked.  build_index_paths calls this once the path's pathkeys are final,
+ * after truncate_useless_pathkeys, with the path's index clauses, so that the
+ * path's costing and its plan see the same stream keys.
  *
- * - A column at or after the last merge sort column, which does not affect the
- *   order and fans out no streams.
- * - A duplicate index column, such as the second b of (a, b, b, c), which
- *   holds the same value as the first.
- * - A range column whose equality a partial index predicate implies, which
- *   check_index_predicates removes from the index conditions.
- * - A range column whose EquivalenceClass is broken.  The planner could not
- *   build the clause equating the column to the constant and kept the original
- *   clauses as filters.  The merge order holds only if those filters run within
- *   each stream, before the merge.  TODO(#33384): ensure that.
+ * Every index column before the last merge sort column is a SAOP column, a
+ * merge sort column, or one the pathkeys walk skipped as redundant.  A skipped
+ * column with an equality index clause holds one value in each stream, and the
+ * merge order relies on that, so it is a single-value stream key with that
+ * clause.  A skipped range column without one is left out, such as a duplicate
+ * index column, one a partial index predicate implies, or one a broken
+ * EquivalenceClass leaves to filters.  The merge order then holds only if those
+ * filters run within each stream, before the merge.  TODO(#33384): ensure that.
  *
- * TODO(#34120): drop hash columns of the last two kinds too, which pggate
- * cannot merge without a condition on each.
+ * A hash column stays a stream key either way, since pggate cannot merge
+ * without a condition on every hash column, and ybValidateMergeScanBinds
+ * reports it when it has none.  TODO(#34120): merge without such a condition.
  *
- * A column with an equality index clause is dropped only in the first case.
- * Any other equality column without an equality index clause stays declared
- * with a NULL clause, so that ybValidateMergeScanBinds reports it.  A change
- * that evaluates such an equality as a filter inside the per-stream storage
- * request keeps the order and must add that case here, or the validation
- * rejects the plan.  Returns a new list.
+ * A SAOP column at or after the last merge sort column does not affect the
+ * order and fans out no streams, so it is left out too.  Returns a new list in
+ * index column order, which EXPLAIN shows, or NIL when no stream key column
+ * remains, and the path is then not a merge scan.
  */
 List *
-yb_prune_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
-								List *stream_cols, List *indexclauses,
-								List *pathkeys)
+yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
+								   List *stream_cols, List *indexclauses,
+								   List *pathkeys)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
-	Bitmapset  *stream_col_idxs = NULL;
-	int			numsortkeys;
-	AttrNumber *sortColIdx;
-	Oid		   *sortOperators;
-	Oid		   *collations;
-	bool	   *nullsFirst;
+	Bitmapset  *saop_idxs = NULL;
+	Bitmapset  *sort_idxs = NULL;
 	int			last_sort_indexcol = -1;
 
 	foreach(lc, stream_cols)
-		stream_col_idxs =
-			bms_add_member(stream_col_idxs,
+		saop_idxs =
+			bms_add_member(saop_idxs,
 						   lfirst_node(YbMergeScanStreamColInfo, lc)->indexcol);
-	yb_get_sort_info_from_pathkeys(index->indextlist, pathkeys, relids,
-								   stream_col_idxs, &numsortkeys, &sortColIdx,
-								   &sortOperators, &collations, &nullsFirst);
-	/* sortColIdx holds index tlist resnos. */
-	for (int i = 0; i < numsortkeys; i++)
-		last_sort_indexcol = Max(last_sort_indexcol, sortColIdx[i] - 1);
 
-	foreach(lc, stream_cols)
+	/* Find each merge sort column the way yb_get_sort_info_from_pathkeys does. */
+	foreach(lc, pathkeys)
 	{
-		YbMergeScanStreamColInfo *info = lfirst_node(YbMergeScanStreamColInfo,
-													 lc);
-		Expr	   *clause;
-		Expr	   *expr;
-		bool		dup = false;
-		int			i;
+		EquivalenceClass *ec = lfirst_node(PathKey, lc)->pk_eclass;
+		int			indexcol = -1;
+		ListCell   *lc2;
 
-		/* At or after the last merge sort column: not needed for order. */
-		if (info->indexcol >= last_sort_indexcol)
-			continue;
-
-		/* A SAOP column ahead of it: keep the entry as it is. */
-		if (info->clause)
+		foreach(lc2, index->indextlist)
 		{
-			result = lappend(result, info);
-			continue;
-		}
+			TargetEntry *tle = lfirst_node(TargetEntry, lc2);
 
-		expr = ((TargetEntry *) list_nth(index->indextlist,
-										 info->indexcol))->expr;
-		clause = ybEqualityIndexClause(index, indexclauses, info->indexcol,
-									   expr);
-		if (clause)
-		{
-			/* Leave the pathkeys walk's entry as it is. */
-			YbMergeScanStreamColInfo *eq_info =
-				makeNode(YbMergeScanStreamColInfo);
-
-			*eq_info = *info;
-			eq_info->clause = clause;
-			result = lappend(result, eq_info);
-			continue;
-		}
-
-		for (i = 0; i < info->indexcol; i++)
-		{
-			if (equal(expr,
-					  ((TargetEntry *) list_nth(index->indextlist, i))->expr))
+			if (!bms_is_member(tle->resno - 1, saop_idxs) &&
+				find_ec_member_matching_expr(ec, tle->expr, relids))
 			{
-				dup = true;
+				indexcol = tle->resno - 1;
 				break;
 			}
 		}
-		if (dup ||
-			(info->indexcol >= index->nhashcolumns &&
-			 (info->broken_ec ||
-			  ybEqualityImpliedByIndexPredicate(index, info->indexcol,
-												expr))))
+		/* Not an ordering the merge can compare on. */
+		if (indexcol < 0)
+			return NIL;
+		sort_idxs = bms_add_member(sort_idxs, indexcol);
+		last_sort_indexcol = Max(last_sort_indexcol, indexcol);
+	}
+
+	for (int indexcol = 0; indexcol < last_sort_indexcol; indexcol++)
+	{
+		Expr	   *expr;
+		Expr	   *clause;
+		YbMergeScanStreamColInfo *info;
+
+		if (bms_is_member(indexcol, saop_idxs))
+		{
+			foreach(lc, stream_cols)
+			{
+				info = lfirst_node(YbMergeScanStreamColInfo, lc);
+				if (info->indexcol == indexcol)
+					result = lappend(result, info);
+			}
+			continue;
+		}
+		if (bms_is_member(indexcol, sort_idxs))
 			continue;
 
+		expr = ((TargetEntry *) list_nth(index->indextlist, indexcol))->expr;
+		clause = ybEqualityIndexClause(index, indexclauses, indexcol, expr);
+		if (!clause && indexcol >= index->nhashcolumns)
+			continue;
+
+		info = makeNode(YbMergeScanStreamColInfo);
+		info->clause = clause;
+		info->indexcol = indexcol;
+		info->num_elems = 1;
+		info->derived = false;
 		result = lappend(result, info);
 	}
 	return result;

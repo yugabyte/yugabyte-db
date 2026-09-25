@@ -2991,7 +2991,6 @@ _readYbMergeScanStreamColInfo(void)
 	READ_INT_FIELD(indexcol);
 	READ_INT_FIELD(num_elems);
 	READ_BOOL_FIELD(derived);
-	READ_BOOL_FIELD(broken_ec);
 
 	READ_DONE();
 }

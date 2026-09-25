@@ -1323,7 +1323,6 @@ typedef struct YbMergeScanStreamColInfo
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
-	bool		broken_ec;		/* EquivalenceClass is broken */
 } YbMergeScanStreamColInfo;
 
 /*
@@ -1332,8 +1331,8 @@ typedef struct YbMergeScanStreamColInfo
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
  *
- * 'merge_scan_stream_cols' is the ordered list of merge stream keys after
- * pruning by yb_prune_merge_scan_stream_cols.
+ * 'merge_scan_stream_cols' lists the merge stream keys in index column order,
+ * see yb_finalize_merge_scan_stream_cols.
  */
 typedef struct YbIndexPathInfo
 {
