@@ -799,7 +799,7 @@
 
 [[redirects]]
   from = "/v2.20/*"
-  to = "https://docs-archive.yugabyte.com/v2.20/"
+  to = "https://docs-archive.yugabyte.com/v2.20/:splat"
   force = true
 
 # Build an app for orms
