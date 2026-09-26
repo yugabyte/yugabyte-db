@@ -87,7 +87,7 @@ RESET yb_enable_advanced_index_cond_fold;
 -- scan runs.
 SET plan_cache_mode = force_generic_plan;
 PREPARE oor(int) AS /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = $1 ORDER BY id LIMIT 10;
-EXPLAIN (COSTS OFF) EXECUTE oor(100000);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE oor(100000);
 EXECUTE oor(1);
 EXECUTE oor(100000);
 DEALLOCATE oor;

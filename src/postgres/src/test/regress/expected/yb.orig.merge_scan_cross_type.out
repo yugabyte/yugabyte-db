@@ -896,11 +896,11 @@ RESET yb_enable_advanced_index_cond_fold;
 -- scan runs.
 SET plan_cache_mode = force_generic_plan;
 PREPARE oor(int) AS /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = $1 ORDER BY id LIMIT 10;
-EXPLAIN (COSTS OFF) EXECUTE oor(100000);
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Limit
-   ->  Index Scan using num_tbl_f4_i2_id_idx on num_tbl
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE oor(100000);
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   ->  Index Scan using num_tbl_f4_i2_id_idx on num_tbl (actual rows=0 loops=1)
          Index Cond: ((f4 = ANY ('{1.5,2.5}'::real[])) AND (i2 = $1))
          Merge Sort Key: id
          Merge Stream Key: f4, i2
