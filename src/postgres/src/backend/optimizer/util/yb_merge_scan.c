@@ -576,17 +576,14 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 
 /*
  * Whether the operator clause is an equality, per the index column's opfamily,
- * between the given index column expression and anything else.  A RelabelType
- * on either side is ignored, so that a column matches its relabeled expression
- * index column, such as varchar v and (v::text).
+ * between index column indexcol and anything else.  match_index_to_operand
+ * matches the column the way the planner matched the clause to it, ignoring a
+ * RelabelType on either side.
  */
 static bool
-ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *expr,
-					   Expr *clause)
+ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *clause)
 {
 	OpExpr	   *op;
-	Expr	   *lhs;
-	Expr	   *rhs;
 
 	if (!is_opclause(clause) || list_length(((OpExpr *) clause)->args) != 2)
 		return false;
@@ -594,24 +591,16 @@ ybIsEqualityOnIndexCol(IndexOptInfo *index, int indexcol, Expr *expr,
 	if (get_op_opfamily_strategy(op->opno, index->opfamily[indexcol]) !=
 		BTEqualStrategyNumber)
 		return false;
-	lhs = linitial(op->args);
-	rhs = lsecond(op->args);
-	if (IsA(lhs, RelabelType))
-		lhs = ((RelabelType *) lhs)->arg;
-	if (IsA(rhs, RelabelType))
-		rhs = ((RelabelType *) rhs)->arg;
-	if (IsA(expr, RelabelType))
-		expr = ((RelabelType *) expr)->arg;
-	return equal(lhs, expr) || equal(rhs, expr);
+	return match_index_to_operand(linitial(op->args), indexcol, index) ||
+		match_index_to_operand(lsecond(op->args), indexcol, index);
 }
 
 /*
- * The first equality index clause on the column whose index column expression
- * is expr, or NULL if there is none.
+ * The first equality index clause on index column indexcol, or NULL if there
+ * is none.
  */
 static Expr *
-ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
-					  Expr *expr)
+ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 {
 	ListCell   *lc;
 
@@ -626,7 +615,7 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol,
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
 
-			if (ybIsEqualityOnIndexCol(index, indexcol, expr, rinfo->clause))
+			if (ybIsEqualityOnIndexCol(index, indexcol, rinfo->clause))
 				return rinfo->clause;
 		}
 	}
@@ -708,7 +697,6 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 	/* Construct the result in index column order. */
 	for (int indexcol = 0; indexcol < last_sort_indexcol; indexcol++)
 	{
-		Expr	   *expr;
 		Expr	   *clause;
 		YbMergeScanStreamColInfo *info;
 
@@ -725,8 +713,7 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 		if (bms_is_member(indexcol, sort_idxs))
 			continue;
 
-		expr = ((TargetEntry *) list_nth(index->indextlist, indexcol))->expr;
-		clause = ybEqualityIndexClause(index, indexclauses, indexcol, expr);
+		clause = ybEqualityIndexClause(index, indexclauses, indexcol);
 		if (!clause && indexcol >= index->nhashcolumns)
 			continue;
 
