@@ -2917,8 +2917,12 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		 * YB's HeapTupleData is larger than upstream's, and with the pad a
 		 * typical pg_attribute entry no longer fits the 256-byte AllocSet
 		 * chunk class and doubles to 512 bytes.  palloc returns MAXALIGNed
-		 * memory, so t_data below still lands inside the allocation.
+		 * memory, so t_data below still lands inside the allocation.  If
+		 * CatCTup stops being MAXALIGNed, the MAXALIGN adds padding back, so
+		 * the assert flags that.
 		 */
+		StaticAssertStmt(sizeof(CatCTup) == MAXALIGN(sizeof(CatCTup)),
+						 "sizeof(CatCTup) must be MAXALIGNed");
 		ct = (CatCTup *) palloc(MAXALIGN(sizeof(CatCTup)) + dtp->t_len);
 #ifdef CATCACHE_STATS			/* YB added */
 		cache->yb_cc_size_bytes += MAXALIGN(sizeof(CatCTup)) + dtp->t_len;
