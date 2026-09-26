@@ -84,6 +84,30 @@ The following metrics are reported per pool, labelled with the `database` and `u
 | `ysql_conn_mgr_avg_wait_time_ns` | gauge | Average wait time (in nanoseconds) for a logical connection to be attached to a physical connection. |
 | `ysql_conn_mgr_sticky_connections` | gauge | Number of logical connections attached to a physical connection for the lifetime of the logical connection. |
 
+## Logical clients in pg_stat_activity
+
+Available in v2026.1.2 and later.
+
+When YSQL Connection Manager is enabled, [`pg_stat_activity`](../../../explore/observability/pg-stat-activity/) shows, for each backend, the client whose transaction was last executed on that backend. By design, the connection details of that client are exposed on the row for that backend. They remain until a new client's transaction overrides them, or until the backend is closed and the row is removed. The row is removed when the backend closes, whether or not the client connection has ended.
+
+The row uses these columns:
+
+| Column | Description |
+| :----- | :---------- |
+| `client_addr` | IP address of the logical client. |
+| `client_port` | TCP port of the logical client. |
+| `client_hostname` | Hostname from a reverse DNS lookup of `client_addr`. Populated only when [`log_hostname`](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-HOSTNAME) is on. The lookup runs once, during authentication of that logical client. |
+
+Until a client transaction has run on the backend, `client_addr` and `client_hostname` are null and `client_port` is `-1`.
+
+To list Connection Manager worker backends:
+
+```plpgsql
+SELECT pid, usename, client_addr, client_hostname, client_port, state
+FROM pg_stat_activity
+WHERE backend_type = 'yb-conn-mgr worker connection';
+```
+
 ## Logging
 
 Connection Manager provides the following log levels that you can set using the `ysql_conn_mgr_log_settings` flag:
