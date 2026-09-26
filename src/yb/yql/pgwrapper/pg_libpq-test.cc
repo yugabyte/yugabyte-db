@@ -3652,7 +3652,7 @@ TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
   row = ASSERT_RESULT((
       conn.FetchRow<PGUint64, PGUint64, bool, std::optional<PGOid>, std::optional<PGOid>>(query1)));
   ASSERT_EQ(row, (decltype(row){2, 0, false, std::nullopt, std::nullopt}));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "SPLIT AT VALUES ((49))");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "SPLIT AT VALUES ((51))");
 }
 
 TEST_F(PgLibPqTest, AggrSystemColumn) {

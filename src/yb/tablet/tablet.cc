@@ -285,7 +285,7 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
 DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
     "Consider only user keys while determining middle key for tablet split");
 
-DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, false,
+DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, true,
     "If true, detect split keys so each child tablet holds roughly the same amount of SST data. "
     "If false, 2-way splits use an approximate middle key, and N-way splits evenly divide hash "
     "space (hash-partitioned tables only).");
