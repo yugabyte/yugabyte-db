@@ -104,8 +104,8 @@ RESET plan_cache_mode;
 :explain_analyze SELECT * FROM t_int WHERE i4 < 1;
 -- this equality is out of range, so no row can match and nothing is read
 :explain_analyze SELECT * FROM t_int WHERE i4 = 2147483648;
--- the same with the value from a subquery, which the check that decides
--- aggregate pushdown runs before
+-- the same with the value from a subquery, which is not yet known when the
+-- executor decides whether to push the aggregate down
 :explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
 SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
 -- these are each out of range, so recheck is required
