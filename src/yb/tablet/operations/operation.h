@@ -240,6 +240,15 @@ class Operation {
   // Actual implementation of Aborted, should return status that should be passed to callback.
   virtual Status DoAborted(const Status& status) = 0;
 
+  // Invoked at the start of AddedToLeader with the just-assigned OpId, before any WAL or
+  // pending-operation side effects. Lets an operation type reject an OpId it cannot represent
+  // (e.g. a Raft index that would exhaust a derived write-ID domain) while rejection is still
+  // a clean error: the caller unwinds the allocated index (see
+  // RaftConsensus::DoAppendNewRoundsToQueueUnlocked).
+  virtual Status ValidateLeaderOpId(const OpId& op_id) const {
+    return Status::OK();
+  }
+
   // A private version of this transaction's transaction state so that we can use base
   // Operation methods on destructors.
   const OperationType operation_type_;
