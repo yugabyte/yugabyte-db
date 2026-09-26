@@ -96,6 +96,52 @@ TEST_F(PgRelcachePreloadMemNormalTest, YB_DISABLE_TEST_ON_MACOS(FreshEmptyDbStay
   ASSERT_LT(peak_mb, kSingleConnMaxRssMb);
 }
 
+// Every user column is a pg_attribute row that a fresh backend preloads into both the ATTNUM and
+// ATTNAME catcaches. A typical pg_attribute catcache entry must fit a 256-byte AllocSet chunk; in
+// the 512-byte class each column costs about 500 bytes more CacheMemoryContext.
+class PgCatcacheEntryMemTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    PgMiniTestBase::SetUp();
+  }
+
+  size_t NumTabletServers() override { return 1; }
+
+  Result<int64_t> FreshBackendCacheMemoryContextBytes() {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.FetchRow<int64_t>(
+        "SELECT used_bytes FROM pg_backend_memory_contexts WHERE name = 'CacheMemoryContext'");
+  }
+};
+
+TEST_F(PgCatcacheEntryMemTest, PgAttributeEntryFitsSmallChunk) {
+  constexpr int kNumTables = 4;
+  constexpr int kColumnsPerTable = 500;
+  constexpr int kNumColumns = kNumTables * kColumnsPerTable;
+  // Measured about 770 bytes per column with 256-byte entries and 1290 with 512-byte entries.
+  constexpr int64_t kMaxBytesPerColumn = 1024;
+
+  const auto before_bytes = ASSERT_RESULT(FreshBackendCacheMemoryContextBytes());
+
+  auto conn = ASSERT_RESULT(Connect());
+  for (int t = 0; t < kNumTables; ++t) {
+    std::string columns;
+    for (int c = 0; c < kColumnsPerTable; ++c) {
+      columns += Format("$0c$1 int", c == 0 ? "" : ", ", c);
+    }
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE wide_$0 ($1)", t, columns));
+  }
+
+  const auto after_bytes = ASSERT_RESULT(FreshBackendCacheMemoryContextBytes());
+  const auto bytes_per_column = (after_bytes - before_bytes) / kNumColumns;
+  LOG(INFO) << "CacheMemoryContext used bytes of a fresh backend: before=" << before_bytes
+            << ", after " << kNumColumns << " columns=" << after_bytes
+            << ", per column=" << bytes_per_column;
+  ASSERT_LT(bytes_per_column, kMaxBytesPerColumn);
+}
+
 // Ensure that the total memory consumed by all PG processes does not spike too high
 // during preloading.
 TEST_F(PgRelcachePreloadMemMinimalTest, YB_DISABLE_TEST_ON_MACOS(TotalPgMemoryStaysBounded)) {
