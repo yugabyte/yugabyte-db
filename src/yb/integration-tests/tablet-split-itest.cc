@@ -347,6 +347,32 @@ TEST_F(TabletSplitITest, LookupAllTabletsRefreshesAfterSplit) {
   }
 }
 
+// After a child opens, its bootstrap state is persisted without waiting for a log roll-over, so a
+// restart before the child's first roll-over does not replay the copied parent WAL from the
+// parent's last flush point (#30760).
+TEST_F(TabletSplitITest, BootstrapStateFlushedAfterChildOpens) {
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(
+      kDefaultNumRows, /*wait_for_intents=*/true));
+
+  // The parent never persisted its state. Each child inherits the parent's retryable requests in
+  // memory, with everything after the parent's (never happened) last flush still unflushed.
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(30s * kTimeMultiplier));
+
+  const auto child_peers = ASSERT_RESULT(ListTestTableActiveTabletPeers());
+  ASSERT_EQ(child_peers.size(), 6);  // 2 children x RF 3.
+  for (const auto& child : child_peers) {
+    SCOPED_TRACE(child->LogPrefix());
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      const auto retryable_requests = VERIFY_RESULT(child->GetRetryableRequests());
+      return child->TEST_HasBootstrapStateOnDisk() &&
+             retryable_requests.GetMaxReplicatedOpId().index > 0 &&
+             retryable_requests.GetLastFlushedOpId() == retryable_requests.GetMaxReplicatedOpId();
+    }, 30s * kTimeMultiplier, "Child bootstrap state persisted after open"));
+  }
+}
+
 TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {
   CreateSingleTablet();
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(
