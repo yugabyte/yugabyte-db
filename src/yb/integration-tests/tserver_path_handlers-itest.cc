@@ -19,13 +19,26 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/tserver/mini_tablet_server.h"
+#include "yb/common/ql_protocol_util.h"
 
+#include "yb/master/catalog_entity_info.h"
+
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/flags.h"
 #include "yb/util/json_document.h"
+#include "yb/util/stol_utils.h"
+
+DECLARE_bool(docdb_enable_sst_stats_collector);
 
 namespace yb::integration_tests {
 
@@ -78,6 +91,7 @@ TEST_F(TServerPathHandlersItest, TestMasterPathHandlers) {
   ASSERT_OK(FetchURL("/log-anchors"));
   ASSERT_OK(FetchURL("/transactions"));
   ASSERT_OK(FetchURL("/rocksdb"));
+  ASSERT_OK(FetchURL("/sst-stats"));
   ASSERT_OK(FetchURL("/waitqueue"));
   ASSERT_OK(FetchURL("/api/v1/meta-cache"));
 #ifndef NDEBUG
@@ -195,6 +209,108 @@ TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {
   ASSERT_FALSE(rows[1][2].empty()); // cumulative size
   ASSERT_FALSE(rows[1][3].empty()); // exclusive size
   ASSERT_EQ(rows[1][4], schedule_id.ToString()); // schedule id
+}
+
+class TServerSstStatsPathHandlerItest : public TServerPathHandlersItest {
+ public:
+  void SetUp() override {
+    // Read when a tablet opens its regular DB, so it has to be set before the cluster starts.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_enable_sst_stats_collector) = CollectorEnabled();
+    TServerPathHandlersItest::SetUp();
+  }
+
+ protected:
+  static constexpr int32_t kNumRows = 50;
+
+  virtual bool CollectorEnabled() { return true; }
+
+  // Writes two versions of every row into one memtable and flushes it, leaving the tablet with a
+  // single SST whose rows all have a version chain and whose older writes are garbage. One write
+  // per row would leave the stretch and age distributions with nothing to measure.
+  Result<string> WriteOneFileWithGarbage() {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    client::YBSchema schema;
+    client::YBSchemaBuilder builder;
+    builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn("value")->Type(DataType::INT32);
+    RETURN_NOT_OK(builder.Build(&schema));
+
+    const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "sst_stats_table");
+    RETURN_NOT_OK(client->CreateNamespaceIfNotExists(
+        table_name.namespace_name(), table_name.namespace_type()));
+    client::TableHandle table;
+    RETURN_NOT_OK(table.Create(table_name, /* num_tablets = */ 1, schema, client.get()));
+
+    auto session = client->NewSession(30s);
+    for (int32_t pass = 0; pass != 2; ++pass) {
+      for (int32_t key = 0; key != kNumRows; ++key) {
+        auto insert = table.NewInsertOp(session->arena());
+        auto* req = insert->mutable_request();
+        QLAddInt32HashValue(req, key);
+        table.AddInt32ColumnValue(req, "value", pass);
+        session->Apply(insert);
+      }
+      RETURN_NOT_OK(session->TEST_Flush());
+    }
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    const auto table_info = VERIFY_RESULT(FindTable(cluster_.get(), table_name));
+    const auto peers = cluster_->GetTabletManager(0)->GetTabletPeersWithTableId(table_info->id());
+    SCHECK_EQ(peers.size(), 1, IllegalState, "Expected one replica of the table on this tserver");
+    return tserver_http_url_ + Format("/sst-stats?id=$0", peers.front()->tablet_id());
+  }
+};
+
+TEST_F(TServerSstStatsPathHandlerItest, RendersPerFileDistributions) {
+  const auto url = ASSERT_RESULT(WriteOneFileWithGarbage());
+
+  const auto file_rows =
+      ASSERT_RESULT(path_handlers_util::GetHtmlTableRows(url, "sst_stats_files"));
+  ASSERT_EQ(file_rows.size(), 1);
+  const auto& file = file_rows[0];
+  ASSERT_EQ(file.size(), 12);
+  ASSERT_EQ(file[4], AsString(kNumRows));
+  ASSERT_EQ(file[11], "complete");
+  // How many entries one write becomes is a storage-layout detail, so the chain length is not
+  // asserted outright. Every row got the same writes, so all three quantiles must agree, and they
+  // must agree with the longest chain the collector recorded independently of the histogram.
+  ASSERT_EQ(file[7], Format("$0 / $0 / $0", file[9]));
+  ASSERT_GT(ASSERT_RESULT(CheckedStoll(file[9])), 1);
+  const auto reclaimable_entries = ASSERT_RESULT(CheckedStoll(file[5]));
+  ASSERT_GT(reclaimable_entries, 0);
+
+  const auto total_rows =
+      ASSERT_RESULT(path_handlers_util::GetHtmlTableRows(url, "sst_stats_totals"));
+  const auto total = [&total_rows](const string& name) -> string {
+    for (const auto& row : total_rows) {
+      if (row.size() == 2 && row[0] == name) {
+        return row[1];
+      }
+    }
+    return "";
+  };
+  ASSERT_EQ(total("Files measured"), "1 of 1");
+  // One measured file, so the merge is the identity over it.
+  ASSERT_EQ(total("Row chain length, by rows"), file[7]);
+  // The write that shadows an entry is what makes it droppable, and those happened seconds ago, so
+  // the youngest band has to account for every reclaimable entry the per-file table reports.
+  ASSERT_STR_CONTAINS(
+      total("Reclaimable entries by age"), Format("&lt;5m: $0,", reclaimable_entries));
+}
+
+class TServerSstStatsPathHandlerNoCollectorItest : public TServerSstStatsPathHandlerItest {
+ protected:
+  bool CollectorEnabled() override { return false; }
+};
+
+TEST_F(TServerSstStatsPathHandlerNoCollectorItest, ReportsFileWithoutStatistics) {
+  const auto url = ASSERT_RESULT(WriteOneFileWithGarbage());
+
+  faststring page;
+  ASSERT_OK(path_handlers_util::GetUrl(url, &page));
+  ASSERT_STR_CONTAINS(page.ToString(), "No live SST file of this tablet carries collector");
+  // The page has nothing to merge, so it must not claim a distribution either.
+  ASSERT_NOK(path_handlers_util::GetHtmlTableRows(url, "sst_stats_totals"));
 }
 
 }  // namespace yb::integration_tests
