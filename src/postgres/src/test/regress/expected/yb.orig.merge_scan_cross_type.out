@@ -896,16 +896,43 @@ RESET yb_enable_advanced_index_cond_fold;
 -- scan runs.
 SET plan_cache_mode = force_generic_plan;
 PREPARE oor(int) AS /*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) AND i2 = $1 ORDER BY id LIMIT 10;
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE oor(100000);
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Limit (actual rows=0 loops=1)
-   ->  Index Scan using num_tbl_f4_i2_id_idx on num_tbl (actual rows=0 loops=1)
-         Index Cond: ((f4 = ANY ('{1.5,2.5}'::real[])) AND (i2 = $1))
-         Merge Sort Key: id
-         Merge Stream Key: f4, i2
+\set query ':P EXECUTE oor(:R);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE oor(1);
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, i2
+   ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=10 loops=1)
+         Output: id, f4, i2
+         Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = $1))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4, num_tbl.i2
          Merge Streams: 2
-(6 rows)
+         Merge Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = $1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 19
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 2
+         Storage Index Rows Scanned: 20
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE oor(100000);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   Output: id, f4, i2
+   ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=0 loops=1)
+         Output: id, f4, i2
+         Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = $1))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4, num_tbl.i2
+         Merge Streams: 2
+         Merge Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = $1))
+(9 rows)
 
 EXECUTE oor(1);
  id | f4  | i2 
