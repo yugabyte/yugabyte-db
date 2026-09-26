@@ -2300,8 +2300,26 @@ ybValidateMergeScanBinds(YbOpaque ybScan, YbScanPlan scan_plan,
 						 bool is_column_eq_or_in_bound[], int max_idx)
 {
 	ListCell   *lc;
+	List	   *unconditioned = NIL;
+	List	   *conditioned = NIL;
 
+	/*
+	 * Check the columns without a condition first.  When a hash column lacks
+	 * one, ybcSetupScanKeys leaves every hash column unbound, and the error
+	 * should name the column that lacks it.
+	 */
 	foreach(lc, yb_merge_scan_info->stream_cols)
+	{
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
+
+		if (info->clause)
+			conditioned = lappend(conditioned, info);
+		else
+			unconditioned = lappend(unconditioned, info);
+	}
+
+	foreach(lc, list_concat(unconditioned, conditioned))
 	{
 		YbMergeScanStreamColInfo *info =
 			lfirst_node(YbMergeScanStreamColInfo, lc);

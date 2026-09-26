@@ -93,10 +93,9 @@ RESET ROLE;
 -- A hash column in a broken EquivalenceClass.  rls_ec_hash_tbl has the rows and
 -- policy of rls_ec_tbl, with (s, d) as its hash key.  pggate cannot merge
 -- without a condition on every hash column, so d stays a stream key, and
--- without an index condition on d, the merge scan errors.  The error names s,
--- the first stream key column, because pggate binds no hash column when one
--- lacks a condition.  With the query also holding d at 2020-01-02, the scan
--- binds d and runs.  TODO(#34120): the first query should run without error.
+-- without an index condition on d, the merge scan errors.  With the query also
+-- holding d at 2020-01-02, the scan binds d and runs.  TODO(#34120): the first
+-- query should run without error.
 CREATE TABLE rls_ec_hash_tbl (s int, d date, c int, t timestamp,
     PRIMARY KEY ((s, d) HASH, c ASC));
 INSERT INTO rls_ec_hash_tbl SELECT * FROM rls_ec_tbl;

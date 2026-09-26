@@ -345,10 +345,9 @@ RESET ROLE;
 -- A hash column in a broken EquivalenceClass.  rls_ec_hash_tbl has the rows and
 -- policy of rls_ec_tbl, with (s, d) as its hash key.  pggate cannot merge
 -- without a condition on every hash column, so d stays a stream key, and
--- without an index condition on d, the merge scan errors.  The error names s,
--- the first stream key column, because pggate binds no hash column when one
--- lacks a condition.  With the query also holding d at 2020-01-02, the scan
--- binds d and runs.  TODO(#34120): the first query should run without error.
+-- without an index condition on d, the merge scan errors.  With the query also
+-- holding d at 2020-01-02, the scan binds d and runs.  TODO(#34120): the first
+-- query should run without error.
 CREATE TABLE rls_ec_hash_tbl (s int, d date, c int, t timestamp,
     PRIMARY KEY ((s, d) HASH, c ASC));
 INSERT INTO rls_ec_hash_tbl SELECT * FROM rls_ec_tbl;
@@ -384,7 +383,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
 (output identical to previous)
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
-ERROR:  merge scan stream key column "s" has no usable bound condition
+ERROR:  merge scan stream key column "d" has no usable bound condition
 DETAIL:  The chosen query plan is not executable as declared. This is a bug.
 HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
@@ -399,7 +398,7 @@ HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams =
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
 (output identical to previous)
 /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
-ERROR:  merge scan stream key column "s" has no usable bound condition
+ERROR:  merge scan stream key column "d" has no usable bound condition
 DETAIL:  The chosen query plan is not executable as declared. This is a bug.
 HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
 \set query ':P :Q SELECT c, s, d FROM rls_ec_hash_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
