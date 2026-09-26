@@ -308,6 +308,14 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
    Index Cond: (i2 = 32768)
 (2 rows)
 
+-- the same below the type's minimum
+:explain_analyze SELECT * FROM t_int WHERE i2 = -32769;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using t_int_i2 on t_int (actual rows=0 loops=1)
+   Index Cond: (i2 = '-32769'::integer)
+(2 rows)
+
 -- the same with the value as a parameter of a generic plan
 SET plan_cache_mode = force_generic_plan;
 PREPARE t_int_i2_eq(int4) AS SELECT * FROM t_int WHERE i2 = $1;
@@ -424,6 +432,24 @@ RESET plan_cache_mode;
  Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
    Index Cond: (i4 = '2147483648'::bigint)
 (2 rows)
+
+-- with a constant, the executor knows before the scan starts that it reads
+-- nothing, so it pushes the aggregate down
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Only Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = '2147483648'::bigint)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(5 rows)
+
+SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+ count 
+-------
+     0
+(1 row)
 
 -- the same with the value from a subquery, which is not yet known when the
 -- executor decides whether to push the aggregate down

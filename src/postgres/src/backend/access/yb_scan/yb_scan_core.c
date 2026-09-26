@@ -1425,10 +1425,7 @@ ybHasOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan)
 		col_typid = ybc_get_atttypid(scan_plan->bind_desc,
 									 scan_plan->bind_key_attnums[i]);
 		if (YbIsValueOutOfRange(col_typid, key->sk_subtype, key->sk_argument))
-		{
-			elog(DEBUG1, "skipping a scan due to an out-of-range equality");
 			return true;
-		}
 	}
 	return false;
 }
@@ -3622,7 +3619,6 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	YbScanPlanData scan_plan;
 
 	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
-	ybcSetupScanKeys(&ybscan, &scan_plan);
 
 	/*
 	 * Determine needs_recheck, which stays false for a scan that no row can
@@ -3632,8 +3628,11 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	 * execution too.
 	 */
 	if (!ybHasOutOfRangeEquality(&ybscan, &scan_plan))
+	{
+		ybcSetupScanKeys(&ybscan, &scan_plan);
 		(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
 							  true);	/* is_for_precheck */
+	}
 
 	bms_free(scan_plan.hash_key_cols);
 	bms_free(scan_plan.key_cols);
@@ -3699,16 +3698,17 @@ YbBeginScan(Relation table,
 	YbScanPlanData scan_plan;
 
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
-	ybcSetupScanKeys(ybScan, &scan_plan);
 
 	if (ybHasOutOfRangeEquality(ybScan, &scan_plan))
 	{
+		elog(DEBUG1, "skipping a scan due to an out-of-range equality");
 		ybScan->quit_scan = true;
 		bms_free(scan_plan.hash_key_cols);
 		bms_free(scan_plan.key_cols);
-		bms_free(scan_plan.qualified_scan_key_cols);
 		return ybScan;
 	}
+
+	ybcSetupScanKeys(ybScan, &scan_plan);
 
 	ybScan->handle = YbNewSelect(table, &ybScan->prepare_params);
 
