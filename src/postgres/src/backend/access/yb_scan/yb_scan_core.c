@@ -1263,37 +1263,24 @@ YbIsScanCompatible(Oid column_typid,
 	switch (column_typid)
 	{
 		case INT2OID:
+		case INT4OID:
+		case INT8OID:
 
 			/*
-			 * If column c0 has INT2OID type and value type is INT4OID, the
-			 * value may overflow INT2OID. For example, where clause condition
-			 * "c0 = 65539" would become "c0 = 3" and will unnecessarily fetch
-			 * a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer filtering will be subsequently
-			 * applied for equality/inequality conditions. For example, "c0 =
-			 * 65539" will be applied again to filter out this row.
-			 * We prefer to bind scan key c0 to account for the
-			 * common case where INT4OID value does not overflow INT2OID,
-			 * which happens in some system relation scan queries.
-			 *
-			 * For this purpose, specifically for when the value is scalar,
-			 * we return true when we are sure that
-			 * there isn't a data overflow. For instance, if column c0 has
-			 * INT2OID and value type is INT4OID, and its an inequality
-			 * strategy, we check if the actual value is within the
-			 * bounds of INT2OID. If yes, then we return true, otherwise false.
+			 * A narrower integer column cannot hold every value of a wider
+			 * type, and binding an out-of-range value would truncate it, so
+			 * that "c0 < 65539" on an int2 column would bind as "c0 < 3".  So
+			 * bind a scalar value only when the column type can hold it, and
+			 * leave an out-of-range one unbound for recheck.  A plain equality
+			 * to such a value makes the scan unsatisfiable before binding
+			 * (ybHasOutOfRangeEquality).  A non-scalar value, an IN list,
+			 * binds, and YbCullArray drops its out-of-range elements.
 			 */
-			if (value_typid != INT4OID && value_typid != INT8OID)
+			if (value_typid != INT2OID && value_typid != INT4OID &&
+				value_typid != INT8OID)
 				return false;
 			return (!is_value_scalar ||
 					!YbIsValueOutOfRange(column_typid, value_typid, value));
-		case INT4OID:
-			if (value_typid != INT2OID && value_typid != INT8OID)
-				return false;
-			return (!is_value_scalar ||
-					!YbIsValueOutOfRange(column_typid, value_typid, value));
-		case INT8OID:
-			return value_typid == INT2OID || value_typid == INT4OID;
 
 		case TEXTOID:
 		case BPCHAROID:
