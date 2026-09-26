@@ -1,8 +1,8 @@
 Parsed test spec with 2 sessions
 
-starting permutation: s2_set_inval_zero s2_refresh s1_refresh
+starting permutation: s2_set_inval_zero s2_begin_refresh s1_refresh s2_commit
 step s2_set_inval_zero: SET yb_max_num_invalidation_messages = 0;
-step s2_refresh: REFRESH MATERIALIZED VIEW mv; <waiting ...>
+step s2_begin_refresh: BEGIN; REFRESH MATERIALIZED VIEW mv;
 step s1_refresh: REFRESH MATERIALIZED VIEW mv; <waiting ...>
-step s2_refresh: <... completed>
+step s2_commit: COMMIT;
 step s1_refresh: <... completed>
