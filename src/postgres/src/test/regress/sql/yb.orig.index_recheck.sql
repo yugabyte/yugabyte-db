@@ -63,6 +63,12 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 :explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
 :explain_analyze /*+ IndexScan(t t_range_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 < 5;
 
+-- an out-of-range equality means no row can match, so nothing is read, whether
+-- or not the hash columns are all bound
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h1 = 1 AND h2 = 2147483648;
+:explain_analyze /*+ IndexScan(t t_hash_hash) */ SELECT * FROM t_incomplete_binds t WHERE h2 = 2147483648;
+:explain_analyze /*+ IndexScan(t t_hash_range) */ SELECT * FROM t_incomplete_binds t WHERE r2 = 2147483648;
+
 DROP TABLE t_incomplete_binds;
 
 --- - ---

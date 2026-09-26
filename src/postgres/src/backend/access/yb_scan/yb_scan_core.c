@@ -1417,22 +1417,31 @@ YbCheckScanTypes(YbOpaque ybScan, YbScanPlan scan_plan, int i)
 }
 
 /*
- * Whether scan key i is an equality to an integer that its column's type
- * cannot hold, which no row matches.  Only a plain scalar key qualifies, not a
+ * Return whether some scan key is an equality to an integer that its column's
+ * type cannot hold.  The keys are ANDed, so no row matches such a scan,
+ * whether or not the key could bind.  Only a plain scalar key qualifies, not a
  * NULL, IN array, row comparison, or hash code key.
  */
 static bool
-ybIsOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan, int i)
+ybHasOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan)
 {
-	ScanKey		key = ybScan->keys[i];
-	Oid			col_typid;
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
+	{
+		ScanKey		key = ybScan->keys[i];
+		Oid			col_typid;
 
-	if (key->sk_strategy != BTEqualStrategyNumber || key->sk_flags != 0 ||
-		!OidIsValid(key->sk_subtype))
-		return false;
-	col_typid = ybc_get_atttypid(scan_plan->bind_desc,
-								 scan_plan->bind_key_attnums[i]);
-	return YbIsValueOutOfRange(col_typid, key->sk_subtype, key->sk_argument);
+		if (key->sk_strategy != BTEqualStrategyNumber || key->sk_flags != 0 ||
+			!OidIsValid(key->sk_subtype))
+			continue;
+		col_typid = ybc_get_atttypid(scan_plan->bind_desc,
+									 scan_plan->bind_key_attnums[i]);
+		if (YbIsValueOutOfRange(col_typid, key->sk_subtype, key->sk_argument))
+		{
+			elog(DEBUG1, "skipping a scan due to an out-of-range equality");
+			return true;
+		}
+	}
+	return false;
 }
 
 /*
@@ -2413,9 +2422,6 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 				continue;
 			}
 
-			if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
-				return false;
-
 			if (!YbCheckScanTypes(ybScan, scan_plan, i))
 			{
 				ybScan->needs_recheck = true;
@@ -2921,15 +2927,6 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 		 * -- needed for hash code search below.
 		 */
 		Assert(idx > 0);
-
-		/*
-		 * During a precheck, a runtime key holds (Datum) 0 until it is
-		 * evaluated, which is in range for every integer type.  So only a
-		 * constant can make the scan unsatisfiable here, and that holds at
-		 * execution too.
-		 */
-		if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
-			return false;
 
 		/* Do not bind more than one condition to a column */
 		if (is_column_bound[idx] ||
@@ -3638,9 +3635,16 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
 	ybcSetupScanKeys(&ybscan, &scan_plan);
 
-	/* Determine needs_recheck. */
-	(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
-						  true);	/* is_for_precheck */
+	/*
+	 * Determine needs_recheck, which stays false for a scan that no row can
+	 * match.  A runtime key holds (Datum) 0 until it is evaluated, which is in
+	 * range for every integer type.  So only a constant can make
+	 * ybHasOutOfRangeEquality return true here, and that answer holds at
+	 * execution too.
+	 */
+	if (!ybHasOutOfRangeEquality(&ybscan, &scan_plan))
+		(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
+							  true);	/* is_for_precheck */
 
 	bms_free(scan_plan.hash_key_cols);
 	bms_free(scan_plan.key_cols);
@@ -3707,6 +3711,15 @@ YbBeginScan(Relation table,
 
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 	ybcSetupScanKeys(ybScan, &scan_plan);
+
+	if (ybHasOutOfRangeEquality(ybScan, &scan_plan))
+	{
+		ybScan->quit_scan = true;
+		bms_free(scan_plan.hash_key_cols);
+		bms_free(scan_plan.key_cols);
+		bms_free(scan_plan.qualified_scan_key_cols);
+		return ybScan;
+	}
 
 	ybScan->handle = YbNewSelect(table, &ybScan->prepare_params);
 
