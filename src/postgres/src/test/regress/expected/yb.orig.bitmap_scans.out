@@ -1569,7 +1569,8 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */ SELECT COUNT(*) F
 (1 row)
 
 -- PxQxR: explain/run x expression_pushdown x target
--- test where casting may cause us to require recheck
+-- test where casting may cause us to require recheck, or may make an equality
+-- unsatisfiable because the value is out of the column type's range
 \set explain 'EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)'
 \set Q1 '/*+ BitmapScan(t) */'
 \set Q2 '/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */'
@@ -1642,42 +1643,36 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */ SELECT int4_col FR
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: (int4_col = '2147483648'::bigint)
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: (int4_col = '2147483648'::bigint)
-(4 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-         Storage Recheck Cond: (int4_col = '2147483648'::bigint)
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: (int4_col = '2147483648'::bigint)
-(6 rows)
+(5 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Recheck Cond: (int4_col = '2147483648'::bigint)
-   Rows Removed by Index Recheck: 9
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: (int4_col = '2147483648'::bigint)
-(5 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-         Recheck Cond: (int4_col = '2147483648'::bigint)
-         Rows Removed by Index Recheck: 9
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: (int4_col = '2147483648'::bigint)
-(6 rows)
+(4 rows)
 
 /*+ BitmapScan(t) */ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
  int4_col 
@@ -1714,7 +1709,7 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ NestLoop(s t) BitmapScan(t) Set(yb_
    ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
          Storage Recheck Cond: (int4_col = s.bigint_col)
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=9)
                Index Cond: (int4_col = s.bigint_col)
 (6 rows)
 
@@ -1725,10 +1720,9 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ NestLoop(s t) BitmapScan(t) Set(yb_
    ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
          Recheck Cond: (int4_col = s.bigint_col)
-         Rows Removed by Index Recheck: 1
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=9)
                Index Cond: (int4_col = s.bigint_col)
-(7 rows)
+(6 rows)
 
 --
 -- #22622: test local recheck of condition for a column that is not a target

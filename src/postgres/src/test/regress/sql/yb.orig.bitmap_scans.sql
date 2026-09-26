@@ -305,7 +305,8 @@ $$ AS query \gset
 \i :run_query
 
 -- PxQxR: explain/run x expression_pushdown x target
--- test where casting may cause us to require recheck
+-- test where casting may cause us to require recheck, or may make an equality
+-- unsatisfiable because the value is out of the column type's range
 \set explain 'EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)'
 \set Q1 '/*+ BitmapScan(t) */'
 \set Q2 '/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */'

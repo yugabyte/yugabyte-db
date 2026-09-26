@@ -1183,68 +1183,10 @@ YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max)
 }
 
 /*
- * Return true if a scan key column type is compatible with value type.
- */
-static bool
-YbIsScanCompatible(Oid column_typid,
-				   Oid value_typid,
-				   bool is_value_scalar,
-				   Datum value)
-{
-	if (column_typid == value_typid)
-		return true;
-
-	switch (column_typid)
-	{
-		case INT2OID:
-
-			/*
-			 * If column c0 has INT2OID type and value type is INT4OID, the
-			 * value may overflow INT2OID. For example, where clause condition
-			 * "c0 = 65539" would become "c0 = 3" and will unnecessarily fetch
-			 * a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer filtering will be subsequently
-			 * applied for equality/inequality conditions. For example, "c0 =
-			 * 65539" will be applied again to filter out this row.
-			 * We prefer to bind scan key c0 to account for the
-			 * common case where INT4OID value does not overflow INT2OID,
-			 * which happens in some system relation scan queries.
-			 *
-			 * For this purpose, specifically for when the value is scalar,
-			 * we return true when we are sure that
-			 * there isn't a data overflow. For instance, if column c0 has
-			 * INT2OID and value type is INT4OID, and its an inequality
-			 * strategy, we check if the actual value is within the
-			 * bounds of INT2OID. If yes, then we return true, otherwise false.
-			 */
-			return (!is_value_scalar ?
-					(value_typid == INT4OID || value_typid == INT8OID) :
-					YbIsIntegerInRange(value, value_typid, SHRT_MIN, SHRT_MAX));
-		case INT4OID:
-			return (!is_value_scalar ?
-					(value_typid == INT2OID || value_typid == INT8OID) :
-					YbIsIntegerInRange(value, value_typid, INT_MIN, INT_MAX));
-		case INT8OID:
-			return value_typid == INT2OID || value_typid == INT4OID;
-
-		case TEXTOID:
-		case BPCHAROID:
-		case VARCHAROID:
-			return (value_typid == TEXTOID || value_typid == BPCHAROID ||
-					value_typid == VARCHAROID);
-
-		default:
-			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
-				return true;
-			/* Conservatively return false. */
-			return false;
-	}
-}
-
-/*
  * Determine whether an equality between two types needs further recheck.  For
  * now, this only flags cases where the storage column type is smaller than the
- * value type.
+ * value type.  YbIsScanCompatible and YbIsValueOutOfRange both use it, so that
+ * the bind check and the out-of-range check agree on these pairs.
  *
  * TODO(jason): check if any other type combos need checking.  float4 and
  * float8 look suspicious.
@@ -1302,6 +1244,67 @@ YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val)
 			!YbIsIntegerInRange(val, val_typid,
 								col_typid == INT2OID ? SHRT_MIN : INT_MIN,
 								col_typid == INT2OID ? SHRT_MAX : INT_MAX));
+}
+
+/*
+ * Return true if a scan key column type is compatible with value type.
+ */
+static bool
+YbIsScanCompatible(Oid column_typid,
+				   Oid value_typid,
+				   bool is_value_scalar,
+				   Datum value)
+{
+	if (column_typid == value_typid)
+		return true;
+
+	switch (column_typid)
+	{
+		case INT2OID:
+
+			/*
+			 * If column c0 has INT2OID type and value type is INT4OID, the
+			 * value may overflow INT2OID. For example, where clause condition
+			 * "c0 = 65539" would become "c0 = 3" and will unnecessarily fetch
+			 * a row with key of 3. This will not affect correctness
+			 * because at upper Postgres layer filtering will be subsequently
+			 * applied for equality/inequality conditions. For example, "c0 =
+			 * 65539" will be applied again to filter out this row.
+			 * We prefer to bind scan key c0 to account for the
+			 * common case where INT4OID value does not overflow INT2OID,
+			 * which happens in some system relation scan queries.
+			 *
+			 * For this purpose, specifically for when the value is scalar,
+			 * we return true when we are sure that
+			 * there isn't a data overflow. For instance, if column c0 has
+			 * INT2OID and value type is INT4OID, and its an inequality
+			 * strategy, we check if the actual value is within the
+			 * bounds of INT2OID. If yes, then we return true, otherwise false.
+			 */
+			if (value_typid != INT4OID && value_typid != INT8OID)
+				return false;
+			return (!is_value_scalar ||
+					!YbIsValueOutOfRange(column_typid, value_typid, value));
+		case INT4OID:
+			if (value_typid != INT2OID && value_typid != INT8OID)
+				return false;
+			return (!is_value_scalar ||
+					!YbIsValueOutOfRange(column_typid, value_typid, value));
+		case INT8OID:
+			return value_typid == INT2OID || value_typid == INT4OID;
+
+		case TEXTOID:
+		case BPCHAROID:
+		case VARCHAROID:
+			return (value_typid == TEXTOID || value_typid == BPCHAROID ||
+					value_typid == VARCHAROID);
+
+		default:
+			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
+				return true;
+			/* Conservatively return false. */
+			return false;
+	}
 }
 
 static bool
@@ -1411,6 +1414,24 @@ YbCheckScanTypes(YbOpaque ybScan, YbScanPlan scan_plan, int i)
 							   !YbIsRowHeader(key) && !YbIsSearchArray(key),
 							   key->sk_argument) ||
 			IsPolymorphicType(valtypid));
+}
+
+/*
+ * Whether scan key i is an equality to an integer that its column's type
+ * cannot hold, which no row matches.
+ */
+static bool
+ybIsOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan, int i)
+{
+	ScanKey		key = ybScan->keys[i];
+	Oid			col_typid;
+
+	if (key->sk_strategy != BTEqualStrategyNumber || key->sk_flags != 0 ||
+		!OidIsValid(key->sk_subtype))
+		return false;
+	col_typid = ybc_get_atttypid(scan_plan->bind_desc,
+								 scan_plan->bind_key_attnums[i]);
+	return YbIsValueOutOfRange(col_typid, key->sk_subtype, key->sk_argument);
 }
 
 /*
@@ -2393,6 +2414,8 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 
 			if (!YbCheckScanTypes(ybScan, scan_plan, i))
 			{
+				if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
+					return false;
 				ybScan->needs_recheck = true;
 				continue;
 			}
@@ -2896,6 +2919,9 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 		 * -- needed for hash code search below.
 		 */
 		Assert(idx > 0);
+
+		if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
+			return false;
 
 		/* Do not bind more than one condition to a column */
 		if (is_column_bound[idx] ||
