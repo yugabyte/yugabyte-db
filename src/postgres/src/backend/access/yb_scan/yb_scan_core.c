@@ -1418,7 +1418,8 @@ YbCheckScanTypes(YbOpaque ybScan, YbScanPlan scan_plan, int i)
 
 /*
  * Whether scan key i is an equality to an integer that its column's type
- * cannot hold, which no row matches.
+ * cannot hold, which no row matches.  Only a plain scalar key qualifies, not a
+ * NULL, IN array, row comparison, or hash code key.
  */
 static bool
 ybIsOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan, int i)
@@ -2330,6 +2331,13 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 {
 	Relation	relation = scan_plan->target_relation;
 
+	/* An equality that no row can match makes the scan unsatisfiable. */
+	for (int i = 0; i < ybScan->nkeys; i++)
+	{
+		if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
+			return false;
+	}
+
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
 	 * attribute (i.e. DocDB column).
@@ -2414,8 +2422,6 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 
 			if (!YbCheckScanTypes(ybScan, scan_plan, i))
 			{
-				if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
-					return false;
 				ybScan->needs_recheck = true;
 				continue;
 			}
@@ -2919,9 +2925,6 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 		 * -- needed for hash code search below.
 		 */
 		Assert(idx > 0);
-
-		if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
-			return false;
 
 		/* Do not bind more than one condition to a column */
 		if (is_column_bound[idx] ||
