@@ -99,6 +99,9 @@ DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_ysql_operation_lease);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver);
 DECLARE_bool(TEST_pause_rbs_before_download_wal);
@@ -167,20 +170,19 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
           };
           auto green_checker = make_predicate("Green");
           auto red_checker = make_predicate("Red");
-          for (const auto& col_name : {"Lease Expiry", "Lease Epoch"}) {
-            auto cols =
-                VERIFY_RESULT(GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", col_name));
-            size_t has_lease_count = std::ranges::count_if(cols, green_checker);
-            size_t missing_lease_count = std::ranges::count_if(cols, red_checker);
-            if (has_lease_count != expected_has_lease || missing_lease_count != expected_no_lease) {
-              LOG(INFO) << Format(
-                  "Lease counts from tablet-servers status page not as expected. For column $0, "
-                  "Has lease is $1, "
-                  "expected $2. Missing lease is $3, expected $4",
-                  col_name, has_lease_count, expected_has_lease, missing_lease_count,
-                  expected_no_lease);
-              return false;
-            }
+          const auto* const col_name = "YSQL Lease Expiry & Epoch";
+          auto cols =
+              VERIFY_RESULT(GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", col_name));
+          size_t has_lease_count = std::ranges::count_if(cols, green_checker);
+          size_t missing_lease_count = std::ranges::count_if(cols, red_checker);
+          if (has_lease_count != expected_has_lease || missing_lease_count != expected_no_lease) {
+            LOG(INFO) << Format(
+                "Lease counts from tablet-servers status page not as expected. For column $0, "
+                "Has lease is $1, "
+                "expected $2. Missing lease is $3, expected $4",
+                col_name, has_lease_count, expected_has_lease, missing_lease_count,
+                expected_no_lease);
+            return false;
           }
           return true;
         },
@@ -2146,11 +2148,16 @@ TEST_F_EX(
       << "Expected hash_split partition format in HTML response";
 }
 
-// Validates the UI elements for the Lease Status column function correctly when starting up and
-// after a tserver is shut down
+// Validates the UI elements for the Lease Status column function correctly when starting up, after
+// a tserver is shut down, and after a tserver is isolated so its lease expires.
 TEST_F(MasterPathHandlersItest, TestLeaseStatusColumn) {
   const MonoDelta kWaitTimeout = 10s;
   const MonoDelta kLeaseTimeoutWaitBufferTime = 2s;
+  const auto lease_timeout =
+      MonoDelta::FromMilliseconds(
+          FLAGS_master_ysql_operation_lease_ttl_ms +
+          FLAGS_ysql_operation_lease_ttl_client_buffer_ms) +
+      kLeaseTimeoutWaitBufferTime;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->server()->StartYSQLLeaseRefresher());
   }
@@ -2167,15 +2174,35 @@ TEST_F(MasterPathHandlersItest, TestLeaseStatusColumn) {
 
   ASSERT_OK(WaitForLeaseStatusCounts(cluster_->num_tablet_servers(), 0, kWaitTimeout));
 
+  faststring result;
+  ASSERT_OK(GetUrl("/api/v1/tablet-servers", &result));
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  size_t tserver_count = 0;
+  for (const auto& [cluster_uuid, cluster_json] : ASSERT_RESULT(json_obj.GetObject())) {
+    for (const auto& [host_port, tserver_json] : ASSERT_RESULT(cluster_json.GetObject())) {
+      const auto lease_info = tserver_json["lease_info"];
+      ASSERT_TRUE(lease_info.IsObject())
+          << cluster_uuid << ": " << host_port << ": " << ASSERT_RESULT(tserver_json.ToString());
+      ASSERT_TRUE(ASSERT_RESULT(lease_info["is_live"].GetBool()));
+      ASSERT_GE(ASSERT_RESULT(lease_info["lease_expiry_sec"].GetDouble()), 0.0);
+      ASSERT_TRUE(lease_info["lease_epoch"].IsUint64());
+      ++tserver_count;
+    }
+  }
+  ASSERT_EQ(tserver_count, cluster_->num_tablet_servers());
+
   // Shutdown tserver and wait for heartbeat timeout.
   cluster_->mini_tablet_server(0)->Shutdown();
 
   ASSERT_OK(WaitForLeaseStatusCounts(
-      cluster_->num_tablet_servers() - 1, 1,
-      MonoDelta::FromMilliseconds(
-          FLAGS_master_ysql_operation_lease_ttl_ms +
-          FLAGS_ysql_operation_lease_ttl_client_buffer_ms) +
-          kLeaseTimeoutWaitBufferTime));
+      cluster_->num_tablet_servers() - 1, 1, lease_timeout));
+  const auto lease_status_cells = ASSERT_RESULT(
+      GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", "YSQL Lease Expiry & Epoch"));
+  ASSERT_EQ(
+      std::ranges::count_if(
+          lease_status_cells, [](const auto& cell) { return cell.contains("RELINQUISHED"); }),
+      1);
 
   // Restart the tserver so the cluster verifier passes on teardown.
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
@@ -2183,6 +2210,60 @@ TEST_F(MasterPathHandlersItest, TestLeaseStatusColumn) {
   // refresh the lease
   ASSERT_OK(cluster_->mini_tablet_server(0)->server()->StartYSQLLeaseRefresher());
   ASSERT_OK(WaitForLeaseStatusCounts(cluster_->num_tablet_servers(), 0, kWaitTimeout));
+
+  // Isolate a tserver so its lease expires without relinquishing.
+  cluster_->mini_tablet_server(0)->Isolate();
+  ASSERT_OK(WaitForLeaseStatusCounts(
+      cluster_->num_tablet_servers() - 1, 1, lease_timeout));
+  const auto expired_lease_status_cells = ASSERT_RESULT(
+      GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", "YSQL Lease Expiry & Epoch"));
+  ASSERT_EQ(
+      std::ranges::count_if(
+          expired_lease_status_cells, [](const auto& cell) { return cell.contains("EXPIRED"); }),
+      1);
+  ASSERT_EQ(
+      std::ranges::count_if(
+          expired_lease_status_cells,
+          [](const auto& cell) { return cell.contains("RELINQUISHED"); }),
+      0);
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Reconnect());
+  ASSERT_OK(WaitForLeaseStatusCounts(cluster_->num_tablet_servers(), 0, kWaitTimeout));
 }
+
+enum class LeaseStatusNAConfig { kLeaseDisabled, kYsqlDisabled };
+
+class MasterPathHandlersLeaseStatusNAItest
+    : public MasterPathHandlersItest,
+      public ::testing::WithParamInterface<LeaseStatusNAConfig> {
+ public:
+  void SetUp() override {
+    switch (GetParam()) {
+      case LeaseStatusNAConfig::kLeaseDisabled:
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = false;
+        break;
+      case LeaseStatusNAConfig::kYsqlDisabled:
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+        break;
+    }
+    MasterPathHandlersItest::SetUp();
+  }
+};
+
+// The tablet-servers page should paint N/A when YSQL leases are not in use.
+TEST_P(MasterPathHandlersLeaseStatusNAItest, TestLeaseStatusColumnNA) {
+  auto cols = ASSERT_RESULT(
+      GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", "YSQL Lease Expiry & Epoch"));
+  ASSERT_EQ(cols.size(), cluster_->num_tablet_servers());
+  for (const auto& cell : cols) {
+    ASSERT_EQ(cell, "N/A");
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    LeaseStatusNAConfigs, MasterPathHandlersLeaseStatusNAItest,
+    ::testing::Values(
+        LeaseStatusNAConfig::kLeaseDisabled, LeaseStatusNAConfig::kYsqlDisabled));
 
 }  // namespace yb::integration_tests

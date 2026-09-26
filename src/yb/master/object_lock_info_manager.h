@@ -62,7 +62,7 @@ class ObjectLockInfo;
 
 struct TServerLeaseInfo {
   SysObjectLockEntryPB::LeaseInfoPB lease_info;
-  MonoDelta lease_expiry;
+  MonoDelta time_to_lease_deadline;
 };
 
 class ObjectLockInfoManager {
