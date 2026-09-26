@@ -189,7 +189,7 @@ Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-
 
 - **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script.
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
-- Never force-push without explicit user permission; when authorized, prefer `--force-with-lease`.
+- Don't push by hand. `create-pr.sh` pushes through `git-push.sh`, which force-pushes with `--force-with-lease` by design (see `src/AGENTS.md`).
 - CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:

@@ -15,11 +15,11 @@ For the review *policy* (what counts as a backport, what to flag vs. ignore, byt
 
 ## Prerequisites
 
-This skill requires the Phorge MCP server. If the `user-phorge` MCP server is not available, instruct the user to set it up:
+This skill requires a Phorge MCP server (tools named `phabricator_*`). If none is available, instruct the user to set it up:
 
 1. **Generate a Conduit API token.** In Phorge, click on your profile in the top right → Settings → Conduit API Tokens → Generate Token.
 
-2. **Add the Phorge MCP server to Cursor.** Create or edit `~/.cursor/mcp.json` with these contents, replacing the API token with the one you just generated:
+2. **Add the Phorge MCP server to your agent.** Register this server definition, replacing the API token with the one you just generated (Claude Code: `claude mcp add`, or an `mcpServers` entry in `.mcp.json`; Cursor: `~/.cursor/mcp.json`):
 
    ```json
    {
@@ -42,7 +42,7 @@ This skill requires the Phorge MCP server. If the `user-phorge` MCP server is no
 
 ### Step 1: Fetch the backport revision
 
-Use the `user-phorge` MCP server to get the backport revision details:
+Use the Phorge MCP server to get the backport revision details:
 
 ```
 Tool: phabricator_revision_search

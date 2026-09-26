@@ -138,7 +138,7 @@ them.
 
 ## Do not touch PG-owned lines
 
-Try to keep PG-owned lines exactly byte-identical.  The one allowance,
+Keep PG-owned lines byte-identical.  The one allowance,
 when a YB change must wrap them, is an indentation-only change --
 `diff_file_with_upstream.py -b` and merge tooling can see through that.
 
