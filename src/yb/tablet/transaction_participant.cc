@@ -1674,10 +1674,15 @@ class TransactionParticipant::Impl
   }
 
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
-      const OpId& retryable_requests_flushed_op_id) EXCLUDES(mutex_) {
-    // Wait until the loader has finished iterating IntentsDB in order to have the correct bootstrap
-    // state threshold
-    RETURN_NOT_OK(loader_.WaitAllLoaded());
+      const OpId& retryable_requests_flushed_op_id,
+      WaitForTransactionsLoaded wait_for_load) EXCLUDES(mutex_) {
+    if (wait_for_load) {
+      // Wait until the loader has finished iterating IntentsDB in order to have the correct
+      // bootstrap state threshold.
+      RETURN_NOT_OK(loader_.WaitAllLoaded());
+    }
+    // Without waiting, GetMinReplayTxnFirstWriteTime returns the last safely computed value while
+    // transactions_loaded_ is still false.
     std::lock_guard lock(mutex_);
     return DoProcessRecentlyAppliedTransactions(
         retryable_requests_flushed_op_id, /*persist=*/false);
@@ -3305,8 +3310,9 @@ void TransactionParticipant::SetMinReplayTxnFirstWriteTimeUpdateCallback(
 }
 
 Result<HybridTime> TransactionParticipant::SimulateProcessRecentlyAppliedTransactions(
-    const OpId& retryable_requests_flushed_op_id) {
-  return impl_->SimulateProcessRecentlyAppliedTransactions(retryable_requests_flushed_op_id);
+    const OpId& retryable_requests_flushed_op_id, WaitForTransactionsLoaded wait_for_load) {
+  return impl_->SimulateProcessRecentlyAppliedTransactions(
+      retryable_requests_flushed_op_id, wait_for_load);
 }
 
 void TransactionParticipant::SetRetryableRequestsFlushedOpId(const OpId& flushed_op_id) {

@@ -14,6 +14,7 @@
 #include <chrono>
 #include <limits>
 #include <thread>
+#include <unordered_map>
 
 #include <gtest/gtest.h>
 
@@ -38,6 +39,7 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_test_util.h"
 
 #include "yb/fs/fs_manager.h"
@@ -77,6 +79,7 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
@@ -180,6 +183,7 @@ DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(enable_copy_retryable_requests_from_parent);
 DECLARE_bool(enable_flush_retryable_requests);
+DECLARE_bool(TEST_enable_remote_bootstrap);
 DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
@@ -373,6 +377,124 @@ TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {
   }, 30s, "All 6 child replicas initialized bootstrap state from copied file"));
   ASSERT_EQ(yes_sink.GetEventCount(), 6);
   ASSERT_EQ(no_sink.GetEventCount(), 0);
+}
+
+// The bootstrap state persisted into the children must describe the parent as of the split, not as
+// of the parent's last periodic flush (#30760): the split apply holds the Raft replica state lock,
+// so the flush that the WAL copy triggers cannot run before the children exist.
+class TabletSplitBootstrapStateITest : public TabletSplitITest {
+ protected:
+  struct StaleState {
+    OpId last_op_id;
+    HybridTime min_replay_txn_first_write_ht;
+  };
+
+  // Writes a batch of rows, persists the bootstrap state on every replica, writes another batch
+  // without persisting again (so a copy of the parent's file would now be stale), splits, and
+  // checks the file each child was given. With transactional_writes, each batch is one transaction
+  // whose APPLYING record follows its writes; otherwise the (transactional) table is written with
+  // single-shard writes and the parent has no transaction at all at the split.
+  void TestBootstrapStateWrittenToChildrenAtSplit(bool transactional_writes) {
+    // Every child must be created by its parent replica applying SPLIT_OP; a child received via
+    // remote bootstrap gets the file from the remote bootstrap source instead.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
+
+    CreateSingleTablet();
+    if (!transactional_writes) {
+      // The table itself stays transactional (created by SetUp), only the writes change.
+      SetIsolationLevel(IsolationLevel::NON_TRANSACTIONAL);
+    }
+    const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(
+        kDefaultNumRows, /*wait_for_intents=*/true));
+
+    const auto parent_peers = ASSERT_RESULT(ListTestTableActiveTabletPeers());
+    ASSERT_EQ(parent_peers.size(), 3);
+    std::unordered_map<std::string, StaleState> stale;  // Keyed by tserver uuid.
+    for (const auto& peer : parent_peers) {
+      ASSERT_OK(WaitFor([&peer]() -> bool {
+        WARN_NOT_OK(peer->FlushBootstrapState(), "Failed to flush bootstrap state");
+        return peer->TEST_HasBootstrapStateOnDisk();
+      }, 30s, "Parent bootstrap state flushed to disk on all replicas"));
+      const auto pb = ASSERT_RESULT(LoadBootstrapState(*peer));
+      stale[peer->permanent_uuid()] = StaleState {
+        .last_op_id = OpId::FromPB(pb.last_op_id()),
+        .min_replay_txn_first_write_ht = HybridTime::FromPB(pb.min_replay_txn_first_write_ht()),
+      };
+    }
+    ASSERT_OK(WriteRows(kDefaultNumRows, /*start_key=*/kDefaultNumRows + 1));
+    ASSERT_OK(WaitForTestTableIntentsApplied());
+
+    // The state a child inherits is that of its own parent replica, so make every replica catch
+    // up to the last write before splitting.
+    OpId last_write_op_id;
+    for (const auto& peer : parent_peers) {
+      last_write_op_id = std::max(
+          last_write_op_id, ASSERT_RESULT(peer->GetRetryableRequests()).GetMaxReplicatedOpId());
+    }
+    for (const auto& peer : parent_peers) {
+      ASSERT_GT(last_write_op_id, stale[peer->permanent_uuid()].last_op_id);
+      ASSERT_OK(WaitFor([&]() -> Result<bool> {
+        return VERIFY_RESULT(peer->GetRetryableRequests()).GetMaxReplicatedOpId() ==
+               last_write_op_id;
+      }, 30s, "All parent replicas replicated the last write"));
+    }
+
+    ASSERT_OK(SplitSingleTablet(split_hash_code));
+    ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(30s * kTimeMultiplier));
+
+    const auto child_peers = ASSERT_RESULT(ListTestTableActiveTabletPeers());
+    ASSERT_EQ(child_peers.size(), 6);  // 2 children x RF 3.
+    for (const auto& child : child_peers) {
+      SCOPED_TRACE(child->LogPrefix());
+      const auto& parent_stale = stale[child->permanent_uuid()];
+      const auto pb = ASSERT_RESULT(LoadBootstrapState(*child));
+
+      // The retryable requests part covers every write op the parent replicated.
+      const auto last_op_id = OpId::FromPB(pb.last_op_id());
+      EXPECT_EQ(last_op_id, last_write_op_id);
+      EXPECT_GT(last_op_id, parent_stale.last_op_id);
+
+      // The child's checkpoint carries SPLIT_OP as its flushed frontier.
+      const auto tablet = ASSERT_RESULT(child->shared_tablet());
+      const auto frontier = tablet->regular_db()->GetFlushedFrontier();
+      ASSERT_TRUE(frontier);
+      const auto* split_frontier = down_cast<docdb::ConsensusFrontier*>(frontier.get());
+      EXPECT_LT(last_op_id.index, split_frontier->op_id().index);
+      const auto split_ht = split_frontier->hybrid_time();
+
+      const auto min_replay_ht = HybridTime::FromPB(pb.min_replay_txn_first_write_ht());
+      if (transactional_writes) {
+        // The last transaction's APPLYING record comes after the last WRITE_OP, i.e. after the
+        // point this file lets a bootstrap start replaying from, so the bound stays at that
+        // transaction: above everything persisted before the second batch, below the split.
+        ASSERT_TRUE(min_replay_ht.is_valid());
+        EXPECT_NE(min_replay_ht, HybridTime::kMax);
+        EXPECT_LE(min_replay_ht, split_ht);
+        EXPECT_GT(min_replay_ht, parent_stale.min_replay_txn_first_write_ht);
+      } else {
+        // With no transaction to replay, the bound is the split time itself.
+        EXPECT_EQ(min_replay_ht, split_ht);
+      }
+    }
+  }
+
+  // Reads the peer's bootstrap state file, independently of the peer's own state manager.
+  static Result<consensus::TabletBootstrapStatePB> LoadBootstrapState(
+      const tablet::TabletPeer& peer) {
+    const auto& meta = peer.tablet_metadata();
+    tablet::TabletBootstrapStateManager manager(
+        peer.tablet_id(), meta->fs_manager(), meta->wal_dir());
+    RETURN_NOT_OK(manager.Init());
+    return manager.LoadFromDisk();
+  }
+};
+
+TEST_F(TabletSplitBootstrapStateITest, BootstrapStateWrittenToChildrenAtSplit) {
+  TestBootstrapStateWrittenToChildrenAtSplit(/*transactional_writes=*/true);
+}
+
+TEST_F(TabletSplitBootstrapStateITest, BootstrapStateWrittenToChildrenAtSplitNoTransactions) {
+  TestBootstrapStateWrittenToChildrenAtSplit(/*transactional_writes=*/false);
 }
 
 class TabletSplitNoBlockCacheITest : public TabletSplitITest {

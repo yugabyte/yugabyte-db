@@ -33,6 +33,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
 
@@ -47,6 +48,7 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/state_change_context.h"
 
 #include "yb/gutil/bind.h"
@@ -67,6 +69,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
+#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
@@ -754,6 +757,58 @@ class TabletBootstrapStateFlusherTest : public TabletPeerTest {
     }, 10s, Format("Wait for flush state to be $0", state));
   }
 };
+
+// BuildPB must describe a given retryable requests snapshot, and WritePBToDir must produce a file
+// that a manager for that directory loads back unchanged, without touching the tablet's own state.
+// This is the path the SPLIT_OP apply uses to give its children the split-time bootstrap state.
+TEST_F(TabletBootstrapStateFlusherTest, BuildAndWriteBootstrapStateToDir) {
+  // Writes carrying client and request ids, so that they are registered as retryable requests.
+  const auto client_id = ClientId::GenerateRandom();
+  const auto client_id_pair = client_id.ToUInt64Pair();
+  for (int i = 0; i < 3; ++i) {
+    WriteRequestPB req;
+    GenerateSequentialInsertRequest(&req);
+    req.set_client_id1(client_id_pair.first);
+    req.set_client_id2(client_id_pair.second);
+    req.set_request_id(i);
+    req.set_min_running_request_id(0);
+    ExecuteWrite(tablet_peer_.get(), req);
+  }
+
+  auto consensus = ASSERT_RESULT(tablet_peer_->GetRaftConsensus());
+  auto snapshot = ASSERT_RESULT(consensus->TakeSnapshotOfRetryableRequests());
+  ASSERT_TRUE(snapshot) << "Writes were not registered as retryable requests";
+  const auto max_replicated_op_id = snapshot->GetMaxReplicatedOpId();
+  ASSERT_GT(max_replicated_op_id.index, 0);
+
+  auto manager = tablet_peer_->bootstrap_state_manager();
+  auto pb = ASSERT_RESULT(manager->BuildPB(
+      ASSERT_RESULT(tablet_peer_->shared_tablet()), *snapshot,
+      WaitForTransactionsLoaded::kFalse));
+  ASSERT_EQ(OpId::FromPB(pb.last_op_id()), max_replicated_op_id);
+  ASSERT_EQ(pb.client_requests_size(), 1);
+
+  // Write it into a directory that is not this tablet's WAL dir and read it back through a manager
+  // for that directory.
+  auto* fs_manager = tablet()->metadata()->fs_manager();
+  auto* env = fs_manager->env();
+  const auto dir = JoinPathSegments(GetTestDataDirectory(), "other-wal-dir");
+  ASSERT_OK(env->CreateDir(dir));
+  ASSERT_OK(TabletBootstrapStateManager::WritePBToDir(env, dir, pb, "test: "));
+  TabletBootstrapStateManager other(tablet()->tablet_id(), fs_manager, dir);
+  ASSERT_OK(other.Init());
+  ASSERT_TRUE(other.has_file_on_disk());
+  ASSERT_EQ(ASSERT_RESULT(other.LoadFromDisk()).ShortDebugString(), pb.ShortDebugString());
+
+  // Writing again replaces the previous file.
+  pb.mutable_last_op_id()->set_index(pb.last_op_id().index() + 1);
+  ASSERT_OK(TabletBootstrapStateManager::WritePBToDir(env, dir, pb, "test: "));
+  ASSERT_EQ(ASSERT_RESULT(other.LoadFromDisk()).ShortDebugString(), pb.ShortDebugString());
+
+  // The tablet's own bootstrap state is untouched: nothing on disk, nothing marked as flushed.
+  ASSERT_FALSE(tablet_peer_->TEST_HasBootstrapStateOnDisk());
+  ASSERT_TRUE(ASSERT_RESULT(tablet_peer_->GetRetryableRequests()).HasUnflushedData());
+}
 
 TEST_F(TabletBootstrapStateFlusherTest, RejectFlushOrSubmitIfFlushingOrSubmitted) {
   TestThreadHolder thread_holder;
