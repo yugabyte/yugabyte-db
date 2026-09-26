@@ -4351,13 +4351,11 @@ void DisableConcurrentDDL(ExternalMiniClusterOptions* opts) {
   opts->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
 }
 
-// One row per BACKFILL statement at 10 rows/sec: 100 rows keep statements pending on the cached
-// backfill connection for ~10 s.
+// Backfill at 10 rows/sec. Callers must also set yb_fetch_row_limit = 1 on the database: the
+// write batch size alone does not bound a BACKFILL statement's read page.
 void ThrottleIndexBackfill(ExternalMiniClusterOptions* opts) {
   opts->extra_tserver_flags.emplace_back("--backfill_index_write_batch_size=1");
   opts->extra_tserver_flags.emplace_back("--backfill_index_rate_rows_per_sec=10");
-  // Without this, the first statement's 1024-row read page would backfill everything in one go.
-  opts->extra_tserver_flags.emplace_back("--ysql_yb_fetch_row_limit=1");
 }
 
 }  // namespace
@@ -4375,15 +4373,19 @@ class PgSchemaVersionMismatchBackfillTest : public LibPqTestBase {
 
 // A mismatch hit by BACKFILL INDEX must reach the CREATE INDEX client as 40001, not XX000.
 TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailure) {
-  auto conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 100) i"));
+  // One row per BACKFILL statement, so 100 rows keep statements pending on the cached backfill
+  // connection for ~10 s. A database setting applies after catalog preload, so backend startup
+  // still fetches catalogs in full pages.
+  ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE $0 SET yb_fetch_row_limit = 1", kDatabaseName));
 
   // Connect to every tserver first so relcache init finishes before the backfill starts.
   std::vector<PGConn> ts_conns;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ts_conns.push_back(ASSERT_RESULT(
-        ConnectToTsForDB(*cluster_->tablet_server(i), "yugabyte")));
+        ConnectToTsForDB(*cluster_->tablet_server(i), kDatabaseName)));
   }
 
   Status create_index_status;
@@ -4412,7 +4414,7 @@ TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailu
   }, MonoDelta::FromSeconds(60 * kTimeMultiplier), "backfill completed a chunk"));
 
   // Another node, so PG-level locks don't queue the ALTER behind CREATE INDEX.
-  auto ddl_conn = ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(1), "yugabyte"));
+  auto ddl_conn = ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(1), kDatabaseName));
   // Fail the DDL after the DocDB schema change: the rollback leaves the schema version bumped with
   // no catalog version bump, so the backfill connection never invalidates its now-stale cache.
   ASSERT_OK(ddl_conn.Execute("SET yb_test_fail_next_ddl = 1"));
