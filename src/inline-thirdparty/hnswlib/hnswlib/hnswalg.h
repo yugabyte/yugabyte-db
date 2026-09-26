@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <list>
 #include <tuple>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -46,6 +47,14 @@ struct InternalParameters {
 template<typename dist_t, typename label_t>
 class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
  public:
+    // YB: per-thread entry node hint (internal id, -1 = none). When set, addPoint also searches
+    // for neighbor candidates starting from this node, and searchKnn starts from it instead of
+    // the global entry point. Used to keep far apart clusters (e.g. tenants) reachable.
+    static int& entryHint() {
+        static thread_local int hint = -1;
+        return hint;
+    }
+
     static const tableint MAX_LABEL_OPERATION_LOCKS = 65536;
     static const unsigned char DELETE_MARK = 0x01;
 
@@ -1287,6 +1296,33 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                 }
             }
 
+            // YB: descend greedily from the entry hint as well, see entryHint().
+            const int hint = entryHint();
+            const bool use_hint = hint >= 0 && static_cast<tableint>(hint) != cur_c;
+            tableint hint_obj = use_hint ? static_cast<tableint>(hint) : 0;
+            if (use_hint) {
+                dist_t hint_dist = fstdistfunc_(data_point, getDataByInternalId(hint_obj), dist_func_param_);
+                for (int level = element_levels_[hint]; level > std::min(curlevel, maxlevelcopy); level--) {
+                    bool changed = true;
+                    while (changed) {
+                        changed = false;
+                        std::unique_lock <std::mutex> lock(link_list_locks_[hint_obj]);
+                        unsigned int *data = get_linklist(hint_obj, level);
+                        int size = getListCount(data);
+                        tableint *datal = (tableint *) (data + 1);
+                        for (int i = 0; i < size; i++) {
+                            tableint cand = datal[i];
+                            dist_t d = fstdistfunc_(data_point, getDataByInternalId(cand), dist_func_param_);
+                            if (d < hint_dist) {
+                                hint_dist = d;
+                                hint_obj = cand;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+
             bool epDeleted = isMarkedDeleted(enterpoint_copy);
             for (int level = std::min(curlevel, maxlevelcopy); level >= 0; level--) {
                 if (level > maxlevelcopy || level < 0)  // possible?
@@ -1294,6 +1330,34 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
                 std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates = searchBaseLayer(
                         currObj, data_point, level);
+                if (use_hint && level <= element_levels_[hint]) {
+                    // YB: merge the candidates found from the entry hint.
+                    auto hint_candidates = searchBaseLayer(hint_obj, data_point, level);
+                    std::vector<std::pair<dist_t, tableint>> all;
+                    all.reserve(top_candidates.size() + hint_candidates.size());
+                    while (!top_candidates.empty()) {
+                        all.push_back(top_candidates.top());
+                        top_candidates.pop();
+                    }
+                    dist_t best = std::numeric_limits<dist_t>::max();
+                    while (!hint_candidates.empty()) {
+                        auto candidate = hint_candidates.top();
+                        hint_candidates.pop();
+                        if (candidate.first < best) {
+                            best = candidate.first;
+                            hint_obj = candidate.second;
+                        }
+                        all.push_back(candidate);
+                    }
+                    std::unordered_set<tableint> seen;
+                    for (const auto& candidate : all) {
+                        if (seen.insert(candidate.second).second) {
+                            top_candidates.push(candidate);
+                        }
+                    }
+                    while (top_candidates.size() > ef_construction_)
+                        top_candidates.pop();
+                }
                 if (epDeleted) {
                     top_candidates.emplace(fstdistfunc_(data_point, getDataByInternalId(enterpoint_copy), dist_func_param_), enterpoint_copy);
                     if (top_candidates.size() > ef_construction_)
@@ -1325,9 +1389,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         if (cur_element_count == 0) return result;
 
         tableint currObj = enterpoint_node_;
-        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
+        int start_level = maxlevel_;
+        if (entryHint() >= 0) {  // YB: start from the entry hint, see entryHint().
+            currObj = static_cast<tableint>(entryHint());
+            start_level = element_levels_[currObj];
+        }
+        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(currObj), dist_func_param_);
 
-        for (int level = maxlevel_; level > 0; level--) {
+        for (int level = start_level; level > 0; level--) {
             bool changed = true;
             while (changed) {
                 changed = false;

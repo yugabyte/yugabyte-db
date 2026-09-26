@@ -36,6 +36,12 @@ DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
 DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
     "Whether to keep new generated blocks in cache after YbHnsw index is built.");
 
+DEFINE_RUNTIME_uint32(vector_index_tenant_dims, 0,
+    "Prototype: when non zero, the last vector_index_tenant_dims coordinates of each vector are "
+    "treated as a tenant code. Each vector index chunk keeps an entry point per tenant, used when "
+    "inserting and searching vectors of that tenant. Only affects chunks created after the flag "
+    "is set.");
+
 #define YB_MISALIGNED_STORE(ptr, type, field, value) \
   MisalignedAssign<decltype(type::field)>(ptr, offsetof(type, field), value)
 
@@ -562,6 +568,7 @@ Status YbHnsw::Import(
   YbHnswHnswlibIndexAdapter inspector(index, payloads);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  BuildTenantEntries();
   return Status::OK();
 }
 
@@ -570,7 +577,48 @@ Status YbHnsw::Init(const std::string& path) {
   RETURN_NOT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
   file_block_cache_ = std::make_unique<FileBlockCache>(*block_cache_, std::move(file));
   header_ = VERIFY_RESULT(file_block_cache_->Load());
+  BuildTenantEntries();
   return Status::OK();
+}
+
+size_t TenantDims(size_t dimensions) {
+  size_t tenant_dims = FLAGS_vector_index_tenant_dims;
+  return tenant_dims < dimensions ? tenant_dims : 0;
+}
+
+std::string TenantKey(const void* coordinates, size_t dimensions, size_t tenant_dims) {
+  const auto* begin = static_cast<const char*>(coordinates) +
+                      (dimensions - tenant_dims) * sizeof(YbHnsw::CoordinateType);
+  return std::string(begin, tenant_dims * sizeof(YbHnsw::CoordinateType));
+}
+
+// Vectors are ordered by level, from the highest to the lowest, so the first vector of a tenant
+// is the tenant's vector at the highest level.
+// TODO(vector_index) Store the tenant entries in the file instead of scanning all vectors.
+void YbHnsw::BuildTenantEntries() {
+  tenant_entries_.clear();
+  tenant_dims_ = TenantDims(header_.dimensions);
+  if (!tenant_dims_) {
+    return;
+  }
+  SearchCache cache;
+  SearchCacheScope scope(cache, *this);
+  const auto size = header_.layers.front().size;
+  for (VectorNo vector = 0; vector != size; ++vector) {
+    tenant_entries_.emplace(
+        TenantKey(cache.CoordinatesPtr(vector), header_.dimensions, tenant_dims_), vector);
+  }
+  LOG(INFO) << "YbHnsw: " << tenant_entries_.size() << " tenant entries for " << size
+            << " vectors";
+}
+
+size_t YbHnsw::VectorLevel(VectorNo vector) const {
+  for (auto level = header_.max_level; level > 0; --level) {
+    if (vector < header_.layers[level].size) {
+      return level;
+    }
+  }
+  return 0;
 }
 
 YbHnsw::SearchResult YbHnsw::Search(
@@ -598,10 +646,18 @@ YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext&
 std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
     const std::byte* query_vector, SearchCache& cache) const {
   auto best_vector = header_.entry;
+  auto start_level = header_.max_level;
+  if (tenant_dims_) {
+    auto it = tenant_entries_.find(TenantKey(query_vector, header_.dimensions, tenant_dims_));
+    if (it != tenant_entries_.end()) {
+      best_vector = it->second;
+      start_level = VectorLevel(best_vector);
+    }
+  }
   auto best_dist = Distance(query_vector, best_vector, cache);
   VLOG_WITH_FUNC(4) << "best_vector: " << best_vector << ", best_dist: " << best_dist;
 
-  for (auto level = header_.max_level; level > 0;) {
+  for (auto level = start_level; level > 0;) {
     auto updated = false;
     VLOG_WITH_FUNC(4)
         << "level: " << level << ", best_vector: " << best_vector << ", best_dist: " << best_dist;
