@@ -3314,11 +3314,12 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // when its version-keyed slot is warm. conn3 connects right after 200 version
   // bumps, so the regular slot's warmth is timing-dependent -> 5 (hit) or 6 (miss).
   // The same warmth timing applies in CM mode, where the #30148 extra RPC adds a
-  // constant +1 -> 6 (hit) or 7 (miss). The default global views (#30591) add one
-  // more relcache-rebuild read in CM mode -> up to 8.
+  // constant +1 -> 6 (hit) or 7 (miss). Catalog prefetch batching (#34114) can
+  // combine one relcache-rebuild read, while the default global views (#30591)
+  // can add one -> up to 8.
   auto rebuild_delta = master_read_count_after - master_read_count_before;
   if (enable_ysql_conn_mgr) {
-    ASSERT_GE(rebuild_delta, 7);
+    ASSERT_GE(rebuild_delta, 6);
     ASSERT_LE(rebuild_delta, 8);
   } else {
     ASSERT_GE(rebuild_delta, 6);
