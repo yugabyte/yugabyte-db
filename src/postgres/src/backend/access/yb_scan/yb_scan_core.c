@@ -1185,8 +1185,10 @@ YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max)
 /*
  * Determine whether an equality between two types needs further recheck.  For
  * now, this only flags cases where the storage column type is smaller than the
- * value type.  YbIsScanCompatible and YbIsValueOutOfRange both use it, so that
- * the bind check and the out-of-range check agree on these pairs.
+ * value type.  Through YbIsValueOutOfRange, the same pairs also decide whether
+ * YbIsScanCompatible binds a scalar key of any strategy, whether an IN list
+ * element or tuple is dropped, and whether an equality makes the scan
+ * unsatisfiable.
  *
  * TODO(jason): check if any other type combos need checking.  float4 and
  * float8 look suspicious.

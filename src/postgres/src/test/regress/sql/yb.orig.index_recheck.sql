@@ -99,9 +99,12 @@ PREPARE t_int_i2_eq(int4) AS SELECT * FROM t_int WHERE i2 = $1;
 :explain_analyze EXECUTE t_int_i2_eq(32768);
 DEALLOCATE t_int_i2_eq;
 RESET plan_cache_mode;
--- these are each out of range, so recheck is required
+-- these inequalities are out of range, so their key is not bound and recheck is
+-- required
 :explain_analyze SELECT * FROM t_int WHERE i2 < 32768;
 :explain_analyze SELECT * FROM t_int WHERE i2 > 32768;
+-- the out-of-range element is dropped from the IN list, so no recheck is
+-- required
 :explain_analyze SELECT * FROM t_int WHERE i2 IN (1, 2, 32767, 32768);
 
 -- these are each within range, so no recheck is required
@@ -114,9 +117,12 @@ RESET plan_cache_mode;
 -- executor decides whether to push the aggregate down
 :explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
 SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
--- these are each out of range, so recheck is required
+-- these inequalities are out of range, so their key is not bound and recheck is
+-- required
 :explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
 :explain_analyze SELECT * FROM t_int WHERE i4 < 2147483648;
+-- the out-of-range element is dropped from the IN list, so no recheck is
+-- required
 :explain_analyze SELECT * FROM t_int WHERE i4 IN (1, 2, 2147483647, 2147483648);
 
 -- these are each within range, so no recheck is required
