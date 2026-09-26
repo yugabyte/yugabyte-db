@@ -2331,13 +2331,6 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 {
 	Relation	relation = scan_plan->target_relation;
 
-	/* An equality that no row can match makes the scan unsatisfiable. */
-	for (int i = 0; i < ybScan->nkeys; i++)
-	{
-		if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
-			return false;
-	}
-
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
 	 * attribute (i.e. DocDB column).
@@ -2419,6 +2412,9 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 				ybScan->needs_recheck = true;
 				continue;
 			}
+
+			if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
+				return false;
 
 			if (!YbCheckScanTypes(ybScan, scan_plan, i))
 			{
@@ -2925,6 +2921,15 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 		 * -- needed for hash code search below.
 		 */
 		Assert(idx > 0);
+
+		/*
+		 * During a precheck, a runtime key holds (Datum) 0 until it is
+		 * evaluated, which is in range for every integer type.  So only a
+		 * constant can make the scan unsatisfiable here, and that holds at
+		 * execution too.
+		 */
+		if (ybIsOutOfRangeEquality(ybScan, scan_plan, i))
+			return false;
 
 		/* Do not bind more than one condition to a column */
 		if (is_column_bound[idx] ||

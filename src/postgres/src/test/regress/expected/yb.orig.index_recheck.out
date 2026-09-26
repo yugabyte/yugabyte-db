@@ -399,6 +399,26 @@ RESET plan_cache_mode;
    Index Cond: (i4 = '2147483648'::bigint)
 (2 rows)
 
+-- the same with the value from a subquery, which the check that decides
+-- aggregate pushdown runs before
+:explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Index Only Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = $0)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(7 rows)
+
+SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+ count 
+-------
+     0
+(1 row)
+
 -- these are each out of range, so recheck is required
 :explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
                          QUERY PLAN                         
