@@ -12,6 +12,7 @@
 //
 #include "yb/util/decimal.h"
 
+#include <cstring>
 #include <iomanip>
 #include <limits>
 #include <vector>
@@ -45,9 +46,19 @@ void Decimal::clear() {
   digits_ = {};
   exponent_ = VarInt(0);
   is_positive_ = true;
+  special_ = DecimalSpecial::kFinite;
 }
 
 string Decimal::ToDebugString() const {
+  if (IsNaN()) {
+    return "[ NaN ]";
+  }
+  if (IsPosInfinity()) {
+    return "[ Infinity ]";
+  }
+  if (IsNegInfinity()) {
+    return "[ -Infinity ]";
+  }
   string output = "[ ";
   output += is_positive_ ? "+" : "-";
   output += " 10^";
@@ -61,6 +72,10 @@ string Decimal::ToDebugString() const {
 }
 
 Status Decimal::ToPointString(string* string_val, const int max_length) const {
+  if (IsSpecial()) {
+    *string_val = ToString();
+    return Status::OK();
+  }
   if (digits_.empty()) {
     *string_val = "0";
     return Status::OK();
@@ -110,6 +125,9 @@ Status Decimal::ToPointString(string* string_val, const int max_length) const {
 }
 
 string Decimal::ToScientificString() const {
+  if (IsSpecial()) {
+    return ToString();
+  }
   if (digits_.empty()) {
     return "0";
   }
@@ -132,6 +150,15 @@ string Decimal::ToScientificString() const {
 }
 
 string Decimal::ToString() const {
+  if (IsNaN()) {
+    return "NaN";
+  }
+  if (IsPosInfinity()) {
+    return "Infinity";
+  }
+  if (IsNegInfinity()) {
+    return "-Infinity";
+  }
   string output;
   if (Decimal::ToPointString(&output).ok()) {
     return output;
@@ -141,10 +168,23 @@ string Decimal::ToString() const {
 }
 
 Result<long double> Decimal::ToDouble() const {
+  if (IsNaN()) {
+    return std::numeric_limits<long double>::quiet_NaN();
+  }
+  if (IsPosInfinity()) {
+    return std::numeric_limits<long double>::infinity();
+  }
+  if (IsNegInfinity()) {
+    return -std::numeric_limits<long double>::infinity();
+  }
   return CheckedStold(ToString());
 }
 
 Result<VarInt> Decimal::ToVarInt() const {
+  if (IsSpecial()) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "Cannot convert special Decimal into integer: $0", ToString());
+  }
   string string_val;
   RETURN_NOT_OK(ToPointString(&string_val, kUnlimitedMaxLength));
 
@@ -156,11 +196,52 @@ Result<VarInt> Decimal::ToVarInt() const {
   return VarInt::CreateFromString(string_val);
 }
 
+namespace {
+
+bool EqualsIgnoreCase(const Slice& slice, const char* literal) {
+  size_t len = strlen(literal);
+  if (slice.size() != len) {
+    return false;
+  }
+  for (size_t i = 0; i < len; ++i) {
+    char c = slice[i];
+    char e = literal[i];
+    if (c >= 'A' && c <= 'Z') {
+      c = static_cast<char>(c - 'A' + 'a');
+    }
+    if (e >= 'A' && e <= 'Z') {
+      e = static_cast<char>(e - 'A' + 'a');
+    }
+    if (c != e) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
 Status Decimal::FromString(const Slice &slice) {
   if (slice.empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "Cannot decode empty slice to Decimal: $0", slice.ToString());
   }
+  // PostgreSQL-compatible special value tokens.
+  if (EqualsIgnoreCase(slice, "NaN")) {
+    *this = NaN();
+    return Status::OK();
+  }
+  if (EqualsIgnoreCase(slice, "Infinity") || EqualsIgnoreCase(slice, "+Infinity") ||
+      EqualsIgnoreCase(slice, "Inf") || EqualsIgnoreCase(slice, "+Inf")) {
+    *this = PosInfinity();
+    return Status::OK();
+  }
+  if (EqualsIgnoreCase(slice, "-Infinity") || EqualsIgnoreCase(slice, "-Inf")) {
+    *this = NegInfinity();
+    return Status::OK();
+  }
+
+  special_ = DecimalSpecial::kFinite;
   is_positive_ = slice[0] != '-';
   size_t i = 0;
   if (slice[0] == '+' || slice[0] == '-') {
@@ -220,14 +301,15 @@ string StringFromDouble(double double_val, int precision_limit = kPrecisionLimit
 
 Status Decimal::FromDouble(double double_val) {
   string str = StringFromDouble(double_val);
-  if (str == "nan") {
-    return STATUS(Corruption, "Cannot convert nan to Decimal");
-  } else if (str == "-nan") {
-    return STATUS(Corruption, "Cannot convert -nan to Decimal");
+  if (str == "nan" || str == "-nan") {
+    *this = NaN();
+    return Status::OK();
   } else if (str == "inf") {
-    return STATUS(Corruption, "Cannot convert inf to Decimal");
+    *this = PosInfinity();
+    return Status::OK();
   } else if (str == "-inf") {
-    return STATUS(Corruption, "Cannot convert -inf to Decimal");
+    *this = NegInfinity();
+    return Status::OK();
   }
   return FromString(str);
 }
@@ -237,10 +319,33 @@ Status Decimal::FromVarInt(const VarInt &varint_val) {
 }
 
 bool Decimal::is_integer() const {
+  if (IsSpecial()) {
+    return false;
+  }
   return digits_.empty() || exponent_ >= VarInt(static_cast<int64_t>(digits_.size()));
 }
 
 int Decimal::CompareTo(const Decimal &other) const {
+  // PostgreSQL numeric ordering: -Infinity < finite < +Infinity < NaN, with NaN = NaN.
+  if (IsNaN() || other.IsNaN()) {
+    if (IsNaN() && other.IsNaN()) {
+      return 0;
+    }
+    return IsNaN() ? 1 : -1;
+  }
+  if (IsNegInfinity() || other.IsNegInfinity()) {
+    if (IsNegInfinity() && other.IsNegInfinity()) {
+      return 0;
+    }
+    return IsNegInfinity() ? -1 : 1;
+  }
+  if (IsPosInfinity() || other.IsPosInfinity()) {
+    if (IsPosInfinity() && other.IsPosInfinity()) {
+      return 0;
+    }
+    return IsPosInfinity() ? 1 : -1;
+  }
+
   if (is_positive_ != other.is_positive_) {
     return static_cast<int>(is_positive_) - static_cast<int>(other.is_positive_);
   }
@@ -286,6 +391,16 @@ std::string EncodeToDigitPairs(const std::vector<uint8_t>& digits) {
 }
 
 string Decimal::EncodeToComparable() const {
+  // Specials use reserved single-byte sentinels for QLValue / hash-key encoding.
+  if (IsNegInfinity()) {
+    return string(1, kDecimalNegInfinitySentinel);
+  }
+  if (IsPosInfinity()) {
+    return string(1, kDecimalPosInfinitySentinel);
+  }
+  if (IsNaN()) {
+    return string(1, kDecimalNaNSentinel);
+  }
   // Zero is encoded to the special value 128.
   if (digits_.empty()) {
     return string(1, static_cast<char>(128));
@@ -340,12 +455,29 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
   if (slice.empty()) {
     return STATUS(Corruption, "Cannot decode Decimal from empty slice.");
   }
+  // Reserved QLValue / hash sentinels for NaN and +/- Infinity.
+  if (slice[0] == kDecimalNegInfinitySentinel) {
+    *this = NegInfinity();
+    *num_decoded_bytes = 1;
+    return Status::OK();
+  }
+  if (slice[0] == kDecimalPosInfinitySentinel) {
+    *this = PosInfinity();
+    *num_decoded_bytes = 1;
+    return Status::OK();
+  }
+  if (slice[0] == kDecimalNaNSentinel) {
+    *this = NaN();
+    *num_decoded_bytes = 1;
+    return Status::OK();
+  }
   // Zero is specially decoded from the value 128.
   if (slice[0] == 128) {
     clear();
     *num_decoded_bytes = 1;
     return Status::OK();
   }
+  special_ = DecimalSpecial::kFinite;
   // The first bit is enough to decode the sign.
   is_positive_ = slice[0] >= 128;
   // We have to complement everything if negative, so we are making a copy.
@@ -372,6 +504,11 @@ Status Decimal::DecodeFromComparable(const Slice& slice) {
 }
 
 string Decimal::EncodeToSerializedBigDecimal(bool* is_out_of_range) const {
+  // Cassandra BigDecimal has no NaN / Infinity representation.
+  if (IsSpecial()) {
+    *is_out_of_range = true;
+    return std::string();
+  }
   // Note that BigDecimal's scale is not the same as our exponent, but related by the following:
   VarInt varint_scale = VarInt(static_cast<int64_t>(digits_.size())) - exponent_;
   // Must use 4 bytes for the two's complement encoding of the scale.
@@ -425,18 +562,54 @@ Status Decimal::DecodeFromSerializedBigDecimal(Slice slice) {
     digits_[i] = mantissa_str[i] - '0';
   }
   exponent_ = VarInt(static_cast<int64_t> (digits_.size())) - scale;
+  special_ = DecimalSpecial::kFinite;
   make_canonical();
   return Status::OK();
 }
 
+Decimal Decimal::operator-() const {
+  if (IsNaN()) {
+    return NaN();
+  }
+  if (IsPosInfinity()) {
+    return NegInfinity();
+  }
+  if (IsNegInfinity()) {
+    return PosInfinity();
+  }
+  return Decimal(digits_, exponent_, !is_positive_);
+}
+
+const Decimal& Decimal::Negate() {
+  if (IsNaN()) {
+    return *this;
+  }
+  if (IsPosInfinity()) {
+    special_ = DecimalSpecial::kNegInfinity;
+    is_positive_ = false;
+    return *this;
+  }
+  if (IsNegInfinity()) {
+    special_ = DecimalSpecial::kPosInfinity;
+    is_positive_ = true;
+    return *this;
+  }
+  is_positive_ = !is_positive_;
+  return *this;
+}
+
 bool Decimal::IsIdenticalTo(const Decimal &other) const {
   return
+      special_ == other.special_ &&
       is_positive_ == other.is_positive_ &&
       exponent_ == other.exponent_ &&
       digits_ == other.digits_;
 }
 
 bool Decimal::is_canonical() const {
+  if (IsSpecial()) {
+    return digits_.empty() && exponent_ == VarInt(0);
+  }
   if (digits_.empty()) {
     return is_positive_ && exponent_ == VarInt(0);
   }
@@ -444,6 +617,11 @@ bool Decimal::is_canonical() const {
 }
 
 void Decimal::make_canonical() {
+  if (IsSpecial()) {
+    digits_.clear();
+    exponent_ = VarInt(0);
+    return;
+  }
   if (is_canonical()) {
     return;
   }
@@ -478,6 +656,10 @@ Decimal DecimalFromComparable(const std::string& str) {
 // Canonicalize result
 
 Decimal Decimal::operator+(const Decimal& other) const {
+  // Arithmetic on specials is not used by DocDB storage paths; return NaN.
+  if (IsSpecial() || other.IsSpecial()) {
+    return NaN();
+  }
   Decimal decimal(digits_, exponent_, is_positive_);
   Decimal other1(other.digits_, other.exponent_, other.is_positive_);
 
