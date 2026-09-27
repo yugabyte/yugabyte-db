@@ -181,12 +181,14 @@ TEST_F(PgRelcachePreloadScratchTest, YB_DISABLE_TEST_ON_MACOS(DecodedRowsNotLive
   }
 
   auto fresh = ASSERT_RESULT(ConnectToDB("wide"));
-  // Allocations made while decoding a scanned row happen under
-  // ybc_getnext_heaptuple. The catcache preload keeps its decoded rows until the
-  // startup transaction commits, so it is excluded.
+  // Rows decoded by the relcache preload's full scans are allocated under
+  // ybc_getnext_heaptuple. Rows decoded by the catcache preload
+  // (YbPreloadCatalogCache) and by single-relation lookups (ScanPgRelation) are
+  // not part of those scans, so they are excluded.
   constexpr auto kDecodedRowsFilter =
       "call_stack LIKE '%ybc_getnext_heaptuple%' "
-      "AND call_stack NOT LIKE '%YbPreloadCatalogCache%'";
+      "AND call_stack NOT LIKE '%YbPreloadCatalogCache%' "
+      "AND call_stack NOT LIKE '%ScanPgRelation%'";
   const auto decoded_bytes = ASSERT_RESULT(fresh.FetchRow<int64_t>(Format(
       "SELECT COALESCE(SUM(estimated_bytes), 0)::int8 FROM yb_backend_heap_snapshot_peak() "
       "WHERE $0", kDecodedRowsFilter)));
@@ -194,7 +196,8 @@ TEST_F(PgRelcachePreloadScratchTest, YB_DISABLE_TEST_ON_MACOS(DecodedRowsNotLive
       "SELECT SUM(estimated_bytes)::int8 FROM yb_backend_heap_snapshot_peak()"));
   const auto pid = ASSERT_RESULT(fresh.FetchRow<int32_t>("SELECT pg_backend_pid()"));
   LOG(INFO) << "Fresh backend startup peak: heap " << peak_bytes / 1_KB << " kB, of which "
-            << decoded_bytes / 1_KB << " kB are decoded relcache preload rows; VmHWM "
+            << decoded_bytes / 1_KB
+            << " kB are rows decoded by the relcache preload's full scans; VmHWM "
             << ASSERT_RESULT(PeakRssMb(pid)) << " MB";
   // Keeping every row until the build ends leaves about 16 MB of them live at the
   // peak for this schema. Freeing each row leaves at most one, well under 1 MB
