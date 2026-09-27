@@ -47,9 +47,11 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "utils/rls.h"
 #include "utils/syscache.h"
 
 static void yb_index_check_internal(Oid indexoid);
+static void validate_index_check_rls(Oid baserelid);
 
 #define IndRelDetail(indexrel)	\
 	"index: '%s'", RelationGetRelationName(indexrel)
@@ -644,6 +646,8 @@ yb_index_check_internal(Oid indexoid)
 		return;
 	}
 
+	validate_index_check_rls(indexrel->rd_index->indrelid);
+
 	Relation baserel = RelationIdGetRelation(indexrel->rd_index->indrelid);
 
 	/* Check for spurious index rows */
@@ -673,6 +677,28 @@ yb_index_check_internal(Oid indexoid)
 
 	RelationClose(indexrel);
 	RelationClose(baserel);
+}
+
+/*
+ * yb_index_check_internal()'s scans bypass the rewriter and therefore RLS, so
+ * reject callers for whom RLS would filter rows on baserelid.
+ *
+ * 2024.2 has no table locks, so a concurrent ENABLE/FORCE ROW LEVEL SECURITY,
+ * OWNER TO, or role change can take effect after this check passes; the scan
+ * still proceeds.
+ */
+static void
+validate_index_check_rls(Oid baserelid)
+{
+	if (check_enable_rls(baserelid,
+						 InvalidOid /* checkAsUser = current user */ ,
+						 true) == RLS_ENABLED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied for function yb_index_check"),
+				 errdetail("Row-level security is enabled on table \"%s\", and the current user has insufficient privileges to bypass it.",
+						   get_rel_name(baserelid)),
+				 errhint("User must be a superuser, owner of the table, or have the BYPASSRLS privilege to check indexes on tables with row-level security enabled.")));
 }
 
 Datum
