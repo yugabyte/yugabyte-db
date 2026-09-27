@@ -37,6 +37,7 @@ set(CLIENT_SRCS
   atomic_request_id_allocator.cc
   batcher.cc
   bitmap_request_id_allocator.cc
+  block_request_id_allocator.cc
   client.cc
   client_builder-internal.cc
   client_error.cc
@@ -52,6 +53,7 @@ set(CLIENT_SRCS
   namespace_alterer.cc
   permissions.cc
   request_id_allocator.cc
+  retryable_request_tracker.cc
   session.cc
   sharded_request_id_allocator.cc
   schema.cc
@@ -147,7 +149,7 @@ ADD_YB_TEST(ql-map-test)
 ADD_YB_TEST(ql-tablet-test)
 ADD_YB_TEST(ql-transaction-test)
 ADD_YB_TEST(ql-stress-test)
-ADD_YB_TEST(request_id_allocator-test)
+ADD_YB_TEST(block_request_id_allocator-test)
 ADD_YB_TEST(seal-txn-test)
 ADD_YB_TEST(snapshot-txn-test)
 ADD_YB_TEST(snapshot_schedule-test)

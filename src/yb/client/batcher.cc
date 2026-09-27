@@ -720,13 +720,13 @@ server::Clock* Batcher::Clock() const {
   return client_->Clock();
 }
 
-ShardedAtomicRequestIdAllocation Batcher::NextRequestIdAndMinRunningRequestId() {
+RequestIdAllocation Batcher::NextRequestIdAndMinRunningRequestId() {
   return client_->NextRequestIdAndMinRunningRequestId();
 }
 
 void Batcher::RequestsFinished() {
   for (const auto& [id, details] : retryable_requests_) {
-    details.shard->Finish(id);
+    details.allocator->Finish(details);
   }
 }
 

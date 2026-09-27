@@ -2625,8 +2625,8 @@ const CloudInfoPB& YBClient::cloud_info() const {
   return data_->cloud_info_pb_;
 }
 
-internal::ShardedAtomicRequestIdAllocation YBClient::NextRequestIdAndMinRunningRequestId() {
-  return data_->request_id_allocator_.Next();
+internal::RequestIdAllocation YBClient::NextRequestIdAndMinRunningRequestId() {
+  return data_->request_id_allocator_->Next();
 }
 
 void YBClient::AddMetaCacheInfo(JsonWriter* writer) const {

@@ -61,10 +61,6 @@ class AtomicRequestIdAllocatorImpl {
     Process();
   }
 
-  const ClientId& client_id() const {
-    return client_id_;
-  }
-
   RetryableRequestId min_running() const {
     return min_running_id_.load();
   }
@@ -134,10 +130,6 @@ class AtomicRequestIdAllocatorImpl {
     min_running_id_.store(min_running);
   }
 
-  // Sent with the requests of this allocator: the server deduplicates by client id and request
-  // id together, so the ids of different allocators are unrelated.
-  const ClientId client_id_ = ClientId::GenerateRandom();
-
   std::atomic<RetryableRequestId> next_id_{0};
   std::atomic<RetryableRequestId> min_running_id_{0};
 
@@ -161,10 +153,6 @@ AtomicRequestIdAllocator::AtomicRequestIdAllocator()
 }
 
 AtomicRequestIdAllocator::~AtomicRequestIdAllocator() = default;
-
-const ClientId& AtomicRequestIdAllocator::client_id() const {
-  return impl_->client_id();
-}
 
 AtomicRequestIdAllocation AtomicRequestIdAllocator::Next() {
   return impl_->Next();

@@ -47,8 +47,6 @@ class AtomicRequestIdAllocatorImpl;
 /// that cleanup.
 class AtomicRequestIdAllocator {
  public:
-  /// Generates the client id to send with the requests of this allocator. The server deduplicates
-  /// by client id and request id together, so ids of different allocators are unrelated.
   AtomicRequestIdAllocator();
 
   /// All allocated ids should be finished before destruction.
@@ -56,8 +54,6 @@ class AtomicRequestIdAllocator {
 
   AtomicRequestIdAllocator(const AtomicRequestIdAllocator&) = delete;
   void operator=(const AtomicRequestIdAllocator&) = delete;
-
-  const ClientId& client_id() const;
 
   AtomicRequestIdAllocation Next();
 

@@ -39,8 +39,8 @@
 #include <unordered_set>
 #include <vector>
 
-#include "yb/client/sharded_request_id_allocator.h"
 #include "yb/client/client.h"
+#include "yb/client/request_id_allocator.h"
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
@@ -645,10 +645,9 @@ class YBClient::Data {
   const std::string log_prefix_;
 
   // Allocates ids for the retryable write requests, so the server could track different RPCs
-  // related to the same write operation and reject duplicates. Sharded, so that the threads do
-  // not contend for the ids and an unfinished request holds back the min running id of its shard
-  // only. Each shard has its own client id, hence its own id space on the server.
-  internal::ShardedAtomicRequestIdAllocator request_id_allocator_;
+  // related to the same write operation and reject duplicates. The implementation is picked by
+  // FLAGS_client_request_id_allocator.
+  const std::unique_ptr<internal::RequestIdAllocator> request_id_allocator_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 

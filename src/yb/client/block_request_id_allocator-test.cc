@@ -18,7 +18,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "yb/client/request_id_allocator.h"
+#include "yb/client/block_request_id_allocator.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/test_util.h"
@@ -30,15 +30,15 @@ namespace yb {
 namespace client {
 namespace internal {
 
-class RequestIdAllocatorTest : public YBTest {
+class BlockRequestIdAllocatorTest : public YBTest {
 };
 
-TEST_F(RequestIdAllocatorTest, Basic) {
+TEST_F(BlockRequestIdAllocatorTest, Basic) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_block_size) = 8;
-  RequestIdAllocator allocator;
+  BlockRequestIdAllocator allocator;
 
   std::unordered_set<RetryableRequestId> ids;
-  std::vector<RequestIdAllocation> allocations;
+  std::vector<BlockRequestIdAllocation> allocations;
   RetryableRequestId prev_min = 0;
   for (int i = 0; i != 100; ++i) {
     auto allocation = allocator.Next();
@@ -50,7 +50,7 @@ TEST_F(RequestIdAllocatorTest, Basic) {
   }
 
   for (const auto& allocation : allocations) {
-    RequestIdAllocator::Finished(allocation.block);
+    BlockRequestIdAllocator::Finished(allocation.block);
   }
   allocations.clear();
 
@@ -64,27 +64,27 @@ TEST_F(RequestIdAllocatorTest, Basic) {
   }
 }
 
-TEST_F(RequestIdAllocatorTest, RetireOnBlockExhaustion) {
+TEST_F(BlockRequestIdAllocatorTest, RetireOnBlockExhaustion) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_block_size) = 4;
-  RequestIdAllocator allocator;
+  BlockRequestIdAllocator allocator;
 
   // Consume and finish two full blocks; exhausted blocks retire without the idle sweep.
   for (int i = 0; i != 9; ++i) {
     auto allocation = allocator.Next();
-    RequestIdAllocator::Finished(allocation.block);
+    BlockRequestIdAllocator::Finished(allocation.block);
   }
   // Only the current (third) block may still be active.
   ASSERT_LE(allocator.TEST_num_active_blocks(), 1);
   ASSERT_GE(allocator.TEST_min_running(), 8);
 }
 
-TEST_F(RequestIdAllocatorTest, IdleBlockDoesNotPinMinForever) {
+TEST_F(BlockRequestIdAllocatorTest, IdleBlockDoesNotPinMinForever) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_block_size) = 1024;
-  RequestIdAllocator allocator;
+  BlockRequestIdAllocator allocator;
 
   // A thread allocates once from a big block and goes idle.
   auto idle_allocation = allocator.Next();
-  RequestIdAllocator::Finished(idle_allocation.block);
+  BlockRequestIdAllocator::Finished(idle_allocation.block);
   ASSERT_EQ(allocator.TEST_min_running(), 0);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_block_idle_sec) = 0;
@@ -96,9 +96,9 @@ TEST_F(RequestIdAllocatorTest, IdleBlockDoesNotPinMinForever) {
   ASSERT_GT(allocator.TEST_min_running(), idle_allocation.id);
 }
 
-TEST_F(RequestIdAllocatorTest, SealedBlockStillTracksRunningRequests) {
+TEST_F(BlockRequestIdAllocatorTest, SealedBlockStillTracksRunningRequests) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_block_size) = 1024;
-  RequestIdAllocator allocator;
+  BlockRequestIdAllocator allocator;
 
   auto running = allocator.Next();
 
@@ -110,17 +110,17 @@ TEST_F(RequestIdAllocatorTest, SealedBlockStillTracksRunningRequests) {
   ASSERT_EQ(allocator.TEST_num_active_blocks(), 1);
   ASSERT_LE(allocator.TEST_min_running(), running.id);
 
-  RequestIdAllocator::Finished(running.block);
+  BlockRequestIdAllocator::Finished(running.block);
   allocator.TEST_Sweep();
   ASSERT_EQ(allocator.TEST_num_active_blocks(), 0);
   ASSERT_GT(allocator.TEST_min_running(), running.id);
 }
 
-TEST_F(RequestIdAllocatorTest, ConcurrentHammer) {
+TEST_F(BlockRequestIdAllocatorTest, ConcurrentHammer) {
   constexpr int kThreads = 16;
   constexpr int kIterations = 5000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_block_size) = 16;
-  RequestIdAllocator allocator;
+  BlockRequestIdAllocator allocator;
 
   // Max min_running ever advertised. The core safety invariant is that an id returned by
   // Next() is never below a min_running advertised before that Next() call started.
@@ -133,7 +133,7 @@ TEST_F(RequestIdAllocatorTest, ConcurrentHammer) {
   for (int t = 0; t != kThreads; ++t) {
     threads.emplace_back([&allocator, &max_advertised_min, &all_ids_mutex, &all_ids, t] {
       std::mt19937 rng(t);
-      std::vector<RequestIdAllocation> outstanding;
+      std::vector<BlockRequestIdAllocation> outstanding;
       std::vector<RetryableRequestId> my_ids;
       for (int i = 0; i != kIterations; ++i) {
         auto min_before = max_advertised_min.load();
@@ -151,13 +151,13 @@ TEST_F(RequestIdAllocatorTest, ConcurrentHammer) {
         // Finish a random outstanding request about half the time.
         if (!outstanding.empty() && rng() % 2 == 0) {
           size_t idx = rng() % outstanding.size();
-          RequestIdAllocator::Finished(outstanding[idx].block);
+          BlockRequestIdAllocator::Finished(outstanding[idx].block);
           outstanding[idx] = std::move(outstanding.back());
           outstanding.pop_back();
         }
       }
       for (const auto& allocation : outstanding) {
-        RequestIdAllocator::Finished(allocation.block);
+        BlockRequestIdAllocator::Finished(allocation.block);
       }
       std::lock_guard lock(all_ids_mutex);
       for (auto id : my_ids) {
