@@ -534,6 +534,11 @@ Status HeartbeatPoller::TryHeartbeat() {
     full_report_seq_no_.reset();
   }
 
+  // Applied even when the response does not carry the field, which an old master's never does:
+  // the default is UNKNOWN, so masters rolled back to a version that does not report load stop
+  // the pacing instead of freezing it at the last level the new ones reported.
+  server_.SetYsqlCatalogPrefetchLoad(last_hb_response_.ysql_catalog_prefetch_load());
+
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (FLAGS_enable_ysql &&
       PREDICT_TRUE(!FLAGS_TEST_tserver_disable_catalog_refresh_on_heartbeat)) {
