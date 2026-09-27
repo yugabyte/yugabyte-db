@@ -16,9 +16,11 @@
 #include <deque>
 #include <functional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <set>
 #include <span>
@@ -88,6 +90,12 @@ DEFINE_NON_RUNTIME_int32(request_id_invariant_threads, 8,
 
 DEFINE_NON_RUNTIME_int32(request_id_invariant_requests_per_thread, 20000,
     "Number of requests that each thread of the min_running invariant tests allocates.");
+
+DEFINE_NON_RUNTIME_bool(request_id_benchmark_cross_thread_finish, false,
+    "Whether a request is finished by the next benchmark thread instead of the one that allocated "
+    "it, the way the reactor thread that completes the last RPC of a batcher finishes the "
+    "requests of the thread that allocated them. The ids that wait for the other thread are not "
+    "counted in the exact distance.");
 
 DEFINE_NON_RUNTIME_int64(request_id_benchmark_work_ns, 0,
     "Time that a benchmark thread spends on each request outside of the allocator, simulating "
@@ -284,6 +292,50 @@ void SimulateWork(int64_t work_ns) {
   auto deadline = MonoTime::Now() + MonoDelta::FromNanoseconds(work_ns);
   while (MonoTime::Now() < deadline) {}
 }
+
+// Hands finished requests from the thread that allocated them to the one that finishes them.
+// Single producer, single consumer.
+template <class Handle>
+class HandoffRing {
+ public:
+  explicit HandoffRing(size_t capacity) : slots_(capacity) {}
+
+  // Waits for a free slot, since the consumer only stops draining after Close().
+  void Push(Handle&& handle) {
+    auto tail = tail_.load(std::memory_order_relaxed);
+    while (tail - head_.load(std::memory_order_acquire) == slots_.size()) {
+      std::this_thread::yield();
+    }
+    slots_[tail % slots_.size()].emplace(std::move(handle));
+    tail_.store(tail + 1, std::memory_order_release);
+  }
+
+  std::optional<Handle> Pop() {
+    auto head = head_.load(std::memory_order_relaxed);
+    if (head == tail_.load(std::memory_order_acquire)) {
+      return std::nullopt;
+    }
+    auto& slot = slots_[head % slots_.size()];
+    std::optional<Handle> result(std::move(*slot));
+    slot.reset();
+    head_.store(head + 1, std::memory_order_release);
+    return result;
+  }
+
+  void Close() {
+    closed_.store(true, std::memory_order_release);
+  }
+
+  bool closed() const {
+    return closed_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::vector<std::optional<Handle>> slots_;
+  alignas(64) std::atomic<size_t> head_{0};
+  alignas(64) std::atomic<size_t> tail_{0};
+  std::atomic<bool> closed_{false};
+};
 
 template <class HandleType>
 struct BenchmarkAllocation {
@@ -620,6 +672,7 @@ class RequestIdAllocatorBenchmark : public YBTest {
   void Run(const std::string& name, size_t num_threads, Allocator* allocator) {
     const auto requests_per_thread = FLAGS_request_id_benchmark_requests_per_thread;
     const size_t outstanding_per_thread = FLAGS_request_id_benchmark_outstanding;
+    const auto cross_thread_finish = FLAGS_request_id_benchmark_cross_thread_finish;
     const auto work_ns = FLAGS_request_id_benchmark_work_ns;
     const size_t work_cache_lines = FLAGS_request_id_benchmark_work_cache_lines;
     const size_t buffer_words = FLAGS_request_id_benchmark_work_buffer_kb * 1024 / sizeof(uint64_t);
@@ -638,14 +691,36 @@ class RequestIdAllocatorBenchmark : public YBTest {
     std::atomic<int64_t> num_exact_samples{0};
     std::atomic<double> min_thread_seconds{std::numeric_limits<double>::max()};
     std::atomic<double> max_thread_seconds{0};
+    // Thread i hands its finished requests to thread i + 1, which finishes them.
+    std::vector<std::unique_ptr<HandoffRing<typename Allocator::Handle>>> handoffs;
+    if (cross_thread_finish) {
+      for (size_t i = 0; i != num_threads; ++i) {
+        handoffs.push_back(std::make_unique<HandoffRing<typename Allocator::Handle>>(
+            std::max<size_t>(16, 4 * outstanding_per_thread)));
+      }
+    }
 
     TestThreadHolder threads;
     for (size_t i = 0; i != num_threads; ++i) {
       threads.AddThreadFunctor(
           [allocator, &start, &ready, &total_gap, &max_gap, &oldest_ids, &total_exact_gap,
-           &num_exact_samples, &min_thread_seconds, &max_thread_seconds, requests_per_thread,
-           outstanding_per_thread, work_ns, work_cache_lines, buffer_words, stall_threads,
-           stall_ms, stall_period, i, num_threads] {
+           &num_exact_samples, &min_thread_seconds, &max_thread_seconds, &handoffs,
+           requests_per_thread, outstanding_per_thread, cross_thread_finish, work_ns,
+           work_cache_lines, buffer_words, stall_threads, stall_ms, stall_period, i,
+           num_threads] {
+        auto* outbox = cross_thread_finish ? handoffs[i].get() : nullptr;
+        auto* inbox = cross_thread_finish ? handoffs[(i + num_threads - 1) % num_threads].get()
+                                          : nullptr;
+        auto finish = [allocator, outbox, inbox](typename Allocator::Handle& handle) {
+          if (!outbox) {
+            allocator->Finish(handle);
+            return;
+          }
+          outbox->Push(std::move(handle));
+          while (auto handed = inbox->Pop()) {
+            allocator->Finish(*handed);
+          }
+        };
         std::vector<uint64_t> buffer(work_cache_lines ? buffer_words : 0);
         uint64_t rng_state = i + 1;
         std::vector<RetryableRequestId> ids(outstanding_per_thread);
@@ -669,7 +744,7 @@ class RequestIdAllocatorBenchmark : public YBTest {
         // A fixed number of requests in flight, finished in the allocation order.
         for (int j = 0; j != requests_per_thread; ++j) {
           auto index = j % outstanding_per_thread;
-          allocator->Finish(outstanding[index]);
+          finish(outstanding[index]);
           auto allocation = allocator->Next();
           outstanding[index] = std::move(allocation.handle);
           ids[index] = allocation.id;
@@ -698,7 +773,21 @@ class RequestIdAllocatorBenchmark : public YBTest {
         }
         auto thread_seconds = (MonoTime::Now() - thread_started_at).ToSeconds();
         for (auto& handle : outstanding) {
-          allocator->Finish(handle);
+          finish(handle);
+        }
+        if (outbox) {
+          outbox->Close();
+          // The previous thread could still be handing over, so drain until it is done. What
+          // it pushed before closing is visible once closed() is.
+          while (!inbox->closed()) {
+            while (auto handed = inbox->Pop()) {
+              allocator->Finish(*handed);
+            }
+            std::this_thread::yield();
+          }
+          while (auto handed = inbox->Pop()) {
+            allocator->Finish(*handed);
+          }
         }
         oldest_ids[i].value.store(
             std::numeric_limits<RetryableRequestId>::max(), std::memory_order_relaxed);

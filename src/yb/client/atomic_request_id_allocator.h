@@ -62,9 +62,6 @@ class AtomicRequestIdAllocator {
 
   RetryableRequestId TEST_min_running() const;
 
-  /// Whether all finished ids have been folded into min_running.
-  bool TEST_Idle() const;
-
  private:
   const std::unique_ptr<AtomicRequestIdAllocatorImpl> impl_;
 };

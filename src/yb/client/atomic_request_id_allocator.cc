@@ -65,10 +65,6 @@ class AtomicRequestIdAllocatorImpl {
     return min_running_id_.load();
   }
 
-  bool idle() const {
-    return !running_.load() && finished_queue_.Empty();
-  }
-
  private:
   struct FinishedRequest : public MPSCQueueEntry<FinishedRequest> {
     RetryableRequestId id;
@@ -123,9 +119,15 @@ class AtomicRequestIdAllocatorImpl {
       return;
     }
     ++min_running;
-    while (!processed_queue_.empty() && processed_queue_.top() == min_running) {
+    while (!processed_queue_.empty() && processed_queue_.top() <= min_running) {
+      // A second copy of a finished id. Left in the queue, it would never match min_running
+      // again and would stall it for good.
+      if (PREDICT_FALSE(processed_queue_.top() < min_running)) {
+        LOG(DFATAL) << "Request id " << processed_queue_.top() << " finished twice";
+      } else {
+        ++min_running;
+      }
       processed_queue_.pop();
-      ++min_running;
     }
     min_running_id_.store(min_running);
   }
@@ -164,10 +166,6 @@ void AtomicRequestIdAllocator::Finish(RetryableRequestId id) {
 
 RetryableRequestId AtomicRequestIdAllocator::TEST_min_running() const {
   return impl_->min_running();
-}
-
-bool AtomicRequestIdAllocator::TEST_Idle() const {
-  return impl_->idle();
 }
 
 } // namespace yb::client::internal
