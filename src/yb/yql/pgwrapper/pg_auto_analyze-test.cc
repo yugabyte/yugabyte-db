@@ -1958,8 +1958,10 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
     auto* ts1 = cluster_->tserver_daemons()[0];
     auto* ts2 = cluster_->tserver_daemons()[1];
     // Set the read buffer memory limit so that we can successfully establish a connection, but
-    // fail ANALYZEing a table with large primary keys.
-    ts2->AddExtraFlag("read_buffer_memory_limit", "4000000");
+    // fail ANALYZEing a table with large primary keys. The value must sit between the largest
+    // single message needed to open a connection (the relcache preload, ~4.5MB) and the ~7.2MB
+    // ANALYZE payload below; a connection cannot be established at all if it is under the former.
+    ts2->AddExtraFlag("read_buffer_memory_limit", "5000000");
     // Shutdown() is needed before calling Restart().
     ts2->Shutdown();
     ASSERT_OK(ts2->Restart());
@@ -2065,9 +2067,11 @@ class PgAnalyzeReadBufferLimitTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
-    // Set the read buffer memory limit low (around 4MB), but still high enough
-    // to successfully establish a connection.
-    options->extra_tserver_flags.push_back("--read_buffer_memory_limit=4000000");
+    // Set the read buffer memory limit low, but still high enough to successfully establish a
+    // connection. The value must sit between the largest single message needed to open a
+    // connection (the relcache preload, ~4.5MB) and the ~7.2MB ANALYZE payload each test below
+    // generates; a connection cannot be established at all if it is under the former.
+    options->extra_tserver_flags.push_back("--read_buffer_memory_limit=5000000");
   }
 };
 
