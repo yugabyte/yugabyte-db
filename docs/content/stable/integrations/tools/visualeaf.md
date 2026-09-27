@@ -7,7 +7,7 @@ menu:
   stable_integrations:
     identifier: visualeaf
     parent: tools
-    weight: 97
+    weight: 62
 type: docs
 ---
 
