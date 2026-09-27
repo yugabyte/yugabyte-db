@@ -924,10 +924,17 @@ Status PermissionsManager::GrantRevokePermission(
         // Verify that the permission is supported by the resource.
         if (!valid_permission_for_resource(req->permission(), req->resource_type())) {
           s = STATUS_SUBSTITUTE(InvalidArgument, "Invalid permission $0 for resource type $1",
-              req->permission(), ResourceType_Name(req->resource_type()));
-          // This should never happen because invalid permissions get rejected in the analysis part.
-          // So crash the process if in debug mode.
-          DFATAL_OR_RETURN_NOT_OK(s);
+              PermissionType_Name(req->permission()), ResourceType_Name(req->resource_type()));
+          // DESCRIBE on a single role depends on the ycql_enable_list_roles_permissions AutoFlag,
+          // which a tserver may apply before this master does. Return an error in that case.
+          // Anything else should never happen, because invalid permissions get rejected in the
+          // analysis part, so crash the process if in debug mode.
+          const bool describe_on_role =
+              req->permission() == PermissionType::DESCRIBE_PERMISSION &&
+              req->resource_type() == ResourceType::ROLE;
+          if (!describe_on_role) {
+            DFATAL_OR_RETURN_NOT_OK(s);
+          }
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
         current_resource->add_permissions(req->permission());
