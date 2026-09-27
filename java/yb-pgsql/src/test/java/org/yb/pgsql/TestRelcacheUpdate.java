@@ -22,7 +22,12 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.net.URL;
+import java.net.URLConnection;
 import java.util.Arrays;
+import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +57,7 @@ import org.yb.util.SystemUtil;
 
 import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBDaemon;
 
 /**
  * Tests that the relcache update optimizations work as expected. The optimized relcache update is
@@ -783,5 +789,396 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
     double maxVariationPercent = (double)(maxRSS - minRSS) / minRSS;
     LOG.info("maxVariationPercent {}", maxVariationPercent);
     assertTrue("Expected maxVariationPercent less than 20%", maxVariationPercent < 0.20);
+  }
+
+  /**
+   * Confines the master processes to a single CPU, leaving the tservers and postgres backends the
+   * whole machine.  num_cpus only changes what a process believes it has, which resizes thread
+   * pools but leaves the scheduler free to run those threads on every core; this is what actually
+   * starves the leader.  That asymmetry is the incident's: one master serving two hundred nodes,
+   * each of which had a machine to itself.
+   *
+   * Linux only, and best effort -- a machine without taskset, or one where the call is refused,
+   * leaves the masters unconfined and the run simply carries on without the handicap.
+   */
+  private void confineMastersToOneCpu() {
+    for (MiniYBDaemon master : miniCluster.getMasters().values()) {
+      try {
+        int pid = master.getPid();
+        Process p = new ProcessBuilder("taskset", "-acp", "0", String.valueOf(pid))
+            .redirectErrorStream(true).start();
+        if (p.waitFor() == 0) {
+          LOG.info("Confined master pid {} to cpu 0", pid);
+        } else {
+          LOG.warn("Could not confine master pid {} to cpu 0; running unconfined", pid);
+        }
+      } catch (Exception e) {
+        LOG.warn("Could not confine a master to cpu 0, running unconfined: {}", e.getMessage());
+      }
+    }
+  }
+
+  /**
+   * Scales the fan-in for the stress test below.  Each tserver keeps its own catalog response
+   * cache, so what reaches the master leader is one prefetch per catalog version per tserver --
+   * the incident's multiplier was two hundred nodes, and this is the part of it a single machine
+   * can turn up.  -1 leaves the default, which is what every other test in this class gets.
+   */
+  @Override
+  protected int getInitialNumTServers() {
+    return intFromEnv("YB_STRESS_TSERVERS", -1);
+  }
+
+  /** Reads a sizing knob from the environment so the stress test can be scaled to the machine. */
+  private static int intFromEnv(String name, int defaultValue) {
+    String value = System.getenv(name);
+    return value == null || value.isEmpty() ? defaultValue : Integer.parseInt(value);
+  }
+
+  /** Sums the ysql_catalog_prefetch_* values the master exports, across all masters. */
+  private long getMasterPrefetchMetric(String metricName) throws Exception {
+    long total = 0;
+    for (URL url : getMasterMetricSources()) {
+      URLConnection connection = url.openConnection();
+      connection.setUseCaches(false);
+      try (Scanner scanner = new Scanner(connection.getInputStream(), "UTF-8")) {
+        String body = scanner.useDelimiter("\\A").hasNext() ? scanner.next() : "";
+        Matcher matcher = Pattern.compile(
+            "\\{[^{}]*\"name\"\\s*:\\s*\"" + metricName + "\"[^{}]*\"value\"\\s*:\\s*(\\d+)")
+            .matcher(body);
+        while (matcher.find()) {
+          total += Long.parseLong(matcher.group(1));
+        }
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Drives the catalog prefetch fan-in that motivated the master admission bound and the DDL
+   * pacing built on it (issue #34309).  Every connection preloads the whole catalog, because
+   * ysql_catalog_preload_additional_tables makes YbCatalogPreloadRequired() true and so skips the
+   * relcache init file path, while a thread keeps issuing DDLs so the tserver response cache
+   * never serves those preloads.  Connections are offered at a fixed rate and disconnect as soon
+   * as they are up, so the number of backends alive at once follows how long the master is taking
+   * to serve a prefetch rather than how many this test happened to open.
+   *
+   * What it asserts is what holds on any machine: every connection completes, none fails, and the
+   * cluster still serves afterwards.  Rejected prefetches retrying and completing is the property
+   * under test, and it does not depend on the size of the box.  It also fails if concurrency
+   * climbs past a ceiling, which is what running out of memory looks like one step before it
+   * happens -- except on a sanitizer build, where establishing a connection takes most of ten
+   * seconds on its own and the ceiling would measure the instrumentation rather than the leader.
+   *
+   * Every knob below can be raised from the environment to reproduce the incident at scale on a
+   * machine with room for it.
+   */
+  @Test
+  public void testPreloadConnectionStress() throws Exception {
+    // The load under test is one catalog prefetch per new backend, so every client connection has
+    // to make one. Under Connection Manager logical connections share physical ones and most would
+    // never prefetch, leaving the leader with nothing to shed. (On master this is the
+    // @BypassConnMgr annotation, which does not exist on this branch.)
+    skipYsqlConnMgr("Test needs every client connection to start a backend and prefetch the "
+                    + "catalog. With Connection Manager logical connections share a physical "
+                    + "connection, so most of them never do, and the load under test never "
+                    + "builds up.",
+                    isTestRunningWithConnectionManager());
+    // Sized so the default run stays light enough for any build machine; the environment
+    // overrides are what turn it into a stress test.
+    final boolean isSanitizerBuild = BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN();
+    final int numTables = intFromEnv("YB_STRESS_NUM_TABLES", 10);
+    final int columnsPerTable = intFromEnv("YB_STRESS_COLUMNS", 30);
+    // A rate every machine can sustain, rather than one derived from the core count. What limits
+    // the rate is the cost of creating a backend and preloading a catalog into it, and that turns
+    // on how fast the cores are rather than how many there are: 16/s ran away on a 4-core VM
+    // while 20/s held steady on a 10-core laptop. Saturating a particular leader needs a rate
+    // tuned to that machine, which is what the override is for.
+    final int connectRate = intFromEnv("YB_STRESS_CONNECT_RATE", isSanitizerBuild ? 1 : 4);
+    // Connections that establish promptly leave about connectRate of them alive at once, so this
+    // sits well above that: high enough that a slow machine does not reach it in the ordinary
+    // course, low enough that a genuine pile-up does long before memory runs out. At the tens of
+    // MB a preloaded backend costs, it also caps what this test can take from the machine.
+    // The multiplier is how much slower than a second a connection may take to establish before
+    // the run is called a pile-up. A sanitizer build takes most of ten seconds over it on its
+    // own, so it gets a far wider allowance -- and does not fail on reaching the ceiling at all,
+    // since there it measures the instrumentation rather than the leader falling behind.
+    final int maxLiveGuard =
+        intFromEnv("YB_STRESS_MAX_LIVE", (isSanitizerBuild ? 30 : 8) * connectRate);
+    // Exercises the DDL pacing: each DDL waits for the master to work through the prefetches the
+    // previous one caused before bumping the version again. -1, the default, leaves the server's
+    // own setting alone, which is what a real deployment gets. 0 turns the wait off, which is how
+    // this run is compared against one without the pacing.
+    final int ddlWaitMs = intFromEnv("YB_STRESS_DDL_WAIT_MS", -1);
+    // One, like the migration script this paces. Issuing DDLs from several sessions at once does
+    // not churn the catalog version any faster -- measured at about ten a second either way,
+    // because the DDL path serialises them rather than the sessions being the limit -- so the
+    // extra sessions would buy load the leader never sees while modelling something no customer
+    // does. What reaches the leader is one prefetch per catalog version rather than one per
+    // connection, since the tserver response cache serves every connection arriving at a version
+    // already fetched.
+    final int ddlThreads = intFromEnv("YB_STRESS_DDL_THREADS", 1);
+    AtomicInteger ddlCount = new AtomicInteger(0);
+    AtomicBoolean overGuard = new AtomicBoolean(false);
+    final int durationSeconds =
+        intFromEnv("YB_STRESS_DURATION_SEC", isSanitizerBuild ? 60 : 180);
+
+    // Preloading every catalog table on every connection is what makes each backend expensive.
+    // The admission bound itself rides on an AutoFlag, which a freshly created cluster promotes.
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_catalog_preload_additional_tables", "true");
+    // Overrides this class's log_statement=all, which would otherwise write a line for every
+    // statement of every connection and fill the disk before memory became the problem.
+    tserverFlags.put("ysql_pg_conf_csv", "log_statement=none");
+    // The DDL thread below drives the load by churning the catalog version. On this branch
+    // yb_always_increment_catalog_version_on_ddl defaults to false, so its CREATE TABLE does not
+    // bump and only the matching DROP does, halving the rate at which the run invalidates the
+    // tserver caches it is meant to be invalidating. Master defaults it to true, so setting it
+    // here makes the two branches stress the master identically rather than leaving this one
+    // quietly gentler. It is PGC_SIGHUP, so it has to arrive through postgresql.conf.
+    appendToYsqlPgConf(tserverFlags, "yb_always_increment_catalog_version_on_ddl=true");
+    // Forces each prefetch into a sequence of paged reads, which is the shape the incident had:
+    // 172 pages per prefetch, each its own master RPC. It multiplies the master work a connection
+    // causes without changing the rows it ends up holding, so master load rises while backend
+    // memory does not -- and it is the only way this test produces continuations at all, since a
+    // prefetch that fits in one request never has any.
+    int prefetchRowLimit = intFromEnv("YB_STRESS_PREFETCH_ROW_LIMIT", 0);
+    if (prefetchRowLimit > 0) {
+      tserverFlags.put("ysql_catalog_prefetch_row_limit", Integer.toString(prefetchRowLimit));
+    }
+    // Batching is by bytes by default, so shrinking this pages the same way production does,
+    // rather than through the row limit above, which nothing sets any more. The limit is split
+    // across the catalog tables active in a round, so a small value multiplies the rounds.
+    int prefetchSizeLimit = intFromEnv("YB_STRESS_PREFETCH_SIZE_LIMIT", 0);
+    if (prefetchSizeLimit > 0) {
+      tserverFlags.put("ysql_catalog_prefetch_size_limit", Integer.toString(prefetchSizeLimit));
+    }
+    // Object locking is the first thing to break at this connection count: every backend takes
+    // AccessShare on pg_proc, and the pending fastpath requests share one node-wide buffer, which
+    // once full makes every further request log a warning. Here that buffer is the compile-time
+    // kMaxFastpathRequests of 4096, which is ample for the connection counts this test reaches, so
+    // there is nothing to size. (On master it is the object_lock_fastpath_buffer_size gflag, which
+    // defaults to 256 and the original of this test raises; the gflag does not exist on this
+    // branch.) The rest of the DDL path runs as a release build runs it -- object locking and
+    // transactional DDL are tied together by a validator, so turning the first off would take the
+    // second with it.
+    // YB_STRESS_PREFETCH_LIMIT pins the bound rather than letting the master derive it from the
+    // core count, which is useful both for forcing rejections on a machine too small to reach the
+    // derived limit by load alone and for turning the bound off. The flag lives only in the
+    // master, so it must not be passed to the tservers.
+    Map<String, String> masterFlags = new HashMap<>();
+    // Caps what the leader believes it has, without touching the tservers. The incident had one
+    // master serving two hundred nodes, so the leader was the scarce resource while every backend
+    // had a machine to itself; on one box everything shares the same cores and the machine gives
+    // out before the master does. Starving only the master restores that asymmetry: prefetches
+    // take longer to serve and hold their slots longer, which is what makes concurrency climb.
+    int masterCpus = intFromEnv("YB_STRESS_MASTER_CPUS", 0);
+    if (masterCpus > 0) {
+      masterFlags.put("num_cpus", Integer.toString(masterCpus));
+    }
+    // -1 leaves the master to derive the limit from the core count. 0 turns the bound off
+    // altogether, which is what AdmitRead does before it counts anything, so it stands in for a
+    // build without this fix without having to revert and rebuild one.
+    int prefetchLimit = intFromEnv("YB_STRESS_PREFETCH_LIMIT", -1);
+    if (prefetchLimit >= 0) {
+      masterFlags.put("master_max_concurrent_ysql_catalog_prefetches",
+                      Integer.toString(prefetchLimit));
+    }
+    restartClusterWithFlags(masterFlags, tserverFlags);
+    if (masterCpus == 1) {
+      confineMastersToOneCpu();
+    }
+
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    AtomicInteger numSuccesses = new AtomicInteger(0);
+    AtomicInteger numFailures = new AtomicInteger(0);
+    AtomicBoolean stopBumper = new AtomicBoolean(false);
+    AtomicBoolean stopMonitor = new AtomicBoolean(false);
+
+    try (Connection connSuperuser = getConnectionBuilder().connect();
+         Statement stmtSuperuser = connSuperuser.createStatement()) {
+
+      // A catalog big enough that preloading it costs real memory. Columns matter as much as
+      // tables here, because pg_attribute is what grows.
+      LOG.info("Creating {} tables of {} columns...", numTables, columnsPerTable);
+      StringBuilder columns = new StringBuilder();
+      for (int c = 0; c < columnsPerTable; c++) {
+        columns.append(String.format(", c%d text", c));
+      }
+      for (int t = 0; t < numTables; t++) {
+        stmtSuperuser.execute(
+            String.format("CREATE TABLE stress_%d (k int PRIMARY KEY%s)", t, columns));
+        if ((t + 1) % 100 == 0) {
+          LOG.info("Created {} of {} tables", t + 1, numTables);
+        }
+      }
+
+      long rejectionsBefore = getMasterPrefetchMetric("ysql_catalog_prefetch_rejections");
+      LOG.info("Starting catalog versions: {}", getCatalogVersions(stmtSuperuser));
+
+      // Keep the catalog version moving, so that the tserver response cache cannot serve these
+      // preloads and every connection goes to the master leader for its own copy. Real DDLs
+      // rather than a direct call to yb_increment_all_db_catalog_versions_with_inval_messages:
+      // the pacing wait runs at the start of a DDL that is going to bump the version, so only a
+      // real DDL exercises it, and a migration script running DDLs in a row is the case the
+      // pacing exists for. The thread stops on its own as well as on the flag: left running
+      // unattended by a test that hangs or throws, it keeps the whole cluster churning catalog
+      // versions with nobody watching.
+      final long bumperDeadline =
+          System.currentTimeMillis() + (durationSeconds + 300) * 1000L;
+      LOG.info("Starting {} DDL threads, pacing wait {} ms.", ddlThreads, ddlWaitMs);
+      for (int t = 0; t < ddlThreads; t++) {
+        // Each thread needs a table of its own, or they would collide on the same name rather
+        // than churning the catalog version in parallel.
+        final String probeTable = "yb_ddl_pacing_probe_" + t;
+        executorService.submit(() -> {
+          try (Connection bumperConn = getConnectionBuilder().connect();
+               Statement bumperStmt = bumperConn.createStatement()) {
+            if (ddlWaitMs >= 0) {
+              bumperStmt.execute(
+                  "SET yb_ddl_wait_for_master_prefetch_drain_ms = " + ddlWaitMs);
+            }
+            while (!stopBumper.get() && System.currentTimeMillis() < bumperDeadline) {
+              try {
+                // A create and a drop of the same table, so the schema does not grow over the run
+                // while each statement still bumps the catalog version.
+                bumperStmt.execute("CREATE TABLE " + probeTable + " (k int)");
+                ddlCount.incrementAndGet();
+                bumperStmt.execute("DROP TABLE " + probeTable);
+                ddlCount.incrementAndGet();
+              } catch (Exception e) {
+                if (!stopBumper.get()) {
+                  LOG.error("Error running DDL: {}", e.getMessage());
+                }
+              }
+            }
+          } catch (Exception connEx) {
+            LOG.error("Failed to set up connection for DDL thread: {}", connEx.getMessage());
+          }
+        });
+      }
+
+      // Offer connections at a steady rate rather than in one burst, and let each one go as soon
+      // as it has run a query. How many backends are alive at once is then arrival rate times how
+      // long a connection takes to establish, and establishing is what a saturated master slows
+      // down: the memory the machine has to hold becomes a consequence of master speed rather than
+      // of how many connections this test happened to open at once. That is the shape of the
+      // incident, where the application kept offering connections at its own rate however slow the
+      // server had become.
+      LOG.info("Offering {} connections per second for {} seconds across {} tservers, each "
+               + "preloading the catalog and then disconnecting...",
+               connectRate, durationSeconds, miniCluster.getNumTServers());
+      Properties props = new Properties();
+      props.setProperty("loginTimeout", "600");
+      props.setProperty("socketTimeout", "600");
+
+      AtomicInteger live = new AtomicInteger(0);
+      AtomicInteger maxLive = new AtomicInteger(0);
+      // Report as the run proceeds. An earlier attempt took the machine down before reaching the
+      // summary below, so nothing was known afterwards about whether the bound had engaged.
+      executorService.submit(() -> {
+        while (!stopMonitor.get()) {
+          try {
+            Thread.sleep(5000);
+            LOG.info("progress: completed={} failed={} live={} maxLive={} ddls={} "
+                     + "masterRejections={}",
+                     numSuccesses.get(), numFailures.get(), live.get(), maxLive.get(),
+                     ddlCount.get(),
+                     getMasterPrefetchMetric("ysql_catalog_prefetch_rejections"));
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+          } catch (Exception e) {
+            LOG.warn("Could not read master prefetch metrics: {}", e.getMessage());
+          }
+        }
+      });
+
+      AtomicInteger outstanding = new AtomicInteger(0);
+      // Spread across the tservers rather than letting them all land on the first one. The
+      // response cache is per tserver, so what reaches the leader is one prefetch per catalog
+      // version per tserver: connecting to a single one collapses the whole run onto one cache
+      // and removes the fan-in this is meant to reproduce, where every node fetched its own copy.
+      AtomicInteger nextTserver = new AtomicInteger(0);
+      final int numTservers = miniCluster.getNumTServers();
+      long deadline = System.currentTimeMillis() + durationSeconds * 1000L;
+      while (System.currentTimeMillis() < deadline && !overGuard.get()) {
+        for (int i = 0; i < connectRate; i++) {
+          outstanding.incrementAndGet();
+          executorService.submit(() -> {
+            maxLive.accumulateAndGet(live.incrementAndGet(), Math::max);
+            final int tserver = Math.floorMod(nextTserver.getAndIncrement(), numTservers);
+            try (Connection conn = getConnectionBuilder().withTServer(tserver).connect(props);
+                 Statement stmt = conn.createStatement()) {
+              stmt.executeQuery("SELECT 1").close();
+              numSuccesses.incrementAndGet();
+            } catch (Exception e) {
+              numFailures.incrementAndGet();
+              LOG.warn("Connection failed: {}", e.getMessage());
+            } finally {
+              live.decrementAndGet();
+              outstanding.decrementAndGet();
+            }
+          });
+        }
+        // Backends that pile up faster than they drain are what takes the machine down, and a
+        // dead machine costs a reboot and tells us nothing. Stop offering and report instead.
+        if (live.get() >= maxLiveGuard) {
+          overGuard.set(true);
+          LOG.error("Stopped offering at {} backends alive at once, the YB_STRESS_MAX_LIVE={} "
+                    + "ceiling: connections are establishing more slowly than they are offered, "
+                    + "so backends are piling up faster than they drain.",
+                    live.get(), maxLiveGuard);
+        }
+        Thread.sleep(1000);
+      }
+
+      LOG.info("Done offering connections; waiting for the ones still establishing...");
+      while (outstanding.get() > 0) {
+        Thread.sleep(500);
+      }
+      stopMonitor.set(true);
+      LOG.info("Connections completed: {}, failed: {}, most alive at once: {}, DDLs run: {}",
+               numSuccesses.get(), numFailures.get(), maxLive.get(), ddlCount.get());
+
+      stopBumper.set(true);
+      executorService.shutdown();
+      if (!executorService.awaitTermination(120, TimeUnit.SECONDS)) {
+        LOG.warn("Executor service did not terminate gracefully.");
+        executorService.shutdownNow();
+      }
+
+      LOG.info("Ending catalog versions: {}", getCatalogVersions(stmtSuperuser));
+      // Non-zero means the bound engaged and shed load rather than letting every prefetch in.
+      LOG.info("Master prefetch rejections during the run: {}",
+               getMasterPrefetchMetric("ysql_catalog_prefetch_rejections") - rejectionsBefore);
+    } finally {
+      // However the run ends. The guard assertion below, or a SQL error anywhere above, would
+      // otherwise skip the shutdown and leave the progress thread looping for as long as the JVM
+      // lives.
+      stopMonitor.set(true);
+      stopBumper.set(true);
+      executorService.shutdownNow();
+    }
+
+
+    // The point of the run: the cluster is still there afterwards.
+    try (Connection check = getConnectionBuilder().connect();
+         Statement stmt = check.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SELECT 1");
+      assertTrue("cluster stopped serving connections after the stress run", rs.next());
+    }
+
+    // Asserted last, so the counters above reach the log either way. Reaching the ceiling is what
+    // running out of memory looks like one step before it happens: with the bound and the pacing
+    // in place, connections establish quickly enough that concurrency settles far below it, and
+    // without them they accumulate until something gives. Failing here rather than letting the
+    // machine die keeps the log that explains why.
+    if (!isSanitizerBuild) {
+      assertFalse(
+          String.format("backends alive at once reached %d: they piled up faster than the master "
+                        + "could serve their prefetches", maxLiveGuard),
+          overGuard.get());
+    }
   }
 }

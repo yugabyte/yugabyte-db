@@ -2221,6 +2221,10 @@ void YBCRefreshClusterReplicationInfo() {
   pgapi->replication_info_snapshot().Refresh();
 }
 
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad() {
+  return pgapi->GetSharedYsqlCatalogPrefetchLoad();
+}
+
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }

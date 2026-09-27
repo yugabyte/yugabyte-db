@@ -107,6 +107,17 @@ class TServerSharedData {
     return catalog_version_table_in_perdb_mode_.load(std::memory_order_acquire);
   }
 
+  // Last known catalog prefetch load on the master leader, refreshed from the heartbeat. Read by
+  // postgres backends before they bump the catalog version, which is what sends the whole cluster
+  // to the leader to prefetch again.
+  void SetYsqlCatalogPrefetchLoad(uint32_t load) {
+    ysql_catalog_prefetch_load_.store(load, std::memory_order_release);
+  }
+
+  uint32_t ysql_catalog_prefetch_load() const {
+    return ysql_catalog_prefetch_load_.load(std::memory_order_acquire);
+  }
+
   void SetPostgresAuthKey(uint64_t auth_key) {
     postgres_auth_key_ = auth_key;
   }
@@ -165,6 +176,8 @@ class TServerSharedData {
   std::atomic<bool> fully_initialized_{false};
 
   SharedMemoryUniquePtr<docdb::ObjectLockSharedState> object_lock_state_;
+
+  std::atomic<uint32_t> ysql_catalog_prefetch_load_{0};
 };
 
 using SharedMemoryReadyCallback = std::function<void()>;

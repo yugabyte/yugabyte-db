@@ -6033,6 +6033,31 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_ddl_wait_for_master_prefetch_drain_ms", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum time a DDL waits for the master to work through the catalog "
+						 "prefetches caused by the previous catalog version bump, before "
+						 "bumping the version again."),
+			gettext_noop("Each bump sends every tserver to the master leader for a fresh catalog "
+						 "prefetch, and a bump before the previous wave drains adds to it rather "
+						 "than replacing it. Spacing bumps out trades latency in this session for "
+						 "load on the leader. The wait runs up to twice this long while the "
+						 "leader is turning away prefetches that are already under way, since "
+						 "adding to that discards work it has started. This is a deadline, not "
+						 "an expected wait: a leader that is keeping up reports no load and "
+						 "nothing waits at all. A leader that stays loaded is the other end: "
+						 "every transaction pays the full deadline, so a long migration runs at "
+						 "one catalog version bump per deadline. The wait counts against "
+						 "statement_timeout. On a leader that is already loaded, the DDL itself "
+						 "would often reach that timeout anyway. 0 disables the wait. The DDL "
+						 "proceeds when the time is up whether or not the leader has drained."),
+			GUC_UNIT_MS
+		},
+		&yb_ddl_wait_for_master_prefetch_drain_ms,
+		30000, 0, 86400000,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_max_num_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Max number of invalidation messages supported for incremental "
 						 "catalog cache refresh."),
