@@ -14,83 +14,50 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "yb/common/retryable_request.h"
 
-namespace yb {
-namespace client {
-namespace internal {
+namespace yb::client::internal {
 
-class RequestIdBlock;
-using RequestIdBlockPtr = std::shared_ptr<RequestIdBlock>;
+class RequestIdAllocator;
 
-class RequestIdAllocatorImpl;
-
-// Result of allocating a retryable request id.
+/// A running retryable request: what to send with it, and what finishes it.
 struct RequestIdAllocation {
   RetryableRequestId id;
-
-  // Safe lower bound for the ids of requests that are currently running or could still be
-  // issued by this client. Sent to the server as min_running_request_id, which the server uses
-  // to garbage-collect its retryable-request dedup state and to reject requests with smaller
-  // ids. It is always <= id, and it is monotonically non-decreasing across allocations, so it
-  // may lag the exact minimum of the running set. Lagging is safe: it only delays server-side
-  // cleanup.
   RetryableRequestId min_running;
 
-  // Handle used to report completion of this request via RequestIdAllocator::Finished.
-  RequestIdBlockPtr block;
+  /// Client id to send with the request. The server deduplicates by client id and request id
+  /// together, and a sharded allocator has one per shard.
+  const ClientId* client_id;
+
+  /// Finishes the request: the shard, for a sharded allocator.
+  RequestIdAllocator* allocator;
+
+  /// Per request state of the allocator, opaque to the caller.
+  std::shared_ptr<void> state;
 };
 
-// Allocates retryable request ids for a YBClient.
-//
-// Replaces a single spinlock-guarded set of running request ids, which serialized every write
-// from every thread of the client process (profiled as the top contended lock under single-row
-// insert load on many-core hosts). Instead, each allocating thread holds a private block of
-// consecutive ids and hands them out with thread-local operations only; the shared registry
-// lock is taken once per block (FLAGS_client_request_id_block_size allocations), not once per
-// request.
-//
-// Invariants relied upon by the server (see consensus/retryable_requests.cc):
-// - Ids are unique per client.
-// - min_running advertised to the server never exceeds the id of any request that is still
-//   running or that the client may still issue. The server ratchets its per-client
-//   min_running_request_id up to the advertised value and rejects smaller request ids with
-//   an Expired error.
-// The allocator maintains the second invariant by tracking a floor per active block:
-// min_running is the minimum floor across active blocks, and a block stays active until it is
-// sealed (no further ids will be allocated from it) and all its allocated ids have finished.
-// Blocks left idle by threads that stopped allocating are sealed by a periodic sweep so they
-// do not pin min_running forever.
+/// Allocates the retryable request ids of a client. The implementation is picked by
+/// FLAGS_client_request_id_allocator, see CreateRequestIdAllocator.
 class RequestIdAllocator {
  public:
-  RequestIdAllocator();
-  ~RequestIdAllocator();
+  virtual ~RequestIdAllocator() = default;
 
-  RequestIdAllocator(const RequestIdAllocator&) = delete;
-  void operator=(const RequestIdAllocator&) = delete;
+  virtual RequestIdAllocation Next() = 0;
 
-  // Allocates a new request id. Lock-free except once per block.
-  RequestIdAllocation Next();
-
-  // Reports that a request allocated from the given block has finished (i.e. it will never be
-  // retried with the same id). Must be called exactly once per successful Next().
-  static void Finished(const RequestIdBlockPtr& block);
-
-  // Current min-running lower bound, as would be advertised by the next allocation.
-  RetryableRequestId TEST_min_running() const;
-
-  // Number of active (not yet retired) blocks.
-  size_t TEST_num_active_blocks() const;
-
-  // Runs the idle-block sweep unconditionally, ignoring the time gate.
-  void TEST_Sweep();
-
- private:
-  const uint64_t instance_id_;
-  const std::shared_ptr<RequestIdAllocatorImpl> impl_;
+  /// Reports that the request will never be retried. Exactly once per allocation, through the
+  /// allocator of the allocation.
+  virtual void Finish(const RequestIdAllocation& allocation) = 0;
 };
 
-} // namespace internal
-} // namespace client
-} // namespace yb
+/// Creates the allocator named by FLAGS_client_request_id_allocator. The allocators with a single
+/// id space send client_id with their requests, the sharded ones generate a client id per shard.
+std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(const ClientId& client_id);
+
+/// The same for the given name, which the benchmark uses to run the allocators that only exist
+/// behind the interface.
+std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(
+    const std::string& name, const ClientId& client_id);
+
+} // namespace yb::client::internal

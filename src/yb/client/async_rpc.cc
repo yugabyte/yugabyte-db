@@ -770,25 +770,26 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
 
   if (!batcher_->client_id().IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
     const auto& first_yb_op = ops_.begin()->yb_op;
-    // The id belongs to the shard that allocated it, and so does the client id to send with it.
-    const internal::AtomicRequestIdAllocator* shard;
+    // The client id to send is the one of the allocation, since a sharded allocator has one per
+    // shard.
+    const ClientId* client_id;
     // A set request id means we are trying to resend all ops from this RPC and need to reuse
     // retryable request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
     if (first_yb_op->request_id()) {
       const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
       req_.set_request_id(*first_yb_op->request_id());
-      req_.set_min_running_request_id(request_detail.min_running_request_id);
-      shard = request_detail.shard;
+      req_.set_min_running_request_id(request_detail.min_running);
+      client_id = request_detail.client_id;
     } else {
-      const auto allocation = batcher_->NextRequestIdAndMinRunningRequestId();
+      auto allocation = batcher_->NextRequestIdAndMinRunningRequestId();
       req_.set_request_id(allocation.id);
       req_.set_min_running_request_id(allocation.min_running);
-      batcher_->RegisterRequest(allocation);
-      shard = allocation.shard;
+      client_id = allocation.client_id;
+      batcher_->RegisterRequest(std::move(allocation));
     }
-    auto client_id = shard->client_id().ToUInt64Pair();
-    req_.set_client_id1(client_id.first);
-    req_.set_client_id2(client_id.second);
+    auto client_id_pair = client_id->ToUInt64Pair();
+    req_.set_client_id1(client_id_pair.first);
+    req_.set_client_id2(client_id_pair.second);
     FillRequestIds(req_.request_id(), &ops_);
   }
 

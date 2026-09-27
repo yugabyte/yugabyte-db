@@ -177,9 +177,7 @@ struct CDCSDKStreamInfo {
 
 namespace internal {
 class ClientMasterRpcBase;
-class AtomicRequestIdAllocator;
-template <class Allocator> struct ShardedRequestIdAllocation;
-using ShardedAtomicRequestIdAllocation = ShardedRequestIdAllocation<AtomicRequestIdAllocator>;
+struct RequestIdAllocation;
 }
 
 using GetTableLocationsCallback =
@@ -1132,9 +1130,8 @@ class YBClient {
 
   const CloudInfoPB& cloud_info() const;
 
-  // The allocation carries the shard that owns the id: it finishes the request and provides the
-  // client id to send with it.
-  internal::ShardedAtomicRequestIdAllocation NextRequestIdAndMinRunningRequestId();
+  // The allocation carries the client id to send with the request and what finishes it.
+  internal::RequestIdAllocation NextRequestIdAndMinRunningRequestId();
 
   void AddMetaCacheInfo(JsonWriter* writer) const;
 

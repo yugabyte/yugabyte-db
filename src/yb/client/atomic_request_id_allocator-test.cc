@@ -21,13 +21,16 @@
 #include <mutex>
 #include <random>
 #include <set>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
 #include "yb/client/atomic_request_id_allocator.h"
 #include "yb/client/bitmap_request_id_allocator.h"
 #include "yb/client/counter_request_id_allocator.h"
+#include "yb/client/block_request_id_allocator.h"
 #include "yb/client/request_id_allocator.h"
+#include "yb/client/retryable_request_tracker.h"
 #include "yb/client/sharded_request_id_allocator.h"
 
 #include "yb/gutil/strings/split.h"
@@ -74,7 +77,7 @@ DEFINE_NON_RUNTIME_int32(request_id_benchmark_stall_period, 50000,
 
 DEFINE_NON_RUNTIME_string(request_id_benchmark_impls, "",
     "Comma separated implementations that the benchmark runs, empty for all of them: id-blocks, "
-    "queue, bitmap, sharded-queue, sharded-bitmap, sharded-counters.");
+    "queue, bitmap, sharded-queue, sharded-bitmap, sharded-counters, striped, spinlock.");
 
 DEFINE_NON_RUNTIME_bool(request_id_benchmark_reverse, false,
     "Whether the benchmark runs the implementations in the reverse order, to tell their own "
@@ -311,14 +314,14 @@ class BlockAllocatorAdapter {
     };
   }
 
-  void Finish(const Handle& block) { RequestIdAllocator::Finished(block); }
+  void Finish(const Handle& block) { BlockRequestIdAllocator::Finished(block); }
 
   void Drain() {}
 
   void LogStats() {}
 
  private:
-  RequestIdAllocator allocator_;
+  BlockRequestIdAllocator allocator_;
 };
 
 // The per window counters, kept for comparison with the bitmap.
@@ -432,6 +435,77 @@ class ShardedAllocatorAdapter {
   ShardedRequestIdAllocator<Allocator> allocator_;
 };
 
+// The striped tracker of https://github.com/yugabyte/yugabyte-db/pull/33244: a lock per stripe,
+// one id space, and the min over the stripes as min_running.
+class StripedTrackerAdapter {
+ public:
+  using Handle = RetryableRequestTracker::Registration;
+  using Allocation = BenchmarkAllocation<Handle>;
+
+  Allocation Next() {
+    auto registration = tracker_.Register();
+    auto id = registration.request_id();
+    auto min_running = registration.min_running_request_id();
+    return {
+      .handle = std::move(registration),
+      .id = id,
+      .gap = id - min_running,
+    };
+  }
+
+  void Finish(Handle& registration) {
+    auto* ptr = &registration;
+    tracker_.Unregister(std::span(&ptr, 1));
+  }
+
+  void Drain() {}
+
+  void LogStats() {
+    LOG(INFO) << "  stripes: " << tracker_.TEST_StripeCount();
+  }
+
+ private:
+  RetryableRequestTracker tracker_;
+};
+
+// Any allocator through the production interface, for the ones that only exist behind it.
+class InterfaceAdapter {
+ public:
+  using Handle = RequestIdAllocation;
+  using Allocation = BenchmarkAllocation<Handle>;
+
+  explicit InterfaceAdapter(const std::string& name)
+      : allocator_(CreateRequestIdAllocator(name, ClientId::GenerateRandom())) {}
+
+  Allocation Next() {
+    auto allocation = allocator_->Next();
+    auto id = allocation.id;
+    auto gap = id - allocation.min_running;
+    // The ids of different client ids are unrelated.
+    const void* shard = allocation.client_id;
+    return {
+      .handle = std::move(allocation),
+      .id = id,
+      .gap = gap,
+      .shard = shard,
+    };
+  }
+
+  void Finish(const Handle& allocation) { allocation.allocator->Finish(allocation); }
+
+  void Drain() {}
+
+  void LogStats() {}
+
+ private:
+  std::unique_ptr<RequestIdAllocator> allocator_;
+};
+
+class SpinlockAdapter : public InterfaceAdapter {
+ public:
+  SpinlockAdapter() : InterfaceAdapter("spinlock") {}
+};
+
 } // namespace
 
 // The invariant the server relies on: min_running never exceeds the id of a request that is
@@ -475,7 +549,7 @@ void CheckMinRunningInvariant() {
           allocator.Finish(entry.first);
         }
       }
-      for (const auto& entry : outstanding) {
+      for (auto& entry : outstanding) {
         {
           std::lock_guard lock(mutex);
           running[entry.second.first].erase(entry.second.second);
@@ -511,6 +585,14 @@ TEST_F(AtomicRequestIdAllocatorTest, MinRunningInvariantSharded) {
 
 TEST_F(AtomicRequestIdAllocatorTest, MinRunningInvariantShardedBitmap) {
   CheckMinRunningInvariant<ShardedAllocatorAdapter<BitmapRequestIdAllocator>>();
+}
+
+TEST_F(AtomicRequestIdAllocatorTest, MinRunningInvariantStriped) {
+  CheckMinRunningInvariant<StripedTrackerAdapter>();
+}
+
+TEST_F(AtomicRequestIdAllocatorTest, MinRunningInvariantSpinlock) {
+  CheckMinRunningInvariant<SpinlockAdapter>();
 }
 
 class RequestIdAllocatorBenchmark : public YBTest {
@@ -615,7 +697,7 @@ class RequestIdAllocatorBenchmark : public YBTest {
           }
         }
         auto thread_seconds = (MonoTime::Now() - thread_started_at).ToSeconds();
-        for (const auto& handle : outstanding) {
+        for (auto& handle : outstanding) {
           allocator->Finish(handle);
         }
         oldest_ids[i].value.store(
@@ -672,6 +754,8 @@ TEST_F(RequestIdAllocatorBenchmark, Compare) {
   Add<ShardedAllocatorAdapter<AtomicRequestIdAllocator>>("sharded-queue", &impls);
   Add<ShardedAllocatorAdapter<BitmapRequestIdAllocator>>("sharded-bitmap", &impls);
   Add<ShardedAllocatorAdapter<CounterRequestIdAllocator>>("sharded-counters", &impls);
+  Add<StripedTrackerAdapter>("striped", &impls);
+  Add<SpinlockAdapter>("spinlock", &impls);
 
   std::unordered_set<std::string> enabled;
   for (const auto& name : SplitStringUsing(FLAGS_request_id_benchmark_impls, ",")) {

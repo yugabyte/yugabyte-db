@@ -22,9 +22,8 @@
 
 namespace yb::client::internal {
 
-/// Allocated id, with the shard that owns it. The shard finishes the request and provides the
-/// client id to send with it, since the server deduplicates by client id and request id together.
-/// It outlives the request, so the caller keeps the pointer until the request is finished.
+/// Allocated id, with the shard that owns it. The shard finishes the request, and it outlives the
+/// request, so the caller keeps the pointer until the request is finished.
 template <class Allocator>
 struct ShardedRequestIdAllocation {
   Allocator* shard;
@@ -38,10 +37,10 @@ size_t NumRequestIdShards();
 /// Index of the calling thread, so that a thread always uses the same shard.
 size_t RequestIdThreadIndex();
 
-/// A pool of allocators, one per shard, each with its own client id. A thread always uses the same
-/// shard, so the shards share no state: the ids of a shard are dense and independent, and a
-/// request that stays unfinished holds back the min_running of its own shard only, instead of the
-/// one that the whole client reports.
+/// A pool of allocators, one per shard, each meant to have its own client id. A thread always uses
+/// the same shard, so the shards share no state: the ids of a shard are dense and independent, and
+/// a request that stays unfinished holds back the min_running of its own shard only, instead of
+/// the one that the whole client reports.
 ///
 /// The price is paid by the server, which keeps the deduplication state per client id, see
 /// consensus/retryable_requests.cc. It tracks the same number of requests either way, but the per
@@ -65,7 +64,7 @@ class ShardedRequestIdAllocator {
   void operator=(const ShardedRequestIdAllocator&) = delete;
 
   /// Allocates an id from the shard of the calling thread. The request is finished through the
-  /// shard of the allocation.
+  /// shard of the allocation, and the ids of different shards are unrelated.
   Allocation Next() {
     auto* shard = shards_[RequestIdThreadIndex() % shards_.size()].get();
     auto allocation = shard->Next();
