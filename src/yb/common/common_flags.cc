@@ -41,6 +41,15 @@ DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, tr
     "If false, disables automatic tablet splitting driven from the yb-master side, and in this "
     "case the value of tserver's ysql_num_tablets is recommended to be set to -1.");
 
+// Gates the YCQL LIST ROLES / LIST PERMISSIONS statements (tserver) and, with them, DESCRIBE on a
+// single role (roles_permissions.cc): GRANT DESCRIBE ON ROLE r, and DESCRIBE in the creator's grant
+// on a new role (master). Defined here so that yb-master and yb-tserver both have it.
+// kLocalVolatile: LIST persists nothing, and a DESCRIBE bit stored on a role resource is ignored by
+// binaries that predate this flag, so demoting it (or rolling back) is safe; roles granted DESCRIBE
+// while it was on keep that grant.
+DEFINE_RUNTIME_AUTO_bool(ycql_enable_list_roles_permissions, kLocalVolatile, false, true,
+    "Enables the YCQL LIST ROLES and LIST PERMISSIONS statements, and DESCRIBE on a single role.");
+
 DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
     "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);

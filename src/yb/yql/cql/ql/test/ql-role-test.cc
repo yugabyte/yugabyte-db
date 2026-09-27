@@ -20,6 +20,7 @@
 #include "yb/client/permissions.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -32,6 +33,7 @@
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
+DECLARE_bool(ycql_enable_list_roles_permissions);
 
 constexpr const char* const kDefaultCassandraUsername = "cassandra";
 
@@ -53,6 +55,8 @@ using std::string;
 
 static const char invalid_grant_describe_error_msg[] =
     "Resource type DataResource does not support any of the requested permissions";
+static const char invalid_grant_on_role_error_msg[] =
+    "Resource type RoleResource does not support any of the requested permissions";
 static const std::vector<string> all_permissions =
     {"ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP", "MODIFY", "SELECT"};
 static const std::vector<string> all_permissions_minus_describe =
@@ -64,7 +68,7 @@ static const std::vector<string> all_permissions_for_keyspace =
 static const std::vector<string> all_permissions_for_table =
     {"ALTER", "AUTHORIZE", "DROP", "MODIFY", "SELECT"};
 static const std::vector<string> all_permissions_for_role =
-    {"ALTER", "AUTHORIZE", "DROP"};
+    {"ALTER", "AUTHORIZE", "DESCRIBE", "DROP"};
 
 class QLTestAuthentication : public QLTestBase {
  public:
@@ -640,9 +644,16 @@ TEST_F(TestQLPermission, TestGrantDescribe) {
   const string grant_on_all_keyspaces = GrantAllKeyspaces("DESCRIBE", role1);
   EXEC_INVALID_STMT_WITH_ERROR(grant_on_all_keyspaces, invalid_grant_describe_error_msg);
 
-  // Grant DESCRIBE on a role. It should fail.
+  // Grant DESCRIBE on a role. It should succeed, as in Cassandra.
   const string grant_on_role = GrantRole("DESCRIBE", role2, role1);
-  EXEC_INVALID_STMT_WITH_ERROR(grant_on_role, invalid_grant_describe_error_msg);
+  GrantRevokePermissionAndVerify(processor, grant_on_role,
+                                 strings::Substitute("$0/$1", kRolesRoleResource, role2),
+                                 {"DESCRIBE"}, role1);
+
+  // Permissions that roles do not support are rejected with Cassandra's RoleResource message.
+  EXEC_INVALID_STMT_WITH_ERROR(GrantRole("SELECT", role2, role1),
+                               invalid_grant_on_role_error_msg);
+  EXEC_INVALID_STMT_WITH_ERROR(GrantAllRoles("MODIFY", role1), invalid_grant_on_role_error_msg);
 
   // Grant DESCRIBE on all roles. It should succeed.
   const string grant_on_all_roles = GrantAllRoles("DESCRIBE", role3);
@@ -661,6 +672,36 @@ TEST_F(TestQLPermission, TestGrantDescribe) {
   const string grant_all_on_all_roles = GrantAllRoles("ALL", role5);
   GrantRevokePermissionAndVerify(processor, grant_all_on_all_roles, kRolesRoleResource,
                                  all_permissions_for_all_roles, role5);
+}
+
+// DESCRIBE on a single role is gated, with LIST, by the ycql_enable_list_roles_permissions
+// AutoFlag, so that it is not stored before every process in the cluster supports it.
+TEST_F(TestQLPermission, TestDescribeOnRoleRequiresAutoFlag) {
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
+  const string role1 = "test_role1";
+  const string role2 = "test_role2";
+  CreateRole(processor, role1);
+  CreateRole(processor, role2);
+  const string role2_resource = strings::Substitute("$0/$1", kRolesRoleResource, role2);
+  const std::vector<string> role_permissions_without_describe = {"ALTER", "AUTHORIZE", "DROP"};
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_list_roles_permissions) = false;
+  EXEC_INVALID_STMT_WITH_ERROR(GrantRole("DESCRIBE", role2, role1),
+                               invalid_grant_on_role_error_msg);
+  GrantRevokePermissionAndVerify(processor, GrantRole("ALL", role2, role1), role2_resource,
+                                 role_permissions_without_describe, role1);
+  // The creator's grant on a new role does not include DESCRIBE either.
+  GrantRevokePermissionAndVerify(processor, "CREATE ROLE created_while_off;",
+                                 strings::Substitute("$0/created_while_off", kRolesRoleResource),
+                                 role_permissions_without_describe, kDefaultCassandraUsername);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_list_roles_permissions) = true;
+  GrantRevokePermissionAndVerify(processor, GrantRole("ALL", role2, role1), role2_resource,
+                                 all_permissions_for_role, role1);
+  GrantRevokePermissionAndVerify(processor, "CREATE ROLE created_while_on;",
+                                 strings::Substitute("$0/created_while_on", kRolesRoleResource),
+                                 all_permissions_for_role, kDefaultCassandraUsername);
 }
 
 class TestQLRole : public QLTestAuthentication {
@@ -1163,6 +1204,329 @@ TEST_F(TestQLRole, TestMutationsGetCommittedOrAborted) {
   // Lastly, create another role to verify that the roles version didn't change after all the
   // statements that didn't modify anything in the master.
   CreateRole(processor, "another_role");
+}
+
+//--------------------------------------------------------------------------------------------------
+// LIST ROLES / LIST PERMISSIONS.
+//
+// The fixture and the expected results mirror a run against Apache Cassandra 3.11.19:
+//   alice (login) <- parent <- grandparent; other (login) is unrelated; descr (login) has DESCRIBE
+//   ON ALL ROLES. alice: MODIFY <table ks.t>; parent: SELECT <keyspace ks>;
+//   grandparent: SELECT <all keyspaces>, ALTER <role other>; other: SELECT <table ks.t>.
+// Unlike Cassandra's results, cassandra's own rows here come from YB's creator grants (it creates
+// every object in the fixture).
+
+class TestQLListRolesPermissions : public QLTestAuthentication {
+ public:
+  TestQLListRolesPermissions() : QLTestAuthentication() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_list_roles_permissions) = true;
+  }
+
+  void CreateFixture() {
+    ASSERT_NO_FATALS(CreateSimulatedCluster());
+    superuser_ = GetQLProcessor(kDefaultCassandraUsername);
+    for (const auto& stmt : {
+        "CREATE KEYSPACE ks",
+        "CREATE TABLE ks.t (k int PRIMARY KEY, v int)",
+        "CREATE ROLE alice WITH LOGIN = true AND PASSWORD = 'a'",
+        "CREATE ROLE parent",
+        "CREATE ROLE grandparent",
+        "CREATE ROLE other WITH LOGIN = true AND PASSWORD = 'o'",
+        "CREATE ROLE descr WITH LOGIN = true AND PASSWORD = 'd'",
+        "GRANT grandparent TO parent",
+        "GRANT parent TO alice",
+        "GRANT SELECT ON KEYSPACE ks TO parent",
+        "GRANT MODIFY ON TABLE ks.t TO alice",
+        "GRANT SELECT ON ALL KEYSPACES TO grandparent",
+        "GRANT ALTER ON ROLE other TO grandparent",
+        "GRANT SELECT ON TABLE ks.t TO other",
+        "GRANT DESCRIBE ON ALL ROLES TO descr"}) {
+      ASSERT_OK(superuser_->Run(stmt));
+    }
+    alice_ = GetQLProcessor("alice");
+    descr_ = GetQLProcessor("descr");
+  }
+
+  // LIST ROLES rows as "role|super|login|number of options".
+  static std::vector<string> RoleRows(TestQLProcessor* processor, const string& stmt) {
+    CHECK_OK(processor->Run(stmt));
+    std::vector<string> rows;
+    auto row_block = processor->row_block();
+    CHECK(row_block) << "LIST ROLES must return a rows result: " << stmt;
+    for (const auto& row : row_block->rows()) {
+      rows.push_back(Substitute("$0|$1|$2|$3", row.column(0).string_value(),
+                                row.column(1).bool_value(), row.column(2).bool_value(),
+                                row.column(3).value().map_value().keys_size()));
+    }
+    return rows;
+  }
+
+  // LIST PERMISSIONS rows as "role|username|resource|permission". An empty vector means that the
+  // statement returned a void result.
+  static std::vector<string> PermissionRows(TestQLProcessor* processor, const string& stmt) {
+    CHECK_OK(processor->Run(stmt));
+    std::vector<string> rows;
+    auto row_block = processor->row_block();
+    if (!row_block) {
+      CHECK(processor->result() == nullptr) << "Expected a void result: " << stmt;
+      return rows;
+    }
+    CHECK_GT(row_block->row_count(), 0) << "An empty result must be void: " << stmt;
+    for (const auto& row : row_block->rows()) {
+      rows.push_back(Substitute("$0|$1|$2|$3", row.column(0).string_value(),
+                                row.column(1).string_value(), row.column(2).string_value(),
+                                row.column(3).string_value()));
+    }
+    return rows;
+  }
+
+  static std::vector<string> ColumnNames(TestQLProcessor* processor) {
+    std::vector<string> names;
+    for (const auto& column : processor->rows_result()->column_schemas()) {
+      names.push_back(column.name());
+    }
+    return names;
+  }
+
+ protected:
+  TestQLProcessor* superuser_ = nullptr;
+  TestQLProcessor* alice_ = nullptr;
+  TestQLProcessor* descr_ = nullptr;
+};
+
+TEST_F(TestQLListRolesPermissions, TestParse) {
+  for (const auto& stmt : {
+      "LIST ROLES",
+      "LIST ROLES NORECURSIVE",
+      "LIST ROLES OF r",
+      "LIST ROLES OF r NORECURSIVE",
+      "LIST ROLES OF 'quoted role'",
+      "LIST ALL",
+      "LIST ALL PERMISSIONS",
+      "LIST ALL PERMISSIONS OF r",
+      "LIST ALL PERMISSIONS OF r NORECURSIVE",
+      "LIST ALL NORECURSIVE",
+      "LIST SELECT",
+      "LIST SELECT PERMISSION",
+      "LIST CREATE ON ALL KEYSPACES",
+      "LIST ALTER ON KEYSPACE ks",
+      "LIST DROP ON TABLE ks.t",
+      "LIST MODIFY ON ks.t OF r",
+      "LIST AUTHORIZE ON t",
+      "LIST DESCRIBE ON ALL ROLES",
+      "LIST ALL ON ROLE r OF r2 NORECURSIVE",
+      // ROLE followed by OF / NORECURSIVE is the ROLE resource, not a table named "role".
+      "LIST ALL ON ROLE of",
+      "LIST ALL ON ROLE norecursive NORECURSIVE",
+      "LIST ALL ON TABLE role",
+      // NORECURSIVE is not reserved.
+      "CREATE TABLE norecursive (norecursive int PRIMARY KEY)",
+      "SELECT norecursive FROM norecursive"}) {
+    const Status s = TestParser(stmt);
+    EXPECT_TRUE(s.ok()) << stmt << ": " << s;
+  }
+  for (const auto& stmt : {
+      "LIST",
+      "LIST USERS",
+      "LIST ROLES OF",
+      "LIST ROLE",
+      "LIST ALL ON",
+      "LIST ALL OF",
+      "LIST ALL PERMISSIONS ON ALL TABLES",
+      "LIST ROLES NORECURSIVE OF r"}) {
+    EXPECT_FALSE(TestParser(stmt).ok()) << stmt;
+  }
+}
+
+TEST_F(TestQLListRolesPermissions, TestListRolesAsSuperuser) {
+  ASSERT_NO_FATALS(CreateFixture());
+  EXPECT_EQ((std::vector<string>{
+                "alice|false|true|0",
+                "cassandra|true|true|0",
+                "descr|false|true|0",
+                "grandparent|false|false|0",
+                "other|false|true|0",
+                "parent|false|false|0"}),
+            RoleRows(superuser_, "LIST ROLES"));
+  EXPECT_EQ((std::vector<string>{"role", "super", "login", "options"}), ColumnNames(superuser_));
+
+  EXPECT_EQ((std::vector<string>{
+                "alice|false|true|0", "grandparent|false|false|0", "parent|false|false|0"}),
+            RoleRows(superuser_, "LIST ROLES OF alice"));
+  EXPECT_EQ((std::vector<string>{"alice|false|true|0", "parent|false|false|0"}),
+            RoleRows(superuser_, "LIST ROLES OF alice NORECURSIVE"));
+}
+
+TEST_F(TestQLListRolesPermissions, TestListRolesWithoutDescribe) {
+  ASSERT_NO_FATALS(CreateFixture());
+  const std::vector<string> alice_roles = {
+      "alice|false|true|0", "grandparent|false|false|0", "parent|false|false|0"};
+  // Without DESCRIBE on ALL ROLES, LIST ROLES lists the caller's own roles instead of failing.
+  EXPECT_EQ(alice_roles, RoleRows(alice_, "LIST ROLES"));
+  EXPECT_EQ((std::vector<string>{"alice|false|true|0", "parent|false|false|0"}),
+            RoleRows(alice_, "LIST ROLES NORECURSIVE"));
+  EXPECT_EQ(alice_roles, RoleRows(alice_, "LIST ROLES OF alice"));
+  EXPECT_EQ((std::vector<string>{"grandparent|false|false|0", "parent|false|false|0"}),
+            RoleRows(alice_, "LIST ROLES OF parent"));
+  EXPECT_EQ((std::vector<string>{"grandparent|false|false|0"}),
+            RoleRows(alice_, "LIST ROLES OF grandparent"));
+
+  TestQLProcessor* processor = alice_;
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ROLES OF other",
+                               "You are not authorized to view roles granted to other");
+  // Existence is checked before authorization.
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ROLES OF ghost", "<role ghost> doesn't exist");
+
+  // DESCRIBE on ALL ROLES sees every role.
+  EXPECT_EQ(6U, RoleRows(descr_, "LIST ROLES").size());
+  EXPECT_EQ((std::vector<string>{"other|false|true|0"}), RoleRows(descr_, "LIST ROLES OF other"));
+}
+
+TEST_F(TestQLListRolesPermissions, TestListPermissionsOfRole) {
+  ASSERT_NO_FATALS(CreateFixture());
+  // Grants inherited through role membership are included, and the role column is the holder.
+  // username is always the role name, even for roles that cannot log in.
+  const std::vector<string> alice_permissions = {
+      "alice|alice|<table ks.t>|MODIFY",
+      "grandparent|grandparent|<all keyspaces>|SELECT",
+      "grandparent|grandparent|<role other>|ALTER",
+      "parent|parent|<keyspace ks>|SELECT"};
+  EXPECT_EQ(alice_permissions, PermissionRows(alice_, "LIST ALL PERMISSIONS OF alice"));
+  EXPECT_EQ((std::vector<string>{"role", "username", "resource", "permission"}),
+            ColumnNames(alice_));
+  // NORECURSIVE does not drop inherited grants.
+  EXPECT_EQ(alice_permissions, PermissionRows(alice_, "LIST ALL PERMISSIONS OF alice NORECURSIVE"));
+  EXPECT_EQ(alice_permissions, PermissionRows(superuser_, "LIST ALL OF alice"));
+  EXPECT_EQ((std::vector<string>{
+                "grandparent|grandparent|<all keyspaces>|SELECT",
+                "grandparent|grandparent|<role other>|ALTER",
+                "parent|parent|<keyspace ks>|SELECT"}),
+            PermissionRows(alice_, "LIST ALL PERMISSIONS OF parent"));
+  EXPECT_EQ((std::vector<string>{"other|other|<table ks.t>|SELECT"}),
+            PermissionRows(descr_, "LIST ALL PERMISSIONS OF other"));
+}
+
+TEST_F(TestQLListRolesPermissions, TestListPermissionsOnResource) {
+  ASSERT_NO_FATALS(CreateFixture());
+  // ON TABLE includes the keyspace and all-keyspaces parents.
+  EXPECT_EQ((std::vector<string>{
+                "alice|alice|<table ks.t>|MODIFY",
+                "grandparent|grandparent|<all keyspaces>|SELECT",
+                "parent|parent|<keyspace ks>|SELECT"}),
+            PermissionRows(alice_, "LIST ALL PERMISSIONS ON TABLE ks.t OF alice"));
+  // The permission filter applies.
+  EXPECT_EQ((std::vector<string>{
+                "grandparent|grandparent|<all keyspaces>|SELECT",
+                "parent|parent|<keyspace ks>|SELECT"}),
+            PermissionRows(alice_, "LIST SELECT ON TABLE ks.t OF alice"));
+  // NORECURSIVE drops the parent resources but keeps inherited role grants.
+  EXPECT_EQ((std::vector<string>{"parent|parent|<keyspace ks>|SELECT"}),
+            PermissionRows(superuser_, "LIST ALL PERMISSIONS ON KEYSPACE ks OF alice NORECURSIVE"));
+  // Without OF, all roles. cassandra's rows are its creator grants.
+  EXPECT_EQ((std::vector<string>{
+                "cassandra|cassandra|<table ks.t>|SELECT",
+                "other|other|<table ks.t>|SELECT"}),
+            PermissionRows(superuser_, "LIST SELECT ON TABLE ks.t NORECURSIVE"));
+  // ON ROLE includes <all roles>. cassandra holds DESCRIBE on <role other> as its creator.
+  EXPECT_EQ((std::vector<string>{
+                "cassandra|cassandra|<role other>|DESCRIBE",
+                "descr|descr|<all roles>|DESCRIBE"}),
+            PermissionRows(superuser_, "LIST DESCRIBE ON ROLE other"));
+  // A permission that does not apply to the resource type is not an error.
+  EXPECT_TRUE(PermissionRows(superuser_, "LIST SELECT ON ROLE other").empty());
+  // Unqualified table names resolve against the current keyspace.
+  ASSERT_OK(superuser_->Run("USE ks"));
+  EXPECT_EQ((std::vector<string>{"alice|alice|<table ks.t>|MODIFY"}),
+            PermissionRows(superuser_, "LIST MODIFY ON t OF alice NORECURSIVE"));
+}
+
+TEST_F(TestQLListRolesPermissions, TestListPermissionsOrderAndEmptyResult) {
+  ASSERT_NO_FATALS(CreateFixture());
+  ASSERT_OK(superuser_->Run("CREATE ROLE ordered"));
+  ASSERT_OK(superuser_->Run("GRANT ALL ON KEYSPACE ks TO ordered"));
+  // Cassandra's permission order, not alphabetical and not the PermissionType enum order.
+  EXPECT_EQ((std::vector<string>{
+                "ordered|ordered|<keyspace ks>|CREATE",
+                "ordered|ordered|<keyspace ks>|ALTER",
+                "ordered|ordered|<keyspace ks>|DROP",
+                "ordered|ordered|<keyspace ks>|SELECT",
+                "ordered|ordered|<keyspace ks>|MODIFY",
+                "ordered|ordered|<keyspace ks>|AUTHORIZE"}),
+            PermissionRows(superuser_, "LIST ALL OF ordered"));
+  // No match: a void result, as in Cassandra.
+  EXPECT_TRUE(PermissionRows(superuser_, "LIST MODIFY ON ALL ROLES").empty());
+  EXPECT_TRUE(PermissionRows(superuser_, "LIST ALL ON ROLE descr OF other").empty());
+}
+
+TEST_F(TestQLListRolesPermissions, TestListPermissionsAuthorization) {
+  ASSERT_NO_FATALS(CreateFixture());
+  TestQLProcessor* processor = alice_;
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS",
+                               "You are not authorized to view everyone's permissions");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS ON TABLE ks.t",
+                               "You are not authorized to view everyone's permissions");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS OF other",
+                               "You are not authorized to view other's permissions");
+  // Existence is checked before authorization.
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS OF ghost", "<role ghost> doesn't exist");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL ON TABLE ks.nope OF alice",
+                               "<table ks.nope> doesn't exist");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL ON KEYSPACE nokeys OF alice",
+                               "<keyspace nokeys> doesn't exist");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL ON ROLE ghost OF alice", "<role ghost> doesn't exist");
+
+  // DESCRIBE on ALL ROLES can list everyone's permissions.
+  EXPECT_FALSE(PermissionRows(descr_, "LIST ALL PERMISSIONS").empty());
+
+  // DESCRIBE on one role (here inherited by alice through parent <- grandparent) allows
+  // LIST PERMISSIONS OF that role only. LIST ROLES does not consider it (as in Cassandra).
+  ASSERT_OK(superuser_->Run("GRANT DESCRIBE ON ROLE other TO grandparent"));
+  EXPECT_EQ((std::vector<string>{"other|other|<table ks.t>|SELECT"}),
+            PermissionRows(alice_, "LIST ALL PERMISSIONS OF other"));
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS",
+                               "You are not authorized to view everyone's permissions");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS OF descr",
+                               "You are not authorized to view descr's permissions");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ROLES OF other",
+                               "You are not authorized to view roles granted to other");
+  ASSERT_OK(superuser_->Run("REVOKE DESCRIBE ON ROLE other FROM grandparent"));
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS OF other",
+                               "You are not authorized to view other's permissions");
+}
+
+TEST_F(TestQLListRolesPermissions, TestListReflectsGrantAndRevoke) {
+  ASSERT_NO_FATALS(CreateFixture());
+  const string list = "LIST ALL ON ALL KEYSPACES OF other NORECURSIVE";
+  EXPECT_TRUE(PermissionRows(superuser_, list).empty());
+  ASSERT_OK(superuser_->Run("GRANT CREATE ON ALL KEYSPACES TO other"));
+  EXPECT_EQ((std::vector<string>{"other|other|<all keyspaces>|CREATE"}),
+            PermissionRows(superuser_, list));
+  ASSERT_OK(superuser_->Run("REVOKE CREATE ON ALL KEYSPACES FROM other"));
+  EXPECT_TRUE(PermissionRows(superuser_, list).empty());
+
+  ASSERT_OK(superuser_->Run("GRANT grandparent TO other"));
+  EXPECT_EQ((std::vector<string>{"grandparent|false|false|0", "other|false|true|0"}),
+            RoleRows(superuser_, "LIST ROLES OF other"));
+  ASSERT_OK(superuser_->Run("REVOKE grandparent FROM other"));
+  EXPECT_EQ((std::vector<string>{"other|false|true|0"}),
+            RoleRows(superuser_, "LIST ROLES OF other"));
+}
+
+TEST_F(TestQLListRolesPermissions, TestListRequiresAuthenticationAndAutoFlag) {
+  ASSERT_NO_FATALS(CreateFixture());
+  TestQLProcessor* processor = superuser_;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_list_roles_permissions) = false;
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ROLES", "Feature Not Supported");
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS", "Feature Not Supported");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_list_roles_permissions) = true;
+
+  // Like Cassandra with AllowAllAuthenticator, and like the other YCQL role statements.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
+  const string not_logged_in = "You have to be logged in and not anonymous to perform this request";
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ROLES", not_logged_in);
+  EXEC_INVALID_STMT_WITH_ERROR("LIST ALL PERMISSIONS", not_logged_in);
 }
 
 } // namespace ql

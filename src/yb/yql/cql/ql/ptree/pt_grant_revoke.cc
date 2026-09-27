@@ -122,9 +122,12 @@ Status PTGrantRevokePermission::Analyze(SemContext* sem_context) {
   // This check should be done before anything else.
   if (permission_ != PermissionType::ALL_PERMISSION &&
       !valid_permission_for_resource(permission_, resource_type_)) {
-    // Match apache cassandra's error message.
+    // Match apache cassandra's error message, which names the resource class.
+    const bool is_role_resource =
+        resource_type_ == ResourceType::ROLE || resource_type_ == ResourceType::ALL_ROLES;
     return sem_context->Error(loc(),
-        "Resource type DataResource does not support any of the requested permissions",
+        strings::Substitute("Resource type $0 does not support any of the requested permissions",
+                            is_role_resource ? "RoleResource" : "DataResource"),
         ErrorCode::SYNTAX_ERROR);
   }
 

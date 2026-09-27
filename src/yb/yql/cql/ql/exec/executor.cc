@@ -25,6 +25,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/master/master_defaults.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/consistent_read_point.h"
 #include "yb/qlexpr/index.h"
@@ -50,6 +52,7 @@
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/exec/list_roles_permissions.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
@@ -68,6 +71,7 @@
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 #include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_list_roles_permissions.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
@@ -336,6 +340,12 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
 
     case TreeNodeOpcode::kPTGrantRevokePermission:
       return ExecPTNode(static_cast<const PTGrantRevokePermission *>(tnode));
+
+    case TreeNodeOpcode::kPTListRoles:
+      return ExecPTNode(static_cast<const PTListRoles *>(tnode), tnode_context);
+
+    case TreeNodeOpcode::kPTListPermissions:
+      return ExecPTNode(static_cast<const PTListPermissions *>(tnode), tnode_context);
 
     case TreeNodeOpcode::kPTSelectStmt:
       return ExecPTNode(static_cast<const PTSelectStmt *>(tnode), tnode_context);
@@ -831,6 +841,236 @@ Status Executor::ExecPTNode(const PTGrantRevokePermission* tnode) {
   // TODO (Bristy) : Return proper result.
   return Status::OK();
 }
+
+//--------------------------------------------------------------------------------------------------
+// LIST ROLES / LIST PERMISSIONS.
+//
+// Both statements read the role catalog from the master-served virtual tables system_auth.roles
+// and system_auth.role_permissions, rather than from the tserver's permissions cache, so that the
+// result reflects every committed GRANT / REVOKE even if this tserver's cache is behind. The reads
+// go through the normal session flush. ProcessTnodeResults() keeps the completed ops, because the
+// two tables have different schemas and must not be merged into one rows result, and
+// ProcessAsyncResults() calls FinishListStatement() once both have completed.
+
+namespace {
+
+bool IsListStatement(const TreeNode* tnode) {
+  return tnode->opcode() == TreeNodeOpcode::kPTListRoles ||
+         tnode->opcode() == TreeNodeOpcode::kPTListPermissions;
+}
+
+struct AuthVTableRead {
+  const char* table_name;
+  std::vector<const char*> columns;
+};
+
+// Columns read from the system_auth virtual tables. salted_hash is deliberately not read.
+const std::vector<AuthVTableRead>& AuthVTableReads() {
+  static const auto* const kReads = new std::vector<AuthVTableRead>{
+      {master::kSystemAuthRolesTableName, {"role", "can_login", "is_superuser", "member_of"}},
+      {master::kSystemAuthRolePermissionsTableName, {"role", "resource", "permissions"}},
+  };
+  return *kReads;
+}
+
+std::vector<string> StringList(const QLValuePB& value) {
+  std::vector<string> result;
+  if (value.has_list_value()) {
+    for (const auto& elem : value.list_value().elems()) {
+      result.push_back(elem.string_value());
+    }
+  }
+  return result;
+}
+
+// Loads the rows read by AddAuthCatalogReads() into an AuthCatalog.
+Result<AuthCatalog> LoadAuthCatalog(const std::vector<YBqlOpPtr>& ops) {
+  AuthCatalog catalog;
+  for (const auto& op : ops) {
+    SCHECK_EQ(op->type(), YBOperation::Type::QL_READ, IllegalState, "Unexpected op type");
+    const auto& read_op = static_cast<const YBqlReadOp&>(*op);
+    const auto block = VERIFY_RESULT(read_op.MakeRowBlock());
+    const auto& table_name = read_op.table()->name().table_name();
+    if (table_name == master::kSystemAuthRolesTableName) {
+      for (const auto& row : block.rows()) {
+        AuthRoleInfo info;
+        info.role = row.column(0).value().string_value();
+        info.can_login = row.column(1).value().bool_value();
+        info.is_superuser = row.column(2).value().bool_value();
+        info.member_of = StringList(row.column(3).value());
+        catalog.AddRole(std::move(info));
+      }
+    } else if (table_name == master::kSystemAuthRolePermissionsTableName) {
+      for (const auto& row : block.rows()) {
+        RETURN_NOT_OK(catalog.AddGrant(row.column(0).value().string_value(),
+                                       row.column(1).value().string_value(),
+                                       StringList(row.column(2).value())));
+      }
+    } else {
+      return STATUS_FORMAT(IllegalState, "Unexpected table $0", table_name);
+    }
+  }
+  return catalog;
+}
+
+std::shared_ptr<std::vector<ColumnSchema>> MakeColumnSchemas(
+    std::initializer_list<std::pair<const char*, std::shared_ptr<QLType>>> columns) {
+  auto result = std::make_shared<std::vector<ColumnSchema>>();
+  for (const auto& [name, type] : columns) {
+    result->emplace_back(name, type, ColumnKind::VALUE, Nullable::kTrue);
+  }
+  return result;
+}
+
+} // namespace
+
+Status Executor::ExecPTNode(const PTListRoles* tnode, TnodeContext* tnode_context) {
+  return AddAuthCatalogReads(tnode, tnode_context);
+}
+
+Status Executor::ExecPTNode(const PTListPermissions* tnode, TnodeContext* tnode_context) {
+  return AddAuthCatalogReads(tnode, tnode_context);
+}
+
+Status Executor::AddAuthCatalogReads(const TreeNode* tnode, TnodeContext* tnode_context) {
+  for (const auto& read : AuthVTableReads()) {
+    const YBTableName table_name(YQL_DATABASE_CQL, master::kSystemAuthNamespaceName,
+                                 read.table_name);
+    bool cache_used = false;
+    const auto table = ql_env_->GetTableDesc(table_name, &cache_used);
+    if (table == nullptr) {
+      return exec_context_->Error(tnode, Format("Cannot read $0", table_name),
+                                  ErrorCode::SERVER_ERROR);
+    }
+
+    YBqlReadOpPtr op(table->NewQLSelect(arena()));
+    auto* req = op->mutable_request();
+    auto* rsrow_desc = req->mutable_rsrow_desc();
+    const Schema& schema = table->InternalSchema();
+    for (const char* column_name : read.columns) {
+      const auto idx = schema.find_column(column_name);
+      if (idx == Schema::kColumnNotFound) {
+        return exec_context_->Error(
+            tnode, Format("Column $0 not found in $1", column_name, table_name),
+            ErrorCode::SERVER_ERROR);
+      }
+      const auto column_id = schema.column_id(idx).rep();
+      req->add_selected_exprs()->set_column_id(column_id);
+      req->mutable_column_refs()->add_ids(column_id);
+      auto* rscol_desc = rsrow_desc->add_rscol_descs();
+      rscol_desc->dup_name(column_name);
+      schema.column(idx).type()->ToQLTypePB(rscol_desc->mutable_ql_type());
+    }
+    // Like SELECT on system tables: always strongly consistent and never paged.
+    op->set_yb_consistency_level(YBConsistencyLevel::STRONG);
+    AddOperation(op, tnode_context);
+  }
+  return Status::OK();
+}
+
+Status Executor::FinishListStatement(TnodeContext* tnode_context) {
+  const TreeNode* tnode = tnode_context->tnode();
+  auto catalog = LoadAuthCatalog(tnode_context->ops());
+  // The reads are done; the rows result built below replaces them.
+  tnode_context->ops().clear();
+  if (!catalog.ok()) {
+    return exec_context_->Error(tnode, catalog.status(), ErrorCode::SERVER_ERROR);
+  }
+  const string caller = ql_env_->CurrentRoleName();
+
+  // Errors from ListRoles() / ListPermissions() carry a QL error code (ROLE_NOT_FOUND or
+  // UNAUTHORIZED); anything else is an internal error.
+  auto to_error = [this, tnode](const Status& s) {
+    const ErrorCode code = s.IsQLError() ? GetErrorCode(s) : ErrorCode::SERVER_ERROR;
+    return exec_context_->Error(tnode, s.message().ToBuffer(), code);
+  };
+
+  if (tnode->opcode() == TreeNodeOpcode::kPTListRoles) {
+    const auto* stmt = static_cast<const PTListRoles*>(tnode);
+    const auto roles = ListRoles(
+        *catalog, caller,
+        stmt->has_role_name() ? std::optional<string>(stmt->role_name()) : std::nullopt,
+        stmt->recursive());
+    if (!roles.ok()) {
+      return to_error(roles.status());
+    }
+
+    // Apache Cassandra 3.11 column names and types.
+    const auto columns = MakeColumnSchemas({
+        {"role", QLType::Create(DataType::STRING)},
+        {"super", QLType::Create(DataType::BOOL)},
+        {"login", QLType::Create(DataType::BOOL)},
+        {"options", QLType::CreateTypeMap(DataType::STRING, DataType::STRING)},
+    });
+    qlexpr::QLRowBlock row_block{Schema(*columns)};
+    for (const auto& role : *roles) {
+      auto& row = row_block.Extend();
+      row.mutable_column(0)->set_string_value(role.role);
+      row.mutable_column(1)->set_bool_value(role.is_superuser);
+      row.mutable_column(2)->set_bool_value(role.can_login);
+      // Role OPTIONS are not supported, so the map is always empty.
+      row.mutable_column(3)->set_map_value();
+    }
+    tnode_context->rows_result() = std::make_shared<RowsResult>(
+        YBTableName(YQL_DATABASE_CQL, master::kSystemAuthNamespaceName, "roles"), columns,
+        row_block.SerializeToRefCntSlice());
+    return Status::OK();
+  }
+
+  DCHECK_EQ(tnode->opcode(), TreeNodeOpcode::kPTListPermissions);
+  const auto* stmt = static_cast<const PTListPermissions*>(tnode);
+  std::optional<ListResourceSpec> resource;
+  if (stmt->has_resource()) {
+    resource = ListResourceSpec{stmt->resource_type(), stmt->canonical_resource()};
+  }
+  const auto rows = ListPermissions(
+      *catalog, caller, stmt->permission(), resource,
+      stmt->has_role_name() ? std::optional<string>(stmt->role_name()) : std::nullopt,
+      stmt->recursive());
+  if (!rows.ok()) {
+    return to_error(rows.status());
+  }
+
+  // Like Cassandra, return a void result rather than an empty rows result when nothing matches.
+  if (rows->empty()) {
+    return Status::OK();
+  }
+
+  const auto columns = MakeColumnSchemas({
+      {"role", QLType::Create(DataType::STRING)},
+      {"username", QLType::Create(DataType::STRING)},
+      {"resource", QLType::Create(DataType::STRING)},
+      {"permission", QLType::Create(DataType::STRING)},
+  });
+  qlexpr::QLRowBlock row_block{Schema(*columns)};
+  for (const auto& permission_row : *rows) {
+    auto& row = row_block.Extend();
+    row.mutable_column(0)->set_string_value(permission_row.role);
+    // Cassandra shows the role name in the deprecated username column for every role.
+    row.mutable_column(1)->set_string_value(permission_row.role);
+    row.mutable_column(2)->set_string_value(*ResourceDisplayName(permission_row.resource));
+    row.mutable_column(3)->set_string_value(ListPermissionName(permission_row.permission));
+  }
+  tnode_context->rows_result() = std::make_shared<RowsResult>(
+      YBTableName(YQL_DATABASE_CQL, master::kSystemAuthNamespaceName, "permissions"), columns,
+      row_block.SerializeToRefCntSlice());
+  return Status::OK();
+}
+
+Status Executor::ProcessListOpStatus(const TreeNode* tnode,
+                                     const YBqlOpPtr& op,
+                                     ExecContext* exec_context) {
+  const auto& resp = op->response();
+  if (!resp.has_status() || resp.status() == QLResponsePB::YQL_STATUS_OK) {
+    return Status::OK();
+  }
+  if (resp.status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
+    return STATUS(TryAgain, resp.error_message());
+  }
+  return exec_context->Error(tnode, resp.error_message().ToBuffer(), ErrorCode::EXEC_ERROR);
+}
+
+//--------------------------------------------------------------------------------------------------
 
 Status Executor::GetOffsetOrLimit(
     const PTSelectStmt* tnode,
@@ -1985,6 +2225,11 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
             reset_async_calls);
       }
 
+      // For LIST ROLES / LIST PERMISSIONS, compute the result from the system_auth reads.
+      if (IsListStatement(tnode)) {
+        RETURN_STMT_NOT_OK(FinishListStatement(&tnode_context), reset_async_calls);
+      }
+
       // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been completed
       // but exclude the time to commit the transaction if any. Report the metric only once.
       if (ql_metrics_ != nullptr && !tnode_context.end_time().Initialized()) {
@@ -2006,10 +2251,16 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
           case TreeNodeOpcode::kPTStartTransaction:
           case TreeNodeOpcode::kPTCommit:
             break;
+          case TreeNodeOpcode::kPTListRoles:
+          case TreeNodeOpcode::kPTListPermissions:
+            // Counted with the other role / permission statements. Their TnodeContext is erased
+            // below, so StatementExecuted() does not see it.
+            ql_metrics_->ql_others_->Increment(delta_usec);
+            break;
           default:
             LOG(FATAL) << "unexpected operation " << tnode->opcode();
         }
-        if (tnode->IsDml()) {
+        if (tnode->IsDml() || IsListStatement(tnode)) {
           ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
         }
       }
@@ -2070,6 +2321,13 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
         session->Apply(op);
         has_buffered_ops = true;
       }
+      op_itr++;
+      continue;
+    }
+
+    // LIST ROLES / LIST PERMISSIONS: keep the completed system_auth reads for
+    // FinishListStatement(), which needs the rows of both tables with their own schemas.
+    if (IsListStatement(tnode)) {
       op_itr++;
       continue;
     }
@@ -2632,8 +2890,12 @@ Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec
             s = exec_context->Error(tnode, s, errcode);
           }
           if (s.ok()) {
-            DCHECK(tnode->IsDml()) << "Only DML should issue a read/write operation";
-            s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
+            if (IsListStatement(tnode)) {
+              s = ProcessListOpStatus(tnode, op, exec_context);
+            } else {
+              DCHECK(tnode->IsDml()) << "Only DML and LIST should issue a read/write operation";
+              s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
+            }
           }
           if (ShouldRestart(s, rescheduler_)) {
             exec_context->Reset(client::Restart::kTrue, rescheduler_);
