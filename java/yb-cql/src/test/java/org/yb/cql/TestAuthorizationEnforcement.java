@@ -34,6 +34,7 @@ import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.exceptions.SyntaxError;
 import com.datastax.driver.core.exceptions.UnauthorizedException;
 import com.google.common.io.Closeables;
@@ -1969,7 +1970,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     // Create a new role.
     cs2.execute(String.format("CREATE ROLE %s", anotherUsername));
 
-    List<String> expectedPermissions = Arrays.asList("ALTER", "AUTHORIZE", "DROP");
+    // As in Cassandra, the creator also gets DESCRIBE on the new role.
+    List<String> expectedPermissions =
+        Arrays.asList("ALTER", "AUTHORIZE", "DESCRIBE", "DROP");
     String resource = String.format("roles/%s", anotherUsername);
 
     assertPermissionsGranted(cs.getSession(), username, resource, expectedPermissions);
@@ -2181,7 +2184,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     createRole(cs.getSession(), anotherUsername, "", false, false, false);
 
     String canonicalResource = String.format("roles/%s", anotherUsername);
-    List<String> expectedPermissions = Arrays.asList(ALTER, AUTHORIZE, DROP);
+    List<String> expectedPermissions = Arrays.asList(ALTER, AUTHORIZE, DESCRIBE, DROP);
     // Test that we can see the permissions when we query system_auth.role_permissions.
     assertPermissionsGranted(cs.getSession(), "cassandra", canonicalResource, expectedPermissions);
 
@@ -2296,7 +2299,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     grantAllPermission(ROLE, anotherUsername, username);
     assertPermissionsGranted(cs.getSession(), username, "roles/" + anotherUsername,
-        Arrays.asList(ALTER, AUTHORIZE, DROP));
+        Arrays.asList(ALTER, AUTHORIZE, DESCRIBE, DROP));
 
     grantPermissionOnAllKeyspaces(ALL, username);
     assertPermissionsGranted(cs.getSession(), username, "data",
@@ -2310,9 +2313,12 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private void testPermissionOnResourceFails(String permission, String resourceType,
       String resourceName, String receivingRole) throws Exception {
+    // Like Cassandra, the message names the resource class.
+    String resourceClass = resourceType.equals(ROLE) || resourceType.equals(ALL_ROLES)
+        ? "RoleResource" : "DataResource";
     thrown.expect(com.datastax.driver.core.exceptions.SyntaxError.class);
-    thrown.expectMessage(
-        "Resource type DataResource does not support any of the requested permissions");
+    thrown.expectMessage(String.format(
+        "Resource type %s does not support any of the requested permissions", resourceClass));
     grantPermission(permission, resourceType, resourceName, receivingRole);
   }
 
@@ -2334,9 +2340,12 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   }
 
   @Test
-  public void testGrantDescribeOnRoleFails() throws Exception {
+  public void testGrantDescribeOnRole() throws Exception {
+    // Allowed, as in Cassandra: DESCRIBE on a role lets the grantee list its permissions.
     createRole(cs.getSession(), anotherUsername, "a", false, false, false);
-    testPermissionOnResourceFails(DESCRIBE, ROLE, anotherUsername, username);
+    grantPermission(DESCRIBE, ROLE, anotherUsername, username);
+    assertPermissionsGranted(cs.getSession(), username, "roles/" + anotherUsername,
+        Arrays.asList(DESCRIBE));
   }
 
   @Test
@@ -2609,6 +2618,109 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     cs2.execute(explainStmt);
 
     LOG.info("End test");
+  }
+
+  // ----------------------------------------------------------------------------------------------
+  // LIST ROLES / LIST PERMISSIONS authorization (Apache Cassandra 3.11 semantics). LIST reads the
+  // role catalog from the master, so none of these checks waits for the permissions cache.
+
+  private static List<String> listedRoles(ResultSet rs) {
+    List<String> roles = new ArrayList<>();
+    for (Row row : rs) {
+      roles.add(row.getString("role"));
+    }
+    return roles;
+  }
+
+  @Test
+  public void testListRolesAuthorization() throws Exception {
+    String parent = username + "_parent";
+    String unrelated = username + "_unrelated";
+    cs.execute("CREATE ROLE " + parent);
+    cs.execute("CREATE ROLE " + unrelated);
+    cs.execute(String.format("GRANT %s TO %s", parent, username));
+
+    // Without DESCRIBE on ALL ROLES, LIST ROLES lists the caller's own roles instead of failing,
+    // and OF may name any of them.
+    assertEquals(Arrays.asList(username, parent), listedRoles(cs2.execute("LIST ROLES")));
+    assertEquals(Arrays.asList(parent), listedRoles(cs2.execute("LIST ROLES OF " + parent)));
+    runInvalidStmt(new SimpleStatement("LIST ROLES OF " + unrelated), cs2.getSession(),
+        "You are not authorized to view roles granted to " + unrelated);
+    // Existence is checked before authorization.
+    runInvalidStmt(new SimpleStatement("LIST ROLES OF " + username + "_ghost"), cs2.getSession(),
+        "<role " + username + "_ghost> doesn't exist");
+
+    // With DESCRIBE on ALL ROLES, every role is visible right away.
+    cs.execute("GRANT DESCRIBE ON ALL ROLES TO " + username);
+    assertTrue(listedRoles(cs2.execute("LIST ROLES")).contains(unrelated));
+    assertEquals(Arrays.asList(unrelated), listedRoles(cs2.execute("LIST ROLES OF " + unrelated)));
+
+    // DESCRIBE inherited through a granted role counts too.
+    cs.execute("REVOKE DESCRIBE ON ALL ROLES FROM " + username);
+    runInvalidStmt(new SimpleStatement("LIST ROLES OF " + unrelated), cs2.getSession(),
+        "You are not authorized to view roles granted to " + unrelated);
+    cs.execute("GRANT DESCRIBE ON ALL ROLES TO " + parent);
+    assertEquals(Arrays.asList(unrelated), listedRoles(cs2.execute("LIST ROLES OF " + unrelated)));
+  }
+
+  @Test
+  public void testListPermissionsAuthorization() throws Exception {
+    String parent = username + "_parent";
+    String unrelated = username + "_unrelated";
+    cs.execute("CREATE ROLE " + parent);
+    cs.execute("CREATE ROLE " + unrelated);
+    cs.execute(String.format("GRANT %s TO %s", parent, username));
+    cs.execute(String.format("GRANT SELECT ON KEYSPACE %s TO %s", keyspace, parent));
+    cs.execute(String.format("GRANT MODIFY ON KEYSPACE %s TO %s", keyspace, unrelated));
+
+    // The caller's own permissions, including those inherited from granted roles.
+    List<Row> rows = cs2.execute("LIST ALL PERMISSIONS OF " + username).all();
+    assertEquals(1, rows.size());
+    assertEquals(parent, rows.get(0).getString("role"));
+    assertEquals("<keyspace " + keyspace + ">", rows.get(0).getString("resource"));
+    assertEquals(SELECT, rows.get(0).getString("permission"));
+    assertEquals(1, cs2.execute("LIST ALL PERMISSIONS OF " + parent).all().size());
+
+    runInvalidStmt(new SimpleStatement("LIST ALL PERMISSIONS"), cs2.getSession(),
+        "You are not authorized to view everyone's permissions");
+    runInvalidStmt(new SimpleStatement("LIST ALL ON KEYSPACE " + keyspace), cs2.getSession(),
+        "You are not authorized to view everyone's permissions");
+    runInvalidStmt(new SimpleStatement("LIST ALL PERMISSIONS OF " + unrelated), cs2.getSession(),
+        "You are not authorized to view " + unrelated + "'s permissions");
+    // Existence is checked before authorization.
+    runInvalidStmt(new SimpleStatement("LIST ALL PERMISSIONS OF " + username + "_ghost"),
+        cs2.getSession(), "<role " + username + "_ghost> doesn't exist");
+
+    // With DESCRIBE on ALL ROLES, everyone's permissions are visible right away.
+    cs.execute("GRANT DESCRIBE ON ALL ROLES TO " + username);
+    rows = cs2.execute("LIST ALL PERMISSIONS OF " + unrelated).all();
+    assertEquals(1, rows.size());
+    assertEquals(MODIFY, rows.get(0).getString("permission"));
+    assertFalse(cs2.execute("LIST ALL ON KEYSPACE " + keyspace).all().isEmpty());
+  }
+
+  @Test
+  public void testListPermissionsOfCreatedRole() throws Exception {
+    // As in Cassandra, a role's creator gets DESCRIBE on it, which lets the creator list the
+    // role's permissions, but not the roles granted to it.
+    grantPermissionOnAllRoles(CREATE, username);
+    cs2.execute("CREATE ROLE " + anotherUsername);
+    cs.execute(String.format("GRANT SELECT ON KEYSPACE %s TO %s", keyspace, anotherUsername));
+
+    List<Row> rows = cs2.execute("LIST ALL PERMISSIONS OF " + anotherUsername).all();
+    assertEquals(1, rows.size());
+    assertEquals(anotherUsername, rows.get(0).getString("role"));
+    assertEquals("<keyspace " + keyspace + ">", rows.get(0).getString("resource"));
+    assertEquals(SELECT, rows.get(0).getString("permission"));
+    runInvalidStmt(new SimpleStatement("LIST ROLES OF " + anotherUsername), cs2.getSession(),
+        "You are not authorized to view roles granted to " + anotherUsername);
+    runInvalidStmt(new SimpleStatement("LIST ALL PERMISSIONS"), cs2.getSession(),
+        "You are not authorized to view everyone's permissions");
+
+    // LIST reads the role catalog from the master, so the REVOKE applies right away.
+    cs.execute(String.format("REVOKE DESCRIBE ON ROLE %s FROM %s", anotherUsername, username));
+    runInvalidStmt(new SimpleStatement("LIST ALL PERMISSIONS OF " + anotherUsername),
+        cs2.getSession(), "You are not authorized to view " + anotherUsername + "'s permissions");
   }
 
   protected static enum GrantRevoke {

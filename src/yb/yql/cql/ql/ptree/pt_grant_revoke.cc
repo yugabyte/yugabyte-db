@@ -27,6 +27,7 @@
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 
 DECLARE_bool(use_cassandra_authentication);
+DECLARE_bool(ycql_enable_list_roles_permissions);
 
 namespace yb {
 namespace ql {
@@ -120,11 +121,23 @@ Status PTGrantRevokePermission::Analyze(SemContext* sem_context) {
 
   // Check that the permission being granted is supported by the resource.
   // This check should be done before anything else.
-  if (permission_ != PermissionType::ALL_PERMISSION &&
+  // REVOKE of DESCRIBE on a role is always accepted, so that a grant stored while the
+  // ycql_enable_list_roles_permissions AutoFlag was on can be revoked on its own. The master
+  // ignores the revoke of a permission the role does not hold.
+  const bool revoke_describe_on_role =
+      statement_type_ == client::GrantRevokeStatementType::REVOKE &&
+      permission_ == PermissionType::DESCRIBE_PERMISSION && resource_type_ == ResourceType::ROLE;
+  if (permission_ != PermissionType::ALL_PERMISSION && !revoke_describe_on_role &&
       !valid_permission_for_resource(permission_, resource_type_)) {
-    // Match apache cassandra's error message.
+    // Match apache cassandra's error message, which names the resource class. The RoleResource
+    // wording is gated with DESCRIBE on a role, so that the error text only changes once the
+    // AutoFlag is promoted.
+    const bool is_role_resource =
+        resource_type_ == ResourceType::ROLE || resource_type_ == ResourceType::ALL_ROLES;
     return sem_context->Error(loc(),
-        "Resource type DataResource does not support any of the requested permissions",
+        strings::Substitute("Resource type $0 does not support any of the requested permissions",
+                            is_role_resource && FLAGS_ycql_enable_list_roles_permissions
+                                ? "RoleResource" : "DataResource"),
         ErrorCode::SYNTAX_ERROR);
   }
 

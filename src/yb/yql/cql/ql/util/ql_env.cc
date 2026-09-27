@@ -231,6 +231,10 @@ Status QLEnv::UseKeyspace(const string& keyspace_name) {
   return Status::OK();
 }
 
+Result<bool> QLEnv::KeyspaceExists(const string& keyspace_name) {
+  return client_->NamespaceExists(keyspace_name, YQL_DATABASE_CQL);
+}
+
 Status QLEnv::AlterKeyspace(const string& keyspace_name) {
   // Check if a keyspace with the specified name exists.
   Result<bool> exists = client_->NamespaceExists(keyspace_name);
