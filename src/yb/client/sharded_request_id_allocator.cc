@@ -16,8 +16,7 @@
 #include <algorithm>
 #include <atomic>
 
-#include "yb/gutil/sysinfo.h"
-
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 
 DEFINE_RUNTIME_uint32(client_request_id_shards, 0,
@@ -36,7 +35,7 @@ size_t NumRequestIdShards() {
   if (FLAGS_client_request_id_shards) {
     return FLAGS_client_request_id_shards;
   }
-  return std::clamp<size_t>(base::NumCPUs() / 8, 2, 64);
+  return std::clamp<size_t>(NumEffectiveCPUs() / 8, 2, 64);
 }
 
 size_t RequestIdThreadIndex() {
