@@ -163,6 +163,26 @@ static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_last_known_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
+/*
+ * Set when this session commits a transaction that bumped the catalog version. The next DDL that
+ * is going to bump it again clears the flag and calls
+ * YbWaitForMasterCatalogPrefetchDrain() before executing, so that DDL does not start until the
+ * master has worked through the prefetches the earlier bump caused.
+ *
+ * The flag records that this session bumped the version. It does not record whether the master is
+ * still serving the prefetches that bump caused -- by the time the next DDL arrives the master may
+ * have finished them. That is what the wait itself checks: it reads the load level the master
+ * reports and returns immediately if it is below busy.
+ *
+ * A session that bumps and then issues no further DDL never waits, and load caused by other
+ * sessions never delays this one -- that is bounded on the master side, by admission control.
+ *
+ * Nothing resets this between logical connections, so under the connection manager a bump made by
+ * one of them arms the next to share a backend. That is the behaviour we want: the wave is the
+ * node's either way, and whoever runs the next DDL is the one about to add to it.
+ */
+static bool yb_catalog_prefetch_wave_pending = false;
+
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static bool yb_need_invalidate_all_table_cache = false;
 
@@ -2167,6 +2187,7 @@ bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 8192;
+int			yb_ddl_wait_for_master_prefetch_drain_ms = 30000;
 bool		yb_enable_parallel_scan_colocated = true;
 bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
@@ -2984,6 +3005,116 @@ YbCheckNewLocalCatalogVersionOptimization()
 	}
 }
 
+#define YB_PREFETCH_DRAIN_POLL_MS 100
+
+static const char *
+YbCatalogPrefetchLoadName(YbCatalogPrefetchLoad load)
+{
+	switch (load)
+	{
+		case YB_CATALOG_PREFETCH_LOAD_UNKNOWN:
+			return "unknown";
+		case YB_CATALOG_PREFETCH_LOAD_LOW:
+			return "low";
+		case YB_CATALOG_PREFETCH_LOAD_BUSY:
+			return "busy";
+		case YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY:
+			return "super busy";
+	}
+	return "invalid";
+}
+
+/*
+ * Wait for the master leader to work through the catalog prefetches the previous catalog version
+ * bump caused, before letting this session cause another one.
+ *
+ * Every bump invalidates the cached prefetch on every tserver, so the next connection on each of
+ * them goes to the leader for a fresh copy of the catalog. The version is part of that cache's
+ * key, so a second bump before the first wave drains does not replace that work, it adds to it:
+ * each node ends up fetching a separate snapshot per version, of which only the newest is of any
+ * use. A run of DDLs issued back to back multiplies the load on the leader accordingly.
+ *
+ * Called at the start of a DDL that is going to bump the version, rather than after the previous
+ * one committed. Waiting at the end would run inside the HOLD_INTERRUPTS window around commit,
+ * where neither a cancel nor statement_timeout can be serviced, and would hold the committing
+ * transaction's heavyweight locks and its pending invalidations for the length of the wait. Here
+ * the wait is interruptible and statement_timeout bounds it, and the DDL that ends a script does
+ * not make any later statement wait.
+ *
+ * The caller only calls this when this session is the one that bumped, so a session is never
+ * delayed for load another session caused -- that is bounded on the master side instead, by
+ * admission control. What this paces is a migration running DDLs in a row, whether as separate
+ * statements or as a run of transaction blocks.
+ *
+ * The wait is capped, and is never fatal: if the leader is still busy when the cap is reached the
+ * session simply carries on.
+ *
+ * The level this reads is only as fresh as the last heartbeat. Reading it from the master directly
+ * instead would cost an RPC on every DDL.
+ */
+void
+YbWaitForMasterCatalogPrefetchDrain(void)
+{
+	int			max_count;
+	int			count = 0;
+	YbCatalogPrefetchLoad load;
+
+	if (yb_ddl_wait_for_master_prefetch_drain_ms <= 0)
+		return;
+
+	/* Round up, so that a setting below one poll interval still waits once. */
+	max_count = (yb_ddl_wait_for_master_prefetch_drain_ms / YB_PREFETCH_DRAIN_POLL_MS +
+				 (yb_ddl_wait_for_master_prefetch_drain_ms % YB_PREFETCH_DRAIN_POLL_MS != 0));
+	load = (YbCatalogPrefetchLoad) YBCGetSharedYsqlCatalogPrefetchLoad();
+
+	while (load >= YB_CATALOG_PREFETCH_LOAD_BUSY)
+	{
+		/*
+		 * Super busy means the leader is refusing even the reads that continue a prefetch it has
+		 * already begun, so it is discarding work it has done rather than merely refusing new
+		 * work. Adding a wave to that is worse than adding one to a leader that is only past the
+		 * new-prefetch watermark, so allow twice as long to get out of its way. The budget
+		 * follows the level as it changes, rather than the level this wait happened to start at.
+		 */
+		int			budget = (load >= YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY ?
+							  2 * max_count : max_count);
+
+		if (count >= budget)
+			break;
+		count++;
+
+		/* Avoid flooding the log file, but always print for the first time. */
+		if (count % 20 == 1)
+			ereport(LOG,
+					(errmsg("waiting for master catalog prefetch load to drain "
+							"before incrementing catalog version (load is %s)",
+							YbCatalogPrefetchLoadName(load)),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+		CHECK_FOR_INTERRUPTS();
+		pg_usleep(YB_PREFETCH_DRAIN_POLL_MS * 1000);
+		load = (YbCatalogPrefetchLoad) YBCGetSharedYsqlCatalogPrefetchLoad();
+	}
+
+	if (count > 0)
+	{
+		if (load >= YB_CATALOG_PREFETCH_LOAD_BUSY)
+			ereport(WARNING,
+					(errmsg("proceeding with catalog version increment while master catalog "
+							"prefetch load is still %s after waiting %d ms",
+							YbCatalogPrefetchLoadName(load),
+							count * YB_PREFETCH_DRAIN_POLL_MS),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+		else
+			ereport(LOG,
+					(errmsg("master catalog prefetch load has drained after waiting %d ms",
+							count * YB_PREFETCH_DRAIN_POLL_MS),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+	}
+}
+
 static void
 YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 										   SharedInvalidationMessage *msgs,
@@ -3437,8 +3568,11 @@ YBCommitTransactionContainingDDL()
 	}
 	YBClearDdlHandles();
 	if (increment_done)
+	{
 		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
 			 __func__, nmsgs, yb_catalog_cache_version);
+		yb_catalog_prefetch_wave_pending = true;
+	}
 }
 
 void
@@ -4468,6 +4602,17 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 {
 
 	bool		should_run_in_autonomous_transaction = false;
+
+	/*
+	 * Taken before YbGetDdlMode, which may set any of them. Unlike the rest of the state it
+	 * records, these are assigned only while still unset, so a statement that throws before it
+	 * finishes would leave them to be reported against someone else's catalog version bump.
+	 */
+	const bool	prev_is_global_ddl = ddl_transaction_state.is_global_ddl;
+	const CommandTag prev_global_ddl_command_tag =
+		ddl_transaction_state.global_ddl_command_tag;
+	const CommandTag prev_breaking_ddl_command_tag =
+		ddl_transaction_state.breaking_ddl_command_tag;
 	const YbDdlModeOptional ddl_mode =
 		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
@@ -4482,6 +4627,43 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const bool	use_separate_ddl_transaction =
 		is_ddl && (should_run_in_autonomous_transaction ||
 				   !YBIsDdlTransactionBlockEnabled());
+
+	/*
+	 * A bump this session made may still have the master leader fetching catalog snapshots for the
+	 * whole cluster. Wait for that to drain before this transaction adds another wave.
+	 *
+	 * A transaction bumps the version once however many DDLs it contains, so this fires on the
+	 * first version-bumping DDL of each one: the session waits once per transaction, not once per
+	 * DDL. In an explicit block that DDL need not be the first statement, so the wait can extend a
+	 * lock hold that was going to last until commit anyway. Running at statement start rather than
+	 * in the commit path keeps it interruptible and bounded by statement_timeout.
+	 *
+	 * The condition is the version-increment aspect YbGetDdlMode has already computed, so a
+	 * statement waits exactly when it is the one that will bump: a DDL the client sent, on its own
+	 * or inside a transaction block, one run from a function body, and one run from a procedure
+	 * that commits between its DDLs.
+	 */
+	if (yb_catalog_prefetch_wave_pending &&
+		is_ddl &&
+		(ddl_mode.value & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+	{
+		PG_TRY();
+		{
+			YbWaitForMasterCatalogPrefetchDrain();
+		}
+		PG_CATCH();
+		{
+			if (YbIsTopLevelOrAtomicStatement(context))
+				ddl_transaction_state.is_top_level_ddl_active = false;
+			ddl_transaction_state.is_global_ddl = prev_is_global_ddl;
+			ddl_transaction_state.global_ddl_command_tag = prev_global_ddl_command_tag;
+			ddl_transaction_state.breaking_ddl_command_tag = prev_breaking_ddl_command_tag;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+		/* Cleared after the wait, so that a cancelled one leaves the next DDL to pay for it. */
+		yb_catalog_prefetch_wave_pending = false;
+	}
 
 	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();

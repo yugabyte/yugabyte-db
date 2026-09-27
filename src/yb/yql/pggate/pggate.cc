@@ -2043,6 +2043,10 @@ void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
   };
 }
 
+uint32_t PgApiImpl::GetSharedYsqlCatalogPrefetchLoad() const {
+  return tserver_shared_object_.ysql_catalog_prefetch_load();
+}
+
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
   if (!db_oid) {
     return tserver_shared_object_.ysql_catalog_version();

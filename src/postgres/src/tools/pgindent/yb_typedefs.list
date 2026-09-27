@@ -58,6 +58,7 @@ YbCatNamePfId
 YbCatalogCacheTable
 YbCatalogMessageList
 YbCatalogModificationAspects
+YbCatalogPrefetchLoad
 YbCatalogPreloadCacheList
 YbCatalogVersionType
 YbChildScan
