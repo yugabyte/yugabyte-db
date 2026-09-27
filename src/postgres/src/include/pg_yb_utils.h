@@ -442,6 +442,15 @@ void		YbSetConnectedToTemplateDb();
 bool		YbIsConnectedToTemplateDb();
 
 /*
+ * errhint() for an unsupported-feature error, for use inside ereport().
+ *
+ *     issue > 0:   GitHub issue # issue tracks the feature.
+ *     issue == -1: No GitHub issue has been assigned yet.
+ *     issue == -2: Use extra_hint (e.g. the feature is turned off by a flag).
+ */
+extern int	YbErrhintForNotSupported(int issue, const char *extra_hint);
+
+/*
  * Get the database name for a relation id (accounts for system databases and
  * shared relations)
  */

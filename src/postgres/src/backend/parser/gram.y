@@ -63,6 +63,7 @@
 
 /* YB includes */
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
@@ -22068,30 +22069,6 @@ parser_init(base_yy_extra_type *yyext)
 	yyext->parsetree = NIL;		/* in case grammar forgets to set it */
 }
 
-static int
-errhint_for_not_supported(int issue, const char *extra_hint)
-{
-	if (issue > 0)
-	{
-		errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
-				"React with thumbs up to raise its priority",
-				issue);
-	}
-	else if (issue == -2)
-	{
-		if (extra_hint)
-		{
-			errhint("%s", extra_hint);
-		}
-	}
-	else
-	{
-		errhint("Please report the issue on "
-			"https://github.com/YugaByte/yugabyte-db/issues");
-	}
-	return 0;					/* return value does not matter */
-}
-
 /*----------
  * Signal that a feature is currently unsupported.
  *
@@ -22112,7 +22089,7 @@ raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner,
 	ereport(signal_level,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("%s", msg),
-			 errhint_for_not_supported(issue, extra_hint),
+			 YbErrhintForNotSupported(issue, extra_hint),
 			 parser_errposition(pos)));
 }
 

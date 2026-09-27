@@ -1481,6 +1481,30 @@ YbIsConnectedToTemplateDb()
 	return yb_connected_to_template_db;
 }
 
+int
+YbErrhintForNotSupported(int issue, const char *extra_hint)
+{
+	if (issue > 0)
+	{
+		errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+				"React with thumbs up to raise its priority",
+				issue);
+	}
+	else if (issue == -2)
+	{
+		if (extra_hint)
+		{
+			errhint("%s", extra_hint);
+		}
+	}
+	else
+	{
+		errhint("Please report the issue on "
+				"https://github.com/YugaByte/yugabyte-db/issues");
+	}
+	return 0;					/* return value does not matter */
+}
+
 Oid
 GetTypeId(int attrNum, TupleDesc tupleDesc)
 {

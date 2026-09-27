@@ -58,6 +58,12 @@ typedef struct
 
 #define parser_errposition(pos)  plpgsql_scanner_errposition(pos, yyscanner)
 
+#define parser_ybc_not_support(pos, feature) \
+	ybc_not_support(pos, yyscanner, feature " not supported yet", -1)
+
+#define parser_ybc_signal_unsupported(pos, feature, issue) \
+	ybc_not_support(pos, yyscanner, feature " not supported yet", issue)
+
 union YYSTYPE;					/* need forward reference for tok_is_keyword */
 
 static	bool			tok_is_keyword(int token, union YYSTYPE *lval,
@@ -123,7 +129,8 @@ static	List			*read_raise_options(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t y
 static	void			check_raise_parameters(PLpgSQL_stmt_raise *stmt);
 
 /* YB */
-static void ybc_not_support(int pos, const char *feature, int issue);
+static void ybc_not_support(int pos, yyscan_t yyscanner, const char *msg,
+							int issue);
 
 %}
 
@@ -798,21 +805,21 @@ decl_collate	:
 				| K_COLLATE T_WORD
 					{
 						if (!YBIsCollationEnabled())
-							ybc_not_support(@1, "COLLATE", 1127);
+							parser_ybc_signal_unsupported(@1, "COLLATE", 1127);
 						$$ = get_collation_oid(list_make1(makeString($2.ident)),
 											   false);
 					}
 				| K_COLLATE unreserved_keyword
 					{
 						if (!YBIsCollationEnabled())
-							ybc_not_support(@1, "COLLATE", 1127);
+							parser_ybc_signal_unsupported(@1, "COLLATE", 1127);
 						$$ = get_collation_oid(list_make1(makeString(pstrdup($2))),
 											   false);
 					}
 				| K_COLLATE T_CWORD
 					{
 						if (!YBIsCollationEnabled())
-							ybc_not_support(@1, "COLLATE", 1127);
+							parser_ybc_signal_unsupported(@1, "COLLATE", 1127);
 						$$ = get_collation_oid($2.idents, false);
 					}
 				;
@@ -2222,7 +2229,7 @@ stmt_fetch		: K_FETCH opt_fetch_direction cursor_variable K_INTO
 
 stmt_move		: K_MOVE opt_fetch_direction cursor_variable ';'
 					{
-						ybc_not_support(@1, "MOVE", -1);
+						parser_ybc_not_support(@1, "MOVE");
 						PLpgSQL_stmt_fetch *fetch = $2;
 
 						fetch->lineno = plpgsql_location_to_lineno(@1, yyscanner);
@@ -4269,40 +4276,20 @@ make_case(int location, PLpgSQL_expr *t_expr,
 }
 
 static void
-ybc_not_support(int pos, const char *feature, int issue) {
-	/*
-	 * YB_TODO_PG19MERGE: parser_errposition needs yyscanner (see changes
-	 * made by PG commit 7b27f5fd36cb3270e8ac25aefd73b552663d1392).
-	 * Removed parser_errposition for now, we probably need yyscanner
-	 * as a parameter.
-	 */
-	(void) pos;
-	static int restricted = -1;
-	if (restricted == -1)
+ybc_not_support(int pos, yyscan_t yyscanner, const char *msg, int issue)
+{
+	static int use_yb_parser = -1;
+	if (use_yb_parser == -1)
 	{
-		restricted = YBIsUsingYBParser();
+		use_yb_parser = YBIsUsingYBParser();
 	}
 
-	if (!restricted)
+	if (use_yb_parser)
 	{
-		return;
-	}
-
-	int signal_level = YBUnsupportedFeatureSignalLevel();
-	if (issue > 0)
-	{
-		ereport(signal_level,
+		ereport(YBUnsupportedFeatureSignalLevel(),
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("%s not supported yet", feature),
-				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
-						 "React with thumbs up to raise its priority", issue)));
-	}
-	else
-	{
-		ereport(signal_level,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("%s not supported yet", feature),
-				 errhint("Please report the issue on "
-						 "https://github.com/YugaByte/yugabyte-db/issues")));
+				 errmsg("%s", msg),
+				 YbErrhintForNotSupported(issue, NULL),
+				 parser_errposition(pos)));
 	}
 }
