@@ -53,6 +53,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
@@ -66,6 +67,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.*;
@@ -201,6 +203,7 @@ public class GFlagsUtil {
   public static final String YBC_DISK_IO_REQUEST_SIZE = "disk_io_request_size_bytes";
   public static final String YBC_LOG_FILENAME = "yb-controller-server";
   public static final String TMP_DIRECTORY = "tmp_dir";
+  public static final String DEFAULT_TMP_DIRECTORY = "/tmp";
   public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
   public static final String JWT_AUDIENCES = "jwt_audiences=";
   public static final String JWT_ISSUERS = "jwt_issuers=";
@@ -833,7 +836,79 @@ public class GFlagsUtil {
       }
       result = confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     }
-    return result == null ? "/tmp" : result;
+    return result == null ? DEFAULT_TMP_DIRECTORY : result;
+  }
+
+  /** Normalizes a tmp directory path for comparison. */
+  public static String normalizeTmpDirectoryPath(String path) {
+    if (path == null || path.trim().isEmpty()) {
+      return DEFAULT_TMP_DIRECTORY;
+    }
+    return Paths.get(path.trim()).normalize().toString();
+  }
+
+  /** Returns the effective DB tmp_dir from gflags, or {@link #DEFAULT_TMP_DIRECTORY} if unset. */
+  public static String getEffectiveDbTmpDir(Map<String, String> gflags) {
+    if (gflags == null) {
+      return DEFAULT_TMP_DIRECTORY;
+    }
+    return normalizeTmpDirectoryPath(gflags.get(TMP_DIRECTORY));
+  }
+
+  /**
+   * Validates that on-prem provider {@code remoteTmpDirectory} matches master/tserver {@code
+   * tmp_dir} gflags. Returns an error message if inconsistent, or {@code null} if valid or not
+   * applicable.
+   */
+  public static String checkTmpDirGflagConsistency(
+      RuntimeConfGetter confGetter,
+      Provider provider,
+      Cluster cluster,
+      Collection<Cluster> allClusters) {
+    if (provider.getCloudCode() != CloudType.onprem) {
+      return null;
+    }
+    String providerTmp =
+        normalizeTmpDirectoryPath(
+            confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
+    String clusterName =
+        cluster.userIntent.universeName != null
+            ? cluster.userIntent.universeName
+            : cluster.uuid.toString();
+
+    for (UUID azUuid : getAzUuidsForTmpDirGflagCheck(cluster, provider)) {
+      for (ServerType serverType : ImmutableList.of(ServerType.MASTER, ServerType.TSERVER)) {
+        Map<String, String> gflags = getGFlagsForAZ(azUuid, serverType, cluster, allClusters);
+        String dbTmp = getEffectiveDbTmpDir(gflags);
+        if (!Paths.get(providerTmp).equals(Paths.get(dbTmp))) {
+          return String.format(
+              "Provider remote tmp directory is '%s', but tmp_dir gflag is '%s' for %s on cluster"
+                  + " '%s'. Set tmp_dir='%s' in master and tserver gflags to match the provider"
+                  + " configuration, or disable this check by setting '%s' to true on the provider"
+                  + " runtime configuration.",
+              providerTmp,
+              dbTmp,
+              serverType.name().toLowerCase(),
+              clusterName,
+              providerTmp,
+              ProviderConfKeys.skipTmpDirGflagConsistencyCheck.getKey());
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Collection<UUID> getAzUuidsForTmpDirGflagCheck(
+      Cluster cluster, Provider provider) {
+    PlacementInfo placementInfo = cluster.getOverallPlacement();
+    if (placementInfo == null || placementInfo.getAllAZUUIDs().isEmpty()) {
+      return Collections.singletonList(null);
+    }
+    return placementInfo
+        .azInfoStream()
+        .filter(az -> Objects.equals(provider.getUuid(), az.cloud.uuid))
+        .map(az -> az.placementAZ.uuid)
+        .collect(Collectors.toSet());
   }
 
   // A GCP passthrough load balancer keeps its own IP as the packet destination, health probes
