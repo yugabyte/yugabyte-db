@@ -458,6 +458,39 @@ DROP TABLE idx_check_tbl;
 RESET search_path;
 DROP TABLE idx_check_schema.idx_check_tbl;
 DROP SCHEMA idx_check_schema;
+-- Row-level security must not affect index consistency checking.
+CREATE TABLE rls_tbl (id int PRIMARY KEY, tenant text, val text);
+CREATE INDEX rls_tbl_val_idx ON rls_tbl (val);
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rls_tbl FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_tbl_isolation ON rls_tbl USING (tenant = current_user);
+INSERT INTO rls_tbl VALUES (1, 'rls_alice', 'a1'), (2, 'rls_alice', 'a2'),
+                           (3, 'rls_bob', 'b1'), (4, 'rls_bob', 'b2');
+CREATE USER rls_alice;
+GRANT ALL ON rls_tbl TO rls_alice;
+SET ROLE rls_alice;
+-- RLS limits this role to its own 2 of the 4 rows ...
+SELECT count(*) FROM rls_tbl;
+ count 
+-------
+     2
+(1 row)
+
+-- ... but yb_index_check must still verify all 4 physical rows and pass, in
+-- both single-snapshot and multi-snapshot mode.
+SELECT yb_index_check('rls_tbl_val_idx'::regclass, true);
+ERROR:  permission denied for function yb_index_check
+DETAIL:  Row-level security is enabled on table "rls_tbl", and the current user has insufficient privileges to bypass it.
+HINT:  User must be a superuser, owner of the table, or have the BYPASSRLS privilege to check indexes on tables with row-level security enabled.
+SELECT yb_index_check('rls_tbl_val_idx'::regclass, false);
+ERROR:  permission denied for function yb_index_check
+DETAIL:  Row-level security is enabled on table "rls_tbl", and the current user has insufficient privileges to bypass it.
+HINT:  User must be a superuser, owner of the table, or have the BYPASSRLS privilege to check indexes on tables with row-level security enabled.
+RESET ROLE;
+DROP USER rls_alice;
+ERROR:  role "rls_alice" cannot be dropped because some objects depend on it
+DETAIL:  privileges for table rls_tbl
+DROP TABLE rls_tbl;
 -- Index of a colocated relation
 CREATE DATABASE colocateddb COLOCATION = TRUE;
 \c colocateddb
