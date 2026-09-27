@@ -49,13 +49,6 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
   </li>
 
   <li>
-    <a href="visualeaf/">
-      <img src="/images/develop/tools/visualeaf/visualeaf-icon.svg">
-      VisuaLeaf
-    </a>
-  </li>
-
-  <li>
     <a href="libredb-studio/">
       <img src="/images/develop/tools/libredb-studio/libredb-studio-icon.png">
       LibreDB Studio
@@ -87,6 +80,13 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
     <a href="tableplus/">
       <img src="/images/section_icons/develop/tools/tableplus.png">
       TablePlus
+    </a>
+  </li>
+
+  <li>
+    <a href="visualeaf/">
+      <img src="/images/develop/tools/visualeaf/visualeaf-icon.svg">
+      VisuaLeaf
     </a>
   </li>
 
