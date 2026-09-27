@@ -1898,13 +1898,17 @@ TEST_F(MasterPathHandlersItest, TestClusterBalancerWarnings) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
   std::vector<std::string> row;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    // Other transient warnings (e.g. a table skipped before its tablets are reported) and runs
+    // that did not yet cover all tablets can show up first, so wait for the expected row.
     auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
-    if (rows.empty()) {
-      return false;
+    for (const auto& r : rows) {
+      if (r.size() == 2 && r[0].find("Could not find a valid tserver to host tablet") !=
+              std::string::npos && std::stoi(r[1]) > 3) {
+        row = r;
+        return true;
+      }
     }
-    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
-    row = rows[0];
-    return true;
+    return false;
   }, 10s /* timeout */, "Waiting for warnings to show up in the Warnings Summary table"));
 
   ASSERT_EQ(row.size(), 2);
