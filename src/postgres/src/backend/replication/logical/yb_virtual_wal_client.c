@@ -124,6 +124,7 @@ static void AckFilteredTransactions(void);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
+static bool YbIsInVirtualWalContext(MemoryContext context);
 static Oid *YBCGetTableOids(List *tables);
 static void YBCRefreshReplicaIdentities(Oid *table_oids, int num_tables);
 static void ValidateReplicaIdentities(Oid *table_oids, int num_tables);
@@ -212,10 +213,38 @@ YBCInitVirtualWal(List *yb_publication_names)
 		pfree(slot_hash_range);
 }
 
+/* Is context virtual_wal_context or one of its descendants? */
+static bool
+YbIsInVirtualWalContext(MemoryContext context)
+{
+	if (virtual_wal_context == NULL)
+		return false;
+
+	for (; context != NULL; context = context->parent)
+		if (context == virtual_wal_context)
+			return true;
+
+	return false;
+}
+
 void
 YBCDestroyVirtualWal()
 {
+	MemoryContext caller_context = CurrentMemoryContext;
+
 	YBCDestroyVirtualWalForCDC();
+
+	/*
+	 * On the error path CurrentMemoryContext can be inside the subtree being
+	 * freed: YBCReadRecord and GetDynamicTypeEntity start transactions while
+	 * cached_records_context is current, and the AbortCurrentTransaction in
+	 * error recovery returns to that context (AtCleanup_Memory restores
+	 * priorContext).  Leave the subtree before deleting it, and don't switch
+	 * back into it afterwards.
+	 */
+	if (YbIsInVirtualWalContext(caller_context))
+		caller_context = TopMemoryContext;
+	MemoryContextSwitchTo(TopMemoryContext);
 
 	if (unacked_txn_list_context)
 		MemoryContextDelete(unacked_txn_list_context);
@@ -225,6 +254,12 @@ YBCDestroyVirtualWal()
 
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
+
+	/* A later destroy, e.g. from an error path, must not free these again. */
+	unacked_txn_list_context = NULL;
+	cached_records_context = NULL;
+	virtual_wal_context = NULL;
+	unacked_transactions = NIL;
 
 	/*
 	 * Reset cached_records to avoid dangling pointer. The memory it pointed
@@ -239,6 +274,8 @@ YBCDestroyVirtualWal()
 
 	/* Reset catalog snapshot set by InitVirtualWal. */
 	YbResetVirtualWalCatalogSnapshot();
+
+	MemoryContextSwitchTo(caller_context);
 }
 
 static List *
