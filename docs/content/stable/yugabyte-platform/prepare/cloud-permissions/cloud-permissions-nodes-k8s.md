@@ -72,7 +72,7 @@ Do one of the following:
 
 YBA uses a kubeconfig generated for this service account to authenticate to the Kubernetes cluster. Do not delete the account after YBA starts using it.
 
-Set the `YBA_NAMESPACE` environment variable to the namespace where you will create the service account. This is commonly the namespace where YBA is installed, but it can be any namespace; later steps must use the same value for `<SA_NAMESPACE>`.
+Set the `YBA_NAMESPACE` environment variable to the namespace where you will create the service account. This is commonly the namespace where YBA is installed, but it can be any namespace.
 
 ```sh
 export YBA_NAMESPACE="yb-platform"
