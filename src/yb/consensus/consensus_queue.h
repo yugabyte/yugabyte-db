@@ -157,6 +157,17 @@ class PeerMessageQueue {
     // movement.
     OpId last_received = yb::OpId::Min();
 
+    // The WAL pin metadata requested by this peer, applicable to PRE_VOTERs alone.
+    struct RequestedWalPinInfo {
+      OpId op_id = OpId::Max();
+      MonoTime first_requested_time = MonoTime::kUninitialized;
+
+      std::string ToString() const {
+        return YB_STRUCT_TO_STRING(op_id, first_requested_time);
+      }
+    };
+    RequestedWalPinInfo requested_wal_pin_info;
+
     // The last committed index this peer knows about.
     int64_t last_known_committed_idx;
 
@@ -294,7 +305,24 @@ class PeerMessageQueue {
       LWReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
       PeerMemberType* member_type = nullptr,
-      bool* last_exchange_successful = nullptr);
+      bool* last_exchange_successful = nullptr,
+      // Set when the packed UpdateConsensus batch would advance this peer through the current
+      // majority_replicated_op_id (used to gate PRE_VOTER / PRE_OBSERVER promotion).
+      bool* batch_reaches_majority_replicated = nullptr);
+
+  struct WalGcPeerRetentionInfo {
+    OpId majority_replicated_op_id = OpId::Max();
+    OpId min_progressing_pre_voter_op_id = OpId::Max();
+  };
+
+  // Recomputes WAL-GC retention components from current queue state without mutating cached
+  // majority_replicated_op_id or notifying observers.
+  // - majority_replicated_op_id is the live voter majority watermark when available.
+  // - min_progressing_pre_voter_op_id is the min last_received among PRE_VOTER peers that:
+  //   * have progressed at least as fast as voter-majority advancement since the last
+  //     GetWalGcPeerRetentionInfo() pass; and
+  //   * are still within retain_wal_secs_for_progressing_prevoter from first WAL pin request.
+  WalGcPeerRetentionInfo GetWalGcPeerRetentionInfo();
 
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely
   // bootstrap, returns a non-OK status.  On success, also internally resets
@@ -488,6 +516,9 @@ class PeerMessageQueue {
     // The index of the last operation replicated to a majority.  This is usually the same as
     // 'committed_op_id' but might not be if the terms changed.
     OpId majority_replicated_op_id = OpId::Min();
+
+    // The majority-replicated op id observed during the previous WAL-GC retention pass.
+    OpId previous_wal_gc_majority_replicated_op_id = OpId::Max();
 
     // The index of the last operation to be considered committed.
     OpId committed_op_id = OpId::Min();

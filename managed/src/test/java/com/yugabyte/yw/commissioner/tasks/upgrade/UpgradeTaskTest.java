@@ -66,6 +66,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
@@ -142,11 +143,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.ChangeMasterConfig,
+          TaskType.CheckFollowerLag,
           TaskType.UpdateClusterUserIntent,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.WaitStartingFromTime,
-          TaskType.UpdateUniverseFields);
+          TaskType.UpdateUniverseFields,
+          TaskType.DeleteRootVolumes,
+          TaskType.MarkUniverseForHealthScriptReUpload);
 
   @Before
   public void setUp() {
@@ -218,6 +223,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     try {
       when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
@@ -252,6 +258,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(mockClient.changeMasterClusterConfig(any()))
           .thenReturn(mockMasterChangeConfigResponse);
+      ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
+      lenient()
+          .when(
+              mockClient.changeMasterConfig(
+                  anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
+          .thenReturn(mockChangeConfigResponse);
       lenient()
           .when(mockClient.getLeaderBlacklistCompletion())
           .thenReturn(mockGetLoadMovePercentResponse);

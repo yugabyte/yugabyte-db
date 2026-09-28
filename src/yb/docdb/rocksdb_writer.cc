@@ -80,7 +80,16 @@ constexpr char kPostApplyMetadataMarker = 0;
 // Use the canonical colocation-only helper: cotable-keyed tables never engage this cache
 // (GetTableTombstoneTime requires has_colocation_id), and a second hand-rolled recognizer would
 // drift from dockv::IsColocatedTableTombstoneKey.
+//
+// This runs for every key applied to the regular DB, and the helper builds an error Status for
+// every ordinary colocated row key. A table tombstone is written at the table's top-level key (a
+// doc key with no hash or range components and no subkeys, see dockv::IsTopLevelKey), and
+// dockv::IsTopLevelIntentKey checks that shape by size, so use it to rule out every other key
+// before calling the helper.
 bool IsTableTombstoneKey(Slice key) {
+  if (key.empty() || !dockv::IsTopLevelIntentKey(key)) {
+    return false;
+  }
   auto result = dockv::IsColocatedTableTombstoneKey(key);
   return result.ok() && *result;
 }

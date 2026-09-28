@@ -86,6 +86,8 @@ static void blackholeNoticeProcessor(void *arg, const char *message);
 
 /* YB declarations */
 static bool yb_step_never_waits(PermutationStep *pstep);
+static bool yb_step_may_block(TestSpec *testspec, PermutationStep **steps,
+							  int i);
 
 /* This is YB specific logic. See usage for description */
 #define YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED 4
@@ -745,11 +747,14 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 		/*
 		 * Try to complete this step without blocking.  YB: except for the last
 		 * step of the permutation when nothing else is in flight -- no later
-		 * step can unblock it, so just wait for it instead of letting the
-		 * assume-session-blocked timeout report a merely slow step as waiting.
+		 * step can unblock it -- and except when no other session can be
+		 * holding a conflicting lock.  Either way just wait for the step
+		 * instead of letting the assume-session-blocked timeout report a
+		 * merely slow step as waiting.
 		 */
 		mustwait = try_complete_step(testspec, pstep,
-									 (i == nsteps - 1 && nwaiting == 0) ?
+									 ((i == nsteps - 1 && nwaiting == 0) ||
+									  !yb_step_may_block(testspec, steps, i)) ?
 									 0 : STEP_NONBLOCK);
 
 		/* Check for completion of any steps that were previously waiting. */
@@ -1245,6 +1250,34 @@ step_has_blocker(PermutationStep *pstep)
 				break;
 		}
 	}
+	return false;
+}
+
+/*
+ * YB: Detect whether any session other than the one running steps[i] can
+ * already hold a lock conflicting with it, which is the precondition for the
+ * YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED heuristic to mean anything.
+ * Such a session must have taken those locks in its setup SQL or in an earlier
+ * step of this permutation.
+ */
+static bool
+yb_step_may_block(TestSpec *testspec, PermutationStep **steps, int i)
+{
+	int			session = steps[i]->step->session;
+	int			j;
+
+	for (j = 0; j < testspec->nsessions; j++)
+	{
+		if (j != session && testspec->sessions[j]->setupsql)
+			return true;
+	}
+
+	for (j = 0; j < i; j++)
+	{
+		if (steps[j]->step->session != session)
+			return true;
+	}
+
 	return false;
 }
 

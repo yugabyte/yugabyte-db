@@ -1524,10 +1524,11 @@ postgresGetForeignPlan(PlannerInfo *root,
 	 * YB: For per-tserver federated scans, propagate the target tserver UUID
 	 * from PgFdwRelationInfo into the plan's fdw_private at
 	 * YbFdwScanPrivateTserverUuid so the executor knows which tserver to
-	 * target.  Only base-relation children of a federated parent carry a
-	 * UUID; join/upper rels never do.  FdwScanPrivateRelations is only pushed
-	 * for join/upper rels above, so insert an empty-string placeholder for
-	 * base-relation federated scans to keep YbFdwScanPrivateTserverUuid at
+	 * target.  Base-relation children of a federated parent carry a UUID, and
+	 * so do per-tserver grouped (upper) rels from partitionwise aggregate
+	 * pushdown; plain join rels never do.  FdwScanPrivateRelations is only
+	 * pushed for join/upper rels above, so insert an empty-string placeholder
+	 * for base-relation federated scans to keep YbFdwScanPrivateTserverUuid at
 	 * its expected index.
 	 */
 	if (fpinfo->yb_tserver_uuid)
@@ -6828,6 +6829,7 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	fpinfo->table = ifpinfo->table;
 	fpinfo->server = ifpinfo->server;
 	fpinfo->user = ifpinfo->user;
+	fpinfo->yb_tserver_uuid = ifpinfo->yb_tserver_uuid;
 	merge_fdw_options(fpinfo, ifpinfo, NULL);
 
 	/*
