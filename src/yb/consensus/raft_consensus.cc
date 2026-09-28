@@ -1425,13 +1425,13 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
       }
     }
 
-    // Reject ops the operation filter won't allow BEFORE NotifyAddedToLeader runs, so that side
-    // effects of being added as pending don't fire for an op that will be immediately rolled back.
-    // In particular, WriteOperation::AddedAsPending synchronously invokes
-    // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
-    // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
-    // the intents flushed_frontier can advance past split_op_id and propagate into the children via
-    // Tablet::CreateSplitChildTablet's RocksDB checkpoint -- breaking bootstrap with
+    // NewIdUnlocked rejects ops the operation filter won't allow before NotifyAddedToLeader runs,
+    // so that side effects of being added as pending don't fire for an op that will be immediately
+    // rolled back. Side effects that rolling back the op id cannot undo must not run in this loop
+    // at all: the use_async_write apply, which writes intents into the intents memtable, waits for
+    // WriteOperation::SubmittedToLeaderQueue, which a round rejected here never reaches. Otherwise
+    // the intents flushed_frontier could advance past split_op_id and propagate into the children
+    // via Tablet::CreateSplitChildTablet's RocksDB checkpoint -- breaking bootstrap with
     // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
     OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
