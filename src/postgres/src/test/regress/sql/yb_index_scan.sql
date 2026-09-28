@@ -293,6 +293,30 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int
 SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
 DROP TABLE pk_range_int_asc;
 
+-- Test composite keys and integer overflow (issue #32153 / DB-21846).
+CREATE TABLE pk_comp (a INT, b TEXT, PRIMARY KEY (a ASC, b ASC));
+INSERT INTO pk_comp VALUES (-5, 'q'), (-1, 'p'), (0, 'a'), (3, 'z');
+-- Lower bound below int4 range: every row qualifies.
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) >= (-4294967296, 'p') ORDER BY a, b;
+SELECT * FROM pk_comp WHERE (a, b) >= (-4294967296, 'p') ORDER BY a, b;
+-- Upper bound above int4 range: every row qualifies.
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) < (4294967297, 'p') ORDER BY a, b;
+SELECT * FROM pk_comp WHERE (a, b) < (4294967297, 'p') ORDER BY a, b;
+-- Upper bound below int4 range: no row qualifies.
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) < (-4294967296, 'p') ORDER BY a, b;
+SELECT * FROM pk_comp WHERE (a, b) < (-4294967296, 'p') ORDER BY a, b;
+-- Lower bound above int4 range: no row qualifies.
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, 'p') ORDER BY a, b;
+SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, 'p') ORDER BY a, b;
+
+-- NULL on a varlena key column must not crash while binding row bounds
+-- (YbDatumToBinary used to detoast a null pointer).
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) > (0, NULL) ORDER BY a, b;
+SELECT * FROM pk_comp WHERE (a, b) > (0, NULL) ORDER BY a, b;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) <= (0, NULL) ORDER BY a, b;
+SELECT * FROM pk_comp WHERE (a, b) <= (0, NULL) ORDER BY a, b;
+DROP TABLE pk_comp;
+
 -- test row comparison expressions where we have differing column orderings
 CREATE TABLE pk_range_asc_desc_asc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 desc, r3 asc));
 INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;

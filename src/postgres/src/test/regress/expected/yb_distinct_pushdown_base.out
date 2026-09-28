@@ -394,3 +394,63 @@ SELECT v FROM (SELECT DISTINCT v FROM demo WHERE k=1 AND x=1) foo;
 (3 rows)
 
 DROP TABLE demo;
+-- Test #32692: DISTINCT over UNION ALL or partitioned table was failing with "could not find pathkey item to sort"
+CREATE TABLE u1(a INT);
+CREATE TABLE u2(a INT);
+CREATE INDEX u1_a_idx ON u1 (a ASC);
+CREATE INDEX u2_a_idx ON u2 (a ASC);
+INSERT INTO u1 (SELECT i%2 FROM GENERATE_SERIES(1, 100) AS i);
+INSERT INTO u2 (SELECT i%3 FROM GENERATE_SERIES(1, 100) AS i);
+EXPLAIN (COSTS OFF)
+SELECT DISTINCT x FROM (SELECT a FROM u1 UNION ALL SELECT a FROM u2) s(x) ORDER BY 1;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Unique
+   ->  Merge Append
+         Sort Key: u1.a
+         ->  Unique
+               ->  Distinct Index Only Scan using u1_a_idx on u1
+                     Distinct Keys: u1.a
+         ->  Unique
+               ->  Distinct Index Only Scan using u2_a_idx on u2
+                     Distinct Keys: u2.a
+(9 rows)
+
+SELECT DISTINCT x FROM (SELECT a FROM u1 UNION ALL SELECT a FROM u2) s(x) ORDER BY 1;
+ x 
+---
+ 0
+ 1
+ 2
+(3 rows)
+
+DROP TABLE u1;
+DROP TABLE u2;
+CREATE TABLE pt(k INT, v INT) PARTITION BY RANGE (k);
+CREATE TABLE pt1 PARTITION OF pt FOR VALUES FROM (0) TO (5);
+CREATE TABLE pt2 PARTITION OF pt FOR VALUES FROM (5) TO (10);
+CREATE INDEX pt_v_idx ON pt (v ASC);
+INSERT INTO pt (SELECT i%10, i%3 FROM GENERATE_SERIES(1, 100) AS i);
+EXPLAIN (COSTS OFF) SELECT DISTINCT v FROM pt ORDER BY 1;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Unique
+   ->  Merge Append
+         Sort Key: pt1.v
+         ->  Unique
+               ->  Distinct Index Only Scan using pt1_v_idx on pt1
+                     Distinct Keys: pt1.v
+         ->  Unique
+               ->  Distinct Index Only Scan using pt2_v_idx on pt2
+                     Distinct Keys: pt2.v
+(9 rows)
+
+SELECT DISTINCT v FROM pt ORDER BY 1;
+ v 
+---
+ 0
+ 1
+ 2
+(3 rows)
+
+DROP TABLE pt;
