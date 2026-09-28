@@ -1472,6 +1472,20 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		}
 
 		/*
+		 * We don't preload indexes on user-defined AM's for now. Doing so
+		 * results in an issue where we try to load the user-defined AM.
+		 * This AM's handler might not be loaded as pg_proc might not be
+		 * loaded.
+		 */
+		if ((relp->relkind == RELKIND_INDEX ||
+			 relp->relkind == RELKIND_PARTITIONED_INDEX) &&
+			relp->relam >= FirstNormalObjectId)
+		{
+			--num_tuples;
+			continue;
+		}
+
+		/*
 		 * allocate storage for the relation descriptor, and copy pg_class_tuple
 		 * to relation->rd_rel.
 		 */
@@ -1536,18 +1550,6 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		if (relation->rd_rel->relkind == RELKIND_INDEX ||
 			relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		{
-			/*
-			 * We don't preload indexes on user-defined AM's for now. Doing so
-			 * results in an issue where we try to load the user-defined AM.
-			 * This AM's handler might not be loaded as pg_proc might not be
-			 * loaded.
-			 */
-			if (relation->rd_rel->relam >= FirstNormalObjectId)
-			{
-				--num_tuples;
-				continue;
-			}
-
 			RelationInitIndexAccessInfo(relation);
 		}
 		else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
@@ -4846,6 +4848,11 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_pubdesc);
 	if (relation->rd_options)
 		pfree(relation->rd_options);
+
+	/* YB: heap_copytuple allocates the ybctid separately from the tuple */
+	if (relation->rd_indextuple && HEAPTUPLE_YBCTID(relation->rd_indextuple))
+		pfree(DatumGetPointer(HEAPTUPLE_YBCTID(relation->rd_indextuple)));
+
 	if (relation->rd_indextuple)
 		pfree(relation->rd_indextuple);
 	if (relation->rd_amcache)
@@ -9310,6 +9317,12 @@ load_relcache_init_file(bool shared, bool yb_retry)
 			/* Fix up internal pointers in the tuple -- see heap_copytuple */
 			rel->rd_indextuple->t_data = (HeapTupleHeader) ((char *) rel->rd_indextuple + HEAPTUPLESIZE);
 			rel->rd_index = (Form_pg_index) GETSTRUCT(rel->rd_indextuple);
+
+			/*
+			 * YB: the ybctid pointer was written to the file verbatim and is
+			 * stale here.
+			 */
+			HEAPTUPLE_YBCTID(rel->rd_indextuple) = (Datum) 0;
 
 			/*
 			 * prepare index info context --- parameters should match
