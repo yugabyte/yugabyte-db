@@ -280,7 +280,9 @@ Status GetSplitPoints(YbcPgTableDesc table_desc,
   return Status::OK();
 }
 
-void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInfo> caching_info) {
+void YBCStartSysTablePrefetchingImpl(
+    std::optional<PrefetcherOptions::CachingInfo> caching_info,
+    YbcPgSysTablePrefetchKind kind) {
   const auto* flags = YBCGetGFlags();
   const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
   const auto max_size_limit = static_cast<uint64_t>(
@@ -288,6 +290,7 @@ void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInf
   pgapi->StartSysTablePrefetching({
       caching_info,
       *flags->ysql_catalog_prefetch_row_limit,
+      kind,
       configured_size_limit ? std::min(configured_size_limit, max_size_limit) : max_size_limit});
 }
 
@@ -2439,21 +2442,24 @@ void* YBCPgGetThreadLocalErrStatus() {
   return PgGetThreadLocalErrStatus();
 }
 
-void YBCStartSysTablePrefetchingNoCache() {
-  YBCStartSysTablePrefetchingImpl(std::nullopt);
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind) {
+  YBCStartSysTablePrefetchingImpl(std::nullopt, kind);
 }
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo version_info,
-    YbcPgSysTablePrefetcherCacheMode cache_mode) {
-  YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
-      {
-          version_info.version,
-          MakeReadHybridTime(version_info.version_read_time),
-          version_info.is_db_catalog_version_mode
-      },
-      database_oid, YBCMapPrefetcherCacheMode(cache_mode)});
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind) {
+  YBCStartSysTablePrefetchingImpl(
+      PrefetcherOptions::CachingInfo{
+          {
+              version_info.version,
+              MakeReadHybridTime(version_info.version_read_time),
+              version_info.is_db_catalog_version_mode
+          },
+          database_oid, YBCMapPrefetcherCacheMode(cache_mode)},
+      kind);
 }
 
 void YBCStopSysTablePrefetching() {

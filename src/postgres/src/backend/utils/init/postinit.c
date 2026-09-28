@@ -1126,10 +1126,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
-										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
+										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
+										YB_YQL_PREFETCH_KIND_CONNECTION_START);
 		}
 		else
-			YBCStartSysTablePrefetchingNoCache();
+			YBCStartSysTablePrefetchingNoCache(YB_YQL_PREFETCH_KIND_CONNECTION_START);
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 

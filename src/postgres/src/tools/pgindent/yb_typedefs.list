@@ -162,6 +162,7 @@ YbPgssQueryNeedingNormalization
 YbPlanInfo
 YbPlanStatePtr
 YbPrefetcherStarterFunctor
+YbPrefetcherStarterNoCache
 YbPrefetcherStarterWithCache
 YbPushdownExprs
 YbQdPgssStoreKind
@@ -323,6 +324,7 @@ YbcPgSharedDataPlaceholder
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns
+YbcPgSysTablePrefetchKind
 YbcPgSysTablePrefetcherCacheMode
 YbcPgTableDesc
 YbcPgTabletsDescriptor

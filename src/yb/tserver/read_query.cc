@@ -199,6 +199,10 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   ReadResponsePB* resp_;
   rpc::RpcContext context_;
 
+  // Token from ReadTabletProvider::AdmitRead. Destroying it releases this read's admission, so it
+  // must outlive the asynchronous part of the read -- hence a member rather than a local.
+  std::shared_ptr<void> admission_;
+
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet_;
 
   ReadHybridTime read_time_;
@@ -294,6 +298,14 @@ Status ReadQuery::DoPerform() {
   ADOPT_TRACE(context_.trace());
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
+
+  // Held for the life of this ReadQuery, which covers the scan and the encoding of the
+  // response -- the work an admission limit exists to bound. It does not cover sending the
+  // response, which RespondSuccess queues with the RPC layer for the reactor to write: a
+  // send that takes a long time holds an RPC buffer, not taking up an admission slot. Storing
+  // this in a local variable would release it when this function returns, which is too early,
+  // since a read can reschedule itself while waiting for safe time.
+  admission_ = VERIFY_RESULT(read_tablet_provider_.AdmitRead(*req_));
 
   TabletPeerTablet peer_tablet;
   const auto isolation_level = VERIFY_RESULT(GetIsolationLevel(*req_, &server_, &peer_tablet));

@@ -26,6 +26,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -62,6 +64,7 @@ struct PrefetcherOptions {
 
   std::optional<CachingInfo> caching_info;
   uint64_t fetch_row_limit;
+  YbcPgSysTablePrefetchKind kind;
   uint64_t fetch_size_limit;
 
   std::string ToString() const;

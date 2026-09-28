@@ -3009,6 +3009,7 @@ typedef struct YbPrefetcherStarterWithCache
 	YbPrefetcherStarterFunctor functor;
 	const YbcPgLastKnownCatalogVersionInfo *version;
 	YbcPgSysTablePrefetcherCacheMode mode;
+	YbcPgSysTablePrefetchKind kind;
 } YbPrefetcherStarterWithCache;
 
 static bool
@@ -3016,13 +3017,14 @@ YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor)
 {
 	const YbPrefetcherStarterWithCache *this = (const YbPrefetcherStarterWithCache *) functor;
 
-	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode);
+	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode, this->kind);
 	return true;
 }
 
 static YbPrefetcherStarterWithCache
 MakeStarterWithCache(YbcPgSysTablePrefetcherCacheMode mode,
-					 const YbcPgLastKnownCatalogVersionInfo *version)
+					 const YbcPgLastKnownCatalogVersionInfo *version,
+					 YbcPgSysTablePrefetchKind kind)
 {
 	return (YbPrefetcherStarterWithCache)
 	{
@@ -3032,19 +3034,30 @@ MakeStarterWithCache(YbcPgSysTablePrefetcherCacheMode mode,
 		},
 			.version = version,
 			.mode = mode,
+			.kind = kind,
 	};
 }
+
+typedef struct YbPrefetcherStarterNoCache
+{
+	/* YbPrefetcherStarterFunctor have to be the first field due to cast */
+	YbPrefetcherStarterFunctor functor;
+	YbcPgSysTablePrefetchKind kind;
+} YbPrefetcherStarterNoCache;
 
 static bool
 YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 {
-	YBCStartSysTablePrefetchingNoCache();
+	const YbPrefetcherStarterNoCache *this = (const YbPrefetcherStarterNoCache *) functor;
+
+	YBCStartSysTablePrefetchingNoCache(this->kind);
 	return false;
 }
 
 static void
 YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
-					bool keep_prefetcher)
+					bool keep_prefetcher,
+					YbcPgSysTablePrefetchKind kind)
 {
 	YbcPgLastKnownCatalogVersionInfo catalog_version = {};
 	uint64_t	shared_catalog_version;
@@ -3062,20 +3075,25 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	YbcPgSysTablePrefetcherCacheMode trust_mode =
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
 		: YB_YQL_PREFETCHER_TRUST_CACHE;
-	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(trust_mode, &catalog_version);
-	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-																   &catalog_version);
-	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-																   &catalog_version);
-	YbPrefetcherStarterFunctor no_cache = {
-		.call = &YbPrefetcherStarterNoCacheCall,
+	YbPrefetcherStarterWithCache trust_cache =
+		MakeStarterWithCache(trust_mode, &catalog_version, kind);
+	YbPrefetcherStarterWithCache renew_soft =
+		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version, kind);
+	YbPrefetcherStarterWithCache renew_hard =
+		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version, kind);
+	YbPrefetcherStarterNoCache no_cache = {
+		.functor =
+		{
+			.call = &YbPrefetcherStarterNoCacheCall
+		},
+			.kind = kind,
 	};
 
 	YbPrefetcherStarterFunctor *prefetcher_starters[] = {
 		&trust_cache.functor,
 		&renew_soft.functor,
 		&renew_hard.functor,
-		&no_cache
+		&no_cache.functor
 	};
 
 	static const size_t kStartersCount = lengthof(prefetcher_starters);
@@ -3651,7 +3669,13 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 void
 YBPreloadRelCache()
 {
-	YbRunWithPrefetcher(&YbPreloadRelCacheImpl, false /* keep_prefetcher */ );
+	/*
+	 * Reached from a full catalog cache refresh on a connection that is already serving a
+	 * session. The master admits these ahead of prefetches from connections that are still
+	 * starting up: this backend cannot run anything until it has the data.
+	 */
+	YbRunWithPrefetcher(&YbPreloadRelCacheImpl, false /* keep_prefetcher */ ,
+						YB_YQL_PREFETCH_KIND_CACHE_REFRESH);
 }
 
 static YbcStatus
@@ -3714,10 +3738,28 @@ YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext *ctx)
 void
 YbPrefetchRequiredData(bool preload_rel_cache)
 {
+	YbcPgSysTablePrefetchKind kind;
+
+	/*
+	 * The relcache-init builder backend produces the init file that every new
+	 * connection on this node waits for, so its prefetch is not one that can
+	 * afford to queue behind connections that are merely starting up. It is also
+	 * not the expensive one: that backend preloads minimally, taking system
+	 * catalog rows rather than user objects, and a deployment that preloads
+	 * additional catalog tables skips the init-file optimization entirely (see
+	 * catalog_preload_required in RelationCacheInitializePhase3) and does that
+	 * large preload on the connection itself, as a CONNECTION_START prefetch.
+	 */
+	if (MyBackendType == YB_RELCACHE_INIT_BACKEND)
+		kind = YB_YQL_PREFETCH_KIND_CACHE_REFRESH;
+	else
+		kind = YB_YQL_PREFETCH_KIND_CONNECTION_START;
+
 	YbRunWithPrefetcher((preload_rel_cache ?
 						 &YbPrefetchRequiredDataWithRelCache :
 						 &YbPrefetchRequiredDataWithoutRelCache),
-						true /* keep_prefetcher */ );
+						true /* keep_prefetcher */ ,
+						kind);
 }
 
 /*
