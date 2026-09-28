@@ -116,9 +116,23 @@ char	  **ps_status_new_environ;
 
 #if defined(PS_USE_CLOBBER_ARGV)
 static char **
-allocate_new_environ(int i)
+yb_alloc_ps_ptr_array(int n)
 {
-	char	  **result = (char **) malloc((i + 1) * sizeof(char *));
+	char	  **result = (char **) malloc((n + 1) * sizeof(char *));
+
+	__lsan_ignore_object(result);
+	return result;
+}
+
+/*
+ * YB: argv/environ copies live until process exit. Later unsetenv/putenv can
+ * drop a copied string from the array (main.c unsets LC_ALL before handling
+ * -V), so LSAN would report a leak on paths like `postgres -V` during initdb.
+ */
+static char *
+yb_ps_status_strdup(const char *s)
+{
+	char	   *result = strdup(s);
 
 	__lsan_ignore_object(result);
 	return result;
@@ -213,7 +227,7 @@ save_ps_display_args(int argc, char **argv)
 		/*
 		 * move the environment out of the way
 		 */
-		new_environ = allocate_new_environ(i);;
+		new_environ = yb_alloc_ps_ptr_array(i);
 		if (!new_environ)
 		{
 			write_stderr("out of memory\n");
@@ -221,7 +235,7 @@ save_ps_display_args(int argc, char **argv)
 		}
 		for (i = 0; environ[i] != NULL; i++)
 		{
-			new_environ[i] = strdup(environ[i]);
+			new_environ[i] = yb_ps_status_strdup(environ[i]);
 			if (!new_environ[i])
 			{
 				write_stderr("out of memory\n");
@@ -254,7 +268,7 @@ save_ps_display_args(int argc, char **argv)
 		char	  **new_argv;
 		int			i;
 
-		new_argv = (char **) malloc((argc + 1) * sizeof(char *));
+		new_argv = yb_alloc_ps_ptr_array(argc);
 		if (!new_argv)
 		{
 			write_stderr("out of memory\n");
@@ -262,7 +276,7 @@ save_ps_display_args(int argc, char **argv)
 		}
 		for (i = 0; i < argc; i++)
 		{
-			new_argv[i] = strdup(argv[i]);
+			new_argv[i] = yb_ps_status_strdup(argv[i]);
 			if (!new_argv[i])
 			{
 				write_stderr("out of memory\n");
