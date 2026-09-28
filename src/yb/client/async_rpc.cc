@@ -42,6 +42,7 @@
 #include "yb/tserver/tserver_service.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -336,6 +337,36 @@ bool AsyncRpc::IsLocalCall() const {
 }
 
 namespace {
+
+// One "name(id)" entry per distinct table in the batch, mirroring pggate's Perform attribute.
+void PublishPendingRpcTableNames(const InFlightOps& ops) {
+  if (!dist_trace::HasActiveContext()) {
+    return;
+  }
+  std::string joined_names;
+  std::unordered_set<std::string_view> seen;
+  auto append = [&](const YBTableConstPtr& table) {
+    if (!table || !seen.insert(table->id()).second) {
+      return;
+    }
+    if (!joined_names.empty()) {
+      joined_names += ", ";
+    }
+    joined_names += table->name().table_name();
+    joined_names += '(';
+    joined_names += table->id();
+    joined_names += ')';
+  };
+  for (const auto& op : ops) {
+    append(op.yb_op->table());
+    if (op.yb_op->type() == YBOperation::PGSQL_READ) {
+      append(down_cast<const YBPgsqlReadOp&>(*op.yb_op).index_table());
+    }
+  }
+  if (!joined_names.empty()) {
+    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
+  }
+}
 
 template<class T>
 void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
@@ -807,6 +838,7 @@ WriteRpc::~WriteRpc() {
 
 void WriteRpc::CallRemoteMethod() {
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
@@ -960,6 +992,7 @@ ReadRpc::~ReadRpc() {
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->ReadAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 

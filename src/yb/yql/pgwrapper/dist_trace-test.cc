@@ -2072,6 +2072,7 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
         return std::find(tablet_ids.begin(), tablet_ids.end(), tablet_id) != tablet_ids.end();
       }));
   ASSERT_EQ(read_span.service_name, "TabletServer");
+  ASSERT_EQ(read_span.str_attrs["rpc.table_names"], Format("rpc_crossing_test($0)", table_id));
 
   // CREATE TABLE runs the master RPC synchronously on the tserver's handler thread.
   ASSERT_OK(conn_->Execute(

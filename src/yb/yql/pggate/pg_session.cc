@@ -149,27 +149,34 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
   std::string joined_names;
   joined_names.reserve(128);
   std::set<std::string_view> processed;
-  for (const auto& op : ops) {
-    const auto table_id_str = FetchTableId(*op);
-    if (table_id_str.empty()) {
-      continue;
-    }
-    const auto ipair = processed.insert(table_id_str);
-    if (!ipair.second) {
-      continue;
+  auto append_name = [&](Slice table_id_str) {
+    if (table_id_str.empty() || !processed.insert(table_id_str).second) {
+      return;
     }
     const PgObjectId table_id{table_id_str};
     if (!table_id.IsValid()) {
-      continue;
+      return;
     }
     const auto it = table_cache.find(table_id);
     if (it == table_cache.end() || !it->second) {
-      continue;
+      return;
     }
     if (!joined_names.empty()) {
       joined_names += ", ";
     }
     joined_names += it->second->table_name().table_name();
+    joined_names += '(';
+    joined_names += table_id_str.ToBuffer();
+    joined_names += ')';
+  };
+  for (const auto& op : ops) {
+    append_name(FetchTableId(*op));
+    if (op->is_read()) {
+      const auto& read_req = down_cast<const PgsqlReadOp&>(*op).read_request();
+      if (read_req.has_index_request()) {
+        append_name(FetchTableId(read_req.index_request()));
+      }
+    }
   }
   if (!joined_names.empty()) {
     dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
