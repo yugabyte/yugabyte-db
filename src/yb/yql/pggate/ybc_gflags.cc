@@ -140,6 +140,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
     " right away without incurring a master lookup");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_startup_client_connection_check, true,
+    "When enabled, a non-zero client_connection_check_interval in ysql_pg_conf_csv will also "
+    "check for client disconnects during backend initialization.");
+TAG_FLAG(ysql_enable_startup_client_connection_check, advanced);
+
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
     "If true, the connection-auth catalog prefetch (pg_authid, pg_database, "
     "...) is served from the tserver response cache, turning per-connection "
@@ -294,7 +299,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
-          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization
+          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
+      .ysql_enable_startup_client_connection_check =
+          &FLAGS_ysql_enable_startup_client_connection_check,
   };
   // clang-format on
   return &accessor;
