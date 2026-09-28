@@ -291,4 +291,59 @@ TEST_F(PgVectorIndexITest, BackwardScan) {
   ASSERT_EQ(rows, "1");
 }
 
+// With invalidation messages disabled, every catalog version bump makes other backends go through
+// a full catalog cache refresh.
+class PgVectorIndexFullCatalogRefreshITest : public PgVectorIndexITest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgVectorIndexITest::UpdateMiniClusterOptions(options);
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      // Disabling invalidation messages requires object locking to be off.
+      flags->push_back("--enable_object_locking_for_table_locks=false");
+      flags->push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      flags->push_back("--ysql_yb_enable_invalidation_messages=false");
+    }
+  }
+};
+
+// The relcache preload skips indexes on extension access methods such as ybhnsw. A full refresh
+// must not leak anything for the skipped index.
+TEST_F_EX(PgVectorIndexITest, NoCacheMemoryGrowthOnFullCatalogRefresh,
+          PgVectorIndexFullCatalogRefreshITest) {
+  constexpr int kNumWarmupRefreshes = 3;
+  constexpr int kNumRefreshes = 10;
+
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("CREATE EXTENSION vector"));
+  // No primary key, so that the vector index is the only index.
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE test (id INT, embedding vector(1))"));
+  ASSERT_OK(CreateIndex(ddl_conn));
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto catalog_version_query =
+      "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()"s;
+  const auto cache_memory_query =
+      "SELECT used_bytes FROM pg_get_backend_memory_contexts() "
+      "WHERE name = 'CacheMemoryContext'"s;
+  int64_t used_bytes_after_warmup = 0;
+  int64_t used_bytes = 0;
+  for (int i = 0; i < kNumWarmupRefreshes + kNumRefreshes; ++i) {
+    const auto old_version = ASSERT_RESULT(conn.FetchRow<int64_t>(catalog_version_query));
+    ASSERT_OK(BumpCatalogVersion(1, &ddl_conn));
+    // Each query that sees a newer catalog version did a full refresh.
+    ASSERT_OK(LoggedWaitFor(
+        [&conn, &catalog_version_query, old_version]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(catalog_version_query)) > old_version;
+        },
+        MonoDelta::FromSeconds(10 * kTimeMultiplier), "full catalog cache refresh"));
+    used_bytes = ASSERT_RESULT(conn.FetchRow<int64_t>(cache_memory_query));
+    LOG(INFO) << "CacheMemoryContext used bytes after refresh " << i + 1 << ": " << used_bytes;
+    if (i == kNumWarmupRefreshes - 1) {
+      used_bytes_after_warmup = used_bytes;
+    }
+  }
+  ASSERT_EQ(used_bytes, used_bytes_after_warmup);
+}
+
 } // namespace yb::pgwrapper
