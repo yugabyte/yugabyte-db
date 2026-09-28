@@ -165,6 +165,13 @@ message PgVectorIdxOptionsPB {
   // Deprecated: skip_reverse_mapping_backfill. TablePropertiesPB.owns_vector_reverse_mapping
   // on the indexed table is used instead.
   reserved 9;
+
+  // Whether a payload is attached to every vector in the index chunks. The payload carries the
+  // ybctid, so search resolves rows without the reverse mapping, and could carry more data in
+  // future, e.g. columns for covering indexes. Fixed by master when the index is created, since
+  // an index must not mix vectors with and without payload. Always set for an index of a table
+  // with TablePropertiesPB::skip_vector_reverse_mapping set.
+  optional bool store_payload = 10;
 }
 
 message PgHnswReadOptionsPB {
@@ -226,6 +233,12 @@ message TablePropertiesPB {
   // mapping. Set at table creation on the master from `enable_table_owned_vector_reverse_mapping`
   // gflag and cannot be changed afterwards.
   optional bool owns_vector_reverse_mapping = 13;
+
+  // Whether writes to this table skip the vector reverse mapping. Fixed by master at table
+  // creation from the `vector_index_store_payload` gflag and cannot be changed afterwards. Such a
+  // table relies on the ybctid stored with every vector, so all its vector indexes are created
+  // with PgVectorIdxOptionsPB::store_payload set.
+  optional bool skip_vector_reverse_mapping = 14;
 }
 
 message SchemaPB {

@@ -71,7 +71,7 @@ DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
-DECLARE_bool(vector_index_store_ybctid);
+DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_concurrent_ddl);
@@ -4111,10 +4111,10 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
       output);
 }
 
-// With vector_index_store_ybctid enabled the vector index writes no reverse mapping entries at
-// all, neither on insert nor on delete.
+// With vector_index_store_payload enabled the vector index writes no reverse mapping entries
+// at all, neither on insert nor on delete.
 TEST_F(PgVectorIndexUtilTest, SstDumpStoredYbctid) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
 
   constexpr size_t kNumRows = 5;
   auto conn = ASSERT_RESULT(MakeIndex());
@@ -4140,54 +4140,32 @@ TEST_F(PgVectorIndexUtilTest, SstDumpStoredYbctid) {
   ASSERT_EQ(AsString(rows), "[1, 3, 4, 5]");
 }
 
-// Chunks written before ybctids were stored (the index was opened with vector_index_store_ybctid
-// disabled) get the ybctids attached during vector index compaction, restored from the reverse
-// mapping via the merge filter.
-TEST_F(PgVectorIndexUtilTest, CompactionAttachesYbctidToOldChunks) {
-  constexpr size_t kNumRows = 10;
+// The reverse mapping decision is fixed for the table, so an index created after the gflag is
+// turned off still stores payloads and the table keeps writing no reverse mapping entries.
+TEST_F(PgVectorIndexUtilTest, StoredYbctidFixedForTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = false;
-  auto conn = ASSERT_RESULT(MakeIndex());
-  ASSERT_OK(InsertRows(conn, 1, kNumRows / 2));
-  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
-  {
-    auto vector_indexes = ListVectorIndexes(cluster_.get());
-    ASSERT_EQ(vector_indexes.size(), 1);
-    ASSERT_OK(vector_indexes.front()->Flush());
-    ASSERT_OK(vector_indexes.front()->WaitForFlush());
-  }
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
 
-  // Reopen the index with ybctid storing enabled, as it happens when the autoflag is promoted
-  // and the node restarts.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = true;
-  ASSERT_OK(RestartCluster());
-  conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(InsertRows(conn, kNumRows / 2 + 1, kNumRows));
-  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
-  auto vector_indexes = ListVectorIndexes(cluster_.get());
-  ASSERT_EQ(vector_indexes.size(), 1);
-  auto& index = *vector_indexes.front();
-  ASSERT_OK(index.Flush());
-  ASSERT_OK(index.WaitForFlush());
-  // The compacted chunk stores ybctids, the merge filter restores them for the vectors from the
-  // chunk written before the restart.
-  ASSERT_OK(index.Compact());
-  ASSERT_OK(index.WaitForCompaction());
-  ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows * 2));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
 
-  const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
-  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
-  std::ranges::sort(rows);
-  ASSERT_EQ(AsString(rows), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]");
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
 }
 
-// With vector_index_store_ybctid enabled there are no reverse mapping entries, so compaction
-// cannot detect deleted vectors and keeps them in the index. Search skips them anyway, because
-// the rows their stored ybctids point to are gone.
+// An index which stores payloads has no reverse mapping entries, so compaction cannot detect
+// deleted vectors and keeps them in the index. Search skips them anyway, because the rows their
+// stored ybctids point to are gone.
 TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_ybctid) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
   // The range DELETE below is planned as a seq scan.
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
 
