@@ -49,6 +49,8 @@ METRIC_DECLARE_counter(pg_response_cache_gc_calls);
 METRIC_DECLARE_counter(pg_response_cache_queries);
 METRIC_DECLARE_counter(pg_response_cache_renew_hard);
 METRIC_DECLARE_counter(pg_response_cache_renew_soft);
+METRIC_DECLARE_counter(ysql_catalog_prefetch_rejections);
+METRIC_DECLARE_gauge_int64(ysql_catalog_prefetches_in_progress);
 
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
@@ -69,6 +71,9 @@ DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_int32(pg_client_extra_timeout_ms);
+DECLARE_int32(TEST_ysql_catalog_prefetch_rejections_to_inject);
+DECLARE_int32(master_max_concurrent_ysql_catalog_prefetches);
+DECLARE_uint32(master_new_ysql_catalog_prefetch_pct);
 
 using namespace std::literals;
 
@@ -1150,6 +1155,102 @@ TEST_F(PgCatalogPerfTest, RestrictedConnections) {
   settings.user = kNewUserName;
   // Make sure new user with non-trivial connection permissions is able to connect
   ASSERT_OK(PGConnBuilder(settings).Connect());
+}
+
+// Covers the master's catalog prefetch admission control. The property that matters is that a
+// rejected prefetch is retried by the client: if the rejection reached postgres instead,
+// bounding prefetches would turn slow connections into failed ones, which is worse than the
+// queueing the bound replaces.
+class PgCatalogPrefetchAdmissionTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    // A prefetch served from the tserver response cache never reaches the master, so there would
+    // be nothing to admit or reject.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_read_request_caching) = false;
+    // Auto-analyze bumps the catalog version, which produces prefetches this test does not drive.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    PgMiniTestBase::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  [[nodiscard]] const MetricEntity& MasterMetrics() const {
+    return *cluster_->mini_master()->master()->metric_entity();
+  }
+
+  [[nodiscard]] int64_t Rejections() const {
+    auto counter = MasterMetrics().FindOrNull<Counter>(METRIC_ysql_catalog_prefetch_rejections);
+    return counter ? counter->value() : 0;
+  }
+
+  [[nodiscard]] int64_t InProgress() const {
+    auto gauge = MasterMetrics().FindOrNull<AtomicGauge<int64_t>>(
+        METRIC_ysql_catalog_prefetches_in_progress);
+    // The tests below wait for this to reach zero, so a missing gauge would let them finish
+    // without having waited for anything.
+    CHECK(gauge) << "ysql_catalog_prefetches_in_progress gauge not found";
+    return gauge->value();
+  }
+};
+
+// A rejected prefetch must be retried rather than failing the connection. Rejection is injected so
+// that a single node reproduces it; reaching it through the concurrency limit would need a cluster
+// large enough to saturate the master.
+TEST_F(PgCatalogPrefetchAdmissionTest, RejectedPrefetchIsRetried) {
+  const auto rejections_before = Rejections();
+  // One, so the test does not depend on how many requests a prefetch happens to take: a
+  // small catalog may fit in a single one, and a probabilistic injection would then reject it or
+  // not on the toss of a coin. One is enough -- the retry that follows is admitted, so the
+  // connection completes, which is the property under test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_catalog_prefetch_rejections_to_inject) = 1;
+  // Pin the limit out of the way, so that the only rejections the count below can see are
+  // injected ones. The automatic limit follows the core count, which leaves different headroom on
+  // different hosts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
+
+  // At least, not exactly: the countdown in AdmitRead is a plain read-modify-write, so two
+  // overlapping prefetches can both take the last injection. The limit is pinned above, so any
+  // rejection counted here is an injected one.
+  ASSERT_GE(Rejections(), rejections_before + 1)
+      << "the injected rejection did not reach a prefetch, so the retry path was not exercised";
+}
+
+// The limit itself must not break connections, and admissions must be released once a read
+// finishes -- a leaked slot would reject every prefetch from then on.
+TEST_F(PgCatalogPrefetchAdmissionTest, ConcurrentPrefetchesAreAdmittedAndReleased) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1;
+
+  constexpr size_t kNumConnections = 5;
+  TestThreadHolder threads;
+  for (size_t i = 0; i < kNumConnections; ++i) {
+    threads.AddThreadFunctor([this] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
+    });
+  }
+  threads.JoinAll();
+
+  ASSERT_OK(LoggedWaitFor(
+      [this] { return InProgress() == 0; }, 30s, "prefetch admissions released"));
+}
+
+// A prefetch that is under way keeps the whole limit available to it, while one that is starting
+// gets only a share. With the share set to zero the floor still has to admit new prefetches, or a
+// connection could never begin and the limit would be a deadlock rather than a bound.
+TEST_F(PgCatalogPrefetchAdmissionTest, NewPrefetchShareHasAFloor) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_new_ysql_catalog_prefetch_pct) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
+
+  ASSERT_OK(LoggedWaitFor(
+      [this] { return InProgress() == 0; }, 30s, "prefetch admissions released"));
 }
 
 } // namespace yb::pgwrapper
