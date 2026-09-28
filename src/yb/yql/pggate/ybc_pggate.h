@@ -943,12 +943,13 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-void YBCStartSysTablePrefetchingNoCache();
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,
-    YbcPgSysTablePrefetcherCacheMode cache_mode);
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind);
 
 void YBCStopSysTablePrefetching();
 
