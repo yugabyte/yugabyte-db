@@ -1416,6 +1416,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> readGcpInstanceTemplate =
+      new ConfKeyInfo<>(
+          "yb.gcp.read_instance_template",
+          ScopeType.GLOBAL,
+          "Read GCP instance templates",
+          "Read the instance template configured on a GCP region and carry its settings over to"
+              + " the nodes YBA creates, currently its CMEK disk encryption keys. Requires"
+              + " compute.instanceTemplates.get, which is not needed to pass the template to"
+              + " instance creation as a source.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapSearchFilter =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_search_filter",

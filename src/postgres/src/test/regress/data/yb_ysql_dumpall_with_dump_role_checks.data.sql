@@ -156,10 +156,10 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
+ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
 \unrestrict test
 \else
-    \echo 'Skipping alter role due to missing role:' 'regress_priv_user7'
+\echo 'Skipping alter role due to missing role:' 'regress_priv_user7'
 \endif
 \restrict test
 
@@ -173,10 +173,10 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
 \restrict test
-    GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
 \unrestrict test
 \else
-    \echo 'Skipping grant privilege due to missing role:' 'regress_priv_user8' 'OR' 'yugabyte_test'
+\echo 'Skipping grant privilege due to missing role:' 'regress_priv_user8' 'OR' 'yugabyte_test'
 \endif
 \restrict test
 
@@ -184,10 +184,10 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AND E
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
 \restrict test
-    GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
+GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
 \unrestrict test
 \else
-    \echo 'Skipping grant privilege due to missing role:' 'regress_priv_user7' 'OR' 'yugabyte_test'
+\echo 'Skipping grant privilege due to missing role:' 'regress_priv_user7' 'OR' 'yugabyte_test'
 \endif
 \restrict test
 
@@ -209,15 +209,15 @@ CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER ROLE regress_priv_user7 PROFILE profile_3_failed;
-    UPDATE pg_catalog.pg_yb_role_profile
-    SET rolprfstatus = 'o',
-        rolprffailedloginattempts = 0
-    WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user7')
-      AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_3_failed');
+ALTER ROLE regress_priv_user7 PROFILE profile_3_failed;
+UPDATE pg_catalog.pg_yb_role_profile
+SET rolprfstatus = 'o',
+    rolprffailedloginattempts = 0
+WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user7')
+  AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_3_failed');
 \unrestrict test
 \else
-    \echo 'Skipping alter role due to missing role:' 'regress_priv_user7'
+\echo 'Skipping alter role due to missing role:' 'regress_priv_user7'
 \endif
 \restrict test
 
@@ -581,10 +581,10 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER DATABASE system_platform OWNER TO postgres;
+ALTER DATABASE system_platform OWNER TO postgres;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'postgres'
+\echo 'Skipping owner privilege due to missing role:' 'postgres'
 \endif
 \endif
 \restrict test
@@ -732,10 +732,10 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER DATABASE yugabyte OWNER TO postgres;
+ALTER DATABASE yugabyte OWNER TO postgres;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'postgres'
+\echo 'Skipping owner privilege due to missing role:' 'postgres'
 \endif
 \endif
 \restrict test
@@ -780,10 +780,10 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';
+ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';
 \unrestrict test
 \else
-    \echo 'Skipping alter role due to missing role:' 'regress_priv_user8'
+\echo 'Skipping alter role due to missing role:' 'regress_priv_user8'
 \endif
 
 \endif
@@ -837,10 +837,10 @@ CREATE TABLEGROUP grp_with_spc;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
+ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
+\echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
 \endif
 \endif
 \restrict test
@@ -868,10 +868,10 @@ CREATE TABLEGROUP grp_without_spc;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
+ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
+\echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
 \endif
 \endif
 \restrict test
@@ -914,10 +914,10 @@ SPLIT INTO 3 TABLETS;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLE public.table1 OWNER TO yugabyte_test;
+ALTER TABLE public.table1 OWNER TO yugabyte_test;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
+\echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
 \endif
 \endif
 \restrict test
@@ -958,10 +958,10 @@ SPLIT INTO 3 TABLETS;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLE public.table2 OWNER TO yugabyte_test;
+ALTER TABLE public.table2 OWNER TO yugabyte_test;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
+\echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
 \endif
 \endif
 \restrict test
@@ -1003,10 +1003,10 @@ TABLEGROUP grp_with_spc;
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
 \restrict test
-    ALTER TABLE public.tbl_with_grp_with_spc OWNER TO yugabyte_test;
+ALTER TABLE public.tbl_with_grp_with_spc OWNER TO yugabyte_test;
 \unrestrict test
 \else
-    \echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
+\echo 'Skipping owner privilege due to missing role:' 'yugabyte_test'
 \endif
 \endif
 \restrict test

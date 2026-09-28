@@ -16,6 +16,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/monitored_task.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {
@@ -137,6 +138,9 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
 
   std::string next_step_description_ GUARDED_BY(schedule_task_mutex_);
   std::function<Status()> next_step_ GUARDED_BY(schedule_task_mutex_) = nullptr;
+
+  // Creating operation's trace context, re-activated around each step.
+  dist_trace::TraceParent trace_parent_;
 };
 
 // A MultiStepMonitoredTask that is tied to a single CatalogEntity object (ex: Table) and the master

@@ -13,29 +13,20 @@
 
 #include "yb/util/dist_trace.h"
 
-#include <deque>
-#include <memory>
-
 #include "opentelemetry/context/propagation/global_propagator.h"
-#include "opentelemetry/context/propagation/text_map_propagator.h"
-#include "opentelemetry/context/runtime_context.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
 #include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
-#include "opentelemetry/sdk/trace/batch_span_processor_options.h"
-#include "opentelemetry/sdk/trace/tracer_provider.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
 #include "opentelemetry/sdk/trace/provider.h"
-#include "opentelemetry/trace/context.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/trace/provider.h"
-#include "opentelemetry/trace/span.h"
-#include "opentelemetry/trace/span_metadata.h"
-#include "opentelemetry/trace/tracer.h"
+
+#include "yb/gutil/dynamic_annotations.h"
 
 #include "yb/util/flag_validators.h"
-#include "yb/util/flags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/signal_util.h"
 
 DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
@@ -50,12 +41,17 @@ DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_string, "",
     "CA certificate bundle contents for OTLP HTTPS trace export. Used only when no CA certificate "
     "bundle path is configured.");
 
-DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 2048,
+DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 16384,
     "Maximum number of spans that can be buffered in the batch span processor queue. "
     "Spans arriving after this limit are dropped. Must be greater than 0 and at least as "
     "large as otel_batch_max_export_batch_size.");
 
-DEFINE_NON_RUNTIME_uint32(otel_batch_schedule_delay_ms, 5000,
+DEFINE_NON_RUNTIME_uint32(otel_ysql_batch_max_queue_size, 2048,
+    "Like otel_batch_max_queue_size, but used only by the ysql (postgres backend) process, which "
+    "runs one batch span processor per connection. Must be greater than 0 and at least as large as "
+    "otel_batch_max_export_batch_size.");
+
+DEFINE_NON_RUNTIME_uint32(otel_batch_schedule_delay_ms, 500,
     "Time interval in milliseconds between two consecutive batch exports of spans to the "
     "OpenTelemetry collector. Lower values reduce latency but increase export frequency.");
 
@@ -70,10 +66,34 @@ DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
 
+DEFINE_validator(otel_ysql_batch_max_queue_size,
+    FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
+
 DEFINE_validator(otel_internal_log_level,
     FLAG_IN_SET_VALIDATOR("debug", "info", "warning", "error", "none"));
 
+namespace {
+
+void UpdateDistTraceEnabled() {
+  ANNOTATE_UNPROTECTED_WRITE(yb::dist_trace::internal::g_dist_trace_enabled) =
+      !FLAGS_otel_collector_traces_endpoint.empty();
+}
+
+}  // namespace
+
+REGISTER_CALLBACK(
+    otel_collector_traces_endpoint, "UpdateDistTraceEnabled", &UpdateDistTraceEnabled);
+
 namespace yb::dist_trace {
+
+namespace internal {
+
+bool g_dist_trace_enabled = false;
+
+// Service name for the tracing resource and tracer (e.g. "ysql", "Master", "TabletServer").
+std::string g_service_name;
+
+}  // namespace internal
 
 namespace trace_sdk = opentelemetry::sdk::trace;
 namespace resource_sdk = opentelemetry::sdk::resource;
@@ -83,38 +103,36 @@ namespace context = opentelemetry::context;
 
 namespace {
 
-const nostd::string_view ysql_resource_name = "ysql";
+// The ysql process gets its own queue-size flag; tserver/master share otel_batch_max_queue_size.
+uint32_t EffectiveBatchMaxQueueSize() {
+  return internal::g_service_name == kYsqlServiceName ? FLAGS_otel_ysql_batch_max_queue_size
+                                                      : FLAGS_otel_batch_max_queue_size;
+}
 
-// Owns string attribute data and maintains a parallel vector of string_view/AttributeValue pairs
-// that can be passed directly to the OTel Tracer::StartSpan API. Uses std::deque for pointer
-// stability -- unlike std::vector, deque does not relocate existing elements on insertion, so
-// string_views into earlier entries remain valid.
-class RpcSpanAttrs {
- public:
-  void AddStringAttr(std::string key, std::string value) {
-    auto& owned_key = owned_keys_.emplace_back(std::move(key));
-    auto& owned_val = owned_values_.emplace_back(std::move(value));
-    attrs_.emplace_back(owned_key, owned_val);
+// A batch of pending RPC span attributes, owned as plain (key, value) strings.
+using PendingRpcSpanAttrs = std::vector<std::pair<std::string, std::string>>;
+
+thread_local PendingRpcSpanAttrs pending_rpc_attrs;
+
+// Moves the pending attributes out of the thread-local buffer, leaving it empty. The returned batch
+// owns the strings.
+static PendingRpcSpanAttrs ConsumePendingRpcAttrs() {
+  PendingRpcSpanAttrs consumed = std::move(pending_rpc_attrs);
+  // std::move leaves the source unspecified; force it empty.
+  pending_rpc_attrs.clear();
+  return consumed;
+}
+
+// Builds the OTel-API attribute vector (string_view/AttributeValue pairs) viewing into `attrs`.
+std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>> SpanAttrsView(
+    const PendingRpcSpanAttrs& attrs) {
+  std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>> view;
+  view.reserve(attrs.size());
+  for (const auto& [key, value] : attrs) {
+    view.emplace_back(key, value);
   }
-
-  const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs()
-      const {
-    return attrs_;
-  }
-
-  void clear() {
-    attrs_.clear();
-    owned_keys_.clear();
-    owned_values_.clear();
-  }
-
- private:
-  std::deque<std::string> owned_keys_;
-  std::deque<std::string> owned_values_;
-  std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>> attrs_;
-};
-
-thread_local RpcSpanAttrs pending_rpc_attrs;
+  return view;
+}
 
 internal_log::LogLevel GetOtelInternalLogLevel() {
   const auto& flag_value = FLAGS_otel_internal_log_level;
@@ -166,10 +184,11 @@ class YbOtelLogHandler : public internal_log::LogHandler {
   }
 };
 
-resource_sdk::Resource CreateResource(int64_t process_pid, nostd::string_view node_uuid) {
+resource_sdk::Resource CreateResource(
+    nostd::string_view service_name, nostd::string_view node_uuid) {
   resource_sdk::ResourceAttributes attrs;
-  attrs.SetAttribute("service.name", ysql_resource_name);
-  attrs.SetAttribute("process.pid", process_pid);
+  attrs.SetAttribute("service.name", service_name);
+  attrs.SetAttribute("process.pid", static_cast<int64_t>(getpid()));
   attrs.SetAttribute("service.instance.id", node_uuid);
 
   return resource_sdk::Resource::Create(attrs);
@@ -197,7 +216,7 @@ auto CreateExporter() {
 
 trace_sdk::BatchSpanProcessorOptions MakeBatchProcessorOptions() {
   trace_sdk::BatchSpanProcessorOptions batching_opts;
-  batching_opts.max_queue_size = static_cast<size_t>(FLAGS_otel_batch_max_queue_size);
+  batching_opts.max_queue_size = static_cast<size_t>(EffectiveBatchMaxQueueSize());
   batching_opts.schedule_delay_millis =
       std::chrono::milliseconds(FLAGS_otel_batch_schedule_delay_ms);
   batching_opts.max_export_batch_size = static_cast<size_t>(FLAGS_otel_batch_max_export_batch_size);
@@ -227,8 +246,11 @@ Status InitDistTraceProvider(const resource_sdk::Resource& resource_attrs) {
 // supplied (through GUC or comment) traceparent header.
 class TraceparentCarrier : public context::propagation::TextMapCarrier {
  public:
-  explicit TraceparentCarrier(nostd::string_view traceparent)
-      : traceparent_(traceparent) {}
+  explicit TraceparentCarrier(nostd::string_view traceparent = {}) {
+    if (!traceparent.empty()) {
+      traceparent_.assign(traceparent.data(), traceparent.size());
+    }
+  }
 
   nostd::string_view Get(nostd::string_view key) const noexcept override {
     if (key == trace::propagation::kTraceParent) {
@@ -237,19 +259,26 @@ class TraceparentCarrier : public context::propagation::TextMapCarrier {
     return {};
   }
 
-  void Set(nostd::string_view, nostd::string_view) noexcept override {}
+  void Set(nostd::string_view key, nostd::string_view value) noexcept override {
+    if (key == trace::propagation::kTraceParent) {
+      traceparent_.assign(value.data(), value.size());
+    }
+  }
+
+  const std::string& traceparent() const { return traceparent_; }
 
  private:
-  nostd::string_view traceparent_;
+  std::string traceparent_;
 };
 
 }  // namespace
 
-bool IsDistTraceEnabled() {
-  return !FLAGS_otel_collector_traces_endpoint.empty();
+void TEST_SetOtelCollectorEndpoint(const std::string& endpoint) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = endpoint;
+  ::UpdateDistTraceEnabled();
 }
 
-void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
+void InitDistTrace(nostd::string_view service_name, nostd::string_view node_uuid) {
   DCHECK(IsDistTraceEnabled());
 
   internal_log::GlobalLogHandler::SetLogHandler(
@@ -259,7 +288,8 @@ void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
   // are mapped to LOG(...), where YB logging applies its own routing.
   internal_log::GlobalLogHandler::SetLogLevel(GetOtelInternalLogLevel());
 
-  auto resource_attrs = CreateResource(process_pid, node_uuid);
+  internal::g_service_name = std::string(service_name);
+  auto resource_attrs = CreateResource(service_name, node_uuid);
   const auto status = InitDistTraceProvider(resource_attrs);
   if (!status.ok()) {
     LOG(DFATAL) << "Failed to initialize OpenTelemetry tracing: " << status;
@@ -270,13 +300,13 @@ void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
       nostd::shared_ptr<context::propagation::TextMapPropagator>(
           new trace::propagation::HttpTraceContext()));
 
-  LOG(INFO) << "OTEL: Initialized tracing for service: " << ysql_resource_name
-            << "\nBatchSpanProcessor config: max_queue_size=" << FLAGS_otel_batch_max_queue_size
+  LOG(INFO) << "OTEL: Initialized tracing for service: " << internal::g_service_name
+            << "\nBatchSpanProcessor config: max_queue_size=" << EffectiveBatchMaxQueueSize()
             << ", schedule_delay_ms=" << FLAGS_otel_batch_schedule_delay_ms
             << ", max_export_batch_size=" << FLAGS_otel_batch_max_export_batch_size;
 }
 
-void CleanupDistTrace() {
+void ShutdownDistTrace() {
   DCHECK(IsDistTraceEnabled());
 
   std::shared_ptr<trace::TracerProvider> none;
@@ -287,7 +317,8 @@ void CleanupDistTrace() {
 
 nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer() {
   DCHECK(IsDistTraceEnabled());
-  return DCHECK_NOTNULL(trace::Provider::GetTracerProvider()->GetTracer(ysql_resource_name));
+  return DCHECK_NOTNULL(
+      trace::Provider::GetTracerProvider()->GetTracer(internal::g_service_name));
 }
 
 // A SpanContext is not valid when either its trace ID or span ID is all zeros.
@@ -312,12 +343,30 @@ trace::SpanContext GetTraceparentSpanContext(const char* traceparent) {
   return trace::GetSpan(parent_context)->GetContext();
 }
 
+std::string GetActiveTraceparent() {
+  if (!HasActiveContext()) {
+    return {};
+  }
+  TraceparentCarrier carrier;
+  static const auto propagator =
+      context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  propagator->Inject(carrier, context::RuntimeContext::GetCurrent());
+  return carrier.traceparent();
+}
+
 bool HasActiveContext() {
   if (!IsDistTraceEnabled()) {
     return false;
   }
   auto current_span = trace::Tracer::GetCurrentSpan();
   return current_span && current_span->GetContext().IsValid();
+}
+
+std::optional<trace::SpanContext> GetActiveSpanContext() {
+  if (!HasActiveContext()) {
+    return std::nullopt;
+  }
+  return trace::Tracer::GetCurrentSpan()->GetContext();
 }
 
 nostd::shared_ptr<trace::Span> StartSpan(
@@ -341,17 +390,44 @@ nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name) {
   return StartSpan(op_name, {});
 }
 
+nostd::shared_ptr<trace::Span> StartClientSpan(std::string_view op_name) {
+  // Drained even when there is nothing to start, so the attributes cannot leak into a later span.
+  const auto pending = ConsumePendingRpcAttrs();
+
+  if (!HasActiveContext()) {
+    return {};
+  }
+
+  trace::StartSpanOptions options;
+  options.kind = trace::SpanKind::kClient;
+  return StartSpan(op_name, SpanAttrsView(pending), options);
+}
+
+nostd::shared_ptr<trace::Span> StartServerSpan(
+    std::string_view op_name, const trace::SpanContext& parent_context) {
+  if (!IsDistTraceEnabled()) {
+    return {};
+  }
+  trace::StartSpanOptions options;
+  options.kind = trace::SpanKind::kServer;
+  options.parent = parent_context;
+  return GetDistTracer()->StartSpan(
+      nostd::string_view(op_name.data(), op_name.size()), {}, options);
+}
+
+ScopedAdoptSpan::ScopedAdoptSpan(const std::optional<trace::SpanContext>& parent_context) {
+  if (!parent_context || !IsDistTraceEnabled() || !parent_context->IsValid()) {
+    return;
+  }
+  // A non-recording span that merely carries parent_context.
+  scope_.emplace(nostd::shared_ptr<trace::Span>(new trace::DefaultSpan(*parent_context)));
+}
+
 void AddPendingRpcStringAttr(std::string key, std::string value) {
-  pending_rpc_attrs.AddStringAttr(std::move(key), std::move(value));
-}
-
-const std::vector<std::pair<nostd::string_view,
-                            opentelemetry::common::AttributeValue>>& GetPendingRpcAttrPairs() {
-  return pending_rpc_attrs.attrs();
-}
-
-void ClearPendingRpcAttrs() {
-  pending_rpc_attrs.clear();
+  if (!HasActiveContext()) {
+    return;
+  }
+  pending_rpc_attrs.emplace_back(std::move(key), std::move(value));
 }
 
 }  // namespace yb::dist_trace

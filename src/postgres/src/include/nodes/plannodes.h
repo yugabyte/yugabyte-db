@@ -49,7 +49,7 @@ typedef struct
 typedef struct
 {
 	NodeTag		type;
-	List	   *saop_cols;		/* List of YbMergeScanSaopColInfo */
+	List	   *stream_cols;	/* List of YbMergeScanStreamColInfo */
 	YbSortInfo *sort_cols;
 } YbMergeScanInfo;
 

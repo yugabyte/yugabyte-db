@@ -13,6 +13,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/relation.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_index.h"
 #include "commands/prepare.h"
@@ -2124,6 +2125,25 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	char 	nulls[2] = {' ', ' '};
 	text   *qry;
 	text   *app;
+	Oid		namespaceId;
+	bool	hints_table_found = false;
+
+	/*
+	 * Make sure that hint_plan.hints is found before we attempt to look for
+	 * a hint.
+	 */
+	namespaceId = LookupExplicitNamespace("hint_plan", true);
+	if (OidIsValid(namespaceId) &&
+		OidIsValid(get_relname_relid("hints", namespaceId)))
+		hints_table_found = true;
+
+	if (!hints_table_found)
+	{
+		ereport(WARNING,
+				(errmsg ("cannot use the hint table"),
+				 errhint("Run \"CREATE EXTENSION pg_hint_plan\" to create the hint table.")));
+		return NULL;
+	}
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{

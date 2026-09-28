@@ -54,6 +54,7 @@
 
 #include "yb/util/alignment.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
@@ -335,12 +336,18 @@ class PosixWritableFile : public WritableFile {
         sync_on_close_(sync_on_close),
         filesize_(file_size),
         pre_allocated_size_(0),
-        pending_sync_(false) {}
+        pending_sync_(false),
+        // Files opened before their drive is registered (FsManager's own startup writes) go
+        // uncounted.
+        drive_stats_(DriveIoStatsRegistry::Instance().Find(fname)) {}
 
   ~PosixWritableFile() {
     if (fd_ >= 0) {
       WARN_NOT_OK(Close(), "Failed to close " + filename_);
     }
+    // Covers paths that abandon the file without a successful Close(); the exchange in
+    // ReleaseUnsyncedBytes makes the double call harmless.
+    ReleaseUnsyncedBytes();
   }
 
   Status Append(const Slice& data) override {
@@ -429,6 +436,10 @@ class PosixWritableFile : public WritableFile {
     }
 
     fd_ = -1;
+    // After the optional sync above, so a synced close has nothing left to release. Anything
+    // still pending here was never fsynced by us (sync_on_close_ defaults to false) and must come
+    // off the drive gauge, or it stays there forever.
+    ReleaseUnsyncedBytes();
     return s;
   }
 
@@ -443,8 +454,13 @@ class PosixWritableFile : public WritableFile {
     if (mode == FLUSH_SYNC) {
       flags |= SYNC_FILE_RANGE_WAIT_AFTER;
     }
+    const auto start = MonoTime::Now();
     if (sync_file_range(fd_, 0, 0, flags) < 0) {
+      // Failed operations go uncounted.
       return STATUS_IO_ERROR(filename_, errno);
+    }
+    if (drive_stats_) {
+      drive_stats_->RecordRangeSync(MonoTime::Now() - start);
     }
 #else
     if (fsync(fd_) < 0) {
@@ -457,10 +473,25 @@ class PosixWritableFile : public WritableFile {
   Status Sync() override {
     TRACE_EVENT1("io", "PosixWritableFile::Sync", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
-    LOG_SLOW_EXECUTION(WARNING, 1000, Substitute("sync call for $0", filename_)) {
+    // The byte count goes into the slow-sync line so that a support bundle with no metrics in it
+    // is still actionable: a slow sync of a lot of bytes is a big flush, a slow sync of a few
+    // bytes is a slow device. The path names the drive.
+    const auto pending_bytes = unsynced_bytes_.load(std::memory_order_relaxed);
+    LOG_SLOW_EXECUTION(WARNING, 1000, Substitute(
+        "sync call for $0 ($1 unsynced bytes)", filename_, pending_bytes)) {
       if (pending_sync_) {
         pending_sync_ = false;
-        RETURN_NOT_OK(DoSync(fd_, filename_));
+        const auto synced_bytes = unsynced_bytes_.exchange(0, std::memory_order_relaxed);
+        const auto start = MonoTime::Now();
+        const auto sync_status = DoSync(fd_, filename_);
+        if (!sync_status.ok()) {
+          // A failed sync settles nothing: restore the unsynced debt and count nothing.
+          unsynced_bytes_.fetch_add(synced_bytes, std::memory_order_relaxed);
+          return sync_status;
+        }
+        if (drive_stats_) {
+          drive_stats_->RecordSync(synced_bytes, MonoTime::Now() - start);
+        }
       }
     }
     return Status::OK();
@@ -501,6 +532,46 @@ class PosixWritableFile : public WritableFile {
     uint64_t pre_allocated_size_;
     std::atomic<bool> pending_sync_;
 
+    // Two writable-file classes still exist here, so the per-drive accounting below is a second
+    // copy of what rocksdb::PosixWritableFile in file_system_posix.{h,cc} carries: that one
+    // instruments the RocksDB SSTs, this one the Raft WAL and the O_DIRECT subclass below. Keep
+    // the two in sync. Protected so that the subclass can report its own writes.
+
+    // Per-drive IO counters for the drive this file lives on, resolved once at construction by
+    // path prefix, or null when the file is under no registered drive root. Owned by the process-
+    // global DriveIoStatsRegistry, so this pointer stays valid for the life of the file.
+    DriveIoStats* const drive_stats_;
+
+    // Bytes appended since the last sync of this file, used to walk the drive's approximate
+    // unsynced-bytes gauge back down. Atomic because Sync() is thread-safe with respect to
+    // Append(). Maintained even when drive_stats_ is null, because the slow-sync log line in
+    // Sync() reports it.
+    //
+    // Deliberately approximate, and the approximation is what keeps it cheap. Sync() zeroes this
+    // and then calls fsync, so an Append() landing in between is counted as still unsynced even
+    // though that fsync almost certainly pushed it out. Making the number exact would mean holding
+    // a lock across the append and the fsync together, i.e. serializing two operations that are
+    // meant to run concurrently, and on the WAL that is the hot path. An upper bound is all the
+    // gauge claims to be (see the drive_bytes_unsynced description).
+    //
+    // Accessed with memory_order_relaxed, like the drive counters it feeds. It publishes no other
+    // memory, and every update is a read-modify-write on this one variable, so concurrent updates
+    // still compose correctly without any barrier.
+    std::atomic<uint64_t> unsynced_bytes_{0};
+
+    // Hands whatever this file still holds unsynced back to the drive gauge without counting a
+    // sync. Closing without syncing is the normal case, so without this the gauge only climbs.
+    void ReleaseUnsyncedBytes() {
+      // No need to zero the per-file counter when the file is going away.
+      if (drive_stats_ == nullptr) {
+        return;
+      }
+      const auto residual = unsynced_bytes_.exchange(0, std::memory_order_relaxed);
+      if (residual != 0) {
+        drive_stats_->ReleaseUnsyncedBytes(residual);
+      }
+    }
+
  private:
   Status DoWritev(const Slice* slices, size_t n) {
     ThreadRestrictions::AssertIOAllowed();
@@ -519,6 +590,7 @@ class PosixWritableFile : public WritableFile {
     struct iovec* remaining_iov = iov;
     int remaining_count = narrow_cast<int>(n);
     ssize_t total_written = 0;
+    const auto start = MonoTime::Now();
 
     while (remaining_count > 0) {
       ssize_t written = writev(fd_, remaining_iov, remaining_count);
@@ -526,6 +598,8 @@ class PosixWritableFile : public WritableFile {
         if (errno == EINTR || errno == EAGAIN) {
           continue;
         }
+        // A failed write goes uncounted. The counters are for throughput, and IO errors already
+        // have their own reporting path.
         return STATUS_IO_ERROR(filename_, errno);
       }
 
@@ -535,6 +609,14 @@ class PosixWritableFile : public WritableFile {
     }
 
     filesize_ += total_written;
+    const auto bytes = static_cast<uint64_t>(total_written);
+    // Outside the drive_stats_ check on purpose: the slow-sync log line in Sync() reports this
+    // number even when the drive is not instrumented, and a hardcoded zero there would read as
+    // strong evidence for a slow device.
+    unsynced_bytes_.fetch_add(bytes, std::memory_order_relaxed);
+    if (drive_stats_) {
+      drive_stats_->RecordBufferedWrite(bytes, MonoTime::Now() - start);
+    }
 
     if (PREDICT_FALSE(total_written != nbytes)) {
       return STATUS_FORMAT(
@@ -715,6 +797,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     struct iovec* remaining_iov = iov;
     int remaining_blocks = narrow_cast<int>(blocks_to_write);
     ssize_t total_written = 0;
+    const auto start = MonoTime::Now();
 
     while (remaining_blocks > 0) {
       ssize_t written = pwritev(
@@ -730,6 +813,19 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
 
       UnwrittenRemaining(&remaining_iov, written, &remaining_blocks);
       total_written += written;
+    }
+
+    if (drive_stats_) {
+      // RecordDirectWrite, not the buffered variant: this class overrides Sync() to be exactly
+      // this write and never reaches PosixWritableFile::Sync(), so nothing would ever come along
+      // to settle an unsynced-bytes debt. There is also nothing to settle - with O_DIRECT the
+      // bytes are on the device when pwritev returns.
+      //
+      // This is likewise the whole device cost on such a drive: no page cache in between and no
+      // fsync afterwards, so drive_write_time carries what drive_sync_time carries elsewhere.
+      // Bytes are block-padded, which is genuinely what reached the device.
+      drive_stats_->RecordDirectWrite(
+          static_cast<uint64_t>(total_written), MonoTime::Now() - start);
     }
 
     if (PREDICT_FALSE(total_written != bytes_to_write)) {

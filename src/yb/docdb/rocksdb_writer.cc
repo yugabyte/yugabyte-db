@@ -1579,6 +1579,7 @@ Status VectorIndexesUpdater::Complete() {
     if (!batches_[i].empty()) {
       InsertOptions options = {
         .frontiers = &frontiers_,
+        .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
       };
       RETURN_NOT_OK((*indexes_)[i]->Insert(batches_[i], options));
     }

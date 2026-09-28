@@ -221,6 +221,9 @@ Status ParseHeader(
       case RequestHeader::kMetadataFieldNumber:
         parsed_header->metadata = VERIFY_RESULT(ParseString(buf, "metadata", in));
         break;
+      case RequestHeader::kTraceContextFieldNumber:
+        parsed_header->trace_context = VERIFY_RESULT(ParseString(buf, "trace_context", in));
+        break;
       default: {
         if (!SkipField(tag & 7, in)) {
           return STATUS_FORMAT(Corruption, "Unable to skip: $0", tag);
@@ -364,6 +367,127 @@ Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf) {
     }
   }
   return result;
+}
+
+namespace {
+
+// Rebuilds a remote SpanContext from the wire fields. Fails if the trace/span ids are zero.
+Result<opentelemetry::trace::SpanContext> BuildSpanContext(
+    uint64_t trace_id_hi, uint64_t trace_id_lo, uint64_t span_id, uint32_t version_and_flags) {
+  // 16-byte trace id from its high/low 64-bit halves; 8-byte span id (big-endian on the wire).
+  uint8_t trace_id_bytes[16];
+  BigEndian::Store64(trace_id_bytes, trace_id_hi);
+  BigEndian::Store64(trace_id_bytes + 8, trace_id_lo);
+  uint8_t span_id_bytes[8];
+  BigEndian::Store64(span_id_bytes, span_id);
+
+  // Flags are the low byte; the high byte is the (currently unused) version.
+  uint8_t flags = version_and_flags & 0xFF;
+
+  auto span_context = opentelemetry::trace::SpanContext(
+      opentelemetry::trace::TraceId(trace_id_bytes),
+      opentelemetry::trace::SpanId(span_id_bytes),
+      opentelemetry::trace::TraceFlags(flags),
+      /* is_remote= */ true);
+
+  if (!span_context.IsValid()) {
+    return STATUS(Corruption, "Invalid trace context: trace_id_hi/lo or span_id is zero");
+  }
+  return span_context;
+}
+
+}  // namespace
+
+Result<opentelemetry::trace::SpanContext> ParseTraceContext(Slice buf) {
+  CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
+  in.PushLimit(narrow_cast<int>(buf.size()));
+  uint64_t trace_id_hi = 0, trace_id_lo = 0, span_id = 0;
+  uint32_t version_and_flags = 0;
+  bool has_trace_id_hi = false, has_trace_id_lo = false, has_span_id = false,
+       has_version_and_flags = false;
+  while (in.BytesUntilLimit() > 0) {
+    auto tag = in.ReadTag();
+    auto field = tag >> 3;
+    switch (field) {
+      case TraceContextPB::kTraceIdHiFieldNumber:
+        if (!in.ReadLittleEndian64(&trace_id_hi)) {
+          return STATUS(Corruption, "Unable to decode trace_id_hi");
+        }
+        has_trace_id_hi = true;
+        break;
+      case TraceContextPB::kTraceIdLoFieldNumber:
+        if (!in.ReadLittleEndian64(&trace_id_lo)) {
+          return STATUS(Corruption, "Unable to decode trace_id_lo");
+        }
+        has_trace_id_lo = true;
+        break;
+      case TraceContextPB::kSpanIdFieldNumber:
+        if (!in.ReadLittleEndian64(&span_id)) {
+          return STATUS(Corruption, "Unable to decode span_id");
+        }
+        has_span_id = true;
+        break;
+      case TraceContextPB::kVersionAndFlagsFieldNumber:
+        if (!in.ReadVarint32(&version_and_flags)) {
+          return STATUS(Corruption, "Unable to decode version_and_flags");
+        }
+        has_version_and_flags = true;
+        break;
+      default: {
+        if (!SkipField(tag & 7, &in)) {
+          return STATUS_FORMAT(Corruption, "Unable to skip: $0", tag);
+        }
+      }
+    }
+  }
+  if (!has_trace_id_hi || !has_trace_id_lo || !has_span_id || !has_version_and_flags) {
+    return STATUS(Corruption, "Incomplete trace context: missing field");
+  }
+  return BuildSpanContext(trace_id_hi, trace_id_lo, span_id, version_and_flags);
+}
+
+TraceContextSerializer::TraceContextSerializer() = default;
+TraceContextSerializer::~TraceContextSerializer() = default;
+
+void TraceContextSerializer::SetTraceContext(
+    const opentelemetry::trace::SpanContext& span_context) {
+  if (!span_context.IsValid()) {
+    return;
+  }
+  const auto trace_id = span_context.trace_id();
+  const auto span_id = span_context.span_id();
+  trace_context_ = std::make_unique<TraceContextPB>();
+  // Split the 16-byte trace id into two big-endian 64-bit halves; the span id is one big-endian
+  // 64-bit value -- the layout ParseTraceContext reads back on the tserver.
+  trace_context_->set_trace_id_hi(BigEndian::Load64(trace_id.Id().data()));
+  trace_context_->set_trace_id_lo(BigEndian::Load64(trace_id.Id().data() + 8));
+  trace_context_->set_span_id(BigEndian::Load64(span_id.Id().data()));
+  // Low byte: flags; high byte: the (currently unused) version.
+  constexpr uint32_t kVersion = 0;
+  trace_context_->set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
+  serialized_size_ = trace_context_->ByteSizeLong();
+  DCHECK_EQ(SerializedSize(), SerializedSizeFor(/* has_context= */ true));
+}
+
+size_t TraceContextSerializer::SerializedSize() const {
+  return CodedOutputStream::VarintSize32(static_cast<uint32_t>(serialized_size_)) +
+         serialized_size_;
+}
+
+size_t TraceContextSerializer::SerializedSizeFor(bool has_context) {
+  // 3 fixed64 fields (1-byte tag + 8 bytes each) + version_and_flags (1-byte tag + 1-byte varint,
+  // value is 0 or 1) = 29 plus the 1-byte length prefix; SetTraceContext DCHECKs this.
+  constexpr size_t kSizeWithContext = 30;
+  constexpr size_t kSizeWithoutContext = 1;  // Just the zero length prefix.
+  return has_context ? kSizeWithContext : kSizeWithoutContext;
+}
+
+uint8_t* TraceContextSerializer::SerializeToArray(uint8_t* out) const {
+  out = CodedOutputStream::WriteVarint32ToArray(static_cast<uint32_t>(serialized_size_), out);
+  if (serialized_size_ == 0) {
+    return out;
+  }
+  return trace_context_->SerializeWithCachedSizesToArray(out);
 }
 
 std::string ParsedRequestHeader::RemoteMethodAsString() const {

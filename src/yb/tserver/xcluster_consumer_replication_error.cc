@@ -30,7 +30,8 @@ void XClusterConsumerReplicationErrorCollector::RemovePoller(const XClusterPolle
 }
 
 void XClusterConsumerReplicationErrorCollector::StoreError(
-    const XClusterPollerId& poller_id, ReplicationErrorPb error) {
+    const XClusterPollerId& poller_id, ReplicationErrorPb error,
+    const std::string& error_detail) {
   std::lock_guard l(mutex_);
   if (!error_map_.contains(poller_id)) {
     // This could happen if the poller has just been shutdown,
@@ -40,6 +41,7 @@ void XClusterConsumerReplicationErrorCollector::StoreError(
   }
   auto& poller_entry = error_map_.at(poller_id);
   poller_entry.error = error;
+  poller_entry.error_detail = error_detail;
   poller_entry.send_state = XClusterReplicationErrorSendState::kNotSent;
 
   errors_send_state_ = XClusterReplicationErrorSendState::kNotSent;
@@ -79,7 +81,8 @@ XClusterReplicationErrorsToSendMap XClusterConsumerReplicationErrorCollector::Ge
     }
     if (get_all_errors || error_info.send_state != XClusterReplicationErrorSendState::kSent) {
       errors_to_send[poller_id.replication_group_id][poller_id.consumer_table_id]
-                    [poller_id.producer_tablet_id] = {poller_id.leader_term, error_info.error};
+                    [poller_id.producer_tablet_id] = {
+                        poller_id.leader_term, error_info.error, error_info.error_detail};
       error_info.send_state = XClusterReplicationErrorSendState::kSending;
     }
   }

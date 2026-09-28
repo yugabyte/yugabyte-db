@@ -554,16 +554,16 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * Returns -1 in 'yb_distinct_nkeys' if the pathkeys cannot span the prefix.
  * Returns 0 in 'yb_distinct_nkeys' when the prefix is empty.
  *
- * YB: 'yb_merge_scan_saop_cols' is an out-param.  List of
- * YbMergeScanSaopColInfo.  If NULL is passed, disallow merge scan.  Otherwise,
- * an empty list should be passed.
+ * YB: 'yb_merge_scan_stream_cols' is an out-param.  List of
+ * YbMergeScanStreamColInfo.  If NULL is passed, disallow merge scan.
+ * Otherwise, an empty list should be passed.
  */
 List *
 build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
 					 ScanDirection scandir,
 					 int *yb_distinct_nkeys,
-					 List **yb_merge_scan_saop_cols)
+					 List **yb_merge_scan_stream_cols)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
@@ -581,7 +581,7 @@ build_index_pathkeys(PlannerInfo *root,
 	yb_distinct_prefixlen = *yb_distinct_nkeys;
 	*yb_distinct_nkeys = yb_distinct_prefixlen == 0 ? 0 : -1;
 
-	Assert(!yb_merge_scan_saop_cols || *yb_merge_scan_saop_cols == NIL);
+	Assert(!yb_merge_scan_stream_cols || *yb_merge_scan_stream_cols == NIL);
 
 	i = 0;
 	foreach(lc, index->indextlist)
@@ -643,7 +643,7 @@ build_index_pathkeys(PlannerInfo *root,
 						   cpathkey->pk_eclass->ec_sortref != 0)) &&
 			yb_indexcol_can_merge_scan(root, index, indexkey, i,
 									   &yb_merge_scan_cardinality,
-									   yb_merge_scan_saop_cols))
+									   yb_merge_scan_stream_cols))
 		{
 			/* Do nothing */
 		}

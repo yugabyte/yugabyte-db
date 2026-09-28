@@ -54,6 +54,8 @@ struct VectorLSMInsertEntry {
 struct VectorLSMInsertContext {
   const rocksdb::UserFrontiers* frontiers = nullptr;
   size_t chunk_size = 0;
+  rocksdb::Cache::ReservationMode reservation_mode =
+      rocksdb::Cache::ReservationMode::kAlways;
 };
 
 template<IndexableVectorType Vector,
@@ -163,6 +165,14 @@ class VectorLSM {
   // Returns the total size in bytes of the immutable chunk files currently on disk.
   uint64_t OnDiskSize() const EXCLUDES(mutex_);
 
+  // Returns the minimum serial_no among manifested chunks that have actual data (file != null).
+  // Returns std::nullopt if there are no data chunks.
+  std::optional<uint64_t> MinSerialNo() const EXCLUDES(mutex_);
+
+  // Returns the serial_no that was assigned to the most recently created chunk.
+  // New chunks will get serial_no > this value.
+  uint64_t LastSerialNo() const EXCLUDES(mutex_);
+
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
@@ -211,7 +221,8 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk(size_t min_vectors) REQUIRES(mutex_);
+  Status RollChunk(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
@@ -238,7 +249,8 @@ class VectorLSM {
   Result<uint64_t> GetChunkFileSize(uint64_t serial_no) const;
 
   // Creates vector index and reserve at least for `min_vectors` entries.
-  Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
+  Result<VectorIndexPtr> CreateVectorIndex(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const;
 
   // Returns an index instance suitable for queries that don't depend on chunk contents
   // (e.g. Distance). Reuses an existing chunk's index when available (including immutable on-disk
@@ -251,7 +263,8 @@ class VectorLSM {
   // TODO(#32369): Replace GetProbeIndex/GetInMemoryProbeIndex with index traits.
   VectorIndexPtr GetInMemoryProbeIndex() const EXCLUDES(mutex_);
 
-  Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
+  Status CreateNewMutableChunk(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
 
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
@@ -260,7 +273,6 @@ class VectorLSM {
       VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk);
 
   uint64_t NextSerialNo() EXCLUDES(mutex_);
-  uint64_t LastSerialNo() const EXCLUDES(mutex_);
 
   void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
   void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);

@@ -71,12 +71,12 @@
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/dist_trace_fwd.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 namespace google {
@@ -343,6 +343,15 @@ class OutboundCall : public RpcCall {
   void SetConnectionId(const ConnectionId& value, const std::string* hostname) {
     conn_id_ = value;
     hostname_ = hostname;
+    if (otel_span_) {
+      if (hostname) {
+        otel_span_->SetAttribute("server.address", *hostname);
+      }
+      const auto& remote = value.remote();
+      otel_span_->SetAttribute("server.port", static_cast<int64_t>(remote.port()));
+      otel_span_->SetAttribute("network.peer.address", remote.address().to_string());
+      otel_span_->SetAttribute("network.peer.port", static_cast<int64_t>(remote.port()));
+    }
   }
 
   void SetThreadPoolFailure(const Status& status) EXCLUDES(mtx_) {
@@ -466,6 +475,10 @@ class OutboundCall : public RpcCall {
   // before the call is queued, so no synchronization is needed.
   ConnectionId conn_id_;
 
+  // OpenTelemetry span for this call, created at start (if a trace context is active) and ended at
+  // completion.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
+
  private:
   friend class RpcController;
 
@@ -475,7 +488,7 @@ class OutboundCall : public RpcCall {
 
   void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
-  MUST_USE_RESULT bool SetState(State new_state);
+  MUST_USE_RESULT bool SetState(State new_state, const Status& status = Status::OK());
   State state() const;
 
   // return current status
@@ -589,9 +602,9 @@ class OutboundCall : public RpcCall {
 
   std::unique_ptr<MetadataSerializer> metadata_serializer_;
 
-  // OpenTelemetry span for distributed tracing. Created when the call starts if there is an
-  // active trace context, ended when the call completes (success, failure, or timeout).
-  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
+  // The trace context active when this call was constructed -- its PARENT, re-activated around the
+  // completion callback so follow-on RPCs nest as SIBLINGS of this call.
+  dist_trace::TraceParent trace_parent_;
 
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.

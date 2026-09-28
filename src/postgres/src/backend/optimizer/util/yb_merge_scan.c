@@ -299,7 +299,7 @@ ybDeriveSaopFromVar(Var *var,
 /*
  * Whether this index column is able to be part of merge scan.  If true, find
  * the best SAOP (best meaning having the smallest cardinality), and fill
- * in/out params merge_scan_cardinality and merge_scan_saop_cols.
+ * in/out params merge_scan_cardinality and merge_scan_stream_cols.
  */
 bool
 yb_indexcol_can_merge_scan(PlannerInfo *root,
@@ -307,22 +307,22 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 						   Expr *expr,
 						   int indexcol,
 						   int *merge_scan_cardinality,
-						   List **merge_scan_saop_cols)
+						   List **merge_scan_stream_cols)
 {
 	ListCell   *lc;
 	int			best_num_elems = -1;
 	ScalarArrayOpExpr *best_saop;
-	YbMergeScanSaopColInfo *saop_col_info;
+	YbMergeScanStreamColInfo *stream_col_info;
 
 	/*
 	 * Abort if any of the following hold:
-	 * - the caller disables merge scan (in/out param merge_scan_saop_cols is
+	 * - the caller disables merge scan (in/out param merge_scan_stream_cols is
 	 *   NULL)
 	 * - the session disables merge scan (GUC yb_max_merge_scan_streams is 0 or
 	 *   yb_enable_base_scans_cost_model is false)
 	 * - merge scan is not supported for this relation (not a YB relation)
 	 */
-	if (!(merge_scan_saop_cols &&
+	if (!(merge_scan_stream_cols &&
 		  yb_max_merge_scan_streams > 0 && yb_enable_base_scans_cost_model &&
 		  index->rel->is_yb_relation))
 		return false;
@@ -334,12 +334,14 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 	if (IsA(expr, RelabelType))
 		expr = ((RelabelType *) expr)->arg;
 
-	/* If same expr already used in saop_cols, then redundant */
-	foreach(lc, *merge_scan_saop_cols)
+	/* If same expr already used in stream_cols, then redundant */
+	foreach(lc, *merge_scan_stream_cols)
 	{
-		YbMergeScanSaopColInfo *old_saop_col_info =
-			lfirst_node(YbMergeScanSaopColInfo, lc);
-		Expr	   *old_lhs = linitial(old_saop_col_info->saop->args);
+		YbMergeScanStreamColInfo *old_stream_col_info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
+		Expr	   *old_lhs =
+			linitial(castNode(ScalarArrayOpExpr,
+							  old_stream_col_info->clause)->args);
 
 		/*
 		 * Strip any RelabelType node so that index columns whose type differs
@@ -430,20 +432,21 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 		*merge_scan_cardinality > yb_max_merge_scan_streams)
 		return false;
 
-	/* Fill out param merge_scan_saop_cols. */
-	saop_col_info = makeNode(YbMergeScanSaopColInfo);
-	saop_col_info->saop = best_saop;
-	saop_col_info->indexcol = indexcol;
-	saop_col_info->num_elems = best_num_elems;
-	saop_col_info->derived = derived;
-	*merge_scan_saop_cols = lappend(*merge_scan_saop_cols, saop_col_info);
+	/* Fill out param merge_scan_stream_cols. */
+	stream_col_info = makeNode(YbMergeScanStreamColInfo);
+	stream_col_info->clause = (Expr *) best_saop;
+	stream_col_info->indexcol = indexcol;
+	stream_col_info->num_elems = best_num_elems;
+	stream_col_info->derived = derived;
+	*merge_scan_stream_cols = lappend(*merge_scan_stream_cols,
+									  stream_col_info);
 	return true;
 }
 
 /*
  * Get sort info for given pathkeys corresponding to tlist.  In case a pathkey
- * matches multiple columns in tlist, avoid the columns that are pinned as SAOP
- * columns.
+ * matches multiple columns in tlist, avoid the columns that are pinned as
+ * stream key columns.
  *
  * (Parts copied from prepare_sort_from_pathkeys.)
  */
@@ -451,7 +454,7 @@ void
 yb_get_sort_info_from_pathkeys(List *tlist,
 							   List *pathkeys,
 							   Relids relids,
-							   Bitmapset *saop_col_idxs,
+							   Bitmapset *stream_col_idxs,
 							   int *p_numsortkeys,
 							   AttrNumber **p_sortColIdx,
 							   Oid **p_sortOperators,
@@ -508,10 +511,10 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 			foreach(j, tlist)
 			{
 				/*
-				 * YB: skip over SAOP cols, which may be part of sort ECs in
-				 * case they are equal to other columns part of sort.
+				 * YB: skip over stream key cols, which may be part of sort ECs
+				 * in case they are equal to other columns part of sort.
 				 */
-				if (bms_is_member(indexcol++, saop_col_idxs))
+				if (bms_is_member(indexcol++, stream_col_idxs))
 					continue;
 
 				tle = (TargetEntry *) lfirst(j);

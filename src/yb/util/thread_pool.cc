@@ -164,6 +164,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
     }
     while (task) {
       auto start = MonoTime::NowIf(has_run_metrics);
+      dist_trace::ScopedAdoptSpan parent_scope(task->trace_parent());
       if (!task->run_token()) {
         task->Run();
         task->Done(Status::OK());
@@ -526,6 +527,7 @@ YBThreadPool::~YBThreadPool() {
 }
 
 bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
+  task->set_trace_parent(dist_trace::GetActiveSpanContext());
   return impl_->Enqueue(task);
 }
 

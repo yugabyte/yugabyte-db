@@ -598,7 +598,7 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 													ForwardScanDirection, indexOnly,
 													outerRelids,
 													loopCount, partialPath,
-													NULL);	/* yb_saop_merge_append_saop_cols */
+													NULL);	/* yb_merge_scan_stream_cols */
 				path->indextotalcost = 0;
 				path->path.startup_cost = 0;
 				path->path.total_cost = 0;

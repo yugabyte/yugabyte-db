@@ -53,6 +53,10 @@
 :explain3run3
 
 -- #30096: Merge scan shouldn't be used in a parallel scan.
+-- Explain without ANALYZE because a parallel query does not necessarily get
+-- the workers the planner asked for, so the per worker row counts, loop
+-- counts, and sort memory that ANALYZE prints vary from run to run.
+\set explain 'EXPLAIN (VERBOSE, COSTS OFF)'
 \set query 'SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2'
 \set hint3 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 0)*/'
 \set hint4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/'

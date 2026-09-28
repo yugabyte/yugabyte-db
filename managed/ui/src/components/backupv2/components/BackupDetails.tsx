@@ -14,7 +14,7 @@ import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table } fro
 import { fetchIncrementalBackup } from '.././common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
-import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration } from '../common/BackupUtils';
+import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration, isEncryptedBackup } from '../common/BackupUtils';
 import {
   IncrementalTableBackupList,
   YCQLTableList,
@@ -405,6 +405,14 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   </Link>
                 </div>
                 {!storageConfigName && STORAGE_CONFIG_DELETED_MSG}
+              </div>
+              <div>
+                <div className="header-text">Encryption</div>
+                <div>
+                  {isEncryptedBackup(backupDetails.commonBackupInfo)
+                    ? 'Encrypted'
+                    : 'Not Encrypted'}
+                </div>
               </div>
               <div>
                 <div className="header-text">KMS Config</div>
