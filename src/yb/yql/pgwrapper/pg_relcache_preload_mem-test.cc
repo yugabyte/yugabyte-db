@@ -156,8 +156,9 @@ class PgRelcachePreloadScratchTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
-    // Sample finely enough for the peak snapshot to attribute a few MB reliably.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_tcmalloc_sample_period=64kB";
+    // Sample finely enough for the peak snapshot to attribute a few MB reliably, and to see the
+    // one row still being decoded at the peak.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_tcmalloc_sample_period=16kB";
     PgMiniTestBase::SetUp();
   }
 
@@ -189,16 +190,23 @@ TEST_F(PgRelcachePreloadScratchTest, YB_DISABLE_TEST_ON_MACOS(DecodedRowsNotLive
       "call_stack LIKE '%ybc_getnext_heaptuple%' "
       "AND call_stack NOT LIKE '%YbPreloadCatalogCache%' "
       "AND call_stack NOT LIKE '%ScanPgRelation%'";
-  const auto decoded_bytes = ASSERT_RESULT(fresh.FetchRow<int64_t>(Format(
-      "SELECT COALESCE(SUM(estimated_bytes), 0)::int8 FROM yb_backend_heap_snapshot_peak() "
-      "WHERE $0", kDecodedRowsFilter)));
+  const auto [decoded_bytes, all_decoded_bytes] =
+      ASSERT_RESULT((fresh.FetchRow<int64_t, int64_t>(Format(
+          "SELECT COALESCE(SUM(estimated_bytes) FILTER (WHERE $0), 0)::int8, "
+          "COALESCE(SUM(estimated_bytes) FILTER ("
+          "  WHERE call_stack LIKE '%ybc_getnext_heaptuple%'), 0)::int8 "
+          "FROM yb_backend_heap_snapshot_peak()", kDecodedRowsFilter))));
   const auto peak_bytes = ASSERT_RESULT(fresh.FetchRow<int64_t>(
       "SELECT SUM(estimated_bytes)::int8 FROM yb_backend_heap_snapshot_peak()"));
   const auto pid = ASSERT_RESULT(fresh.FetchRow<int32_t>("SELECT pg_backend_pid()"));
   LOG(INFO) << "Fresh backend startup peak: heap " << peak_bytes / 1_KB << " kB, of which "
             << decoded_bytes / 1_KB
-            << " kB are rows decoded by the relcache preload's full scans; VmHWM "
+            << " kB are rows decoded by the relcache preload's full scans ("
+            << all_decoded_bytes / 1_KB << " kB decoded in total); VmHWM "
             << ASSERT_RESULT(PeakRssMb(pid)) << " MB";
+  // Some row is always being decoded at the peak, so nothing under ybc_getnext_heaptuple means the
+  // stack match failed (e.g. the frame was inlined) and the check below would pass vacuously.
+  ASSERT_GT(all_decoded_bytes, 0);
   // Keeping every row until the build ends leaves about 16 MB of them live at the
   // peak for this schema. Freeing each row leaves at most one, well under 1 MB
   // even with sampling error.
