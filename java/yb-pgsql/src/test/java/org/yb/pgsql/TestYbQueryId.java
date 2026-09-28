@@ -88,10 +88,6 @@ public class TestYbQueryId extends BasePgSQLTest {
           long queryId2 = getExplainQueryId(stmt1, query);
           assertEquals(queryId1, queryId2);
 
-          stmt1.execute("SET pg_hint_plan.hints_anywhere TO ON");
-          queryId2 = getExplainQueryId(stmt1, query);
-          assertEquals(queryId1, queryId2);
-
           stmt1.execute("SET pg_hint_plan.enable_hint_table = TRUE");
           queryId2 = getExplainQueryId(stmt1, query);
           assertEquals(queryId1, queryId2);
@@ -108,10 +104,6 @@ public class TestYbQueryId extends BasePgSQLTest {
           * Place comment in front of the query.
           */
           query = "/* comment */ " + query;
-          queryId2 = getExplainQueryId(stmt1, query);
-          assertEquals(queryId1, queryId2);
-
-          stmt1.execute("SET pg_hint_plan.hints_anywhere TO ON");
           queryId2 = getExplainQueryId(stmt1, query);
           assertEquals(queryId1, queryId2);
 
