@@ -25,7 +25,6 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
-import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -63,10 +62,7 @@ public class GCPProviderValidatorCmekTest {
     runtimeConfGetter = mock(RuntimeConfGetter.class);
     validator =
         new GCPProviderValidator(
-            mock(BeanValidator.class),
-            runtimeConfGetter,
-            mock(GCPCloudImpl.class),
-            mock(GCPProjectApiClientFactory.class));
+            mock(BeanValidator.class), runtimeConfGetter, mock(GCPCloudImpl.class));
     apiClient = mock(GCPProjectApiClient.class);
     errors = HashMultimap.create();
   }
