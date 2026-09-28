@@ -48,7 +48,7 @@ jobs:
     when:
      - full
 
-  - os: mac14
+  - os: mac15
     compiler: clang
     build_type: release
     architecture: arm64
@@ -57,7 +57,7 @@ jobs:
     when:
      - full
 
-  - os: mac14
+  - os: mac15
     compiler: clang
     build_type: release
     architecture: x86_64
