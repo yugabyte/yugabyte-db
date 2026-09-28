@@ -471,6 +471,48 @@ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
      0
 (1 row)
 
+-- the same on the int4 primary key s, whose scan binds the table's columns and
+-- is an Index Scan rather than an Index Only Scan, both without and with an
+-- aggregate
+:explain_analyze SELECT * FROM t_int WHERE s = 2147483648;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Index Scan using t_int_pkey on t_int (actual rows=0 loops=1)
+   Index Cond: (s = '2147483648'::bigint)
+(2 rows)
+
+:explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_int_pkey on t_int (actual rows=0 loops=1)
+         Index Cond: (s = '2147483648'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+SELECT count(*) FROM t_int WHERE s = 2147483648;
+ count 
+-------
+     0
+(1 row)
+
+:explain_analyze SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Index Scan using t_int_pkey on t_int (actual rows=0 loops=1)
+         Index Cond: (s = $0)
+         Partial Aggregate: true
+(6 rows)
+
+SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
+ count 
+-------
+     0
+(1 row)
+
 -- these inequalities are out of range, so their key is not bound and recheck is
 -- required
 :explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
