@@ -4381,7 +4381,8 @@ TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailu
   // still fetches catalogs in full pages.
   ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE $0 SET yb_fetch_row_limit = 1", kDatabaseName));
 
-  // Connect to every tserver first so relcache init finishes before the backfill starts.
+  // Connect to every tserver before CREATE INDEX: a node's first connection waits for relcache
+  // init, which would otherwise delay the poll below and eat the backfill's throttle budget.
   std::vector<PGConn> ts_conns;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ts_conns.push_back(ASSERT_RESULT(
