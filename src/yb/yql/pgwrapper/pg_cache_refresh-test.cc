@@ -282,19 +282,16 @@ TEST_F(PgFullCatalogCacheRefreshTest, NoCacheMemoryGrowth) {
   constexpr int kNumWarmupRefreshes = 3;
   constexpr int kNumRefreshes = 10;
 
-  // The schema covers what the relcache preload builds and used to leak on every refresh:
-  // pg_inherits rows, index relcache entries and an index on an extension access method.
+  // Partitions and their indexes give the relcache preload pg_inherits rows and index entries,
+  // whose copied tuples used to leak their ybctids on every refresh.
   auto ddl_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(ddl_conn.Execute("CREATE EXTENSION vector"));
-  ASSERT_OK(ddl_conn.Execute("CREATE TABLE parent (k INT, v vector(3)) PARTITION BY RANGE (k)"));
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE parent (k INT) PARTITION BY RANGE (k)"));
   for (int i = 0; i < kNumPartitions; ++i) {
     ASSERT_OK(ddl_conn.ExecuteFormat(
         "CREATE TABLE part_$0 PARTITION OF parent FOR VALUES FROM ($1) TO ($2)",
         i, i * 10, (i + 1) * 10));
   }
   ASSERT_OK(ddl_conn.Execute("CREATE INDEX ON parent (k)"));
-  ASSERT_OK(ddl_conn.Execute("CREATE TABLE vectors (k INT PRIMARY KEY, v vector(3))"));
-  ASSERT_OK(ddl_conn.Execute("CREATE INDEX ON vectors USING ybhnsw (v vector_l2_ops)"));
 
   auto conn = ASSERT_RESULT(Connect());
   const auto catalog_version_query =

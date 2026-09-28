@@ -1472,20 +1472,6 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		}
 
 		/*
-		 * We don't preload indexes on user-defined AM's for now. Doing so
-		 * results in an issue where we try to load the user-defined AM.
-		 * This AM's handler might not be loaded as pg_proc might not be
-		 * loaded.
-		 */
-		if ((relp->relkind == RELKIND_INDEX ||
-			 relp->relkind == RELKIND_PARTITIONED_INDEX) &&
-			relp->relam >= FirstNormalObjectId)
-		{
-			--num_tuples;
-			continue;
-		}
-
-		/*
 		 * allocate storage for the relation descriptor, and copy pg_class_tuple
 		 * to relation->rd_rel.
 		 */
@@ -1550,6 +1536,18 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		if (relation->rd_rel->relkind == RELKIND_INDEX ||
 			relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		{
+			/*
+			 * We don't preload indexes on user-defined AM's for now. Doing so
+			 * results in an issue where we try to load the user-defined AM.
+			 * This AM's handler might not be loaded as pg_proc might not be
+			 * loaded.
+			 */
+			if (relation->rd_rel->relam >= FirstNormalObjectId)
+			{
+				--num_tuples;
+				continue;
+			}
+
 			RelationInitIndexAccessInfo(relation);
 		}
 		else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
