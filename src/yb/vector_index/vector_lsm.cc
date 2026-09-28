@@ -13,6 +13,7 @@
 
 #include "yb/vector_index/vector_lsm.h"
 
+#include <algorithm>
 #include <functional>
 #include <queue>
 #include <thread>
@@ -1311,10 +1312,10 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
 
     size_t chunk_size = std::max(entries.size(), context.chunk_size);
     if (!mutable_chunk_) {
-      RETURN_NOT_OK(CreateNewMutableChunk(chunk_size));
+      RETURN_NOT_OK(CreateNewMutableChunk(chunk_size, context.reservation_mode));
     }
     if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers)) {
-      RETURN_NOT_OK(RollChunk(chunk_size));
+      RETURN_NOT_OK(RollChunk(chunk_size, context.reservation_mode));
       RSTATUS_DCHECK(
           mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers),
           RuntimeError, "Failed to register insert into a new mutable chunk");
@@ -1567,6 +1568,7 @@ uint64_t VectorLSM<Vector, DistanceResult>::LastSerialNo() const {
   // thread_pool is always set on an opened VectorLSM and cleared in the destructor, so a null value
   // here means a compaction task is dereferencing the VectorLSM after it was destroyed.
   DCHECK_ONLY_NOTNULL(options_.thread_pool);
+
   SharedLock lock(mutex_);
   return last_serial_no_;
 }
@@ -1826,10 +1828,11 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_vectors) {
+Status VectorLSM<Vector, DistanceResult>::RollChunk(
+    size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << "min_vectors: " << min_vectors;
   RETURN_NOT_OK(DoFlush(/* promise=*/ nullptr));
-  return CreateNewMutableChunk(min_vectors);
+  return CreateNewMutableChunk(min_vectors, reservation_mode);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1876,20 +1879,23 @@ size_t VectorLSM<Vector, DistanceResult>::EstimateNumVectorsForBytes(size_t byte
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr>
-VectorLSM<Vector, DistanceResult>::CreateVectorIndex(size_t min_vectors) const {
+VectorLSM<Vector, DistanceResult>::CreateVectorIndex(
+    size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const {
   auto capacity = std::max(min_vectors, options_.vectors_per_chunk);
   VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
 
   auto index = options_.vector_index_factory(FactoryMode::kCreate);
   RETURN_NOT_OK(index->Reserve(
-      capacity, options_.insert_thread_pool->options().max_workers, MaxConcurrentReads()));
+      capacity, options_.insert_thread_pool->options().max_workers, MaxConcurrentReads(),
+      reservation_mode));
 
   VLOG_WITH_PREFIX_AND_FUNC(1) << "created index with capacity: " << index->Capacity();
   return index;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vectors) {
+Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(
+    size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "min_vectors: " << min_vectors;
   VectorIndexPtr index;
   if (mutable_chunk_ && mutable_chunk_->num_entries == 0 &&
@@ -1897,7 +1903,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vecto
     VLOG_WITH_PREFIX_AND_FUNC(2) << "reusing index of " << AsString(*mutable_chunk_);
     index = std::move(mutable_chunk_->index);
   } else {
-    index = VERIFY_RESULT(CreateVectorIndex(min_vectors));
+    index = VERIFY_RESULT(CreateVectorIndex(min_vectors, reservation_mode));
   }
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
@@ -2024,6 +2030,22 @@ uint64_t VectorLSM<Vector, DistanceResult>::OnDiskSize() const {
     result += chunk->file_size();
   }
   return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+std::optional<uint64_t> VectorLSM<Vector, DistanceResult>::MinSerialNo() const {
+  SharedLock lock(mutex_);
+  auto it = std::ranges::min_element(immutable_chunks_, {}, [](const auto& chunk) {
+    return chunk->file ? chunk->file->serial_no() : std::numeric_limits<uint64_t>::max();
+  });
+
+  // Need to check both conditions to exclude the case when the chunk has no file
+  // but was returned by the min_element by max().
+  if (it == immutable_chunks_.end() || !(*it)->file) {
+    return std::nullopt;
+  }
+
+  return (*it)->file->serial_no();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2628,7 +2650,8 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         // Frontiers-only input: walk all chunks to accumulate frontiers, no index to merge.
         while (input_it.Next()) {}
       } else {
-        merged_index = VERIFY_RESULT(lsm_.CreateVectorIndex(num_vectors_per_chunk));
+        merged_index = VERIFY_RESULT(lsm_.CreateVectorIndex(
+            num_vectors_per_chunk, rocksdb::Cache::ReservationMode::kAlways));
         RETURN_NOT_OK(std::invoke(do_merge, this, input_it, num_vectors_per_chunk, merged_index));
 
         if (TEST_sleep_on_merged_chunk_populated) {

@@ -2445,12 +2445,13 @@ YbFoldInequalityBound(YbColFoldState *fs, ScanKey key, bool is_lower_bound)
 }
 
 /*
- * Map a merge scan SAOP column to its bind relation attribute, the same way
- * ybcSetupScanPlan maps scan keys: the base relation column for a primary key
- * scan, the index attribute otherwise.
+ * Map a merge scan stream key column to its bind relation attribute, the same
+ * way ybcSetupScanPlan maps scan keys: the base relation column for a primary
+ * key scan, the index attribute otherwise.
  */
 static AttrNumber
-ybMergeScanSaopAttnum(Relation index, const YbMergeScanSaopColInfo *info)
+ybMergeScanStreamColAttnum(Relation index,
+						   const YbMergeScanStreamColInfo *info)
 {
 	Assert(index);
 	return (index->rd_index->indisprimary ?
@@ -2460,7 +2461,7 @@ ybMergeScanSaopAttnum(Relation index, const YbMergeScanSaopColInfo *info)
 
 /*
  * Verify that every index column the planner declared in
- * yb_merge_scan_info->saop_cols got a usable bound condition: a single
+ * yb_merge_scan_info->stream_cols got a usable bound condition: a single
  * equality value or a plain scalar IN list.  The merge scan would silently
  * return missing or misordered rows otherwise, so raise an error.
  */
@@ -2471,10 +2472,11 @@ ybValidateMergeScanBinds(YbScanDesc ybScan, YbScanPlan scan_plan,
 {
 	ListCell   *lc;
 
-	foreach(lc, yb_merge_scan_info->saop_cols)
+	foreach(lc, yb_merge_scan_info->stream_cols)
 	{
-		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
-		AttrNumber	attnum = ybMergeScanSaopAttnum(ybScan->index, info);
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
+		AttrNumber	attnum = ybMergeScanStreamColAttnum(ybScan->index, info);
 		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation,
 											 attnum);
 
@@ -2913,14 +2915,16 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 			{
 				Datum		this_array_const = YbGetArrayConst(&ybScan->keys[i]);
 
-				foreach(lc, yb_merge_scan_info->saop_cols)
+				foreach(lc, yb_merge_scan_info->stream_cols)
 				{
-					YbMergeScanSaopColInfo *info =
-						lfirst_node(YbMergeScanSaopColInfo, lc);
+					YbMergeScanStreamColInfo *info =
+						lfirst_node(YbMergeScanStreamColInfo, lc);
+					ScalarArrayOpExpr *pinned_saop =
+						castNode(ScalarArrayOpExpr, info->clause);
 					Const	   *pinned_array =
-						castNode(Const, lsecond(info->saop->args));
-					AttrNumber	attnum = ybMergeScanSaopAttnum(ybScan->index,
-															   info);
+						castNode(Const, lsecond(pinned_saop->args));
+					AttrNumber	attnum =
+						ybMergeScanStreamColAttnum(ybScan->index, info);
 
 					/*
 					 * Compare that the scan key and the pinned SAOP are on the
@@ -5175,7 +5179,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					path->indexinfo->reltablespace);
 
 	/* Merge scan should not be possible in non-CBO mode. */
-	Assert(!path->yb_index_path_info.merge_scan_saop_cols);
+	Assert(!path->yb_index_path_info.merge_scan_stream_cols);
 
 	if (!yb_enable_optimizer_statistics)
 	{

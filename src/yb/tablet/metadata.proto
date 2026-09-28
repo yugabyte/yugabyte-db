@@ -118,7 +118,7 @@ message KvStoreInfoPB {
   // Whether KV-store regular DB parent files have been compacted since creation.
   // We don't split post-split tablets which have uncompacted parent data as of 2020-06-23, since
   // detecting effective middle key and tablet size for such tablets is not yet implemented.
-  optional bool parent_data_compacted = 8;
+  optional bool rocksdb_parent_data_compacted = 8;
 
   repeated bytes snapshot_schedules = 9;
 
@@ -134,6 +134,14 @@ message KvStoreInfoPB {
   // The value of post_split_compaction_file_number_upper_bound is set to 0 when post-split
   // compaction is done for all the files in the selected subset.
   optional uint64 post_split_compaction_file_number_upper_bound = 11;
+
+  // TServer-local split generation for this KV-store's metadata: 0 if unset or never split on this
+  // tserver. Child tablets get parent + 1 in CreateSplitChildMetadata. This value may be lower than
+  // master SysTabletsEntryPB.split_depth for tablets that existed before this field was introduced
+  // (the counter effectively restarts from 0). This is OK: only relative comparisons on this
+  // tserver matter (e.g. post-split compaction and orphaned parent-data checks), so it does not
+  // need to match the master catalog value.
+  optional uint64 split_generation = 13;
 }
 
 // The super-block keeps track of the Raft group.

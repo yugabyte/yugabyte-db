@@ -30,6 +30,7 @@
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/errno.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
@@ -349,7 +350,10 @@ namespace rocksdb {
 
 PosixWritableFile::PosixWritableFile(const std::string& fname, int fd,
                                      const FileSystemOptions& options)
-    : filename_(fname), fd_(fd), filesize_(0) {
+    : filename_(fname), fd_(fd), filesize_(0),
+      // Files opened before their drive is registered (FsManager's own startup writes) go
+      // uncounted.
+      drive_stats_(yb::DriveIoStatsRegistry::Instance().Find(fname)) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   allow_fallocate_ = options.allow_fallocate;
   fallocate_with_keep_size_ = options.fallocate_with_keep_size;
@@ -361,17 +365,34 @@ PosixWritableFile::~PosixWritableFile() {
   if (fd_ >= 0) {
     WARN_NOT_OK(PosixWritableFile::Close(), "Failed to close posix writable file");
   }
+  // Covers paths that abandon the file without a successful Close(); the exchange in
+  // ReleaseUnsyncedBytes makes the double call harmless.
+  ReleaseUnsyncedBytes();
+}
+
+void PosixWritableFile::ReleaseUnsyncedBytes() {
+  // No need to zero the per-file counter when the file is going away.
+  if (drive_stats_ == nullptr) {
+    return;
+  }
+  const auto residual = unsynced_bytes_.exchange(0, std::memory_order_relaxed);
+  if (residual != 0) {
+    drive_stats_->ReleaseUnsyncedBytes(residual);
+  }
 }
 
 Status PosixWritableFile::Append(const Slice& data) {
   const char* src = data.cdata();
   size_t left = data.size();
+  const auto start = yb::MonoTime::Now();
   while (left != 0) {
     ssize_t done = write(fd_, src, left);
     if (done < 0) {
       if (errno == EINTR) {
         continue;
       }
+      // A failed write goes uncounted. The counters are for throughput, and IO errors already
+      // have their own reporting path.
       return STATUS_IO_ERROR(filename_, errno);
     }
     yb::TrackStackTrace(yb::StackTraceTrackingGroup::kWriteIO, done);
@@ -379,6 +400,11 @@ Status PosixWritableFile::Append(const Slice& data) {
     src += done;
   }
   filesize_ += data.size();
+  const auto bytes = static_cast<uint64_t>(data.size());
+  unsynced_bytes_.fetch_add(bytes, std::memory_order_relaxed);
+  if (drive_stats_) {
+    drive_stats_->RecordBufferedWrite(bytes, yb::MonoTime::Now() - start);
+  }
   return Status::OK();
 }
 
@@ -436,6 +462,9 @@ Status PosixWritableFile::Close() {
     s = STATUS_IO_ERROR(filename_, errno);
   }
   fd_ = -1;
+  // Anything still pending here was never synced by us -- RocksDB's writer does not sync on close
+  // -- and must come off the drive gauge, or it stays there forever.
+  ReleaseUnsyncedBytes();
   return s;
 }
 
@@ -443,8 +472,15 @@ Status PosixWritableFile::Close() {
 Status PosixWritableFile::Flush() { return Status::OK(); }
 
 Status PosixWritableFile::Sync() {
+  const auto synced_bytes = unsynced_bytes_.exchange(0, std::memory_order_relaxed);
+  const auto start = yb::MonoTime::Now();
   if (fdatasync(fd_) < 0) {
+    // A failed sync settles nothing: restore the unsynced debt and count nothing.
+    unsynced_bytes_.fetch_add(synced_bytes, std::memory_order_relaxed);
     return STATUS_IO_ERROR(filename_, errno);
+  }
+  if (drive_stats_) {
+    drive_stats_->RecordSync(synced_bytes, yb::MonoTime::Now() - start);
   }
   return Status::OK();
 }
@@ -453,8 +489,15 @@ Status PosixWritableFile::Fsync() {
   if (FLAGS_never_fsync) {
     return Status::OK();
   }
+  const auto synced_bytes = unsynced_bytes_.exchange(0, std::memory_order_relaxed);
+  const auto start = yb::MonoTime::Now();
   if (fsync(fd_) < 0) {
+    // A failed sync settles nothing: restore the unsynced debt and count nothing.
+    unsynced_bytes_.fetch_add(synced_bytes, std::memory_order_relaxed);
     return STATUS_IO_ERROR(filename_, errno);
+  }
+  if (drive_stats_) {
+    drive_stats_->RecordSync(synced_bytes, yb::MonoTime::Now() - start);
   }
   return Status::OK();
 }
@@ -498,12 +541,16 @@ Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
 Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
   assert(std::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
   assert(std::cmp_less_equal(nbytes, std::numeric_limits<off_t>::max()));
-  if (sync_file_range(fd_, static_cast<off_t>(offset),
-      static_cast<off_t>(nbytes), SYNC_FILE_RANGE_WRITE) == 0) {
-    return Status::OK();
-  } else {
+  const auto start = yb::MonoTime::Now();
+  const auto rc = sync_file_range(
+      fd_, static_cast<off_t>(offset), static_cast<off_t>(nbytes), SYNC_FILE_RANGE_WRITE);
+  if (rc != 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
+  if (drive_stats_) {
+    drive_stats_->RecordRangeSync(yb::MonoTime::Now() - start);
+  }
+  return Status::OK();
 }
 
 size_t PosixWritableFile::GetUniqueId(char* id) const {

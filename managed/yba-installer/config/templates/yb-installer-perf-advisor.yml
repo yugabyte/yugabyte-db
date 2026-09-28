@@ -71,6 +71,7 @@ services:
 
       pa.metrics.export.jsonl.directory={{ .DataDir }}/collected/metrics
       pa.support-bundle.path={{ .DataDir }}/support-bundle
+      pa.data.path={{ .DataDir }}
       pa.log.dir={{ .PALogDir }}
 
   - name: perfAdvisorMetricsExportTopology

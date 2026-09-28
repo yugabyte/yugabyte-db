@@ -134,7 +134,8 @@ Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
   RETURN_NOT_OK(merged_index->Reserve(
       std::max(min_capacity, total_capacity),
       std::thread::hardware_concurrency(),
-      std::thread::hardware_concurrency()));
+      std::thread::hardware_concurrency(),
+      rocksdb::Cache::ReservationMode::kAlways));
 
   RETURN_NOT_OK(Merge(merged_index, indexes, [](auto&&){ return storage::FilterDecision::kKeep; }));
   return std::move(merged_index);

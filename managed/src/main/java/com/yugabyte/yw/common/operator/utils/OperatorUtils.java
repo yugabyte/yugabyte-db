@@ -798,13 +798,16 @@ public class OperatorUtils {
       log.debug("Device info changed: {}", deviceInfoChanged.get());
       return deviceInfoChanged.get();
     } else {
+      // volumeSize is an Integer: compare by value, not by reference.
       boolean tserverSizeChanged =
-          curCluster.userIntent.deviceInfo.volumeSize != newIntent.deviceInfo.volumeSize;
+          !Objects.equals(
+              curCluster.userIntent.deviceInfo.volumeSize, newIntent.deviceInfo.volumeSize);
       boolean masterSizeChanged = false;
       if (curCluster.clusterType != ClusterType.ASYNC) {
         masterSizeChanged =
-            curCluster.userIntent.masterDeviceInfo.volumeSize
-                != newIntent.masterDeviceInfo.volumeSize;
+            !Objects.equals(
+                curCluster.userIntent.masterDeviceInfo.volumeSize,
+                newIntent.masterDeviceInfo.volumeSize);
       }
       return tserverSizeChanged || masterSizeChanged;
     }
@@ -1908,6 +1911,9 @@ public class OperatorUtils {
         CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID());
     crSpec.setStorageConfig(storageConfigName);
     crSpec.setTimeBeforeDelete(params.timeBeforeDelete);
+    crSpec.setUseTablespaces(params.useTablespaces);
+    crSpec.setUseRoles(params.getUseRoles());
+    crSpec.setUsePrivileges(params.getUsePrivileges());
     Universe universe =
         Universe.getOrBadRequest(backup.getUniverseUUID(), Customer.get(backup.getCustomerUUID()));
     crSpec.setUniverse(universe.getUniverseDetails().getKubernetesResourceDetails().name);
@@ -3130,6 +3136,9 @@ public class OperatorUtils {
                 params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit));
       }
       spec.setEnablePointInTimeRestore(params.enablePointInTimeRestore);
+      spec.setUseTablespaces(params.useTablespaces);
+      spec.setUseRoles(params.getUseRoles());
+      spec.setUsePrivileges(params.getUsePrivileges());
       backupSchedule.setSpec(spec);
       kubernetesClient
           .resources(BackupSchedule.class)

@@ -115,7 +115,9 @@ class XClusterConsumer : public XClusterConsumerIf {
   void PopulateMasterHeartbeatRequest(
       master::TSHeartbeatRequestPB* req, bool needs_full_tablet_report) override;
 
-  void StoreReplicationError(const XClusterPollerId& poller_id, ReplicationErrorPb error);
+  void StoreReplicationError(
+      const XClusterPollerId& poller_id, ReplicationErrorPb error,
+      const std::string& error_detail);
 
   Status ReportNewAutoFlagConfigVersion(
       const xcluster::ReplicationGroupId& replication_group_id, uint32_t new_version) const;

@@ -5515,17 +5515,6 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (YBHasSkippedIntentsWrite())
-	{
-		const char *retry_err = ("query layer retry isn't possible because "
-								 "we have skipped intents write");
-
-		edata->message = psprintf("%s (%s)", edata->message, retry_err);
-		if (yb_debug_log_internal_restarts)
-			elog(LOG, "%s", retry_err);
-		return false;
-	}
-
 	if (attempt >= yb_max_query_layer_retries)
 	{
 		const char *retry_err = psprintf("yb_max_query_layer_retries set to %d are exhausted",
@@ -5658,6 +5647,26 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 					 GetCommandTagName(command_tag));
 			return false;
 		}
+	}
+
+	/*
+	 * A write that skipped the intents DB cannot be undone by rolling back to
+	 * an internal savepoint or by restarting the transaction, so it blocks a
+	 * retry whatever the statement is. It is checked last because it is a
+	 * property of the transaction rather than of this statement: a statement
+	 * that is already unretriable for a reason of its own - its command tag,
+	 * the retry limit, data already sent to the client - reports that reason,
+	 * which tells the user more than the fastpath write does.
+	 */
+	if (YBHasSkippedIntentsWrite())
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "we have skipped intents write");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
 	}
 
 	return true;

@@ -1853,4 +1853,47 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setEndpoint(null);
     assertThat(config.getCleanEndpoint(), equalTo(null));
   }
+
+  // The generated pattern is POSIX ERE for awk, so it is asserted as text rather than compiled
+  // here: java.util.regex is a different dialect and rejects the portable "[[]" spelling of a
+  // literal '[' outright, treating the inner bracket as a nested character class. Whether the
+  // pattern actually splits records is checked where awk evaluates it, in node-agent's
+  // TestArchiveKeepsMultiLineYsqlAuditRecords / ...ForACustomLogLinePrefix.
+  @Test
+  public void generateAuditLineStartEreForDefaultPrefix() {
+    // "%m [%p] " - the built-in log_line_prefix.
+    String ere = generator.generateAuditLineStartEre("%m [%p] ");
+    assertEquals(
+        "^([A-Z][0-9]+)|^(([0-9]+-[0-9]+-[0-9]+ [0-9]+:[0-9]+:[0-9]+[.][0-9]+ [A-Za-z0-9_]+)"
+            + "[ ][[]([0-9]+)[]][ ])",
+        ere);
+    assertPortablePosixEre(ere);
+  }
+
+  @Test
+  public void generateAuditLineStartEreForCustomPrefix() {
+    // A non-default prefix (the gflag case) must still yield a usable boundary.
+    String ere = generator.generateAuditLineStartEre("%t [%p] %u@%d ");
+    assertEquals(
+        "^([A-Z][0-9]+)|^(([0-9]+-[0-9]+-[0-9]+ [0-9]+:[0-9]+:[0-9]+ [A-Za-z0-9_]+)"
+            + "[ ][[]([0-9]+)[]][ ]([^@]+)[@]([^ ]+)[ ])",
+        ere);
+    assertPortablePosixEre(ere);
+  }
+
+  // POSIX ERE only: no PCRE named groups, no \\d/\\w, no {n} intervals (kept portable across
+  // mawk and gawk), anchored on a YB glog header or the prefix, mirroring the collector.
+  private void assertPortablePosixEre(String ere) {
+    assertFalse("no PCRE named groups", ere.contains("(?P<"));
+    assertFalse("no \\d", ere.contains("\\d"));
+    assertFalse("no \\w", ere.contains("\\w"));
+    assertFalse("no interval quantifiers", ere.matches("(?s).*\\{[0-9].*"));
+    assertTrue(ere.startsWith("^([A-Z][0-9]+)|^("));
+  }
+
+  @Test
+  public void re2ToPosixEreTranslatesPcreConstructs() {
+    assertEquals("[0-9]+ [A-Za-z0-9_]+", OtelCollectorConfigGenerator.re2ToPosixEre("\\d{3} \\w+"));
+    assertEquals("(x)", OtelCollectorConfigGenerator.re2ToPosixEre("(?P<foo>x)"));
+  }
 }

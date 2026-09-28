@@ -17942,7 +17942,23 @@ static bool
 check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
 														  GucSource source)
 {
-	if (*newval && !yb_enable_new_relation_fastpath_write)
+	/*
+	 * yb_enable_new_relation_fastpath_write gates the optimization as a whole,
+	 * and this GUC only widens it to transaction blocks, so a value of on while
+	 * the parent is off is inert rather than unsafe.
+	 *
+	 * Only values supplied once the postmaster has read its configuration are
+	 * rejected, as in the yb_ddl_transaction_block_enabled check below.
+	 * pg_wrapper generates ysql_pg.conf in the data directory, writing the
+	 * ysql_pg_conf_csv entries ahead of the block it derives from the PG gflags,
+	 * and postgres assigns the parameters in the order they appear in that file.
+	 * A cluster that turns the parent off - through ysql_pg_conf_csv, or through
+	 * the ysql_yb_enable_new_relation_fastpath_write gflag, which is the kill
+	 * switch for the optimization as a whole - therefore has the parent assigned
+	 * off before this GUC is assigned on, and rejecting that pair here would
+	 * leave the postmaster refusing to start.
+	 */
+	if (*newval && !yb_enable_new_relation_fastpath_write && source >= PGC_S_CLIENT)
 	{
 		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
 							"when yb_enable_new_relation_fastpath_write is disabled.");

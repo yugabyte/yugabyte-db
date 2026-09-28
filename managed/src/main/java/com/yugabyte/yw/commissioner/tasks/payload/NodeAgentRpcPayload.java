@@ -467,6 +467,19 @@ public class NodeAgentRpcPayload {
             ? configureCgroupOverride
             : Util.configureCgroup(cluster.userIntent, provider, false, confGetter);
     configureServerInputBuilder.setConfigureCgroup(configureCgroup);
+
+    // Bake YBA clock-sync runtime config into clock-sync.sh.
+    // See NodeManager.getInlineWaitForClockSyncCommandArgs for more details.
+    boolean clockSkewWaitEnabled =
+        confGetter.getGlobalConf(GlobalConfKeys.acceptableClockSkewWaitEnabled);
+    configureServerInputBuilder.setAcceptableClockSkewWaitEnabled(clockSkewWaitEnabled);
+    if (clockSkewWaitEnabled) {
+      configureServerInputBuilder.setAcceptableClockSkewSec(
+          confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew).toNanos()
+              / Math.pow(10, 9));
+      configureServerInputBuilder.setAcceptableClockSkewMaxTries(
+          (int) confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds());
+    }
     return configureServerInputBuilder.build();
   }
 
@@ -512,6 +525,14 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
     installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
+
+    // The purge script groups multi-line YSQL audit records using this pattern,
+    // derived from the same log_line_prefix the collector uses. Set in both
+    // full and refresh-only modes, and recomputed from current gflags on every
+    // ManageOtelCollector run, so a log_line_prefix change reaches the node.
+    installOtelCollectorInputBuilder.setYsqlAuditLineStartRegex(
+        otelCollectorConfigGenerator.generateAuditLineStartEre(
+            GFlagsUtil.getLogLinePrefix(queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
 
     // Set memory limit for OTel collector
     int otelColMaxMemory =

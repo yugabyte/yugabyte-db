@@ -55,7 +55,15 @@ void MakeAtLeast(uint32_t other_value, uint32_t* this_value) {
   *this_value = std::max(*this_value, other_value);
 }
 
+void MakeAtLeast(uint64_t other_value, uint64_t* this_value) {
+  *this_value = std::max(*this_value, other_value);
+}
+
 void MakeAtMost(uint32_t other_value, uint32_t* this_value) {
+  *this_value = std::min(*this_value, other_value);
+}
+
+void MakeAtMost(uint64_t other_value, uint64_t* this_value) {
   *this_value = std::min(*this_value, other_value);
 }
 
@@ -107,6 +115,12 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   if (has_vector_deletion_) {
     pb.set_has_vector_deletion(has_vector_deletion_);
   }
+  if (split_generation_) {
+    pb.set_split_generation(split_generation_);
+  }
+  if (split_min_chunk_serial_no_) {
+    pb.set_split_min_chunk_serial_no(split_min_chunk_serial_no_);
+  }
   VLOG(3) << "ConsensusFrontierPB: " << pb.ShortDebugString();
   any->PackFrom(pb);
 }
@@ -156,6 +170,8 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   backfill_done_ = pb.backfill_done();
   backfill_key_ = pb.backfill_key();
   has_vector_deletion_ = pb.has_vector_deletion();
+  split_generation_ = pb.split_generation();
+  split_min_chunk_serial_no_ = pb.split_min_chunk_serial_no();
   VLOG(3) << "ConsensusFrontier: " << ToString();
   return Status::OK();
 }
@@ -207,6 +223,12 @@ std::string ConsensusFrontier::ToString() const {
   }
   if (has_vector_deletion_) {
     fields += Format("has_vector_deletion: $0 ", has_vector_deletion_);
+  }
+  if (split_generation_) {
+    fields += Format("split_generation: $0 ", split_generation_);
+  }
+  if (split_min_chunk_serial_no_) {
+    fields += Format("split_min_chunk_serial_no: $0 ", split_min_chunk_serial_no_);
   }
   return Format("{$0}", fields);
 }
@@ -340,6 +362,12 @@ void ConsensusFrontier::Update(
     if (rhs.has_vector_deletion_) {
       SetHasVectorDeletion();
     }
+    UpdateField(
+        &split_generation_, rhs.split_generation_,
+        storage::UpdateUserValueType::kLargest);
+    UpdateField(
+        &split_min_chunk_serial_no_, rhs.split_min_chunk_serial_no_,
+        storage::UpdateUserValueType::kLargest);
   }
 }
 
@@ -429,6 +457,14 @@ void ConsensusFrontier::SetBackfillPosition(Slice key) {
 
 void ConsensusFrontier::SetHasVectorDeletion() {
   has_vector_deletion_ = true;
+}
+
+void ConsensusFrontier::SetSplitGeneration(uint64_t split_generation) {
+  split_generation_ = split_generation;
+}
+
+void ConsensusFrontier::SetSplitMinChunkSerialNo(uint64_t serial_no) {
+  split_min_chunk_serial_no_ = serial_no;
 }
 
 void AddTableSchemaVersion(

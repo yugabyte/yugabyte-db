@@ -31,11 +31,15 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster/xcluster_status.h"
+
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -49,8 +53,10 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_pg_cron);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
@@ -1942,11 +1948,12 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpWithDdlQueueStepdowns)
     return safe_time_batch;
   };
 
-  // Keep track of the number of times ddl_queue bumps the safe time.
-  int ddl_queue_safe_time_bumps = 0;
+  // Keep track of the commit times ddl_queue bumps the safe time to.
+  std::set<HybridTime> bumped_commit_times;
   SyncPoint::GetInstance()->SetCallBack(
-      "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped",
-      [&ddl_queue_safe_time_bumps](void* _) { ddl_queue_safe_time_bumps++; });
+      "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped", [&bumped_commit_times](void* arg) {
+        bumped_commit_times.insert(*static_cast<HybridTime*>(arg));
+      });
   SyncPoint::GetInstance()->EnableProcessing();
 
   // Start with replication paused so we can accumulate some pending DDLs.
@@ -2007,12 +2014,11 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpWithDdlQueueStepdowns)
   auto safe_time_batch_after_resume = ASSERT_RESULT(get_and_verify_safe_time_batch(
       /*expected_size=*/0, /*expected_has_apply_safe_time=*/false));
 
-  // We only start bumping the safe time after the restart.
-  // After the restart, we first process the batch in replicated_ddls, which has 3 DDLs. However, we
-  // don't update the checkpoint, so the next GetChanges still requests the same first 3 DDLs + the
-  // next 2 new DDLs. Thus we have 5 bumps in the next round (note that we will not rerun those
-  // first 3 DDLs though).
-  ASSERT_EQ(ddl_queue_safe_time_bumps, 8);
+  // We only start bumping the safe time after the restart. Each of the 5 DDLs should have had the
+  // safe time bumped to its commit time. Count distinct commit times since the first 3 may be
+  // bumped again: after the restart we process the batch in replicated_ddls but do not update the
+  // checkpoint, so the next GetChanges returns those 3 DDLs again along with the 2 new ones.
+  ASSERT_EQ(bumped_commit_times.size(), 5);
 }
 
 TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
@@ -2070,6 +2076,79 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+}
+
+// Regression test for #31395. When a batch fails partway through, the safe time has already been
+// bumped past the processed commit times, so the target can compact away their history. Retries
+// must skip those commit times instead of reading ddl_queue at them.
+TEST_F(XClusterDDLReplicationTest, RetryPartialBatchAfterHistoryCutoff) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  const auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
+
+  // Keep the failing DDL retrying quickly for the whole test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 10;
+
+  // Fail the third DDL of the batch, once the first two have run and the safe time has been bumped
+  // past them.
+  std::atomic<int> ddl_queue_safe_time_bumps{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped", [&ddl_queue_safe_time_bumps](void*) {
+        if (++ddl_queue_safe_time_bumps == 2) {
+          ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+        }
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  // Pause replication so that all three DDLs land in the same batch.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+  const std::vector<TableName> table_names = {"table_1", "table_2"};
+  for (const auto& table_name : table_names) {
+    ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", table_name));
+    ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", table_name));
+  }
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN v int", table_names[0]));
+
+  // Ensure we have all 3 commit_times in the batch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+  xcluster::SafeTimeBatch safe_time_batch;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        safe_time_batch = VERIFY_RESULT(FetchSafeTimeBatchFromReplicatedDdls());
+        return safe_time_batch.commit_times.size() == 3 && safe_time_batch.IsComplete();
+      },
+      kTimeout, "Wait for the DDL batch to be persisted"));
+  ASSERT_GE(safe_time_batch.apply_safe_time, *safe_time_batch.commit_times.rbegin());
+  const auto first_commit_time = *safe_time_batch.commit_times.begin();
+
+  // Run the batch: the first two DDLs succeed and the third fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+  ASSERT_OK(WaitForSafeTime(namespace_id, first_commit_time));
+
+  // Move the history cutoff up to the published safe time, which is past the first commit time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+
+  // Wait for two failures so that at least one attempt started after the compaction.
+  StringWaiterLogSink failed_ddl_log_sink("Failed DDL operation as requested");
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return failed_ddl_log_sink.GetEventCount() >= 2; }, kTimeout,
+      "Wait for the failing DDL to be retried"));
+
+  // Let the third DDL through and verify the batch completes without hitting kSnapshotTooOld error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(table_names));
+  ASSERT_TRUE(ASSERT_RESULT(FetchSafeTimeBatchFromReplicatedDdls()).commit_times.empty());
 }
 
 TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
@@ -2133,6 +2212,127 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
   propagation_timeout_ = original_propagation_timeout;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+}
+
+// #33736: moving the ddl_queue leader during a DDL batch must not block the old leader's consumer.
+TEST_F(XClusterDDLReplicationTest, DDLQueueLeaderMoveDuringDDLBatch) {
+  const auto kTableName = "test_table";
+
+  // Using rf3 to move the ddl_queue leader between tservers.
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 3;
+  ASSERT_OK(SetUpClusters(params));
+  // The test moves the ddl_queue leader itself, keep the load balancer from moving it back.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+  ASSERT_OK(consumer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(
+      consumer_cluster_.client_->GetTabletsFromTableId(ddl_queue_table.table_id(), 1, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto ddl_queue_tablet_id = tablets[0].tablet_id();
+
+  auto get_ddl_queue_poller = [&ddl_queue_tablet_id](tserver::TabletServer* tserver)
+      -> std::shared_ptr<tserver::XClusterPoller> {
+    auto* xcluster_consumer = tserver->GetXClusterConsumer();
+    if (!xcluster_consumer) {
+      return nullptr;
+    }
+    for (const auto& poller : xcluster_consumer->TEST_ListPollers()) {
+      if (poller->GetConsumerTabletInfo().tablet_id == ddl_queue_tablet_id) {
+        return poller;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto old_leader_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(consumer_cluster(), ddl_queue_tablet_id));
+  const auto old_leader_uuid = old_leader_peer->permanent_uuid();
+  tserver::TabletServer* old_leader_tserver = nullptr;
+  std::string new_leader_uuid;
+  for (const auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+    if (mini_tserver->server()->permanent_uuid() == old_leader_uuid) {
+      old_leader_tserver = mini_tserver->server();
+    } else if (new_leader_uuid.empty()) {
+      new_leader_uuid = mini_tserver->server()->permanent_uuid();
+    }
+  }
+  ASSERT_NE(old_leader_tserver, nullptr);
+  ASSERT_FALSE(new_leader_uuid.empty());
+
+  int64_t old_leader_term = 0;
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        auto poller = get_ddl_queue_poller(old_leader_tserver);
+        if (!poller) {
+          return false;
+        }
+        old_leader_term = poller->GetLeaderTerm();
+        return true;
+      },
+      kTimeout, "Wait for the ddl_queue poller on the old leader"));
+
+  // Block the handler right after it executes the first DDL of the batch.
+  auto& sync_point = *SyncPoint::GetInstance();
+  auto sync_point_cleanup = ScopeExit([&sync_point] {
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+  });
+  std::atomic<int> ddl_processed_count{0};
+  sync_point.SetCallBack(
+      "XClusterDDLQueueHandler::DDLQueryProcessed", [&ddl_processed_count](void*) {
+        if (ddl_processed_count.fetch_add(1) == 0) {
+          TEST_SYNC_POINT("DDLQueueLeaderMoveDuringDDLBatch::FirstDDLProcessed");
+        }
+      });
+  sync_point.LoadDependency(
+      {{.predecessor = "DDLQueueLeaderMoveDuringDDLBatch::Continue",
+        .successor = "DDLQueueLeaderMoveDuringDDLBatch::FirstDDLProcessed"}});
+  sync_point.EnableProcessing();
+
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN a text", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN b text", kTableName));
+  ASSERT_OK(LoggedWaitFor(
+      [&ddl_processed_count] { return ddl_processed_count.load() >= 1; }, kTimeout,
+      "Wait for the handler to execute the first DDL"));
+
+  // Move the leader away while the handler is blocked. The old poller is dropped.
+  ASSERT_OK(TransferLeadership(consumer_cluster(), ddl_queue_tablet_id, new_leader_uuid));
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        auto poller = get_ddl_queue_poller(old_leader_tserver);
+        return !poller || poller->GetLeaderTerm() > old_leader_term;
+      },
+      kTimeout, "Wait for the old ddl_queue poller to be removed"));
+
+  // Move the leader back. The old leader must start a new poller while the old one is still busy.
+  ASSERT_OK(TransferLeadership(consumer_cluster(), ddl_queue_tablet_id, old_leader_uuid));
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        auto poller = get_ddl_queue_poller(old_leader_tserver);
+        return poller && poller->GetLeaderTerm() > old_leader_term;
+      },
+      kTimeout, "Wait for a new ddl_queue poller on the old leader"));
+  // The new pollers could not get the advisory lock, so only the old handler ran any DDL.
+  ASSERT_EQ(ddl_processed_count.load(), 1);
+
+  // Release the old handler; the new poller takes over once the advisory lock is freed.
+  TEST_SYNC_POINT("DDLQueueLeaderMoveDuringDDLBatch::Continue");
+  sync_point.DisableProcessing();
+  sync_point.ClearAllCallBacks();
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(CountConsumerTableColumns({kTableName})), 3);
 }
 
 TEST_F(XClusterDDLReplicationTest, HandleEarlierApplySafeTime) {
@@ -5070,6 +5270,96 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
     }
   }
   ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
+
+  // The pause is reported to master as its own replication error, not a generic SYSTEM_ERROR, and
+  // carries the handler's error text.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto admin_out =
+            CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId);
+        if (!admin_out.ok()) {
+          return false;
+        }
+        return admin_out->find("error: REPLICATION_DDL_QUEUE_PAUSED") != std::string::npos &&
+               admin_out->find("Failed DDL operation as requested") != std::string::npos;
+      },
+      kTimeout, "Wait for master to report REPLICATION_DDL_QUEUE_PAUSED"));
+
+  // Check that the master also has the full error string.
+  auto& catalog_manager =
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
+  const auto xcluster_status =
+      ASSERT_RESULT(catalog_manager.GetXClusterManagerImpl()->GetXClusterStatus());
+  bool found_ddl_queue_status = false;
+  for (const auto& group : xcluster_status.inbound_replication_group_statuses) {
+    for (const auto& [_, table_statuses] : group.table_statuses_by_namespace) {
+      for (const auto& table : table_statuses) {
+        if (table.target_table_id == consumer_ddl_queue_table.table_id()) {
+          found_ddl_queue_status = true;
+          ASSERT_STR_CONTAINS(table.status, "DDL_QUEUE_PAUSED");
+          ASSERT_STR_CONTAINS(table.status, "Failed DDL operation as requested");
+        }
+      }
+    }
+  }
+  ASSERT_TRUE(found_ddl_queue_status) << "ddl_queue table not found in xCluster status";
+}
+
+// The ddl_queue poller waits for the other pollers to reach the apply safe time before running a
+// DDL batch. This is part of normal replication and must not surface as a replication error.
+TEST_F(XClusterDDLReplicationTest, DDLQueueWaitingForSafeTimeIsNotReplicationError) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE lagging_table (key int PRIMARY KEY)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Freeze the pollers of lagging_table so the namespace safe time stops advancing.
+  auto lagging_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "lagging_table"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(lagging_table.table_id(), 0, &tablets));
+  std::unordered_set<TabletId> lagging_tablet_ids;
+  std::string filter;
+  for (const auto& t : tablets) {
+    lagging_tablet_ids.insert(t.tablet_id());
+    filter += (filter.empty() ? "" : ",") + t.tablet_id();
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = filter;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep(lagging_tablet_ids));
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE new_table (key int PRIMARY KEY)"));
+
+  auto consumer_ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto* xcluster_consumer =
+            consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+        if (!xcluster_consumer) {
+          return false;
+        }
+        for (const auto& stat : xcluster_consumer->GetPollerStats()) {
+          if (stat.consumer_table_id == consumer_ddl_queue_table.table_id() &&
+              stat.status.IsTryAgain()) {
+            return true;
+          }
+        }
+        return false;
+      },
+      kTimeout, "Wait for ddl_queue poller to wait on the xCluster safe time"));
+
+  // Leave time for the tserver to heartbeat any stored replication error to master.
+  SleepFor(3s * kTimeMultiplier);
+  auto admin_out =
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId));
+  ASSERT_STR_NOT_CONTAINS(admin_out, "REPLICATION_SYSTEM_ERROR");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(consumer_conn_->Fetch("SELECT * FROM new_table"));
 }
 
 TEST_F(XClusterDDLReplicationTest, VectorIndexCreatedBeforeDrSetup) {

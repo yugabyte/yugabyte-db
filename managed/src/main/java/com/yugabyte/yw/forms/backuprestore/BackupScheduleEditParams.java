@@ -29,6 +29,15 @@ public class BackupScheduleEditParams {
   @ApiModelProperty(value = "TimeUnit for incremental Backup Schedule frequency")
   public TimeUnit incrementalBackupFrequencyTimeUnit;
 
+  @ApiModelProperty(value = "Is tablespaces information included")
+  public Boolean useTablespaces;
+
+  @ApiModelProperty(value = "Backup global ysql roles")
+  public Boolean useRoles;
+
+  @ApiModelProperty(value = "Backup privileges for roles")
+  public Boolean usePrivileges;
+
   // Used in testing/operator
   public BackupScheduleEditParams(BackupRequestParams params) {
     this.cronExpression = params.cronExpression;
@@ -37,5 +46,8 @@ public class BackupScheduleEditParams {
     this.incrementalBackupFrequency = params.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit = params.incrementalBackupFrequencyTimeUnit;
     this.timeBeforeDelete = params.timeBeforeDelete;
+    this.useTablespaces = params.useTablespaces;
+    this.useRoles = params.getUseRoles();
+    this.usePrivileges = params.getUsePrivileges();
   }
 }

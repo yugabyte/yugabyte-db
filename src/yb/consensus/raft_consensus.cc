@@ -125,6 +125,12 @@ DEFINE_UNKNOWN_bool(evict_failed_followers, true,
             "follower_unavailable_considered_failed_sec");
 TAG_FLAG(evict_failed_followers, advanced);
 
+DEFINE_RUNTIME_bool(raft_monotonic_last_received_current_leader, true,
+    "Whether a replica advances the last received op id from the current leader monotonically on "
+    "fully-deduplicated requests, rather than only setting it once per term. Kill switch; a "
+    "watermark frozen at its first value can leave a lagging follower permanently uncatchable.");
+TAG_FLAG(raft_monotonic_last_received_current_leader, advanced);
+
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
@@ -1409,7 +1415,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
     // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
     // the intents flushed_frontier can advance past split_op_id and propagate into the children via
-    // Tablet::CreateSubtablet's RocksDB checkpoint -- breaking bootstrap with
+    // Tablet::CreateSplitChildTablet's RocksDB checkpoint -- breaking bootstrap with
     // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
     OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
@@ -2391,7 +2397,12 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const LWConsensusRequest
                           deduped_req.preceding_op_id,
                           state_->GetLastReceivedOpIdUnlocked());
     }
-    state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    if (PREDICT_TRUE(FLAGS_raft_monotonic_last_received_current_leader)) {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(
+          deduped_req.preceding_op_id);
+    } else {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    }
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;

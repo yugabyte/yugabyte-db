@@ -168,6 +168,10 @@ enum ReplicationErrorPb {
 
   // The replication stream has been paused by the user.
   REPLICATION_PAUSED = 9;
+
+  // xCluster DDL replication has paused itself after repeatedly failing to apply the same DDL on
+  // the target.
+  REPLICATION_DDL_QUEUE_PAUSED = 10;
 }
 
 // Stateful services.
