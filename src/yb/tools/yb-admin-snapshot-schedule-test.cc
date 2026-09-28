@@ -570,7 +570,13 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
-    opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
+    // Sanitizer masters can stall heartbeats for 10+s (e.g. during clone), expiring short leases.
+    opts->extra_master_flags.emplace_back(
+        Format("--master_ysql_operation_lease_ttl_ms=$0", 10000 * kTimeMultiplier));
+    // Followers applying a sys catalog snapshot op can block UpdateConsensus for 5+s, causing a
+    // master failover that aborts in-progress clones.
+    opts->extra_master_flags.emplace_back(
+        Format("--leader_failure_max_missed_heartbeat_periods=$0", 10 * kTimeMultiplier));
     opts->num_masters = 3;
   }
 
