@@ -264,11 +264,8 @@ YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables)
 		 * it targets all the tables present in the database and it uses
 		 * publish_via_partition_root = false (default).
 		 */
-		/*
-		 * YB_TODO_PG19MERGE: PG19 removed GetAllTablesPublicationRelations;
-		 * see commit 96b37849734673e7c82fb86c4f0a46a28f500ac8. Stub to NIL for now.
-		 */ 
-		tables = NIL;
+		tables = GetAllPublicationRelations(InvalidOid, RELKIND_RELATION,
+											false /* pubviaroot */ );
 		*yb_is_pub_all_tables = true;
 	}
 
