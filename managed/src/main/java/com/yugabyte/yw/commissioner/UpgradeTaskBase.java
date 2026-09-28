@@ -905,6 +905,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       createServerControlTasks(nodes, processType, "start").setSubTaskGroupType(subGroupType);
       createWaitForServersTasks(nodes, processType)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // As in the rolling flow, the tserver being up does not mean that its postgres already
+      // accepts connections, so wait for it too before the upgrade reports success.
+      if (processType == ServerType.TSERVER && nodes.iterator().next().isYsqlServer) {
+        createWaitForServersTasks(nodes, ServerType.YSQLSERVER, context.getTargetUniverseState())
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
       if (isYbcPresent) {
         createServerControlTasks(nodes, ServerType.CONTROLLER, "start")
             .setSubTaskGroupType(subGroupType);

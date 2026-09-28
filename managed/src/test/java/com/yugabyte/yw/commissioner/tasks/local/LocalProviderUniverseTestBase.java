@@ -975,11 +975,21 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
           String.format(
               "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))", tableName);
     }
+    // A master leader that has just been elected (e.g. after a node with a master was stopped)
+    // rejects table creation until tservers heartbeat to it ("num_tablets should be greater than
+    // 0. Client would need to wait ..."), so retry the creation for a while.
+    doWithRetry(
+        Duration.ofSeconds(2),
+        Duration.ofSeconds(60),
+        () -> {
+          ShellResponse createResponse =
+              localNodeUniverseManager.runYsqlCommand(
+                  nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
+          if (!createResponse.isSuccess()) {
+            throw new RuntimeException(createResponse.getMessage());
+          }
+        });
     ShellResponse response =
-        localNodeUniverseManager.runYsqlCommand(
-            nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
-    assertTrue(response.getMessage(), response.isSuccess());
-    response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails,
             universe,
