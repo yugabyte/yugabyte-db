@@ -5145,6 +5145,11 @@
     },
     "BundleInfo" : {
       "properties" : {
+        "isImageMarketplaceBased" : {
+          "description" : "WARNING: This is a preview API that could change. Whether ybImage is an OCI Marketplace image or a custom image built from one. Set by YBA for OCI bundles, and left unset when YBA cannot tell; any value in a request is ignored.",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "sshPortOverride" : {
           "description" : "sshPortOverride for the bundle. <b style=\"color:#ff0000\">Deprecated since YBA version 2.20.3.0.</b> Use imageBundles.details.sshUser instead.",
           "format" : "int32",

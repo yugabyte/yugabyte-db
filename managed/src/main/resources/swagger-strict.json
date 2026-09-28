@@ -5122,6 +5122,11 @@
     },
     "BundleInfo" : {
       "properties" : {
+        "isImageMarketplaceBased" : {
+          "description" : "WARNING: This is a preview API that could change. Whether ybImage is an OCI Marketplace image or a custom image built from one. Set by YBA for OCI bundles, and left unset when YBA cannot tell; any value in a request is ignored.",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "ybImage" : {
           "type" : "string"
         }
