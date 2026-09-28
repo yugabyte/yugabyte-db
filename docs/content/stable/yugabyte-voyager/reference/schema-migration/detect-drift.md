@@ -1,7 +1,7 @@
 ---
-title: Detect drift
+title: detect-drift reference
 headcontent: yb-voyager schema detect-drift
-linkTitle: detect drift
+linkTitle: detect-drift
 description: YugabyteDB Voyager schema detect-drift reference
 menu:
   stable_yugabyte-voyager:
@@ -15,7 +15,7 @@ type: docs
 
 Reports how the PostgreSQL source schema changed while a migration was running, and what to do about each change.
 
-yb-voyager records a snapshot of the source schema during [export schema](../export-schema/), when [export data](../../data-migration/export-data/) starts, periodically while export data runs, and when export data exits. The `schema detect-drift` command compares consecutive snapshots, and compares the last one with a live read of the source. It writes the result as a report. The command is _read-only_: it never changes migration state and never applies anything on the target.
+yb-voyager records a snapshot of the source schema during [export schema](../export-schema/), when [export data](../../data-migration/export-data/) starts, periodically while export data runs, and when export data exits. The `schema detect-drift` command compares consecutive snapshots, and compares the last one with a live read of the source. It writes the result as a report. The command is _read only_: it never changes migration state and never applies anything on the target.
 
 The command reads schema snapshots that export schema and export data record by default. If the export commands ran with `--disable-schema-snapshot-capture true`, or on an earlier yb-voyager version that didn't record snapshots, there is nothing to compare. The command then fails instead of reporting that "no drift" was found.
 
@@ -27,7 +27,7 @@ Usage: yb-voyager schema detect-drift [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for schema detect-drift are described in the following table. The configuration file section is `schema-detect-drift`.
+The valid *arguments* for `schema detect-drift` are described in the following table. The configuration file section is `schema-detect-drift`.
 
 When run at the same time, flags take precedence over configuration flag settings.
 
