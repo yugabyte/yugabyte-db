@@ -371,7 +371,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   virtual Status AppendNewRoundsToQueueUnlocked(
       const ConsensusRounds& rounds, size_t* processed_rounds);
 
-  Status CheckLeasesUnlocked(const ConsensusRoundPtr& round);
+  Status CheckLeasesUnlocked(const LWReplicateMsg& replicate_msg);
 
   // As a follower, start a consensus round not associated with a Operation.
   // Only virtual and protected for mocking purposes.
@@ -419,10 +419,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
         const ConsensusRounds& rounds, size_t* processed_rounds,
         std::vector<ReplicateMsgPtr>* replicate_msgs);
 
-  // Rejects a write whose WritePB::ignore_after_hybrid_time has already passed, letting a client
-  // with a time-bounded lease stop its writes landing once the lease is gone. Must run after the
-  // round is registered with retryable requests but before it is added as pending -- see the call
-  // site for both constraints.
+  // Rejects a write whose WritePB::ignore_after_hybrid_time is not after the hybrid time the round
+  // was assigned, letting a client with a time-bounded lease stop its writes landing once the
+  // lease is gone. Must run after NotifyAddedToLeader and before the round is added as pending --
+  // see the call site.
   Status CheckWriteFenceUnlocked(const ConsensusRoundPtr& round);
 
   // Control whether printing of log messages should be done for a particular
