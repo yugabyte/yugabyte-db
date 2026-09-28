@@ -392,7 +392,12 @@ class ClusterLoadBalancer {
   // Goes over all table states and returns a priority-sorted list of under-replicated tablets.
   std::vector<UnderReplicatedTabletInfo> CollectUnderReplicatedTablets();
 
-  // Checks if we are at our RBS or overreplicated tablets limit.
+  // Checks if we are at our RBS limit. Used by adds to tablets below RF, which skip the
+  // overreplicated tablets limit.
+  Status CheckRemoteBootstrapLimits();
+
+  // Checks if we are at our RBS or overreplicated tablets limit. Used by any add that
+  // over-replicates a tablet.
   Status CanAddReplicas();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.

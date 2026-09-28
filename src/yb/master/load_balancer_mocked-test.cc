@@ -755,6 +755,43 @@ TEST_F(LoadBalancerMockedTest, LimitRbsPerTserver) {
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
 }
 
+TEST_F(LoadBalancerMockedTest, OverReplicationLimitDoesNotBlockUnderReplicationRepair) {
+  GetOptions()->kAllowLimitOverReplicatedTablets = true;
+  GetOptions()->kMaxOverReplicatedTabletsPerTable = 1;
+  PrepareTestStateMultiAz();
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_);
+  auto extra_a_ts = SetupTS("3333", "a");
+  auto extra_c_ts = SetupTS("4444", "c");
+  ts_descs_.push_back(extra_a_ts);
+  ts_descs_.push_back(extra_c_ts);
+  // Over-replicate one tablet, which puts the table at its over-replication limit.
+  AddRunningReplica(tablets_[0].get(), extra_c_ts);
+  // Under-replicate another tablet.
+  RemoveReplica(tablets_[1].get(), ts_descs_[2]);
+  // Keep a third tablet at RF, but with its zone c replica moved to zone a, so zone c is below its
+  // minimum.
+  RemoveReplica(tablets_[2].get(), ts_descs_[2]);
+  AddRunningReplica(tablets_[2].get(), extra_a_ts);
+  MoveTabletLeader(tablets_[2].get(), ts_descs_[0]);
+
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(GetTotalOverreplication(), 1);
+
+  // The add for the under-replicated tablet restores RF, so the limit does not block it.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddIfMissingPlacement(tablets_[1]->tablet_id(), &to_ts)));
+  ASSERT_EQ(GetTotalOverreplication(), 1);
+
+  // The add for the tablet at RF with a placement below its minimum would over-replicate it, so
+  // the limit blocks it, as it blocks a move.
+  auto result = HandleAddIfMissingPlacement(tablets_[2]->tablet_id(), &to_ts);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsTryAgain()) << result.status();
+  result = HandleAddReplicas(&tablet_id, &from_ts, &to_ts);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsTryAgain()) << result.status();
+}
+
 TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
   PrepareTestStateMultiAz();
   // Add another tserver in zone c.
