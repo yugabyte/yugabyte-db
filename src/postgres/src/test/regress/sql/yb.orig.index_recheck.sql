@@ -139,6 +139,8 @@ RESET plan_cache_mode;
 -- scan reads nothing
 :explain_analyze SELECT count(*) FROM t_int WHERE i4 = 2147483648;
 SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
 :explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
 SELECT count(*) FROM t_int WHERE s = 2147483648;
 
@@ -146,6 +148,8 @@ SELECT count(*) FROM t_int WHERE s = 2147483648;
 -- executor decides whether to push the aggregate down
 :explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
 SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
 :explain_analyze SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
 SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
 

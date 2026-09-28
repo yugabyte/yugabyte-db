@@ -600,6 +600,21 @@ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
      0
 (1 row)
 
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = '2147483648'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
+ count 
+-------
+     0
+(1 row)
+
 :explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
                              QUERY PLAN                             
 --------------------------------------------------------------------
@@ -630,6 +645,23 @@ SELECT count(*) FROM t_int WHERE s = 2147483648;
 (7 rows)
 
 SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+ count 
+-------
+     0
+(1 row)
+
+:explain_analyze /*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT* (actual rows=1 loops=1)
+   ->  Index Scan using t_int_i4 on t_int (actual rows=0 loops=1)
+         Index Cond: (i4 = $0)
+         Partial Aggregate: true
+(6 rows)
+
+/*+ IndexScan(t_int t_int_i4) */ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
  count 
 -------
      0
