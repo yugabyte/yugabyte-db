@@ -60,12 +60,4 @@ extern struct YbUpdateAffectedEntities *YbComputeAffectedEntitiesForRelation(Mod
 																			 const Relation rel,
 																			 Bitmapset *update_attrs);
 
-struct PlannerInfo;
-struct RelOptInfo;
-struct RangeTblEntry;
-
-extern Bitmapset *YbExtractFederatedTserverFilter(struct PlannerInfo *root,
-												  struct RelOptInfo *rel,
-												  struct RangeTblEntry *rte,
-												  YbcServerDescriptor *servers,
-												  size_t nservers);
+extern AttrNumber yb_get_federated_tserver_uuid_attno(Oid relid);

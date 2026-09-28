@@ -5,8 +5,10 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -36,11 +38,13 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -50,6 +54,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -103,6 +108,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private static final int NEW_CGROUP_SIZE = 10;
 
   @InjectMocks private ResizeNode resizeNode;
+
+  private Provider ociProvider;
 
   @Override
   @Before
@@ -440,6 +447,98 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTrue(thrown.getMessage().contains("Cannot clear masterDeviceInfo"));
   }
 
+  @Test
+  public void testOciInstanceTypeChangeRequiresSingleDataVolume() {
+    Provider oci = ociProvider();
+    String currentType = "VM.Standard.E2.2";
+    String targetType = "VM.Standard.E2.1";
+    createInstanceType(oci.getUuid(), currentType);
+    createInstanceType(oci.getUuid(), targetType);
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent;
+              userIntent.provider = oci.getUuid().toString();
+              userIntent.providerType = Common.CloudType.oci;
+              userIntent.instanceType = currentType;
+              userIntent.deviceInfo.numVolumes = 2;
+              userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.OCI_Balanced;
+              universe.getNodes().forEach(node -> node.cloudInfo.instance_type = currentType);
+            });
+
+    UUID clusterUuid = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    UniverseDefinitionTaskParams.UserIntent currentIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    UniverseDefinitionTaskParams.UserIntent targetIntent = currentIntent.clone();
+    targetIntent.instanceType = targetType;
+
+    // Smart resize remains available; the OCI volume limit is enforced in ResizeNode precheck.
+    assertTrue(
+        ResizeNodeParams.checkResizeIsPossible(
+            clusterUuid,
+            currentIntent,
+            targetIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter()));
+
+    UniverseDefinitionTaskParams.UserIntent diskOnlyIntent = currentIntent.clone();
+    diskOnlyIntent.deviceInfo.volumeSize = currentIntent.deviceInfo.volumeSize + 10;
+    assertTrue(
+        ResizeNodeParams.checkResizeIsPossible(
+            clusterUuid,
+            currentIntent,
+            diskOnlyIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter()));
+
+    ResizeNodeParams taskParams = createResizeParams();
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, targetIntent);
+    cluster.uuid = clusterUuid;
+    taskParams.clusters = Collections.singletonList(cluster);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertThat(taskInfo.getErrorMessage(), containsString("more than one data volume"));
+
+    Universe after = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(after.getUniverseDetails().updateInProgress);
+    assertTrue(after.getUniverseDetails().updateSucceeded);
+    assertNull(after.getUniverseDetails().placementModificationTaskUuid);
+    assertEquals(
+        currentType, after.getUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.ociFailFastMultiVolumeInstanceTypeChange.getKey(), "false");
+    ResizeNodeParams bypassParams = createResizeParams();
+    UniverseDefinitionTaskParams.Cluster bypassCluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, targetIntent.clone());
+    bypassCluster.uuid = clusterUuid;
+    bypassParams.clusters = Collections.singletonList(bypassCluster);
+    TaskInfo bypassTaskInfo = submitTask(bypassParams);
+    assertEquals(Success, bypassTaskInfo.getTaskState());
+    assertThat(bypassTaskInfo.getErrorMessage(), not(containsString("more than one data volume")));
+    assertEquals(
+        targetType,
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .instanceType);
+  }
+
+  private Provider ociProvider() {
+    if (ociProvider == null) {
+      ociProvider = ModelFactory.ociProvider(defaultCustomer);
+    }
+    return ociProvider;
+  }
+
   private void applyConfig(
       String conf, UniverseDefinitionTaskParams.UserIntent intent, boolean toMaster) {
     char instType = conf.charAt(0);
@@ -556,6 +655,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         break;
       case azu:
         currentIntent.provider = azuProvider.getUuid().toString();
+        break;
+      case oci:
+        currentIntent.provider = ociProvider().getUuid().toString();
         break;
       case kubernetes:
         currentIntent.provider = kubernetesProvider.getUuid().toString();

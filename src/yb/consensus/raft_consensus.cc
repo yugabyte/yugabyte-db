@@ -3779,6 +3779,18 @@ OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
+RaftConsensus::WalGcRetentionOpIdInfo RaftConsensus::GetWalGcRetentionOpIdInfo() {
+  auto peer_retention = queue_->GetWalGcPeerRetentionInfo();
+  WalGcRetentionOpIdInfo result;
+  {
+    auto lock = state_->LockForRead();
+    result.committed_op_id = state_->GetCommittedOpIdUnlocked();
+  }
+  result.majority_replicated_op_id = peer_retention.majority_replicated_op_id;
+  result.min_progressing_pre_voter_op_id = peer_retention.min_progressing_pre_voter_op_id;
+  return result;
+}
+
 OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();

@@ -876,6 +876,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                     // and dropping them would generate stale/incorrect master addresses.
                     mergedAz.masterStsIndex = az.masterStsIndex;
                     mergedAz.tsStsIndex = az.tsStsIndex;
+                    // addPlacementZone does not set leaderPreference, so rankings would
+                    // otherwise reset to 0.
+                    mergedAz.leaderPreference = az.leaderPreference;
                   });
         }
         return result;
@@ -2485,8 +2488,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public Cluster getClusterByNodeName(String nodeName) {
-    NodeDetails node =
-        nodeDetailsSet.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
+    NodeDetails node = Util.findByName(nodeDetailsSet, nodeName);
     if (node == null) {
       return null;
     }

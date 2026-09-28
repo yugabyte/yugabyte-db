@@ -3924,15 +3924,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         shellContext);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
       UserTaskDetails.SubTaskGroupType subTaskGroupType) {
-    addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
+    return addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
@@ -3946,6 +3946,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    return subTaskGroup;
   }
 
   protected RollMaxBatchSize getCurrentRollBatchSize(
