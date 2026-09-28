@@ -29,7 +29,7 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
-## v2026.9.3 - September 25, 2026
+## v2026.9.3 - September 29, 2026
 
 ### New features
 

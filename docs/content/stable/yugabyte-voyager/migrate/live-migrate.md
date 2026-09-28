@@ -46,7 +46,7 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | | [Export data](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | | [Import data](#import-data-to-target) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
 | | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
-| CUTOVER | [Detect schema drift](#detect-schema-drift-optional) {{<tags/feature/tp>}} | Optional. If the source schema might have changed during the migration, list every table and column change on the source since export schema, and the step to bring the target in line. |
+| CUTOVER | [Detect schema drift](#detect-schema-drift-optional) {{<tags/feature/tp>}} | Optional. If the source schema might have changed during the migration, list every table and column change on the source since export schema, and steps to bring the target in line. |
 | | [Initiate cutover](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
 | | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
 | | [Verify target DB](#verify-migration) | Check if the live migration is successful. |
@@ -800,7 +800,7 @@ Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for
 
 ### Detect schema drift (optional)
 
-{{<tags/feature/tp>}} If the source schema might have changed during the migration, run the [yb-voyager schema detect-drift](../../reference/schema-migration/detect-drift/) command before cutover. It lists every table and column change made on the source since export schema, with the step needed to bring the target in line.
+{{<tags/feature/tp>}} If the source schema might have changed during the migration, run the [yb-voyager schema detect-drift](../../reference/schema-migration/detect-drift/) command before cutover. It lists every table and column change made on the source since export schema, and steps needed to bring the target in line.
 
 You can run it at any point while export data is running. It is read-only and doesn't interrupt export or import.
 
@@ -1065,11 +1065,10 @@ DROP USER ybvoyager;
 ## Limitations
 
 - Special characters in the schema name and table name are not supported.
-- Schema changes on the source database are not applied to the target during the live migration. Use [schema detect-drift](../../reference/schema-migration/detect-drift/) to find them and to see the corrective step for each.
+- Schema changes on the source database are not applied to the target during the live migration. Use [schema detect-drift](../../reference/schema-migration/detect-drift/) to detect changes and see how to correct them.
 - Adding or deleting partitions of a partitioned table is not supported during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some PostgreSQL data types are unsupported - POINT, LINE, LSEG, BOX, PATH, POLYGON, CIRCLE, GEOMETRY, GEOGRAPHY, BOX2D, BOX3D, TOPOGEOMETRY, RASTER, PG_LSN, TXID_SNAPSHOT, LO, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, XML, TIMETZ.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.
-
