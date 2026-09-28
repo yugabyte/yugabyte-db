@@ -856,7 +856,12 @@ retry:
 
 		YBCGetReplicationSlot(name, &yb_replication_slot, /* if_exists */ false);
 
-		s = palloc(sizeof(ReplicationSlot));
+		/*
+		 * Fields not set below must hold their unset value, which is 0 for
+		 * all of them (e.g. data.invalidated, which CreateDecodingContext
+		 * asserts on).
+		 */
+		s = palloc0(sizeof(ReplicationSlot));
 		namestrcpy(&s->data.name, yb_replication_slot->slot_name);
 		namestrcpy(&s->data.plugin, yb_replication_slot->output_plugin);
 		s->data.database = yb_replication_slot->database_oid;
