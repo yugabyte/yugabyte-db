@@ -1477,10 +1477,9 @@ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Storage Recheck Cond: (int4_col = '2147483648'::bigint)
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: (int4_col = '2147483648'::bigint)
-(4 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
@@ -1506,14 +1505,48 @@ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 ------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-         Storage Recheck Cond: (int4_col = '2147483648'::bigint)
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: (int4_col = '2147483648'::bigint)
-(6 rows)
+(5 rows)
 
 /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
+ count 
+-------
+     0
+(1 row)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: (int4_col > '2147483648'::bigint)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         Index Cond: (int4_col > '2147483648'::bigint)
+(4 rows)
+
+/*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+ int4_col 
+----------
+(0 rows)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+         Storage Recheck Cond: (int4_col > '2147483648'::bigint)
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+               Index Cond: (int4_col > '2147483648'::bigint)
+(6 rows)
+
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
  count 
 -------
      0
@@ -1527,7 +1560,7 @@ SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.big
    ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
          Storage Recheck Cond: (int4_col = s.bigint_col)
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=9)
                Index Cond: (int4_col = s.bigint_col)
 (6 rows)
 
@@ -1549,11 +1582,9 @@ SELECT int4_col FROM recheck_test t WHERE int4_col = 2147483648;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-   Recheck Cond: (int4_col = '2147483648'::bigint)
-   Rows Removed by Index Recheck: 9
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: (int4_col = '2147483648'::bigint)
-(5 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483647;
@@ -1578,14 +1609,48 @@ SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 ------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
-         Recheck Cond: (int4_col = '2147483648'::bigint)
-         Rows Removed by Index Recheck: 9
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: (int4_col = '2147483648'::bigint)
-(6 rows)
+(4 rows)
 
 /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
+ count 
+-------
+     0
+(1 row)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Recheck Cond: (int4_col > '2147483648'::bigint)
+   Rows Removed by Index Recheck: 9
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+         Index Cond: (int4_col > '2147483648'::bigint)
+(5 rows)
+
+/*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+ int4_col 
+----------
+(0 rows)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+         Recheck Cond: (int4_col > '2147483648'::bigint)
+         Rows Removed by Index Recheck: 9
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=9 loops=1)
+               Index Cond: (int4_col > '2147483648'::bigint)
+(6 rows)
+
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
  count 
 -------
      0
@@ -1599,10 +1664,9 @@ SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.big
    ->  Seq Scan on recheck_test s (actual rows=9 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=9)
          Recheck Cond: (int4_col = s.bigint_col)
-         Rows Removed by Index Recheck: 1
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=2 loops=9)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=9)
                Index Cond: (int4_col = s.bigint_col)
-(7 rows)
+(6 rows)
 
 RESET yb_enable_expression_pushdown;
 --
