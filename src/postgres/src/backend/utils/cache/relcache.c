@@ -1446,7 +1446,7 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 {
 	Relation	pg_class_desc = table_open(RelationRelationId, AccessShareLock);
 	SysScanDesc scandesc = systable_beginscan(pg_class_desc,
-											  RelationRelationId,
+											  InvalidOid,
 											  false /* indexOk */ ,
 											  NULL,
 											  0,
@@ -2054,7 +2054,7 @@ static void
 YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 {
 	Relation	partrel = table_open(PartitionedRelationId, AccessShareLock);
-	SysScanDesc scandesc = systable_beginscan(partrel, PartitionedRelationId,
+	SysScanDesc scandesc = systable_beginscan(partrel, InvalidOid,
 											  false /* indexOk */ , NULL, 0,
 											  NULL);
 
