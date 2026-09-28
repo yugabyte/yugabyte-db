@@ -374,7 +374,7 @@ Status MasterClusterTest::DrainTabletServer(
   auto ts_proxy = VERIFY_RESULT(CreateTabletServerServiceProxy(uuid));
   std::string message;
   return WaitFor(
-      [this, &ts_proxy, &message, &uuid]() -> Result<bool> {
+      [this, &ts_proxy, &message, &uuid, &client]() -> Result<bool> {
         auto resp = VERIFY_RESULT(ListTabletsForTabletServer(ts_proxy));
         for (const auto& entry : resp.entries()) {
           if (entry.state() != tablet::RaftGroupStatePB::SHUTDOWN) {
@@ -382,6 +382,16 @@ Status MasterClusterTest::DrainTabletServer(
                 "ts $0 is still hosting a tablet peer, example: $1", uuid, entry.DebugString());
             return false;
           }
+        }
+        // The master may still list the ts in a Raft config, e.g. as a PRE_VOTER whose remote
+        // bootstrap has not started yet, so the tserver-side check alone is not sufficient.
+        auto config = VERIFY_RESULT(client.GetMasterClusterConfig());
+        auto* leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+        auto num_replicas = leader->catalog_manager_impl().GetNumRelevantReplicas(
+            config.server_blacklist(), false /* leaders_only */);
+        if (num_replicas != 0) {
+          message = Format("master still lists $0 replicas on ts $1", num_replicas, uuid);
+          return false;
         }
         return true;
       },

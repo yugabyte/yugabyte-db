@@ -434,11 +434,11 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
   }
 };
 
-constexpr uint64_t kFirstConnectionRPCCountDefault = 6;
+constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
 constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
-constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 6;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
-constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 7;
+constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 6;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
 // Helper class to fetch number of client connection via pgsql proxy webserver.
@@ -500,7 +500,7 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 4);
+  ASSERT_EQ(cache_refresh_rpc_count, 3);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -524,7 +524,7 @@ TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
       kTableWithCastInPartitioning));
 
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 8);
+  ASSERT_EQ(cache_refresh_rpc_count, 4);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
@@ -554,7 +554,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectWithExtStatsPreload,
           PgStatsPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 3);
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 2);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithAggregates) {
@@ -1123,9 +1123,9 @@ TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalC
             "SELECT * FROM primary_table JOIN foreign_table ON primary_table.k = foreign_table.k"));
         return Status::OK();
       }));
-  // With yb_enable_fkey_catcache turned off, we would see more than 24 RPCs
+  // With yb_enable_fkey_catcache turned off, we would see more than 22 RPCs
   // because we have to look up the foreign keys from master.
-  ASSERT_EQ(select_rpc_count, 24);
+  ASSERT_EQ(select_rpc_count, 22);
 }
 
 // The test checks that sys catalog table prefetching works well in case of login of user with

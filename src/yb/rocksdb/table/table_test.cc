@@ -3541,41 +3541,44 @@ TEST_F(TableTest, Cross) {
   ASSERT_OK(db->Flush(FlushOptions()));
 
   // Before all keys: every SST contributes 0.
-  const uint64_t cross_before = ASSERT_RESULT(db->Cross(""));
+  auto pinned_version = db->PinCurrentVersion();
+  const uint64_t cross_before = ASSERT_RESULT(pinned_version->Cross(""));
   ASSERT_EQ(cross_before, 0u);
 
   // Past all keys: sum of all SST data sizes (the maximum).
-  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  const uint64_t total = ASSERT_RESULT(pinned_version->TotalDataSize());
   ASSERT_GT(total, 6000u);
 
   // Monotonically non-decreasing across the key space.
   uint64_t prev = 0;
   for (int k = 0; k < kNumKeys; k += kStep) {
-    const uint64_t c = ASSERT_RESULT(db->Cross(padded(k)));
+    const uint64_t c = ASSERT_RESULT(pinned_version->Cross(padded(k)));
     ASSERT_GE(c, prev) << "non-monotonic at key " << k;
     ASSERT_LE(c, total) << "exceeds total at key " << k;
     prev = c;
   }
 
   // A key in the middle should produce an intermediate value.
-  const uint64_t mid = ASSERT_RESULT(db->Cross(padded(kMidpointKey)));
+  const uint64_t mid = ASSERT_RESULT(pinned_version->Cross(padded(kMidpointKey)));
   ASSERT_BETWEEN(mid, total / 2 - kLeeway, total / 2 + kLeeway);
 
+  pinned_version.reset();
   delete db;
 }
 
-// Drives DB::FindTargetKey the way an N-way split does: every cut uses the previous cut as its
-// lower bound and aims at an absolute Cross target of total * (i + 1) / split_factor. Unlike
-// Tablet::DoGetSplitKeysCross, there are no tablet key bounds and no split key validation.
-yb::Result<std::vector<std::string>> GetSplitKeysCrossForTest(DB* db, int split_factor) {
+// Drives PinnedVersion::FindTargetKey the way an N-way split does: every cut uses the previous cut
+// as its lower bound and aims at an absolute Cross target of total * (i + 1) / split_factor.
+// Unlike Tablet::DoGetSplitKeysCross, there are no tablet key bounds and no split key validation.
+yb::Result<std::vector<std::string>> GetSplitKeysCrossForTest(
+    PinnedVersion* pinned_version, int split_factor) {
   const int num_keys = split_factor - 1;
-  const uint64_t total_size = VERIFY_RESULT(db->TotalDataSize());
+  const uint64_t total_size = VERIFY_RESULT(pinned_version->TotalDataSize());
   std::vector<std::string> keys;
   keys.reserve(num_keys);
   std::string last_key_buf;
   const Slice upper_bound_key;
   for (int i = 0; i < num_keys; ++i) {
-    auto key = VERIFY_RESULT(db->FindTargetKey(
+    auto key = VERIFY_RESULT(pinned_version->FindTargetKey(
         last_key_buf, upper_bound_key, total_size * (i + 1) / split_factor));
     last_key_buf = key;
     keys.push_back(std::move(key));
@@ -3621,19 +3624,22 @@ TEST_F(TableTest, GetSplitKeysCrossHalfOfUnevenSsts) {
   // SST_3: 16 keys x approx 31 = approx 496 ~= 500; "n" is the 9th key (middle of this file).
   put_keys({'a', 'b', 'd', 'f', 'g', 'i', 'k', 'l', 'n', 'p', 'r', 't', 'v', 'w', 'y', 'z'}, 31);
 
-  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  auto pinned_version = db->PinCurrentVersion();
+  const uint64_t total = ASSERT_RESULT(pinned_version->TotalDataSize());
   ASSERT_GT(total, 0u);
 
   // split_factor=2 -> one cut at total/2; must be "n".
-  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/2));
+  const auto keys =
+      ASSERT_RESULT(GetSplitKeysCrossForTest(pinned_version.get(), /*split_factor=*/2));
   ASSERT_EQ(keys.size(), 1u);
 
   // FindTargetKey returns a user key.
   const std::string& mid_user = keys[0];
-  const uint64_t mid_cross = ASSERT_RESULT(db->Cross(mid_user));
+  const uint64_t mid_cross = ASSERT_RESULT(pinned_version->Cross(mid_user));
   ASSERT_EQ(mid_user, "n")
       << "half-target key=" << mid_user << " Cross=" << mid_cross << " total/2=" << (total / 2);
 
+  pinned_version.reset();
   delete db;
 }
 
@@ -3674,21 +3680,24 @@ TEST_F(TableTest, GetSplitKeysCrossHalfOfDisjointUnevenSsts) {
   // SST_2: 2 keys x 300 = 600
   put_keys({'y', 'z'}, 300);
 
-  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  auto pinned_version = db->PinCurrentVersion();
+  const uint64_t total = ASSERT_RESULT(pinned_version->TotalDataSize());
   ASSERT_GT(total, 0u);
 
   // split_factor=2 -> one cut at total/2; must be "z".
-  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/2));
+  const auto keys =
+      ASSERT_RESULT(GetSplitKeysCrossForTest(pinned_version.get(), /*split_factor=*/2));
   ASSERT_EQ(keys.size(), 1u);
 
   // FindTargetKey returns a user key.
   const std::string& mid_user = keys[0];
-  const uint64_t mid_cross = ASSERT_RESULT(db->Cross(mid_user));
+  const uint64_t mid_cross = ASSERT_RESULT(pinned_version->Cross(mid_user));
   ASSERT_EQ(mid_user, "y")
       << "half-target key=" << mid_user << " Cross=" << mid_cross << " total/2=" << (total / 2);
   // The cut must beat the max key, which an unconverged search would otherwise fall out to.
-  ASSERT_LT(mid_cross, ASSERT_RESULT(db->Cross("z")));
+  ASSERT_LT(mid_cross, ASSERT_RESULT(pinned_version->Cross("z")));
 
+  pinned_version.reset();
   delete db;
 }
 
@@ -3726,19 +3735,21 @@ TEST_F(TableTest, GetSplitKeysCrossThreeWayUnevenSsts) {
   put_keys({'e', 'k', 'q', 'v', 'y'}, 60);
   put_keys({'a', 'b', 'd', 'f', 'g', 'i', 'k', 'l', 'n', 'p', 'r', 't', 'v', 'w', 'y', 'z'}, 31);
 
-  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  auto pinned_version = db->PinCurrentVersion();
+  const uint64_t total = ASSERT_RESULT(pinned_version->TotalDataSize());
   ASSERT_GT(total, 0u);
-  const uint64_t cross_z = ASSERT_RESULT(db->Cross("z"));
+  const uint64_t cross_z = ASSERT_RESULT(pinned_version->Cross("z"));
   // Max key should sit at the end of Cross-space (~= total).
   ASSERT_GE(cross_z, total - total / 20);
 
-  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/3));
+  const auto keys =
+      ASSERT_RESULT(GetSplitKeysCrossForTest(pinned_version.get(), /*split_factor=*/3));
   ASSERT_EQ(keys.size(), 2u);
 
   const std::string& k0 = keys[0];
   const std::string& k1 = keys[1];
-  const uint64_t c0 = ASSERT_RESULT(db->Cross(k0));
-  const uint64_t c1 = ASSERT_RESULT(db->Cross(k1));
+  const uint64_t c0 = ASSERT_RESULT(pinned_version->Cross(k0));
+  const uint64_t c1 = ASSERT_RESULT(pinned_version->Cross(k1));
   const uint64_t leeway = total / 5;
 
   ASSERT_LT(k0, k1) << "cuts must be strictly increasing";
@@ -3755,6 +3766,61 @@ TEST_F(TableTest, GetSplitKeysCrossThreeWayUnevenSsts) {
       << "k1=" << k1 << " Cross=" << c1 << " 2*total/3=" << (2 * total / 3);
   ASSERT_LE(c1, 2 * total / 3 + leeway)
       << "k1=" << k1 << " Cross=" << c1 << " 2*total/3=" << (2 * total / 3);
+
+  pinned_version.reset();
+  delete db;
+}
+
+// A PinnedVersion keeps measuring the SST files it was created from while a compaction replaces
+// them, and destroying it deletes the files that compaction left obsolete, without waiting for
+// another flush or compaction to find them.
+TEST_F(TableTest, PinnedVersionSurvivesCompaction) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleUniversal;
+  options.num_levels = 1;
+  options.disable_auto_compactions = true;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  const std::string kDBPath = test::TmpDir() + "/pinned_version_compaction";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  // Two SSTs holding the same keys, so compacting them drops the older copy of every value.
+  constexpr int kNumKeys = 100;
+  for (char value_char : {'a', 'b'}) {
+    for (int i = 0; i < kNumKeys; ++i) {
+      ASSERT_OK(db->Put(
+          rocksdb::WriteOptions(), "key" + std::to_string(i), std::string(100, value_char)));
+    }
+    ASSERT_OK(db->Flush(FlushOptions()));
+  }
+  const auto input_files = db->GetLiveFilesMetaData();
+  ASSERT_EQ(input_files.size(), 2u);
+
+  auto pinned_version = db->PinCurrentVersion();
+  const uint64_t pinned_total = ASSERT_RESULT(pinned_version->TotalDataSize());
+
+  ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
+  ASSERT_EQ(db->GetLiveFilesMetaData().size(), 1u);
+
+  // pinned_version still measures the input files, which the compaction replaced but could not
+  // delete.
+  ASSERT_EQ(ASSERT_RESULT(pinned_version->TotalDataSize()), pinned_total);
+  {
+    const auto current_version = db->PinCurrentVersion();
+    ASSERT_LT(ASSERT_RESULT(current_version->TotalDataSize()), pinned_total);
+  }
+  for (const auto& file : input_files) {
+    ASSERT_OK(options.env->FileExists(file.BaseFilePath()));
+    ASSERT_OK(options.env->FileExists(file.DataFilePath()));
+  }
+
+  pinned_version.reset();
+  for (const auto& file : input_files) {
+    ASSERT_TRUE(options.env->FileExists(file.BaseFilePath()).IsNotFound()) << file.BaseFilePath();
+    ASSERT_TRUE(options.env->FileExists(file.DataFilePath()).IsNotFound()) << file.DataFilePath();
+  }
 
   delete db;
 }

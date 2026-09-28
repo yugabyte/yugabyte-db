@@ -72,6 +72,7 @@
 #include "yb/tserver/pg_client_session_util.h"
 #include "yb/tserver/session_registry.h"
 #include "yb/tserver/pg_db_cache.h"
+#include "yb/tserver/pg_request_sequencer.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_session_guard.h"
@@ -222,194 +223,13 @@ class TxnAssignment {
 class LockablePgClientSession;
 using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
 
-class RequestSequencer {
- public:
-  using RequestExecutor = std::function<void(Result<PgClientSession&>)>;
-
-  explicit RequestSequencer(const std::mutex& mutex)
-      : mutex_(mutex), impl_([this] { cond_.notify_all(); }) {}
-
-  void ProcessPending(PgClientSession& session) {
-    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
-    impl_.ProcessPending(session);
-  }
-
-  bool HasReadyToProcess() {
-    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
-    return impl_.HasReadyToProcess();
-  }
-
-  Status Enqueue(size_t serial_no, RequestExecutor&& executor, CoarseTimePoint deadline) {
-    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
-    RETURN_NOT_OK(EnsureIsActive());
-    return impl_.Enqueue(serial_no, std::move(executor), ActualDeadline(deadline));
-  }
-
-  Result<bool> TryRegisterForProcessing(size_t serial_no) {
-    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
-    RETURN_NOT_OK(EnsureIsActive());
-    return impl_.RegisterForProcessing(serial_no);
-  }
-
-  Status RegisterForProcessing(
-      PgSessionGuard& guard, size_t serial_no, CoarseTimePoint deadline) {
-    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
-    RETURN_NOT_OK(EnsureIsActive());
-    Status pred_status = Status::OK();
-    auto pred = [this, serial_no, &pred_status] {
-      auto register_res = TryRegisterForProcessing(serial_no);
-      if (!register_res.ok()) {
-        pred_status = std::move(register_res.status());
-        return true;
-      }
-      return *register_res;
-    };
-
-    const auto [result, lost_ownership] = guard.WaitUntil(cond_, ActualDeadline(deadline), pred);
-    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
-    impl_.RegisterProcessed(serial_no);
-    RETURN_NOT_OK(pred_status);
-    if (!result) {
-      return MakeRequestRejectStatus(serial_no);
-    }
-    SCHECK(!lost_ownership, TimedOut, "Failed to restore owning on session");
-    return Status::OK();
-  }
-
-  // Stops accepting new requests and wakes any cond_var waiters. Safe to call
-  // without holding mutex_. Must be paired with CompleteShutdown (which drains
-  // parked callbacks under the mutex) so that parked InboundCall references are
-  // released and the reactor can exit.
-  void StartShutdown() {
-    is_active_.store(false, std::memory_order_release);
-    cond_.notify_all();
-  }
-
-  void CompleteShutdown() {
-    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
-    impl_.RejectPendingRequests();
-  }
-
- private:
-  class Impl {
-   public:
-    using OnProgressListener = std::function<void()>;
-
-    explicit Impl(OnProgressListener&& on_progress_listener)
-        : on_progress_listener_(std::move(on_progress_listener)) {}
-
-    void ProcessPending(PgClientSession& session) {
-      const auto now = CoarseMonoClock::now();
-      auto it = pending_requests_.begin();
-      auto next_expected_serial_no = next_expected_serial_no_;
-      for (; it != pending_requests_.end(); ++it) {
-        const auto serial_no = it->serial_no;
-        if (serial_no == next_expected_serial_no) {
-          it->executor(session);
-        } else if (serial_no < next_expected_serial_no || now > it->deadline) {
-          RejectRequest(*it);
-        } else {
-          break;
-        }
-        next_expected_serial_no = std::max(next_expected_serial_no, serial_no + 1);
-      }
-      pending_requests_.erase(pending_requests_.begin(), it);
-      if (next_expected_serial_no != next_expected_serial_no_) {
-        DCHECK(next_expected_serial_no > next_expected_serial_no_);
-        ApplySerialNo(next_expected_serial_no - 1);
-      }
-    }
-
-    bool HasReadyToProcess() {
-      if (pending_requests_.empty()) {
-        return false;
-      }
-      const auto& front = pending_requests_.front();
-      return front.serial_no <= next_expected_serial_no_ ||
-             CoarseMonoClock::now() > front.deadline;
-    }
-
-
-    Status Enqueue(size_t serial_no, RequestExecutor&& executor, CoarseTimePoint deadline) {
-      DCHECK(serial_no > next_expected_serial_no_);
-      auto it = std::ranges::find_if(
-          pending_requests_, [serial_no](const auto& r) { return serial_no <= r.serial_no; });
-      RSTATUS_DCHECK(
-          it == pending_requests_.end() || serial_no < it->serial_no,
-          InvalidArgument, "Duplicate serial_no $0", serial_no);
-      pending_requests_.insert(it, RequestInfo{std::move(executor), serial_no, deadline});
-      return Status::OK();
-    }
-
-    Result<bool> RegisterForProcessing(size_t serial_no) {
-      RSTATUS_DCHECK_GE(serial_no, next_expected_serial_no_, TimedOut, "Too old request");
-      if (serial_no == next_expected_serial_no_) {
-        ApplySerialNo(serial_no);
-        return true;
-      }
-      return false;
-    }
-
-    void RegisterProcessed(size_t serial_no) {
-      ApplySerialNo(serial_no);
-    }
-
-    void RejectPendingRequests() {
-      std::ranges::for_each(pending_requests_, &RejectRequest);
-      pending_requests_.clear();
-    }
-
-   private:
-    struct RequestInfo {
-      RequestExecutor executor;
-      uint64_t serial_no;
-      CoarseTimePoint deadline;
-    };
-
-    static void RejectRequest(const RequestInfo& request) {
-      request.executor(MakeRequestRejectStatus(request.serial_no));
-    }
-
-    void ApplySerialNo(size_t serial_no) {
-      if (serial_no >= next_expected_serial_no_) {
-        next_expected_serial_no_ = serial_no + 1;
-        on_progress_listener_();
-      }
-    }
-
-    OnProgressListener on_progress_listener_;
-    uint64_t next_expected_serial_no_ = 0;
-    std::vector<RequestInfo> pending_requests_;
-  };
-
-  Status EnsureIsActive() {
-    if (is_active_) {
-      return Status::OK();
-    }
-    impl_.RejectPendingRequests();
-    return STATUS(ShutdownInProgress, "Shutting down");
-  }
-
-  static Status MakeRequestRejectStatus(uint64_t serial_no) {
-    return STATUS_FORMAT(
-        Expired, "Predecessor request for $0 was not applied", serial_no);
-  }
-
-  [[nodiscard]] static CoarseTimePoint ActualDeadline(CoarseTimePoint deadline) {
-    static const auto kMaxDelay =
-        MonoDelta::FromMilliseconds(FLAGS_pg_client_session_expiration_ms);
-    return std::min(deadline, CoarseMonoClock::now() + kMaxDelay);
-  }
-
-  DEBUG_ONLY([[nodiscard]] bool DEBUG_IsMutexLocked() const {
-      return !std::unique_lock(const_cast<std::mutex&>(mutex_), std::try_to_lock).owns_lock();
-  });
-
-  [[maybe_unused]] const std::mutex& mutex_;
-  std::condition_variable cond_;
-  std::atomic<bool> is_active_{true};
-  Impl impl_;
-};
+auto RequestSequenceNumFromPB(
+    const ::yb::tserver::LWPgRequestSequenceNumPB& pb) {
+  return PgRequestSequencer::SequenceNum{
+      pb.serial_no(),
+      pb.has_predecessor_serial_no()
+          ? std::optional(pb.predecessor_serial_no().value()) : std::nullopt};
+}
 
 class LockablePgClientSession {
  private:
@@ -426,7 +246,8 @@ class LockablePgClientSession {
         messenger_(messenger),
         guard_state_{mutex_, [this](auto arg) { OnBeforeReleasingSessionLock(arg); }},
         session_(std::move(shared_this_source), messenger.scheduler(), std::forward<Args>(args)...),
-        lifetime_(lifetime), expiration_(NewExpiration()), request_sequencer_(mutex_) {}
+        lifetime_(lifetime), expiration_(NewExpiration()),
+        request_sequencer_{lifetime, PgRequestSequencer::LogPrefix{session_.id()}} {}
 
   Status StartExchange(const std::string& instance_id, YBThreadPool& thread_pool) {
     shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
@@ -443,8 +264,11 @@ class LockablePgClientSession {
           session_.ProcessSharedRequest(
               size, &exchange_runnable_->exchange(),
               make_lw_function(
-                  [this, &guard](size_t request_serial_no, CoarseTimePoint deadline) {
-                    return this->RegisterRequestForProcessing(guard, request_serial_no, deadline);
+                  [this, &guard](
+                      const ::yb::tserver::LWPgRequestSequenceNumPB& request_seq_num,
+                      CoarseTimePoint deadline) {
+                    return this->RegisterRequestForProcessing(
+                        guard, RequestSequenceNumFromPB(request_seq_num), deadline);
                   }));
         });
     auto status = exchange_runnable_->Start(thread_pool);
@@ -455,14 +279,13 @@ class LockablePgClientSession {
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
-    request_sequencer_.StartShutdown();
     if (pg_service_shutting_down) {
       // Service is going down. Drain synchronously: the messenger thread pool
       // is about to shut down, so a deferred drain may never run, leaving
       // parked InboundCall references that prevent the reactor from exiting.
       // mutex_ is normally uncontended on this path.
       std::lock_guard lock(mutex_);
-      request_sequencer_.CompleteShutdown();
+      request_sequencer_.Shutdown();
     } else {
       // Session expired (e.g., backend killed). An in-flight Perform RPC
       // (e.g., slow BackfillIndex) may hold mutex_ for an unbounded time.
@@ -474,7 +297,7 @@ class LockablePgClientSession {
           return;
         }
         std::lock_guard lock(obj->mutex_);
-        obj->request_sequencer_.CompleteShutdown();
+        obj->request_sequencer_.Shutdown();
       });
     }
     if (exchange_runnable_) {
@@ -534,20 +357,20 @@ class LockablePgClientSession {
     }
   }
 
+  void Heartbeat() {
+    if (request_sequencer_.IsProcessingRequiredRegularCheck()) {
+      TriggerDeferredProcessPendingRequests();
+    }
+  }
+
  private:
   friend class SessionAccessor;
 
   void OnBeforeReleasingSessionLock(PgSessionGuardState::IsCrossThreadLock is_cross_thread) {
     if (!is_cross_thread) {
       ProcessPendingRequests();
-    } else if (request_sequencer_.HasReadyToProcess()) {
-      messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
-        auto obj = shared_this.lock();
-        if (obj) {
-          auto guard = obj->Guard();
-          obj->ProcessPendingRequests();
-        }
-      });
+    } else if (request_sequencer_.IsProcessingRequired()) {
+      TriggerDeferredProcessPendingRequests();
     }
   }
 
@@ -555,13 +378,71 @@ class LockablePgClientSession {
     request_sequencer_.ProcessPending(session_);
   }
 
+  void HandleDeferredProcessPendingRequests() {
+    // It is not critical to skip the call of ProcessPendingRequests() because of the following:
+    // - In case session is locked with the guard object, the ProcessPendingRequests() will be
+    //   called before from guard destructor
+    // - The case when session's mutex is locked only is rare and this kind of lock time is commonly
+    //   short
+    // - Deferred process pending requests is scheduled periodically
+    //
+    // Based on the above it is reasonable not to block current thread for too long and let it
+    // process other requests.
+    DCHECK(process_pending_requests_scheduled_);
+    constexpr auto kMaxAttempts = 3;
+    constexpr auto kDelayBetweenAttempts = 50ms;
+    auto attempt = 0;
+    // TODO(dmitry): Consider using std::timed_mutex instead of std::mutex to avoid
+    //               waiting in a loop
+    while (true) {
+      if (auto guard = TryGuard(); guard.OwnsLock()) {
+        // Guard's destructor calls ProcessPendingRequests(), no need to call it explicitly.
+        break;
+      }
+      if (++attempt >= kMaxAttempts) {
+        break;
+      }
+      std::this_thread::sleep_for(kDelayBetweenAttempts);
+    }
+    process_pending_requests_scheduled_.store(false, std::memory_order_release);
+  }
+
+  void TriggerDeferredProcessPendingRequests() {
+    auto expected = false;
+    if (!process_pending_requests_scheduled_.compare_exchange_strong(
+          expected, true, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    auto functor = [shared_this = shared_this_] {
+      if (auto obj = shared_this.lock(); obj) {
+        obj->HandleDeferredProcessPendingRequests();
+      }
+    };
+
+    if (!messenger_.ThreadPool().EnqueueFunctor(std::move(functor))) {
+      process_pending_requests_scheduled_.store(false, std::memory_order_release);
+    }
+  }
+
   [[nodiscard]] PgSessionGuard Guard() {
-    return PgSessionGuard{SharedField(shared_this_.lock(), &guard_state_)};
+    return DoGuard();
+  }
+
+  [[nodiscard]] PgSessionGuard TryGuard() {
+    return DoGuard(std::try_to_lock);
+  }
+
+  template<class... Args>
+  [[nodiscard]] PgSessionGuard DoGuard(Args&&... args) {
+    return PgSessionGuard{
+        SharedField(shared_this_.lock(), &guard_state_), std::forward<Args>(args)...};
   }
 
   Status RegisterRequestForProcessing(
-      PgSessionGuard& guard, size_t request_serial_no, CoarseTimePoint deadline) {
-    return request_sequencer_.RegisterForProcessing(guard, request_serial_no, deadline);
+      PgSessionGuard& guard, PgRequestSequencer::SequenceNum request_serial_no,
+      CoarseTimePoint deadline) {
+    return request_sequencer_.RegisterForProcessing(request_serial_no, guard, deadline);
   }
 
   CoarseTimePoint NewExpiration() const {
@@ -578,7 +459,8 @@ class LockablePgClientSession {
   const CoarseDuration lifetime_;
   std::atomic<CoarseTimePoint> expiration_;
 
-  RequestSequencer request_sequencer_;
+  PgRequestSequencer request_sequencer_;
+  std::atomic<bool> process_pending_requests_scheduled_{false};
 };
 
 using TransactionBuilder = std::function<
@@ -749,12 +631,12 @@ class SessionAccessor {
     DEBUG_ONLY(DCHECK(DEBUG_IsValid()));
     if (request_serial_no_) {
       RETURN_NOT_OK(lockable_->request_sequencer_.RegisterForProcessing(
-          guard_, *request_serial_no_, deadline));
+          *request_serial_no_, guard_, deadline));
     }
     return MakeSession();
   }
 
-  Status Enqueue(RequestSequencer::RequestExecutor&& executor, CoarseTimePoint deadline) {
+  Status Enqueue(PgRequestSequencer::Executor&& executor, CoarseTimePoint deadline) {
     DEBUG_ONLY(DCHECK(DEBUG_IsValid()));
     DCHECK(request_serial_no_.has_value());
     return std::exchange(lockable_, {})->request_sequencer_.Enqueue(
@@ -762,7 +644,8 @@ class SessionAccessor {
   }
 
   static Result<SessionAccessor> Make(
-      LockablePgClientSessionPtr&& lockable, std::optional<uint64_t> request_serial_no) {
+      LockablePgClientSessionPtr&& lockable,
+      std::optional<PgRequestSequencer::SequenceNum> request_serial_no) {
     auto guard = lockable->Guard();
     if (request_serial_no &&
         VERIFY_RESULT(lockable->request_sequencer_.TryRegisterForProcessing(*request_serial_no))) {
@@ -774,7 +657,7 @@ class SessionAccessor {
  private:
   explicit SessionAccessor(
       LockablePgClientSessionPtr&& lockable, PgSessionGuard&& guard,
-      std::optional<uint64_t> request_serial_no)
+      std::optional<PgRequestSequencer::SequenceNum> request_serial_no)
       : lockable_(std::move(lockable)), guard_(std::move(guard)),
         request_serial_no_(request_serial_no) {
   }
@@ -790,7 +673,7 @@ class SessionAccessor {
 
   LockablePgClientSessionPtr lockable_;
   PgSessionGuard guard_;
-  std::optional<uint64_t> request_serial_no_;
+  std::optional<PgRequestSequencer::SequenceNum> request_serial_no_;
 };
 
 
@@ -798,7 +681,7 @@ class SessionProvider {
  public:
   virtual ~SessionProvider() = default;
   virtual Result<SessionAccessor> GetSessionAccessor(
-      uint64_t session_id, std::optional<uint64_t> request_serial_no) = 0;
+      uint64_t session_id, std::optional<PgRequestSequencer::SequenceNum> request_serial_no) = 0;
   virtual rpc::Messenger& Messenger() = 0;
 };
 
@@ -843,7 +726,7 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
 
   Status RunImpl() {
     auto accessor = VERIFY_RESULT(provider_.GetSessionAccessor(
-        req().session_id(), req().serial_no()));
+        req().session_id(), RequestSequenceNumFromPB(req().sequence_num())));
     if (auto session = accessor.GetSessionNoWait(); !session) {
       RETURN_NOT_OK(accessor.Enqueue(
           [shared_this = shared_from_this()](Result<PgClientSession&> session) {
@@ -1004,7 +887,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     }
 
     if (req.session_id()) {
-      return ResultToStatus(DoGetSession(req.session_id()));
+      VERIFY_RESULT(DoGetSession(req.session_id()))->Heartbeat();
+      return Status::OK();
     }
 
     auto session_id = session_registry_.NewSessionId();
@@ -3183,7 +3067,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   }
 
   Result<SessionAccessor> GetSessionAccessor(
-      uint64_t session_id, std::optional<uint64_t> request_serial_no) override {
+      uint64_t session_id,
+      std::optional<PgRequestSequencer::SequenceNum> request_serial_no) override {
     return SessionAccessor::Make(VERIFY_RESULT(DoGetSession(session_id)), request_serial_no);
   }
 

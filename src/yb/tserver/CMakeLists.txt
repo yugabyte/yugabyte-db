@@ -266,6 +266,7 @@ set(TSERVER_SRCS
   pg_create_table.cc
   pg_db_cache.cc
   pg_mutation_counter.cc
+  pg_request_sequencer.cc
   pg_response_cache.cc
   pg_session_guard.cc
   pg_sequence_cache.cc
@@ -473,3 +474,5 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)
 ADD_YB_TEST(xcluster_consumer_replication_error-test)
 ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)
 ADD_YB_TEST(xcluster_ddl_queue_handler-test)
+
+ADD_YB_TEST(pg_request_sequencer-test)

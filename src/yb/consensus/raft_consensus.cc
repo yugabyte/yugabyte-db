@@ -615,7 +615,7 @@ Status RaftConsensus::EmulateElection() {
   LOG_WITH_PREFIX(INFO) << "Emulating election...";
 
   // Assume leadership of new term.
-  RETURN_NOT_OK(IncrementTermUnlocked());
+  RETURN_NOT_OK(IncrementTermUnlocked(FlushConsensusMeta::kTrue));
   SetLeaderUuidUnlocked(state_->GetPeerUuid());
   return BecomeLeaderUnlocked();
 }
@@ -727,11 +727,10 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
   if (preelection) {
     new_term = state_->GetCurrentTermUnlocked() + 1;
   } else {
-    // Increment the term.
-    RETURN_NOT_OK(IncrementTermUnlocked());
+    // Increment the term and vote for ourselves. The vote persists both in a single flush,
+    // so the new term is durable before any vote request is sent.
+    RETURN_NOT_OK(IncrementTermUnlocked(FlushConsensusMeta::kFalse));
     new_term = state_->GetCurrentTermUnlocked();
-
-    // Vote for ourselves.
     // TODO: Consider using a separate Mutex for voting, which must sync to disk.
     RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
   }
@@ -3780,6 +3779,18 @@ OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
+RaftConsensus::WalGcRetentionOpIdInfo RaftConsensus::GetWalGcRetentionOpIdInfo() {
+  auto peer_retention = queue_->GetWalGcPeerRetentionInfo();
+  WalGcRetentionOpIdInfo result;
+  {
+    auto lock = state_->LockForRead();
+    result.committed_op_id = state_->GetCommittedOpIdUnlocked();
+  }
+  result.majority_replicated_op_id = peer_retention.majority_replicated_op_id;
+  result.min_progressing_pre_voter_op_id = peer_retention.min_progressing_pre_voter_op_id;
+  return result;
+}
+
 OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();
@@ -3910,11 +3921,11 @@ MonoDelta RaftConsensus::LeaderElectionExpBackoffDeltaUnlocked() {
   return MonoDelta::FromMilliseconds(timeout);
 }
 
-Status RaftConsensus::IncrementTermUnlocked() {
-  return HandleTermAdvanceUnlocked(state_->GetCurrentTermUnlocked() + 1);
+Status RaftConsensus::IncrementTermUnlocked(FlushConsensusMeta flush) {
+  return HandleTermAdvanceUnlocked(state_->GetCurrentTermUnlocked() + 1, flush);
 }
 
-Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
+Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term, FlushConsensusMeta flush) {
   if (new_term <= state_->GetCurrentTermUnlocked()) {
     return STATUS(IllegalState, Substitute("Can't advance term to: $0 current term: $1 is higher.",
                                            new_term, state_->GetCurrentTermUnlocked()));
@@ -3929,7 +3940,7 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   }
 
   LOG_WITH_PREFIX(INFO) << "Advancing to term " << new_term;
-  RETURN_NOT_OK(state_->SetCurrentTermUnlocked(new_term));
+  RETURN_NOT_OK(state_->SetCurrentTermUnlocked(new_term, flush));
   term_metric_->set_value(new_term);
   return Status::OK();
 }

@@ -56,6 +56,7 @@
 #include "yb/common/tablet_limits.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/dockv/partition.h"
 
@@ -127,6 +128,7 @@ DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
                  "Sleep before reporting tasks in the cluster balancer UI, to give tasks a chance "
                  "to complete.");
 
+DECLARE_bool(enable_ysql);
 DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_string(webserver_ca_certificate_file);
@@ -604,9 +606,9 @@ void MasterPathHandlers::TServerDisplay(
   auto html_table = html_print_helper.CreateTablePrinter(
       Format("$0_tserver", current_uuid),
       {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
-       "System Tablet-Peers / Leaders", "RAM Used", "Num SST Files", "Total SST Files Size",
-       "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec", "Placement",
-       "Active Tablet-Peers", "Lease Expiry", "Lease Epoch"});
+       "System Tablet-Peers / Leaders", "RAM Used", "Used / Total Disk Space", "Num SST Files",
+       "Total SST Files Size", "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec",
+       "Placement", "Active Tablet-Peers", "YSQL Lease Expiry & Epoch"});
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -663,28 +665,59 @@ void MasterPathHandlers::TServerDisplay(
     }
 
     html_row.AddColumn(HumanizeBytes(desc->total_memory_usage()));
+
+    {
+      uint64_t used_disk_space = 0;
+      uint64_t total_disk_space = 0;
+      for (const auto& path_metric : desc->path_metrics()) {
+        used_disk_space += path_metric.second.used_space;
+        total_disk_space += path_metric.second.total_space;
+      }
+      if (total_disk_space == 0) {
+        html_row.AddColumn("N/A");
+      } else {
+        html_row.AddColumn(
+            Format("$0 / $1", HumanizeBytes(used_disk_space), HumanizeBytes(total_disk_space)));
+      }
+    }
+
     html_row.AddColumn(desc->num_sst_files());
     html_row.AddColumn(HumanizeBytes(desc->total_sst_file_size()));
     html_row.AddColumn(HumanizeBytes(desc->uncompressed_sst_file_size()));
-    html_row.AddColumn(desc->read_ops_per_sec());
-    html_row.AddColumn(desc->write_ops_per_sec());
+    html_row.AddColumn(StringPrintf("%.1f", desc->read_ops_per_sec()));
+    html_row.AddColumn(StringPrintf("%.1f", desc->write_ops_per_sec()));
 
     html_row.AddColumn(tserver_info.placement);
 
     html_row.AddColumn(counts ? desc->num_live_replicas() : 0);
 
-    {
+    if (!FLAGS_enable_ysql || !IsYsqlLeaseEnabled()) {
+      html_row.AddColumn("N/A");
+    } else {
       auto lease_it = lease_infos.find(desc->permanent_uuid());
-      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1"};
-      if (lease_it != lease_infos.end() && lease_it->second.lease_info.live_lease()) {
-        html_row.AddColumn(
-            Format(kLeaseCellTemplate, "Green", lease_it->second.lease_expiry.ToString()));
+      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1</font>"};
+      if (lease_it == lease_infos.end() ||
+          lease_it->second.lease_info.instance_seqno() != desc->latest_seqno()) {
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+      } else if (lease_it->second.lease_info.lease_relinquished()) {
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Red",
+            Format("RELINQUISHED</br>$0", lease_it->second.lease_info.lease_epoch())));
+      } else if (!lease_it->second.lease_info.live_lease()) {
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Red",
+            Format(
+                "EXPIRED $0 ago</br>$1",
+                std::max(-lease_it->second.time_to_lease_deadline, MonoDelta::kZero).ToString(),
+                lease_it->second.lease_info.lease_epoch())));
+      } else {
         html_row.AddColumn(Format(
             kLeaseCellTemplate, "Green",
-            std::to_string(lease_it->second.lease_info.lease_epoch())));
-      } else {
-        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
-        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+            Format(
+                "$0</br>$1",
+                std::max(
+                    lease_it->second.time_to_lease_deadline, MonoDelta::kZero).ToString(),
+                lease_it->second.lease_info.lease_epoch())));
       }
     }
   }
@@ -1013,6 +1046,8 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     return;
   }
   auto descs = master_->ts_manager()->GetAllDescriptors();
+  const auto lease_infos =
+      master_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
   auto s = CalculateTabletMap(&tablet_map);
@@ -1152,6 +1187,22 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.String("permanent_uuid");
         jw.String(desc->permanent_uuid());
+
+        if (FLAGS_enable_ysql && IsYsqlLeaseEnabled()) {
+          auto lease_it = lease_infos.find(desc->permanent_uuid());
+          if (lease_it != lease_infos.end() &&
+              lease_it->second.lease_info.instance_seqno() == desc->latest_seqno()) {
+            jw.String("lease_info");
+            jw.StartObject();
+            jw.String("is_live");
+            jw.Bool(lease_it->second.lease_info.live_lease());
+            jw.String("lease_expiry_sec");
+            jw.Double(std::max(lease_it->second.time_to_lease_deadline.ToSeconds(), 0.0));
+            jw.String("lease_epoch");
+            jw.Uint64(lease_it->second.lease_info.lease_epoch());
+            jw.EndObject();
+          }
+        }
 
         jw.EndObject();
       }

@@ -4,14 +4,24 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.api.gax.rpc.ApiException;
+import com.google.api.gax.rpc.NotFoundException;
+import com.google.api.gax.rpc.PermissionDeniedException;
+import com.google.api.gax.rpc.UnauthenticatedException;
 import com.google.api.services.compute.model.Firewall;
 import com.google.api.services.compute.model.FirewallPolicy;
 import com.google.api.services.compute.model.FirewallPolicyRule;
+import com.google.api.services.compute.model.InstanceTemplate;
+import com.google.cloud.kms.v1.CryptoKey;
+import com.google.cloud.kms.v1.CryptoKey.CryptoKeyPurpose;
+import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionState;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient.TemplateDiskKmsKeys;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
@@ -45,6 +55,8 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   private final RuntimeConfGetter runtimeConfGetter;
   private final GCPProjectApiClientFactory gcpClientFactory;
   private final String INSTANCE_TEMPLATE_REGEX = "[a-z]([-a-z0-9]*[a-z0-9])?";
+  private static final String KMS_KEY_REGEX =
+      "projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+(/cryptoKeyVersions/[^/]+)?";
 
   @Inject
   public GCPProviderValidator(
@@ -251,33 +263,156 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       JsonNode regionJson) {
     GCPRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(region);
     String instanceTemplate = regionCloudInfo.getInstanceTemplate();
-    if (StringUtils.isNotEmpty(instanceTemplate)) {
-      String jsonPath =
-          regionJson
-              .get("details")
-              .get("cloudInfo")
-              .get("gcp")
-              .get("instanceTemplate")
-              .get("jsonPath")
-              .asText();
-      try {
-        if (!instanceTemplate.matches(INSTANCE_TEMPLATE_REGEX)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Instance template must start with a lowercase character and can only contain"
-                  + " alphanumeric characters and '-'");
-        }
-        if (!apiClient.checkInstanceTempelate(instanceTemplate)) {
-          String errorMsg =
-              String.format(
-                  "The resource instanceTemplate/%s is not found in the given GCP project",
-                  instanceTemplate);
-          validationErrorsMap.put(jsonPath, errorMsg);
-        }
-      } catch (PlatformServiceException e) {
-        log.error("Failed to validate GCP Instance Template", e);
-        validationErrorsMap.put(jsonPath, e.getMessage());
+    if (StringUtils.isEmpty(instanceTemplate)) {
+      return;
+    }
+    String jsonPath =
+        regionJson
+            .get("details")
+            .get("cloudInfo")
+            .get("gcp")
+            .get("instanceTemplate")
+            .get("jsonPath")
+            .asText();
+    validateInstanceTempl(instanceTemplate, apiClient, validationErrorsMap, jsonPath);
+  }
+
+  @VisibleForTesting
+  void validateInstanceTempl(
+      String instanceTemplate,
+      GCPProjectApiClient apiClient,
+      SetMultimap<String, String> validationErrorsMap,
+      String jsonPath) {
+    String notFoundMsg =
+        String.format(
+            "The resource instanceTemplate/%s is not found in the given GCP project",
+            instanceTemplate);
+    try {
+      if (!instanceTemplate.matches(INSTANCE_TEMPLATE_REGEX)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Instance template must start with a lowercase character and can only contain"
+                + " alphanumeric characters and '-'");
       }
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.readGcpInstanceTemplate)) {
+        // Only check that the template exists. Reading its body needs
+        // compute.instanceTemplates.get, which providers that pass the template to
+        // instances().insert() as a source do not otherwise need.
+        if (!apiClient.checkInstanceTemplateExists(instanceTemplate)) {
+          validationErrorsMap.put(jsonPath, notFoundMsg);
+        }
+        return;
+      }
+      InstanceTemplate template = apiClient.getInstanceTemplate(instanceTemplate);
+      if (template == null) {
+        validationErrorsMap.put(jsonPath, notFoundMsg);
+        return;
+      }
+      validateTemplateCmekKeys(
+          instanceTemplate, template, apiClient, validationErrorsMap, jsonPath);
+    } catch (PlatformServiceException e) {
+      log.error("Failed to validate GCP Instance Template", e);
+      validationErrorsMap.put(jsonPath, e.getMessage());
+    }
+  }
+
+  /**
+   * Validates the CMEK keys declared on an instance template's disks. YBA copies the boot disk's
+   * key onto the boot disks it creates for nodes in this region and the data disk key onto their
+   * data disks, so a key that Compute Engine cannot use would fail every node create rather than
+   * just the first one.
+   */
+  @VisibleForTesting
+  void validateTemplateCmekKeys(
+      String instanceTemplateName,
+      InstanceTemplate template,
+      GCPProjectApiClient apiClient,
+      SetMultimap<String, String> validationErrorsMap,
+      String jsonPath) {
+    TemplateDiskKmsKeys templateKeys = GCPProjectApiClient.getTemplateDiskKmsKeys(template);
+    validateCmekKey(
+        instanceTemplateName,
+        templateKeys.getBootDiskKey(),
+        apiClient,
+        validationErrorsMap,
+        jsonPath);
+    // Boot and data disks often share a key; validate it once.
+    if (!StringUtils.equals(templateKeys.getBootDiskKey(), templateKeys.getDataDiskKey())) {
+      validateCmekKey(
+          instanceTemplateName,
+          templateKeys.getDataDiskKey(),
+          apiClient,
+          validationErrorsMap,
+          jsonPath);
+    }
+  }
+
+  private void validateCmekKey(
+      String instanceTemplateName,
+      String kmsKeyName,
+      GCPProjectApiClient apiClient,
+      SetMultimap<String, String> validationErrorsMap,
+      String jsonPath) {
+    if (StringUtils.isEmpty(kmsKeyName)) {
+      return;
+    }
+    if (!kmsKeyName.matches(KMS_KEY_REGEX)) {
+      validationErrorsMap.put(
+          jsonPath,
+          String.format(
+              "Instance template %s declares a malformed Cloud KMS key '%s'. Expected the form"
+                  + " projects/<project>/locations/<location>/keyRings/<ring>/cryptoKeys/<key>.",
+              instanceTemplateName, kmsKeyName));
+      return;
+    }
+
+    CryptoKey cryptoKey;
+    try {
+      cryptoKey = apiClient.getCryptoKey(kmsKeyName);
+    } catch (NotFoundException e) {
+      validationErrorsMap.put(
+          jsonPath,
+          String.format(
+              "Cloud KMS key '%s' referenced by instance template %s was not found.",
+              kmsKeyName, instanceTemplateName));
+      return;
+    } catch (PermissionDeniedException | UnauthenticatedException e) {
+      // Disk CMEK is performed by the Compute Engine service agent, which needs
+      // roles/cloudkms.cryptoKeyEncrypterDecrypter. That role does not include
+      // cloudkms.cryptoKeys.get, so a provider that can create encrypted disks may still be
+      // unable to read the key. Missing get is not evidence the key is unusable.
+      log.info(
+          "Skipping CMEK metadata checks for key {} on instance template {}: the provider"
+              + " service account cannot call cloudkms.cryptoKeys.get",
+          kmsKeyName,
+          instanceTemplateName);
+      return;
+    } catch (ApiException e) {
+      log.error("Failed to read Cloud KMS key " + kmsKeyName, e);
+      validationErrorsMap.put(
+          jsonPath,
+          String.format(
+              "Could not verify Cloud KMS key '%s' [check logs for more info].", kmsKeyName));
+      return;
+    }
+
+    if (!CryptoKeyPurpose.ENCRYPT_DECRYPT.equals(cryptoKey.getPurpose())) {
+      validationErrorsMap.put(
+          jsonPath,
+          String.format(
+              "Cloud KMS key '%s' has purpose %s. Disk encryption requires a key with purpose"
+                  + " ENCRYPT_DECRYPT.",
+              kmsKeyName, cryptoKey.getPurpose()));
+      return;
+    }
+    if (!cryptoKey.hasPrimary()
+        || !CryptoKeyVersionState.ENABLED.equals(cryptoKey.getPrimary().getState())) {
+      validationErrorsMap.put(
+          jsonPath,
+          String.format(
+              "The primary version of Cloud KMS key '%s' is %s. Disk encryption requires an ENABLED"
+                  + " primary key version.",
+              kmsKeyName, cryptoKey.hasPrimary() ? cryptoKey.getPrimary().getState() : "missing"));
     }
   }
 

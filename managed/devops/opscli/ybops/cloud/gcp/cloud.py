@@ -15,7 +15,8 @@ import time
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
                                      GcpQueryCommand)
-from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin)
+from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin,
+                                   get_instance_template_to_read)
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 
 
@@ -77,7 +78,8 @@ class GcpCloud(AbstractCloud):
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
             cloud_subnet_secondary=args.cloud_subnet_secondary,
             gcp_instance_template=args.instance_template, disk_iops=args.disk_iops,
-            disk_throughput=args.disk_throughput, capacity_reservation=args.capacity_reservation)
+            disk_throughput=args.disk_throughput, capacity_reservation=args.capacity_reservation,
+            instance_template_to_read=get_instance_template_to_read(args))
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
@@ -87,11 +89,16 @@ class GcpCloud(AbstractCloud):
         output = []
         # disk names must match regex https://cloud.google.com/compute/docs/reference/rest/v1/disks
         name = args.search_pattern[:58] if len(args.search_pattern) > 58 else args.search_pattern
+        boot_disk_kms_key, _ = self.get_admin().get_template_disk_kms_keys(
+            get_instance_template_to_read(args))
         for x in range(num_disks):
-            res = self.get_admin().create_disk(args.zone, args.instance_tags, body={
+            body = {
                 "name": "{}-d{}".format(name, x),
                 "sizeGb": args.boot_disk_size_gb,
-                "sourceDisk": volume_id})
+                "sourceDisk": volume_id}
+            if boot_disk_kms_key:
+                body["diskEncryptionKey"] = {"kmsKeyName": boot_disk_kms_key}
+            res = self.get_admin().create_disk(args.zone, args.instance_tags, body)
             output.append(res["targetLink"])
 
             # GCP throttles disk cloning operations

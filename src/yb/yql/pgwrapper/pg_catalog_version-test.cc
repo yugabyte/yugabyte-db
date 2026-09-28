@@ -2151,7 +2151,9 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
 }
 
 TEST_F(PgCatalogVersionTest, AnalyzeInsideDdlEventTrigger) {
-  RestartClusterWithInvalMessageEnabled();
+  // Under TSAN the script can outlast the default 10s expiration, purging early versions.
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_yb_invalidation_message_expiration_secs=36000" });
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
   const string query =
@@ -3305,22 +3307,22 @@ TEST_P(PgCatalogVersionConnManagerTest,
   master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  // #30148: in CM Auth Passthrough mode (default) the first auth prefetches at
-  // the global (template1) shared catalog version but rebuilds the relcache at
-  // the per-DB master version; the differing versions cost one extra master RPC.
   // #32063: the regular-backend auth prefetch is served from the response cache
   // when its version-keyed slot is warm. conn3 connects right after 200 version
-  // bumps, so the regular slot's warmth is timing-dependent -> 5 (hit) or 6 (miss).
-  // The same warmth timing applies in CM mode, where the #30148 extra RPC adds a
-  // constant +1 -> 6 (hit) or 7 (miss). The default global views (#30591) add one
-  // more relcache-rebuild read in CM mode -> up to 8.
+  // bumps, so the slot's warmth is timing-dependent -> 5 (hit) or 6 (miss).
+  // #30148: in CM Auth Passthrough mode (default) the first auth prefetches at
+  // the global (template1) shared catalog version but rebuilds the relcache at
+  // the per-DB master version; the differing versions cost one extra master RPC
+  // -> 6 (hit) or 7 (miss).
+  // Both modes include one read for the default global views (#30591) and save
+  // one relcache-rebuild read through catalog prefetch batching (#34114).
   auto rebuild_delta = master_read_count_after - master_read_count_before;
   if (enable_ysql_conn_mgr) {
-    ASSERT_GE(rebuild_delta, 7);
-    ASSERT_LE(rebuild_delta, 8);
-  } else {
     ASSERT_GE(rebuild_delta, 6);
     ASSERT_LE(rebuild_delta, 7);
+  } else {
+    ASSERT_GE(rebuild_delta, 5);
+    ASSERT_LE(rebuild_delta, 6);
   }
 }
 
