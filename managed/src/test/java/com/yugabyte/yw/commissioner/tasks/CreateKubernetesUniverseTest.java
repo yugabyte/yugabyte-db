@@ -16,6 +16,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -748,6 +750,25 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverse(
         /* Create Masters */ false, /* YEDIS/REDIS disabled */ false, /* set namespace */ false);
     testCreateKubernetesUniverseSubtasksWithoutYedis(1);
+  }
+
+  @Test
+  public void testCreateKubernetesUniverseWithPaAutoRegistration() {
+    setupUniverse(
+        /* Create Masters */ false, /* YEDIS/REDIS enabled */ true, /* set namespace */ false);
+    setupCommon();
+    factory.forCustomer(defaultCustomer).setValue("yb.pa.auto_registration.enabled", "true");
+    TaskInfo taskInfo = submitTask(new UniverseDefinitionTaskParams());
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskType> subTaskTypes =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparingInt(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int registerIndex = subTaskTypes.indexOf(TaskType.RegisterUniverseWithPaCollector);
+    assertTrue(registerIndex >= 0);
+    assertTrue(registerIndex < subTaskTypes.indexOf(TaskType.UniverseUpdateSucceeded));
   }
 
   private void testCreateKubernetesUniverseSubtasksWithoutYedis(int tasksNum) {
