@@ -123,14 +123,6 @@ SELECT count(*) FROM t_int WHERE i4 = 2147483648;
 -- executor decides whether to push the aggregate down
 :explain_analyze SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
 SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
--- the same on the int4 primary key s, whose scan binds the table's columns and
--- is an Index Scan rather than an Index Only Scan, both without and with an
--- aggregate
-:explain_analyze SELECT * FROM t_int WHERE s = 2147483648;
-:explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
-SELECT count(*) FROM t_int WHERE s = 2147483648;
-:explain_analyze SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
-SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
 -- these inequalities are out of range, so their key is not bound and recheck is
 -- required
 :explain_analyze SELECT * FROM t_int WHERE i4 > 2147483648;
@@ -148,6 +140,13 @@ SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
 :explain_analyze SELECT * FROM t_int WHERE i8 > 9223372036854775809;
 :explain_analyze SELECT * FROM t_int WHERE i8 < 9223372036854775809;
 :explain_analyze SELECT * FROM t_int WHERE i8 IN (1, 2, 9223372036854775807, 9223372036854775808);
+
+-- these are each out of range and use PK index scan
+:explain_analyze SELECT * FROM t_int WHERE s = 2147483648;
+:explain_analyze SELECT count(*) FROM t_int WHERE s = 2147483648;
+SELECT count(*) FROM t_int WHERE s = 2147483648;
+:explain_analyze SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
+SELECT count(*) FROM t_int WHERE s = (SELECT 2147483648::int8);
 
 DROP TABLE t_int;
 
