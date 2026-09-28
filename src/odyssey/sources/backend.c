@@ -318,6 +318,105 @@ static void yb_backend_record_prep_stmt(od_server_t *server, char *context,
 	free(server_key);
 }
 
+static void yb_backend_set_client_unnamed_prep_stmt(od_server_t *server,
+						    char *context,
+						    char *stmt_name,
+						    char *description,
+						    uint32_t description_len)
+{
+	od_instance_t *instance = server->global->instance;
+	od_client_t *client = server->client;
+
+	if (client == NULL)
+		return;
+
+	yb_prepared_statement_free(&client->yb_unnamed_prep_stmt);
+
+	if (yb_prepared_statement_alloc(&client->yb_unnamed_prep_stmt,
+					stmt_name, strlen(stmt_name) + 1,
+					description, description_len) == -1)
+		od_error(&instance->logger, context, client, server,
+			 "failed to allocate unnamed prepared statement state");
+}
+
+static void yb_backend_clear_client_unnamed_prep_stmt(od_server_t *server)
+{
+	od_client_t *client = server->client;
+
+	if (client == NULL)
+		return;
+
+	yb_prepared_statement_free(&client->yb_unnamed_prep_stmt);
+}
+
+void yb_backend_handle_close_complete(od_server_t *server, char *context)
+{
+	od_instance_t *instance = server->global->instance;
+	yb_od_parse_queue_t *parse_queue = &server->parse_queue;
+
+	if (yb_od_parse_queue_empty(parse_queue)) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received CloseComplete with empty queue");
+		return;
+	}
+
+	yb_od_parse_queue_entry_t entry;
+	if (yb_od_parse_queue_peek(parse_queue, &entry) == -1) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received CloseComplete, error in peeking in queue");
+		return;
+	}
+
+	switch (entry.kind) {
+	case YB_PARSE_QUEUE_NAMED_CLOSE:
+	case YB_PARSE_QUEUE_PORTAL_CLOSE:
+		break;
+	case YB_PARSE_QUEUE_UNNAMED_CLOSE:
+		yb_backend_clear_client_unnamed_prep_stmt(server);
+		break;
+	default:
+		od_error(
+			&instance->logger, context, server->client, server,
+			"unexpected parse queue entry kind %d on CloseComplete",
+			entry.kind);
+		break;
+	}
+
+	if (yb_od_parse_queue_dequeue(parse_queue) != 0)
+		od_error(&instance->logger, context, server->client, server,
+			 "failed to dequeue parse queue on CloseComplete");
+}
+
+void yb_backend_handle_query_ack(od_server_t *server, char *context)
+{
+	od_instance_t *instance = server->global->instance;
+	yb_od_parse_queue_t *parse_queue = &server->parse_queue;
+
+	if (yb_od_parse_queue_empty(parse_queue)) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received YbQueryAck with empty queue");
+		return;
+	}
+
+	yb_od_parse_queue_entry_t entry;
+	if (yb_od_parse_queue_peek(parse_queue, &entry) == -1) {
+		od_error(&instance->logger, context, server->client, server,
+			 "Received YbQueryAck, error in peeking in queue");
+		return;
+	}
+
+	if (entry.kind != YB_PARSE_QUEUE_QUERY)
+		od_error(&instance->logger, context, server->client, server,
+			 "unexpected parse queue entry kind %d on YbQueryAck",
+			 entry.kind);
+	else
+		yb_backend_clear_client_unnamed_prep_stmt(server);
+
+	if (yb_od_parse_queue_dequeue(parse_queue) != 0)
+		od_error(&instance->logger, context, server->client, server,
+			 "failed to dequeue parse queue on YbQueryAck");
+}
+
 int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 				uint32_t size, YbParseType *yb_parse_type)
 {
@@ -344,11 +443,26 @@ int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 
 	switch (*yb_parse_type) {
 	case YB_PARSE_NORMAL:
-		/* Only used for unnamed prep stmts, no need to update state */
+		/* YB_PARSE_NORMAL is only used for unnamed prep stmts */
+		if (stmt_name[0] != '\0') {
+			od_error(
+				&instance->logger, context, server->client,
+				server,
+				"Unexpected named prep stmt %s, orig name %.*s found for YB_PARSE_NORMAL",
+				stmt_name, orig_name_len, orig_name);
+			break;
+		}
+		yb_backend_set_client_unnamed_prep_stmt(server, context,
+							stmt_name, description,
+							description_len);
 		break;
 	case YB_PARSE_REDEPLOY:
-		if (orig_name[0] == '\0')
+		if (orig_name[0] == '\0') {
+			yb_backend_set_client_unnamed_prep_stmt(
+				server, context, stmt_name, description,
+				description_len);
 			break;
+		}
 		yb_backend_record_prep_stmt(server, context, orig_name,
 					    orig_name_len, description,
 					    description_len, 1);
@@ -357,6 +471,10 @@ int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 		yb_backend_record_prep_stmt(server, context, orig_name,
 					    orig_name_len, description,
 					    description_len, 0);
+		break;
+	case YB_UNNAMED_PARSE_FAILED:
+		if (orig_name[0] == '\0')
+			yb_backend_clear_client_unnamed_prep_stmt(server);
 		break;
 	default:
 		od_error(&instance->logger, context, server->client, server,
@@ -370,6 +488,68 @@ int yb_backend_update_prep_stmt(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 	return 0;
+}
+
+/*
+ * YB: Encode the client's leaf certificate for transport in a startup packet.
+ *
+ * Startup packet parameters are NUL terminated strings while the certificate is
+ * DER, so it travels base64 encoded and Postgres decodes it back into an X509
+ * to derive the CN/DN itself. On success returns a NUL terminated string owned
+ * by the caller and stores its size, including the terminator, in arg_len.
+ *
+ * Returning NULL is not fatal. Postgres then sees a connection that presented
+ * no certificate and rejects it if the matching hba rule requires one, so the
+ * failure stays closed while rules that do not involve certificates keep
+ * working.
+ */
+char *yb_encode_client_cert(od_client_t *client, int *arg_len)
+{
+	od_instance_t *instance;
+	od_logger_t *logger;
+
+	*arg_len = 0;
+
+	if (client == NULL || client->yb_client_cert_der == NULL)
+		return NULL;
+
+	instance = client->global->instance;
+	if (!instance->config.yb_cert_auth)
+		return NULL;
+
+	logger = &instance->logger;
+
+	if (client->yb_client_cert_der_len > YB_CLIENT_CERT_DER_MAX) {
+		od_error(logger, "client cert", client, NULL,
+			 "client certificate is %d bytes, above the %d byte limit "
+			 "that fits in a startup packet, not forwarding it",
+			 client->yb_client_cert_der_len,
+			 YB_CLIENT_CERT_DER_MAX);
+		return NULL;
+	}
+
+	int dst_len = pg_b64_enc_len(client->yb_client_cert_der_len) + 1;
+	char *encoded = malloc(dst_len);
+	if (encoded == NULL) {
+		od_error(logger, "client cert", client, NULL,
+			 "failed to allocate %d bytes for the client certificate",
+			 dst_len);
+		return NULL;
+	}
+
+	int encoded_len = pg_b64_encode((char *)client->yb_client_cert_der,
+					client->yb_client_cert_der_len, encoded,
+					dst_len);
+	if (encoded_len < 0) {
+		od_error(logger, "client cert", client, NULL,
+			 "failed to encode the client certificate");
+		free(encoded);
+		return NULL;
+	}
+	encoded[encoded_len] = '\0';
+
+	*arg_len = encoded_len + 1;
+	return encoded;
 }
 
 void od_backend_error(od_server_t *server, char *context, char *data,
@@ -641,9 +821,11 @@ static inline int od_backend_startup(od_server_t *server,
 
 	od_client_t *external_client = client->yb_external_client;
 	int argc = 0;
-	const int max_default_args = 18;
+	const int max_default_args = 20;
 	int num_startup_args =
 		external_client ? external_client->yb_startup_settings.size : 0;
+	char *yb_client_cert = NULL;
+	int yb_client_cert_len = 0;
 
 	kiwi_fe_arg_t *argv = malloc(sizeof(kiwi_fe_arg_t) *
 				     (max_default_args + 2 * num_startup_args));
@@ -689,6 +871,20 @@ static inline int od_backend_startup(od_server_t *server,
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF(YB_YCM_LOGICAL_CONN_TYPE));
 		yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
+
+		/*
+		 * Forward the certificate of the client that connected to the
+		 * connection manager, so that Postgres can read its CN/DN.
+		 */
+		yb_client_cert = yb_encode_client_cert(external_client,
+						       &yb_client_cert_len);
+		if (yb_client_cert != NULL) {
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_CERT));
+			yb_kiwi_set_fe_arg(&argv[argc++], yb_client_cert,
+					   yb_client_cert_len);
+		}
 	}
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
@@ -712,6 +908,8 @@ static inline int od_backend_startup(od_server_t *server,
 
 	machine_msg_t *msg = kiwi_fe_write_startup_message(NULL, argc, argv);
 	free(argv);
+	if (yb_client_cert != NULL)
+		free(yb_client_cert);
 	if (msg == NULL)
 		return -1;
 	int rc;
@@ -1520,6 +1718,13 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 			if (rc == -1)
 				return -1;
 			continue;
+		} else if (type == KIWI_BE_CLOSE_COMPLETE) {
+			yb_backend_handle_close_complete(server, context);
+			machine_msg_free(msg);
+			continue;
+		} else if (type == YB_BE_YB_QUERY_ACK) {
+			machine_msg_free(msg);
+			continue;
 		} else if (type == KIWI_BE_PARSE_COMPLETE) {
 			od_error(&instance->logger, context, server->client, server,
 				 "unexpected ParseComplete packet from server");
@@ -1534,13 +1739,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				return 0;
 			}
 		} else if (type == YB_BE_SYNC_ACK) {
-			/*
-			 * If SYNC present at head of parse queue means all parses in this
-			 * SYNC boundary were acknowledged (success path). Otherwise, some
-			 * parses were silently dropped after an error -- evict stale entries.
-			 */
-			yb_drain_parse_queue_till_sync(server, server->client);
+			int rc = yb_drain_parse_queue_till_sync(server,
+								server->client);
 			machine_msg_free(msg);
+			if (rc == NOT_OK_RESPONSE)
+				return -1;
 			continue;
 		}
 		machine_msg_free(msg);

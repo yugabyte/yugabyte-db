@@ -52,11 +52,15 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Storage location")
   public String storageLocation;
 
-  // GCP Workload Identity Federation audience captured at backup time, so YBA can rebuild the
-  // federated (external_account) creds to delete this backup even after the source universe (and
-  // its provider link) is gone. Empty for non-federated backups.
-  @ApiModelProperty(value = "Cross-cloud federation GCP audience captured at backup time")
+  // Cross-cloud federation values captured at backup time, so YBA can rebuild the federated creds
+  // to delete this backup even after the source universe (and its provider link) is gone. The
+  // audience covers both directions; the role ARN is set only for S3-on-GCP. Empty for
+  // non-federated backups.
+  @ApiModelProperty(value = "Cross-cloud federation audience captured at backup time")
   public String crossCloudFederationAudience;
+
+  @ApiModelProperty(value = "Cross-cloud federation AWS role ARN captured at backup time")
+  public String crossCloudFederationRoleArn;
 
   @ApiModelProperty(value = "Action type")
   public ActionType actionType;
@@ -285,6 +289,7 @@ public class BackupTableParams extends TableManagerParams {
     //    this.ignoreErrors = backupRequestParams.ignoreErrors;
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
     this.crossCloudFederationAudience = backupRequestParams.crossCloudFederationAudience;
+    this.crossCloudFederationRoleArn = backupRequestParams.crossCloudFederationRoleArn;
     this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.sse = backupRequestParams.sse;
     this.parallelism = backupRequestParams.parallelism;
@@ -335,6 +340,7 @@ public class BackupTableParams extends TableManagerParams {
     this.ignoreErrors = true;
     this.storageConfigUUID = tableParams.storageConfigUUID;
     this.crossCloudFederationAudience = tableParams.crossCloudFederationAudience;
+    this.crossCloudFederationRoleArn = tableParams.crossCloudFederationRoleArn;
     this.storageLocation = tableParams.storageLocation;
     this.storageConfigType = tableParams.storageConfigType;
     this.setUniverseUUID(tableParams.getUniverseUUID());

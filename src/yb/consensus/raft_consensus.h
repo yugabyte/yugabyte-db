@@ -251,6 +251,19 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   OpId GetAllAppliedOpId();
 
+  struct WalGcRetentionOpIdInfo {
+    OpId committed_op_id = OpId::Max();
+    OpId majority_replicated_op_id = OpId::Max();
+    OpId min_progressing_pre_voter_op_id = OpId::Max();
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(
+          committed_op_id, majority_replicated_op_id, min_progressing_pre_voter_op_id);
+    }
+  };
+
+  WalGcRetentionOpIdInfo GetWalGcRetentionOpIdInfo();
+
   Status CheckReadyAsRbsSource();
 
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
@@ -642,10 +655,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                               const std::string& server_uuid);
 
   // Increment the term to the next term, resetting the current leader, etc.
-  Status IncrementTermUnlocked();
+  Status IncrementTermUnlocked(FlushConsensusMeta flush);
 
   // Handle when the term has advanced beyond the current term.
-  Status HandleTermAdvanceUnlocked(ConsensusTerm new_term);
+  Status HandleTermAdvanceUnlocked(
+      ConsensusTerm new_term, FlushConsensusMeta flush = FlushConsensusMeta::kTrue);
 
   // Notify the tablet peer that the consensus configuration
   // has changed, thus reporting it back to the master. This is performed inline.
@@ -677,9 +691,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // being shut down).
   void ReportFailureDetectedTask();
 
-  // Helper API to check if the pending/committed configuration has a PRE_VOTER. Non-null return
-  // string implies there are servers in transit.
-  std::string ServersInTransitionMessage();
+  // OK unless a live PRE_VOTER/PRE_OBSERVER is in the active or committed config.
+  // Unreachable transitioning peers (follower_unavailable_considered_failed_sec) do not count.
+  Status CheckNoLiveServersInTransitionUnlocked();
 
   // Prevent starting new election for some time, after we stepped down.
   // protege_uuid - in case of step down we remember our protege.

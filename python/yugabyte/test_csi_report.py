@@ -11,12 +11,13 @@
 # under the License.
 
 """
-Unit tests for csi_report: the no-op behavior when CSI is not configured, and the query retries.
+Unit tests for csi_report's behavior when CSI is not configured.
 
-Holding a launch id is not evidence that there is a server to talk to: YB_CSI_LID can be set while
-CSI_SERVER/CSI_TOKEN are not. Every entry point must then no-op rather than build
-'https:///api/v2/' and raise InvalidURL('No host supplied') - which is how an unconfigured CSI once
-aborted a whole test run.
+Holding a launch id is not evidence that there is a server to talk to: launch_qid(), create_suite()
+and close_item() take the launch as a parameter so the baseline tests can report to their own
+launch, so a caller can have one while CSI_SERVER/CSI_TOKEN are unset. Every entry point must then
+no-op rather than build 'https:///api/v2/' and raise InvalidURL('No host supplied') - which is how
+an unconfigured CSI once aborted a whole test run.
 """
 
 import json
@@ -55,17 +56,18 @@ def test_configured_needs_both_server_and_token(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_launch_qid_is_a_no_op() -> None:
-    assert csi_report.launch_qid() == ''
+    assert csi_report.launch_qid(launch='some-launch-uuid') == ''
 
 
 def test_create_suite_returns_the_var_name_with_no_value() -> None:
     assert csi_report.create_suite(
         qid='', suite_name='C++', parent='', method='Requested', planned=1, reps=1,
-        time_sec=0.0) == ('YB_CSI_C++', '')
+        time_sec=0.0, launch='some-launch-uuid') == ('YB_CSI_C++', '')
 
 
 def test_close_item_is_a_no_op() -> None:
-    assert csi_report.close_item('some-suite-uuid', 0.0, '', []) == ''
+    assert csi_report.close_item(
+        'some-suite-uuid', 0.0, '', [], launch='some-launch-uuid') == ''
 
 
 def test_create_test_is_a_no_op() -> None:
@@ -75,6 +77,10 @@ def test_create_test_is_a_no_op() -> None:
 
 def test_upload_log_is_a_no_op() -> None:
     assert csi_report.upload_log('some-suite-uuid', 0.0, ['/nonexistent/log']) == 0
+
+
+def test_test_ids_in_launches_is_a_no_op() -> None:
+    assert csi_report.test_ids_in_launches('launch_type:baseline_test_run') == set()
 
 
 # ---------------------------------------------------------------------------------------------
@@ -142,7 +148,7 @@ def test_update_replaces_only_the_current_method_key(
     monkeypatch.setattr(csi_report.requests, 'put', fake_put)
 
     csi_report.create_suite(qid='1', suite_name='C++', parent='', method=method,
-                            planned=planned, reps=1, time_sec=0.0)
+                            planned=planned, reps=1, time_sec=0.0, launch='a-launch-uuid')
 
     assert len(put_bodies) == 1
     assert put_bodies[0]['attributes'] == expected_attributes
@@ -202,7 +208,7 @@ def test_transient_failure_is_retried_then_succeeds(
         monkeypatch: pytest.MonkeyPatch, no_sleep: None, transient: Any) -> None:
     """
     A 5xx and a dropped connection are the same thing to a query: try again. Returning None here
-    instead would report 'nothing measured yet' and cost a redundant re-measurement.
+    instead would report 'nothing run yet' and cost a redundant run on the baseline.
     """
     ok = FakeResponse(200)
     calls = fake_get(monkeypatch, [transient, ok])
@@ -231,15 +237,14 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
                      for attempt in range(1, csi_report.GET_ATTEMPTS)]
 
 
-# ---------------------------------------------------------------------------------------------
-# classify_execution: the retry_kind decision table. Only fail_repetition vs repetition is
-# exclusive by construction (--fail_repetitions is rejected alongside --num_repetitions > 1);
-# a Spark task resubmit (attempt > 0) can occur inside either job, and the branch order in
-# classify_execution resolves those overlaps: fail_repetition wins (the "first attempt failed"
-# implication must stay exact for consumers), then task_resubmit (needs the resubmit wait),
-# then repetition. The kind attribute is what lets downstream consumers separate a
-# fail-repetition (which must never enter a first-attempt failure rate) from a Spark task
-# resubmit (infra artifact) and a plain repetition.
+class FakeJson(FakeResponse):
+    def __init__(self, body: Any) -> None:
+        super().__init__(200)
+        self.body = body
+
+    def json(self) -> Any:
+        return self.body
+
 
 @pytest.mark.parametrize('rerun,attempt,reps,attempt_index,expected', [
     # expected = (retry, retry_kind, wait)
@@ -257,6 +262,81 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_classify_execution(rerun: bool, attempt: int, reps: str, attempt_index: int,
                             expected: Any) -> None:
     assert csi_report.classify_execution(rerun, attempt, reps, attempt_index) == expected
+
+
+def test_test_ids_in_launches_reads_every_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A page size limits the response, not what matches, so both queries have to page to the end.
+    Reading only the first page drops test ids silently and the caller runs those tests again - the
+    expensive direction, since each repeated test costs baseline_repetitions runs.
+    """
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'dbft')
+
+    # Two pages of launches; the launch on each page has two pages of items.
+    launch_pages = {
+        '1': {'content': [{'id': 11}], 'page': {'totalPages': 2}},
+        '2': {'content': [{'id': 22}], 'page': {'totalPages': 2}},
+    }
+    item_pages = {
+        (11, '1'): {'content': [{'uniqueId': 'a'}], 'page': {'totalPages': 2}},
+        (11, '2'): {'content': [{'uniqueId': 'b'}], 'page': {'totalPages': 2}},
+        (22, '1'): {'content': [{'uniqueId': 'c'}], 'page': {'totalPages': 2}},
+        (22, '2'): {'content': [{'uniqueId': 'd'}], 'page': {'totalPages': 2}},
+    }
+
+    class FakeResponse:
+        def __init__(self, payload: Any) -> None:
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self) -> Any:
+            return self._payload
+
+    def fake_get(url: str, headers: Any = None, params: Any = None) -> Any:
+        if url.endswith('/launch'):
+            return FakeResponse(launch_pages[params['page.number']])
+        return FakeResponse(item_pages[(params['filter.eq.launchId'], params['page.number'])])
+
+    monkeypatch.setattr(csi_report.requests, 'get', fake_get)
+
+    assert csi_report.test_ids_in_launches('launch_type:baseline_test_run') == {'a', 'b', 'c', 'd'}
+
+
+def test_test_ids_in_launches_asks_only_for_tests_that_reached_a_verdict(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A launch finished while a peer is still reporting leaves that peer's items INTERRUPTED. Reading
+    those back as already run would inherit a truncated sample as a complete one, permanently - the
+    next diff would skip exactly the tests whose data is missing. The status filter is what keeps
+    them eligible, so assert it is on the wire rather than trusting the server to be asked nicely.
+    """
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'dbft')
+
+    item_queries: List[Any] = []
+
+    class FakeResponse:
+        def __init__(self, payload: Any) -> None:
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self) -> Any:
+            return self._payload
+
+    def fake_get(url: str, headers: Any = None, params: Any = None) -> Any:
+        if url.endswith('/launch'):
+            return FakeResponse({'content': [{'id': 11}], 'page': {'totalPages': 1}})
+        item_queries.append(params)
+        return FakeResponse({'content': [{'uniqueId': 'a'}], 'page': {'totalPages': 1}})
+
+    monkeypatch.setattr(csi_report.requests, 'get', fake_get)
+
+    assert csi_report.test_ids_in_launches('launch_type:baseline_test_run') == {'a'}
+    assert len(item_queries) == 1
+    assert item_queries[0]['filter.in.status'] == 'PASSED,FAILED'
 
 
 # ---------------------------------------------------------------------------------------------
@@ -355,3 +435,67 @@ def test_invalid_utf8_does_not_fail(tmp_path: Any) -> None:
 
     assert centered
     assert MARKER in text
+
+
+# The new-test repetitions are dispatched serially after the main pass, and only for a test whose
+# first attempt passed, so consumers may read the kind on an item as "the first attempt passed".
+# That has to hold for every execution of the job, a Spark resubmit inside it included, which is
+# why the kind outranks task_resubmit.
+@pytest.mark.parametrize('rerun,attempt,attempt_index,expected', [
+    (False, 0, 2, (True, 'new_test_repetition', False)),
+    (False, 3, 5, (True, 'new_test_repetition', False)),  # resubmit inside the new-test job
+    # fail_repetition still wins, so a first-attempt failure can never read as a passing birth.
+    (True, 0, 2, (True, 'fail_repetition', False)),
+])
+def test_classify_execution_new_test(rerun: bool, attempt: int, attempt_index: int,
+                                     expected: Any) -> None:
+    assert csi_report.classify_execution(
+        rerun, attempt, '1', attempt_index, new_test=True) == expected
+
+
+# ---------------------------------------------------------------------------------------------
+# create_test: which executions ask CSI for a previous item before reporting.
+#
+# The query runs on every worker for every such execution, so an execution that does not need it
+# must not make it. A fail repetition and a new-test repetition run serially after the main pass,
+# in which their first attempt completed and reported; a repetition or a resubmit cannot know that.
+# ---------------------------------------------------------------------------------------------
+
+def serve_create(monkeypatch: pytest.MonkeyPatch) -> List[Any]:
+    """A configured CSI that accepts item creation and records each request body, and that
+    fails the test if any query is made."""
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'DBFT')
+    created: List[Any] = []
+
+    def post(url: str, headers: Any = None, data: Any = None) -> Any:
+        created.append(json.loads(data))
+        response = FakeJson({'id': 'new-item-uuid'})
+        response.status_code = 201
+        return response
+
+    def get(url: str, headers: Any = None, params: Any = None) -> Any:
+        raise AssertionError("this execution must not query CSI for a previous item: " + url)
+
+    monkeypatch.setattr(csi_report.requests, 'post', post)
+    monkeypatch.setattr(csi_report.requests, 'get', get)
+    return created
+
+
+@pytest.mark.parametrize('new_test,rerun,retry_kind', [
+    ('1', False, 'new_test_repetition'),
+    ('', True, 'fail_repetition'),
+])
+def test_a_serial_repetition_reports_without_querying(
+        monkeypatch: pytest.MonkeyPatch, new_test: str, rerun: bool, retry_kind: str) -> None:
+    monkeypatch.setenv('YB_CSI_NEW_TEST', new_test)
+    created = serve_create(monkeypatch)
+    descriptor = test_descriptor.TestDescriptor('tests-x/a-test:::A.B:::attempt_7')
+
+    assert csi_report.create_test(descriptor, 0.0, 0, rerun=rerun) == 'new-item-uuid'
+
+    [item] = created
+    assert item['retry'] is True
+    assert item['uniqueId'] == 'tests-x/a-test:::A.B'
+    assert {'key': 'retry_kind', 'value': retry_kind} in item['attributes']

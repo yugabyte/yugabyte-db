@@ -258,7 +258,7 @@ In the following example, the tablespace is set up to have replicas in us-east-1
 
 ![Multi Region Table](/images/explore/tablespaces/multi_region_latency.png)
 
-However, setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they fall back to the next preferred zone us-east-2a, which has a 12ms latency. The following example creates the tablespace with leader preferences specified:
+However, setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1b are unavailable, they fall back to the next preferred zone us-east-2a, which has a 12ms latency. The following example creates the tablespace with leader preferences specified:
 
 ```sql
 CREATE TABLESPACE us_east1_region_tablespace

@@ -134,7 +134,7 @@ YbLockRowsStateInfo
 YbLogicalClientVersionType
 YbLsmBuildState
 YbMergeScanInfo
-YbMergeScanSaopColInfo
+YbMergeScanStreamColInfo
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry
@@ -243,7 +243,6 @@ YbTerminatedQueriesBuffer
 YbTerminatedQuery
 YbTraceparentResult
 YbTruncateType
-YbTserverUuidClauseResult
 YbTupleBitmap
 YbTupleCache
 YbTupleCacheEntry

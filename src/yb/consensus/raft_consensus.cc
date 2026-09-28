@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <ranges>
 
 #include "yb/common/wire_protocol.h"
 
@@ -614,7 +615,7 @@ Status RaftConsensus::EmulateElection() {
   LOG_WITH_PREFIX(INFO) << "Emulating election...";
 
   // Assume leadership of new term.
-  RETURN_NOT_OK(IncrementTermUnlocked());
+  RETURN_NOT_OK(IncrementTermUnlocked(FlushConsensusMeta::kTrue));
   SetLeaderUuidUnlocked(state_->GetPeerUuid());
   return BecomeLeaderUnlocked();
 }
@@ -726,11 +727,10 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
   if (preelection) {
     new_term = state_->GetCurrentTermUnlocked() + 1;
   } else {
-    // Increment the term.
-    RETURN_NOT_OK(IncrementTermUnlocked());
+    // Increment the term and vote for ourselves. The vote persists both in a single flush,
+    // so the new term is durable before any vote request is sent.
+    RETURN_NOT_OK(IncrementTermUnlocked(FlushConsensusMeta::kFalse));
     new_term = state_->GetCurrentTermUnlocked();
-
-    // Vote for ourselves.
     // TODO: Consider using a separate Mutex for voting, which must sync to disk.
     RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
   }
@@ -792,24 +792,27 @@ Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
                                      peer_uuid(), tablet_id(), timeout.ToString(), role()));
 }
 
-string RaftConsensus::ServersInTransitionMessage() {
-  string err_msg;
+Status RaftConsensus::CheckNoLiveServersInTransitionUnlocked() {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
   const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
-  auto servers_in_transition = CountServersInTransition(active_config);
-  auto committed_servers_in_transition = CountServersInTransition(committed_config);
-  LOG_WITH_PREFIX(INFO) << Format(
-      "Active config has $0 and committed has $1 servers in transition.", servers_in_transition,
-      committed_servers_in_transition);
-  if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
-    err_msg = Format(
-        "Leader not ready to step down as there are $0 active config peers"
-        " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
-        servers_in_transition, committed_servers_in_transition, active_config.ShortDebugString(),
-        committed_config.ShortDebugString());
-    LOG_WITH_PREFIX(INFO) << err_msg;
+  auto count_live_in_transition = [this](const RaftConfigPB& config) {
+    return std::ranges::count_if(config.peers(), [this](const auto& peer) {
+      return (peer.member_type() == PeerMemberType::PRE_VOTER ||
+              peer.member_type() == PeerMemberType::PRE_OBSERVER) &&
+             queue_->IsPeerLive(peer.permanent_uuid());
+    });
+  };
+  const auto live_active = count_live_in_transition(active_config);
+  const auto live_committed = count_live_in_transition(committed_config);
+  if (live_active == 0 && live_committed == 0) {
+    return Status::OK();
   }
-  return err_msg;
+  return STATUS_FORMAT(
+      IllegalState,
+      "Leader not ready to step down as there are $0 live active config peers"
+      " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
+      live_active, live_committed, active_config.ShortDebugString(),
+      committed_config.ShortDebugString());
 }
 
 Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool graceful) {
@@ -891,12 +894,13 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     return Status::OK();
   }
 
-  // The leader needs to be ready to perform a step down. There should be no PRE_VOTER in both
-  // active and committed configs - ENG-557.
-  const string err_msg = ServersInTransitionMessage();
-  if (!err_msg.empty()) {
+  // Refuse while a live PRE_VOTER/PRE_OBSERVER may still be in remote bootstrap: this leader holds
+  // the WAL anchors, and a successor may have GCed those segments. A lost transitioning peer does
+  // not block; promotion is leader-driven (#29795).
+  if (auto s = CheckNoLiveServersInTransitionUnlocked(); !s.ok()) {
+    LOG_WITH_PREFIX(INFO) << s;
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(STATUS(IllegalState, err_msg), resp->mutable_error()->mutable_status());
+    StatusToPB(s, resp->mutable_error()->mutable_status());
     return Status::OK();
   }
 
@@ -3775,6 +3779,18 @@ OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
+RaftConsensus::WalGcRetentionOpIdInfo RaftConsensus::GetWalGcRetentionOpIdInfo() {
+  auto peer_retention = queue_->GetWalGcPeerRetentionInfo();
+  WalGcRetentionOpIdInfo result;
+  {
+    auto lock = state_->LockForRead();
+    result.committed_op_id = state_->GetCommittedOpIdUnlocked();
+  }
+  result.majority_replicated_op_id = peer_retention.majority_replicated_op_id;
+  result.min_progressing_pre_voter_op_id = peer_retention.min_progressing_pre_voter_op_id;
+  return result;
+}
+
 OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();
@@ -3905,11 +3921,11 @@ MonoDelta RaftConsensus::LeaderElectionExpBackoffDeltaUnlocked() {
   return MonoDelta::FromMilliseconds(timeout);
 }
 
-Status RaftConsensus::IncrementTermUnlocked() {
-  return HandleTermAdvanceUnlocked(state_->GetCurrentTermUnlocked() + 1);
+Status RaftConsensus::IncrementTermUnlocked(FlushConsensusMeta flush) {
+  return HandleTermAdvanceUnlocked(state_->GetCurrentTermUnlocked() + 1, flush);
 }
 
-Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
+Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term, FlushConsensusMeta flush) {
   if (new_term <= state_->GetCurrentTermUnlocked()) {
     return STATUS(IllegalState, Substitute("Can't advance term to: $0 current term: $1 is higher.",
                                            new_term, state_->GetCurrentTermUnlocked()));
@@ -3924,7 +3940,7 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   }
 
   LOG_WITH_PREFIX(INFO) << "Advancing to term " << new_term;
-  RETURN_NOT_OK(state_->SetCurrentTermUnlocked(new_term));
+  RETURN_NOT_OK(state_->SetCurrentTermUnlocked(new_term, flush));
   term_metric_->set_value(new_term);
   return Status::OK();
 }

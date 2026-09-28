@@ -44,6 +44,7 @@
 #include <signal.h>
 #include <stdio.h>
 
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -104,6 +105,25 @@ const std::regex kStackTraceLineFormatRe(R"#(^\s*@\s+(0x[0-9a-f]+)\s+.*\n?$)#");
 // Sink which implements special handling for LOG(FATAL) and CHECK failures, such as disabling
 // core dumps and printing the failure stack trace into a separate file.
 unique_ptr<LogFatalHandlerSink> log_fatal_handler_sink;
+
+static const time_t kProcessStartTime = time(nullptr);
+
+// Never freed: the fatal handler can read this at any point.
+static const std::string* fatal_details_header = nullptr;
+
+void SetFatalDetailsHeader(const std::string& version_info) {
+  if (fatal_details_header != nullptr) {
+    return;
+  }
+  std::string header = "Version: " + version_info + "\n";
+  struct tm start_tm;
+  if (kProcessStartTime != 0 && localtime_r(&kProcessStartTime, &start_tm) != nullptr) {
+    header += "Process start time: ";
+    StringAppendStrftime(&header, "%Y%m%d %H:%M:%S", &start_tm);
+    header += "\n";
+  }
+  fatal_details_header = new std::string(std::move(header));
+}
 
 namespace {
 
@@ -478,10 +498,12 @@ void LogFatalHandlerSink::send(
   StringAppendStrftime(&timestamp_for_filename, "%Y-%m-%dT%H_%M_%S", tm_time);
   const string output_path = Format(
       "$0.$1.pid$2.txt", GetFatalDetailsPathPrefix(), timestamp_for_filename, getpid());
+  string output_str = fatal_details_header != nullptr ? *fatal_details_header : string();
+
   // Use a line format similar to glog with a couple of slight differences:
   // - Report full file path.
   // - Time has no microsecond component.
-  string output_str = "F";
+  output_str += "F";
   StringAppendStrftime(&output_str, "%Y%m%d %H:%M:%S", tm_time);
   // TODO: append thread id if we need to.
   StringAppendF(&output_str, " %s:%d] ", full_filename, line_number);

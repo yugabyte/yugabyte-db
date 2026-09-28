@@ -5077,11 +5077,18 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
   ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn_2, commit_lsn_2));
   change_resp_2 = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   ASSERT_EQ(change_resp_2.cdc_sdk_proto_records_size(), 0);
-  change_resp_2 = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
 
-  // Now that all the DDLs have been acknowledged, we should move the checkpoint forward.
-  new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
-  ASSERT_GT(new_checkpoint.index, old_checkpoint.index);
+  // Now that all the DDLs have been acknowledged, we should move the checkpoint forward. The table
+  // tablet is polled (carrying the explicit checkpoint) only once its queue drains, which may take
+  // more than one call depending on the order its safepoint and the sys catalog's are popped.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp_2 = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        new_checkpoint =
+            VERIFY_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+        return new_checkpoint.index > old_checkpoint.index;
+      },
+      MonoDelta::FromSeconds(30), "Timed out waiting for checkpoint to move forward"));
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
@@ -6885,6 +6892,15 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
 
   auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, 10 /* expected_dml_records */, true /* init_virtual_wal */));
+
+  // The VWAL advances the sys_catalog explicit checkpoint past the initial barrier only on a
+  // GetChanges sent after the restart LSN is acknowledged, so keep polling until that lands.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(GetConsistentChangesFromCDC(stream_id));
+        return leader_tablet_peer->get_cdc_min_replicated_index() > initial_wal_barrier;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Sys catalog WAL barrier did not advance"));
 
   // Wait for CDCMasterBgTask to propagate barriers to all masters.
   SleepFor(

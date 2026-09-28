@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.configs.data;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonFormat.Shape;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 import javax.validation.Valid;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
@@ -57,6 +59,13 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
   @JsonProperty("IAM_CONFIGURATION")
   public IAMConfiguration iamConfig = new IAMConfiguration();
 
+  // Marks the config as cross-cloud federated IAM (a GCP DB node writing to S3). Deliberately its
+  // own flag rather than a credential source: WEB_TOKEN already means EKS/IRSA web-identity, so
+  // keying off it would silently reclassify every pre-existing config that uses it.
+  @ApiModelProperty(value = "Use cross-cloud federated IAM (GCP DB node -> S3)")
+  @JsonProperty("USE_CROSS_CLOUD_FEDERATION")
+  public boolean useCrossCloudFederation = false;
+
   @Valid
   @ApiModelProperty(value = "Region locations for multi-region backups")
   @JsonProperty("REGION_LOCATIONS")
@@ -70,6 +79,14 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
   @JsonProperty("PROXY_SETTINGS")
   @Valid
   public ProxySetting proxySetting;
+
+  // Transient (never persisted): the AWS role ARN and web-identity audience resolved from the
+  // universe's provider at backup/delete time. When set on a federation config, YBA builds an
+  // in-process AssumeRoleWithWebIdentity credential (GCE identity token -> STS) to reach S3,
+  // instead of static keys or the default credential chain.
+  @JsonIgnore @Nullable public String federationRoleArn;
+
+  @JsonIgnore @Nullable public String federationAudience;
 
   public static class RegionLocations extends RegionLocationsBase {
     @ApiModelProperty(value = "AWS host base", example = "s3.amazonaws.com")

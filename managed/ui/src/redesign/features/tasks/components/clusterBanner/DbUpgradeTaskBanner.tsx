@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link as MUILink } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { OperationBannerVariant, YBOperationBanner } from '@yugabyte-ui-library/core';
 
 import { YBButton } from '@app/redesign/components';
 import { DbUpgradeFinalizeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeFinalizeModal';
@@ -13,10 +14,12 @@ import { getUniverse, precheckSoftwareUpgrade } from '@app/v2/api/universe/unive
 import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
+import { YBProgressBarState } from '@app/redesign/components/YBProgress/YBLinearProgress';
+import { PollingIntervalMs } from '@app/components/xcluster/constants';
 import { getIsDbUpgradeTask } from '../../TaskUtils';
 import { Task, TaskState } from '../../dtos';
-import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
-import { PollingIntervalMs } from '@app/components/xcluster/constants';
+import { OperationBannerProgressContent } from './OperationBannerProgressContent';
+import { OperationBannerLoadingIcon, OperationBannerWaveIcon } from './operationBannerIcons';
 
 interface DbUpgradeTaskBannerProps {
   task: Task;
@@ -81,12 +84,19 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
   switch (task.status) {
     case TaskState.RUNNING:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.IN_PROGRESS}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Info}
+          dense
+          minHeight={46}
+          showDivider={false}
+          iconCircle={false}
+          icon={<OperationBannerLoadingIcon />}
           title={t('upgradingSoftware.title')}
-          progressPercent={task.percentComplete ?? 0}
-          actions={openUpgradeMonitorButton}
-          description={
+          content={
+            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
+          }
+          action={openUpgradeMonitorButton}
+          message={
             <Trans
               t={t}
               i18nKey={
@@ -111,12 +121,19 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
       break;
     case TaskState.PAUSED:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Warning}
+          dense
+          minHeight={46}
+          showDivider={false}
+          iconCircle={false}
+          icon={<OperationBannerWaveIcon />}
           title={t('upgradePausedForMonitoring.title')}
-          progressPercent={task.percentComplete ?? 0}
-          actions={openUpgradeMonitorToContinueButton}
-          description={t('upgradePausedForMonitoring.description')}
+          content={
+            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
+          }
+          action={openUpgradeMonitorToContinueButton}
+          message={t('upgradePausedForMonitoring.description')}
         />
       );
       break;
@@ -126,11 +143,16 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
         UniverseInfoSoftwareUpgradeState.PreFinalize
       ) {
         bannerComponent = (
-          <ClusterOperationBanner
-            type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
+          <YBOperationBanner
+            variant={OperationBannerVariant.Warning}
+            dense
+            minHeight={46}
+            showDivider={false}
+            iconCircle={false}
+            icon={<OperationBannerWaveIcon />}
             title={t('finalizeOrRollBack.title')}
-            actions={openUpgradeMonitorToContinueButton}
-            description={t('finalizeOrRollBack.description')}
+            action={openUpgradeMonitorToContinueButton}
+            message={t('finalizeOrRollBack.description')}
           />
         );
       } else if (
@@ -138,12 +160,15 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
         UniverseInfoSoftwareUpgradeState.Ready
       ) {
         bannerComponent = (
-          <ClusterOperationBanner
-            type={ClusterOperationBannerType.SUCCESS}
+          <YBOperationBanner
+            variant={OperationBannerVariant.Success}
+            dense
+            minHeight={46}
+            showDivider={false}
             title={t('upgradeCompleted.title', {
               targetDbVersion: formatYbSoftwareVersionString(targetDbVersion ?? '')
             })}
-            description={
+            message={
               <Trans
                 t={t}
                 i18nKey="upgradeCompleted.description"
@@ -168,20 +193,31 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
         UniverseInfoSoftwareUpgradeState.Ready
       ) {
         bannerComponent = (
-          <ClusterOperationBanner
-            type={ClusterOperationBannerType.ALERT}
+          <YBOperationBanner
+            variant={OperationBannerVariant.Warning}
+            dense
+            minHeight={46}
+            showDivider={false}
             title={t('upgradeAborted.title')}
-            description={t('upgradeAborted.description')}
-            actions={openUpgradeMonitorButton}
+            message={t('upgradeAborted.description')}
+            action={openUpgradeMonitorButton}
           />
         );
       } else {
         bannerComponent = (
-          <ClusterOperationBanner
-            type={ClusterOperationBannerType.ERROR}
+          <YBOperationBanner
+            variant={OperationBannerVariant.Error}
+            dense
+            minHeight={46}
+            showDivider={false}
             title={t('softwareUpgradeFailed.title')}
-            progressPercent={task.percentComplete ?? 0}
-            actions={openUpgradeMonitorButton}
+            content={
+              <OperationBannerProgressContent
+                progressPercent={task.percentComplete ?? 0}
+                state={YBProgressBarState.Error}
+              />
+            }
+            action={openUpgradeMonitorButton}
           />
         );
       }

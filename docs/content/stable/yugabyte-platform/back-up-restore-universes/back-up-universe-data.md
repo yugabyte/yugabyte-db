@@ -73,7 +73,7 @@ To cancel an in-progress backup:
 
 This stops the backup, and its status will change to **Stopping** and then **Stopped**. This does not disable future backups or scheduled policies.
 
-You can also abort the backup task from [Tasks](../manage-deployments/retry-failed-task/).
+You can also abort the backup task from [Tasks](../../manage-deployments/retry-failed-task/).
 
 ## Create incremental backups
 

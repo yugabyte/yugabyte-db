@@ -66,6 +66,8 @@ class XClusterManagerIf {
   virtual Status ClearXClusterFieldsAfterYsqlDDL(
       TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) = 0;
 
+  virtual void MarkWalAnchorDeletionPending(const TableId& table_id) = 0;
+
   virtual void NotifyAutoFlagsConfigChanged() = 0;
 
   virtual void StoreConsumerReplicationStatus(

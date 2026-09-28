@@ -39,6 +39,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
@@ -866,11 +868,18 @@ public class ApiUtils {
     return table;
   }
 
+  /** One mount point per volume, in the same CSV form the API accepts. */
+  public static String getDummyMountPoints(int numVolumes) {
+    return IntStream.range(0, numVolumes)
+        .mapToObj(i -> "/mnt/d" + i)
+        .collect(Collectors.joining(","));
+  }
+
   public static DeviceInfo getDummyDeviceInfo(int numVolumes, int volumeSize) {
     DeviceInfo deviceInfo = new DeviceInfo();
     deviceInfo.numVolumes = numVolumes;
     deviceInfo.volumeSize = volumeSize;
-    deviceInfo.mountPoints = "/mnt/d0";
+    deviceInfo.mountPoints = getDummyMountPoints(numVolumes);
     deviceInfo.storageType = PublicCloudConstants.StorageType.GP2;
     return deviceInfo;
   }

@@ -75,21 +75,25 @@
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(enable_wait_queues);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_int64(db_block_size_bytes);
-DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
-DECLARE_bool(ysql_enable_write_pipelining);
-DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_select_parallelism);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_uint32(ddl_verification_timeout_multiplier);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(TEST_pause_apply_tablet_split);
 DECLARE_bool(TEST_pause_before_full_compaction);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
@@ -98,15 +102,6 @@ DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
 DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
-DECLARE_uint32(ddl_verification_timeout_multiplier);
-DECLARE_bool(TEST_pause_apply_tablet_split);
-DECLARE_bool(TEST_disable_flush_on_shutdown);
-DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cleanup_intents_sst_files);
-DECLARE_bool(delete_intents_sst_files);
-DECLARE_int32(intents_flush_max_delay_ms);
-DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_bool(ysql_enable_write_pipelining);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -251,7 +246,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   ASSERT_OK(conn.Execute(
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) t2;"));
 
-  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
 
@@ -275,7 +270,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
 }
 
 // The below test asserts that the intent iterator created during conflict resolution rightly checks
-// conflicts for the empty doc key and that it doesn't get iniaited with the tablet's key bounds.
+// conflicts for the empty doc key and that it doesn't get initialized with the tablet's key bounds.
 //
 // Refer https://github.com/yugabyte/yugabyte-db/issues/22630 for details.
 #ifndef NDEBUG
@@ -392,7 +387,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)
   auto num_rows_str = "10000";
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0), 0", num_rows_str));
-  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   // Reduce max batch size so as to increase chances of encountering a WriteRpc amidst split.
@@ -643,7 +638,7 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
       std::numeric_limits<int32>::max();
 
-  // Create custom RocksDB listener to analyse files in a compaction.
+  // Create custom RocksDB listener to analyze files in a compaction.
   struct Listener : public rocksdb::EventListener {
     using CompactedFiles = std::vector<uint64_t>;
     using CompactionJob  = std::vector<CompactedFiles>;
@@ -948,8 +943,8 @@ class PgPartitioningVersionTest :
     auto tablet = VERIFY_RESULT(peer->shared_tablet());
     auto partitioning_version = tablet->schema()->table_properties().partitioning_version();
     SCHECK_EQ(expected_partitioning_version, partitioning_version, IllegalState,
-              Format("Unexpected paritioning version {0} vs {1}",
-                      expected_partitioning_version, partitioning_version));
+              Format("Unexpected partitioning version {0} vs {1}",
+                     expected_partitioning_version, partitioning_version));
 
     // Make sure SST files appear to be able to split
     RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
@@ -1381,7 +1376,7 @@ TEST_P(PgPartitioningVersionTest, SplitAt) {
       [](const uint32_t partitioning_version, PartitionsKeys partitions) -> PartitionsKeys {
     for (auto& part : partitions) {
       if (partitioning_version) {
-        // Starting from paritioning version == 1, a range group of partition, created with
+        // Starting from partitioning version == 1, a range group of partition, created with
         // split at statement, will contain a `-Inf` (a.k.a `kLowest` a.k.a 0x00) value for
         // `ybuniqueidxkeysuffix` or `ybidxbasectid`.
         part.push_back("-Inf");
@@ -1524,7 +1519,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
       const auto tablets = ASSERT_RESULT(GetTabletsByPartitionKey(table));
       ASSERT_EQ(tablets.size(), 3);
 
-      // Exptract middle tablet bounds.
+      // Extract middle tablet bounds.
       const auto parse_partition_key = [](const std::string& key) -> Result<int> {
         dockv::SubDocKey doc_key;
         RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
@@ -1613,7 +1608,7 @@ TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
   // this value.
   ASSERT_EQ(props.num_hash_key_columns, (partitioning == Partitioning::kHash));
   if (partitioning == Partitioning::kRange) {
-    // Additionally we can check split clause for range paritioned table.
+    // Additionally we can check split clause for range partitioned table.
     const auto range_clause = ASSERT_RESULT(FetchRangeSplitClause(&conn, table_name));
 
     // Build expected split clause.

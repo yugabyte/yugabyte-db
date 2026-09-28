@@ -2,10 +2,19 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from db.connection_pool import ConnectionPool
 from db.system_connection_pool import SystemConnectionPool
+from db.source_connection_pool import SourceConnectionPool
+from db.target_connection_pool import TargetConnectionPool
+from db.registration_cache import RegistrationCache
 from work_queue.poller import Poller
+from work_queue.registration_poller import RegistrationPoller
 from work_queue.task_router import get_router
 from work_queue.task_type_keys import TaskTypeKeys
-from rag_pipeline import CreateSourceProcessorForAWS_S3, DocumentPreprocessor, UserPromptEmbedder
+from rag_pipeline import (
+    CreateSourceProcessorForAWS_S3,
+    DocumentPreprocessor,
+    UserPromptEmbedder,
+    AutoColumnEmbeddingProcessor,
+)
 from rag_pipeline.document_types import (
     DEFAULT_WORKER_TYPE,
     WORKER_TYPE_TO_MIME_TYPES,
@@ -47,10 +56,52 @@ embedding_generation_poller = None
 embedding_generation_poller_thread = None
 embedding_generation_poller_active = False
 
+# WORKER_TYPE=AUTO_COLUMN_EMBEDDING: a pod running this worker type does
+# nothing but registration-based text->vector auto-embedding (see
+# rag_pipeline.auto_column_embedding_processor) -- it never registers the
+# document-ingestion processors and never starts polling_worker, so it can't
+# pick up CREATE_SOURCE/PREPROCESS work even if some is queued. No
+# dist_rag.work_queue task is ever created or claimed for this worker type;
+# discovery/claim is driven entirely by dist_rag.column_embedding_registrations
+# / dist_rag.column_embedding_progress (RegistrationCache/RegistrationPoller).
+WORKER_TYPE_AUTO_COLUMN_EMBEDDING = "AUTO_COLUMN_EMBEDDING"
+auto_column_embedding_registration_cache = None
+auto_column_embedding_poller = None
+auto_column_embedding_poller_thread = None
+auto_column_embedding_active = False
+auto_column_embedding_processor = None
+
 POLL_IDLE_SLEEP = int(os.getenv("POLL_IDLE_SLEEP_SECONDS", "1"))
 POLL_ERROR_BACKOFF = int(os.getenv("POLL_ERROR_BACKOFF_SECONDS", "60"))
 EMBEDDING_POLL_IDLE_SLEEP = int(os.getenv("EMBEDDING_POLL_IDLE_SLEEP_SECONDS", "1"))
 EMBEDDING_POLL_ERROR_BACKOFF = int(os.getenv("EMBEDDING_POLL_ERROR_BACKOFF_SECONDS", "60"))
+AUTO_COLUMN_EMBEDDING_POLL_IDLE_SLEEP = int(
+    os.getenv("COLUMN_EMBED_POLL_IDLE_SLEEP_SECONDS", "1")
+)
+AUTO_COLUMN_EMBEDDING_POLL_ERROR_BACKOFF = int(
+    os.getenv("COLUMN_EMBED_POLL_ERROR_BACKOFF_SECONDS", "60")
+)
+
+
+def _resolve_worker_type() -> str:
+    """
+    Resolve the top-level WORKER_TYPE env var.
+
+    Orthogonal to WORKER_DOCUMENT_TYPE (which only matters for the default
+    worker type's PREPROCESS filtering). Unset/unrecognized values fall back
+    to the default (today's document-ingestion behavior, unchanged) so
+    existing deployments that never set WORKER_TYPE keep working exactly as
+    before.
+    """
+    raw_value = os.getenv("WORKER_TYPE", "").strip().upper()
+    if raw_value == WORKER_TYPE_AUTO_COLUMN_EMBEDDING:
+        return WORKER_TYPE_AUTO_COLUMN_EMBEDDING
+    if raw_value:
+        logger.warning(
+            f"WORKER_TYPE '{raw_value}' is not recognized; defaulting to "
+            f"document-ingestion worker type."
+        )
+    return "DOCUMENT_PROCESSING"
 
 
 def route_task(task: WorkQueueTask) -> Dict[str, Any]:
@@ -117,6 +168,61 @@ def embedding_generation_worker():
                 )
     finally:
         logger.info("Embedding generation worker thread shutting down")
+
+
+def auto_column_embedding_worker():
+    """
+    Synchronous worker thread for WORKER_TYPE=AUTO_COLUMN_EMBEDDING pods.
+
+    No dist_rag.work_queue task is ever created or claimed here -- each
+    cycle: load the currently ACTIVE registrations (RegistrationCache,
+    TTL-refreshed, so this is a cheap in-memory read on most cycles), claim
+    a batch for each one (RegistrationPoller.claim_batch, which already
+    returns a whole batch per registration per cycle -- see its own
+    two-sub-claim starvation-avoidance logic), and buffer whatever was
+    claimed into the shared AutoColumnEmbeddingProcessor. maybe_flush() is
+    called every cycle regardless of whether anything was claimed -- so a
+    small batch that stops growing still gets flushed on the time trigger
+    even when no new rows arrive.
+    """
+    global auto_column_embedding_registration_cache, auto_column_embedding_poller
+
+    logger.info("Auto column embedding worker thread started")
+
+    try:
+        auto_column_embedding_registration_cache = RegistrationCache()
+        auto_column_embedding_poller = RegistrationPoller()
+        worker_id = str(uuid.uuid4())
+
+        while auto_column_embedding_active:
+            try:
+                registrations = auto_column_embedding_registration_cache.get_active()
+                claimed_any = False
+
+                for registration in registrations:
+                    claimed_rows = auto_column_embedding_poller.claim_batch(
+                        registration, worker_id
+                    )
+                    if claimed_rows:
+                        claimed_any = True
+                        logger.info(
+                            f"Claimed {len(claimed_rows)} row(s) for "
+                            f"registration {registration.registration_name!r}"
+                        )
+                        if auto_column_embedding_processor is not None:
+                            auto_column_embedding_processor.buffer(claimed_rows)
+
+                if auto_column_embedding_processor is not None:
+                    auto_column_embedding_processor.maybe_flush()
+
+                if not registrations or not claimed_any:
+                    time.sleep(AUTO_COLUMN_EMBEDDING_POLL_IDLE_SLEEP)
+
+            except Exception as e:
+                logger.error(f"Error in auto_column_embedding polling loop: {e}")
+                time.sleep(AUTO_COLUMN_EMBEDDING_POLL_ERROR_BACKOFF)
+    finally:
+        logger.info("Auto column embedding worker thread shutting down")
 
 
 def generate_embeddings():
@@ -334,6 +440,9 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     global poller_thread, embedding_generation_poller_thread
+    global auto_column_embedding_poller_thread, auto_column_embedding_active
+    global auto_column_embedding_processor
+    worker_type = "DOCUMENT_PROCESSING"
     try:
         logger.info("Starting up application...")
 
@@ -359,35 +468,80 @@ async def lifespan(app: FastAPI):
             SystemConnectionPool.initialize(system_connection_string)
             logger.info("SystemConnectionPool initialized successfully")
 
-        # Initialize task router and register processors
-        router = get_router()
-        router.register(
-            TaskTypeKeys.CREATE_SOURCE,
-            CreateSourceProcessorForAWS_S3()
-        )
-        router.register(
-            TaskTypeKeys.DOCUMENT_PREPROCESSING,
-            DocumentPreprocessor()
-        )
-        router.register(
-            TaskTypeKeys.USER_PROMPT_EMBEDDING,
-            UserPromptEmbedder()
-        )
-        logger.info("Task processors registered successfully")
+        worker_type = _resolve_worker_type()
 
-        _maybe_preload_docling_models()
+        if worker_type == WORKER_TYPE_AUTO_COLUMN_EMBEDDING:
+            # This pod does nothing but registration-based column-embedding
+            # work -- no document-ingestion processors, no polling_worker,
+            # and no dist_rag.work_queue task type of its own -- so it can
+            # never pick up CREATE_SOURCE/PREPROCESS work even if some is
+            # queued, and it never needs a TaskRouter registration at all.
+            #
+            # Source and target are independently configurable, deliberately
+            # generic (not Langfuse-specific) -- a given registration's
+            # source_connection decides which reader/query shape actually
+            # runs against COLUMN_EMBED_SOURCE_DB_CONNECTION_STRING (see
+            # rag_pipeline.source_readers). COLUMN_EMBED_TARGET_DB_CONNECTION_STRING
+            # falls back to the main YUGABYTEDB_CONNECTION_STRING, since the
+            # destination is typically in the same database as everything
+            # else (and must be, for RegistrationPoller's claim query to
+            # JOIN it against dist_rag.column_embedding_progress in one
+            # query -- see registration_poller module docstring); source has
+            # no sensible default.
+            source_db_connection_string = os.getenv("COLUMN_EMBED_SOURCE_DB_CONNECTION_STRING")
+            if not source_db_connection_string:
+                raise ValueError(
+                    "COLUMN_EMBED_SOURCE_DB_CONNECTION_STRING environment variable is "
+                    "required when WORKER_TYPE=AUTO_COLUMN_EMBEDDING"
+                )
+            SourceConnectionPool.initialize(source_db_connection_string)
+            logger.info("SourceConnectionPool initialized successfully")
 
-        # Start the polling worker thread
-        poller_thread = threading.Thread(target=polling_worker, daemon=True)
-        poller_thread.start()
-        logger.info("Polling worker thread started successfully")
+            target_db_connection_string = (
+                os.getenv("COLUMN_EMBED_TARGET_DB_CONNECTION_STRING") or db_connection_string
+            )
+            TargetConnectionPool.initialize(target_db_connection_string)
+            logger.info("TargetConnectionPool initialized successfully")
 
-        # Start the polling worker thread for embedding generation
-        # embedding_generation_poller_thread = threading.Thread(
-        #     target=embedding_generation_worker, daemon=True
-        # )
-        # embedding_generation_poller_thread.start()
-        # logger.info("Embedding generation worker thread started")
+            auto_column_embedding_processor = AutoColumnEmbeddingProcessor()
+            logger.info("AutoColumnEmbeddingProcessor constructed successfully")
+
+            auto_column_embedding_active = True
+            auto_column_embedding_poller_thread = threading.Thread(
+                target=auto_column_embedding_worker, daemon=True
+            )
+            auto_column_embedding_poller_thread.start()
+            logger.info("Auto column embedding worker thread started successfully")
+        else:
+            # Default worker type -- unchanged from before WORKER_TYPE existed.
+            router = get_router()
+            router.register(
+                TaskTypeKeys.CREATE_SOURCE,
+                CreateSourceProcessorForAWS_S3()
+            )
+            router.register(
+                TaskTypeKeys.DOCUMENT_PREPROCESSING,
+                DocumentPreprocessor()
+            )
+            router.register(
+                TaskTypeKeys.USER_PROMPT_EMBEDDING,
+                UserPromptEmbedder()
+            )
+            logger.info("Task processors registered successfully")
+
+            _maybe_preload_docling_models()
+
+            # Start the polling worker thread
+            poller_thread = threading.Thread(target=polling_worker, daemon=True)
+            poller_thread.start()
+            logger.info("Polling worker thread started successfully")
+
+            # Start the polling worker thread for embedding generation
+            # embedding_generation_poller_thread = threading.Thread(
+            #     target=embedding_generation_worker, daemon=True
+            # )
+            # embedding_generation_poller_thread.start()
+            # logger.info("Embedding generation worker thread started")
 
     except Exception as e:
         logger.error(f"Failed to start up application: {e}")
@@ -398,11 +552,21 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down application...")
     try:
-        # Stop the polling worker thread
-        polling_active = False
-        if poller_thread and poller_thread.is_alive():
-            poller_thread.join(timeout=5)
-            logger.info("Polling worker thread stopped")
+        if worker_type == WORKER_TYPE_AUTO_COLUMN_EMBEDDING:
+            auto_column_embedding_active = False
+            thread = auto_column_embedding_poller_thread
+            if thread and thread.is_alive():
+                thread.join(timeout=5)
+                logger.info("Auto column embedding worker thread stopped")
+            SourceConnectionPool.close_all()
+            TargetConnectionPool.close_all()
+            logger.info("SourceConnectionPool and TargetConnectionPool closed successfully")
+        else:
+            # Stop the polling worker thread
+            polling_active = False
+            if poller_thread and poller_thread.is_alive():
+                poller_thread.join(timeout=5)
+                logger.info("Polling worker thread stopped")
 
         ConnectionPool.close_all()
         logger.info("ConnectionPool closed successfully")

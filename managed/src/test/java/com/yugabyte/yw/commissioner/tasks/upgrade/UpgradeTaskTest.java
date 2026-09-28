@@ -29,8 +29,10 @@ import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
@@ -64,6 +66,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
@@ -78,6 +81,7 @@ import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import org.yb.master.MasterClusterOuterClass.RollbackAutoFlagsResponsePB;
 import org.yb.util.PeerInfo;
+import play.libs.Json;
 
 @Slf4j
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
@@ -139,11 +143,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.ChangeMasterConfig,
+          TaskType.CheckFollowerLag,
           TaskType.UpdateClusterUserIntent,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.WaitStartingFromTime,
-          TaskType.UpdateUniverseFields);
+          TaskType.UpdateUniverseFields,
+          TaskType.DeleteRootVolumes,
+          TaskType.MarkUniverseForHealthScriptReUpload);
 
   @Before
   public void setUp() {
@@ -215,6 +223,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     try {
       when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
@@ -249,6 +258,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(mockClient.changeMasterClusterConfig(any()))
           .thenReturn(mockMasterChangeConfigResponse);
+      ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
+      lenient()
+          .when(
+              mockClient.changeMasterConfig(
+                  anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
+          .thenReturn(mockChangeConfigResponse);
       lenient()
           .when(mockClient.getLeaderBlacklistCompletion())
           .thenReturn(mockGetLoadMovePercentResponse);
@@ -279,7 +294,25 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
     // Create dummy shell response
     ShellResponse dummyShellResponse = new ShellResponse();
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              if (invocation.getArgument(0) == NodeManager.NodeCommandType.List
+                  && invocation.getArgument(1) instanceof NodeTaskParams) {
+                NodeTaskParams params = invocation.getArgument(1);
+                ObjectNode respJson = Json.newObject();
+                if (params.getUniverseUUID() != null) {
+                  respJson.put("universe_uuid", params.getUniverseUUID().toString());
+                }
+                // Azure provisioning recovers disk LUNs from the host-info output.
+                if (addAzureLunIndexes(respJson, params)) {
+                  ShellResponse listResponse = new ShellResponse();
+                  listResponse.message = respJson.toString();
+                  return listResponse;
+                }
+              }
+              return dummyShellResponse;
+            });
 
     defaultUser = ModelFactory.testUser(defaultCustomer);
 

@@ -134,6 +134,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
@@ -3477,22 +3478,25 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
 
   // Tiered storage: if a target tier was requested (e.g. from the tablespace's storage_tier),
   // restrict the candidate disks to that tier so the new tablet's home dir (path_id 0) lands
-  // on the right tier. If the tier isn't configured on this node, fall back to all disks rather
-  // than failing tablet creation outright.
+  // on the right tier. Tables with no tablespace preference default to kDefaultStorageTier
+  // ("ssd") rather than load-balancing across every configured disk regardless of tier, so an
+  // hdd disk with fewer tablets doesn't silently steal placement from ssd. If the resolved tier
+  // isn't configured on this node, fall back to all disks rather than failing tablet creation
+  // outright.
   // TODO(TieredStorage): wire up LB detection/reconciliation for tier-violating replicas.
   // For this fallback to be safe long-term, the master's load balancer needs to detect a
   // replica that isn't respecting its tablespace's tier placement and reconcile it
   // (locally via AlterTabletTier, or RBS).
+  const std::string effective_target_tier =
+      target_tier.empty() ? kDefaultStorageTier : target_tier;
   std::vector<string> candidate_dirs = data_root_dirs;
-  if (!target_tier.empty()) {
-    auto tier_dirs = fs_manager->GetDataRootDirsForTier(target_tier);
-    if (tier_dirs.empty()) {
-      LOG(WARNING) << Format(
-          "No data roots configured for target storage tier '$0' on this node; falling back to "
-          "default disk selection for tablet $1", target_tier, tablet_id);
-    } else {
-      candidate_dirs = std::move(tier_dirs);
-    }
+  auto tier_dirs = fs_manager->GetDataRootDirsForTier(effective_target_tier);
+  if (tier_dirs.empty()) {
+    LOG(WARNING) << Format(
+        "No data roots configured for target storage tier '$0' on this node; falling back to "
+        "default disk selection for tablet $1", effective_target_tier, tablet_id);
+  } else {
+    candidate_dirs = std::move(tier_dirs);
   }
 
   // Find the data directory with the least count of tablets for this table.

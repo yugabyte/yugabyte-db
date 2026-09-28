@@ -498,6 +498,7 @@ class PgBackendsTestPgTimeout : public PgBackendsTest {
           "--enable_object_locking_for_table_locks=false",
           "--ysql_yb_ddl_transaction_block_enabled=false",
           "--ysql_yb_enable_ddl_savepoint_support=false",
+          "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false",
           "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
           "--ysql_enable_concurrent_ddl=false"
         });

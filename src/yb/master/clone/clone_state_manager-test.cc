@@ -36,11 +36,15 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+
+DECLARE_uint32(TEST_delay_after_clearing_tserver_metacache_ms);
 
 // This is needed for the mock of GetBlacklist - must be in std namespace for ADL.
 namespace std {
@@ -378,6 +382,38 @@ class CloneStateManagerTest : public YBTest {
       deadline);
 }
 
+  // Drives a pg clone from RESTORING to RESTORED, which schedules one ClearMetacache task per
+  // tserver. Returns the callback those tasks share.
+  Result<AsyncClearMetacache::ClearMetacacheCallbackType> RestoreAndCaptureClearMetacacheCallback(
+      const CloneStateInfoPtr& clone_state, size_t num_tservers) {
+    {
+      auto lock = clone_state->LockForWrite();
+      lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORING);
+      lock.Commit();
+      clone_state->SetRestorationId(kRestorationId);
+    }
+
+    ListSnapshotRestorationsResponsePB resp;
+    resp.add_restorations()->mutable_entry()->set_state(SysSnapshotEntryPB::RESTORED);
+    EXPECT_CALL(MockFuncs(), ListRestorations(kRestorationId, _))
+        .WillOnce(DoAll(SetArgPointee<1>(resp), Return(Status::OK())));
+    EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(target_ns_));
+
+    TSDescriptorVector tservers;
+    for (size_t i = 0; i < num_tservers; ++i) {
+      tservers.push_back(std::make_shared<TSDescriptor>(
+          Format("ts-$0", i), RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr));
+    }
+    EXPECT_CALL(MockFuncs(), GetTservers).WillOnce(Return(tservers));
+
+    AsyncClearMetacache::ClearMetacacheCallbackType callback;
+    EXPECT_CALL(MockFuncs(), ScheduleClearMetaCacheTasks(_, _, _))
+        .WillOnce(DoAll(SaveArg<2>(&callback), Return(Status::OK())));
+
+    RETURN_NOT_OK(HandleRestoringState(clone_state));
+    return callback;
+  }
+
   void AssertCloneIsAborted() {
     auto clone_state = GetLatestCloneState();
     auto lock = clone_state->LockForRead();
@@ -677,6 +713,135 @@ TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManager
       STATUS_FORMAT(IllegalState, "Fail DoImportSnapshotMeta for test")));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
   ASSERT_OK(callback(Status::OK() /* pg_schema_cloning_status */));
+
+  AssertCloneIsAborted();
+}
+
+// Every tserver answers its ClearMetacache task, and exactly one of those callbacks may start the
+// EnableDbConnections task. The delay flag holds them all past the decrement so a decrement that
+// is not atomic with the "was I last" check lets more than one through.
+TEST_F_EX(
+    CloneStateManagerTest, ClearMetacacheCallbacksElectOneEnableDbConnsTask,
+    CloneStateManagerPgTest) {
+  constexpr size_t kNumTservers = 3;
+  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+  auto callback = ASSERT_RESULT(
+      RestoreAndCaptureClearMetacacheCallback(clone_state, kNumTservers));
+
+  auto ts = std::make_shared<TSDescriptor>(
+      "ts-0", RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  EXPECT_CALL(MockFuncs(), GetClosestLiveTserver).WillRepeatedly(Return(ts));
+  EXPECT_CALL(MockFuncs(), ScheduleEnableDbConnectionsTask(_, _, _))
+      .Times(1)
+      .WillOnce(Return(Status::OK()));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_after_clearing_tserver_metacache_ms) = 500;
+  CountDownLatch start(1);
+  std::vector<scoped_refptr<Thread>> threads;
+  for (size_t i = 0; i < kNumTservers; ++i) {
+    scoped_refptr<Thread> thread;
+    ASSERT_OK(Thread::Create("test", "clear-metacache", [&callback, &start]() {
+      start.Wait();
+      ASSERT_OK(callback(Status::OK()));
+    }, &thread));
+    threads.push_back(thread);
+  }
+  start.CountDown();
+  for (auto& thread : threads) {
+    thread->Join();
+  }
+
+  ASSERT_EQ(clone_state->LockForRead()->pb.aggregate_state(), SysCloneStatePB::RESTORED);
+}
+
+// A tserver whose metacache was not cleared can still route to the source namespace's tablets, so
+// the clone aborts instead of enabling connections.
+TEST_F_EX(CloneStateManagerTest, AbortIfClearMetacacheFails, CloneStateManagerPgTest) {
+  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+  auto callback = ASSERT_RESULT(
+      RestoreAndCaptureClearMetacacheCallback(clone_state, 3 /* num_tservers */));
+
+  // No tserver may be elected to enable connections once a clear has failed.
+  EXPECT_CALL(MockFuncs(), ScheduleEnableDbConnectionsTask(_, _, _)).Times(0);
+  ASSERT_OK(callback(STATUS_FORMAT(IllegalState, "Fail ClearMetacache for test")));
+
+  AssertCloneIsAborted();
+}
+
+// The clone must not be left in RESTORED when the EnableDbConns task reports a failure.
+TEST_F_EX(CloneStateManagerTest, AbortIfEnableDbConnsFails, CloneStateManagerPgTest) {
+  constexpr size_t kNumTservers = 3;
+  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+  auto clear_callback = ASSERT_RESULT(
+      RestoreAndCaptureClearMetacacheCallback(clone_state, kNumTservers));
+
+  auto ts = std::make_shared<TSDescriptor>(
+      "ts-0", RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  EXPECT_CALL(MockFuncs(), GetClosestLiveTserver).WillRepeatedly(Return(ts));
+  AsyncEnableDbConns::EnableDbConnsCallbackType enable_callback;
+  EXPECT_CALL(MockFuncs(), ScheduleEnableDbConnectionsTask(_, _, _))
+      .WillOnce(DoAll(SaveArg<2>(&enable_callback), Return(Status::OK())));
+  for (size_t i = 0; i < kNumTservers; ++i) {
+    ASSERT_OK(clear_callback(Status::OK()));
+  }
+
+  ASSERT_OK(enable_callback(STATUS_FORMAT(IllegalState, "Fail EnableDbConns for test")));
+
+  AssertCloneIsAborted();
+}
+
+// The EnableDbConns RPC can succeed and the COMPLETE transition still fail to persist. That
+// failure has to reach the abort, otherwise the uncommitted lock leaves the clone in RESTORED with
+// nothing left to advance it.
+TEST_F_EX(
+    CloneStateManagerTest, AbortIfUpsertFailsWhenMarkingCloneComplete, CloneStateManagerPgTest) {
+  constexpr size_t kNumTservers = 3;
+  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _))
+      .WillOnce(Return(Status::OK()))  // RESTORING -> RESTORED.
+      .WillOnce(Return(STATUS_FORMAT(IOError, "Fail Upsert for test")))  // -> COMPLETE.
+      .WillRepeatedly(Return(Status::OK()));  // -> ABORTED.
+
+  auto clear_callback = ASSERT_RESULT(
+      RestoreAndCaptureClearMetacacheCallback(clone_state, kNumTservers));
+
+  auto ts = std::make_shared<TSDescriptor>(
+      "ts-0", RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  EXPECT_CALL(MockFuncs(), GetClosestLiveTserver).WillRepeatedly(Return(ts));
+  AsyncEnableDbConns::EnableDbConnsCallbackType enable_callback;
+  EXPECT_CALL(MockFuncs(), ScheduleEnableDbConnectionsTask(_, _, _))
+      .WillOnce(DoAll(SaveArg<2>(&enable_callback), Return(Status::OK())));
+  for (size_t i = 0; i < kNumTservers; ++i) {
+    ASSERT_OK(clear_callback(Status::OK()));
+  }
+
+  ASSERT_OK(enable_callback(Status::OK()));
+
+  AssertCloneIsAborted();
+}
+
+// AsyncClearMetacache::Finished only logs a callback error, so failing to start the
+// EnableDbConns task has to abort the clone itself.
+TEST_F_EX(
+    CloneStateManagerTest, AbortIfEnableDbConnsCannotBeScheduled, CloneStateManagerPgTest) {
+  constexpr size_t kNumTservers = 3;
+  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+  auto clear_callback = ASSERT_RESULT(
+      RestoreAndCaptureClearMetacacheCallback(clone_state, kNumTservers));
+
+  EXPECT_CALL(MockFuncs(), GetClosestLiveTserver)
+      .WillOnce(Return(STATUS_FORMAT(NotFound, "No live tserver for test")));
+  for (size_t i = 0; i < kNumTservers; ++i) {
+    ASSERT_OK(clear_callback(Status::OK()));
+  }
 
   AssertCloneIsAborted();
 }

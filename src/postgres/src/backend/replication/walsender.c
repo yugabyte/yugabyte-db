@@ -2731,6 +2731,28 @@ WalSndCheckTimeOut(void)
 	if (wal_sender_timeout > 0 && last_processing >= timeout)
 	{
 		/*
+		 * YB: A single blocking GetConsistentChanges RPC can span the whole
+		 * timeout, so the stall is entirely server side and the client was
+		 * never asked to reply.  Request a reply and restart the timer once
+		 * before giving up.  waiting_for_ping_response stays set until the
+		 * client answers, so a truly unresponsive client still times out at
+		 * the next expiry.
+		 */
+		if (IsYugaByteEnabled() && !waiting_for_ping_response)
+		{
+			/*
+			 * Fresh timestamp, not last_processing: the latter predates the
+			 * stall, so a second slow RPC would expire the timer before the
+			 * client had a chance to answer this ping.
+			 */
+			last_reply_timestamp = GetCurrentTimestamp();
+			WalSndKeepalive(true, InvalidXLogRecPtr);
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+			return;
+		}
+
+		/*
 		 * Since typically expiration of replication timeout means
 		 * communication problem, we don't send the error message to the
 		 * standby.

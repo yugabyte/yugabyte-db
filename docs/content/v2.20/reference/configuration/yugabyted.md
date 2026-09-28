@@ -186,7 +186,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --constraint_value *data-placement-constraint-value*
-: Specify the data placement and preferred region(s) for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone:priority`. The priority is an integer and is optional, and determines the preferred region(s) in order of preference. You must specify the same number of data placement values as the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor).
+: Specify replica placement and, optionally, tablet-leader preference. Comma-separated `cloud.region.zone[:priority]` values. Each placement must match a node's `--cloud_location` exactly; wildcards (`*`) are not supported. You must specify the same number of placement values as the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). The optional `:priority` integer is passed to [`yb-admin set_preferred_zones`](../../../admin/yb-admin/#set-preferred-zones); entries without it are placement-only. This is separate from `--fault_tolerance`, which can also move YB-Master processes.
 
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.

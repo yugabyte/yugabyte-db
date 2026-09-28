@@ -278,6 +278,11 @@ public class Util {
     YBA_SHUTDOWN_STARTED = false;
   }
 
+  @VisibleForTesting
+  public static void setYbaShutdownStarted(boolean started) {
+    YBA_SHUTDOWN_STARTED = started;
+  }
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -2140,5 +2145,12 @@ public class Util {
       }
     }
     return pathToUUID;
+  }
+
+  public static NodeDetails findByName(Collection<NodeDetails> nodes, String nodeName) {
+    if (nodeName == null || nodes == null) {
+      return null;
+    }
+    return nodes.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
   }
 }

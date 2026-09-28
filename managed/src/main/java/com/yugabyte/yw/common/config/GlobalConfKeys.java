@@ -1071,6 +1071,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after hyperdisk resize in gcp (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> ociFailFastMultiVolumeInstanceTypeChange =
+      new ConfKeyInfo<>(
+          "yb.oci.fail_fast_multi_volume_instance_type_change",
+          ScopeType.GLOBAL,
+          "Fail fast OCI instance type change with multiple volumes",
+          "When enabled, ResizeNode precheck fails instance type changes if the node has more than"
+              + " one data volume. OCI UpdateInstance allows at most one boot volume and one"
+              + " secondary volume.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
@@ -1520,6 +1530,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "GCP provider validation",
           "Enables validation for GCP Provider and returns the validation errors json if any",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> readGcpInstanceTemplate =
+      new ConfKeyInfo<>(
+          "yb.gcp.read_instance_template",
+          ScopeType.GLOBAL,
+          "Read GCP instance templates",
+          "Read the instance template configured on a GCP region and carry its settings over to"
+              + " the nodes YBA creates, currently its CMEK disk encryption keys. Requires"
+              + " compute.instanceTemplates.get, which is not needed to pass the template to"
+              + " instance creation as a source.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableOciProviderValidation =
@@ -2385,5 +2406,26 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Max Describe Output Buffer Lines",
           "Maximum number of lines to buffer in memory for node agent describe output",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipStorageConfigValidation =
+      new ConfKeyInfo<>(
+          "yb.storage_config.skip_validation",
+          ScopeType.GLOBAL,
+          "Skip storage config validation",
+          "Skip the storage config validators that reach out to the backup storage to check"
+              + " credentials and bucket access, on config create and edit. Escape hatch for"
+              + " storage that YBA itself cannot reach. Field level validation, the config name"
+              + " conflict and the read-only backup location check still apply, and non-storage"
+              + " configs are unaffected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> taskExecutorShutdownMaxWaitTime =
+      new ConfKeyInfo<>(
+          "yb.task_executor.shutdown_max_wait_time",
+          ScopeType.GLOBAL,
+          "Task Executor Shutdown Max Wait Time",
+          "Maximum time to wait for task executor to shutdown gracefully before forcefully"
+              + " terminating it",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

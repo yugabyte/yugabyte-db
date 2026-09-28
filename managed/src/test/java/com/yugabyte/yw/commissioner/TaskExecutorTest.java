@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -571,7 +572,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    // CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
     RunnableTask taskRunner1 = taskExecutor.createRunnableTask(task, null);
     UUID taskUUID = taskExecutor.submit(taskRunner1, executor);
     // Wait for the task to be running.
@@ -579,20 +579,29 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     // Submit executor service shutdown to mimic shutdown hook.
     CompletableFuture.supplyAsync(
         () -> MoreExecutors.shutdownAndAwaitTermination(executor, 2, TimeUnit.SECONDS));
-    // Submit task executor shutdown to mimic shutdown hook.
-    CompletableFuture.supplyAsync(() -> taskExecutor.shutdownAsync(Duration.ZERO /* abort */));
-    // Wait for the task to be cancelled.
-    waitForTask(taskUUID);
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    // Aborted due to shutdown.
-    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
-    // This should get rejected as the executor is already shutdown.
-    assertThrows(
-        PlatformServiceException.class,
-        () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
-    taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // Submit task executor shutdown via the registered shutdown hook.
+    ShutdownHookHandler shutdownHookHandler = app.injector().instanceOf(ShutdownHookHandler.class);
+    try {
+      // Trigger the shutdown hook.
+      CompletableFuture.runAsync(
+          () ->
+              shutdownHookHandler.shutdownHooks(
+                  ShutdownHookHandler.ShutdownPhase.BEFORE_SERVICE_UNBIND));
+      // Wait for the task to be cancelled.
+      waitForTask(taskUUID);
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+      // Aborted due to shutdown.
+      assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+      RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
+      // This should get rejected as the executor is already shutdown.
+      assertThrows(
+          PlatformServiceException.class,
+          () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
+      taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
+      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    } finally {
+      Util.resetYbaShutdownStarted();
+    }
   }
 
   @Test

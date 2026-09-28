@@ -1640,6 +1640,7 @@ YbQpmShmemInit(void)
 typedef struct YbPlanStatePtr
 {
 	PlanState  *ps;
+	bool processed;
 	Instrumentation *instrument;
 	WorkerInstrumentation *worker_instrument;
 	struct SharedJitInstrumentation *worker_jit_instrument;
@@ -1648,8 +1649,23 @@ typedef struct YbPlanStatePtr
 static void
 walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 {
+	ListCell   *lc;
+
 	if (ps == NULL)
 		return;
+
+	/*
+	 * Skip plan states we have already processed since the same subplan can
+	 * appear in the subplan lists (ps->subPlan) of different nodes, e.g.,
+	 * Hash and HashJoin.
+	 */
+	foreach(lc, *pspList)
+	{
+		YbPlanStatePtr *psp = (YbPlanStatePtr *) lfirst(lc);
+
+		if (psp->processed && psp->ps == ps)
+			return;
+	}
 
 	if (save)
 	{
@@ -1664,10 +1680,16 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 		psp->instrument = ps->instrument;
 		psp->worker_instrument = ps->worker_instrument;
 		psp->worker_jit_instrument = ps->worker_jit_instrument;
+
+		/*
+		 * Mark node as processed.
+		 */
+		psp->processed = true;
 		*pspList = lappend(*pspList, psp);
 		ps->instrument = NULL;
 		ps->worker_instrument = NULL;
 		ps->worker_jit_instrument = NULL;
+
 		++(*pos);
 	}
 	else
@@ -1684,6 +1706,11 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 		ps->instrument = psp->instrument;
 		ps->worker_instrument = psp->worker_instrument;
 		ps->worker_jit_instrument = psp->worker_jit_instrument;
+
+		/*
+		 * Mark node as processed.
+		 */
+		psp->processed = true;
 		++(*pos);
 	}
 
@@ -1698,8 +1725,6 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 	walkPlanState(ps->righttree, save, pspList, pos);
 
 	/* initPlans */
-	ListCell   *lc;
-
 	foreach(lc, ps->initPlan)
 	{
 		SubPlanState *sps = (SubPlanState *) lfirst(lc);
@@ -1771,6 +1796,13 @@ YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format)
 	/*
 	 * Restore the instrumentation pointers.
 	 */
+	ListCell *lc;
+	foreach(lc, pspList)
+	{
+		YbPlanStatePtr *psp = (YbPlanStatePtr *) lfirst(lc);
+		psp->processed = false;
+	}
+
 	pos = 0;
 	walkPlanState(queryDesc->planstate, false, &pspList, &pos);
 	list_free_deep(pspList);

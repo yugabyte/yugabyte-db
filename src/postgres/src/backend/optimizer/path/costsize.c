@@ -6941,177 +6941,184 @@ yb_get_lsm_seek_cost(Cardinality num_tuples, int num_key_value_pairs_per_tuple,
 }
 
 /*
- * yb_get_baserel_primary_index
- *		Return the primary index of the base table or NULL if no primary index
- *		exists
+ * yb_get_base_table_ybctid_width
+ *		Returns the width of the ybctid of the base table `baserel_oid`.
+ *
+ * The width follows the table's DocDB key, so it is read from the relation
+ * rather than from the primary key index in the rel's indexlist: scan hints
+ * prune that list, and a pruned primary key must not make a keyed table look
+ * like one keyed by ybrowid.
  */
-static IndexOptInfo *
-yb_get_baserel_primary_index(RelOptInfo *baserel)
+static int32
+yb_get_base_table_ybctid_width(Oid baserel_oid)
 {
-	IndexOptInfo *pk_index = NULL;
-	ListCell   *lc;
+	Relation	baserel = table_open(baserel_oid, NoLock);
+	Bitmapset  *pkey = YBGetTablePrimaryKeyBms(baserel);
+	int32		ybctid_width;
 
-	foreach(lc, baserel->indexlist)
+	if (bms_is_empty(pkey))
 	{
-		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+		/* Base table has no primary key */
+		ybctid_width = UUID_YBCTID_WIDTH;
+	}
+	else
+	{
+		AttrNumber	minattr = YBGetFirstLowInvalidAttributeNumber(baserel);
+		int			member = -1;
 
-		if (!index->hypothetical)
+		/*
+		 * Add 1 byte for null indicator and 8 bytes for size of the ybctid.
+		 */
+		ybctid_width = 9;
+
+		/* Aggregate the width of the key columns */
+		while ((member = bms_next_member(pkey, member)) >= 0)
 		{
-			Relation	index_rel = RelationIdGetRelation(index->indexoid);
+			AttrNumber	attnum = member + minattr;
 
-			if (index_rel->rd_index->indisprimary)
-			{
-				pk_index = index;
-				RelationClose(index_rel);
-				break;
-			}
-			RelationClose(index_rel);
+			/*
+			 * attlen is negative if the attribute has variable length.  Add 1
+			 * byte because DocDB uses double null termination.  Read it
+			 * before get_attavgwidth(), whose syscache miss can process
+			 * invalidations that rebuild rd_att.
+			 */
+			if (TupleDescAttr(baserel->rd_att, attnum - 1)->attlen < 0)
+				++ybctid_width;
+
+			/*
+			 * For each key column, add 1 byte for value type and estimated
+			 * average width of the column.
+			 */
+			ybctid_width += get_attavgwidth(baserel_oid, attnum) + 1;
+		}
+
+		/* Add 1 byte for the kGroupEnd(!). */
+		++ybctid_width;
+
+		if (YbGetTableProperties(baserel)->num_hash_key_columns > 0)
+		{
+			/*
+			 * If there were hash and range keys, then the key is prefixed
+			 * with a 16 bit hash value of the hash columns. Add 1 byte for
+			 * the hash value type and 2 bytes for the hash value. Also add 1
+			 * byte for group termination between hash and range keys.
+			 */
+			ybctid_width += 4;
 		}
 	}
-	return pk_index;
+
+	table_close(baserel, NoLock);
+
+	return ybctid_width;
 }
 
 
 /*
  * yb_get_ybctid_width
- *		Returns the width of the ybctid for the `index` of the `baserel`.
+ *		Returns the width of the ybctid for the `index` of the base table
+ *		`baserel_oid`.
  */
 static int32
-yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
-					IndexOptInfo *index, bool is_primary_index)
+yb_get_ybctid_width(Oid baserel_oid, IndexOptInfo *index, bool is_primary_index)
 {
 	int32		ybctid_width = 0;
 
-	if (index != NULL && index->yb_cached_ybctid_size > 0)
-	{
-		/*
-		 * Aside from performance improvement, this caching has another
-		 * purpose. When a hint is used to influence the choice of an index,
-		 * pg_hint_plan extension removes the index choice available in
-		 * restrict_indexes.
-		 *
-		 * To compute the width of the secondary index ybctid, we need to find
-		 * the primary index. However, as explained above, if the user forces
-		 * using a secondary index with a hint, then the primary index of the
-		 * base table becomes invisible to the cost model, instead it seems as
-		 * if the base table does not have a primary index.
-		 *
-		 * Since all paths are explored before the hint plan is applied, by
-		 * caching the ybctid widht during this first pass, we can avoid the
-		 * above problem.
-		 */
-		ybctid_width = index->yb_cached_ybctid_size;
-	}
-	else
-	{
-		if (index == NULL)
-		{
-			/* Base table has no primary key */
-			ybctid_width = UUID_YBCTID_WIDTH;
-		}
-		else
-		{
-			/*
-			 * Add 1 byte for null indicator and 8 bytes for size of the ybctid.
-			 */
-			ybctid_width += 9;
+	/* The primary key index is the base table itself. */
+	if (is_primary_index)
+		return yb_get_base_table_ybctid_width(baserel_oid);
 
-			/* Aggregate the width of the key columns in the index */
-			for (int i = 0; i < index->nkeycolumns; i++)
+	/* Saves recomputation only; the width does not depend on the indexlist. */
+	if (index->yb_cached_ybctid_size > 0)
+		return index->yb_cached_ybctid_size;
+
+	/*
+	 * Add 1 byte for null indicator and 8 bytes for size of the ybctid.
+	 */
+	ybctid_width += 9;
+
+	/* Aggregate the width of the key columns in the index */
+	for (int i = 0; i < index->nkeycolumns; i++)
+	{
+		/* We ignore system columns for which index->indexkeys[i] < 0 */
+		if (index->indexkeys[i] == 0)	/* Index key is an expression */
+		{
+			ybctid_width += get_attavgwidth(index->indexoid, i + 1) + 1;
+
+			if (!index->hypothetical)
 			{
-				/* We ignore system columns for which index->indexkeys[i] < 0 */
-				if (index->indexkeys[i] == 0)	/* Index key is an expression */
-				{
-					ybctid_width += get_attavgwidth(index->indexoid, i + 1) + 1;
+				Relation	indexrel = index_open(index->indexoid,
+												  NoLock);
+				Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
+													  i);
 
-					if (!index->hypothetical)
-					{
-						Relation	indexrel = index_open(index->indexoid,
-														  NoLock);
-						Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
-															  i);
-
-						if (att->attlen < 0)
-						{
-							/*
-							 * attlen is negative if the attribute has variable
-							 * length. Add 1 byte because DocDB uses double
-							 * null termination.
-							 */
-							++ybctid_width;
-						}
-
-						index_close(indexrel, NoLock);
-					}
-				}
-				else if (index->indexkeys[i] > 0)	/* Index key is user
-													 * column */
+				if (att->attlen < 0)
 				{
 					/*
-					 * For each key column, add 1 byte for value type and
-					 * estimated average width of the column.
+					 * attlen is negative if the attribute has variable
+					 * length. Add 1 byte because DocDB uses double
+					 * null termination.
 					 */
-					ybctid_width +=
-						get_attavgwidth(baserel_oid, index->indexkeys[i]) + 1;
-
-					Relation	baserel = table_open(baserel_oid, NoLock);
-					Form_pg_attribute att = TupleDescAttr(baserel->rd_att,
-														  index->indexkeys[i] - 1);
-
-					if (att->attlen < 0)
-					{
-						/*
-						 * attlen is negative if the attribute has variable
-						 * length. Add 1 byte because DocDB uses double
-						 * null termination.
-						 */
-						++ybctid_width;
-					}
-					table_close(baserel, NoLock);
+					++ybctid_width;
 				}
+
+				index_close(indexrel, NoLock);
 			}
+		}
+		else if (index->indexkeys[i] > 0)	/* Index key is user
+											 * column */
+		{
+			/*
+			 * For each key column, add 1 byte for value type and
+			 * estimated average width of the column.
+			 */
+			ybctid_width +=
+				get_attavgwidth(baserel_oid, index->indexkeys[i]) + 1;
 
-			/* Add 1 byte for the kGroupEnd(!). */
-			++ybctid_width;
+			Relation	baserel = table_open(baserel_oid, NoLock);
+			Form_pg_attribute att = TupleDescAttr(baserel->rd_att,
+												  index->indexkeys[i] - 1);
 
-			if (index->nhashcolumns > 0)
+			if (att->attlen < 0)
 			{
 				/*
-				 * If there were hash and range keys, then the key is prefixed
-				 * with a 16 bit hash value of the hash columns. Add 1 byte
-				 * for the hash value type and 2 bytes for the hash value. Also
-				 * add 1 byte for group termination between hash and range keys.
-				 */
-				ybctid_width += 4;
-			}
-
-			if (!is_primary_index)
-			{
-				/*
-				 * In the secondary index, the ybctid of the base table is part of
-				 * the secondary index key. It is stored in string encoded format.
-				 */
-				IndexOptInfo *base_table_primary_index = yb_get_baserel_primary_index(baserel);
-				int32		base_table_ybctid_width = yb_get_ybctid_width(baserel_oid,
-																		  baserel,
-																		  base_table_primary_index,
-																		  true /* is_primary_index */ );
-
-				/*
-				 * We need to subtract 2 from the base table ybctid length to
-				 * get the length of the string encoding. The ybctid length
-				 * includes 9 bytes for the null indicator and size of the
-				 * ybctid, which are not part of the string encoding. However,
-				 * the string encoding needs 7 additional bytes, 1 for the
-				 * value type, 4 bytes for separator and 2 bytes for double
+				 * attlen is negative if the attribute has variable
+				 * length. Add 1 byte because DocDB uses double
 				 * null termination.
 				 */
-				ybctid_width += base_table_ybctid_width - 2;
+				++ybctid_width;
 			}
-
-			index->yb_cached_ybctid_size = ybctid_width;
+			table_close(baserel, NoLock);
 		}
 	}
+
+	/* Add 1 byte for the kGroupEnd(!). */
+	++ybctid_width;
+
+	if (index->nhashcolumns > 0)
+	{
+		/*
+		 * If there were hash and range keys, then the key is prefixed
+		 * with a 16 bit hash value of the hash columns. Add 1 byte
+		 * for the hash value type and 2 bytes for the hash value. Also
+		 * add 1 byte for group termination between hash and range keys.
+		 */
+		ybctid_width += 4;
+	}
+
+	/*
+	 * In the secondary index, the ybctid of the base table is part of the
+	 * secondary index key. It is stored in string encoded format.
+	 *
+	 * We need to subtract 2 from the base table ybctid length to get the
+	 * length of the string encoding. The ybctid length includes 9 bytes for
+	 * the null indicator and size of the ybctid, which are not part of the
+	 * string encoding. However, the string encoding needs 7 additional bytes,
+	 * 1 for the value type, 4 bytes for separator and 2 bytes for double null
+	 * termination.
+	 */
+	ybctid_width += yb_get_base_table_ybctid_width(baserel_oid) - 2;
+
+	index->yb_cached_ybctid_size = ybctid_width;
 
 	return ybctid_width;
 }
@@ -7291,9 +7298,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 	if (include_ybctid_target && result_width > 0)
 	{
 		int32		ybctid_target_width =
-			yb_get_ybctid_width(baserel_oid, baserel,
-							   yb_get_baserel_primary_index(baserel),
-							   true /* is_primary_index */ );
+			yb_get_base_table_ybctid_width(baserel_oid);
 
 		/* Avoid double-counting the null indicator the loop already charged. */
 		if (ybctid_in_pathtarget_or_local_clauses)
@@ -7334,7 +7339,6 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 		{
 			Assert(index_path != NULL);
 			result_width = yb_get_ybctid_width(baserel_oid,
-											   baserel,
 											   index_path->indexinfo,
 											   is_primary_index);
 		}
@@ -7350,11 +7354,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 			 * DocDB sends the columns needed for these filters, and does not need
 			 * to send the ybctid.
 			 */
-			IndexOptInfo *primary_index = yb_get_baserel_primary_index(baserel);
-
-			result_width =
-				yb_get_ybctid_width(baserel_oid, baserel, primary_index,
-									true /* is_primary_index */ );
+			result_width = yb_get_base_table_ybctid_width(baserel_oid);
 		}
 	}
 
@@ -9134,7 +9134,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/*
 	 * Compute ybctid and the final result width.
 	 */
-	ybctid_width = yb_get_ybctid_width(baserel_oid, baserel, index, false);
+	ybctid_width = yb_get_ybctid_width(baserel_oid, index, is_primary_index);
 	path->ybctid_width = ybctid_width;
 
 	docdb_result_width = yb_get_docdb_result_width(&path->path, root,
@@ -9188,9 +9188,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * base-table ybctid width.
 		 */
 		int32		tmp_ybctid_width =
-			yb_get_ybctid_width(baserel_oid, baserel,
-								yb_get_baserel_primary_index(baserel),
-								true /* is_primary_index */ );
+			yb_get_base_table_ybctid_width(baserel_oid);
 
 		yb_get_pagination_metrics(num_index_tuples_matched,
 								  tmp_ybctid_width,
@@ -9357,7 +9355,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		startup_cost += disable_cost;
 
 	/* TODO(#29078): cost this better. */
-	if (path->yb_index_path_info.merge_scan_saop_cols)
+	if (path->yb_index_path_info.merge_scan_stream_cols)
 	{
 		/*
 		 * We need merge index scans to cost higher than plain index scans to

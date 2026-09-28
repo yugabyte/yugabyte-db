@@ -1468,6 +1468,7 @@ void Tablet::RegularDbFilesChanged() {
 void Tablet::SetCleanupPool(
     ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
   snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+  vector_indexes_->SetScheduler(scheduler);
 
   if (!transaction_participant_) {
     return;
@@ -1808,6 +1809,11 @@ void Tablet::CompleteShutdown() {
       << "CompleteShutdown called without a preceding StartShutdown";
 
   snapshots_->CompleteShutdown();
+
+  // Final, unlike the vector index shutdown below, which a truncate or a restore also runs before
+  // re-opening the storages.
+  vector_indexes_->StopBackfillRetry();
+
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
@@ -1885,6 +1891,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
   };
 
   op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
+
+  // Blocking operations stay unavailable until that pause is released, so a test can park a task
+  // that acquires one, e.g. a vector index backfill, until here to make it fail with TryAgain.
+  TEST_SYNC_POINT("Tablet::StartShutdownStorages:BlockingPaused");
 
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
@@ -5430,16 +5440,20 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   }
   const Slice upper_bound_key = key_bounds_.upper;
 
-  const uint64_t total_data_size = VERIFY_RESULT(regular_db_->TotalDataSize());
+  // Pinned for the whole loop: a target computed on one version's Cross scale can land outside the
+  // search window when measured against another.
+  const auto pinned_version = regular_db_->PinCurrentVersion();
+
+  const uint64_t total_data_size = VERIFY_RESULT(pinned_version->TotalDataSize());
   SCHECK_GT(total_data_size, 0U, IllegalState, "No SST data available for size-based split");
 
   SplitKeysData split_keys;
   split_keys.encoded_keys.reserve(num_keys);
   split_keys.partition_keys.reserve(num_keys);
 
-  const uint64_t lower_cross = VERIFY_RESULT(regular_db_->Cross(lower_bound_key));
+  const uint64_t lower_cross = VERIFY_RESULT(pinned_version->Cross(lower_bound_key));
   const uint64_t upper_cross = upper_bound_key.empty()
-    ? total_data_size : VERIFY_RESULT(regular_db_->Cross(upper_bound_key));
+    ? total_data_size : VERIFY_RESULT(pinned_version->Cross(upper_bound_key));
 
   DCHECK_GE(upper_cross, lower_cross);
   auto chunk_size = (upper_cross - lower_cross) / split_factor;
@@ -5447,8 +5461,7 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   std::string last_key_buf = lower_bound_key.ToBuffer();
   for (int i = 0; i < num_keys; ++i) {
     auto target_size = lower_cross + chunk_size * (i + 1);
-    auto split_data_key =
-        regular_db_->FindTargetKey(last_key_buf, upper_bound_key, target_size);
+    auto split_data_key = pinned_version->FindTargetKey(last_key_buf, upper_bound_key, target_size);
     if (PREDICT_FALSE(!split_data_key.ok())) {
       // The Cross search found nothing to measure. For a 2-way split the approximate middle key is
       // a fine answer, so fall back rather than fail; call GetEncodedMiddleSplitKey directly, since

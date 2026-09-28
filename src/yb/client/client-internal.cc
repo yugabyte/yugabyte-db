@@ -331,6 +331,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsAlterXClusterReplicationDone);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteUniverseReplication);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupAddTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupRemoveTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteXClusterWalAnchorStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroups);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroupInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
@@ -2252,12 +2253,13 @@ class GetXClusterStreamsRpc
 
   Status Init(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      const std::vector<TableId>& source_table_ids) {
+      const std::vector<TableId>& source_table_ids, bool create_stream_if_missing) {
     req_.set_replication_group_id(replication_group_id.ToString());
     req_.set_namespace_id(namespace_id);
     for (const auto& table_id : source_table_ids) {
       req_.add_source_table_ids(table_id);
     }
+    req_.set_create_stream_if_missing(create_stream_if_missing);
     return Status::OK();
   }
 
@@ -3254,11 +3256,12 @@ Status YBClient::Data::GetXClusterStreams(
 Status YBClient::Data::GetXClusterStreams(
     YBClient* client, CoarseTimePoint deadline,
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    const std::vector<TableId>& source_table_ids,
+    const std::vector<TableId>& source_table_ids, bool create_stream_if_missing,
     std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb) {
   auto rpc =
       std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
-  RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, source_table_ids));
+  RETURN_NOT_OK(
+      rpc->Init(replication_group_id, namespace_id, source_table_ids, create_stream_if_missing));
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
 
   return Status::OK();

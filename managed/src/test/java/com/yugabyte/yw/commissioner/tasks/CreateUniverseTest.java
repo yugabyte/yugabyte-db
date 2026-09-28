@@ -323,7 +323,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     nonZ1Nodes.addAll(nodesByAZ.get(zone3.getUuid()));
 
     verifyNodeInteractionsCapacityReservation(
-        33,
+        36,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -393,7 +393,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", nodesByAZ.get(zone2.getUuid())))));
 
     verifyNodeInteractionsCapacityReservation(
-        33,
+        36,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -506,7 +506,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             Mockito.anyMap());
 
     verifyNodeInteractionsCapacityReservation(
-        33,
+        36,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -666,7 +666,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                     "4", Arrays.asList(readonlyNodes.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        66,
+        72,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(

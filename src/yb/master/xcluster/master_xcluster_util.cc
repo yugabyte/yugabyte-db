@@ -25,6 +25,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+DECLARE_bool(enable_xcluster_wal_anchor_stream_infra);
+DECLARE_bool(enable_xcluster_wal_anchor_stream);
 
 namespace yb::master {
 
@@ -133,6 +135,10 @@ Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
     }
   }
   return table_designators;
+}
+
+bool IsXClusterWalAnchorStreamEnabled() {
+  return FLAGS_enable_xcluster_wal_anchor_stream_infra && FLAGS_enable_xcluster_wal_anchor_stream;
 }
 
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info) {

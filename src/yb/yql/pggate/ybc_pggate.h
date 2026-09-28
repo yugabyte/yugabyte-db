@@ -900,6 +900,11 @@ void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
 
+// The deadline pggate applies to a request when no tighter timeout is in force. A caller arms a
+// timer that fires before this deadline does, so the failure is reported by postgres rather than
+// as a transport timeout.
+int32_t YBCGetDefaultRpcTimeoutMs();
+
 bool YBCHasProcessableAbortInterrupt();
 
 //--------------------------------------------------------------------------------------------------

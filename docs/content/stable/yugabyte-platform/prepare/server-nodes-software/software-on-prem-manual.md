@@ -260,7 +260,7 @@ sudo mkdir -p /new_tmp; sudo chown yugabyte:yugabyte -R /new_tmp
 
 In addition, after you create the [on-premises provider](../../../configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to `/new_tmp`.
 
-Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../manage-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
+Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../scale-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
 
 ## Install Prometheus Node Exporter
 

@@ -2564,6 +2564,17 @@ Status CatalogManager::ValidateTableReplicationInfo(
     return STATUS(InvalidArgument, "No replication info set.");
   }
 
+  // Note: this intentionally does not run the full CatalogManagerUtil::IsPlacementInfoValid
+  // checks, which are stricter than what historic table-level placements were held to. Only the
+  // constraints on explicit per-block maximums are validated here.
+  if (replication_info.has_live_replicas()) {
+    RETURN_NOT_OK(
+        CatalogManagerUtil::ValidateMaxNumReplicasFields(replication_info.live_replicas()));
+  }
+  for (const auto& read_replicas : replication_info.read_replicas()) {
+    RETURN_NOT_OK(CatalogManagerUtil::ValidateMaxNumReplicasFields(read_replicas));
+  }
+
   auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
 
@@ -3094,7 +3105,7 @@ PitrCount CatalogManager::pitr_count() const {
   return sys_catalog_->pitr_count();
 }
 
-Status CatalogManager::ShouldSplitValidCandidate(
+Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
     return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
@@ -3107,7 +3118,7 @@ Status CatalogManager::ShouldSplitValidCandidate(
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($0) < low phase size threshold ($1).",
+    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
         tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
   }
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
@@ -3159,7 +3170,7 @@ Status CatalogManager::ShouldSplitValidCandidate(
           FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
           FLAGS_tablet_split_low_phase_size_threshold_bytes);
     }
-    return Status::OK();
+    return SplitPhase::kLow;
   }
   if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
     if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
@@ -3171,14 +3182,14 @@ Status CatalogManager::ShouldSplitValidCandidate(
           FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
           FLAGS_tablet_split_high_phase_size_threshold_bytes);
     }
-    return Status::OK();
+    return SplitPhase::kHigh;
   }
   if (size <= FLAGS_tablet_force_split_threshold_bytes) {
     return STATUS_FORMAT(IllegalState,
         "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
         tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
   }
-  return Status::OK();
+  return SplitPhase::kFinal;
 }
 
 namespace {
@@ -3460,13 +3471,13 @@ Status CatalogManager::DoSplitTablet(
       // the cluster may have changed, putting us in a new split threshold phase, and it may no
       // longer be a valid candidate. This is not an unexpected error, but we should bail out of
       // splitting this tablet regardless.
-      Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
-      if (!status.ok()) {
+      auto status_and_phase = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
+      if (!status_and_phase.ok()) {
         return STATUS_FORMAT(
             InvalidArgument,
             "Tablet split candidate $0 is no longer a valid split candidate: $1",
             source_tablet_info->tablet_id(),
-            status);
+            status_and_phase.status());
       }
     }
     // After this point, we expect to split the tablet.
@@ -5293,6 +5304,20 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
 
+    // The sum of the effective per-block maximums must cover the total number of replicas,
+    // otherwise no valid assignment of replicas to placement blocks exists.
+    size_t maximum_sum = 0;
+    for (const auto& pb : placement_info.placement_blocks()) {
+      maximum_sum += GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
+    }
+    if (maximum_sum < num_replicas) {
+      msg = Substitute("Sum of maximum replicas per placement ($0) is less than num_replicas "
+                       "($1)", maximum_sum, num_replicas);
+      s = STATUS(InvalidArgument, msg);
+      LOG(WARNING) << msg;
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    }
+
     // Verify that there are enough TServers in the requested placements
     // to match the total required replication factor.
     auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
@@ -5313,8 +5338,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     // Essentially, the logic is:
     // 1. We satisfy whatever we can from the minimums.
     // 2. We then satisfy whatever we can from the slack.
-    //    Here it doesn't whether where we put the slack replicas as long as
-    //    the tservers are chosen from any of the valid placement blocks.
+    //    Slack replicas can go into any of the valid placement blocks, as long as the block
+    //    stays within its effective maximum number of replicas.
     // Overall, if in this process we are able to place n/2 + 1 replicas
     // then we succeed otherwise we fail.
     size_t total_extra_replicas = num_replicas - minimum_sum;
@@ -5324,13 +5349,16 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
       size_t allowed_ts_size = allowed_ts.size();
       size_t min_num_replicas = pb.min_num_replicas();
+      size_t max_num_replicas =
+          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
       // For every placement block, we can only satisfy upto the number of
       // tservers present in that particular placement block.
       total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
       // Extra tablet servers beyond min_num_replicas will be used to place
       // the extra replicas over and above the minimums.
-      if (allowed_ts_size > min_num_replicas) {
-        total_extra_servers += allowed_ts_size - min_num_replicas;
+      size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
+      if (max_feasible_replicas > min_num_replicas) {
+        total_extra_servers += max_feasible_replicas - min_num_replicas;
       }
     }
     // The total number of extra replicas that we can put cannot be more than
@@ -6761,9 +6789,8 @@ Status CatalogManager::BackfillIndex(
               IndexPermissions_Name(index_permissions)));
     }
 
-    s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-        this, indexed_table, current_version, epoch, requester_txn,
-        /* respect_backfill_deferrals */ false, /* update_ysql_to_backfill */ true);
+    s = MultiStageAlterTable::AdvanceYsqlIndexToBackfill(
+        this, indexed_table, current_version, epoch, requester_txn);
     if (!s.IsAlreadyPresent()) {
       break;
     }
@@ -6956,9 +6983,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
     current_version = l->pb.version();
   }
 
-  auto s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, indexed_table, current_version, epoch, std::nullopt,
-      /* respect_backfill_deferrals */ false);
+  auto s = MultiStageAlterTable::AdvanceYcqlIndexPermissions(
+      this, indexed_table, current_version, epoch);
   if (!s.ok()) {
     VLOG(3) << __func__ << " Done failed " << s;
     return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
@@ -9560,6 +9586,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // catalogs are being prepared will switch into state PREPARING. This is safe because DDLs are
     // not allowed during the upgrade.
     metadata->set_state(SysNamespaceEntryPB::PREPARING);
+    if (is_ysql_major_upgrade_in_progress && db_type == YQL_DATABASE_PGSQL) {
+      // Distinguishes this PREPARING from an abandoned creation's, which the loader must reap.
+      metadata->set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_PREPARING);
+    }
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
     // for the database that need to be copied.
@@ -10674,6 +10704,11 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
   resp->set_colocated(ns->colocated());
   if (ns->colocated()) {
     resp->set_legacy_colocated_database(IsColocatedNamespace(ns->id()));
+  }
+  {
+    auto l = ns->LockForRead();
+    resp->set_state(l->pb.state());
+    resp->set_ysql_next_major_version_state(l->pb.ysql_next_major_version_state());
   }
   return Status::OK();
 }
@@ -12102,8 +12137,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
         table->id(), table->EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(version));
   }
 
-  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, table, version, epoch, std::nullopt);
+  return MultiStageAlterTable::HandleSchemaVersionReported(this, table, version, epoch);
 }
 
 Status CatalogManager::ProcessPendingAssignmentsPerTable(
@@ -12414,10 +12448,11 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     // match the requested policies. We'll assign the minimum requested replicas in each combination
     // of cloud.region.zone and then if we still have leftover replicas, we'll assign those
     // in any of the allowed areas.
-    auto all_allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
-
     // Loop through placements and assign to respective available TSs.
     size_t min_replica_count_sum = 0;
+    // Remaining replicas each placement block can accept, after the minimums below, before it
+    // reaches its effective maximum.
+    std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> remaining_block_capacity;
     for (const auto& pb : placement_info.placement_blocks()) {
       // This works because currently we don't allow placement blocks to overlap.
       auto available_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
@@ -12428,19 +12463,50 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       min_replica_count_sum += min_num_replicas;
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
                      per_table_state, global_state);
+      remaining_block_capacity[pb.cloud_info()] =
+          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)) - num_replicas;
     }
 
+    // Distribute the remaining replicas across the least loaded tservers left, skipping any
+    // tserver whose placement block has already reached its effective maximum. The maximums are
+    // hard caps: if they prevent placing every remaining replica, the tablet starts
+    // under-replicated rather than violating a maximum.
     size_t replicas_left = nreplicas - min_replica_count_sum;
-    size_t max_tservers_left = all_allowed_ts.size() - already_selected_ts.size();
-    // Upper bounded by the tservers left.
-    replicas_left = min(replicas_left, max_tservers_left);
-    DCHECK_GE(replicas_left, 0);
-    if (replicas_left > 0) {
-      // No need to do an extra check here, as we checked early if we have enough to cover all
-      // requested placements and checked individually per placement info, if we could cover the
-      // minimums.
-      SelectReplicas(all_allowed_ts, replicas_left, config, &already_selected_ts, member_type,
-                     per_table_state, global_state);
+    TSDescriptorVector candidates;
+    for (const auto& ts_uuid : per_table_state->sorted_replica_load_) {
+      if (candidates.size() == replicas_left) {
+        break;
+      }
+      if (already_selected_ts.contains(ts_uuid)) {
+        continue;
+      }
+      const auto ts_it = std::find_if(
+          ts_descs.begin(), ts_descs.end(),
+          [&ts_uuid](const auto& ts) { return ts->permanent_uuid() == ts_uuid; });
+      if (ts_it == ts_descs.end()) {
+        continue;
+      }
+      // Find the (unique) placement block this tserver belongs to; placement blocks cannot
+      // overlap.
+      const auto pb = std::find_if(
+          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
+          [&ts_it](const auto& block) { return (*ts_it)->MatchesCloudInfo(block.cloud_info()); });
+      if (pb == placement_info.placement_blocks().end()) {
+        continue;
+      }
+      auto& capacity = remaining_block_capacity[pb->cloud_info()];
+      if (capacity == 0) {
+        continue;
+      }
+      --capacity;
+      candidates.push_back(*ts_it);
+    }
+    // Every candidate is selected, so there is nothing left to choose: apply them directly rather
+    // than re-searching the candidate list through SelectReplicas. The per-block caps hold by
+    // construction.
+    for (const auto& ts : candidates) {
+      AddReplicaToConfig(
+          ts, config, &already_selected_ts, member_type, per_table_state, global_state);
     }
   }
   return Status::OK();
@@ -12668,26 +12734,33 @@ void CatalogManager::SelectReplicas(
   for (size_t i = 0; i < nreplicas; ++i) {
     shared_ptr<TSDescriptor> ts = SelectReplica(
         ts_descs, already_selected_ts, per_table_state, global_state);
-    InsertOrDie(already_selected_ts, ts->permanent_uuid());
-    // Update the load state at global and table level.
-    per_table_state->per_ts_replica_load_[ts->permanent_uuid()]++;
-    global_state->per_ts_replica_load_[ts->permanent_uuid()]++;
-    per_table_state->SortLoad();
-
-    // Increment the number of pending replicas so that we take this selection into
-    // account when assigning replicas for other tablets of the same table. This
-    // value decays back to 0 over time.
-    ts->IncrementRecentReplicaCreations();
-
-    auto reg = ts->GetRegistration();
-
-    RaftPeerPB *peer = config->add_peers();
-    peer->set_permanent_uuid(ts->permanent_uuid());
-
-    // TODO: This is temporary, we will use only UUIDs.
-    TakeRegistration(&reg, peer);
-    peer->set_member_type(member_type);
+    AddReplicaToConfig(ts, config, already_selected_ts, member_type, per_table_state, global_state);
   }
+}
+
+void CatalogManager::AddReplicaToConfig(
+    const shared_ptr<TSDescriptor>& ts, consensus::RaftConfigPB* config,
+    set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
+    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
+  InsertOrDie(already_selected_ts, ts->permanent_uuid());
+  // Update the load state at global and table level.
+  per_table_state->per_ts_replica_load_[ts->permanent_uuid()]++;
+  global_state->per_ts_replica_load_[ts->permanent_uuid()]++;
+  per_table_state->SortLoad();
+
+  // Increment the number of pending replicas so that we take this selection into
+  // account when assigning replicas for other tablets of the same table. This
+  // value decays back to 0 over time.
+  ts->IncrementRecentReplicaCreations();
+
+  auto reg = ts->GetRegistration();
+
+  RaftPeerPB *peer = config->add_peers();
+  peer->set_permanent_uuid(ts->permanent_uuid());
+
+  // TODO: This is temporary, we will use only UUIDs.
+  TakeRegistration(&reg, peer);
+  peer->set_member_type(member_type);
 }
 
 Status CatalogManager::ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
@@ -13008,7 +13081,7 @@ Status CatalogManager::GetTableLocations(
 
   std::vector<TabletInfoPtr> tablets = VERIFY_RESULT(table->GetTabletsInRange(req));
   PartitionsOnly partitions_only(req->partitions_only());
-  bool require_tablets_runnings = req->require_tablets_running();
+  bool require_tablets_running = req->require_tablets_running();
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
@@ -13024,7 +13097,7 @@ Status CatalogManager::GetTableLocations(
         tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
     if (!status.ok()) {
       // Not running.
-      if (require_tablets_runnings) {
+      if (require_tablets_running) {
         resp->mutable_tablet_locations()->Clear();
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
       }
@@ -13320,6 +13393,16 @@ Result<int32_t> CatalogManager::GetClusterConfigVersion() {
 
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
+  const auto& replication_info = req->replication_info();
+  // Note: this intentionally does not run the full CatalogManagerUtil::IsPlacementInfoValid
+  // checks, which are stricter than what historic table-level placements were held to. Only the
+  // constraints on explicit per-block maximums are validated here.
+  RETURN_NOT_OK(
+      CatalogManagerUtil::ValidateMaxNumReplicasFields(replication_info.live_replicas()));
+  for (const auto& read_replicas : replication_info.read_replicas()) {
+    RETURN_NOT_OK(CatalogManagerUtil::ValidateMaxNumReplicasFields(read_replicas));
+  }
+
   TSDescriptorVector all_ts_descs;
   {
     BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
@@ -13329,7 +13412,7 @@ Status CatalogManager::ValidateReplicationInfo(
   // because they aren't a part of any raft quorum underneath.
   // Technically, it is ok to have even 0 read replica nodes for them upfront.
   // We only need it for the primary cluster replicas.
-  auto placement_info = req->replication_info().live_replicas();
+  auto placement_info = replication_info.live_replicas();
   TSDescriptorVector ts_descs;
   // If the placement_info's uuid is empty, set it to be the current cluster's live replica uuid.
   if (placement_info.placement_uuid().empty()) {
@@ -13341,7 +13424,7 @@ Status CatalogManager::ValidateReplicationInfo(
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
 
-  s = CatalogManagerUtil::CheckValidLeaderAffinity(req->replication_info());
+  s = CatalogManagerUtil::CheckValidLeaderAffinity(replication_info);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }

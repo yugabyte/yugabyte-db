@@ -21,6 +21,8 @@
 
 #include "yb/rocksdb/listener.h"
 
+#include "yb/rpc/scheduler.h"
+
 #include "yb/tablet/tablet_component.h"
 #include "yb/tablet/tablet_options.h"
 
@@ -127,6 +129,19 @@ class TabletVectorIndexes :
   bool PostSplitCompactionRequired() const EXCLUDES(vector_indexes_mutex_);
 
   void LaunchBackfillsIfNecessary();
+
+  // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
+  // been taken before a backfill finished, e.g. by a replica still bootstrapping.
+  void ScheduleBackfillAfterRestore();
+
+  // Binds the scheduler used to retry backfills aborted by an operation pause.
+  void SetScheduler(rpc::Scheduler* scheduler);
+
+  // Cancels the pending backfill retry and waits for a running one. Called on tablet shutdown only:
+  // a truncate or a restore shuts this component down just to replace the storages and re-opens it
+  // right after, and the retry has to survive that.
+  void StopBackfillRetry();
+
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
   std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
@@ -161,6 +176,10 @@ class TabletVectorIndexes :
   void ScheduleBackfill(
       const docdb::DocVectorIndexPtr& vector_index, const TableInfoPtr& indexed_table, Slice key,
       HybridTime backfill_ht, OpId op_id, std::shared_ptr<ScopedRWOperation> read_op);
+
+  // Re-runs LaunchBackfillsIfNecessary after a delay, replacing the retry scheduled before it.
+  void ScheduleBackfillRetry(std::chrono::steady_clock::duration delay);
+
   Status Backfill(
       const docdb::DocVectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
       HybridTime backkfill_ht, OpId op_id);
@@ -190,6 +209,10 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   ShutdownController shutdown_controller_;
+
+  rpc::Scheduler* scheduler_ = nullptr;
+  rpc::ScheduledTaskTracker backfill_retry_task_;
+  std::atomic<bool> backfills_launched_{false};
 };
 
 }  // namespace yb::tablet

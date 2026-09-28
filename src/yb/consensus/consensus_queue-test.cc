@@ -49,6 +49,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -57,6 +58,7 @@ using std::string;
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint32(retain_wal_secs_for_progressing_prevoter);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -1224,6 +1226,105 @@ TEST_F(ConsensusQueueTest, MajorityWatermarkIgnoresWatermarksCarriedByFailedResp
   SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(5), 0);
   queue_->ResponseFromPeer(kPeerUuid, response);
   ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(5));
+}
+
+TEST_F(ConsensusQueueTest, SetLeaderModeDoesNotResetPeerLiveness) {
+  auto raft_config = BuildRaftConfigPBForTests(2);
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  TrackPeer(*queue_, kPeerUuid);
+  ASSERT_TRUE(queue_->IsPeerLive(kPeerUuid));
+
+  SleepFor(MonoDelta::FromMilliseconds(50));
+  const auto before =
+      queue_->GetTrackedPeerForTests(kPeerUuid).last_successful_communication_time;
+
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  const auto after =
+      queue_->GetTrackedPeerForTests(kPeerUuid).last_successful_communication_time;
+  ASSERT_EQ(before, after);
+  ASSERT_TRUE(queue_->IsPeerLive(kPeerUuid));
+}
+
+TEST_F(ConsensusQueueTest, WalGcRetentionSkipsPreVoterWhenRetentionWindowExpires) {
+  google::FlagSaver saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retain_wal_secs_for_progressing_prevoter) = 1;
+
+  auto raft_config = BuildRaftConfigPBForTests(3);
+  raft_config.mutable_peers(1)->set_member_type(PeerMemberType::PRE_VOTER);
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 120);
+  WaitForLocalPeerToAckIndex(120);
+
+  queue_->TrackPeer(raft_config.peers(1));
+  queue_->TrackPeer(raft_config.peers(2));
+
+  ThreadSafeArena arena;
+  LWConsensusResponsePB response(&arena);
+
+  response.ref_responder_uuid("peer-2");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(100));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-1");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(80));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  auto first_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(first_retention.min_progressing_pre_voter_op_id, MakeOpIdForIndex(80));
+
+  SleepFor(1200ms);
+  auto second_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(second_retention.min_progressing_pre_voter_op_id, OpId::Max());
+}
+
+TEST_F(ConsensusQueueTest, WalGcRetentionSkipsNonProgressingPreVoterAfterWarmup) {
+  google::FlagSaver saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retain_wal_secs_for_progressing_prevoter) = 20;
+
+  auto raft_config = BuildRaftConfigPBForTests(3);
+  raft_config.mutable_peers(1)->set_member_type(PeerMemberType::PRE_VOTER);
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 120);
+  WaitForLocalPeerToAckIndex(120);
+
+  queue_->TrackPeer(raft_config.peers(1));
+  queue_->TrackPeer(raft_config.peers(2));
+
+  ThreadSafeArena arena;
+  LWConsensusResponsePB response(&arena);
+
+  response.ref_responder_uuid("peer-2");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(70));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-1");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(68));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  auto first_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(first_retention.min_progressing_pre_voter_op_id, MakeOpIdForIndex(68));
+
+  SleepFor(2200ms);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-2");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(74));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-1");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(69));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  auto second_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(second_retention.min_progressing_pre_voter_op_id, OpId::Max());
 }
 
 } // namespace yb::consensus

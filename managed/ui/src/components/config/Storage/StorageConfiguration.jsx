@@ -102,6 +102,7 @@ class StorageConfiguration extends Component {
         oci: false
       },
       iamRoleEnabled: false,
+      federatedIamEnabled: false,
       useGcpIam: false,
       useAzureIam: false,
       useOciIam: false,
@@ -234,7 +235,21 @@ class StorageConfiguration extends Component {
 
       default: {
         let FIELDS;
-        if (values['IAM_INSTANCE_PROFILE']) {
+        if (values['FEDERATED_IAM']) {
+          // Cross-cloud federated IAM: a GCP database node backing up to S3. The backend marks a
+          // config as federation by the credential source, not by IAM_INSTANCE_PROFILE, but helpers
+          // that predate federation still read the latter - so send both.
+          configName = dataPayload['S3_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
+          dataPayload['IAM_INSTANCE_PROFILE'] = 'true';
+          dataPayload['USE_CROSS_CLOUD_FEDERATION'] = true;
+          FIELDS = [
+            'BACKUP_LOCATION',
+            'AWS_HOST_BASE',
+            'IAM_INSTANCE_PROFILE',
+            'IAM_CONFIGURATION'
+          ];
+        } else if (values['IAM_INSTANCE_PROFILE']) {
           configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
           dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
@@ -259,7 +274,7 @@ class StorageConfiguration extends Component {
           if (dataPayload?.PROXY_SETTINGS?.PROXY_PASSWORD)
             FIELDS.push('PROXY_SETTINGS.PROXY_PASSWORD');
         }
-        if (!values['IAM_INSTANCE_PROFILE']) {
+        if (!values['IAM_INSTANCE_PROFILE'] && !values['FEDERATED_IAM']) {
           coerceS3StorageBooleanFields(dataPayload);
         }
         dataPayload = _.pick(dataPayload, FIELDS);
@@ -406,6 +421,7 @@ class StorageConfiguration extends Component {
           type: 'update',
           configUUID: row?.configUUID,
           IAM_INSTANCE_PROFILE: row.data?.IAM_INSTANCE_PROFILE,
+          FEDERATED_IAM: row.data?.USE_CROSS_CLOUD_FEDERATION === true,
           AWS_ACCESS_KEY_ID: row.data?.AWS_ACCESS_KEY_ID || '',
           AWS_SECRET_ACCESS_KEY: row.data?.AWS_SECRET_ACCESS_KEY || '',
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
@@ -434,6 +450,7 @@ class StorageConfiguration extends Component {
         [activeTab]: true
       },
       iamRoleEnabled: row.data['IAM_INSTANCE_PROFILE'] || false,
+      federatedIamEnabled: row.data['USE_CROSS_CLOUD_FEDERATION'] === true,
       useGcpIam: row.data['USE_GCP_IAM'] || false,
       useAzureIam: row.data['USE_AZURE_IAM'] || false,
       useOciIam: storageToggleTrue(row.data['USE_OCI_IAM']),
@@ -481,6 +498,7 @@ class StorageConfiguration extends Component {
         [activeTab]: false
       },
       iamRoleEnabled: false,
+      federatedIamEnabled: false,
       useGcpIam: false,
       useAzureIam: false,
       useOciIam: false,
@@ -499,6 +517,10 @@ class StorageConfiguration extends Component {
    */
   iamInstanceToggle = (event) => {
     this.setState({ iamRoleEnabled: event.target.checked });
+  };
+
+  federatedIamToggle = (event) => {
+    this.setState({ federatedIamEnabled: event.target.checked });
   };
 
   gcpIamToggle = (event) => {
@@ -523,7 +545,15 @@ class StorageConfiguration extends Component {
       enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
-    const { iamRoleEnabled, useGcpIam, useAzureIam, useOciIam, editView, listView } = this.state;
+    const {
+      iamRoleEnabled,
+      federatedIamEnabled,
+      useGcpIam,
+      useAzureIam,
+      useOciIam,
+      editView,
+      listView
+    } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
 
     if (getPromiseState(customerConfigs).isLoading()) {
@@ -551,6 +581,8 @@ class StorageConfiguration extends Component {
             <AwsStorageConfiguration
               iamRoleEnabled={iamRoleEnabled}
               iamInstanceToggle={this.iamInstanceToggle}
+              federatedIamEnabled={federatedIamEnabled}
+              federatedIamToggle={this.federatedIamToggle}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
               enableChunkedEncoding={enableChunkedEncoding}

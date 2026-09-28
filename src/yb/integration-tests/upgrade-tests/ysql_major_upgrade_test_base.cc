@@ -17,6 +17,8 @@
 
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
@@ -38,25 +40,6 @@ void YsqlMajorUpgradeTestBase::SetUp() {
       "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
       "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
       "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
-}
-
-void YsqlMajorUpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
-  UpgradeTestBase::SetUpOptions(opts);
-
-  // Disable table locks to avoid issues during upgrade tests.
-  // TODO(#28746): This should not be required once we switch to making table
-  // locks an autoflag.
-  AddUnDefOkAndSetFlag(
-      opts.extra_master_flags, "enable_object_locking_for_table_locks", "false");
-  // Concurrent DDL requires object locking, so keep the two flags consistent.
-  AddUnDefOkAndSetFlag(opts.extra_master_flags, "ysql_enable_concurrent_ddl", "false");
-  AddUnDefOkAndSetFlag(
-      opts.extra_master_flags, "allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
-  AddUnDefOkAndSetFlag(
-      opts.extra_tserver_flags, "enable_object_locking_for_table_locks", "false");
-  AddUnDefOkAndSetFlag(opts.extra_tserver_flags, "ysql_enable_concurrent_ddl", "false");
-  AddUnDefOkAndSetFlag(
-      opts.extra_tserver_flags, "allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
 }
 
 Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
@@ -345,6 +328,80 @@ Result<std::string> YsqlMajorUpgradeTestBase::DumpYsqlCatalogConfig() {
   SCHECK_EQ(resp.entries_size(), 1, IllegalState, "Expected exactly one entry");
 
   return resp.entries(0).pb_debug_string();
+}
+
+Result<master::GetNamespaceInfoResponsePB> YsqlMajorUpgradeTestBase::GetNamespaceInfo(
+    const std::string& namespace_name) {
+  master::GetNamespaceInfoRequestPB req;
+  master::GetNamespaceInfoResponsePB resp;
+  req.mutable_namespace_()->set_name(namespace_name);
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(60s);
+
+  auto master_ddl_proxy =
+      master::MasterDdlProxy(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
+  RETURN_NOT_OK(master_ddl_proxy.GetNamespaceInfo(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp;
+}
+
+// Uses ListNamespaces rather than GetNamespaceInfo so the wait also works against a cluster still
+// running the old major version, whose GetNamespaceInfo does not report the state.
+Status YsqlMajorUpgradeTestBase::WaitForNamespaceState(
+    const std::string& namespace_name, master::SysNamespaceEntryPB::State state) {
+  auto state_str = master::SysNamespaceEntryPB::State_Name(state);
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        master::ListNamespacesRequestPB req;
+        master::ListNamespacesResponsePB resp;
+        req.set_include_nonrunning(true);
+
+        rpc::RpcController rpc;
+        rpc.set_timeout(60s);
+
+        auto master_ddl_proxy =
+            master::MasterDdlProxy(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
+        RETURN_NOT_OK(master_ddl_proxy.ListNamespaces(req, &resp, &rpc));
+        if (resp.has_error()) {
+          return StatusFromPB(resp.error().status());
+        }
+
+        for (int i = 0; i < resp.namespaces_size(); ++i) {
+          if (resp.namespaces(i).name() == namespace_name) {
+            return resp.states(i) == state;
+          }
+        }
+        return false;
+      },
+      5min, Format("Waiting for namespace $0 to reach state $1", namespace_name, state_str));
+}
+
+Status YsqlMajorUpgradeTestBase::WaitForNamespaceNextMajorVersionState(
+    const std::string& namespace_name,
+    master::SysNamespaceEntryPB::YsqlNextMajorVersionState next_major_version_state) {
+  auto state_str =
+      master::SysNamespaceEntryPB::YsqlNextMajorVersionState_Name(next_major_version_state);
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto info = GetNamespaceInfo(namespace_name);
+        if (!info.ok()) {
+          if (info.status().IsNotFound()) {
+            return false;
+          }
+          return info.status();
+        }
+        return info->ysql_next_major_version_state() == next_major_version_state;
+      },
+      5min,
+      Format(
+          "Waiting for namespace $0 to reach ysql next major version state $1", namespace_name,
+          state_str));
 }
 
 Status YsqlMajorUpgradeTestBase::WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state) {

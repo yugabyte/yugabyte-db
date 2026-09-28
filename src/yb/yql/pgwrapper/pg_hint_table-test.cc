@@ -287,9 +287,14 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
     options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
   }
 };
 

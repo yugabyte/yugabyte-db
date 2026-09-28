@@ -23,7 +23,6 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
   virtual ~YsqlMajorUpgradeTestBase() override = default;
 
   void SetUp() override;
-  void SetUpOptions(ExternalMiniClusterOptions& opts) override;
 
  protected:
   // UpgradeTestBase provides helper functions UpgradeClusterToCurrentVersion, FinalizeUpgrade,
@@ -83,10 +82,20 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
 
   Status WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state);
 
+  Result<master::GetNamespaceInfoResponsePB> GetNamespaceInfo(const std::string& namespace_name);
+
+  Status WaitForNamespaceState(
+      const std::string& namespace_name, master::SysNamespaceEntryPB::State state);
+
+  Status WaitForNamespaceNextMajorVersionState(
+      const std::string& namespace_name,
+      master::SysNamespaceEntryPB::YsqlNextMajorVersionState next_major_version_state);
+
   Result<std::string> ReadUpgradeCompatibilityGuc();
 
   constexpr static auto kSimpleTableName = "simple_tbl";
   uint32 simple_tbl_row_count_ = 0;
+
 };
 
 }  // namespace yb

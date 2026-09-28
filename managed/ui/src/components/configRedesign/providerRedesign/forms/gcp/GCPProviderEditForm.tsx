@@ -123,6 +123,9 @@ export interface GCPProviderEditFormFieldValues {
   version: number;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
+  enableFederatedIam: boolean;
+  federatedIamAudience: string;
+  federatedIamRoleArn: string;
 }
 
 const ProviderCredentialType = {
@@ -377,6 +380,7 @@ export const GCPProviderEditForm = ({
     'editCloudCredentials',
     defaultValues.editCloudCredentials
   );
+  const enableFederatedIam = formMethods.watch('enableFederatedIam');
   const serviceAccountIdentifer = providerConfig.details.cloudInfo.gcp.useHostCredentials
     ? 'YBA Host Instance'
     : providerConfig.details.cloudInfo.gcp.gceApplicationCredentials?.client_email;
@@ -510,6 +514,58 @@ export const GCPProviderEditForm = ({
                         isFormDisabled,
                         isProviderInUse
                       )}
+                      fullWidth
+                    />
+                  </FormField>
+                </>
+              )}
+              <FormField>
+                <FieldLabel
+                  infoTitle="Federated IAM"
+                  infoContent="Enable S3-on-GCP cross-cloud federated IAM for this provider's DB nodes. When on, provide the AWS role ARN to assume and the GCP web-identity audience."
+                >
+                  Enable Federated IAM
+                </FieldLabel>
+                <YBToggleField
+                  name="enableFederatedIam"
+                  control={formMethods.control}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.GCP,
+                    'enableFederatedIam',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
+                />
+              </FormField>
+              {enableFederatedIam && (
+                <>
+                  <FormField>
+                    <FieldLabel>Federated IAM Role ARN</FieldLabel>
+                    <YBInputField
+                      control={formMethods.control}
+                      name="federatedIamRoleArn"
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.GCP,
+                        'federatedIamRoleArn',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
+                      placeholder="arn:aws:iam::<account>:role/<role>"
+                      fullWidth
+                    />
+                  </FormField>
+                  <FormField>
+                    <FieldLabel>Federated IAM Audience</FieldLabel>
+                    <YBInputField
+                      control={formMethods.control}
+                      name="federatedIamAudience"
+                      disabled={getIsFieldDisabled(
+                        ProviderCode.GCP,
+                        'federatedIamAudience',
+                        isFormDisabled,
+                        isProviderInUse
+                      )}
+                      placeholder="//iam.googleapis.com/projects/.../providers/..."
                       fullWidth
                     />
                   </FormField>
@@ -848,6 +904,9 @@ const constructDefaultFormValues = (
 ): Partial<GCPProviderEditFormFieldValues> => ({
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   destVpcId: providerConfig.details.cloudInfo.gcp.destVpcId ?? '',
+  enableFederatedIam: !!providerConfig.details.cloudInfo.gcp.enableFederatedIam,
+  federatedIamAudience: providerConfig.details.cloudInfo.gcp.federatedIamAudience ?? '',
+  federatedIamRoleArn: providerConfig.details.cloudInfo.gcp.federatedIamRoleArn ?? '',
   editCloudCredentials: false,
   editSSHKeypair: false,
   ntpServers: providerConfig.details.ntpServers,
@@ -1002,7 +1061,12 @@ const constructProviderPayload = async (
                   sharedVPCProject: cloudInfo.gcp.sharedVPCProject
                 })
               }),
-          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
+          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags }),
+          enableFederatedIam: formValues.enableFederatedIam,
+          ...(formValues.enableFederatedIam && {
+            federatedIamAudience: formValues.federatedIamAudience,
+            federatedIamRoleArn: formValues.federatedIamRoleArn
+          })
         }
       },
       ntpServers: formValues.ntpServers,

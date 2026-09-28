@@ -948,4 +948,76 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Files.deleteIfExists(tempFilePrimary);
     Files.deleteIfExists(tempFileRR);
   }
+
+  @Test
+  public void testAzureLunIndexesPreserveAttachmentOrder() throws Exception {
+    provider = ModelFactory.azuProvider(customer);
+    Universe universe =
+        ModelFactory.createUniverse("test-azure-universe", customer.getId(), CloudType.azu);
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.azu));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    NodeDetails node = universe.getNodes().iterator().next();
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    userIntent.providerType = CloudType.azu;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.numVolumes = 2;
+    userIntent.deviceInfo.mountPoints = "/mnt/custom0, /mnt/custom1";
+
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.cloud = "azu";
+    node.cloudInfo.private_ip = "10.0.0.30";
+    node.cloudInfo.region = "westus";
+    node.cloudInfo.instance_type = "Standard_D2ads_v6";
+    // The array order is the disk-attachment order and must stay aligned with mount-path order.
+    node.cloudInfo.lun_indexes = new Integer[] {3, 4};
+
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.deviceInfo = userIntent.deviceInfo;
+    setTaskParams(params);
+
+    Path tempFile = Files.createTempFile("ynp-test-azure-luns-", ".json");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+    ynpProvisioning.generateProvisionConfig(
+        universe, node, provider, Paths.get("/tmp/node-agent"), null);
+
+    JsonNode extraNode = objectMapper.readTree(Files.readAllBytes(tempFile)).get("extra");
+    assertEquals("azu", extraNode.get("cloud_type").asText());
+    assertEquals("/mnt/custom0 /mnt/custom1", extraNode.get("mount_paths").asText());
+    assertEquals("3 4", extraNode.get("disk_lun_indexes").asText());
+
+    userIntent.deviceInfo.mountPoints = "/mnt/d0;$(touch /tmp/unsafe),/mnt/d1";
+    try {
+      ynpProvisioning.generateProvisionConfig(
+          universe, node, provider, Paths.get("/tmp/node-agent"), null);
+      throw new AssertionError("Expected an unsafe mount path to be rejected");
+    } catch (IllegalStateException e) {
+      assertTrue(e.getMessage().contains("Unsafe mount path"));
+    }
+
+    userIntent.deviceInfo.mountPoints = "/mnt/data,/mnt/data/logs";
+    try {
+      ynpProvisioning.generateProvisionConfig(
+          universe, node, provider, Paths.get("/tmp/node-agent"), null);
+      throw new AssertionError("Expected overlapping mount paths to be rejected");
+    } catch (IllegalStateException e) {
+      assertTrue(e.getMessage().contains("Overlapping mount paths"));
+    }
+
+    userIntent.deviceInfo.mountPoints = "/mnt/custom0, /mnt/custom1";
+    node.cloudInfo.lun_indexes = new Integer[0];
+    try {
+      ynpProvisioning.generateProvisionConfig(
+          universe, node, provider, Paths.get("/tmp/node-agent"), null);
+      throw new AssertionError("Expected missing Azure LUN metadata to be rejected");
+    } catch (IllegalStateException e) {
+      assertTrue(e.getMessage().contains("expected 2 LUNs"));
+    }
+
+    Files.deleteIfExists(tempFile);
+  }
 }

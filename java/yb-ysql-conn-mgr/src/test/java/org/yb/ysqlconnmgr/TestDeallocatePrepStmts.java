@@ -86,7 +86,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   @Test
   public void testCloseNeverDeallocates() throws Exception {
     // The following test, tests behaviour of CLOSE packet with conn mgr.
-    // CLOSE is a full no-op: the client gets CloseComplete and the backend
+    // CLOSE is a no-op on the backend (conn mgr does drop the name from its
+    // client map): the client gets CloseComplete and the backend
     // retains the prepared statement whether its plan is valid or not;
     // reclamation happens only via LRU trim at detach. It tests if:
     // 1. CLOSE packet sent for valid prepared statement then DB doesn't
@@ -207,8 +208,17 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   //   2. Client sends SET search_path which tries to invalidate the cache.
   //   3. Client sends Close 'S' on the prepared statement which would make
   //      request to check the validity of the prepared statement.
+  //
+  // Conn mgr answers the Close itself, so only the direct PG connection reaches
+  // the lookup that used to crash.
   @Test
   public void testClosePacketAfterSearchPathChange() throws Exception {
+    closePacketAfterSearchPathChange(ConnectionEndpoint.YSQL_CONN_MGR);
+    closePacketAfterSearchPathChange(ConnectionEndpoint.POSTGRES);
+  }
+
+  private void closePacketAfterSearchPathChange(ConnectionEndpoint endpoint)
+      throws Exception {
     Properties props = new Properties();
     // Force named extended-protocol prepared statements so JDBC sends Parse +
     // Bind + Execute as separate messages.
@@ -219,7 +229,7 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
     props.setProperty("preparedStatementCacheQueries", "0");
     setUpTestTableAndCleanBackends();
     try (Connection conn = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withConnectionEndpoint(endpoint)
             .withUser("yugabyte")
             .withPassword("yugabyte")
             .connect(props)) {
@@ -515,10 +525,11 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   //   Pipeline 2: Close(s1) + Parse(s1, "SELECT 1") + Bind(s1) + Execute + Sync
   //   Pipeline 3: Bind(s1) + Execute + Sync
   //   Pipeline 4: Close(s1) + Parse(bad SQL) + Parse(s1) + Sync
+  //   Bind(s1) + Execute + Sync                      -> 26000
   //   Pipeline 5: Parse(s1) + Bind(s1) + Execute + Sync
   //
-  // Close is a full no-op (the backend just replies CloseComplete), so the
-  // Bind in pipeline 3 must find s1 still live on the backend.
+  // Close removes s1 from the client map; pipeline 3 works because the
+  // re-Parse in pipeline 2 registered it again.
   @Test
   public void testCloseThenReparseSameStmt() throws Exception {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), NO_WARMUP_FLAGS);
@@ -548,8 +559,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
        .run();
 
       // Pipeline 3: Bind(s1) + Execute + Sync.
-      // s1 must still be live on the backend: the Close in pipeline 2 was a
-      // no-op and the re-Parse's ack re-recorded it in the server hashmap.
+      // The Close in pipeline 2 was a no-op on the backend and the re-Parse's
+      // ack re-recorded s1 in both the client map and the server hashmap.
       c.createPipeline()
        .bind("s1").execute().row("1")
        .sync()
@@ -564,12 +575,19 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       // Close(s1): no-op, backend sends CloseComplete.
       // Parse(bad SQL): backend returns ErrorResponse; so all subsequent messages
       //                   are discarded by the backend until Sync. The discarded
-      //                   Parse(s1) never acks, so the server hashmap needs no
-      //                   reconciliation.
+      //                   Parse(s1) never acks, so its undo leaves s1
+      //                   unregistered -- the Close before it was processed.
       c.createPipeline()
        .closeStmt("s1")
        .parse("bad_stmt", "THIS IS NOT VALID SQL $$$$").expectError("syntax error")
        .parse("s1", "SELECT 1")
+       .sync()
+       .run();
+
+      c.createPipeline()
+       .bind("s1")
+           .expectConnMgrError("26000", "prepared statement \"s1\" does not exist")
+       .execute()
        .sync()
        .run();
 
@@ -584,7 +602,8 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   // Verifies DEALLOCATE ALL (a protocol-level-statement no-op under conn mgr)
   // followed by re-prepare of the same name before SYNC is a successful
   // operation with connection manager, and that a bare Bind in the next
-  // pipeline still finds the statement.
+  // pipeline still finds the statement. The re-Parse of a name the client
+  // already registered must overwrite it rather than raise 42P05.
   // Wire sequence:
   //   Pipeline 1 : Parse(s1,"SELECT 1") + Bind(s1) + Execute + Sync
   //   SET search_path (invalidates s1's cached plan)
@@ -686,10 +705,9 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
     }
   }
 
-  // A Bind of a statement whose only Parse failed surfaces the parse error
-  // (conn mgr misses the server hashmap and redeploys the statement, and the
-  // redeploy fails the same way) instead of tearing down the connection, and
-  // the name remains reusable afterwards.
+  // A Bind of a statement whose only Parse failed gets 26000 instead of
+  // tearing down the connection: the failed Parse's undo record unregistered
+  // the name. The name remains reusable afterwards.
   //
   // Wire sequence:
   //   Pipeline 1: Parse(s2, bad SQL) + Sync             -> Error + RFQ
@@ -706,10 +724,11 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
        .sync()
        .run();
 
-      // Pipeline 2: bare Bind of s2. Conn mgr redeploys the (bad) statement
-      // and the resulting parse error is surfaced to the client.
+      // Pipeline 2: bare Bind of s2, which the undo of the failed Parse
+      // unregistered.
       c.createPipeline()
-       .bind("s2").expectError("syntax error")
+       .bind("s2")
+           .expectConnMgrError("26000", "prepared statement \"s2\" does not exist")
        .execute()
        .sync()
        .run();

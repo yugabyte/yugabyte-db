@@ -73,6 +73,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     tserverFlags.put("ysql_yb_ddl_transaction_block_enabled", "false");
     // DDL savepoint support requires ysql_yb_ddl_transaction_block_enabled, so disable it too.
     tserverFlags.put("ysql_yb_enable_ddl_savepoint_support", "false");
+    tserverFlags.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "false");
     tserverFlags.put("enable_object_locking_for_table_locks", "false");
     tserverFlags.put("ysql_enable_concurrent_ddl", "false");
     // addCommonTServerFlags() overwrites the value set in getTServerFlags(), so repeat

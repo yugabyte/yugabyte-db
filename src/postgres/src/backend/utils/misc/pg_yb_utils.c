@@ -2232,7 +2232,7 @@ bool        yb_test_make_all_ddl_statements_incrementing = false;
 bool		yb_always_increment_catalog_version_on_ddl = true;
 bool		yb_enable_negative_catcache_entries = true;
 bool		yb_enable_new_relation_fastpath_write = true;
-bool		yb_enable_new_relation_fastpath_write_in_txn_blocks = false;
+bool		yb_enable_new_relation_fastpath_write_in_txn_blocks = kEnableDdlTransactionBlocks;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;

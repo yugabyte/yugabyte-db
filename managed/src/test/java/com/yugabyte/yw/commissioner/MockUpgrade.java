@@ -158,6 +158,14 @@ public class MockUpgrade extends UpgradeTaskBase {
     tasksForTaskGroup.clear();
   }
 
+  public MockUpgrade addSimultaneousTasks(TaskType taskType, JsonNode... params) {
+    for (JsonNode param : params) {
+      addTaskNoFlush(taskType, param);
+    }
+    flushSubtasks();
+    return this;
+  }
+
   public MockUpgrade addSimultaneousTasks(TaskType taskType, int count) {
     for (int i = 0; i < count; i++) {
       addTaskNoFlush(taskType, null);

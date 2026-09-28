@@ -397,6 +397,10 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 -- No plan can be found using the hint. Should generate warnings.
 /*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
+-- Parallel zeros partial seqscans on a non-inh rel.  That must not hide
+-- NoSeqScan: still no valid path.
+/*+ NoSeqScan(tab) Parallel(tab 2) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
+
 -- No plan can be found using the hint. Should generate warnings.
 /*+ set(enable_seqscan off) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
@@ -434,6 +438,28 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 
 -- Bad table name in parallel hint. Should get warnings/errors.
 /*+ Parallel(t11 3 hard) */ explain (hints on, costs off) select count(*) from t1;
+
+-- Hard Parallel on a partitioned table disables non-partial paths on the
+-- inheritance parent but leaves hinted partial paths.  Should not warn that
+-- hinting found no path.
+set pg_hint_plan.yb_enable_internal_hint_test to off;
+set yb_enable_base_scans_cost_model to on;
+set yb_enable_parallel_append to on;
+set parallel_setup_cost to 0;
+set parallel_tuple_cost to 0;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+reset parallel_setup_cost;
+reset parallel_tuple_cost;
+
+-- Without cheap parallel costs the serial Append is chosen.  Hard Parallel
+-- is not used as intended.
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+set pg_hint_plan.yb_bad_hint_mode to error;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+set pg_hint_plan.yb_bad_hint_mode to warn;
+reset yb_enable_base_scans_cost_model;
+reset yb_enable_parallel_append;
+set pg_hint_plan.yb_enable_internal_hint_test to on;
 
 -- Use bad name 't22' in hint. Should get warnings and whatever plan was found without the bad leading hint.
 /*+ Leading(((((t5 t4) t1) t3) t22)) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;

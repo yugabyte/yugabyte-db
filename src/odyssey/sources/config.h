@@ -91,6 +91,7 @@ struct od_config {
 	/* YB */
 	int yb_ysql_max_connections;
 	int yb_use_auth_backend;
+	int yb_cert_auth;
 	int yb_optimized_extended_query_protocol;
 	int yb_enable_multi_route_pool;
 	int yb_optimized_session_parameters;
@@ -101,7 +102,6 @@ struct od_config {
 	int yb_alter_guc_stale_backend_ttl_ms;
 	_Atomic int yb_max_prepared_statements;
 	_Atomic int yb_tcmalloc_gc_interval;
-	_Atomic int yb_enable_parse_queue_tracking;
 	_Atomic int yb_backend_drain_timeout_ms;
 };
 

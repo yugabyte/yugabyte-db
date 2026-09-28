@@ -36,6 +36,12 @@ ycql_audit_log_level=NONE
 # the previous size-based purge behavior.
 ysql_audit_log_retention_days=0
 ycql_audit_log_retention_days=0
+# POSIX-ERE that marks the start of a YSQL log record (a YB glog header or the
+# configured log_line_prefix). Overridden by log_cleanup_env, which YBA
+# regenerates from the live log_line_prefix; this default matches the built-in
+# prefix "%m [%p] " so archiving still groups multi-line records if the env
+# file predates this setting.
+ysql_audit_line_start_regex='^([A-Z][0-9]+)|^[0-9]+-[0-9]+-[0-9]+ [0-9]+:[0-9]+:[0-9]+'
 
 # Count of log-purge failures observed across all files processed by this run.
 # Bumped whenever we can't safely archive an audit slice, can't gzip a source
@@ -146,6 +152,8 @@ archive_audit_lines() {
   local audit_dir=$2
   local audit_pattern=$3
   local flavor_label=$4
+  # POSIX-ERE marking a new log record; a record runs from one match to the next.
+  local start_re=$5
   local dst_base
   dst_base=$(basename "$src_file")
   local dst_plain="$audit_dir/${dst_base}.audit.log"
@@ -173,26 +181,35 @@ archive_audit_lines() {
       "archive failed for $src_file (source left intact): $mkfile_err" >&2
     return 1
   fi
-  # grep -aF: -a treats binary as text, -F matches the pattern as a fixed
-  # string (no regex). Exit codes we care about:
-  #   0  - one or more matches written to $dst_plain
-  #   1  - no matches (empty $dst_plain, benign)
-  #   >=2 - grep error, including write failures (disk full, quota, etc.)
-  # 2>&1 before the stdout redirect routes grep's stderr into the command
-  # substitution so we can surface it in the WARN instead of the previous
-  # "single cryptic raw error line" that landed on the timer unit's stderr.
-  local grep_err grep_rc
-  grep_err=$(grep -aF "$audit_pattern" "$src_file" 2>&1 > "$dst_plain")
-  grep_rc=$?
-  if [ "$grep_rc" -gt 1 ]; then
-    echo "WARN: grep failed (rc=$grep_rc) extracting $flavor_label audit lines" \
-      "from $src_file (source left intact): $grep_err" >&2
+  # Extract whole audit records, not just their first physical line. A pgaudit
+  # (and YCQL) record spans multiple lines when its statement text contains
+  # newlines; only the first line carries the AUDIT marker, so the old line-
+  # oriented "grep -F marker" dropped every continuation line (PLAT-22410).
+  # awk tracks record boundaries via $start_re (the log_line_prefix / glog
+  # header) and, whenever a record STARTS with the marker, emits that line and
+  # all continuation lines up to the next record start. $audit_pattern is matched
+  # as a fixed string via index(), preserving grep -F semantics (no regex in the
+  # marker). LC_ALL=C keeps byte-wise matching regardless of locale.
+  #   awk rc 0 + non-empty $dst_plain -> records extracted
+  #   awk rc 0 + empty $dst_plain     -> no audit records (benign)
+  #   awk rc != 0                     -> awk/write error (e.g. disk full)
+  # 2>&1 before the stdout redirect routes awk's stderr into the capture so we
+  # can surface it in the WARN rather than onto the timer unit's stderr.
+  local awk_err awk_rc
+  awk_err=$(LC_ALL=C awk -v marker="$audit_pattern" -v start_re="$start_re" '
+    $0 ~ start_re { emit = (index($0, marker) > 0) }
+    emit
+  ' "$src_file" 2>&1 > "$dst_plain")
+  awk_rc=$?
+  if [ "$awk_rc" -ne 0 ]; then
+    echo "WARN: awk failed (rc=$awk_rc) extracting $flavor_label audit records" \
+      "from $src_file (source left intact): $awk_err" >&2
     rm -f "$dst_plain"
     return 1
   fi
   if [ ! -s "$dst_plain" ]; then
-    # grep_rc == 1: source had no audit lines. Not a failure - clean up the
-    # empty scratch file and let the caller compress/delete the source.
+    # Source had no audit records. Not a failure - clean up the empty scratch
+    # file and let the caller compress/delete the source.
     rm -f "$dst_plain"
     return 0
   fi
@@ -210,13 +227,16 @@ archive_audit_lines() {
 # wrappers so call sites stay short.
 readonly YSQL_AUDIT_PATTERN='LOG:  AUDIT:'
 readonly YCQL_AUDIT_PATTERN='] AUDIT: user:'
+# YCQL audit goes through glog, whose header is fixed and independent of the
+# YSQL log_line_prefix, so its record-start pattern is a constant here.
+readonly YCQL_AUDIT_START_RE='^[IWEF][0-9]+ [0-9]+:[0-9]+:[0-9]+'
 
 archive_postgres_audit_lines() {
-  archive_audit_lines "$1" "$2" "$YSQL_AUDIT_PATTERN" "YSQL"
+  archive_audit_lines "$1" "$2" "$YSQL_AUDIT_PATTERN" "YSQL" "$ysql_audit_line_start_regex"
 }
 
 archive_ycql_audit_log() {
-  archive_audit_lines "$1" "$2" "$YCQL_AUDIT_PATTERN" "YCQL"
+  archive_audit_lines "$1" "$2" "$YCQL_AUDIT_PATTERN" "YCQL" "$YCQL_AUDIT_START_RE"
 }
 
 # Single chokepoint for gzipping a YB log file. If $archive_fn is non-empty,

@@ -724,7 +724,7 @@ public class CustomerTaskManager {
             });
   }
 
-  private boolean isTaskRetryable(CustomerTask task, TaskInfo taskInfo) {
+  public boolean isTaskRetryable(CustomerTask task, TaskInfo taskInfo) {
     return commissioner.isTaskRetryable(
         taskInfo,
         tf -> {
@@ -1043,6 +1043,7 @@ public class CustomerTaskManager {
                 "Cannot retry modifying query logging task as YSQL major upgrade is in progress.");
           }
         }
+        break;
       case ModifyMetricsExportConfig:
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;

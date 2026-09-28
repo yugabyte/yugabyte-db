@@ -29,6 +29,7 @@ Cargo subcommand for 'pgrx' to make Postgres extension development easy
 Usage: cargo pgrx [OPTIONS] <COMMAND>
 
 Commands:
+  bench         Run in-process benchmarks for this crate
   init          Initialize pgrx development environment for the first time
   info          Provides information about pgrx-managed development environment
   start         Start a pgrx-managed Postgres instance
@@ -43,6 +44,8 @@ Commands:
   test          Run the test suite for this crate
   get           Get a property from the extension control file
   cross         Commands having to do with cross-compilation. (Experimental)
+  upgrade       Upgrade pgrx crate versions in `Cargo.toml`. Defaults to latest
+  regress       Run the regression test suite for this crate
   help          Print this message or the help of the given subcommand(s)
 
 Options:
@@ -54,10 +57,11 @@ Options:
 ## Environment Variables
 
 - `PGRX_HOME` - Defaults to "${HOME}/.pgrx/" if not set.
-- `PGRX_BUILD_FLAGS` - If set during `cargo pgrx run/test/install`, these additional flags are passed to `cargo build` while building the extension
+- `PGRX_BUILD_FLAGS` - If set during `cargo pgrx run/test/install/package/bench`, these additional flags are passed to `cargo build` while building the extension
 - `PGRX_BUILD_VERBOSE` - Set to true to enable verbose "build.rs" output -- useful for debugging build issues
 - `HTTPS_PROXY` - If set during `cargo pgrx init`, it will download the Postgres sources using these proxy settings. For more details refer to the [env_proxy crate documentation](https://docs.rs/env_proxy/*/env_proxy/fn.for_url.html).
 - `PGRX_IGNORE_RUST_VERSIONS` - Set to true to disable the `rustc` version check we have when performing schema generation (schema generation requires the same version of `rustc` be used to build `cargo-pgrx` as the crate in question).
+- `CARGO_PGRX_DISABLE_GC_SECTIONS_WORKAROUND` - Set to any value to stop `cargo-pgrx` from injecting `-C link-arg=-Wl,--no-gc-sections` on non-macOS Unix cdylib builds. By default, `cargo-pgrx` passes this flag (scoped to `cfg(all(target_family = "unix", not(target_os = "macos")))`) to cargo as `--config target.<cfg>.rustflags=[...]` only for cdylib-producing invocations — `cargo pgrx install`, `cargo pgrx package`, and the non-`--test` path of `cargo pgrx schema`. This prevents GNU `ld --gc-sections` from dropping the `.pgrxsc` section where the embedded SQL schema metadata lives — a problem that surfaces on non-LTO builds (notably aarch64 Linux) as `no embedded pgrx schema section found`. The workaround is intentionally not applied to `cargo pgrx test` / `cargo pgrx schema --test` because those also link a test binary whose undefined Postgres `extern "C"` references are expected to be GC'd away. Disable this only if you are explicitly managing `rustflags` yourself and understand the retention contract.
 
 ## First Time Initialization
 
@@ -337,7 +341,7 @@ Compile/install extension to a pgrx-managed Postgres instance and start psql
 Usage: cargo pgrx run [OPTIONS] [PG_VERSION] [DBNAME]
 
 Arguments:
-  [PG_VERSION]  Do you want to run against pg13, pg14, pg15, pg16, or pg17? [env: PG_VERSION=]
+  [PG_VERSION]  Do you want to run against pg13, pg14, pg15, pg16, pg17, or pg18? [env: PG_VERSION=]
   [DBNAME]      The database to connect to (and create if the first time).  Defaults to a database with the same name as the current extension name
 
 Options:
@@ -388,7 +392,7 @@ Connect, via psql, to a Postgres instance
 Usage: cargo pgrx connect [OPTIONS] [PG_VERSION] [DBNAME]
 
 Arguments:
-  [PG_VERSION]  Do you want to run against pg13, pg14, pg15, pg16, or pg17? [env: PG_VERSION=]
+  [PG_VERSION]  Do you want to run against pg13, pg14, pg15, pg16, pg17, or pg18? [env: PG_VERSION=]
   [DBNAME]      The database to connect to (and create if the first time).  Defaults to a database with the same name as the current extension name [env: DBNAME=]
 
 Options:
@@ -451,7 +455,7 @@ Options:
   -V, --version                        Print version
 ```
 
-## Testing Your Extension
+## Testing with Unit Tests
 
 ```console
 $ cargo pgrx test
@@ -506,7 +510,7 @@ Run the test suite for this crate
 Usage: cargo pgrx test [OPTIONS] [PG_VERSION] [TESTNAME]
 
 Arguments:
-  [PG_VERSION]  Do you want to run against pg13, pg14, pg15, pg16, pg17, or all? [env: PG_VERSION=]
+  [PG_VERSION]  Do you want to run against pg13, pg14, pg15, pg16, pg17, pg18, or all? [env: PG_VERSION=]
   [TESTNAME]    If specified, only run tests containing this string in their names
 
 Options:
@@ -524,6 +528,299 @@ Options:
   -h, --help                           Print help
   -V, --version                        Print version
 ```
+
+## Benchmarking with In-Process Benches
+
+`cargo pgrx bench ${VERSION}` runs `#[pg_bench]` benchmarks inside Postgres backends using the
+same managed Postgres instance that `cargo pgrx run` uses.
+
+Unlike `cargo pgrx test`, this is not an ephemeral test harness. Benchmarks are installed into a
+managed benchmark database, by default named `$extname_benches`, and their historical results are
+stored there as well.
+
+The intended authoring model is:
+
+```rust
+#[cfg(feature = "pg_bench")]
+#[pg_schema]
+mod benches {
+    use pgrx::prelude::*;
+    use pgrx_bench::{Bencher, black_box};
+
+    #[pg_bench]
+    fn bench_hello(b: &mut Bencher) {
+        b.iter(|| {
+            black_box(crate::hello());
+        });
+    }
+}
+```
+
+`cargo pgrx bench` automatically enables the `pg_bench` feature, builds in `--release` mode by
+default, installs the extension artifacts using the normal install pipeline, refreshes the
+extension in the benchmark database, and then runs each benchmark in-process.
+
+Key behaviors:
+
+- benchmark functions run inside a backend, not over an external SQL client loop
+- benchmark side effects are rolled back after each benchmark invocation
+- benchmark results are stored in a runner-owned `pgrx_bench` schema so history survives extension refreshes
+- the CLI records environment metadata, `pg_settings`, run groups, and comparison targets
+- the CLI prints the benchmark backend PID before benchmark execution starts
+- the CLI prints which benchmark is currently running and the effective settings for that benchmark
+
+You can list benchmarks and their settings with:
+
+```console
+$ cargo pgrx bench --list
+bench_normalize_phrase [transaction=shared, setup=none, sample_size=100, warm_up=3000ms, measurement=5000ms, nresamples=100000, noise_threshold=0.01, significance_level=0.05]
+bench_spi_insert_batch [transaction=subtransaction_per_batch, setup=prepare_spi_fixture, sample_size=50, warm_up=3000ms, measurement=2000ms, nresamples=100000, noise_threshold=0.01, significance_level=0.05]
+```
+
+To run a single benchmark:
+
+```console
+$ cargo pgrx bench pg16 bench_normalize_phrase
+```
+
+To print the backend PID and wait before benchmark execution starts, which is handy when attaching
+`samply`, `perf`, `lldb`, or another external profiler/debugger:
+
+```console
+$ cargo pgrx bench --wait 10
+```
+
+`--wait` is measured in seconds, is honored after the backend PID is printed, and the CLI tells
+you when it has started waiting.
+
+To name the current run group and compare it against another group:
+
+```console
+$ cargo pgrx bench --group-name before-rewrite
+$ cargo pgrx bench --group-name after-rewrite --compare-group before-rewrite
+```
+
+To emit the final summary as JSON:
+
+```console
+$ cargo pgrx bench --json
+```
+
+To render a read-only history report from the benchmark database, using the last 10 groups per
+benchmark and leaving the managed Postgres instance running:
+
+```console
+$ cargo pgrx bench --report
+$ cargo pgrx bench bench_normalize_phrase --report
+```
+
+`--report` starts the managed Postgres instance if needed, skips build/install/extension refresh,
+reads the persisted `pgrx_bench` history, and renders colored ASCII bars. Rows marked with `*`
+have broad drift from that benchmark's recorded baseline (for example profile, Postgres version,
+cargo features, or nondefault `pg_settings`).
+
+`cargo pgrx bench` is meant for in-process performance work on extension code. It is not a
+replacement for `cargo pgrx test` or `cargo pgrx regress`, and it is not a client-side SQL load
+testing tool.
+
+```console
+$ cargo pgrx bench --help
+Usage: cargo pgrx bench [OPTIONS] [ARGS]...
+
+Arguments:
+  [ARGS]...  Positional arguments: [pgXX] [benchname] [env: PG_VERSION=]
+
+Options:
+      --dbname <DBNAME>
+          If specified, use this database name instead of `$extname_benches`
+      --group-name <GROUP_NAME>
+          Unique name for this benchmark group
+  -v, --verbose...
+          Enable info logs, -vv for debug, -vvv for trace
+      --compare-group <COMPARE_GROUP>
+          Named benchmark group to compare against
+      --resetdb
+          Recreate the benchmark database before running
+      --cascade
+          Use CASCADE when dropping the extension during refresh
+      --list
+          List discovered benchmark wrappers and exit
+      --report
+          Render a read-only history report from the benchmark database
+      --json
+          Emit the final summary as JSON
+      --wait <SECONDS>
+          Sleep for this many seconds after printing the backend PID and before starting benchmarks
+          [default: 0]
+  -p, --package <PACKAGE>
+          Package to build (see `cargo help pkgid`)
+      --manifest-path <MANIFEST_PATH>
+          Path to Cargo.toml
+      --debug
+          Compile for debug mode instead of the default release mode
+      --profile <PROFILE>
+          Specific profile to use (conflicts with `--debug`)
+      --all-features
+          Activate all available features
+      --no-default-features
+          Do not activate the `default` feature
+  -F, --features <FEATURES>
+          Space-separated list of features to activate
+      --target <TARGET>
+      --postgresql-conf <POSTGRESQL_CONF>
+          Custom `postgresql.conf` settings in the form of `key=value`
+  -h, --help
+          Print help
+  -V, --version
+          Print version
+```
+
+## Testing with Regression Tests
+
+pgrx supports a regression test system very similar to the one prescribed by Postgres' `pg_regress` tool.  In fact, pgrx uses `pg_regress` to run the regression tests.
+
+`cargo pgrx regress` is used to run the regression tests.  It has a number of options similar to `cargo pgrx test`.
+
+Key flags:
+
+| Flag | Purpose                                                                                      |
+|------|----------------------------------------------------------------------------------------------|
+| `--resetdb` | Drop and recreate the test database (recommended for reproducible runs)                      |
+| `--add <name>` | Bootstrap a new test — implies `--resetdb`, runs `setup.sql`, promotes output to `expected/` |
+| `-t` / `--test-filter <string>` | Only run tests whose names contain this string                                               |
+| `-a` / `--auto` | Overwrite expected output for failed tests with actual output                                |
+| `-v` / `--verbose` | Print regression diffs to stderr on failure                                                  |
+| `--dry-run` | Print what would happen without doing it                                                     |
+| `--repeat <N>` | Run the entire configuration N times (default: 1)                                            |
+| `-p` / `--package <name>` | Package to build (auto-detected in workspaces with a single pgrx extension)                  |
+| `[PG_VERSION]` | Postgres version (e.g., `pg18`). Optional — defaults to Cargo.toml's default feature         |
+
+Regression tests are split into `*.sql` files and `*.out` files.  The files themselves are organized into separate directories rooted at `./tests/pg_regress`.
+
+For example, using our [range example](../pgrx-examples/range/), the directory structure looks like this:
+
+```console
+$ tree       
+.
+├── Cargo.lock
+├── Cargo.toml
+├── README.md
+├── tests
+│   └── pg_regress
+│       ├── sql                    # these are the individual regression test scripts
+│       │   ├── make_range.sql
+│       │   ├── setup.sql
+│       │   └── store_ranges.sql
+│       └── expected               # these are the corresponding test output files
+│           ├── make_range.out
+│           ├── setup.out
+│           └── store_ranges.out
+├── range.control
+└── src
+    └── lib.rs
+```
+
+`setup.sql` is a special test in that it's run first, by itself, whenever the test database is first created, or reset using the `--resetdb` argument.
+
+When creating a new test, first make the `.sql` file in `./tests/pg_regress/sql/` and then use `--add` to bootstrap it:
+
+```console
+$ echo "SELECT 1;" > ./tests/pg_regress/sql/example.sql
+$ cargo pgrx regress --add example
+```
+
+This will:
+1. Drop and recreate the test database (`--add` implies `--resetdb`)
+2. Run `setup.sql` to establish schema/data
+3. Run the new test
+4. Copy its output to `./tests/pg_regress/expected/example.out`
+5. `git add` the new expected output file
+
+After bootstrapping, verify the test passes by running the full suite:
+
+```console
+$ cargo pgrx regress --resetdb
+```
+
+Tests without expected output are **skipped** by default during normal runs. If you use `--test-filter` to target a test that hasn't been bootstrapped yet, you'll get a clear error directing you to use `--add` first.
+
+#### Updating expected output after code changes
+
+When code changes alter query output or EXPLAIN plans, use `--auto` to accept the new output:
+
+```console
+$ cargo pgrx regress --auto --resetdb
+```
+
+`--auto` overwrites expected output for **failed** tests with their actual output. Review the changes with `git diff` to verify they match the intended behavioral change. **Never manually edit `.out` files** — always let `--auto` generate them.
+
+When tests fail, the path to the `regression.diffs` file is always shown. Use `-v` to also print the full diff content inline.
+
+### Things to Know
+
+- `setup.sql` is only executed when tests are run for the first time, or the `--resetdb` argument is used.  This includes when running a single test with `--resetdb` — `setup.sql` will always run first to establish the database schema and data before the filtered test executes.
+- The point of `setup.sql` is to perform some heavy-weight database object creation/data-loading _only_ when the test regression database is created.
+- tests are executed in alphabetical order
+- `.sql` files without a corresponding `expected/*.out` file are **skipped** during normal runs — use `--add <name>` to bootstrap new tests
+- pgrx creates a database named `$extname_regress` unless `--dbname` is used
+- Postgres' documentation for `pg_regress` [begins here](https://www.postgresql.org/docs/current/regress.html).  While pgrx does not support every knob and dial, its organization is largely compatible (PRs welcome to enhance features)
+- to regenerate the expected test output, delete the `./tests/pg_regress/expected/TEST_NAME.out` file and re-add it with `cargo pgrx regress --add TEST_NAME`
+- `pg_regress` uses `psql` to run each test and literally diffs the output against the expected output file.  pgrx does two things to help eliminate noise in the test output.  The first is it sets `client_min_messages=warning` when starting the Postgres instance and it also passes `-v VERBOSITY=terse` through to `psql`.
+- In a workspace with a single pgrx extension crate, `--package` is auto-detected — no need to specify it manually
+
+### Diffing `psql` Output?
+
+Yes, Postgres' `pg_regress` tool plays each `test_name.sql` file through `psql`, captures the full output, and diffs that output against the test's corresponding `test_name.out` file.  It's a good idea for your tests to avoid variability in their output.
+
+Avoiding variability can mean some simple things like
+
+- ensuring the results of SELECT statements that return multiple rows are always sorted in a predictable/repeatable manner
+- avoiding outputting "random" values such as the result of the `random()` function, `txid_current()`, and others
+    
+    
+### Be Kind to Yourself
+
+While always good advice, in the context of individual regression tests, this means that a test should not leave anything behind or should be able to tolerate leftover database objects from previous runs.  
+
+Each test should be written to "DROP IF EXISTS ... ; CREATE ..." or instead "DROP ..." every database object at the end of the test.
+
+You can ignore this advice if you **always** run the regression tests with `--resetdb` as you'll have a clean database each time
+
+An example of an unkind test might be:
+
+```console
+$ echo "CREATE TABLE foo();" > ./tests/pg_regress/sql/bad.sql
+$ cargo pgrx regress --add bad
+```
+
+Then on a second run (without `--resetdb`), the `CREATE TABLE` will fail because the table already exists. You'd see the regression diffs printed inline:
+
+```console
+$ diff -U3  ~/_work/pgrx/tests/pgrx-examples/range/tests/pg_regress/expected/bad.out  ~/_work/pgrx/tests/pgrx-examples/range/tests/pg_regress/results/bad.out
+---  ~/_work/pgrx/tests/pgrx-examples/range/tests/pg_regress/expected/bad.out	2025-05-07 12:15:10.759010127 -0400
++++  ~/_work/pgrx/tests/pgrx-examples/range/tests/pg_regress/results/bad.out	2025-05-07 12:15:10.775009912 -0400
+@@ -1 +1,2 @@
+ CREATE TABLE foo();
++ERROR:  relation "foo" already exists
+```
+
+What you wanted in the .sql file is either
+
+```sql
+DROP TABLE IF EXISTS foo;  
+CREATE TABLE foo();
+``` 
+
+or 
+
+```sql
+CREATE TABLE foo(); 
+-- ... 
+DROP TABLE foo;
+```
+
+Either be resilient in the face of existing objects or cleanup when the test is finished.
+
 
 ## Building an Installation Package
 
@@ -590,10 +887,17 @@ If you just want to look at the full extension schema that pgrx will generate, u
 $ cargo pgrx schema --help
 Generate extension schema files
 
-Usage: cargo pgrx schema [OPTIONS] [PG_VERSION]
+Usage: cargo pgrx schema [OPTIONS] [ARGS]...
 
 Arguments:
-  [PG_VERSION]  Do you want to run against pg13, pg14, pg15, pg16, or pg17?
+  [ARGS]...  First arg may be a PostgreSQL version label (`pg13`..`pg18`).
+             Remaining args are SQL item names to emit (functions, types,
+             enums, operators, aggregates, triggers, schemas, extension_sql
+             blocks). When item names are given, only those items and their
+             transitive dependencies are emitted, in install order, and
+             'MODULE_PATHNAME' is substituted with '$libdir/<lib_name>' so
+             the output can be replayed directly. Names containing `::` are
+             matched as Rust paths to disambiguate.
 
 Options:
   -p, --package <PACKAGE>              Package to build (see `cargo help pkgid`)
@@ -609,9 +913,65 @@ Options:
   -o, --out <OUT>                      A path to output a produced SQL file (default is `stdout`)
   -d, --dot <DOT>                      A path to output a produced GraphViz DOT file
       --skip-build                     Skip building a fresh extension shared object
+      --no-alter-extension             Don't emit `ALTER EXTENSION ... ADD ...` statements when
+                                       extracting specific items (see "Attaching Slices" below)
   -h, --help                           Print help
   -V, --version                        Print version
 ```
+
+### Emitting a Slice of the Schema
+
+Any positional arguments after an optional `pgXX` version label are treated as SQL item
+names. The output is restricted to those items plus every dependency they need, in
+install order. Names match against each entity's SQL-visible identifier: `name` for
+functions, types, enums, aggregates, and schemas; `opname` for operators (for example
+`===`); `function_name` for triggers; and `name` for `extension_sql!` blocks. A name
+containing `::` is treated as a Rust path and matched against `full_path`, which is the
+way to disambiguate collisions (for example two functions named `dup_fn` in different
+modules).
+
+When item names are supplied, every occurrence of `'MODULE_PATHNAME'` in the generated
+SQL is substituted with `'$libdir/<lib_name>'`, so the output can be replayed directly
+into a database without relying on the extension's control file to resolve
+`MODULE_PATHNAME`.
+
+```shell
+# Emit one function and its dependencies, with MODULE_PATHNAME substituted
+cargo pgrx schema my_function
+
+# Multiple items at once
+cargo pgrx schema my_function MyType ===
+
+# Specify a Postgres version first, then the items
+cargo pgrx schema pg18 my_function MyType
+
+# Disambiguate with a Rust path when the bare name matches multiple items
+cargo pgrx schema my_crate::submodule::dup_fn
+
+# Write the slice to a file instead of stdout (combines with item selection)
+cargo pgrx schema --out /tmp/extracted_schema_objects.sql my_function MyType
+```
+
+#### Attaching Slices to an Already-Installed Extension
+
+When item names are supplied, the emitted slice is wrapped in `BEGIN;`/`COMMIT;`
+and every created object is followed by an `ALTER EXTENSION "<ext>" ADD ...`
+statement. Piping the output into a database where the extension is already
+installed makes the new objects members of the extension, verifiable via
+`pg_depend`.
+
+```shell
+# Add a new function to an already-installed extension
+cargo pgrx schema my_new_fn | cargo pgrx connect
+```
+
+Pass `--no-alter-extension` to opt out of this (for example, to generate SQL
+for hand-editing or to match the pre-feature output).
+
+`extension_sql!()` blocks that don't declare `creates = [...]` cannot be
+attached automatically; the emitter prints a warning to stderr naming the
+block's `file:line` so the user knows which objects to attach by hand.
+
 
 ## Extension Version Upgrade Scripts
 
@@ -641,7 +1001,7 @@ the extensions `.control` file.  Postgres will then execute the scripts along th
 It is your responsibility to hand-write these extension upgrade scripts in whatever manner would allow Postgres to update
 your extension from one version to the next.  pgrx has no ability to auto-generate these scripts.
 
-While pgrx does not generate these upgrade scripts, it does now about them and all pgrx commands (`cargo pgrx test/run/install/package`) 
+While pgrx does not generate these upgrade scripts, it does know about them and all pgrx commands (`cargo pgrx test/run/install/package/bench`) 
 that generate extension artifacts will automatically copy these files, and only these files, from the `./sql` directory 
 to their final destination as dictated by `pg_config`.
 
@@ -699,7 +1059,7 @@ AS 'MODULE_PATHNAME', 'hello_extension_wrapper';
 ```
 
 `MODULE_PATHNAME` is replaced by Postgres with the configured value in the `.control` file. For pgrx-based extensions,
-this is  usually set to `$libdir/<extension-name>`.
+this is  usually set to `<extension-name>`.
 
 When using versioned shared-object support, the same SQL would look as follows:
 
@@ -707,7 +1067,7 @@ When using versioned shared-object support, the same SQL would look as follows:
 CREATE OR REPLACE FUNCTION "hello_extension"() RETURNS text /* &str */
 STRICT
 LANGUAGE c /* Rust */
-AS '$libdir/extension-0.0.0', 'hello_extension_wrapper';
+AS 'extension-0.0.0', 'hello_extension_wrapper';
 ```
 
 Note that the versioned shared library is hard-coded in the function definition. This corresponds to the
@@ -722,7 +1082,7 @@ produce the following SQL for the above function:
 CREATE OR REPLACE FUNCTION "hello_extension"() RETURNS text /* &str */
 STRICT
 LANGUAGE c /* Rust */
-AS '$libdir/extension-0.1.0', 'hello_extension_wrapper';
+AS 'extension-0.1.0', 'hello_extension_wrapper';
 ```
 
 This SQL must be used in the upgrade script from `0.0.0` to `0.1.0` in order to point the `hello_extension` function to

@@ -60,7 +60,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [Disks](../../../deploy/checklist/#disks)
 - [Ephemeral disks](../../../deploy/checklist/#ephemeral-disks)
 
-   **Note**: Ephemeral disks are currently supported only for on-premises provider and _not_ a public cloud provider (AWS, GCP, or Azure).
+   **Note**: Ephemeral disks are currently supported only for on-premises provider and _not_ a public cloud provider (AWS, GCP, Azure, or OCI).
 
 When creating your VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.
 

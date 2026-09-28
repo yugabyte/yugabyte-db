@@ -96,6 +96,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -2597,13 +2598,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       NodeAgentManager nodeAgentManager = getInstanceOf(NodeAgentManager.class);
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
       Provider provider = Util.getProviderForNode(nodeDetails, cluster);
-      if (provider.getCloudCode() == CloudType.onprem) {
-        if (provider.getDetails().skipProvisioning) {
-          return;
-        }
+      if (!provider.isManualOnprem()) {
+        // CSPs and onprem sudo.
+        NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
+            .ifPresent(n -> nodeAgentManager.purge(n));
       }
-      NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
-          .ifPresent(n -> nodeAgentManager.purge(n));
     }
   }
 
@@ -5316,6 +5315,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param processes set of processes to stop.
    * @param removeMasterFromQuorum true if this stop is a for long time.
    * @param deconfigure true if the server needs to be deconfigured (stopped permanently).
+   * @param flushTablets true if tablets should be flushed before stopping tserver.
+   * @param ignoreStopError true to ignore stop failures (e.g. process already stopped / node agent
+   *     unreachable on retry).
    * @param subTaskGroupType subtask group type.
    */
   protected void stopProcessesOnNodes(
@@ -5324,6 +5326,36 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean removeMasterFromQuorum,
       boolean deconfigure,
       boolean flushTablets,
+      boolean ignoreStopError,
+      SubTaskGroupType subTaskGroupType) {
+    stopProcessesOnNodes(
+        nodes,
+        processes,
+        removeMasterFromQuorum,
+        deconfigure,
+        params -> {
+          params.flushTabletsOnStopTserver = flushTablets;
+          params.isIgnoreError = ignoreStopError;
+        },
+        subTaskGroupType);
+  }
+
+  /**
+   * Creates tasks to gracefully stop processes on node.
+   *
+   * @param nodes a list of nodes to stop processes.
+   * @param processes set of processes to stop.
+   * @param removeMasterFromQuorum true if this stop is a for long time.
+   * @param deconfigure true if the server needs to be deconfigured (stopped permanently).
+   * @param paramsCustomizer Callback to update params for server control task.
+   * @param subTaskGroupType subtask group type.
+   */
+  protected void stopProcessesOnNodes(
+      List<NodeDetails> nodes,
+      Set<ServerType> processes,
+      boolean removeMasterFromQuorum,
+      boolean deconfigure,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer,
       SubTaskGroupType subTaskGroupType) {
     if (processes.contains(ServerType.TSERVER)) {
       addLeaderBlackListIfAvailable(nodes, subTaskGroupType);
@@ -5346,7 +5378,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               "stop",
               params -> {
                 params.deconfigure = deconfigure;
-                params.flushTabletsOnStopTserver = flushTablets;
+                if (paramsCustomizer != null) {
+                  paramsCustomizer.accept(params);
+                }
               })
           .setSubTaskGroupType(subTaskGroupType);
       if (processType == ServerType.MASTER && removeMasterFromQuorum) {
@@ -5366,7 +5400,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param subGroupType subtask group type.
    * @param addMasterToQuorum true if started for the first time (or after long stop).
    * @param wasStopped true if process was stopped before.
-   * @param sleepTimeFunction if not null - function to calculate time to wait for process.
+   * @param waitForServerReady whether to wait for server ready.
    */
   protected void startProcessesOnNode(
       NodeDetails node,
@@ -5374,7 +5408,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       SubTaskGroupType subGroupType,
       boolean addMasterToQuorum,
       boolean wasStopped,
-      @Nullable Function<ServerType, Integer> sleepTimeFunction) {
+      boolean waitForServerReady) {
     for (ServerType processType : processTypes) {
       createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
       createWaitForServersTasks(Collections.singletonList(node), processType)
@@ -5383,11 +5417,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         // Add stopped master to the quorum.
         createChangeConfigTasks(node, true /* isAdd */, subGroupType);
       }
-      if (sleepTimeFunction != null) {
+      if (waitForServerReady) {
         createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
       }
       if (wasStopped && processType == ServerType.TSERVER) {
         removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
+      }
+      if (wasStopped && processType == ServerType.MASTER) {
+        if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+          createSetActiveUniverseKeysTask()
+              .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+        }
       }
     }
   }
@@ -6282,7 +6322,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes, boolean isHardReboot) {
+  protected SubTaskGroup createRebootTasks(Collection<NodeDetails> nodes, boolean isHardReboot) {
     Class<? extends NodeTaskBase> taskClass =
         isHardReboot ? HardRebootServer.class : RebootServer.class;
     SubTaskGroup subTaskGroup = createSubTaskGroup(taskClass.getSimpleName());

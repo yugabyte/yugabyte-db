@@ -24,6 +24,7 @@ SELECT $$IN ('1', '1')$$ AS "R2" \gset
 --
 CREATE INDEX NONCONCURRENTLY idx ON tv_tbl (v ASC, t, i2, (v::text), v, (t::varchar), t, i4)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+ANALYZE tv_tbl;
 
 -- RelabelType strip points exercised:
 -- - SAOP clause LHS: v's LHS is wrapped, but the leading index expression is
@@ -49,6 +50,7 @@ DROP INDEX idx;
 --
 CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, (t::varchar), i2, (v::text), v, (t::varchar), t, i4)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+ANALYZE tv_tbl;
 
 -- Beyond index 1:
 -- - The leading (v::text) is wrapped on both sides: the index expression and

@@ -127,6 +127,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 if (params.nodeUuid != null) {
                   respJson.put("node_uuid", params.nodeUuid.toString());
                 }
+                addAzureLunIndexes(respJson, params);
                 listResponse.message = respJson.toString();
                 return listResponse;
               }

@@ -23,7 +23,6 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
@@ -44,8 +43,6 @@ void SetSkipIntentsAndDdlFlagsForXClusterTest() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) =
       true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
-      "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks";
 }
 
 int64_t SumSkipIntentsWriteMetric(MiniCluster& cluster) {

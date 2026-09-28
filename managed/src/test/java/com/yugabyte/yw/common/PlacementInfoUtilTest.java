@@ -5017,6 +5017,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   // getOverallPlacement() rebuilds the PlacementInfo from partitions. It must carry over the K8s
   // statefulset indices from the partition placement, otherwise master addresses / pod names
   // computed from the overall placement point at the wrong (old) statefulsets during a full move.
+  // It must also carry leaderPreference, which addPlacementZone does not set.
   @Test
   public void testGetOverallPlacementCopiesK8sStsIndicesFromPartitions() {
     Customer customer = ModelFactory.testCustomer("Test Customer");
@@ -5032,8 +5033,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         PlacementInfoUtil.addPlacementZone(az2.getUuid(), partitionPlacement, 1, 1, true);
     pAz1.masterStsIndex = 2;
     pAz1.tsStsIndex = 3;
+    pAz1.leaderPreference = 1;
     pAz2.masterStsIndex = 4;
     pAz2.tsStsIndex = 5;
+    pAz2.leaderPreference = 2;
 
     UserIntent userIntent = new UserIntent();
     userIntent.providerType = CloudType.kubernetes;
@@ -5056,8 +5059,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertNotNull(overallAz2);
     assertEquals(2, overallAz1.masterStsIndex);
     assertEquals(3, overallAz1.tsStsIndex);
+    assertEquals(1, overallAz1.leaderPreference);
     assertEquals(4, overallAz2.masterStsIndex);
     assertEquals(5, overallAz2.tsStsIndex);
+    assertEquals(2, overallAz2.leaderPreference);
   }
 
   // A K8s full move increments the statefulset index on cluster.placementInfo. Those increments

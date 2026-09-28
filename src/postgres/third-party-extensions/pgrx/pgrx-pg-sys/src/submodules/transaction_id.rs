@@ -8,7 +8,7 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable, TypeOrigin,
 };
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -63,13 +63,11 @@ impl From<TransactionId> for crate::Datum {
 }
 
 unsafe impl SqlTranslatable for TransactionId {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("xid"))
-    }
-
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("xid")))
-    }
+    const TYPE_IDENT: &'static str = pgrx_sql_entity_graph::pgrx_resolved_type!(TransactionId);
+    const TYPE_ORIGIN: TypeOrigin = TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = Ok(SqlMappingRef::literal("xid"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("xid")));
 }
 
 impl Debug for TransactionId {

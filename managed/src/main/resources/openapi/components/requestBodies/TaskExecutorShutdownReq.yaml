@@ -1,6 +1,0 @@
-required: true
-content:
-  application/json:
-    schema:
-      $ref: "../schemas/TaskExecutorShutdownSpec.yaml"
-x-yba-api-visibility: internal

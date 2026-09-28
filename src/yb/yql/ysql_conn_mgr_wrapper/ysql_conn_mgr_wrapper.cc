@@ -150,6 +150,7 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_parse_queue_tracking, "09_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_dealloc_reconciliation, "07_2026");
 
@@ -190,13 +191,6 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
     "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
-    "Enables tracking of in-flight Parse operations in the YSQL Connection Manager. "
-    "This is used so that prepared-statement state tracked on the Connection Manager can be "
-    "reconciled with the backend when errors disrupt the expected packet sequence. When "
-    "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
-    "the backend, which may surface as errors such as 'prepared statement does not exist'.");
-
 DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
     "When enabled, the YSQL Connection Manager stops reading further client packets after "
     "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
@@ -236,6 +230,15 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, full_tls_handshake, true,
     "falls back to the original machinarium-managed SSL_CTX that only honours the "
     "cert/key/CA files derived from certs_for_client_dir.");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, cert_auth, true,
+    "When true, Ysql Connection Manager forwards the leaf certificate presented by the client "
+    "to the backend in the startup packet, so that hba rules that depend on it (cert, "
+    "clientcert=verify-ca, clientcert=verify-full) are evaluated against the real client's "
+    "identity instead of the connection manager's. When false, no certificate is forwarded and "
+    "such rules see a client that presented none. Requires ysql_conn_mgr_full_tls_handshake, "
+    "which is what makes the connection manager verify the client certificate the same way "
+    "PostgreSQL would.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
@@ -273,6 +276,9 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
+
+DEFINE_validator(ysql_conn_mgr_cert_auth,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_full_tls_handshake));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {

@@ -92,6 +92,14 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_row_limit, 0,
+    "Maximum number of rows returned by each catalog prefetch request. 0 means no limit.");
+
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 10 * 1024 * 1024,
+    "Maximum combined response size in bytes for catalog prefetch requests. The limit is divided "
+    "evenly among the catalog tables active in each prefetch round and capped at the safe maximum "
+    "RPC response size. 0 uses that safe maximum.");
+
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
     "before client authentication. Authentication reads pg_authid by role name "
@@ -299,6 +307,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
       .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+      .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,
+      .ysql_catalog_prefetch_size_limit = &FLAGS_ysql_catalog_prefetch_size_limit,
   };
   // clang-format on
   return &accessor;

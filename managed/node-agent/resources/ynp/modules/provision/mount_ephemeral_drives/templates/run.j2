@@ -8,24 +8,47 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 #
-# This script detects any ephemeral drives on an EC2 node and mounts them
-# at /mnt/d0, /mnt/d1, etc. The /etc/fstab file is also updated so that
-# if the machine reboots, these drives are mounted back.
+# This script discovers cloud data drives and mounts them at /mnt/d0,
+# /mnt/d1, etc. The /etc/fstab file is also updated so that the drives are
+# mounted again after a reboot.
 #
 # This script is based on (is a customized version of) the script:
 #     https://gist.github.com/joemiller/6049831
 #
 set -euo pipefail
 
-readonly CLOUD_TYPE="{{ cloud_type }}"
-readonly DEFAULT_SSD_DRIVES="{{ device_paths }}"
-readonly MOUNT_PATHS="{{ mount_paths }}"
-readonly LUN_INDEXES="{{ disk_lun_indexes }}"
-readonly IMDSv2Required="{{ imdsv2required }}"
+readonly CLOUD_TYPE_B64="{{ cloud_type | default('') | base64_encode }}"
+readonly DEFAULT_SSD_DRIVES_B64="{{ device_paths | default('') | base64_encode }}"
+readonly MOUNT_PATHS_B64="{{ mount_paths | default('') | base64_encode }}"
+readonly LUN_INDEXES_B64="{{ disk_lun_indexes | default('') | base64_encode }}"
+readonly IMDSV2_REQUIRED_B64="{{ imdsv2required | default('') | base64_encode }}"
 # Optional mount-path=UUID pairs from prior /etc/fstab (e.g. OS upgrade). Space-separated.
-readonly PATH_TO_UUID_MAPPING="{{ path_to_uuid_mapping | default('') }}"
+readonly PATH_TO_UUID_MAPPING_B64="{{ path_to_uuid_mapping | default('') | base64_encode }}"
+readonly DEV_ROOT="/dev"
+readonly AZURE_DISK_ROOT="/dev/disk/azure"
+readonly SYS_CLASS_NVME="/sys/class/nvme"
+readonly SYS_CLASS_BLOCK="/sys/class/block"
+readonly FSTAB_PATH="/etc/fstab"
+# Do not allow the provisioning environment to replace the trusted Azure
+# identification utility. The helper's override is only for isolated tests.
+unset AZURE_NVME_ID_COMMAND
+
+{% include "azure_disk_utils.sh.j2" %}
 
 {% raw %}
+CLOUD_TYPE=$(printf '%s' "$CLOUD_TYPE_B64" | base64 --decode)
+readonly CLOUD_TYPE
+DEFAULT_SSD_DRIVES=$(printf '%s' "$DEFAULT_SSD_DRIVES_B64" | base64 --decode)
+readonly DEFAULT_SSD_DRIVES
+MOUNT_PATHS=$(printf '%s' "$MOUNT_PATHS_B64" | base64 --decode)
+readonly MOUNT_PATHS
+LUN_INDEXES=$(printf '%s' "$LUN_INDEXES_B64" | base64 --decode)
+readonly LUN_INDEXES
+IMDSv2Required=$(printf '%s' "$IMDSV2_REQUIRED_B64" | base64 --decode)
+readonly IMDSv2Required
+PATH_TO_UUID_MAPPING=$(printf '%s' "$PATH_TO_UUID_MAPPING_B64" | base64 --decode)
+readonly PATH_TO_UUID_MAPPING
+
 should_check_aws_meta() {
   [[ -z $DEFAULT_SSD_DRIVES && $CLOUD_TYPE == "aws" ]]
 }
@@ -54,27 +77,64 @@ get_device_path() {
   get_device_path_rv="/dev/$output"
 }
 
-get_azu_scsi_drives() {
-  # Check if we have enough LUN indexes passed.
-  lun_indexes=( $LUN_INDEXES )
+get_azu_drives() {
+  local -a lun_indexes=()
+  local -a seen_lun_indexes=()
+  local -a seen_devices=()
+  local current_lun_index=""
+  local existing=""
+  local device_type=""
+  local num_lun_indexes=0
+
+  if [[ "$LUN_INDEXES" == *$'\n'* || "$LUN_INDEXES" == *$'\r'* ]]; then
+    echo >&2 "Azure LUN indexes must be a single whitespace-delimited line."
+    return 1
+  fi
+  read -r -a lun_indexes <<< "$LUN_INDEXES"
   num_lun_indexes=${#lun_indexes[@]}
-  if [[ $num_lun_indexes -lt ${#mounts[@]} ]]; then
-    echo >&2 "Too less LUN indexes provided, cannot mount all the devices."
-    exit 1
+
+  # LUN order is the contract between YBA's disk attachments and mount paths.
+  # Resolve every disk before allowing any filesystem operation.
+  if [[ $num_lun_indexes -ne ${#mounts[@]} ]]; then
+    echo >&2 "Expected ${#mounts[@]} Azure LUN indexes, received $num_lun_indexes."
+    return 1
   fi
 
-  get_azu_scsi_drives_rv=""
-
-  # Iterate through LUN indexes to search device names.
-  lun_indexes=( $LUN_INDEXES )
-  for (( i=0; i<$num_lun_indexes; ++i )); do
-    current_lun_index=${lun_indexes[i]}
-    device=$(ls -l /dev/disk/azure/scsi1/lun$current_lun_index | awk -F'/' '{print $NF}' | grep -o "sd\w*$")
-    # Checking vendor.
-    device_info=$(lsscsi | awk -v device="/dev/$device" '($7 == device) && ($3 == "Msft") && ($4 == "Virtual") && ($5 == "Disk") {print $0}')
-    if [ -n "$device" ] && [ -n "$device_info" ]; then
-      get_azu_scsi_drives_rv="$get_azu_scsi_drives_rv $device"
+  get_azu_drives_rv=""
+  AZURE_DEVICE_LUNS=()
+  for current_lun_index in "${lun_indexes[@]}"; do
+    if ! [[ "$current_lun_index" =~ ^[0-9]+$ ]]; then
+      echo >&2 "Invalid Azure LUN index: $current_lun_index"
+      return 1
     fi
+    for existing in "${seen_lun_indexes[@]}"; do
+      if [[ "$existing" == "$current_lun_index" ]]; then
+        echo >&2 "Duplicate Azure LUN index: $current_lun_index"
+        return 1
+      fi
+    done
+    seen_lun_indexes+=("$current_lun_index")
+
+    resolve_azure_data_disk "$current_lun_index" || return 1
+    if [[ ! -b "$AZURE_DATA_DISK" ]]; then
+      echo >&2 "Azure LUN $current_lun_index resolved to non-block device $AZURE_DATA_DISK."
+      return 1
+    fi
+    device_type=$(lsblk -dn -o TYPE "$AZURE_DATA_DISK" 2>/dev/null || true)
+    if [[ "$device_type" != "disk" ]]; then
+      echo >&2 "Azure LUN $current_lun_index resolved to $device_type device $AZURE_DATA_DISK."
+      return 1
+    fi
+    for existing in "${seen_devices[@]}"; do
+      if [[ "$existing" == "$AZURE_DATA_DISK" ]]; then
+        echo >&2 "Multiple Azure LUNs resolved to $AZURE_DATA_DISK."
+        return 1
+      fi
+    done
+    seen_devices+=("$AZURE_DATA_DISK")
+
+    get_azu_drives_rv="$get_azu_drives_rv $AZURE_DATA_DISK"
+    AZURE_DEVICE_LUNS+=("$current_lun_index")
   done
 }
 
@@ -105,8 +165,8 @@ get_ephemeral_drives() {
         $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
     set -e
   elif [[ $CLOUD_TYPE == "azu" ]]; then
-    get_azu_scsi_drives
-    get_ephemeral_drives_rv=$get_azu_scsi_drives_rv
+    get_azu_drives
+    get_ephemeral_drives_rv=$get_azu_drives_rv
   else
     get_ephemeral_drives_rv=$DEFAULT_SSD_DRIVES
   fi
@@ -116,12 +176,17 @@ get_ephemeral_drives() {
 # (space-separated mount_path=uuid pairs). Sets get_device_paths_from_uuid_mapping_rv
 # as a bash array parallel to mounts (same order as MOUNT_PATHS).
 get_device_paths_from_uuid_mapping() {
-  local mount_paths=( $MOUNT_PATHS )
-  local mapping_entries=( $PATH_TO_UUID_MAPPING )
+  local -a mapping_entries=()
   local -a device_paths=()
   local mount_path device_uuid by_uuid_path actual_path entry found
 
-  if [[ ${#mount_paths[@]} -eq 0 ]]; then
+  if [[ "$PATH_TO_UUID_MAPPING" == *$'\n'* || "$PATH_TO_UUID_MAPPING" == *$'\r'* ]]; then
+    echo >&2 "PATH_TO_UUID_MAPPING must be a single whitespace-delimited line."
+    return 1
+  fi
+  read -r -a mapping_entries <<< "$PATH_TO_UUID_MAPPING"
+
+  if [[ ${#mounts[@]} -eq 0 ]]; then
     echo >&2 "No mount points provided, cannot resolve devices from UUID mapping."
     return 1
   fi
@@ -130,7 +195,7 @@ get_device_paths_from_uuid_mapping() {
     return 1
   fi
 
-  for mount_path in "${mount_paths[@]}"; do
+  for mount_path in "${mounts[@]}"; do
     found=""
     device_uuid=""
     for entry in "${mapping_entries[@]}"; do
@@ -144,7 +209,11 @@ get_device_paths_from_uuid_mapping() {
       echo >&2 "No UUID mapping found for mount path $mount_path"
       return 1
     fi
-    by_uuid_path="/dev/disk/by-uuid/$device_uuid"
+    if ! [[ "$device_uuid" =~ ^[A-Za-z0-9-]+$ ]]; then
+      echo >&2 "Invalid filesystem UUID '$device_uuid' for mount path $mount_path"
+      return 1
+    fi
+    by_uuid_path="$DEV_ROOT/disk/by-uuid/$device_uuid"
     if ! [[ -e "$by_uuid_path" ]]; then
       echo >&2 "Device for UUID $device_uuid (mount $mount_path) not found at $by_uuid_path"
       return 1
@@ -156,7 +225,7 @@ get_device_paths_from_uuid_mapping() {
   get_device_paths_from_uuid_mapping_rv=( "${device_paths[@]}" )
 }
 
-# Mount each device path onto the corresponding mount path from MOUNT_PATHS (same order).
+# Mount each device path onto the corresponding mount path from the mounts array (same order).
 # Pass device paths as: mount_drives "${device_paths[@]}"
 # Optional first flag --no-format skips mkfs (for remounting preserved disks after OS upgrade).
 mount_drives() {
@@ -166,12 +235,11 @@ mount_drives() {
     shift
   fi
   local -a device_paths=("$@")
-  local mount_paths=( $MOUNT_PATHS )
-  local mount_path device_path device_uuid file_system blkid_error actual_path already_mounted
-  local fs_opts
+  local mount_path device_path canonical_device_path device_uuid file_system blkid_error
+  local actual_path already_mounted fs_opts
   local idx=0
 
-  echo "Mount drives ${device_paths[*]} for mount points ${mount_paths[*]} (allow_format=$allow_format)"
+  echo "Mount drives ${device_paths[*]} for mount points ${mounts[*]} (allow_format=$allow_format)"
   for device_path in "${device_paths[@]}"; do
     fs_opts="defaults,noatime,nofail,allocsize=4m"
     set +e
@@ -191,6 +259,16 @@ mount_drives() {
         echo >&2 "Refusing to format $device_path (blkid_error=$blkid_error fs=$file_system); expected existing filesystem"
         exit 1
       fi
+      if [[ $CLOUD_TYPE == "azu" ]]; then
+        # Re-resolve the LUN immediately before the destructive step so a selected Azure device
+        # can never be replaced by generic device-name enumeration.
+        canonical_device_path=$(readlink -e -- "$device_path" 2>/dev/null || true)
+        if [[ -z "$canonical_device_path" ]] || \
+           ! validate_azure_data_disk "$canonical_device_path" "${AZURE_DEVICE_LUNS[$idx]}"; then
+          echo >&2 "Refusing to format unverified Azure disk $device_path."
+          exit 1
+        fi
+      fi
       if [[ -f /sbin/mkfs.xfs ]]; then
         echo "Creating xfs on: " $device_path
         /sbin/mkfs.xfs $device_path -f
@@ -201,40 +279,30 @@ mount_drives() {
       fi
     fi
 
-    mount_path=${mount_paths[$idx]}
+    mount_path=${mounts[$idx]}
 
     mkdir -p "$mount_path"
     chmod 777 "$mount_path"
 
     device_uuid=$(/sbin/blkid -o value -s UUID -c /dev/null $device_path)
     echo "device uuid = $device_uuid"
-
-    if grep -q "#$mount_path" /etc/fstab; then
-      echo "Entry for $mount_path in fstab already exists."
-      if egrep -q "^$device_path .*" /etc/fstab; then
-        echo "Device $device_path is mounted not using UUID, need to rewrite"
-        sed -i "s|^$device_path |UUID=$device_uuid |g" /etc/fstab
-      fi
-    else
-      echo "Adding entry for $mount_path to fstab..."
-      echo "#$mount_path" >> /etc/fstab
-      # Mounting using UUID
-      echo "UUID=${device_uuid} ${mount_path} ${file_system} ${fs_opts} 0 2" \
-                      >> /etc/fstab
-    fi
+    echo "Updating the UUID entry for $mount_path in fstab..."
+    replace_fstab_mount_entry \
+      "$FSTAB_PATH" "$mount_path" "$device_uuid" "$file_system" "$fs_opts"
     echo "checking actual path"
     already_mounted=false
     # Sometimes link does not exist at the time of checking
-    if test -e "/dev/disk/by-uuid/$device_uuid"; then
-      actual_path=$(readlink -eq "/dev/disk/by-uuid/$device_uuid")
+    if test -e "$DEV_ROOT/disk/by-uuid/$device_uuid"; then
+      actual_path=$(readlink -eq "$DEV_ROOT/disk/by-uuid/$device_uuid")
       echo "actual_path is $actual_path"
       mount | egrep -q "^$actual_path on $mount_path " && already_mounted=true
     fi
     if $already_mounted; then
       echo "$device_path is already mounted on $mount_path"
     else
-      echo "Mounting $device_path on $mount_path"
-      ( set -x; mount $device_path $mount_path )
+      echo "Mounting UUID=$device_uuid on $mount_path"
+      # Mount by target so this initial mount exercises the persisted fstab entry.
+      ( set -x; mount "$mount_path" )
     fi
     # The first time we mount the drives, the permissions seem to flip back to 755. Perhaps,
     # there's a better way to set the permissions in fstab itself. But couldn't find one that
@@ -276,14 +344,19 @@ mount_drives() {
     DRIVE_SCHEME='sd'
   fi
 
-  declare -g mounts=( $MOUNT_PATHS )
-
+  if [[ "$MOUNT_PATHS" == *$'\n'* || "$MOUNT_PATHS" == *$'\r'* ]]; then
+    echo >&2 "Mount paths must be a single whitespace-delimited line."
+    exit 1
+  fi
+  declare -ag mounts=()
+  read -r -a mounts <<< "$MOUNT_PATHS"
   # For old generation aws instances, we assume YugaWare requests a number of ephemerals appropriate
   # to the instance type. E.g. m3.medium only supports 1 ephemeral, but m3.xlarge supports 2.
   if [[ ${#mounts[@]} -eq 0 ]]; then
     echo >&2 "No mount points provided, cannot mount any devices."
     exit 1
   fi
+  validate_mount_paths
 
   # When path->UUID mapping is provided (e.g. after root-volume / OS upgrade), remount using the
   # known UUIDs instead of rediscovering and potentially reformatting devices.
@@ -297,13 +370,17 @@ mount_drives() {
   device_paths=()
 
   get_ephemeral_drives
-  ephemerals=( $get_ephemeral_drives_rv )
+  declare -ag ephemerals=()
+  read -r -a ephemerals <<< "$get_ephemeral_drives_rv"
 
   declare -i num_devices=${#ephemerals[@]}
 
   if [[ $num_devices -eq 0 ]]; then
     echo >&2 "Found no volumes to mount for mount points: $MOUNT_PATHS"
     exit 1
+  fi
+  if [[ $CLOUD_TYPE == "azu" ]]; then
+    validate_azure_mount_targets
   fi
 
   echo "============================"
@@ -330,10 +407,14 @@ mount_drives() {
   for (( i=0; i<max_iterations; ++i )); do
     e=${ephemerals[eph_idx]}
     echo "Probing $e ..."
-    if [[ $CLOUD_TYPE == "gcp" ]]; then
+    if [[ $CLOUD_TYPE == "azu" ]]; then
+        # Azure discovery already resolved the requested LUN. Never replace it
+        # with a generated NVMe kernel name.
+        device_path=$e
+    elif [[ $CLOUD_TYPE == "gcp" ]]; then
         # For gcp we are using by-id links, so just need to resolve them
         device_path=$(readlink -eq "/dev/$e")
-    elif [[ "$DRIVE_SCHEME" == "nvme" ]]; then
+    elif [[ $CLOUD_TYPE == "aws" && "$DRIVE_SCHEME" == "nvme" ]]; then
         # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
         # In which case we want to make the device path to match that
         # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-ebs-volumes.html
@@ -354,15 +435,26 @@ mount_drives() {
       continue
     fi
 
+    device_type=$(lsblk -dn -o TYPE "$device_path" 2>/dev/null || true)
+    if [[ "$device_type" != "disk" ]]; then
+      echo >&2 "Refusing to use non-disk device $device_path (type: $device_type)."
+      exit 1
+    fi
+
     # In aws we cannot clearly identify whether disk is provided with ami or added by yba
     # So if we see that disk is already mounted to some mount point that is not managed by yba
     # then we skip it
-    declare -g active_mount_points=$(lsblk -o MOUNTPOINT -nr "$device_path" | grep -v '^$')
+    declare -g active_mount_points
+    active_mount_points=$(lsblk -o MOUNTPOINT -nr "$device_path" | grep -v '^$' || true)
     if ! [[ -z "$active_mount_points" ]]; then
       declare -g mount_points_arr=(${active_mount_points})
       for value in "${mount_points_arr[@]}"
       do
-        if ! [[ " ${mounts[*]} " =~ [[:space:]]${value}[[:space:]] ]]; then
+        if [[ $CLOUD_TYPE == "azu" && "$value" != "${mounts[$eph_idx]}" ]]; then
+          echo >&2 "$device_path is mounted at $value, expected ${mounts[$eph_idx]} for Azure LUN ${AZURE_DEVICE_LUNS[$eph_idx]}."
+          exit 1
+        elif [[ $CLOUD_TYPE != "azu" ]] && \
+             ! [[ " ${mounts[*]} " =~ [[:space:]]${value}[[:space:]] ]]; then
           echo "$device_path is mounted at $value, which is not expected to be managed by yba"
           max_iterations=$((max_iterations+1))
           continue 2
@@ -374,7 +466,18 @@ mount_drives() {
     # available for an instance type and the meta-data API will happily tell you it exists when it
     # really does not.
     # Also check to make sure we don't try to mount on root volume
-    if ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
+    canonical_device_path=$(readlink -e -- "$device_path" 2>/dev/null || true)
+    canonical_root_path=$(readlink -e -- "/dev/${root_parent}" 2>/dev/null || true)
+    if [[ -n "$canonical_device_path" && "$canonical_device_path" != "$canonical_root_path" ]]; then
+      validate_mount_paths
+      if [[ $CLOUD_TYPE == "azu" ]] && \
+         ! validate_azure_data_disk "$canonical_device_path" "${AZURE_DEVICE_LUNS[$eph_idx]}"; then
+        echo >&2 "Refusing filesystem operations on unverified Azure disk $canonical_device_path."
+        exit 1
+      fi
+      if [[ $CLOUD_TYPE == "azu" ]]; then
+        validate_azure_mount_targets
+      fi
       echo "Detected ephemeral disk: $device_path"
 
       device_paths+=( "$device_path" )
@@ -387,12 +490,22 @@ mount_drives() {
       fi
     else
       echo "Ephemeral disk $e, $device_path is a part of root $root_drive. Skipping."
+      if [[ $CLOUD_TYPE == "azu" ]]; then
+        echo >&2 "Azure LUN ${AZURE_DEVICE_LUNS[$eph_idx]} resolved to the root device."
+        exit 1
+      fi
     fi
   done
 
   if [[ ${#device_paths[@]} -lt ${#mounts[@]} ]]; then
     echo >&2 "Only ${#device_paths[@]} devices resolved for ${#mounts[@]} mount points: $MOUNT_PATHS."
     exit_code=1
+    if [[ $CLOUD_TYPE == "azu" ]]; then
+      # Every Azure LUN maps to exactly one mount path; mounting a partial set would shift disks
+      # onto the wrong mount points.
+      echo >&2 "Refusing to mount a partial set of Azure data disks."
+      exit 1
+    fi
   fi
 
   mount_drives "${device_paths[@]}"

@@ -40,6 +40,14 @@ There are multiple components and stages involved in the execution of a distribu
 To understand how a transaction is executed, see [Transactional I/O path](transactional-io-path/).
 {{</lead>}}
 
+## Skip intents optimization
+
+When a transaction creates or rebuilds a table and then writes into it, the table is invisible to other sessions until commit. YugabyteDB can skip writing provisional records and write those rows straight to the main store.
+
+{{<lead link="skip-intents/">}}
+To understand when writes skip intents, see [Skip intents optimization](skip-intents/).
+{{</lead>}}
+
 ## Single-row transactions
 
 In cases where keys involved in the transaction are located in the same tablet, YugabyteDB has optimizations to execute the transaction much faster. The transaction manager of YugabyteDB automatically detects transactions that update a single row (as opposed to transactions that update rows across tablets or nodes). In order to achieve high performance, the updates to a single row directly update the row without having to interact with the transaction status tablet using a single row transaction path (also known as fast path).
