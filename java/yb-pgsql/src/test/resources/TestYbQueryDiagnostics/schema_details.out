@@ -182,12 +182,12 @@
 |name   |character varying(100) |          |         |        |extended |             |            |
 
 - View definition:
-|View Definition                                                                                                                                   |
-+--------------------------------------------------------------------------------------------------------------------------------------------------+
-| SELECT table_referenced_by_view.id,
-    table_referenced_by_view.name
+|View Definition                                                        |
++-----------------------------------------------------------------------+
+| SELECT id,
+    name
    FROM table_referenced_by_view
-  WHERE table_referenced_by_view.id >= 0; |
+  WHERE id >= 0; |
 
 
 ============================================================
