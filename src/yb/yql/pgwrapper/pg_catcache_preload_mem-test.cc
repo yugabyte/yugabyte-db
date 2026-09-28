@@ -69,13 +69,15 @@ TEST_F(PgCatcachePreloadMemTest, YB_DISABLE_TEST_ON_MACOS(ScannedRowsFreedDuring
             kNumColumns);
   const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
   // Of what preload allocated, only the catcache insert paths (SetCatCacheTuple, SetCatCacheList)
-  // should still be live at the startup peak; the rest is scan output.
+  // should still be live at the startup peak; the rest is scan output. CatalogCacheCreateEntry is
+  // matched as well because SetCatCacheTuple tail-calls it in LTO builds, so its frame is missing.
   const auto [scanned_rows_bytes, catcache_entries_bytes, peak_bytes] =
       ASSERT_RESULT((conn.FetchRow<int64_t, int64_t, int64_t>(
           "SELECT "
           "coalesce(sum(estimated_bytes) FILTER ("
           "  WHERE call_stack LIKE '%YbPreloadCatalogCache%'"
-          "  AND call_stack NOT LIKE '%SetCatCache%'), 0)::bigint, "
+          "  AND call_stack NOT LIKE '%SetCatCache%'"
+          "  AND call_stack NOT LIKE '%CatalogCacheCreateEntry%'), 0)::bigint, "
           "coalesce(sum(estimated_bytes) FILTER ("
           "  WHERE call_stack LIKE '%YbPreloadCatalogCache%'"
           "  AND call_stack LIKE '%CatalogCacheCreateEntry%'), 0)::bigint, "
