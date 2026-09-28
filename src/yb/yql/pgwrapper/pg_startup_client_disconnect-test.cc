@@ -47,7 +47,7 @@ namespace {
 // Long enough that a backend which ignores the departed client is still parked on the stalled read
 // when the test stops watching it.
 constexpr auto kStall = 30s * kTimeMultiplier;
-constexpr auto kReaction = 10s * kTimeMultiplier;
+constexpr auto kWaitTimeout = 10s * kTimeMultiplier;
 constexpr auto kClientConnectionCheckInterval = 500ms;
 // libpq closes its socket and returns once this elapses.
 constexpr auto kClientConnectTimeoutSec = 3;
@@ -97,7 +97,7 @@ class LogLines : public ExternalDaemon::StringListener {
 
   Status WaitFor(const std::string& text) {
     return yb::WaitFor(
-        [this, &text] { return Contains(text); }, kReaction, Format("'$0' in the log", text));
+        [this, &text] { return Contains(text); }, kWaitTimeout, Format("'$0' in the log", text));
   }
 
  private:
@@ -193,7 +193,7 @@ class PgStartupClientDisconnectTest : public LibPqTestBase,
     });
 
     ASSERT_OK(WaitFor(
-        [] { return CountBackendsOf(kVictimUser) > 0; }, kReaction, "victim backend to start"));
+        [] { return CountBackendsOf(kVictimUser) > 0; }, kWaitTimeout, "victim backend to start"));
     threads.JoinAll();
     ASSERT_EQ(client_status, CONNECTION_BAD);
   }
@@ -209,11 +209,12 @@ class PgStartupClientDisconnectTest : public LibPqTestBase,
           return VERIFY_RESULT(conn.FetchRow<std::string>(
               "SHOW client_connection_check_interval")) == expected;
         },
-        kReaction, "client_connection_check_interval reload"));
+        kWaitTimeout, "client_connection_check_interval reload"));
   }
 };
 
-TEST_P(PgStartupClientDisconnectTest, ClientLeavesDuringStalledPreload) {
+// macOS has no /proc, and without POLLRDHUP the check does not see the client's graceful close.
+TEST_P(PgStartupClientDisconnectTest, YB_DISABLE_TEST_ON_MACOS(ClientLeavesDuringStalledPreload)) {
   auto reset_stall = ScopeExit([this] { WARN_NOT_OK(SetStall(0ms), "Failed to reset stall"); });
   {
     auto conn = ASSERT_RESULT(ConnectAs(PGConnSettings::kDefaultUser));
@@ -226,7 +227,8 @@ TEST_P(PgStartupClientDisconnectTest, ClientLeavesDuringStalledPreload) {
     LogLines log(pg_ts);
     ASSERT_NO_FATALS(StartStalledConnectionAndLeave());
     ASSERT_OK(WaitFor(
-        [] { return CountBackendsOf(kVictimUser) == 0; }, kReaction, "orphaned backend to exit"));
+        [] { return CountBackendsOf(kVictimUser) == 0; }, kWaitTimeout,
+        "orphaned backend to exit"));
     ASSERT_OK(log.WaitFor(kClientLostMessage));
     SleepFor(1s);
     ASSERT_FALSE(log.Contains("BACKTRACE:"));
@@ -260,7 +262,8 @@ TEST_P(PgStartupClientDisconnectTest, ClientLeavesDuringStalledPreload) {
   LogLines log(pg_ts);
   ASSERT_EQ(kill(pids.front(), SIGTERM), 0);
   ASSERT_OK(WaitFor(
-      [] { return CountBackendsOf(kVictimUser) == 0; }, kReaction, "terminated backend to exit"));
+      [] { return CountBackendsOf(kVictimUser) == 0; }, kWaitTimeout,
+      "terminated backend to exit"));
   ASSERT_OK(log.WaitFor(kTerminatedMessage));
 }
 
