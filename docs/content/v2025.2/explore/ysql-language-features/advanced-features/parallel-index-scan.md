@@ -1,7 +1,7 @@
 ---
 title: Parallel index scans for temporal joins
 linkTitle: Parallel index scans
-description: Use native PostgreSQL Parallel Query in YSQL to run parallel index scans for temporal joins, without bucketized indexes or UNION ALL rewrites.
+description: Worked example of a temporal join that uses a parallel index scan, including the schema, query, and EXPLAIN output.
 menu:
   v2025.2:
     identifier: parallel-index-scan-temporal-joins
@@ -10,13 +10,13 @@ menu:
 type: docs
 ---
 
-Starting in v2025.2.2, the planner can choose a parallel index scan for a temporal join. When that plan applies, the settings that enable it, and what to look for in `EXPLAIN` are in [Parallel index scans for temporal joins](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-index-scan/).
+Starting in v2025.2.2, the planner can choose a parallel index scan for a temporal join. When that plan applies, the settings that enable it, and what to look for in `EXPLAIN` are in [Enable a parallel index scan for a temporal join](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/).
 
 ## Before you begin
 
 This example assumes:
 
-- YugabyteDB v2025.2.3, because the tables below are [hash-sharded](../../../../architecture/docdb-sharding/sharding/#hash-sharding)
+- YugabyteDB v2025.2.3, because the parallel scan is of the [range-sharded](../../../../architecture/docdb-sharding/sharding/#range-sharding) index `idx_entity_validity_tt_to_asc_vkey` (`yb_enable_parallel_scan_range_sharded`)
 - YSQL [cost-based optimizer](../../../../best-practices-operations/ysql-yb-enable-cbo/) enabled
 
 ## Enable the required settings
@@ -125,4 +125,4 @@ The key indicator is:
 Parallel Index Scan using idx_entity_validity_tt_to_asc_vkey
 ```
 
-If you see this note, the temporal side of the join is using a parallel index scan. For when the planner chooses that plan, see [When the planner chooses this plan](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-index-scan/#when-the-planner-chooses-this-plan).
+If you see this note, the temporal side of the join is using a parallel index scan. For when the planner chooses that plan, see [When the planner chooses this plan](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/#when-the-planner-chooses-this-plan).

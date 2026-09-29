@@ -1,17 +1,17 @@
 ---
-title: Parallel index scans for temporal joins
-headerTitle: Parallel index scans for temporal joins
-linkTitle: Parallel index scans
-description: When the planner chooses a parallel index scan for a temporal join, and the settings that make that plan available.
+title: Enable a parallel index scan for a temporal join
+headerTitle: Enable a parallel index scan for a temporal join
+linkTitle: Temporal join scans
+description: Which parallel scan parameter matches the index being scanned, and how to recognize the plan in EXPLAIN.
 menu:
-  v2025.2:
-    identifier: query-tuning-parallel-index-scan
+  stable:
+    identifier: query-tuning-parallel-temporal-join
     parent: query-tuning
     weight: 520
 type: docs
 ---
 
-[YSQL](../../../../api/ysql/) can use [PostgreSQL parallel query](https://www.postgresql.org/docs/15/parallel-query.html) for a temporal join used in analytics. Starting in v2025.2.2, the planner can choose a parallel index scan on the temporal table and a [batched nested loop join](../../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) for primary key lookups into the joined table. You can keep the original schema and SQL.
+[YSQL](../../../../api/ysql/) can use [PostgreSQL parallel query](https://www.postgresql.org/docs/15/parallel-query.html) for a temporal join used in analytics. The planner can choose a parallel index scan on the temporal table and a [batched nested loop join](../../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) for primary key lookups into the joined table. You can keep the original schema and SQL.
 
 The join has a range predicate on one side and a primary key lookup on the other.
 
@@ -41,8 +41,10 @@ YugabyteDB also provides tablet-level parallelism independently of PostgreSQL pa
 
 Enable the [cost-based optimizer](../../../../best-practices-operations/ysql-yb-enable-cbo/) and [parallel query](../../../../additional-features/parallel-query/).
 
-- Colocated tables: `yb_enable_parallel_scan_colocated`. This parameter was added in v2025.2.2 and defaults to `true`.
-- {{<tags/feature/ea idea="1516">}}[Hash-](../../../../architecture/docdb-sharding/sharding/#hash-sharding) and [range-sharded](../../../../architecture/docdb-sharding/sharding/#range-sharding) tables: `yb_enable_parallel_scan_hash_sharded` and `yb_enable_parallel_scan_range_sharded`. These parameters are available in v2025.2.3 and later and default to `false`.
+The parameter must match the sharding of the index being scanned. For this pattern that index is usually [range-sharded](../../../../architecture/docdb-sharding/sharding/#range-sharding), so set `yb_enable_parallel_scan_range_sharded`.
+
+- Colocated indexes: `yb_enable_parallel_scan_colocated`. This parameter was added in v2025.2.2 and defaults to `true`.
+- {{<tags/feature/ea idea="1516">}}[Hash-sharded](../../../../architecture/docdb-sharding/sharding/#hash-sharding) indexes: `yb_enable_parallel_scan_hash_sharded`. [Range-sharded](../../../../architecture/docdb-sharding/sharding/#range-sharding) indexes: `yb_enable_parallel_scan_range_sharded`. These parameters are available in v2025.2.3 and later and default to `false`.
 
 Set the session degree of parallelism with `max_parallel_workers_per_gather`. `parallel_tuple_cost` and `parallel_setup_cost` can stay at their defaults. With those costs, the planner chooses a parallel plan when the workload is large enough to justify the overhead.
 
@@ -55,6 +57,6 @@ Before this plan was available, a common approach was to create bucketized index
 To improve the chances of getting a parallel index scan for temporal joins:
 
 - create an index whose leading column matches the temporal range predicate
-- enable the cost-based optimizer and the parallel scan parameters for the table's sharding type
+- enable the cost-based optimizer and the parallel scan parameter that matches the sharding of the index being scanned. For this pattern that index is usually range-sharded (`yb_enable_parallel_scan_range_sharded`)
 - use a time window or result set large enough that parallelism is cost-effective
 - verify the plan with `EXPLAIN (ANALYZE, DIST)`
