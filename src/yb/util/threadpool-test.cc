@@ -100,6 +100,7 @@ TEST_F(TestThreadPool, TestNoTaskOpenClose) {
 }
 
 TEST_F(TestThreadPool, TestBuilderDefaultIdleTimeout) {
+  google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_default_idle_timeout_ms) = 1234;
   ASSERT_EQ(MonoDelta::FromMilliseconds(1234), ThreadPoolBuilder("test").idle_timeout());
 
