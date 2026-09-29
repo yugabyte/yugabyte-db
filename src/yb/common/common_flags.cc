@@ -108,6 +108,23 @@ TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
 DEFINE_RUNTIME_AUTO_bool(yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
     "Enable support for CDC Consistent Snapshot Streams");
 
+// Capability gate for deferred uniqueness verification of YSQL unique-index backfill (#33444).
+// Protects the whole marked-write protocol: the immutable per-job SKIP_ALL mode, the
+// self-describing marked WAL operations and floored write IDs, tablet-local operation state,
+// and the verification RPCs. Until every node runs code that understands these, the master
+// must not select SKIP_ALL for new jobs. Promotion does not itself enable the optimization;
+// a separate default-false opt-in gflag (added with the activation work) selects it.
+//
+// AutoFlags promote once every node merely *defines* the flag, so this gate only guarantees
+// "every node understands marked writes" if the full #33444 machinery ships in the same
+// release that introduces this flag. If the remaining parts slip to a later release, this
+// flag must be replaced by a new capability flag defined alongside that machinery.
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_deferred_unique_index_verification, kLocalPersisted,
+    false, true,
+    "Cluster capability for deferred uniqueness verification of YSQL unique-index backfill. "
+    "When false, unique-index backfill jobs always select the fully checked mode.");
+TAG_FLAG(ysql_enable_deferred_unique_index_verification, advanced);
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_consumption,
     kLocalPersisted, false, true,
     "Enable consumption of changes via replication slots."

@@ -739,6 +739,7 @@ YBCExecuteInsertIndex(Relation index,
 					  bool *isnull,
 					  Datum ybctid,
 					  const uint64_t *backfill_write_time,
+					  YbcPgUniqueIndexBackfillMode unique_backfill_mode,
 					  yb_bind_for_write_function callback,
 					  void *indexstate)
 {
@@ -748,6 +749,7 @@ YBCExecuteInsertIndex(Relation index,
 							   isnull,
 							   ybctid,
 							   backfill_write_time,
+							   unique_backfill_mode,
 							   callback,
 							   indexstate);
 }
@@ -759,6 +761,7 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 						   bool *isnull,
 						   Datum ybctid,
 						   const uint64_t *backfill_write_time,
+						   YbcPgUniqueIndexBackfillMode unique_backfill_mode,
 						   yb_bind_for_write_function callback,
 						   void *indexstate)
 {
@@ -789,6 +792,16 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 	{
 		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
 													true /* is_backfill */ ));
+
+		/*
+		 * The uniqueness-check mode only applies to unique-index backfill
+		 * writes: non-unique backfill writes are UPSERTs (above) and run no
+		 * checks at all.
+		 */
+		if (index->rd_index->indisunique)
+			HandleYBStatus(YBCPgInsertStmtSetUniqueIndexBackfillMode(insert_stmt,
+																	 unique_backfill_mode));
+
 		/*
 		 * For index backfill, set write hybrid time to a time in the past.
 		 * This is to guarantee that backfilled writes are temporally before

@@ -53,6 +53,12 @@ typedef struct
 	 * backfill.
 	 */
 	const uint64_t *backfill_write_time;
+	/*
+	 * Uniqueness-check mode for backfill writes into a unique index, parsed
+	 * once from the BACKFILL INDEX statement's backfill spec. Only meaningful
+	 * when backfill_write_time is non-null.
+	 */
+	YbcPgUniqueIndexBackfillMode unique_backfill_mode;
 } YbLsmBuildState;
 
 
@@ -245,6 +251,7 @@ ybcinbuildCallback(Relation index, Datum ybctid, Datum *values,
 							  isnull,
 							  ybctid,
 							  buildstate->backfill_write_time,
+							  buildstate->unique_backfill_mode,
 							  doBindsForIdxWrite,
 							  NULL /* indexstate */ );
 
@@ -261,6 +268,7 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	buildstate.isprimary = index->rd_index->indisprimary;
 	buildstate.index_tuples = 0;
 	buildstate.backfill_write_time = NULL;
+	buildstate.unique_backfill_mode = YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL;
 	/*
 	 * YB: Primary key index is an implicit part of the base table in Yugabyte.
 	 * We don't need to scan the base table to build a primary key index. (#8024)
@@ -299,6 +307,18 @@ ybcinbackfill(Relation heap,
 	buildstate.index_tuples = 0;
 	/* Backfilled rows should be as if they happened at the time of backfill */
 	buildstate.backfill_write_time = &bfinfo->read_time;
+
+	/*
+	 * The uniqueness-check mode for this batch's writes rides in the backfill
+	 * spec, selected once per job by the master. Parse failures error out
+	 * rather than falling back, so a corrupt spec cannot silently change
+	 * checking behavior.
+	 */
+	buildstate.unique_backfill_mode = YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+	if (index->rd_index->indisunique)
+		HandleYBStatus(YBCPgGetUniqueIndexBackfillMode(bfinfo->bfinstr,
+													   &buildstate.unique_backfill_mode));
+
 	heap_tuples = IndexBackfillHeapRangeScan(heap,
 											 index,
 											 indexInfo,
@@ -348,6 +368,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 										   isnull,
 										   ybctid,
 										   NULL /* backfill_write_time */ ,
+										   YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL,
 										   doBindsForIdxWrite,
 										   NULL /* indexstate */ );
 			}
@@ -359,6 +380,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 								  isnull,
 								  ybctid,
 								  NULL /* backfill_write_time */ ,
+								  YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL,
 								  doBindsForIdxWrite,
 								  NULL /* indexstate */ );
 	}

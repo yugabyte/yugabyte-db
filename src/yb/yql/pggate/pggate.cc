@@ -1676,6 +1676,12 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement* handle, bool is_backfill)
   return Status::OK();
 }
 
+Status PgApiImpl::InsertStmtSetUniqueIndexBackfillMode(
+    PgStatement* handle, YbcPgUniqueIndexBackfillMode mode) {
+  VERIFY_RESULT_REF(GetStatementAs<PgInsert>(handle)).SetUniqueIndexBackfillMode(mode);
+  return Status::OK();
+}
+
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(
