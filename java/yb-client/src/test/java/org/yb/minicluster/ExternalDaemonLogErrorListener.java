@@ -42,10 +42,6 @@ public class ExternalDaemonLogErrorListener implements LogErrorListener {
 
   @Override
   public void handleLine(String line) {
-    synchronized (serverStartEventMonitor) {
-      if (sawServerStarting)
-        return;
-    }
     if (line.contains("RPC server started.")) {
       synchronized (serverStartEventMonitor) {
         sawServerStarting = true;

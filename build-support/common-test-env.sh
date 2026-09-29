@@ -1416,6 +1416,7 @@ did_test_succeed() {
   declare -A patterns=(
     ['LeakSanitizer: detected memory leaks']='Detected memory leaks'
     ['AddressSanitizer: heap-use-after-free']='Detected use of freed memory'
+    ['ERROR: AddressSanitizer: ']='AddressSanitizer error'
     ['Leak check.*detected leaks']='Leak check failures'
     ['AddressSanitizer: undefined-behavior']='Detected ASAN undefined behavior'
     ['UndefinedBehaviorSanitizer: undefined-behavior']='Detected UBSAN undefined behavior'
