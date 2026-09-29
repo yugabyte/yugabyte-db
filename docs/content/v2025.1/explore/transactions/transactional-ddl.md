@@ -16,11 +16,13 @@ type: docs
 
 YugabyteDB can roll back DDL statements that run inside a transaction block. All DDLs supported in YugabyteDB provide the same rollback capabilities as PostgreSQL. These include DDLs on tables, indexes, roles, and materialized views.
 
-For how to enable the feature and for current limitations, see [Transactional DDL](../../../architecture/transactions/transactional-ddl/).
+For more information and current limitations, see [Transactional DDL](../../../architecture/transactions/transactional-ddl/).
 
 ## Roll back a DDL statement
 
 {{% explore-setup-single-new %}}
+
+While in tech preview, transactional DDL is disabled by default. To enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `ysql_yb_ddl_transaction_block_enabled` to true, and add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled`).
 
 The following example shows an `ALTER TABLE` inside a transaction. The insert and the schema change commit together, or they both roll back.
 
