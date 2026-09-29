@@ -35,7 +35,8 @@
 using namespace std::literals;
 
 DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
-    "Default RPC YBThreadPool idle timeout value in milliseconds");
+    "Default idle timeout in milliseconds for thread pool workers. Applies to YBThreadPool and "
+    "ThreadPoolBuilder pools that do not set an explicit idle timeout.");
 
 static bool detailed_logging = true;
 namespace yb {

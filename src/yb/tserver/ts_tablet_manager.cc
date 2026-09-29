@@ -584,7 +584,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   CHECK_OK(ThreadPoolBuilder("append")
                .set_min_threads(1)
                .unlimited_threads()
-               .set_idle_timeout(MonoDelta::FromMilliseconds(10000))
                .Build(&append_pool_));
   CHECK_OK(ThreadPoolBuilder("log-alloc")
                .set_min_threads(1)
