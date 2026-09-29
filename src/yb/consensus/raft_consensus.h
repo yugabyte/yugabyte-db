@@ -422,8 +422,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Rejects a write whose WritePB::ignore_after_hybrid_time is not after the hybrid time the round
   // was assigned, letting a client with a time-bounded lease stop its writes landing once the
   // lease is gone. Must run after NotifyAddedToLeader and before the round is added as pending --
-  // see the call site.
-  Status CheckWriteFenceUnlocked(const ConsensusRoundPtr& round);
+  // see the call site. Returns false if the round was rejected; it is then already failed and
+  // unbound, and the caller must skip it.
+  [[nodiscard]] bool CheckWriteFenceUnlocked(const ConsensusRoundPtr& round);
 
   // Control whether printing of log messages should be done for a particular
   // function call.

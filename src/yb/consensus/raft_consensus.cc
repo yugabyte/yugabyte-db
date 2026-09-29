@@ -1383,25 +1383,32 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return status;
 }
 
-Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
+bool RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
   const auto& msg = *round->replicate_msg();
   if (msg.op_type() != OperationType::WRITE_OP) {
-    return Status::OK();
+    return true;
   }
   const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
   if (!fence) {
-    return Status::OK();
+    return true;
   }
   // The op's own hybrid time, assigned by NotifyAddedToLeader, is when the write takes effect.
   // An earlier clock reading would leave an unbounded window in which the op could still be
   // assigned a time past the fence.
   const auto hybrid_time = HybridTime(msg.hybrid_time());
   if (fence > hybrid_time) {
-    return Status::OK();
+    return true;
   }
-  return STATUS_EC_FORMAT(
+  auto status = STATUS_EC_FORMAT(
       Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
       "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
+  // Rejection goes through ReplicaState to undo the retryable-request registration. The driver
+  // still holds the op id, so its failure path also removes the op from MVCC.
+  RollbackIdAndDeleteOpId(round->replicate_msg(), /* should_exists = */ false);
+  state_->NotifyReplicationFinishedUnlocked(
+      round, status, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
+  round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
+  return false;
 }
 
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
@@ -1444,14 +1451,8 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
 
     // After NotifyAddedToLeader, so the fence is judged against the op's assigned hybrid time.
     // After RegisterRetryableRequest, so a resend of an already-replicated id answers
-    // AlreadyPresent rather than a fence rejection. Rejection goes through ReplicaState to undo
-    // that registration; the driver still holds the op id, so its failure path also removes the
-    // op from MVCC.
-    if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
-      RollbackIdAndDeleteOpId(round->replicate_msg(), /* should_exists = */ false);
-      state_->NotifyReplicationFinishedUnlocked(
-          round, s, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
-      round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
+    // AlreadyPresent rather than a fence rejection.
+    if (!CheckWriteFenceUnlocked(round)) {
       continue;
     }
 
