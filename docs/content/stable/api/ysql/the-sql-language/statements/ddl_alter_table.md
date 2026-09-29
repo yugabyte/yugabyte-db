@@ -31,19 +31,19 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 <a name="table-expr-note"></a></br></br>
 {{< note title="Table inheritance" >}}
 
-When other tables inherit `t`, these variants do different work:
+When other tables inherit `t`, `ONLY` on `DROP COLUMN` drops the column on `t` and leaves it on the children:
 
 ```plpgsql
-alter table t * add column y text;
+alter table only t drop column y;
 ```
 
-changes `t` and tables that inherit from it.
+Without `ONLY`, the drop applies to `t` and to tables that inherit from it:
 
 ```plpgsql
-alter table only t add column y text;
+alter table t * drop column y;
 ```
 
-changes `t` alone.
+`ALTER TABLE ONLY t ADD COLUMN` fails when `t` has children, because the new column must be added to those children too.
 
 See [Table inheritance](../../ddl-inherit/).
 {{< /note >}}

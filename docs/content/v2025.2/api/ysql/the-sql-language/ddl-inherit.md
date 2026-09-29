@@ -15,7 +15,7 @@ type: docs
 
 {{<tags/feature/tp idea="2158">}}YSQL supports table inheritance with the `INHERITS` clause of [CREATE TABLE](../statements/ddl_create_table/). A child table inherits columns and certain constraints from one or more parent tables. For the allowed differences between a parent column and a child column, and how those differences are resolved, see the [PostgreSQL documentation](https://www.postgresql.org/docs/15/ddl-inherit.html).
 
-{{<lead link="../../../explore/ysql-language-features/advanced-features/inheritance/">}}
+{{<lead link="../../../../explore/ysql-language-features/advanced-features/inheritance/">}}
 For an accounts schema that uses `INHERITS`, see [Table inheritance example](../../../../explore/ysql-language-features/advanced-features/inheritance/).
 {{</lead>}}
 
