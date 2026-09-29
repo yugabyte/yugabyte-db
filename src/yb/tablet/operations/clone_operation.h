@@ -39,6 +39,7 @@ class CloneOperation : public OperationBase<OperationType::kClone, LWCloneTablet
 
  private:
   Status Prepare(IsLeaderSide is_leader_side) override;
+  Status ValidateLeaderOpId(const OpId& op_id) const override;
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
   Status DoAborted(const Status& status) override;
 

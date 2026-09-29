@@ -39,6 +39,7 @@
 #include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -95,6 +96,20 @@ Status WriteOperation::ValidateLeaderOpId(const OpId& op_id) const {
   SCHECK_LE(
       op_id.index, static_cast<int64_t>(FLAGS_TEST_fixed_hybrid_time_write_id_max), IllegalState,
       "TEST: Raft operation index exceeded the injected fixed-hybrid-time write ID ceiling");
+
+  // When an ordering generation is active, marked writes must carry Raft indexes strictly above
+  // the generation base: the base is the activation operation's own index, so an index at or
+  // below it cannot belong to this generation -- it would indicate misrouting or replay of a
+  // foreign sequence. (Rejecting marked writes when *no* generation is active arrives with the
+  // master activation flow; until then marked writes remain test-only.)
+  const auto generation =
+      VERIFY_RESULT(tablet_safe())->metadata()->index_backfill_ordering_generation();
+  if (generation.active) {
+    SCHECK_GT(
+        op_id.index, generation.base_op_index, IllegalState,
+        "Marked fixed-hybrid-time write carries a Raft index at or below the active ordering "
+        "generation base");
+  }
   return Status::OK();
 }
 
