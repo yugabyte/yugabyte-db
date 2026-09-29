@@ -61,6 +61,8 @@ Some of the factors that the CBO considers in the cost estimation are as follows
 
     When an index is used, any additional columns needed for the query must be retrieved from the corresponding row in the main table, which can be more costly than scanning only the base table. However, this isn't an issue if the index is a covering index. To determine the most efficient execution plan, the CBO compares the cost of an index scan with that of a main table scan.
 
+    Starting in v2025.2.2, for a temporal join the planner can choose a parallel index scan on the range predicate and a batched nested loop for the primary key lookup. See [Parallel index scans for temporal joins](../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-index-scan/).
+
 1. **Pushdown to storage layer**
 
     The CBO identifies possible operations that can be pushed down to the storage layer for aggregates, filters, and distinct clauses. This can considerably reduce network data transfer.
