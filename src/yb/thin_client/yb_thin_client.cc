@@ -385,8 +385,9 @@ Result<size_t> RunOnHosts(
   return status;
 }
 
-// With `try_every_host`, each host is tried in turn. Otherwise only the connection's is, so a
-// caller's thread blocks for at most one RPC timeout.
+// With `try_every_host`, each host is tried in turn. Otherwise only the connection's is, so the
+// reopen takes at most one RPC timeout. A caller also waits out any reopen ahead of it on the
+// session's mutex.
 Status OpenSession(
     ybthin_client& client, ybthin_session& session, const MonoDelta& timeout, bool try_every_host)
     REQUIRES(session.mutex) {
