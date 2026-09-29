@@ -66,7 +66,7 @@ Therefore, if you don't specify a primary key at table-creation time, YugabyteDB
 
 #### Foreign keys on partitioned tables
 
-Creating a foreign key that references a partitioned table, or declaring a foreign key on a partitioned table, is not supported.
+A foreign key that references a partitioned table is not supported. A partitioned table can declare a foreign key.
 
 ### Unique
 
