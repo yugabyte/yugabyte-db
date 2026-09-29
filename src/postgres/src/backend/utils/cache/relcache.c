@@ -1405,34 +1405,19 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 	YbCleanupTupleCache(&state->pg_policy_cache);
 }
 
+/*
+ * A scratch context for one row of a relcache preload scan, reset by
+ * YbSystableGetNextInContext.  The scans may also process their rows in it:
+ * everything a relcache entry keeps is allocated explicitly in
+ * CacheMemoryContext (or a child of it), the same as when RelationBuildDesc
+ * runs in a throwaway workspace context.
+ */
 static MemoryContext
 YbCreatePreloadRowContext(void)
 {
 	return AllocSetContextCreate(CurrentMemoryContext,
 								 "relcache preload row",
 								 ALLOCSET_DEFAULT_SIZES);
-}
-
-/*
- * Fetch the next row of a relcache preload scan into row_cxt, first
- * discarding the previous row.  A decoded catalog row leaves behind the
- * per-column copies pggate makes while decoding it, several times the size
- * of the tuple itself, so the full-catalog scans below must not accumulate
- * them.  Everything a relcache entry keeps is allocated explicitly in
- * CacheMemoryContext (or a child of it), the same as when RelationBuildDesc
- * runs in a throwaway workspace context.
- */
-static HeapTuple
-YbSystableGetNextInContext(SysScanDesc scandesc, MemoryContext row_cxt)
-{
-	MemoryContext oldcxt;
-	HeapTuple	htup;
-
-	MemoryContextReset(row_cxt);
-	oldcxt = MemoryContextSwitchTo(row_cxt);
-	htup = systable_getnext(scandesc);
-	MemoryContextSwitchTo(oldcxt);
-	return htup;
 }
 
 /*
@@ -2048,11 +2033,6 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 	MemoryContext row_cxt = YbCreatePreloadRowContext();
 	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
 
-	/*
-	 * The row that ends one relation's attributes is also the first attribute
-	 * of the next relation, so a row may be discarded only once the next row
-	 * is fetched, not at a relation boundary.
-	 */
 	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
 															  row_cxt)))
 	{
@@ -2263,8 +2243,9 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 	MemoryContext row_cxt = YbCreatePreloadRowContext();
 
 	/*
-	 * Only the fetch runs in row_cxt: state.result accumulates across all the
-	 * rows of a relation.
+	 * Unlike the other preload scans, don't process rows in row_cxt:
+	 * YbApplyIndex appends to state.result in the current context, and that
+	 * list must survive until the relation's last row.
 	 */
 	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(indscan,
 															  row_cxt)))
