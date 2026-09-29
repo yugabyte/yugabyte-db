@@ -67,6 +67,7 @@ using std::unique_ptr;
 using std::vector;
 
 using strings::Substitute;
+DECLARE_uint64(default_idle_timeout_ms);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(threadpool_use_current_trace_for_tasks);
 
@@ -96,6 +97,14 @@ TEST_F(TestThreadPool, TestNoTaskOpenClose) {
   std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(4, 4, &thread_pool));
   thread_pool->Shutdown();
+}
+
+TEST_F(TestThreadPool, TestBuilderDefaultIdleTimeout) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_default_idle_timeout_ms) = 1234;
+  ASSERT_EQ(MonoDelta::FromMilliseconds(1234), ThreadPoolBuilder("test").idle_timeout());
+
+  auto idle_timeout = MonoDelta::FromMilliseconds(10);
+  ASSERT_EQ(idle_timeout, ThreadPoolBuilder("test").set_idle_timeout(idle_timeout).idle_timeout());
 }
 
 static void SimpleTaskMethod(int n, Atomic32 *counter) {
