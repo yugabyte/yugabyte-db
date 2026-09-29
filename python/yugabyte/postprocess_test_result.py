@@ -28,7 +28,7 @@ import signal
 import glob
 import re
 
-from typing import Any, Dict, AnyStr
+from typing import Any, Dict, AnyStr, List
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -324,7 +324,7 @@ class Postprocessor:
         if grep_command.returncode != 0:
             return
         counts: Dict[str, int] = {}
-        lines = []
+        lines: List[str] = []
         for line in grep_command.stdout.decode('utf-8', errors='replace').splitlines():
             match = SANITIZER_NAME_RE.search(line)
             if not match:
