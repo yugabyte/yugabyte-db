@@ -308,6 +308,17 @@ class OciCloud(AbstractCloud):
             'node-uuid': node_uuid
         }
 
+        self.get_admin().set_region(args.region)
+        deleted = self.get_admin().delete_detached_boot_volumes(
+            args.zone, filter_tags, volume_ids=args.volume_id)
+        logging.info("Deleted {} detached boot volumes for node {}".format(
+            len(deleted), node_uuid))
+
+        # The node's data volumes carry the same tags. Detached ones are swept only once the
+        # instance is gone, after a destroy or a failed create; while it exists, as during a VM
+        # image upgrade, they must never be deleted.
+        if self.get_host_info(args):
+            return
         volumes = self.get_admin().list_volumes_by_tags(filter_tags)
         deleted_count = 0
 
@@ -326,6 +337,9 @@ class OciCloud(AbstractCloud):
                             volume.id, e))
 
         logging.info("Deleted {} volumes for node {}".format(deleted_count, node_uuid))
+
+    def replace_boot_volume(self, host_info, image_id, force=False):
+        self.get_admin().replace_boot_volume(host_info['id'], image_id, force=force)
 
     def modify_tags(self, args):
         host_info = self.get_host_info(args)
