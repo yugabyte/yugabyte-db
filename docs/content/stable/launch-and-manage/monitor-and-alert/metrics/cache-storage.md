@@ -133,7 +133,7 @@ The metrics are enabled by default. Set [`export_drive_io_metrics`](../../../../
 | `drive_bytes_unsynced` | bytes | gauge | Approximate bytes written to this drive and not yet synced. Compare across drives rather than reading it as an absolute value. |
 | `drive_sync_latency` | microseconds | counter | Latency of individual syncs to this drive. |
 
-When [`durable_wal_write`](../../../../reference/configuration/yb-tserver/#durable-wal-write) is `true`, WAL writes go directly to disk, so WAL disk time appears in `drive_write_time` instead of `drive_sync_time`.
+When [durable_wal_write](../../../../reference/configuration/yb-tserver/#durable-wal-write) is `true`, WAL writes go directly to disk, so WAL disk time appears in `drive_write_time` instead of `drive_sync_time`.
 
 ## YSQL cache metrics
 
