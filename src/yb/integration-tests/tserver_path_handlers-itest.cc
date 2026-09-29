@@ -244,6 +244,8 @@ class TServerSstStatsPathHandlerItest : public TServerPathHandlersItest {
     client::TableHandle table;
     RETURN_NOT_OK(table.Create(table_name, /* num_tablets = */ 1, schema, client.get()));
 
+    // Each pass goes out as its own batch so the two versions of a row get distinct hybrid times.
+    // TEST_Flush only sends the batch; the single SST comes from FlushTablets below.
     auto session = client->NewSession(30s);
     for (int32_t pass = 0; pass != 2; ++pass) {
       for (int32_t key = 0; key != kNumRows; ++key) {

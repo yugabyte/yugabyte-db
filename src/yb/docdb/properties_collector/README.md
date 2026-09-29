@@ -190,7 +190,9 @@ shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per
 Its merged lengths are per file -- a row written across three files is three chains there, not one
 -- so the byte- and entry-weighted distributions read low, while the row- and stretch-counted ones,
 which gain a sample per piece, can move either way. Each file's age bands are moved from its anchor
-to the time of the request before they are added.
+to the time of the request before they are added. The aggregate's bands never are: it keeps sums,
+not anchors, so a file's garbage stays in the band it was in when the file was written. That is
+conservative for a consumer applying a cutoff, but it is not an age as of now.
 
 ## Boundaries
 

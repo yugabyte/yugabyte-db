@@ -340,9 +340,10 @@ Result<std::vector<SstFileStats>> ReadSstFileStats(const tablet::TabletPtr& tabl
   return files;
 }
 
-// The per-tablet aggregate of what the SST statistics collector recorded in each file. Scalars
-// only: the aggregate does not carry the collector's distributions, which /sst-stats reads per
-// file instead.
+// The per-tablet aggregate of what the SST statistics collector recorded in each file: the additive
+// scalars and the age bands, but not the distributions, which /sst-stats reads per file instead.
+// The aggregate keeps sums rather than anchors, so its bands stay as each file measured them when
+// it was written (SstStatsAggregate) and are labelled that way; /sst-stats shows them as of now.
 void DumpSstStats(const tablet::TabletPeerPtr& peer, std::stringstream* output) {
   *output << "<h2>SST Statistics</h2>\n";
   *output << Format(
@@ -400,8 +401,8 @@ void DumpSstStats(const tablet::TabletPeerPtr& peer, std::stringstream* output) 
   row("Dead rows / their entries", Format("$0 / $1", stats.dead_rows, stats.dead_row_entries));
   row("Reclaimable entries / bytes",
       Format("$0 / $1", stats.reclaimable_entries, stats.reclaimable_bytes));
-  row("Reclaimable entries by age", AgeBandsToHtml(stats.droppable_age_entries));
-  row("Reclaimable bytes by age", AgeBandsToHtml(stats.droppable_age_bytes));
+  row("Reclaimable entries by age when written", AgeBandsToHtml(stats.droppable_age_entries));
+  row("Reclaimable bytes by age when written", AgeBandsToHtml(stats.droppable_age_bytes));
   *output << "</table>\n";
 }
 
