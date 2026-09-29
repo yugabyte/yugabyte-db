@@ -263,6 +263,7 @@ set(YB_TEST_LINK_LIBS master
 ADD_YB_TEST(async_rpc_tasks-test)
 ADD_YB_TEST(async_task_result_collector-test)
 ADD_YB_TEST(catalog_entity_info-test)
+ADD_YB_TEST(catalog_follower_read_reservation-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)
 ADD_YB_TEST(clone/clone_state_manager-test)

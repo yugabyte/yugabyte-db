@@ -33,6 +33,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_types.pb.h"
@@ -43,6 +44,7 @@
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
 #include "yb/master/state_with_tablets.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -97,6 +99,10 @@ DEFINE_RUNTIME_bool(schedule_restoration_rpcs_out_of_band, true,
 DEFINE_RUNTIME_bool(skip_crash_on_duplicate_snapshot, false,
     "Should we not crash when we get a create snapshot request with the same "
     "id as one of the previous snapshots.");
+
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_catalog_follower_read_reservation,
+    kLocalPersisted, false, true,
+    "Allow an explicit, irreversible catalog follower-read reservation that prohibits PITR.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_object_retention_due_to_snapshots, kLocalPersisted, false, true,
     "When true, tables and tablets are hidden instead of getting deleted on a drop if there are "
@@ -414,8 +420,23 @@ class MasterSnapshotCoordinator::Impl {
         tablet, SysRowEntryType::SNAPSHOT, &snapshots_));
     RETURN_NOT_OK(LoadEntryOfType<SnapshotScheduleOptionsPB>(
         tablet, SysRowEntryType::SNAPSHOT_SCHEDULE, &schedules_));
-    return LoadEntryOfType<SysRestorationEntryPB>(
-        tablet, SysRowEntryType::SNAPSHOT_RESTORATION, &restorations_);
+    RETURN_NOT_OK(LoadEntryOfType<SysRestorationEntryPB>(
+        tablet, SysRowEntryType::SNAPSHOT_RESTORATION, &restorations_));
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SYS_CONFIG,
+        [this](const Slice& id, const Slice& data) REQUIRES(mutex_) {
+          return LoadCatalogFollowerReadReservation(id, data);
+        });
+  }
+
+  Status LoadCatalogFollowerReadReservation(const Slice& id, const Slice& data) REQUIRES(mutex_) {
+    if (id != kYsqlCatalogFollowerReadReservation) {
+      return Status::OK();
+    }
+    const auto config = VERIFY_RESULT(pb_util::ParseFromSlice<SysConfigEntryPB>(data));
+    SCHECK(config.ysql_catalog_follower_reads_reserved(), Corruption,
+           "Invalid catalog follower-read reservation record");
+    catalog_follower_reads_reserved_ = true;
+    return Status::OK();
   }
 
   Status ApplyWritePair(Slice key, const Slice& value) {
@@ -441,6 +462,19 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     switch (first_key.GetInt32()) {
+      case SysRowEntryType::SYS_CONFIG: {
+        const auto& id = sub_doc_key.doc_key().range_group()[1].GetString();
+        if (id != kYsqlCatalogFollowerReadReservation) {
+          return Status::OK();
+        }
+        dockv::Value decoded_value;
+        RETURN_NOT_OK(decoded_value.Decode(value));
+        SCHECK_EQ(decoded_value.primitive_value().value_type(), dockv::ValueEntryType::kString,
+                  Corruption, "Invalid catalog follower-read reservation record");
+        std::lock_guard lock(mutex_);
+        return LoadCatalogFollowerReadReservation(id, decoded_value.primitive_value().GetString());
+      }
+
       case SysRowEntryType::SNAPSHOT:
         return DoApplyWrite<SysSnapshotEntryPB>(
             sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
@@ -685,6 +719,7 @@ class MasterSnapshotCoordinator::Impl {
     std::string_view ns_id{table.get().namespace_().id()};
     {
       std::lock_guard lock(mutex_);
+      RETURN_NOT_OK(AdmitPitr(leader_term));
       const auto& existing_schedule = FindSnapshotScheduleByNamespaceId(ns_id);
       if (existing_schedule.has_value()) {
         return STATUS(
@@ -696,6 +731,7 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
+    TEST_SYNC_POINT("MasterSnapshotCoordinator::CreateSchedule:BeforeWrite");
     auto schedule = VERIFY_RESULT(SnapshotScheduleState::Create(&context_, req.options()));
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(schedule.StoreToWriteBatch(&write_batch));
@@ -884,6 +920,10 @@ class MasterSnapshotCoordinator::Impl {
   Status RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at,
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
+    {
+      std::lock_guard lock(mutex_);
+      RETURN_NOT_OK(AdmitPitr(leader_term));
+    }
     const auto snapshot_id = VERIFY_RESULT(
         GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline));
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
@@ -1240,6 +1280,75 @@ class MasterSnapshotCoordinator::Impl {
     auto tablet_lock = tablet_info.LockForRead();
     return ShouldRetain(
         tablet_info, tablet_lock->pb, table_hide_hybrid_time, schedule_to_min_restore_time);
+  }
+
+  Status UpdateAdmissionTerm(int64_t leader_term) REQUIRES(mutex_) {
+    SCHECK_GE(leader_term, admission_term_, TryAgain, "Stale PITR admission leader term");
+    if (leader_term != admission_term_) {
+      admission_term_ = leader_term;
+      pitr_requested_ = false;
+      reservation_requested_ = false;
+    }
+    return Status::OK();
+  }
+
+  Status AdmitPitr(int64_t leader_term) REQUIRES(mutex_) {
+    RETURN_NOT_OK(UpdateAdmissionTerm(leader_term));
+    SCHECK(!catalog_follower_reads_reserved_, NotSupported,
+           "PITR is prohibited by the universe's permanent catalog follower-read reservation");
+    SCHECK_FORMAT(!reservation_requested_, NotSupported,
+                  "Catalog follower-read reservation is pending in leader term $0; "
+                  "check reservation status before retrying PITR", leader_term);
+    pitr_requested_ = true;
+    return Status::OK();
+  }
+
+  Status ReserveYsqlCatalogFollowerReads(int64_t leader_term, CoarseTimePoint deadline) {
+    {
+      std::lock_guard lock(mutex_);
+      RETURN_NOT_OK(UpdateAdmissionTerm(leader_term));
+      if (catalog_follower_reads_reserved_) {
+        return Status::OK();
+      }
+      SCHECK(FLAGS_ysql_enable_catalog_follower_read_reservation, NotSupported,
+             "Catalog follower-read reservation capability is not enabled");
+      SCHECK(!pitr_requested_ && schedules_.empty() &&
+                 std::none_of(snapshots_.begin(), snapshots_.end(),
+                              [](const auto& entry) { return !entry->schedule_id().IsNil(); }) &&
+                 std::none_of(restorations_.begin(), restorations_.end(),
+                              [](const auto& entry) { return !entry->schedule_id().IsNil(); }),
+             NotSupported,
+             "Cannot reserve catalog follower reads with existing or pending PITR state");
+      // A timed-out write may still apply. Block conflicting requests until a new leader has
+      // caught up, even when no persistent state is visible yet.
+      reservation_requested_ = true;
+    }
+    TEST_SYNC_POINT("MasterSnapshotCoordinator::ReserveCatalogFollowerReads:BeforeWrite");
+    SysConfigEntryPB config;
+    config.set_ysql_catalog_follower_reads_reserved(true);
+    docdb::KeyValueWriteBatchPB write_batch;
+    auto* pair = write_batch.add_write_pairs();
+    const auto key = VERIFY_RESULT(EncodedKey(
+        SysRowEntryType::SYS_CONFIG, kYsqlCatalogFollowerReadReservation, &context_));
+    pair->set_key(key.AsSlice().ToBuffer());
+    pair->mutable_value()->push_back(dockv::ValueEntryTypeAsChar::kString);
+    RETURN_NOT_OK(pb_util::AppendPartialToString(config, pair->mutable_value()));
+    return SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_);
+  }
+
+  bool YsqlCatalogFollowerReadsReserved() const {
+    std::lock_guard lock(mutex_);
+    return catalog_follower_reads_reserved_;
+  }
+
+  void GetYsqlCatalogFollowerReadReservation(
+      int64_t leader_term, GetYsqlCatalogFollowerReadReservationResponsePB* resp) const {
+    std::lock_guard lock(mutex_);
+    resp->set_reserved(catalog_follower_reads_reserved_);
+    resp->set_reservation_pending(!catalog_follower_reads_reserved_ &&
+                                 admission_term_ == leader_term && reservation_requested_);
+    resp->set_pitr_admitted_in_term(admission_term_ == leader_term && pitr_requested_);
+    resp->set_leader_term(leader_term);
   }
 
   bool IsPitrActive() {
@@ -2216,6 +2325,7 @@ class MasterSnapshotCoordinator::Impl {
         }
       }
       if (restore_sys_catalog) {
+        RETURN_NOT_OK(AdmitPitr(leader_term));
         RETURN_NOT_OK(ForwardRestoreCheck(snapshot.schedule_id(), restore_at));
       }
       // Get the restoration state. Construct if in initial phase.
@@ -2421,6 +2531,10 @@ class MasterSnapshotCoordinator::Impl {
   Restorations restorations_ GUARDED_BY(mutex_);
   HybridTime last_restorations_update_ht_ GUARDED_BY(mutex_);
   Schedules schedules_ GUARDED_BY(mutex_);
+  bool catalog_follower_reads_reserved_ GUARDED_BY(mutex_) = false;
+  int64_t admission_term_ GUARDED_BY(mutex_) = OpId::kUnknownTerm;
+  bool pitr_requested_ GUARDED_BY(mutex_) = false;
+  bool reservation_requested_ GUARDED_BY(mutex_) = false;
   // Stores tablets and their associated snapshots that are preventing the tablet
   // from getting deleted. A snapshot covers a tablet iff:
   // 1. The tablet is a part of that snapshot
@@ -2693,6 +2807,20 @@ Result<docdb::KeyValuePairPB> MasterSnapshotCoordinator::UpdateRestorationAndGet
 
 bool MasterSnapshotCoordinator::IsPitrActive() {
   return impl_->IsPitrActive();
+}
+
+Status MasterSnapshotCoordinator::ReserveYsqlCatalogFollowerReads(
+    int64_t leader_term, CoarseTimePoint deadline) {
+  return impl_->ReserveYsqlCatalogFollowerReads(leader_term, deadline);
+}
+
+bool MasterSnapshotCoordinator::YsqlCatalogFollowerReadsReserved() const {
+  return impl_->YsqlCatalogFollowerReadsReserved();
+}
+
+void MasterSnapshotCoordinator::GetYsqlCatalogFollowerReadReservation(
+    int64_t leader_term, GetYsqlCatalogFollowerReadReservationResponsePB* resp) const {
+  impl_->GetYsqlCatalogFollowerReadReservation(leader_term, resp);
 }
 
 bool MasterSnapshotCoordinator::TEST_IsTabletCoveredBySnapshot(

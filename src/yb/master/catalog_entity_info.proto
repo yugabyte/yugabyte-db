@@ -585,6 +585,9 @@ message SysConfigEntryPB {
     SysSecurityConfigEntryPB security_config = 1;
     SysYSQLCatalogConfigEntryPB ysql_catalog_config = 2;
     SysTransactionTablesConfigEntryPB transaction_tables_config = 3;
+    // An irreversible universe-wide reservation. Once true, PITR schedules and sys-catalog
+    // restores are prohibited even if follower-read routing is later disabled.
+    bool ysql_catalog_follower_reads_reserved = 4;
   }
 }
 

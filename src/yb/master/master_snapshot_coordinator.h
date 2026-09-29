@@ -23,6 +23,7 @@
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_cluster.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.h"
@@ -221,6 +222,12 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // Returns true if there are one or more non-deleted
   // snapshot schedules present.
   bool IsPitrActive();
+
+  // Irreversible reservation; does not enable follower routing. Requires no PITR state.
+  Status ReserveYsqlCatalogFollowerReads(int64_t leader_term, CoarseTimePoint deadline);
+  bool YsqlCatalogFollowerReadsReserved() const;
+  void GetYsqlCatalogFollowerReadReservation(
+      int64_t leader_term, GetYsqlCatalogFollowerReadReservationResponsePB* resp) const;
 
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
 

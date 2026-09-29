@@ -42,6 +42,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/object_lock_info_manager.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"
@@ -709,6 +710,10 @@ Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metada
 ////////////////////////////////////////////////////////////
 
 Status SysConfigLoader::Visit(const std::string& config_type, const SysConfigEntryPB& metadata) {
+  if (config_type == kYsqlCatalogFollowerReadReservation) {
+    // The snapshot coordinator loads this reservation on every replica, not only the leader.
+    return Status::OK();
+  }
   SysConfigInfo* const config = new SysConfigInfo(config_type);
   {
     auto l = config->LockForWrite();
