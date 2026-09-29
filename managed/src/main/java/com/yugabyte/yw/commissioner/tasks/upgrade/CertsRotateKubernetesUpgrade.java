@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CertReloadTaskCreator;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -132,11 +133,15 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       createNonRestartUpgradeTask(universe, upgradeContext);
       createKubernetesCertHotReloadTask(universe, getUserTaskUUID());
     } else if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+      // Update the certs
+      createNonRestartUpgradeTask(universe, upgradeContext);
+      // Rolling restart of the pods
       createUpgradeTask(
           getUniverse(),
           userIntent.ybSoftwareVersion,
           true /* upgradeMasters */,
           true /* upgradeTservers */,
+          CommandType.POD_DELETE,
           getUniverse().isYbcEnabled(),
           stableYbcVersion,
           upgradeContext);
