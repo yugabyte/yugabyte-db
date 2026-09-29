@@ -6615,6 +6615,13 @@ PostgresMain(const char *dbname, const char *username)
 	}
 
 	/*
+	 * YB: InitPostgres has freed the memory it used to preload the catalog
+	 * caches and build the relcache.
+	 */
+	if (IsYugaByteEnabled())
+		YbReleaseFreeMemoryAfterStartup();
+
+	/*
 	 * Also set up handler to log session end; we have to wait till now to be
 	 * sure Log_disconnections has its final value.
 	 */
