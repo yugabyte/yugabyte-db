@@ -1301,6 +1301,25 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testCanTaskRollbackFalseWhenAbortedAtPrecheck() {
+    // PLAT-22685: an edit aborted before the freeze/checkpoint captures no state_transition_details
+    // (and never took placement ownership), so submit eligibility must be false - matching listing
+    // - even though @CanRollback + error state + the feature flag all hold.
+    Universe universe = defaultUniverse;
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditUniverse, null);
+    taskInfo.setUuid(UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(params));
+    taskInfo.setTaskState(Aborted);
+    assertNull(universe.getStateTransitionDetails());
+    // Type is rollbackable in general; the missing checkpoint is what makes it ineligible.
+    assertTrue(Commissioner.canTaskTypeRollback(TaskType.EditUniverse));
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+  }
+
+  @Test
   public void testCanTaskRollbackListingFollowsEditUniverseFlag() {
     clearAbortOrPausePositions();
     doAnswer(

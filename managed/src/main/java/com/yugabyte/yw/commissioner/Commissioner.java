@@ -531,6 +531,15 @@ public class Commissioner {
   }
 
   /**
+   * Whether rollback of this task type replays a {@code state_transition_details} checkpoint (edit
+   * universe / add node). Such rollbacks are ineligible when no checkpoint was captured.
+   */
+  private boolean rollbackRequiresStateTransitionDetails(TaskType taskType) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskType);
+    return computer != null && computer.requiresStateTransitionDetails();
+  }
+
+  /**
    * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
    * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
    * safety gate.
@@ -564,7 +573,11 @@ public class Commissioner {
       Universe universe = universeOpt.get();
       StateTransitionDetails details = universe.getStateTransitionDetails();
       if (details == null) {
-        return true;
+        // Checkpoint-based rollbacks (edit universe / add node) need a captured delta; a task with
+        // none - e.g. aborted at precheck, before the freeze/checkpoint - is not rollbackable, so
+        // submit stays consistent with listing (which requires placement ownership the task never
+        // took). Non-checkpoint rollbacks (software upgrade) do not use state_transition_details.
+        return !rollbackRequiresStateTransitionDetails(taskInfo.getTaskType());
       }
       // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
       if (!Objects.equals(
