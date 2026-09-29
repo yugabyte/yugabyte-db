@@ -1973,6 +1973,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable canary upgrade for the universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ociAllowBootVolumeReplaceForMarketplaceBasedImages =
+      new ConfKeyInfo<>(
+          "yb.oci.allow_boot_volume_replace_for_marketplace_based_images",
+          ScopeType.UNIVERSE,
+          "Allow OCI boot volume replacement with Marketplace-based images",
+          "When enabled, the OCI VM image upgrade precheck no longer blocks Marketplace images or"
+              + " custom images built from one. Use only when YBA's record of an image is wrong or"
+              + " missing.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> fullMoveRollBatchSize =
       new ConfKeyInfo<>(
           "yb.task.full_move.roll_batch_size",
