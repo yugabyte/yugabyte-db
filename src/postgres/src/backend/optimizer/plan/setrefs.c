@@ -3787,7 +3787,10 @@ yb_fix_merge_scan_stream_conds(PlannerInfo *root,
 		YbMergeScanStreamColInfo *stream_col =
 			lfirst_node(YbMergeScanStreamColInfo, lc);
 
-		/* A hash column without an equality index condition is NULL here. */
+		/*
+		 * A hash column with neither a SAOP nor an equality index condition is
+		 * NULL here.
+		 */
 		stream_col->clause = (Expr *)
 			fix_scan_expr(root, (Node *) stream_col->clause, rtoffset,
 						  num_exec);

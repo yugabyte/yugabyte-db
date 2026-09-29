@@ -1315,8 +1315,8 @@ typedef struct YbPlanInfo
  * YB: info used by YbIndexPathInfo.
  *
  * Holds info used for merge scans.  'clause' is the column's SAOP or equality
- * index condition, or NULL for a hash column without an equality index
- * condition, which ybValidateMergeScanBinds reports.
+ * index condition, or NULL for a hash column with neither, which
+ * ybValidateMergeScanBinds reports.
  */
 typedef struct YbMergeScanStreamColInfo
 {

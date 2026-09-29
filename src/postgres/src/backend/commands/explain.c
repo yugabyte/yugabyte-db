@@ -6799,8 +6799,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 		stream_keys = lappend(stream_keys, exprstr);
 		/*
 		 * clause is the SAOP of a SAOP column, the equality index condition of
-		 * an equality column, or NULL for a hash column without an equality
-		 * index condition, which ybValidateMergeScanBinds reports.
+		 * an equality column, or NULL for a hash column with neither a SAOP
+		 * nor an equality index condition, which ybValidateMergeScanBinds
+		 * reports.
 		 */
 		if (item->clause)
 			stream_conds = lappend(stream_conds, item->clause);
