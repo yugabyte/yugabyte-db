@@ -64,6 +64,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tcmalloc_profile.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_pool.h"
 #include "yb/util/yb_partition.h"
@@ -713,6 +714,10 @@ int64_t YBCGetTCMallocSamplingPeriod() { return GetTCMallocSamplingPeriod(); }
 
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   SetTCMallocSamplingPeriod(sample_period_bytes);
+}
+
+void YBCTCMallocReleaseMemoryToSystem(int64_t bytes) {
+  TCMallocReleaseMemoryToSystem(bytes);
 }
 
 YbcStatus YBCGetHeapSnapshot(

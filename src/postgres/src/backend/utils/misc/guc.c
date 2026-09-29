@@ -6326,6 +6326,21 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_startup_free_memory_release_threshold", PGC_SIGHUP, RESOURCES_MEM,
+			gettext_noop("When a backend finishes connection startup, return "
+						 "the free memory held by TCMalloc to the operating "
+						 "system if it is at least this amount."),
+			gettext_noop("-1 disables the release."),
+			GUC_UNIT_KB
+		},
+		&yb_startup_free_memory_release_threshold,
+		16 * 1024,
+		-1,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_index_check_num_batches_per_snapshot", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Used to test yb_index_check()"),
 			gettext_noop("If set to > 0, number of index rows processed per snapshot "
