@@ -165,7 +165,11 @@ Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
 
 void TabletRetentionPolicy::UnregisterReaderTimestamp(HybridTime timestamp) {
   std::lock_guard lock(mutex_);
-  active_readers_.erase(timestamp);
+  const auto it = active_readers_.find(timestamp);
+  if (it != active_readers_.end()) {
+    // Independent readers can share a timestamp; each guard owns only one registration.
+    active_readers_.erase(it);
+  }
 }
 
 bool TabletRetentionPolicy::ShouldRetainDeleteMarkersInMajorCompaction() const {
