@@ -29,6 +29,7 @@ ERRORS = [
     'Timeout reached',
     'LeakSanitizer: detected memory leaks',
     'AddressSanitizer: heap-use-after-free',
+    '==1==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000050',
     'AddressSanitizer: undefined-behavior',
     'UndefinedBehaviorSanitizer: undefined-behavior',
     'ThreadSanitizer: data race',
@@ -121,3 +122,45 @@ def test_add_fail_tag_multiline(mocked_post_processor: Postprocessor,
     assert 'fail_tags' in test_kvs
     assert len(test_kvs['fail_tags']) == 3
     assert test_kvs['fail_tags'] == ['signal_SIGINT', 'signal_SIGKILL', 'signal_SIGSEGV']
+
+
+SANITIZER_REPORTS = [
+    '==11==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000050 at pc 0x1',
+    '==12==ERROR: LeakSanitizer: detected memory leaks',
+    'WARNING: ThreadSanitizer: data race (pid=13)',
+    'SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior int.c:1:2',
+]
+
+
+def test_sanitizer_reports_of_passing_test(mocked_post_processor: Postprocessor,
+                                           mocked_test_kvs_success: Dict[str, Any],
+                                           tmp_path: pathlib.Path) -> None:
+    test_kvs = mocked_test_kvs_success
+    test_log = tmp_path / 'passed_test.log'
+    test_log.write_text(
+        LOG_CONTENTS + '\n'.join(SANITIZER_REPORTS) + '\n' +
+        # Other lines of a report must not count as more reports.
+        'SUMMARY: AddressSanitizer: heap-buffer-overflow x.c:1:2 in f\n' +
+        '==11==ERROR: AddressSanitizer: heap-use-after-free on address 0x1\n',
+        encoding='utf-8')
+    mocked_post_processor.test_log_path = str(test_log)
+    mocked_post_processor.set_sanitizer_reports(test_kvs)
+    assert test_kvs['sanitizer_reports'] == {
+        'AddressSanitizer': 2,
+        'LeakSanitizer': 1,
+        'ThreadSanitizer': 1,
+        'UndefinedBehaviorSanitizer': 1,
+    }
+    assert test_kvs['sanitizer_report_lines'][:len(SANITIZER_REPORTS)] == SANITIZER_REPORTS
+
+
+def test_no_sanitizer_reports(mocked_post_processor: Postprocessor,
+                              mocked_test_kvs_success: Dict[str, Any],
+                              tmp_path: pathlib.Path) -> None:
+    test_kvs = mocked_test_kvs_success
+    test_log = tmp_path / 'passed_test.log'
+    test_log.write_text(LOG_CONTENTS + 'Running with AddressSanitizer options: x\n',
+                        encoding='utf-8')
+    mocked_post_processor.test_log_path = str(test_log)
+    mocked_post_processor.set_sanitizer_reports(test_kvs)
+    assert 'sanitizer_reports' not in test_kvs

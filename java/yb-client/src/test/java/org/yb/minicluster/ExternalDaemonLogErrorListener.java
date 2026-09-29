@@ -33,7 +33,7 @@ public class ExternalDaemonLogErrorListener implements LogErrorListener {
   };
 
   // TODO: consider collecting all matching lines here, up to a certain number.
-  private String errorLogLine ;
+  private volatile String errorLogLine;
   private String processDescription;
 
   public ExternalDaemonLogErrorListener(String processDescription) {
@@ -69,6 +69,16 @@ public class ExternalDaemonLogErrorListener implements LogErrorListener {
       throw new AssertionError(
           "An error found in the log: " + processDescription + ": " + errorLogLine);
     }
+  }
+
+  /** Returns the first line that matched an error pattern, or null if there was none. */
+  public String getErrorLogLine() {
+    return errorLogLine;
+  }
+
+  /** Forgets a matched line that the test expected, so that it does not fail the test. */
+  public void clearErrorLogLine() {
+    errorLogLine = null;
   }
 
   public void waitForServerStartingLogLine(long deadlineMs) throws InterruptedException {
