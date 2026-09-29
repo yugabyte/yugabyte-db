@@ -97,6 +97,7 @@
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include <assert.h>
 
@@ -1476,7 +1477,19 @@ YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 void
 YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 {
-
+	/*
+	 * The scan returns each row, and the by-reference datums decoded for it,
+	 * in the current memory context, while the catcache keeps its own copy in
+	 * CacheMemoryContext.  During connection startup the caller's context
+	 * lives until the end of InitPostgres, so free the scanned rows here.
+	 */
+	MemoryContext preload_cxt = AllocSetContextCreate(CurrentMemoryContext,
+													  "YbPreloadCatalogCache",
+													  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext row_cxt = AllocSetContextCreate(preload_cxt,
+												  "YbPreloadCatalogCache row",
+												  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext oldcxt = MemoryContextSwitchTo(preload_cxt);
 	CatCache   *cache = SysCache[cache_id];
 	CatCache   *idx_cache = idx_cache_id != -1 ? SysCache[idx_cache_id] : NULL;
 	List	   *dest_list = NIL;
@@ -1498,8 +1511,14 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	if (yb_debug_log_catcache_events)
 		INSTR_TIME_SET_CURRENT(start);
 
-	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
+	MemoryContextSwitchTo(row_cxt);
+	for (;;)
 	{
+		MemoryContextReset(row_cxt);
+		ntp = systable_getnext(scandesc);
+		if (!HeapTupleIsValid(ntp))
+			break;
+
 		scanned++;
 		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
 
@@ -1625,6 +1644,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 
 		if (is_add_to_list_required)
 		{
+			/* The lists are consumed after the scan, so must outlive row_cxt. */
+			MemoryContextSwitchTo(preload_cxt);
+			ntp = heap_copytuple(ntp);
 			if (dest_list)
 			{
 				List	   *old_dest_list = dest_list;
@@ -1638,8 +1660,10 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 				dest_list = list_make1(ntp);
 				list_of_lists = lappend(list_of_lists, dest_list);
 			}
+			MemoryContextSwitchTo(row_cxt);
 		}
 	}
+	MemoryContextSwitchTo(preload_cxt);
 
 	systable_endscan(scandesc);
 
@@ -1695,6 +1719,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		if (idx_cache)
 			idx_cache->yb_cc_is_fully_loaded = true;
 	}
+
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(preload_cxt);
 }
 
 /*
