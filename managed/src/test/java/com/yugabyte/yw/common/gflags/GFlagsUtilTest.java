@@ -967,7 +967,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
     assertEquals(
-        "FIPS compliant universes are not supported on the local provider",
+        "FIPS compliant universes are not supported on provider(s): [local]",
         exception.getLocalizedMessage());
   }
 

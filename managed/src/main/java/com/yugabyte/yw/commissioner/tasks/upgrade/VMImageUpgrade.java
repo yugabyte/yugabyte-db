@@ -645,7 +645,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             .getUniverseDetails()
             .getClusterByUuid(node.placementUuid)
             .userIntent
-            .getDeviceInfoForNode(node);
+            .evaluateDeviceInfoForNode(node);
     SubTaskGroup subTaskGroup = createSubTaskGroup("CaptureFstab", getTaskSubGroupType());
     List<String> command = Arrays.asList("cat", "/etc/fstab");
     RunNodeCommand.Params params = new RunNodeCommand.Params();

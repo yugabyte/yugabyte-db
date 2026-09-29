@@ -3390,9 +3390,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean masterVolumeChanged = false, tserverVolumeChanged = false;
       for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
         DeviceInfo taskDeviceInfo =
-            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
+            newCluster.userIntent.evaluateDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
         DeviceInfo existingDeviceInfo =
-            currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
+            currCluster.userIntent.evaluateDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
         if (taskDeviceInfo != null
             && existingDeviceInfo != null
             && !(Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
@@ -3401,9 +3401,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           tserverVolumeChanged = true;
         }
         DeviceInfo taskMasterDeviceInfo =
-            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
+            newCluster.userIntent.evaluateDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
         DeviceInfo existingMasterDeviceInfo =
-            currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
+            currCluster.userIntent.evaluateDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
         if (taskMasterDeviceInfo != null
             && existingMasterDeviceInfo != null
             && !(Objects.equals(
@@ -3465,7 +3465,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         Map<String, String> azConfig = entry.getValue();
 
         for (ServerType serverType : new ServerType[] {ServerType.TSERVER, ServerType.MASTER}) {
-          DeviceInfo deviceInfo = newCluster.userIntent.getDeviceInfoForAz(azUUID, serverType);
+          DeviceInfo deviceInfo = newCluster.userIntent.evaluateDeviceInfoForAz(azUUID, serverType);
           if (deviceInfo == null || StringUtils.isBlank(deviceInfo.storageClass)) {
             continue;
           }

@@ -82,13 +82,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    boolean isK8sUniverse =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(CloudType.kubernetes);
+    boolean isK8sUniverse = Util.isKubernetesBasedUniverse(universe);
     boolean isDedicatedNodeUniverse =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes;
     // For K8s and dedicated node universe, we can run the check on any node in the primary cluster.
@@ -217,9 +211,12 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
           .executeCommandInPodContainer(
               podConfig, namespace, podName, "yb-tserver", extractPackageCommand);
     } else {
-      boolean isNodeAgentSupported =
-          NodeAgentClient.isCloudTypeSupported(
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+      CloudType providerType =
+          universe
+              .getUniverseDetails()
+              .getClusterByUuid(node.placementUuid)
+              .getProviderCloudType(node);
+      boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParamsToDownloadSoftware(
               universe, node, taskParams().ybSoftwareVersion);
@@ -401,12 +398,17 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     params.setUniverseUUID(universe.getUniverseUUID());
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     params.instanceType = node.cloudInfo.instance_type;
     params.nodeName = node.nodeName;
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
-    if (userIntent.providerType.equals(CloudType.onprem)) {
+    CloudType providerType =
+        universe
+            .getUniverseDetails()
+            .getClusterByUuid(node.placementUuid)
+            .getProviderCloudType(node);
+    if (providerType.equals(CloudType.onprem)) {
       params.instanceType = node.cloudInfo.instance_type;
     }
 

@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -166,10 +167,12 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           }
 
           userIntent.numNodes += 2;
-          userIntent.providerType = CloudType.aws;
-          userIntent.deviceInfo = new DeviceInfo();
-          userIntent.deviceInfo.storageType = StorageType.Persistent;
-          userIntent.deviceInfo.numVolumes = 1;
+          DeviceInfo deviceInfo = new DeviceInfo();
+          deviceInfo.storageType = StorageType.Persistent;
+          deviceInfo.numVolumes = 1;
+          ProviderInitializer initializer = TestUtils.existingProviderInitializer(userIntent);
+          initializer.setProviderType(CloudType.aws);
+          initializer.setDeviceInfo(deviceInfo);
         };
 
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
@@ -341,10 +344,12 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           }
 
           userIntent.numNodes += 2;
-          userIntent.providerType = CloudType.aws;
-          userIntent.deviceInfo = new DeviceInfo();
-          userIntent.deviceInfo.storageType = StorageType.Persistent;
-          userIntent.deviceInfo.numVolumes = 1;
+          DeviceInfo deviceInfo = new DeviceInfo();
+          deviceInfo.storageType = StorageType.Persistent;
+          deviceInfo.numVolumes = 1;
+          ProviderInitializer initializer = TestUtils.existingProviderInitializer(userIntent);
+          initializer.setProviderType(CloudType.aws);
+          initializer.setDeviceInfo(deviceInfo);
         };
 
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
@@ -478,23 +483,27 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           UserIntent userIntent = primaryCluster.userIntent;
-          userIntent.providerType = CloudType.aws;
-          userIntent.deviceInfo = new DeviceInfo();
-          userIntent.deviceInfo.storageType = StorageType.Persistent;
-          userIntent.deviceInfo.numVolumes = 1;
+          UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
+          String instanceType = userIntent.getBaseInstanceType(providerUUID);
 
-          UniverseDefinitionTaskParams.ProviderSpecification azuSpec =
-              new UniverseDefinitionTaskParams.ProviderSpecification();
-          azuSpec.setProviderUUID(azuProvider.getUuid());
-          azuSpec.setProviderType(CloudType.azu);
-          DeviceInfo deviceInfo = new DeviceInfo();
-          deviceInfo.storageType = StorageType.Premium_LRS;
-          deviceInfo.volumeSize = 100;
-          deviceInfo.numVolumes = 1;
-          azuSpec.setNodesSpecs(TestUtils.tserverSpec("azuInstanceType", deviceInfo));
+          ProviderInitializer intentInitializer =
+              TestUtils.specificationProviderInitializer(userIntent, providerUUID);
+          DeviceInfo awsDeviceInfo = new DeviceInfo();
+          awsDeviceInfo.storageType = StorageType.Persistent;
+          awsDeviceInfo.numVolumes = 1;
+          intentInitializer.setProviderType(CloudType.aws);
+          intentInitializer.setInstanceType(instanceType);
+          intentInitializer.setDeviceInfo(awsDeviceInfo);
 
-          userIntent.providerSpecifications =
-              Arrays.asList(TestUtils.toProviderSpecification(userIntent), azuSpec);
+          DeviceInfo azuDeviceInfo = new DeviceInfo();
+          azuDeviceInfo.storageType = StorageType.Premium_LRS;
+          azuDeviceInfo.volumeSize = 100;
+          azuDeviceInfo.numVolumes = 1;
+          ProviderInitializer azuInitializer =
+              TestUtils.specificationProviderInitializer(userIntent, azuProvider.getUuid());
+          azuInitializer.setProviderType(CloudType.azu);
+          azuInitializer.setInstanceType("azuInstanceType");
+          azuInitializer.setDeviceInfo(azuDeviceInfo);
 
           PlacementInfo placementInfo = primaryCluster.placementInfo;
           PlacementInfoUtil.addPlacementZone(az4.getUuid(), placementInfo, 1, 2, false);
@@ -698,10 +707,12 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           }
 
           userIntent.numNodes += 2;
-          userIntent.providerType = CloudType.aws;
-          userIntent.deviceInfo = new DeviceInfo();
-          userIntent.deviceInfo.storageType = StorageType.Persistent;
-          userIntent.deviceInfo.numVolumes = 1;
+          DeviceInfo deviceInfo = new DeviceInfo();
+          deviceInfo.storageType = StorageType.Persistent;
+          deviceInfo.numVolumes = 1;
+          ProviderInitializer initializer = TestUtils.existingProviderInitializer(userIntent);
+          initializer.setProviderType(CloudType.aws);
+          initializer.setDeviceInfo(deviceInfo);
         };
 
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);

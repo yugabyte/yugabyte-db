@@ -3,11 +3,11 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
@@ -123,10 +123,8 @@ class YbcLogsComponent implements SupportBundleComponent {
 
       // Collect YBC server.conf file from the node home directory. Directory to get the server.conf
       // can vary between VM and k8s based universes.
-      CloudType cloudType =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
       String goToPathOnNode;
-      if (CloudType.kubernetes.equals(cloudType)) {
+      if (Util.isKubernetesBased(universe.getUniverseDetails().getPrimaryCluster())) {
         goToPathOnNode = KubernetesTaskBase.K8S_NODE_YW_DATA_DIR;
       } else {
         goToPathOnNode = nodeUniverseManager.getYbHomeDir(node, universe);

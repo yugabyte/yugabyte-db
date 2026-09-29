@@ -16,6 +16,7 @@ import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.compute.fluent.ComputeManagementClient;
 import com.azure.resourcemanager.compute.fluent.models.CapacityReservationGroupInner;
 import com.azure.resourcemanager.compute.fluent.models.CapacityReservationInner;
+import com.azure.resourcemanager.compute.fluent.models.DiskInner;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
 import com.azure.resourcemanager.compute.models.ApiErrorException;
 import com.azure.resourcemanager.compute.models.CapacityReservationUpdate;
@@ -253,6 +254,20 @@ public class AZUResourceGroupApiClient {
           INTERNAL_SERVER_ERROR, "Cannot find VM with name: " + vmName);
     }
     return vm;
+  }
+
+  public DiskInner getDiskByName(String diskName) {
+    DiskInner disk =
+        azureResourceManager
+            .disks()
+            .manager()
+            .serviceClient()
+            .getDisks()
+            .getByResourceGroup(resourceGroup, diskName);
+    if (disk == null) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Cannot find disk: " + diskName);
+    }
+    return disk;
   }
 
   public NetworkInterfaceInner getNetworkInterfaceByName(String networkInterfaceName) {

@@ -25,6 +25,7 @@ import com.google.api.services.compute.model.AllocationSpecificSKUReservation;
 import com.google.api.services.compute.model.AttachedDisk;
 import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
+import com.google.api.services.compute.model.Disk;
 import com.google.api.services.compute.model.Firewall;
 import com.google.api.services.compute.model.FirewallList;
 import com.google.api.services.compute.model.FirewallPolicy;
@@ -46,6 +47,7 @@ import com.google.api.services.compute.model.InstanceWithNamedPorts;
 import com.google.api.services.compute.model.Network;
 import com.google.api.services.compute.model.NetworkList;
 import com.google.api.services.compute.model.Operation;
+import com.google.api.services.compute.model.OperationList;
 import com.google.api.services.compute.model.Reservation;
 import com.google.api.services.compute.model.ReservationAggregatedList;
 import com.google.api.services.compute.model.ReservationList;
@@ -1236,5 +1238,100 @@ public class GCPProjectApiClient {
             .setFilter("name = \"" + reservationName + "\"")
             .execute();
     return CollectionUtils.isEmpty(list.getItems()) ? null : list.getItems().get(0);
+  }
+
+  /**
+   * Instance machine type, data disks ({@code index != 0}, same as ybops), and the latest
+   * zone-operation start for an update/resize of those disks. The disk resource has no last-resize
+   * field. Missing ops time is left null so the caller can fail closed.
+   */
+  public CloudAPI.NodeDiskSpec describeNodeDataDiskSpec(String zone, String instanceName)
+      throws IOException {
+    if (StringUtils.isBlank(zone) || StringUtils.isBlank(instanceName)) {
+      throw new PlatformServiceException(BAD_REQUEST, "GCP node is missing zone or instance name");
+    }
+    Instance instance = compute.instances().get(project, zone, instanceName).execute();
+    if (instance == null || CollectionUtils.isEmpty(instance.getDisks())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "GCP instance " + instanceName + " has no disks");
+    }
+    List<CloudAPI.NodeDiskSpec> perDisk = new ArrayList<>();
+    for (AttachedDisk attached : instance.getDisks()) {
+      if (attached.getIndex() == null || attached.getIndex() == 0) {
+        continue;
+      }
+      String diskName = CloudAPI.getResourceNameFromResourceUrl(attached.getSource());
+      if (StringUtils.isBlank(diskName)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "GCP data disk on " + instanceName + " has no source");
+      }
+      Disk disk = compute.disks().get(project, zone, diskName).execute();
+      perDisk.add(
+          new CloudAPI.NodeDiskSpec(
+              null,
+              toInt(disk.getProvisionedIops()),
+              toInt(disk.getProvisionedThroughput()),
+              toInt(disk.getSizeGb()),
+              latestDiskModifyStart(zone, disk)));
+    }
+    return CloudAPI.NodeDiskSpec.mergeDataDisks(
+        CloudAPI.getResourceNameFromResourceUrl(instance.getMachineType()), perDisk);
+  }
+
+  private Instant latestDiskModifyStart(String zone, Disk disk) throws IOException {
+    String targetLink = disk.getSelfLink();
+    if (StringUtils.isBlank(targetLink)) {
+      return null;
+    }
+    Instant latest = null;
+    String pageToken = null;
+    String filter = "targetLink eq " + targetLink;
+    do {
+      Compute.ZoneOperations.List request =
+          compute.zoneOperations().list(project, zone).setFilter(filter);
+      if (StringUtils.isNotBlank(pageToken)) {
+        request.setPageToken(pageToken);
+      }
+      OperationList operations = request.execute();
+      if (operations.getItems() != null) {
+        for (Operation operation : operations.getItems()) {
+          if (!isDiskModifyOperation(operation.getOperationType())) {
+            continue;
+          }
+          Instant start = parseGcpTime(operation.getStartTime());
+          if (start != null && (latest == null || start.isAfter(latest))) {
+            latest = start;
+          }
+        }
+      }
+      pageToken = operations.getNextPageToken();
+    } while (StringUtils.isNotBlank(pageToken));
+    return latest;
+  }
+
+  private static boolean isDiskModifyOperation(String operationType) {
+    if (operationType == null) {
+      return false;
+    }
+    String type = operationType.toLowerCase();
+    return type.equals("update")
+        || type.equals("resize")
+        || type.contains("update")
+        || type.contains("resize");
+  }
+
+  private static Instant parseGcpTime(String startTime) {
+    if (StringUtils.isBlank(startTime)) {
+      return null;
+    }
+    try {
+      return OffsetDateTime.parse(startTime).toInstant();
+    } catch (DateTimeParseException ignored) {
+      return Instant.parse(startTime);
+    }
+  }
+
+  private static Integer toInt(Long value) {
+    return value == null ? null : Math.toIntExact(value);
   }
 }

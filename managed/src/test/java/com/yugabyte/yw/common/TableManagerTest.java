@@ -111,12 +111,18 @@ public class TableManagerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams uniParams = new UniverseDefinitionTaskParams();
     uniParams.nodePrefix = "yb-1-" + testUniverse.getName();
     UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.accessKeyCode = keyCode;
     userIntent.ybSoftwareVersion = softwareVersion;
-    userIntent.provider = testProvider.getUuid().toString();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
+
+    TestUtils.initUserIntent(
+        userIntent,
+        testProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        keyCode);
+
     // userIntent.enableYSQLAuth = false;
     if (enableTLS) {
       userIntent.enableNodeToNodeEncrypt = true;

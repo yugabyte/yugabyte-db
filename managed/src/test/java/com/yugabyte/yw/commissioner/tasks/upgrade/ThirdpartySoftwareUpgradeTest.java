@@ -75,9 +75,10 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         details -> {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getUniverseDetails().getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.getUuid().toString();
-          userIntent.providerType = Common.CloudType.onprem;
-          userIntent.accessKeyCode = ApiUtils.DEFAULT_ACCESS_KEY_CODE;
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(onPremProvider.getUuid())
+              .setProviderType(Common.CloudType.onprem)
+              .setAccessCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
         });
     expectedUniverseVersion++;
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
@@ -96,9 +97,10 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         details -> {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getUniverseDetails().getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.getUuid().toString();
-          userIntent.providerType = Common.CloudType.onprem;
-          userIntent.accessKeyCode = ApiUtils.DEFAULT_ACCESS_KEY_CODE;
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(onPremProvider.getUuid())
+              .setProviderType(Common.CloudType.onprem)
+              .setAccessCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
         });
     expectedUniverseVersion++;
     testInstanceReprovision(true);

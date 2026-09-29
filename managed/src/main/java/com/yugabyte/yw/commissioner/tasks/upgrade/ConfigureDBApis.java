@@ -76,7 +76,8 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                     node -> {
                       Cluster cluster =
                           universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-                      return cluster != null && cluster.userIntent.providerType == CloudType.onprem;
+                      return cluster != null
+                          && cluster.getProviderCloudType(node) == CloudType.onprem;
                     })
                 .collect(Collectors.toList());
         if (!onpremNodes.isEmpty()) {

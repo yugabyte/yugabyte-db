@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -123,18 +124,20 @@ public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
           @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams params = universe.getUniverseDetails();
-            params.clusters.get(0).userIntent.ybSoftwareVersion = "2.23.0.0-b540";
-            params.clusters.get(0).userIntent.deviceInfo = new DeviceInfo();
-            params.clusters.get(0).userIntent.deviceInfo.volumeSize = 100;
+            UniverseDefinitionTaskParams.UserIntent userIntent = params.clusters.get(0).userIntent;
+            userIntent.ybSoftwareVersion = "2.23.0.0-b540";
+
+            DeviceInfo deviceInfo = new DeviceInfo();
+            deviceInfo.volumeSize = 100;
+
+            TestUtils.existingProviderInitializer(userIntent).setDeviceInfo(deviceInfo);
             params.placementModificationTaskUuid = placementTaskUUID;
             universe.setUniverseDetails(params);
           }
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(
-                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+        Util.getSingleProvider(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     // KUBECONFIG only at provider level so getConfigPerAZ succeeds (region/AZ have no kube config).
     Map<String, String> providerOnlyKubeConfig = new HashMap<>();
     providerOnlyKubeConfig.put("KUBECONFIG", "/tmp/test-kubeconfig");
@@ -172,8 +175,13 @@ public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
             });
     // Update volume size in task
     UniverseDefinitionTaskParams taskParams = defaultUniverse.getUniverseDetails();
-    taskParams.clusters.get(0).userIntent.deviceInfo = new DeviceInfo();
-    taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize = 110;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 110;
+
+    TestUtils.existingProviderInitializer(taskParams.clusters.get(0).userIntent)
+        .setDeviceInfo(deviceInfo);
+
     TaskInfo tInfo = new TaskInfo(TaskType.EditKubernetesUniverse, placementTaskUUID);
     tInfo.setOwner("test");
     tInfo.setTaskParams(Json.toJson(taskParams));

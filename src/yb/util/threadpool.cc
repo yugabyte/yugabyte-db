@@ -72,7 +72,7 @@ ThreadPoolBuilder::ThreadPoolBuilder(std::string name)
     : options_(ThreadPoolOptions {
         .name = std::move(name),
         .max_workers = make_unsigned(NumEffectiveCPUs()),
-        .idle_timeout = MonoDelta::FromMilliseconds(500),
+        .idle_timeout = DefaultIdleTimeout(),
       }) {}
 
 Status ThreadPool::SubmitClosure(const Closure& task) {

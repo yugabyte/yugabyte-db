@@ -149,6 +149,10 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexPtr IndexForTable(
       const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
 
+  // Stamps `frontier` as flushed on every vector index, see
+  // DocVectorIndex::ModifyFlushedFrontier.
+  Status ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier);
+
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
 

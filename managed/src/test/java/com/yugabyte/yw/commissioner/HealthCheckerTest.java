@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -230,7 +231,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    userIntent.accessKeyCode = accessKey.getKeyCode();
+    TestUtils.existingProviderInitializer(userIntent).setAccessCode(accessKey.getKeyCode());
     userIntent.numNodes = 3;
     return Universe.saveDetails(
         universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
@@ -570,7 +571,7 @@ public class HealthCheckerTest extends FakeDBApplication {
           UniverseDefinitionTaskParams details = univ.getUniverseDetails();
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getPrimaryCluster().userIntent;
-          userIntent.provider = UUID.randomUUID().toString();
+          TestUtils.existingProviderInitializer(userIntent).setProviderUUID(UUID.randomUUID());
           univ.setUniverseDetails(details);
         });
     setupAlertingData(null, false, false);

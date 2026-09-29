@@ -5,9 +5,9 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.Sets;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
@@ -34,7 +34,7 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Check if universe type is kubernetes.
-    if (userIntent.providerType != CloudType.kubernetes) {
+    if (!Util.isKubernetesBased(userIntent)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "The universe type must be kubernetes to use k8s overrides upgrade API.");

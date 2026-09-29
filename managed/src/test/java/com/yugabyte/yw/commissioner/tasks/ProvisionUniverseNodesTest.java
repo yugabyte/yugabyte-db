@@ -64,10 +64,16 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.providerType = Common.CloudType.aws;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider.getUuid(),
+        Common.CloudType.aws,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
     defaultUniverse = createUniverse(defaultCustomer.getId());
@@ -113,8 +119,9 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.getUuid().toString();
-          userIntent.providerType = Common.CloudType.onprem;
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(onPremProvider.getUuid())
+              .setProviderType(Common.CloudType.onprem);
           userIntent.regionList = ImmutableList.of(onPremRegion.getUuid());
         });
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());

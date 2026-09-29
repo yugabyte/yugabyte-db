@@ -56,7 +56,7 @@ public class CheckGlibc extends UniverseTaskBase {
       Universe universe = getUniverse();
       UniverseDefinitionTaskParams.Cluster cluster =
           universe.getUniverseDetails().getPrimaryCluster();
-      if (cluster.userIntent.providerType == Common.CloudType.local) {
+      if (cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.local)) {
         log.info("Skipping check for local provider");
         return;
       }

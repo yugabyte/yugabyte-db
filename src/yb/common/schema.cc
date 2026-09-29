@@ -202,6 +202,7 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   pb->set_retain_delete_markers(retain_delete_markers_);
   pb->set_partitioning_version(partitioning_version_);
   pb->set_owns_vector_reverse_mapping(owns_vector_reverse_mapping_);
+  pb->set_skip_vector_reverse_mapping(!writes_vector_reverse_mapping_);
   if (HasReplicaIdentity()) {
     pb->set_ysql_replica_identity(*ysql_replica_identity_);
   }
@@ -239,6 +240,7 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   table_properties.set_partitioning_version(
       pb.has_partitioning_version() ? pb.partitioning_version() : 0);
   table_properties.owns_vector_reverse_mapping_ = pb.owns_vector_reverse_mapping();
+  table_properties.writes_vector_reverse_mapping_ = !pb.skip_vector_reverse_mapping();
   return table_properties;
 }
 
@@ -272,9 +274,9 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   // and the setter should be removed (refer to owns_vector_reverse_mapping handling).
   set_partitioning_version(pb.has_partitioning_version() ? pb.partitioning_version() : 0);
 
-  // owns_vector_reverse_mapping is fixed at table creation (master CreateTable) and restored from
-  // backup metadata. It is intentionally not merged here so ALTER TABLE cannot change the value
-  // after table creation.
+  // owns_vector_reverse_mapping and writes_vector_reverse_mapping are fixed at table creation
+  // (master CreateTable) and restored from backup metadata. They are intentionally not merged here
+  // so ALTER TABLE cannot change the values after table creation.
 }
 
 void TableProperties::Reset() {
@@ -291,6 +293,7 @@ void TableProperties::Reset() {
                                                         : FLAGS_TEST_partitioning_version;
   ysql_replica_identity_ = std::nullopt;
   owns_vector_reverse_mapping_ = false;
+  writes_vector_reverse_mapping_ = true;
 }
 
 bool TableProperties::IsValidTTL(int64_t ttl_msec) {
@@ -304,7 +307,7 @@ bool TableProperties::IsEffectiveTTL(int64_t ttl_msec) {
 string TableProperties::ToString() const {
   auto fields = YB_FIELDS_TO_STRING((BOOST_PP_IDENTITY(_)),
       contain_counters, is_transactional, consistency_level, is_ysql_catalog_table,
-      partitioning_version, owns_vector_reverse_mapping) " ";
+      partitioning_version, owns_vector_reverse_mapping, writes_vector_reverse_mapping) " ";
 
   if (HasDefaultTimeToLive()) {
     fields += Format("default_time_to_live: $0 ", default_time_to_live_);

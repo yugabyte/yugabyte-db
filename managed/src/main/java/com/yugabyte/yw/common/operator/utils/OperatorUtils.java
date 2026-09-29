@@ -771,9 +771,9 @@ public class OperatorUtils {
           .forEach(
               azUUID -> {
                 DeviceInfo tsDeviceInfo =
-                    curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                    curCluster.userIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
                 DeviceInfo newTsDeviceInfo =
-                    newIntentClone.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                    newIntentClone.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
                 log.debug(
                     "Comparing tserver device info for AZ {}: old {}, new {}",
                     azUUID,
@@ -784,9 +784,9 @@ public class OperatorUtils {
 
                 if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
-                      curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                      curCluster.userIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
                   DeviceInfo newMasterDeviceInfo =
-                      newIntentClone.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                      newIntentClone.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
                   log.debug(
                       "Comparing master device info for AZ {}: old {}, new {}",
                       azUUID,
@@ -800,15 +800,17 @@ public class OperatorUtils {
       return deviceInfoChanged.get();
     } else {
       // volumeSize is an Integer: compare by value, not by reference.
+      UUID providerUUID = curCluster.userIntent.maybeGetSingleProviderUUID().get();
       boolean tserverSizeChanged =
           !Objects.equals(
-              curCluster.userIntent.deviceInfo.volumeSize, newIntent.deviceInfo.volumeSize);
+              curCluster.userIntent.getBaseDeviceInfo(providerUUID).volumeSize,
+              newIntent.getBaseDeviceInfo(providerUUID).volumeSize);
       boolean masterSizeChanged = false;
       if (curCluster.clusterType != ClusterType.ASYNC) {
         masterSizeChanged =
             !Objects.equals(
-                curCluster.userIntent.masterDeviceInfo.volumeSize,
-                newIntent.masterDeviceInfo.volumeSize);
+                curCluster.userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).volumeSize,
+                newIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).volumeSize);
       }
       return tserverSizeChanged || masterSizeChanged;
     }

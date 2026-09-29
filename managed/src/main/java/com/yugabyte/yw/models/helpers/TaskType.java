@@ -299,6 +299,11 @@ public enum TaskType {
       CustomerTask.TaskType.Add,
       CustomerTask.TargetType.Node),
 
+  RollbackAddNodeToUniverse(
+      com.yugabyte.yw.commissioner.tasks.RollbackAddNodeToUniverse.class,
+      CustomerTask.TaskType.RollbackAddNodeToUniverse,
+      CustomerTask.TargetType.Node),
+
   RemoveNodeFromUniverse(
       com.yugabyte.yw.commissioner.tasks.RemoveNodeFromUniverse.class,
       CustomerTask.TaskType.Remove,
@@ -486,6 +491,11 @@ public enum TaskType {
   ResizeNode(
       com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class,
       CustomerTask.TaskType.ResizeNode,
+      CustomerTask.TargetType.Universe),
+
+  RollbackResizeNode(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackResizeNode.class,
+      CustomerTask.TaskType.RollbackResizeNode,
       CustomerTask.TargetType.Universe),
 
   CreateTableSpacesInUniverse(
@@ -1425,6 +1435,7 @@ public enum TaskType {
           .put(GFlagsUpgrade, 32)
           .put(RebootUniverse, 33)
           .put(ResizeNode, 34)
+          .put(RollbackResizeNode, 66)
           .put(RestartUniverse, 35)
           .put(SoftwareUpgrade, 36)
           .put(SoftwareUpgradeYB, 36)
@@ -1459,6 +1470,7 @@ public enum TaskType {
           .put(UpdateK8sYbcThrottleFlags, 63)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
+          .put(RollbackAddNodeToUniverse, 79)
           .put(DeleteNodeFromUniverse, 71)
           .put(RebootNodeInUniverse, 72)
           .put(ReleaseInstanceFromUniverse, 73)

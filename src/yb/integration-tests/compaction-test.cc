@@ -575,6 +575,14 @@ class SstStatsAggregateTest : public CompactionTest {
   docdb::SstStatsAggregate CheckAgainstLiveFiles(const tablet::TabletPtr& tablet) {
     const auto stats = tablet->sst_stats();
     EXPECT_NE(stats, nullptr);
+    // A flush triggered by the last write may still be running, and its completion event reaches
+    // the listener only after the new file is already live.
+    EXPECT_OK(tablet->WaitForFlush());
+    EXPECT_OK(WaitFor(
+        [&] {
+          return stats->Get().aggregate.covered_files == tablet->GetCurrentVersionNumSSTFiles();
+        },
+        10s * kTimeMultiplier, "Wait for SST stats listener to catch up"));
     const auto before_resync = stats->Get();
     EXPECT_OK(tablet->ResyncSstStats());
     const auto after_resync = stats->Get();

@@ -36,6 +36,17 @@ class LoadBalancerMockedTest : public LoadBalancerMockedBase {
     }
     tablet->SetReplicaLocations(replica_map);
   }
+
+  // Report disk usage for a tserver as if it came from a heartbeat.
+  void SetTsDiskUsage(
+      const std::shared_ptr<TSDescriptor>& ts_desc, uint64_t used_space, uint64_t total_space) {
+    TServerMetricsPB metrics;
+    auto* path_metrics = metrics.add_path_metrics();
+    path_metrics->set_path_id("/data");
+    path_metrics->set_used_space(used_space);
+    path_metrics->set_total_space(total_space);
+    ts_desc->UpdateMetrics(metrics);
+  }
 };
 
 TEST_F(LoadBalancerMockedTest, TestStartingTablet) {
@@ -885,6 +896,27 @@ TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingNoSizeData) {
   ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
 }
 
+TEST_F(LoadBalancerMockedTestManyTablets, DiskFullAccountsForStartingReplicas) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  // Isolate the disk check from the inbound bytes limit.
+  GetOptions()->kMaxInboundBytesPerTs = 10_GB;
+  // Empty tserver, 95 MB usable (5% min free of 100 MB). Starting replicas are not in reported
+  // usage yet, but still count toward capacity, so only nine 10 MB adds fit.
+  SetTsDiskUsage(new_ts, 0, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  for (int i = 0; i < 9; ++i) {
+    ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  }
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
 TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingManyTablets) {
   PrepareTestStateSingleAz();
   auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
@@ -905,6 +937,53 @@ TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingManyTablets) {
   // If we start tracking over-replication on just one tserver, we should remove the following line
   // and assert that we can move all 30 tablets in one run.
   ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
+TEST_F(LoadBalancerMockedTest, DiskFullTserverRejectedAsDestination) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  // 4% free, below the 5% min.
+  SetTsDiskUsage(new_ts, 96_MB, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // The new tserver is the only tserver with fewer tablets than the others, so if it is rejected
+  // there is nowhere left to move a replica to.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
+TEST_F(LoadBalancerMockedTest, DiskFullTserverAcceptedWhenCheckDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_min_free_disk_space_pct) = 0;
+
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  SetTsDiskUsage(new_ts, 96_MB, 100_MB);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+}
+
+TEST_F(LoadBalancerMockedTest, UnknownDiskCapacityTserverAcceptedAsDestination) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 10_MB);
+  }
+  // Unknown capacity (no path metrics) must not block adds.
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
 }
 
 class LoadBalancerRF5MockedTest : public LoadBalancerMockedTest {

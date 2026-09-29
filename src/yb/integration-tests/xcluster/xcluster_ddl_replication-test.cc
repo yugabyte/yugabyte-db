@@ -317,7 +317,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
     ASSERT_OK(pconn.Execute("CREATE TABLE tbl(key int)"));
     ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(1, 100) as i"));
   }
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name, namespace_name2}));
   for (auto db_name : {namespace_name, namespace_name2}) {
     ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
   }
@@ -328,7 +328,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
     ASSERT_OK(pconn.Execute("ALTER TABLE tbl ADD COLUMN a int"));
     ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(101, 200) as i"));
   }
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name, namespace_name2}));
   for (auto db_name : {namespace_name, namespace_name2}) {
     ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
   }

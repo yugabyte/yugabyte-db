@@ -214,6 +214,7 @@ YbSkippableEntityType
 YbSortArrayContext
 YbSortInfo
 YbSplitType
+YbStatExtListEntry
 YbStatLabel
 YbStatLabelData
 YbStatementType

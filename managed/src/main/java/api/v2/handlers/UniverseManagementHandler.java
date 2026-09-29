@@ -605,8 +605,18 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     if (userIntent == null || userIntent.dedicatedNodes) {
       return;
     }
+    // Legacy fields are what configure() rejects. The specification initializer only updates
+    // provider specs, and there is no provider UUID to iterate before one is chosen.
     userIntent.masterInstanceType = null;
     userIntent.masterDeviceInfo = null;
+    userIntent
+        .getAllProviderUUIDs()
+        .forEach(
+            providerUUID -> {
+              Util.providerInitializerForExistingIntent(userIntent, providerUUID)
+                  .setMasterInstanceType(null)
+                  .setMasterDeviceInfo(null);
+            });
     UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
     if (overrides != null && overrides.getPerProcess() != null) {
       // Otherwise after dedicated->non-dedicated switch, any tserver overrides that remain will

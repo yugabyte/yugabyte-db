@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -91,8 +92,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     // Save the updates to the universe.
     Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", aws));
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider =
-        Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid().toString();
+
+    TestUtils.existingProviderInitializer(ui)
+        .setProviderUUID(
+            Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid());
+
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     // Read the value back.

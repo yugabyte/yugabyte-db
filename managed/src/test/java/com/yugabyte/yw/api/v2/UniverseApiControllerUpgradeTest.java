@@ -669,7 +669,12 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   @Test
   public void testV2UniverseUpdateProxyConfigProviderProxySpecsRequiresMulticloud() {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .maybeGetSingleProviderUUID()
+            .get();
     UniverseUpdateProxyConfig req =
         new UniverseUpdateProxyConfig()
             .addClustersItem(
@@ -754,7 +759,12 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   @Test
   public void testV2ResizeNodesProviderNodesSpecsRequiresMulticloud() {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .maybeGetSingleProviderUUID()
+            .get();
     UniverseResizeNodes req =
         new UniverseResizeNodes()
             .addClustersItem(

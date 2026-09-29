@@ -903,14 +903,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
 
     // TODO Support overriden instance types
-    InstanceType instanceType = InstanceType.get(provider.getUuid(), userIntent.instanceType);
+
+    InstanceType instanceType =
+        InstanceType.get(provider.getUuid(), userIntent.getBaseInstanceType(provider.getUuid()));
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       log.info(
           "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
-          "Unable to fetch InstanceType for {}, {}", provider.getUuid(), userIntent.instanceType);
+          "Unable to fetch InstanceType for {}, {}",
+          provider.getUuid(),
+          userIntent.getBaseInstanceType(provider.getUuid()));
       throw new RuntimeException(
-          "Unable to fetch InstanceType " + provider.getUuid() + ": " + userIntent.instanceType);
+          "Unable to fetch InstanceType "
+              + provider.getUuid()
+              + ": "
+              + userIntent.getBaseInstanceType(provider.getUuid()));
     }
 
     int numNodes = 0, replicationFactorZone = 0, replicationFactor = 0;
@@ -1871,9 +1878,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Add old deviceInfo/masterDeviceInfo spec if existing AZ
     if (!newlyAddedAZ) {
-      DeviceInfo savedTsDeviceInfo = savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+      DeviceInfo savedTsDeviceInfo =
+          savedUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo savedMasterDeviceInfo =
-          savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+          savedUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       if (savedTsDeviceInfo != null) {
         if (savedTsDeviceInfo.numVolumes != null) {
@@ -1901,8 +1909,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
 
-    DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
-    DeviceInfo taskMasterDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+    DeviceInfo taskTsDeviceInfo =
+        taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
+    DeviceInfo taskMasterDeviceInfo =
+        taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
     // For cases when resize is combined with full move and new size was persisted in userIntent
     // We need to pass the old size explicitly until all full move AZ nodes are moved.
     if (taskParams().oldMasterDiskSize != null) {
@@ -1960,9 +1970,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> moveOpMasterDiskSpecs =
           (HashMap) moveOpStorageOverrides.getOrDefault("master", new HashMap<>());
 
-      DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+      DeviceInfo taskTsDeviceInfo =
+          taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo taskMasterDeviceInfo =
-          taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+          taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       // moveOp storage attributes should use new volume attributes
       if (taskMasterDeviceInfo.numVolumes != null) {

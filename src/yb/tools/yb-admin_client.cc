@@ -570,6 +570,12 @@ ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)
       timeout_(timeout),
       initted_(false) {}
 
+ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout, string certs_dir)
+    : master_addr_list_(std::move(addrs)),
+      timeout_(timeout),
+      certs_dir_(std::move(certs_dir)),
+      initted_(false) {}
+
 ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout)
     : init_master_addr_(init_master_addr),
       timeout_(timeout),
@@ -653,7 +659,7 @@ Status ClusterAdminClient::Init() {
 
   // Check if caller will initialize the client and related parts.
   rpc::MessengerBuilder messenger_builder("yb-admin");
-  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder));
+  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder, certs_dir_));
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
@@ -5536,7 +5542,8 @@ Status ExpandColocationParent(
 Status ClusterAdminClient::VerifyXClusterGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const GroupVerifyOptions& options,
-    const std::unordered_set<TableId>& skip_source_table_ids) {
+    const std::unordered_set<TableId>& skip_source_table_ids,
+    const std::string& source_certs_dir) {
   const auto group_info = VERIFY_RESULT(
       XClusterClient().GetUniverseReplicationInfo(replication_group_id));
   SCHECK_FORMAT(
@@ -5551,7 +5558,7 @@ Status ClusterAdminClient::VerifyXClusterGroup(
       replication_group_id);
   const auto source_master_addrs =
       HostPort::ToCommaSeparatedString(group_info.source_master_addrs);
-  ClusterAdminClient source(source_master_addrs, timeout_);
+  ClusterAdminClient source(source_master_addrs, timeout_, source_certs_dir);
   RETURN_NOT_OK_PREPEND(
       source.Init(),
       Format("Unable to connect to source masters at [$0]", source_master_addrs));

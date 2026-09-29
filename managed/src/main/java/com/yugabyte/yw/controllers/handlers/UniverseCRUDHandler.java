@@ -332,9 +332,9 @@ public class UniverseCRUDHandler {
         continue;
       }
       for (ServerType serverType : new ServerType[] {ServerType.TSERVER, ServerType.MASTER}) {
-        DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForAz(azUUID, serverType);
+        DeviceInfo newDeviceInfo = cluster.userIntent.evaluateDeviceInfoForAz(azUUID, serverType);
         DeviceInfo currentDeviceInfo =
-            currentCluster.userIntent.getDeviceInfoForAz(azUUID, serverType);
+            currentCluster.userIntent.evaluateDeviceInfoForAz(azUUID, serverType);
         if (currentDeviceInfo != null
             && newDeviceInfo != null
             && currentDeviceInfo.volumeSize < newDeviceInfo.volumeSize) {
@@ -505,6 +505,22 @@ public class UniverseCRUDHandler {
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
     userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
     for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
+      if (userIntent.getBaseDeviceInfo(providerUUID) != null) {
+        userIntent.getBaseDeviceInfo(providerUUID).validate();
+      }
+      // Check the configured masterInstanceType and masterDeviceInfo fields,
+      // To avoid fallbacks to values from tserver.
+      if ((userIntent.masterDeviceInfo != null || userIntent.masterInstanceType != null)
+          && !userIntent.dedicatedNodes) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
+                + "master and tserver are selected.");
+      }
+      if (userIntent.dedicatedNodes
+          && userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER) != null) {
+        userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).validate();
+      }
       String accessKeyCode = userIntent.getAccessKeyCodeForProvider(providerUUID);
       Provider provider = Provider.getOrBadRequest(providerUUID);
       if (StringUtils.isEmpty(accessKeyCode)
@@ -1977,8 +1993,7 @@ public class UniverseCRUDHandler {
     // Update device info in userIntent for Kubernetes.
     // For operator-controlled universes, userIntentOverrides (and the universe-overrides
     // merge into base deviceInfo) are managed entirely by operator.
-    if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)
-        && !taskParams.isKubernetesOperatorControlled) {
+    if (Util.isKubernetesBased(readOnlyCluster) && !taskParams.isKubernetesOperatorControlled) {
       KubernetesUtil.applyVolumeChanges(
           readOnlyCluster.userIntent,
           readOnlyCluster.placementInfo,
@@ -2259,7 +2274,7 @@ public class UniverseCRUDHandler {
           throw new PlatformServiceException(
               Http.Status.METHOD_NOT_ALLOWED, "VM image upgrade is disabled");
         }
-
+        // Deprecated code path.
         Common.CloudType provider = primaryIntent.providerType;
         if (!(provider == Common.CloudType.gcp || provider == Common.CloudType.aws)) {
           throw new PlatformServiceException(
@@ -2280,6 +2295,7 @@ public class UniverseCRUDHandler {
         customerTaskType = CustomerTask.TaskType.UpgradeVMImage;
         break;
       case ResizeNode:
+        // Deprecated code path.
         Common.CloudType providerType =
             universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
         if (!(providerType.equals(Common.CloudType.gcp)
@@ -2340,6 +2356,7 @@ public class UniverseCRUDHandler {
           throw new PlatformServiceException(
               BAD_REQUEST, "certUUID is required for taskType: " + taskParams.taskType);
         }
+        // Deprecated code path.
         if (!taskParams
             .getPrimaryCluster()
             .userIntent
@@ -2433,14 +2450,15 @@ public class UniverseCRUDHandler {
     }
     UniverseDefinitionTaskParams.UserIntent primaryIntent =
         taskParams.getPrimaryCluster().userIntent;
-    if (taskParams.size <= primaryIntent.deviceInfo.volumeSize) {
+    UUID providerUUID = primaryIntent.maybeGetSingleProviderUUID().get();
+    if (taskParams.size <= primaryIntent.getBaseDeviceInfo(providerUUID).volumeSize) {
       throw new PlatformServiceException(BAD_REQUEST, "Size can only be increased.");
     }
     if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot modify instance volumes.");
     }
-
-    primaryIntent.deviceInfo.volumeSize = taskParams.size;
+    Util.providerInitializerForExistingIntent(primaryIntent, providerUUID)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize = taskParams.size);
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.expectedUniverseVersion = universe.getVersion();
     LOG.info(
@@ -2450,11 +2468,7 @@ public class UniverseCRUDHandler {
         universe.getVersion());
 
     TaskType taskType = TaskType.UpdateDiskSize;
-    if (taskParams
-        .getPrimaryCluster()
-        .userIntent
-        .providerType
-        .equals(Common.CloudType.kubernetes)) {
+    if (Util.isKubernetesBased(taskParams.getPrimaryCluster())) {
       taskType = TaskType.UpdateKubernetesDiskSize;
     }
 
@@ -2953,8 +2967,8 @@ public class UniverseCRUDHandler {
                         + "%s through EditUniverse: from %s to %s",
                     nodeDetails.nodeName, curInstanceType, newInstanceType));
           }
-          DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(nodeDetails);
-          DeviceInfo curDeviceInfo = curIntent.getDeviceInfoForNode(nodeDetails);
+          DeviceInfo newDeviceInfo = newIntent.evaluateDeviceInfoForNode(nodeDetails);
+          DeviceInfo curDeviceInfo = curIntent.evaluateDeviceInfoForNode(nodeDetails);
 
           // Verifying that device info is unchanged for existing nodes
           Map<String, Function<DeviceInfo, Object>> mappings =

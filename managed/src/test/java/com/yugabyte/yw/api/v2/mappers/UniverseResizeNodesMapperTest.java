@@ -21,6 +21,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -36,10 +37,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 
+@Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class UniverseResizeNodesMapperTest {
 
@@ -52,6 +55,8 @@ public class UniverseResizeNodesMapperTest {
   private Cluster createV1Cluster(UUID clusterUUID, ClusterType type) {
     Cluster c = new Cluster(type, new UserIntent());
     c.setUuid(clusterUUID);
+    TestUtils.getProviderInitializerForTests(c.userIntent, UUID.randomUUID())
+        .setProviderType(CloudType.aws);
     return c;
   }
 
@@ -80,9 +85,10 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 456, v1Params.sleepAfterTServerRestartMillis);
 
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
-    assertEquals("c5.2xlarge", cluster.userIntent.instanceType);
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+    assertEquals("c5.2xlarge", cluster.userIntent.getBaseInstanceType(providerUUID));
 
-    DeviceInfo device = cluster.userIntent.deviceInfo;
+    DeviceInfo device = cluster.userIntent.getBaseDeviceInfo(providerUUID);
     assertNotNull(device);
     assertEquals((Object) 500, device.volumeSize);
     assertEquals((Object) 3000, device.diskIops);
@@ -121,8 +127,9 @@ public class UniverseResizeNodesMapperTest {
     UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
 
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
-    assertEquals("c5.xlarge", cluster.userIntent.instanceType);
-    assertEquals((Object) 200, cluster.userIntent.deviceInfo.volumeSize);
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+    assertEquals("c5.xlarge", cluster.userIntent.getBaseInstanceType(providerUUID));
+    assertEquals((Object) 200, cluster.userIntent.getBaseDeviceInfo(providerUUID).volumeSize);
 
     // Instance type resolution works correctly via UserIntentOverrides
     NodeDetails masterNode = new NodeDetails();
@@ -152,15 +159,20 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 6000, tserverOverrides.getDeviceInfo().diskIops);
     assertEquals((Object) 250, tserverOverrides.getDeviceInfo().throughput);
 
-    // tserver path via getDeviceInfoForNode works for non-dedicated nodes
-    DeviceInfo tserverDevice = cluster.userIntent.getDeviceInfoForNode(tserverNode);
+    // tserver path via evaluateDeviceInfoForNode works for non-dedicated nodes
+    DeviceInfo tserverDevice = cluster.userIntent.evaluateDeviceInfoForNode(tserverNode);
     assertEquals((Object) 800, tserverDevice.volumeSize);
     assertEquals((Object) 6000, tserverDevice.diskIops);
     assertEquals((Object) 250, tserverDevice.throughput);
 
-    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
-    assertEquals((Object) 100, cluster.userIntent.masterDeviceInfo.volumeSize);
-    assertEquals((Object) 5000, cluster.userIntent.masterDeviceInfo.diskIops);
+    assertEquals(
+        "c5.4xlarge", cluster.userIntent.getBaseInstanceType(providerUUID, ServerType.MASTER));
+    assertEquals(
+        (Object) 100,
+        cluster.userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).volumeSize);
+    assertEquals(
+        (Object) 5000,
+        cluster.userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).diskIops);
   }
 
   @Test
@@ -181,11 +193,12 @@ public class UniverseResizeNodesMapperTest {
 
     ResizeNodeParams v1Params = new ResizeNodeParams();
     Cluster v1c = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    TestUtils.existingProviderInitializer(v1c.userIntent)
+        .setInstanceType("c5.xlarge")
+        .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100))
+        .setMasterInstanceType("c5.xlarge")
+        .setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
     v1c.userIntent.dedicatedNodes = true;
-    v1c.userIntent.instanceType = "c5.xlarge";
-    v1c.userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    v1c.userIntent.masterInstanceType = "c5.xlarge";
-    v1c.userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     v1Params.clusters.add(v1c);
 
     UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
@@ -194,12 +207,20 @@ public class UniverseResizeNodesMapperTest {
     NodeDetails masterNode = new NodeDetails();
     masterNode.dedicatedTo = ServerType.MASTER;
 
-    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+    assertEquals(
+        "c5.4xlarge", cluster.userIntent.getBaseInstanceType(providerUUID, ServerType.MASTER));
     assertEquals("c5.4xlarge", cluster.userIntent.getInstanceTypeForNode(masterNode));
-    assertEquals((Object) 200, cluster.userIntent.masterDeviceInfo.volumeSize);
-    assertEquals((Object) 6000, cluster.userIntent.masterDeviceInfo.diskIops);
-    assertEquals((Object) 1, cluster.userIntent.masterDeviceInfo.numVolumes);
-    assertEquals((Object) 200, cluster.userIntent.getDeviceInfoForNode(masterNode).volumeSize);
+    assertEquals(
+        (Object) 200,
+        cluster.userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).volumeSize);
+    assertEquals(
+        (Object) 6000,
+        cluster.userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).diskIops);
+    assertEquals(
+        (Object) 1,
+        cluster.userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).numVolumes);
+    assertEquals((Object) 200, cluster.userIntent.evaluateDeviceInfoForNode(masterNode).volumeSize);
   }
 
   @Test
@@ -240,21 +261,23 @@ public class UniverseResizeNodesMapperTest {
     UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
 
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
-    assertEquals("default-instance", cluster.userIntent.instanceType);
-    assertEquals((Object) 100, cluster.userIntent.deviceInfo.volumeSize);
-    assertEquals((Object) 1000, cluster.userIntent.deviceInfo.diskIops);
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+    assertEquals("default-instance", cluster.userIntent.getBaseInstanceType(providerUUID));
+    assertEquals((Object) 100, cluster.userIntent.getBaseDeviceInfo(providerUUID).volumeSize);
+    assertEquals((Object) 1000, cluster.userIntent.getBaseDeviceInfo(providerUUID).diskIops);
 
     // Unknown AZ falls back to cluster defaults
     NodeDetails defaultNode = new NodeDetails();
     defaultNode.azUuid = UUID.randomUUID();
     assertEquals("default-instance", cluster.userIntent.getInstanceTypeForNode(defaultNode));
-    assertEquals((Object) 100, cluster.userIntent.getDeviceInfoForNode(defaultNode).volumeSize);
+    assertEquals(
+        (Object) 100, cluster.userIntent.evaluateDeviceInfoForNode(defaultNode).volumeSize);
 
     // AZ1: instance type, storage overrides, and cgroup
     NodeDetails az1Node = new NodeDetails();
     az1Node.azUuid = azUUID1;
     assertEquals("az1-instance", cluster.userIntent.getInstanceTypeForNode(az1Node));
-    DeviceInfo az1Device = cluster.userIntent.getDeviceInfoForNode(az1Node);
+    DeviceInfo az1Device = cluster.userIntent.evaluateDeviceInfoForNode(az1Node);
     assertEquals((Object) 300, az1Device.volumeSize);
     assertEquals((Object) 4000, az1Device.diskIops);
 
@@ -262,7 +285,7 @@ public class UniverseResizeNodesMapperTest {
     NodeDetails az2Node = new NodeDetails();
     az2Node.azUuid = azUUID2;
     assertEquals("az2-instance", cluster.userIntent.getInstanceTypeForNode(az2Node));
-    DeviceInfo az2Device = cluster.userIntent.getDeviceInfoForNode(az2Node);
+    DeviceInfo az2Device = cluster.userIntent.evaluateDeviceInfoForNode(az2Node);
     assertEquals((Object) 600, az2Device.volumeSize);
     assertEquals((Object) 8000, az2Device.diskIops);
     assertEquals((Object) 500, az2Device.throughput);
@@ -297,7 +320,8 @@ public class UniverseResizeNodesMapperTest {
     UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
 
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
-    assertEquals("c5.xlarge", cluster.userIntent.instanceType);
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+    assertEquals("c5.xlarge", cluster.userIntent.getBaseInstanceType(providerUUID));
 
     assertEquals(
         "master_val",
@@ -346,6 +370,7 @@ public class UniverseResizeNodesMapperTest {
     UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
 
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
 
     assertNotNull(cluster.userIntent.masterK8SNodeResourceSpec);
     assertEquals(4.0, cluster.userIntent.masterK8SNodeResourceSpec.getCpuCoreCount(), 0.001);
@@ -355,7 +380,7 @@ public class UniverseResizeNodesMapperTest {
     assertEquals(8.0, cluster.userIntent.tserverK8SNodeResourceSpec.getCpuCoreCount(), 0.001);
     assertEquals(32.0, cluster.userIntent.tserverK8SNodeResourceSpec.getMemoryGib(), 0.001);
 
-    assertEquals((Object) 250, cluster.userIntent.deviceInfo.volumeSize);
+    assertEquals((Object) 250, cluster.userIntent.getBaseDeviceInfo(providerUUID).volumeSize);
   }
 
   @Test
@@ -385,7 +410,8 @@ public class UniverseResizeNodesMapperTest {
     UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
 
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
-    assertNull(cluster.userIntent.instanceType);
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+    assertNull(cluster.userIntent.getBaseInstanceType(providerUUID));
 
     assertNotNull(cluster.userIntent.masterK8SNodeResourceSpec);
     assertEquals(2.0, cluster.userIntent.masterK8SNodeResourceSpec.getCpuCoreCount(), 0.001);
@@ -428,16 +454,19 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 300, v1Params.sleepAfterTServerRestartMillis);
 
     Cluster primary = v1Params.getClusterByUuid(primaryUUID);
-    assertEquals("c5.4xlarge", primary.userIntent.instanceType);
-    assertEquals((Object) 1000, primary.userIntent.deviceInfo.volumeSize);
-    assertEquals((Object) 10000, primary.userIntent.deviceInfo.diskIops);
-    assertEquals((Object) 500, primary.userIntent.deviceInfo.throughput);
+    UUID providerUUID = primary.userIntent.maybeGetSingleProviderUUID().get();
+
+    assertEquals("c5.4xlarge", primary.userIntent.getBaseInstanceType(providerUUID));
+    assertEquals((Object) 1000, primary.userIntent.getBaseDeviceInfo(providerUUID).volumeSize);
+    assertEquals((Object) 10000, primary.userIntent.getBaseDeviceInfo(providerUUID).diskIops);
+    assertEquals((Object) 500, primary.userIntent.getBaseDeviceInfo(providerUUID).throughput);
 
     Cluster rr = v1Params.getClusterByUuid(rrUUID);
-    assertEquals("c5.xlarge", rr.userIntent.instanceType);
-    assertEquals((Object) 500, rr.userIntent.deviceInfo.volumeSize);
-    assertEquals((Object) 3000, rr.userIntent.deviceInfo.diskIops);
-    assertNull(rr.userIntent.deviceInfo.throughput);
+    UUID rrProviderUUID = rr.userIntent.maybeGetSingleProviderUUID().get();
+    assertEquals("c5.xlarge", rr.userIntent.getBaseInstanceType(rrProviderUUID));
+    assertEquals((Object) 500, rr.userIntent.getBaseDeviceInfo(rrProviderUUID).volumeSize);
+    assertEquals((Object) 3000, rr.userIntent.getBaseDeviceInfo(rrProviderUUID).diskIops);
+    assertNull(rr.userIntent.getBaseDeviceInfo(rrProviderUUID).throughput);
   }
 
   @Test
@@ -458,7 +487,8 @@ public class UniverseResizeNodesMapperTest {
     UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
 
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
-    DeviceInfo device = cluster.userIntent.deviceInfo;
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+    DeviceInfo device = cluster.userIntent.getBaseDeviceInfo(providerUUID);
     assertNotNull(device);
     assertEquals((Object) 750, device.volumeSize);
     assertNull(device.diskIops);
@@ -504,22 +534,24 @@ public class UniverseResizeNodesMapperTest {
     NodeDetails defaultNode = new NodeDetails();
     defaultNode.azUuid = UUID.randomUUID();
     assertEquals("default-type", cluster.userIntent.getInstanceTypeForNode(defaultNode));
-    assertEquals((Object) 200, cluster.userIntent.getDeviceInfoForNode(defaultNode).volumeSize);
-    assertEquals((Object) 1000, cluster.userIntent.getDeviceInfoForNode(defaultNode).diskIops);
-    assertEquals((Object) 100, cluster.userIntent.getDeviceInfoForNode(defaultNode).throughput);
+    assertEquals(
+        (Object) 200, cluster.userIntent.evaluateDeviceInfoForNode(defaultNode).volumeSize);
+    assertEquals((Object) 1000, cluster.userIntent.evaluateDeviceInfoForNode(defaultNode).diskIops);
+    assertEquals(
+        (Object) 100, cluster.userIntent.evaluateDeviceInfoForNode(defaultNode).throughput);
 
     // AZ1 overrides
     NodeDetails az1Node = new NodeDetails();
     az1Node.azUuid = azUUID1;
-    assertEquals((Object) 400, cluster.userIntent.getDeviceInfoForNode(az1Node).volumeSize);
-    assertEquals((Object) 2000, cluster.userIntent.getDeviceInfoForNode(az1Node).diskIops);
+    assertEquals((Object) 400, cluster.userIntent.evaluateDeviceInfoForNode(az1Node).volumeSize);
+    assertEquals((Object) 2000, cluster.userIntent.evaluateDeviceInfoForNode(az1Node).diskIops);
 
     // AZ2 overrides with all storage fields
     NodeDetails az2Node = new NodeDetails();
     az2Node.azUuid = azUUID2;
-    assertEquals((Object) 600, cluster.userIntent.getDeviceInfoForNode(az2Node).volumeSize);
-    assertEquals((Object) 5000, cluster.userIntent.getDeviceInfoForNode(az2Node).diskIops);
-    assertEquals((Object) 300, cluster.userIntent.getDeviceInfoForNode(az2Node).throughput);
+    assertEquals((Object) 600, cluster.userIntent.evaluateDeviceInfoForNode(az2Node).volumeSize);
+    assertEquals((Object) 5000, cluster.userIntent.evaluateDeviceInfoForNode(az2Node).diskIops);
+    assertEquals((Object) 300, cluster.userIntent.evaluateDeviceInfoForNode(az2Node).throughput);
   }
 
   @Test
@@ -609,7 +641,7 @@ public class UniverseResizeNodesMapperTest {
     Cluster cluster = v1Params.getClusterByUuid(cUUID);
     NodeDetails tserverNode = new NodeDetails();
     tserverNode.dedicatedTo = ServerType.TSERVER;
-    DeviceInfo resolved = cluster.userIntent.getDeviceInfoForNode(tserverNode);
+    DeviceInfo resolved = cluster.userIntent.evaluateDeviceInfoForNode(tserverNode);
 
     // The sparse per-process override must not erase fields the request did not mention -
     // storageClass in particular, since it defaults to "" rather than null (PLAT-22326).

@@ -380,12 +380,12 @@ public class YNPConfigGenerator {
     ynpNode.put(
         "configure_cgroup",
         Util.configureCgroup(persistedUserIntent, provider, params.isBlankNode(), confGetter));
-    DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
+    DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     List<String> mountPaths =
         getValidatedMountPaths(deviceInfo, provider.getCloudCode() != CloudType.onprem);
     // DeviceInfo stores custom mount points as CSV, while YNP consumes a shell word list.
     extraNode.put("mount_paths", String.join(" ", mountPaths));
-    if (userIntent.providerType == Common.CloudType.azu) {
+    if (provider.getCloudCode() == Common.CloudType.azu) {
       extraNode.put("disk_lun_indexes", getValidatedAzureLunIndexes(node, deviceInfo));
     }
     if (provider.getCloudCode() != CloudType.onprem) {
@@ -397,7 +397,7 @@ public class YNPConfigGenerator {
       List<String> devicePaths =
           this.queryHelper.getDeviceNames(
               provider,
-              userIntent.providerType,
+              provider.getCloudCode(),
               Integer.toString(deviceInfo.numVolumes),
               storageType,
               node.cloudInfo.region,
@@ -413,7 +413,7 @@ public class YNPConfigGenerator {
         if (imageBundleUUID != null) {
           ImageBundle.NodeProperties overwriteProperties =
               imageBundleUtil.getNodePropertiesOrFail(
-                  imageBundleUUID, node.getRegion(), userIntent.providerType.toString());
+                  imageBundleUUID, node.getRegion(), provider.getCloudCode().toString());
           if (overwriteProperties.getSshPort() != 22) {
             extraNode.put("custom_ssh_port", overwriteProperties.getSshPort());
           }

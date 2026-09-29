@@ -145,10 +145,19 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::s
   result.next_free_file_no = raw.next_free_file_no;
 
   // All chunks loaded, apply add/remove updates to get the current version.
+  // A chunk that holds no vector has no file and so gets no serial no, and an index accumulates
+  // one such chunk per frontier update, so they cannot share the serial no keyed map: it would
+  // keep one of them and drop the frontiers of all the others. They are never named by a removal
+  // either, since only a chunk that has a file can be removed, so keep them in a separate list.
   std::unordered_map<uint64_t, VectorLSMChunkPB*> chunks_map;
+  std::vector<VectorLSMChunkPB*> chunks_without_serial_no;
   for (auto& update : raw.updates) {
     for (auto& chunk : *update.mutable_add_chunks()) {
-      chunks_map.emplace(chunk.serial_no(), &chunk);
+      if (chunk.serial_no()) {
+        chunks_map.emplace(chunk.serial_no(), &chunk);
+      } else {
+        chunks_without_serial_no.push_back(&chunk);
+      }
     }
     for (const auto chunk_no : update.remove_chunks()) {
       if (!chunks_map.erase(chunk_no)) {
@@ -157,8 +166,11 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::s
     }
   }
 
-  result.chunks.reserve(chunks_map.size());
+  result.chunks.reserve(chunks_map.size() + chunks_without_serial_no.size());
   for (auto& [_, chunk] : chunks_map) {
+    result.chunks.push_back(std::move(*chunk));
+  }
+  for (auto* chunk : chunks_without_serial_no) {
     result.chunks.push_back(std::move(*chunk));
   }
 

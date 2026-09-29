@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -201,14 +202,20 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
             universe.getUniverseUUID(),
             u -> {
               UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
-              UniverseDefinitionTaskParams.ProviderSpecification ociSpec =
-                  new UniverseDefinitionTaskParams.ProviderSpecification();
-              ociSpec.setProviderType(Common.CloudType.oci);
-              ociSpec.setProviderUUID(ociProvider.getUuid());
-              ociSpec.setNodesSpecs(
-                  TestUtils.tserverSpec("VM.Standard.E4.Flex", intent.deviceInfo));
-              intent.providerSpecifications =
-                  Arrays.asList(TestUtils.toProviderSpecification(intent), ociSpec);
+              UUID providerUUID = intent.maybeGetSingleProviderUUID().get();
+              TestUtils.specificationProviderInitializer(intent, providerUUID)
+                  .setProviderType(intent.getProviderType(providerUUID))
+                  .setAccessCode(intent.accessKeyCode)
+                  .setInstanceTags(intent.instanceTags)
+                  .setDeviceInfo(intent.deviceInfo)
+                  .setInstanceType(intent.instanceType);
+
+              TestUtils.specificationProviderInitializer(intent, ociProvider.getUuid())
+                  .setProviderType(Common.CloudType.oci)
+                  .setInstanceType("VM.Standard.E4.Flex")
+                  .setDeviceInfo(intent.deviceInfo.clone());
+
+              assertEquals(2, intent.providerSpecifications.size());
 
               NodeDetails ociNode = new NodeDetails();
               ociNode.nodeIdx = intent.numNodes + 1;

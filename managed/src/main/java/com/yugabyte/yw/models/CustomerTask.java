@@ -192,6 +192,9 @@ public class CustomerTask extends Model {
     @EnumValue("RollbackEditUniverse")
     RollbackEditUniverse,
 
+    @EnumValue("RollbackAddNodeToUniverse")
+    RollbackAddNodeToUniverse,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -229,6 +232,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("ResizeNode")
     ResizeNode,
+
+    @EnumValue("RollbackResizeNode")
+    RollbackResizeNode,
 
     @Deprecated
     @EnumValue("UpdateCert")
@@ -488,6 +494,8 @@ public class CustomerTask extends Model {
           return completed ? "Decommissioned" : "Decommissioning";
         case ResizeNode:
           return completed ? "Resized Node" : "Resizing Node";
+        case RollbackResizeNode:
+          return completed ? "Rolled back node resize" : "Rolling back node resize";
         case Replace:
           return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
@@ -518,6 +526,8 @@ public class CustomerTask extends Model {
           return completed ? "Rolled back upgrade" : "Rolling back upgrade";
         case RollbackEditUniverse:
           return completed ? "Rolled back edit universe" : "Rolling back edit universe";
+        case RollbackAddNodeToUniverse:
+          return completed ? "Rolled back add node" : "Rolling back add node";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:

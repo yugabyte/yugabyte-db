@@ -94,8 +94,10 @@ public class UniverseImporter {
   }
 
   public void setTserverVolumeSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo;
+        userIntent.getBaseDeviceInfo(userIntent.maybeGetSingleProviderUUID().get());
     if (clusterDeviceInfo == null) {
       log.debug("No device info found for universe {}", universe.getUniverseUUID());
       return;
@@ -115,7 +117,11 @@ public class UniverseImporter {
 
   public void setReadReplicaTserverVolume(
       ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
-    com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo = cluster.userIntent.deviceInfo;
+
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo =
+        userIntent.getBaseDeviceInfo(userIntent.maybeGetSingleProviderUUID().get());
+
     if (clusterDeviceInfo == null) {
       log.debug("No device info found for read replica cluster {}", cluster.uuid);
       return;
@@ -188,8 +194,12 @@ public class UniverseImporter {
   }
 
   public void setMasterVolumeSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     com.yugabyte.yw.models.helpers.DeviceInfo deviceInfo =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo;
+        userIntent.getBaseDeviceInfo(
+            userIntent.maybeGetSingleProviderUUID().get(), ServerType.MASTER);
+
     if (deviceInfo == null) {
       log.debug("No master device info found for universe {}", universe.getUniverseUUID());
       return;

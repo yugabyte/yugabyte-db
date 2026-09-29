@@ -2526,14 +2526,19 @@ Status CatalogManager::ImportTableEntry(
     }
 
     // Restore table properties fixed at create time (partitioning_version,
-    // owns_vector_reverse_mapping) from backup snapshot metadata.
+    // owns_vector_reverse_mapping, skip_vector_reverse_mapping) from backup snapshot
+    // metadata.
     const bool restore_partitioning_version =
         persisted_schema.table_properties().partitioning_version() !=
         schema.table_properties().partitioning_version();
     const bool restore_owns_vector_reverse_mapping =
         persisted_schema.table_properties().owns_vector_reverse_mapping() !=
         schema.table_properties().owns_vector_reverse_mapping();
-    if (restore_partitioning_version || restore_owns_vector_reverse_mapping) {
+    const bool restore_skip_vector_reverse_mapping =
+        persisted_schema.table_properties().writes_vector_reverse_mapping() !=
+        schema.table_properties().writes_vector_reverse_mapping();
+    if (restore_partitioning_version || restore_owns_vector_reverse_mapping ||
+        restore_skip_vector_reverse_mapping) {
       auto l = table->LockForWrite();
       auto* table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
       if (restore_partitioning_version) {
@@ -2542,6 +2547,10 @@ Status CatalogManager::ImportTableEntry(
       if (restore_owns_vector_reverse_mapping) {
         table_props->set_owns_vector_reverse_mapping(
             schema.table_properties().owns_vector_reverse_mapping());
+      }
+      if (restore_skip_vector_reverse_mapping) {
+        table_props->set_skip_vector_reverse_mapping(
+            !schema.table_properties().writes_vector_reverse_mapping());
       }
 
       l.mutable_data()->pb.set_version(l->pb.version() + 1);

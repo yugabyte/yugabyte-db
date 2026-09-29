@@ -648,6 +648,15 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
+DEFINE_RUNTIME_bool(vector_index_store_payload, false,
+    "Whether newly created tables and vector indexes replace the vector reverse mapping "
+    "with a payload attached to every vector in the index chunks. The payload carries the ybctid, "
+    "so search resolves rows without the reverse mapping, and such a table writes no reverse "
+    "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
+    "for an index when it is created, and indexes of a table that writes no reverse mapping always "
+    "store the payload. Disabled by default, because deleted vectors are not removed from such an "
+    "index yet, see #33912.");
+
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
@@ -4705,6 +4714,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (is_vector_index) {
       auto& vector_index_options = *index_info.mutable_vector_idx_options();
       vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
+      // An index on a table that does not write the reverse mapping must store the payload, it is
+      // the only way for its search to resolve rows.
+      auto indexed_table_lock = indexed_table->LockForRead();
+      vector_index_options.set_store_payload(
+          FLAGS_vector_index_store_payload ||
+          indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
       auto backend = FLAGS_vector_index_backend;
       if (backend == kHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
@@ -6266,9 +6281,15 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   SchemaToPB(schema, metadata->mutable_schema());
 
   // Skipping the cases where the parameter is not required.
-  if (req.table_type() == PGSQL_TABLE_TYPE && !req.is_pg_catalog_table() && !IsIndex(req)
-      && EnableTableOwnedVectorReverseMapping()) {
-    metadata->mutable_schema()->mutable_table_properties()->set_owns_vector_reverse_mapping(true);
+  if (req.table_type() == PGSQL_TABLE_TYPE && !req.is_pg_catalog_table() && !IsIndex(req)) {
+    auto& table_properties = *metadata->mutable_schema()->mutable_table_properties();
+    if (EnableTableOwnedVectorReverseMapping()) {
+      table_properties.set_owns_vector_reverse_mapping(true);
+    }
+    // Fixed for the lifetime of the table: a table created while payloads are enabled never writes
+    // the reverse mapping, so all its vector indexes resolve search results via the payload. This
+    // keeps the reverse mapping entries and the chunks that replace them from ever mixing.
+    table_properties.set_skip_vector_reverse_mapping(FLAGS_vector_index_store_payload);
   }
 
   if (FLAGS_TEST_create_table_with_empty_pgschema_name) {

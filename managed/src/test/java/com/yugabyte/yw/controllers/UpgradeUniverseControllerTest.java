@@ -40,6 +40,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.CustomWsClientFactory;
@@ -54,6 +55,7 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -2033,8 +2035,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             universe -> {
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
-                  ApiUtils.getDummyDeviceInfo(1, 100);
+              TestUtils.existingProviderInitializer(
+                      universe.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
             });
     PlatformServiceException exception =
         assertThrows(
@@ -2043,7 +2046,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 runUpgrade(
                     defaultUniverse,
                     p -> {
-                      p.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
+                      TestUtils.updateDeviceInfo(
+                          p.getPrimaryCluster().userIntent,
+                          UniverseTaskBase.ServerType.TSERVER,
+                          deviceInfo -> deviceInfo.volumeSize--);
                     },
                     ResizeNodeParams.class,
                     "resize_node"));
@@ -2284,11 +2290,16 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
           userIntent.numNodes = 3;
-          userIntent.instanceType = instanceType.getInstanceTypeCode();
           userIntent.replicationFactor = 3;
-          userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-          userIntent.provider = provider.getUuid().toString();
           userIntent.regionList = ImmutableList.of(region.getUuid());
+
+          TestUtils.initUserIntent(
+              userIntent,
+              provider,
+              instanceType.getInstanceTypeCode(),
+              ApiUtils.getDummyDeviceInfo(1, 100),
+              "demo-access");
+
           universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
 
           universeDetails.nodeDetailsSet = new HashSet<>();

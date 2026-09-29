@@ -261,6 +261,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   // Creates a kubernetes universe (host-n1..n3, host-n1 in AZ "az-1") with the given overrides
   // persisted on the primary cluster's UserIntent, mimicking an operator-managed universe.
+  // The universe must be created on a kubernetes provider: cloud type is read from that provider,
+  // not from a providerType stamped onto an unrelated provider.
   private Universe createK8sUniverseWithOverrides(
       String universeName, String universeOverrides, Map<String, String> azOverrides) {
     if (Provider.get(customer.getUuid(), CloudType.kubernetes).isEmpty()) {
@@ -270,7 +272,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     }
     Universe u =
         Universe.saveDetails(
-            ModelFactory.createUniverse(universeName, customer.getId()).getUniverseUUID(),
+            ModelFactory.createUniverse(universeName, customer.getId(), CloudType.kubernetes)
+                .getUniverseUUID(),
             ApiUtils.mockUniverseUpdater("host", CloudType.kubernetes));
     return Universe.saveDetails(
         u.getUniverseUUID(),

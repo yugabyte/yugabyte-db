@@ -846,7 +846,8 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		  backtrace_functions &&
 		  matches_backtrace_functions(edata->funcname)) ||
 		 (IsYugaByteEnabled() && elevel >= yb_log_min_backtraces &&
-		  edata->sqlerrcode != ERRCODE_TOO_MANY_CONNECTIONS)))
+		  edata->sqlerrcode != ERRCODE_TOO_MANY_CONNECTIONS &&
+		  edata->sqlerrcode != ERRCODE_CONNECTION_FAILURE)))
 		set_backtrace(edata, 2);
 
 	/*

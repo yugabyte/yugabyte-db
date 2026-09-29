@@ -584,8 +584,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
                           .build())
                   .build());
           userIntent.providerSpecifications = new ArrayList<>(List.of(providerSpecification));
-          userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-          userIntent.deviceInfo = deviceInfo;
+          //          userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+          //          userIntent.deviceInfo = deviceInfo;
         },
         false);
     return Universe.getOrBadRequest(universe.getUniverseUUID());

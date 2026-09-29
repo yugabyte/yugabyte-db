@@ -41,6 +41,7 @@ DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(load_balancer_max_concurrent_moves_per_table);
 DECLARE_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_uint32(load_balancer_min_free_disk_space_pct);
 
 namespace yb {
 namespace master {
@@ -181,7 +182,8 @@ struct CBTabletServerMetadata {
 struct CBTabletServerGlobalMetadata {
   std::string ToString() {
     return YB_STRUCT_TO_STRING(
-        running_tablets_count, starting_tablets_count, leaders_count, starting_tablets_size);
+        running_tablets_count, starting_tablets_count, leaders_count, starting_tablets_size,
+        disk_used_bytes, disk_capacity_bytes);
   }
   // Stores global load counts for a tablet server.
   // See definitions of these counts in CBTabletServerMetadata.
@@ -190,6 +192,9 @@ struct CBTabletServerGlobalMetadata {
   int leaders_count = 0;
   // Size of all starting tablets on this TS, in bytes.
   size_t starting_tablets_size = 0;
+  // Disk usage and capacity summed over the data paths this TS reported in its last heartbeat.
+  uint64_t disk_used_bytes = 0;
+  uint64_t disk_capacity_bytes = 0;
 };
 
 struct Options {
@@ -313,6 +318,16 @@ class GlobalLoadState {
 
   // Get global leader load for a certain TS.
   int GetGlobalLeaderLoad(const TabletServerId& ts_uuid) const;
+
+  // Heartbeat-reported usage plus the size of the starting replicas.
+  uint64_t GetEstimatedDiskUsedBytes(const TabletServerId& ts_uuid) const;
+
+  // Whether the TS can take additional_bytes and still leave
+  // FLAGS_load_balancer_min_free_disk_space_pct of its capacity free.
+  bool HasFreeDiskSpaceFor(const TabletServerId& ts_uuid, uint64_t additional_bytes) const;
+
+  // For logging: TSs already below FLAGS_load_balancer_min_free_disk_space_pct.
+  std::vector<std::string> DescribeTabletServersLowOnDiskSpace() const;
 
   std::string ToString() {
     std::string out = "{ drive_aware: " + std::to_string(drive_aware_) + ", ts_info: {[";
@@ -642,7 +657,8 @@ class PerTableLoadState {
   DISALLOW_COPY_AND_ASSIGN(PerTableLoadState);
 }; // PerTableLoadState
 
-// Valid tservers should not include blacklisted tservers.
+// Valid tservers should not include blacklisted tservers. Disk space is not considered, so the
+// distribution returned here is not necessarily one the cluster balancer is able to reach.
 using TsTableLoadMap = std::unordered_map<TabletServerId, size_t>;
 Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
     const TSDescriptorVector& valid_tservers, const PlacementInfoPB& placement_info,
