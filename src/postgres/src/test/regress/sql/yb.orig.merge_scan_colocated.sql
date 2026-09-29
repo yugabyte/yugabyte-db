@@ -192,9 +192,9 @@
 \i :run_query
 
 -- =-var equivalence pinned by a constant, straddling the last sort column
--- The EquivalenceClass derives r1 = 5 and r2 = 5.  The merge order relies on
--- r1 ahead of the sort column r4, but not on r2 after it, so only r1 is a
--- stream key.
+-- The EquivalenceClass derives r1 = 5 and r2 = 5.  The merge order relies on r1
+-- before the sort column r4, but not on r2 after it, so only r1 is a stream
+-- key.
 -- Third hint pins the index.
 CREATE INDEX NONCONCURRENTLY r5n_r3_r1_r4_r2_idx ON r5n (r3 ASC, r1 ASC, r4 ASC, r2 ASC);
 \set query ':P :Q SELECT r1, r2, r4, n, r3 FROM r5n WHERE r3 IN (0, 1, 2) AND r1 = r2 AND r1 = 5 ORDER BY r4, n LIMIT 5;'
@@ -203,7 +203,7 @@ CREATE INDEX NONCONCURRENTLY r5n_r3_r1_r4_r2_idx ON r5n (r3 ASC, r1 ASC, r4 ASC,
 \unset Q3
 DROP INDEX r5n_r3_r1_r4_r2_idx;
 
--- =-const ahead of a pathkey that gets trimmed
+-- =-const before a pathkey that gets trimmed
 -- r2 = r1 gives r2 a pathkey that is useless for ORDER BY r4 and gets trimmed,
 -- so the merge sort key is r4 alone and r3, after it, is not a stream key.
 -- Third hint pins the index and turns sort off so that the merge scan is

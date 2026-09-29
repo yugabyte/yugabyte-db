@@ -82,7 +82,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 DROP INDEX idx;
 
 --
--- Index 4: a relabeled expression column held at one value, ahead of the stream
+-- Index 4: a relabeled expression column held at one value, before the stream
 -- column i2.
 --
 CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)

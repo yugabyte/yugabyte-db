@@ -596,7 +596,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (output identical to previous)
 DROP INDEX idx;
 --
--- Index 4: a relabeled expression column held at one value, ahead of the stream
+-- Index 4: a relabeled expression column held at one value, before the stream
 -- column i2.
 --
 CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
