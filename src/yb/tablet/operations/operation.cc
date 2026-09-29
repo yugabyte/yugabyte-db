@@ -40,10 +40,16 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+
+DEFINE_test_flag(bool, fail_operation_added_to_leader, false,
+                 "Force Operation::AddedToLeader to fail. Simulates the failure of its first "
+                 "step (acquiring the tablet while it shuts down), which is a race that cannot "
+                 "be triggered deterministically.");
 
 namespace yb {
 namespace tablet {
@@ -127,6 +133,9 @@ HybridTime Operation::WriteHybridTime() const {
 }
 
 Status Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
+  if (PREDICT_FALSE(FLAGS_TEST_fail_operation_added_to_leader)) {
+    return STATUS(IllegalState, "TEST: simulated AddedToLeader failure");
+  }
   HybridTime hybrid_time;
   auto tablet = VERIFY_RESULT(tablet_safe());
   if (use_mvcc()) {
