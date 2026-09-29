@@ -328,8 +328,15 @@ TEST_F(TServerSstStatsPathHandlerNoCollectorItest, ReportsFileWithoutStatistics)
   faststring page;
   ASSERT_OK(path_handlers_util::GetUrl(url, &page));
   ASSERT_STR_CONTAINS(page.ToString(), "No live SST file of this tablet carries collector");
+  ASSERT_STR_CONTAINS(page.ToString(), "--docdb_enable_sst_stats_collector was unset");
   // The page has nothing to merge, so it must not claim a distribution either.
   ASSERT_NOK(path_handlers_util::GetHtmlTableRows(url, "sst_stats_totals"));
+  // The file is still listed, with the reason it carries no statistics.
+  const auto file_rows =
+      ASSERT_RESULT(path_handlers_util::GetHtmlTableRows(url, "sst_stats_files"));
+  ASSERT_EQ(file_rows.size(), 1);
+  ASSERT_EQ(file_rows[0].size(), 12);
+  ASSERT_STR_CONTAINS(file_rows[0][11], "No DocDB SST statistics in properties");
 }
 
 }  // namespace yb::integration_tests
