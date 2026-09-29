@@ -172,7 +172,7 @@ Note the following:
 
 - The primary key for a partitioned table should always contain the partition key.
 - If you choose to define row triggers, you do so on individual partitions instead of the partitioned table.
-- For foreign keys on partitioned tables, see [Foreign keys on partitioned tables](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-keys-on-partitioned-tables).
+- Creating a foreign key reference on a partitioned table is not currently supported. See [Foreign keys on partitioned tables](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-keys-on-partitioned-tables).
 - A partition table inherits tablespaces from its parent.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 - If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
