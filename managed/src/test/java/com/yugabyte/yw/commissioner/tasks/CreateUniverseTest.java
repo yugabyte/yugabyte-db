@@ -71,7 +71,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
-          TaskType.InstanceExistCheck,
           TaskType.UpdateUniverseFields,
           TaskType.SetNodeStatus,
           TaskType.AnsibleDestroyServer,
@@ -118,7 +117,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
-          TaskType.InstanceExistCheck,
           TaskType.UpdateUniverseFields,
           TaskType.ValidateGFlags,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -328,7 +326,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     nonZ1Nodes.addAll(nodesByAZ.get(zone3.getUuid()));
 
     verifyNodeInteractionsCapacityReservation(
-        36,
+        30,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -406,7 +404,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", nodesByAZ.get(zone2.getUuid())))));
 
     verifyNodeInteractionsCapacityReservation(
-        36,
+        30,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -523,7 +521,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             Mockito.anyMap());
 
     verifyNodeInteractionsCapacityReservation(
-        36,
+        30,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -598,7 +596,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 "5", new ZoneData("region-2", nodesByAZ.get(zone3.getUuid())))));
 
     verifyNodeInteractionsCapacityReservation(
-        33,
+        27,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -703,7 +701,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                     "4", Arrays.asList(readonlyNodes.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        72,
+        60,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -785,7 +783,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 "6", new ZoneData("region-2", Arrays.asList(readonlyNodes.get("6"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        66,
+        54,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -1056,7 +1054,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     }
 
     verifyNodeInteractionsCapacityReservation(
-        33,
+        27,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -1147,7 +1145,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     }
 
     verifyNodeInteractionsCapacityReservation(
-        66,
+        54,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
