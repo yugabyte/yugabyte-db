@@ -3291,6 +3291,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  // The amp controller opens yb_storage at startup, so it must exist before the universe is
+  // handed over.
+  public void checkAndCreateYbStorageDatabaseTask(Cluster primaryCluster) {
+    if (primaryCluster.userIntent.enableYSQL
+        && confGetter.getGlobalConf(GlobalConfKeys.createYbStorageDb)) {
+      SubTaskGroup subTaskGroup =
+          createSubTaskGroup(
+              CreateYbStorageDatabase.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+      CreateYbStorageDatabase task = createTask(CreateYbStorageDatabase.class);
+      CreateYbStorageDatabase.Params params = new CreateYbStorageDatabase.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
   public SubTaskGroup createUpdateConsistencyCheckTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateConsistencyCheckTable");
     UpdateConsistencyCheck task = createTask(UpdateConsistencyCheck.class);

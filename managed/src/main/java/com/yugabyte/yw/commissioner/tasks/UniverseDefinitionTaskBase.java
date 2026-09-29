@@ -1212,6 +1212,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       checkAndCreateConsistencyCheckTableTask(primaryCluster);
     }
 
+    checkAndCreateYbStorageDatabaseTask(primaryCluster);
+
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 
