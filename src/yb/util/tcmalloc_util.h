@@ -42,7 +42,7 @@ int64_t GetTCMallocPageHeapFreeBytes();
 int64_t GetTCMallocPageHeapUnmappedBytes();
 
 // Attempts to return the given number of bytes to the operating system.
-void TCMallocReleaseMemoryToSystem();
+void TCMallocReleaseMemoryToSystem(int64_t bytes);
 
 void SetTCMallocTotalThreadCacheSize(int64_t max_size);
 
