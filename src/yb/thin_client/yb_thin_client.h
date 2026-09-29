@@ -80,6 +80,11 @@ typedef struct {
 // Connect to one or more tserver RPC endpoints ("host:port", default port 9100), open a pool of
 // ThinClientService sessions and start their keepalive. No master addresses are needed -- routing
 // is server-side.
+//
+// Connection i starts on the i-th endpoint that parses, wrapping around. A connection whose
+// endpoint stops answering (its connection breaks, or a heartbeat times out) moves on to the next
+// endpoint, and its sessions reopen there. Creating the client, and ybthin_table_open, skip
+// endpoints that are not answering.
 ybthin_status ybthin_client_create(const char* const* tserver_addrs,
                                    size_t n_addrs,
                                    const ybthin_tls_opts* tls,   // nullable
@@ -120,8 +125,8 @@ typedef struct {
   size_t n_columns;
 } ybthin_table_info;
 
-// Computes the table's pgsql table id and fetches its schema. Fails fast if the tserver or table is
-// unreachable, which makes it usable as a startup health check.
+// Computes the table's pgsql table id and fetches its schema from the first endpoint that answers.
+// Fails if none does or the table is missing, which makes it usable as a startup health check.
 ybthin_status ybthin_table_open(ybthin_client*, uint32_t db_oid,
                                 uint32_t table_oid, ybthin_table** out,
                                 ybthin_table_info* info_out);
@@ -250,8 +255,9 @@ typedef void (*ybthin_write_cb)(void* ctx, ybthin_status status);
 // server keeps no read state -- and paging with `read_time_ht` left 0 throughout is still
 // consistent: no rows are dropped mid-scan.
 // Continuation ops in one batch must all share the paging session that issued
-// them. Status is batch-level: any op failure fails the whole call with no partial results; on
-// YBTHIN_READ_RESTART re-issue the scan from a fresh page.
+// them; if that session was dropped or reopened, e.g. on another endpoint, the batch fails with
+// YBTHIN_READ_RESTART. Status is batch-level: any op failure fails the whole call with no partial
+// results; on YBTHIN_READ_RESTART re-issue the scan from a fresh page.
 void ybthin_read_async(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
                        uint64_t read_time_ht, ybthin_read_cb cb, void* ctx);
 
