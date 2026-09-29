@@ -104,7 +104,7 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
 | `log_sync_latency` | microseconds | counter | Time spent to flush (fsync) the WAL entries to disk. |
-| `log_wal_sync_overdue_ms` | milliseconds | gauge | Time by which the oldest unsynced WAL entry has exceeded [`interval_durable_wal_write_ms`](../../../../reference/configuration/yb-tserver/#interval-durable-wal-write-ms). The value is 0 when every entry is synced or still within the interval, and when durable WAL writes are enabled or the interval is disabled. When you aggregate tablets, use the maximum. |
+| `log_wal_sync_overdue_ms` | milliseconds | gauge | Time by which the oldest unsynced WAL entry has exceeded [`interval_durable_wal_write_ms`](../../../../reference/configuration/yb-tserver/#interval-durable-wal-write-ms). The value is 0 when every entry is synced or still within the interval, or durable WAL writes are enabled or the interval is disabled. When you aggregate tablets, use the maximum. |
 | `log_append_latency` | microseconds | counter | Time spent on appending a batch of values to the WAL. |
 | `log_group_commit_latency` | microseconds | counter | Time spent on committing an entire group. |
 | `log_bytes_logged`| bytes | counter | Number of bytes written to the WAL after the tablet starts. |
@@ -130,7 +130,7 @@ The metrics are enabled by default. Set [`export_drive_io_metrics`](../../../../
 | `drive_sync_time` | microseconds | counter | Cumulative time blocked in `fsync()` and `fdatasync()` on this drive. |
 | `drive_range_sync_count` | operations | counter | Number of `sync_file_range()` writeback calls on this drive since the server started. RocksDB uses these to pace SST writeback. |
 | `drive_range_sync_time` | microseconds | counter | Cumulative time in `sync_file_range()` writeback on this drive. Counted separately from `drive_sync_time`, because SST writeback can finish before the closing fsync. |
-| `drive_bytes_unsynced` | bytes | gauge | Approximate bytes written to this drive and not yet fsynced by YugabyteDB. An upper bound: kernel writeback and `Flush` or `RangeSync` do not decrease it, and `O_DIRECT` writes do not add to it. Compare drives with each other rather than treating the value as an absolute. |
+| `drive_bytes_unsynced` | bytes | gauge | Bytes written to files on this drive that are still open and have not been fsynced since. Closing a file drops those bytes from the gauge. Kernel writeback and `Flush` or `RangeSync` do not decrease it, and `O_DIRECT` writes do not add to it. |
 | `drive_sync_latency` | microseconds | counter | Latency of individual `fsync()` and `fdatasync()` calls on this drive. |
 
 ## YSQL cache metrics
