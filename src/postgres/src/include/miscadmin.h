@@ -28,6 +28,9 @@
 #include "datatype/timestamp.h" /* for TimestampTz */
 #include "pgtime.h"				/* for pg_time_t */
 
+/* YB includes */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 /*
  * YB_TODO_PG19MERGE: YB used to `#include "storage/proc.h"` here "for MyProc"
  * so callers that #include "miscadmin.h" got MyProc transitively. That
@@ -35,8 +38,6 @@
  * from this file). Removed; callers that need MyProc should include
  * "storage/proc.h" directly. See the corresponding note in storage/spin.h.
  */
-/* YB includes */
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #define InvalidPid				(-1)
 
@@ -442,7 +443,11 @@ typedef enum BackendType
 	YB_XCLUSTER_SETUP_BACKEND,
 } BackendType;
 
-#define BACKEND_NUM_TYPES (B_LOGGER + 1)
+/*
+ * YB: include YB_* values appended after B_LOGGER.  log_min_messages[] and
+ * other per-BackendType arrays are indexed by MyBackendType.
+ */
+#define BACKEND_NUM_TYPES (YB_XCLUSTER_SETUP_BACKEND + 1)
 
 extern PGDLLIMPORT BackendType MyBackendType;
 

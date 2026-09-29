@@ -787,11 +787,23 @@ static bool yb_pushdown_strict_inequality;
 /*
  * set default log_min_messages to WARNING for all process types
  */
-int			log_min_messages[] = {
+/* YB: sized to BACKEND_NUM_TYPES so YB_* values after B_LOGGER have slots. */
+int			log_min_messages[BACKEND_NUM_TYPES] = {
 #define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach) \
 	[bktype] = WARNING,
 #include "postmaster/proctypelist.h"
 #undef PG_PROCTYPE
+	/* YB: types after B_LOGGER are not listed in proctypelist.h. */
+	[YB_YSQL_CONN_MGR] = WARNING,
+	[YB_YSQL_CONN_MGR_WAL_SENDER] = WARNING,
+	[YB_YSQL_CONN_MGR_CTRL] = WARNING,
+	[YB_AUTO_ANALYZE_BACKEND] = WARNING,
+	[YB_INDEX_BACKFILL_DDL] = WARNING,
+	[YB_MATVIEW_REFRESH_DDL] = WARNING,
+	[YB_RELCACHE_INIT_BACKEND] = WARNING,
+	[YB_GLOBAL_VIEW_BACKEND] = WARNING,
+	[YB_XCLUSTER_DDL_QUEUE_BACKEND] = WARNING,
+	[YB_XCLUSTER_SETUP_BACKEND] = WARNING,
 };
 
 /*
