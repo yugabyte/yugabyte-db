@@ -31,7 +31,8 @@ hot read/write paths without embedding a full client.
   applies one Perform at a time, so concurrency comes from having many
   sessions; `ybthin_pool_opts` sizes the pool (read/write sessions packed
   onto connections). Reads round-robin the read sessions; upserts round-robin the
-  write sessions.
+  write sessions. A connection whose tserver stops answering moves on to the next
+  configured tserver, and its sessions reopen there.
 - `ybthin_table_open` / `ybthin_table_close` / `ybthin_columns_free` -- resolve a
   table by `(db_oid, table_oid)` and fetch its schema (columns in schema order:
   hash, then range, then value). Also the startup health check.
@@ -79,6 +80,10 @@ object) and **version-pair it with the tserver** it talks to.
 
 - `PgThinClientTest.OpenUpsertReadPaged` -- open table (schema asserted), upsert
   rows (cross-checked via SQL), and page a bounded scan.
+- `PgThinClientFailoverTest.*`: a pool whose tserver stops, or is unreachable
+  at create, moves to another tserver.
+- `PgThinClientExternalFailoverTest.WritesMoveOffAFrozenTserver`: the same
+  when the tserver hangs (SIGSTOP) instead of refusing connections.
 - `PgThinClientTlsTest.ClientCreateOverTls` -- under node-to-node +
   client-to-server encryption, a plaintext client is rejected by the TLS-only
   endpoint and a TLS `client_create` (test CA) succeeds.
