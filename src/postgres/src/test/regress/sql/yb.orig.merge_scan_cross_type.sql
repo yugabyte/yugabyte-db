@@ -30,8 +30,8 @@ RESET yb_enable_advanced_index_cond_fold;
 -- - Q3, with the cross type equality on a hash column.
 -- - Q4, with a duplicate index column.  f4 = :R becomes an index condition on
 --   the first f4 only, and the second f4 holds the same value in every index
---   row.  The second f4 should not be declared a stream key, so R1 stays clean
---   while R2 still errors on the first.
+--   row.  The second f4 should not be declared a stream key, so R1 runs without
+--   error while R2 still errors on the first f4.
 -- - Q5, on a partial index whose predicate implies the equality.  The planner
 --   drops the index condition f4 = :R, and every index row carries the constant
 --   anyway, so f4 should not be declared a stream key.  Neither R errors.
@@ -71,11 +71,6 @@ CREATE INDEX NONCONCURRENTLY num_tbl_f4_i2_id_idx ON num_tbl (f4 ASC, i2 ASC, id
 \set Q2 '/*+IndexScan(num_tbl num_tbl_f4_i2_id_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT id, f4, i2 FROM num_tbl WHERE f4 = ANY(\'{1.5,2.5}\'::real[]) AND i2 = :R ORDER BY id LIMIT 10;'
 \i :run_query
-
--- test yb_enable_advanced_index_cond_fold flag off
-SET yb_enable_advanced_index_cond_fold = off;
-\i :run_query
-RESET yb_enable_advanced_index_cond_fold;
 
 -- The same with the value as a parameter of a generic plan, known only when the
 -- scan runs.

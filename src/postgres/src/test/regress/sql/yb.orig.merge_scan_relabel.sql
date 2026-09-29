@@ -83,10 +83,7 @@ DROP INDEX idx;
 
 --
 -- Index 4: a relabeled expression column held at one value, ahead of the stream
--- column i2.  With v = '1', the single-value stream key (v::text) matches its
--- equality index condition only if the RelabelType on the index expression is
--- stripped too.  It then shows under Merge Stream Key and Merge Cond, and the
--- bind validation covers it.  With v IN, (v::text) streams by its SAOP instead.
+-- column i2.
 --
 CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
