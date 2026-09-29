@@ -27,6 +27,8 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/txn_error_injection.h"
@@ -233,6 +235,52 @@ Status CqlPopulateDocOps(
       doc_ops->emplace_back(std::move(write_op));
     }
     ++i;
+  }
+  return Status::OK();
+}
+
+// Always-on cap on the per-transaction-per-tablet intra-transaction write ID (#33499):
+// without the cap the uint32 counter wrapped silently at 2^32, and IDs at or above
+// kIntraTxnWriteIdLimit are reserved. Enforced here, before Raft submission, so an oversized
+// transaction gets a clean error with no WAL or intent side effects and no replica ever
+// evaluates the doomed batch. The participant's counter only advances at Raft apply, so
+// in-flight batches make this check approximate: kIntraTxnWriteIdSoftMargin absorbs any
+// realistic in-flight window, and TransactionalWriter's fail-stop check remains the backstop
+// against corrupt or incompatible replicated data.
+Status CheckIntraTxnWriteIdCap(
+    Tablet* tablet, const docdb::LWKeyValueWriteBatchPB& write_batch) {
+  // Covers the realistic in-flight (submitted but unapplied) intent count of one transaction
+  // on one tablet; consumes ~3% of the 2^31 foreground write-ID budget.
+  constexpr uint64_t kIntraTxnWriteIdSoftMargin = 1ULL << 26;
+
+  if (!write_batch.has_transaction()) {
+    return Status::OK();
+  }
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+      write_batch.transaction().transaction_id()));
+  const auto next_write_id =
+      VERIFY_RESULT(tablet->transaction_participant()->NextIntraTxnWriteIdHint(txn_id));
+  // Approximately one strong intent per write pair, read pair, and lock pair (weak intents do
+  // not consume the intra-transaction counter). Under skip_prefix_locks with SERIALIZABLE
+  // isolation, ancestor top-level keys also take strong intents, so actual consumption can
+  // exceed this count; the soft margin absorbs the undercount and the writer-side check
+  // backstops it.
+  const uint64_t batch_records = write_batch.write_pairs_size() +
+      write_batch.read_pairs_size() + write_batch.lock_pairs_size();
+  if (next_write_id + batch_records + kIntraTxnWriteIdSoftMargin > kIntraTxnWriteIdLimit) {
+    // Not IllegalState: the client-side TabletInvoker retries IllegalState against other
+    // replicas as a leadership failure (tablet_rpc.cc); QLError propagates to the client as a
+    // hard error. SQLSTATE 54000 mirrors PG's per-transaction command-counter limit
+    // ("cannot have more than 2^32-2 commands in a transaction", xact.c) -- the same shape of
+    // per-transaction counter exhaustion.
+    return STATUS(
+        QLError,
+        Format("Transaction $0 exceeds the maximum number of writes to a single tablet "
+               "(intra-transaction write ID $1 + $2 new records would cross the cap of $3)",
+               txn_id, next_write_id, batch_records,
+               kIntraTxnWriteIdLimit - kIntraTxnWriteIdSoftMargin),
+        Slice(),
+        PgsqlError(YBPgErrorCode::YB_PG_PROGRAM_LIMIT_EXCEEDED));
   }
   return Status::OK();
 }
@@ -1210,7 +1258,8 @@ Status WriteQuery::DoCompleteExecute() {
       paths.clear();
     }
   }
-  return Status::OK();
+
+  return CheckIntraTxnWriteIdCap(tablet.get(), write_batch);
 }
 
 Result<TabletPtr> WriteQuery::tablet_safe() const {
