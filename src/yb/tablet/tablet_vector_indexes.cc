@@ -445,9 +445,10 @@ class VectorIndexBackfillContext {
 class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
  public:
   VectorIndexBackfillHelper(
-      HybridTime backfill_ht, bool store_payload,
+      HybridTime backfill_ht, OpId op_id, bool store_payload,
       ReverseMappingBackfillerPtr reverse_mapping_backfiller)
       : VectorIndexBackfillContext(backfill_ht, store_payload),
+        op_id_(op_id),
         reverse_mapping_backfiller_(std::move(reverse_mapping_backfiller)) {
   }
 
@@ -476,6 +477,11 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     } else {
       frontiers.Largest().SetBackfillPosition(next_ybctid);
     }
+    // The backfill covers every write up to the op that created the index and later ones reach it
+    // live, so that OpId is the flushed OpId of a backfill chunk; it bounds bootstrap replay.
+    // Largest only: the entries come from the regular DB, so the chunk pins no WAL entry, see
+    // Tablet::EarliestNeededLogIndexForVectorIndexes.
+    frontiers.Largest().set_op_id(op_id_);
     docdb::InsertOptions options {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
@@ -493,6 +499,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   }
 
  private:
+  const OpId op_id_;
   size_t chunk_size_ = 0;
   size_t num_chunks_ = 0;
   ReverseMappingBackfillerPtr reverse_mapping_backfiller_ = nullptr;
@@ -566,7 +573,7 @@ Status TabletVectorIndexes::Backfill(
 
   // Expecting one row at most.
   VectorIndexBackfillHelper helper(
-      backfill_ht, store_payload, std::move(reverse_mapping_backfiller));
+      backfill_ht, op_id, store_payload, std::move(reverse_mapping_backfiller));
 
   // Convert the byte budget into a vector count using the index implementation's own per-vector
   // memory layout. The same number of vectors with different numbers of dimensions can consume
@@ -905,13 +912,27 @@ auto TabletVectorIndexes::FinishedBackfills()
   return result;
 }
 
+Status TabletVectorIndexes::ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
+  auto list = List();
+  if (!list) {
+    return Status::OK();
+  }
+  for (const auto& vector_index : *list) {
+    LOG_WITH_PREFIX(INFO)
+        << "Stamping flushed frontier of vector index " << vector_index->table_id() << ": "
+        << frontier.ToString();
+    RETURN_NOT_OK(vector_index->ModifyFlushedFrontier(frontier));
+  }
+  return Status::OK();
+}
+
 void TabletVectorIndexes::FillMaxPersistentOpIds(
     boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data) {
+  out.clear();
   auto list = List();
   if (!list) {
     return;
   }
-  out.clear();
   for (const auto& vector_index : *list) {
     out.push_back(MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
   }
