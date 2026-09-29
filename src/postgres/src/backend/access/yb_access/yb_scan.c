@@ -67,19 +67,16 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/resowner_private.h"
 #include "utils/selfuncs.h"
 #include "utils/snapmgr.h"
+#include "utils/sortsupport.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "ybgate/ybgate_api.h"
-
-/* YB includes*/
-#include "utils/sortsupport.h"
-#include "utils/wait_event.h"
 
 typedef struct YbAttnumBmsState
 {

@@ -39,7 +39,7 @@
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
-#include "utils/resowner_private.h"
+#include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/yb_inheritscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -55,6 +55,37 @@ static HTAB *YbPgInheritsCacheByParent;
 static HTAB *YbPgInheritsCacheByChild;
 
 static bool fully_loaded = false;
+
+/* ResourceOwner callbacks to hold YbPgInheritsCache references */
+
+static void ResOwnerReleaseYbPgInheritsRef(Datum res);
+static char *ResOwnerPrintYbPgInheritsRef(Datum res);
+
+static const ResourceOwnerDesc yb_pg_inherits_resowner_desc =
+{
+	.name = "YbPgInheritsCache reference",
+	.release_phase = RESOURCE_RELEASE_BEFORE_LOCKS,
+	.release_priority = RELEASE_PRIO_LAST,
+	.ReleaseResource = ResOwnerReleaseYbPgInheritsRef,
+	.DebugPrint = ResOwnerPrintYbPgInheritsRef
+};
+
+/* Convenience wrappers over ResourceOwnerRemember/Forget */
+static inline void
+ResourceOwnerRememberYbPgInheritsRef(ResourceOwner owner,
+									 YbPgInheritsCacheEntry entry)
+{
+	ResourceOwnerRemember(owner, PointerGetDatum(entry),
+						  &yb_pg_inherits_resowner_desc);
+}
+
+static inline void
+ResourceOwnerForgetYbPgInheritsRef(ResourceOwner owner,
+								   YbPgInheritsCacheEntry entry)
+{
+	ResourceOwnerForget(owner, PointerGetDatum(entry),
+						&yb_pg_inherits_resowner_desc);
+}
 
 static List *
 FindChildren(Oid parentOid)
@@ -104,15 +135,19 @@ YbPgInheritsCacheRelCallback(Datum arg, Oid relid)
 static void
 YbPgInheritsIncrementReferenceCount(YbPgInheritsCacheEntry entry)
 {
-	entry->refcount++;
 	if (IsBootstrapProcessingMode())
+	{
+		entry->refcount++;
 		return;
-	ResourceOwnerEnlargeYbPgInheritsRefs(CurrentResourceOwner);
+	}
+	ResourceOwnerEnlarge(CurrentResourceOwner);
+	entry->refcount++;
 	ResourceOwnerRememberYbPgInheritsRef(CurrentResourceOwner, entry);
 }
 
 static void
-YbPgInheritsDecrementReferenceCount(YbPgInheritsCacheEntry entry)
+YbPgInheritsDecrementReferenceCount(YbPgInheritsCacheEntry entry,
+									ResourceOwner owner)
 {
 	/*
 	 * The refcount should always be greater than 1. It should move to zero
@@ -125,8 +160,8 @@ YbPgInheritsDecrementReferenceCount(YbPgInheritsCacheEntry entry)
 	 */
 	Assert(entry->refcount >= 1);
 	--entry->refcount;
-	if (!IsBootstrapProcessingMode())
-		ResourceOwnerForgetYbPgInheritsRef(CurrentResourceOwner, entry);
+	if (owner)
+		ResourceOwnerForgetYbPgInheritsRef(owner, entry);
 }
 
 static List *
@@ -380,7 +415,9 @@ ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry)
 	elog(DEBUG3,
 		 "ReleaseYbPgInheritsCacheEntry for oid %d", entry->oid);
 
-	YbPgInheritsDecrementReferenceCount(entry);
+	YbPgInheritsDecrementReferenceCount(entry,
+										IsBootstrapProcessingMode() ?
+										NULL : CurrentResourceOwner);
 }
 
 
@@ -480,4 +517,27 @@ YbPgInheritsCacheInvalidate(Oid relid)
 	elog(DEBUG3, "YbPgInheritsCacheInvalidate: invalidate request for %d", relid);
 	YbPgInheritsCacheInvalidateImpl(relid, true);
 	YbPgInheritsCacheInvalidateImpl(relid, false);
+}
+
+/*
+ * ResourceOwner callbacks
+ *
+ * ResourceOwnerReleaseAll() removes the reference from the owner itself, and
+ * ResourceOwnerForget() errors once release has started, so release it
+ * without an owner.
+ */
+static void
+ResOwnerReleaseYbPgInheritsRef(Datum res)
+{
+	YbPgInheritsDecrementReferenceCount((YbPgInheritsCacheEntry) DatumGetPointer(res),
+										NULL);
+}
+
+static char *
+ResOwnerPrintYbPgInheritsRef(Datum res)
+{
+	YbPgInheritsCacheEntry entry = (YbPgInheritsCacheEntry) DatumGetPointer(res);
+
+	return psprintf("YbPgInheritsCache entry for oid %u has count %d",
+					entry->oid, entry->refcount);
 }
