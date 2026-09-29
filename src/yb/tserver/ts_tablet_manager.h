@@ -98,6 +98,7 @@ class RaftConfigPB;
 namespace tserver {
 class TabletServer;
 class FullCompactionManager;
+class WalSyncSweeper;
 
 using rocksdb::MemoryMonitor;
 
@@ -201,6 +202,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* read_pool() const { return read_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
+
+  // Lets a test drive one sweep pass deterministically instead of waiting for the timer.
+  WalSyncSweeper* TEST_wal_sync_sweeper() const { return wal_sync_sweeper_.get(); }
   ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
   ThreadPool* admin_triggered_compaction_pool() const {
     return admin_triggered_compaction_pool_.get();
@@ -930,6 +934,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
+
+  // Proactively fsyncs WALs that have unsynced data, covering the cases the UpdateConsensus-path
+  // check cannot reach (a leader's own WAL, RF=1, and the window after heartbeats stop).
+  std::unique_ptr<WalSyncSweeper> wal_sync_sweeper_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 

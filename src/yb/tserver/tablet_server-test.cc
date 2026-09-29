@@ -62,8 +62,11 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/wal_sync_sweeper.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/crc.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -89,12 +92,17 @@ DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(disable_clock_sync_error);
 DECLARE_string(metric_node_name);
+DECLARE_bool(never_fsync);
+DECLARE_bool(enable_wal_sync_sweeper);
+DECLARE_double(wal_sync_sweeper_drive_busy_fraction);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
 METRIC_DECLARE_counter(rows_inserted);
 METRIC_DECLARE_counter(rows_updated);
 METRIC_DECLARE_counter(rows_deleted);
 METRIC_DECLARE_gauge_uint64(untracked_memory);
+METRIC_DECLARE_gauge_uint64(wal_sync_sweeper_syncs_started);
+METRIC_DECLARE_gauge_uint64(wal_sync_sweeper_tablets_skipped_busy_drive);
 
 namespace yb::tserver {
 
@@ -368,6 +376,116 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
                 &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
   tablet.reset();
+}
+
+// The sweeper is the only thing that covers this case at all. UpdateConsensus is received by
+// followers, so the check on that path never runs on a leader, and this mini server's tablet is a
+// single-replica leader - which is also the RF=1 case, where nothing sends heartbeats to anyone.
+//
+// The property under test is that the sweep flushes without waiting for either threshold: the
+// interval and byte arms are left at their defaults (1000 ms / 1 MB) and neither is anywhere near
+// reached when the pass runs, so a resulting fsync can only have come from the sweeper.
+//
+// The per-drive throttle is deliberately taken out of the picture with an unreachable busy
+// fraction. Leaving it in made this test flaky: a mini server that has just started up has done
+// enough fsyncs that the drive legitimately reads as busy, and then the sweep correctly declines
+// and the assertion below correctly fails. That is the throttle working, not the flush being
+// broken, and it belongs in its own test - see TestWalSyncSweeperBacksOffOnBusyDrive.
+TEST_F(TabletServerTest, TestWalSyncSweeperFlushesIdleLeaderWal) {
+  // This fixture is shared with three dozen other tests in this binary, and the flags below are
+  // process-global: leaving the sweeper enabled behind us would change their behaviour.
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_sync_sweeper) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wal_sync_sweeper_drive_busy_fraction) = 1e9;
+
+  auto* sweeper = mini_server_->server()->tablet_manager()->TEST_wal_sync_sweeper();
+  ASSERT_NE(sweeper, nullptr);
+
+  auto peer = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+  auto* drive_stats = peer->log()->drive_io_stats();
+  ASSERT_NE(drive_stats, nullptr) << "FsManager should have registered this tablet's WAL drive";
+
+  // Flush whatever startup left unsynced, so the counters below move only for our own insert.
+  sweeper->TEST_RunOnePass();
+  SleepFor(MonoDelta::FromMilliseconds(50));
+
+  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
+  const auto syncs_before = drive_stats->sync_count();
+  const auto proactive_before = drive_stats->proactive_sync_count();
+
+  sweeper->TEST_RunOnePass();
+
+  ASSERT_OK(WaitFor(
+      [drive_stats, proactive_before] {
+        return drive_stats->proactive_sync_count() > proactive_before;
+      },
+      MonoDelta::FromSeconds(10), "the sweeper's fsync of the idle leader's WAL"));
+  ASSERT_GT(drive_stats->sync_count(), syncs_before);
+
+  // Only positive assertions here. These counters are per *drive*, so they also move for every
+  // other tablet's WAL, for SSTs and for metadata on the same mount, which makes them useless for
+  // asserting that something did not happen. The "and then it goes quiet" half of the contract is
+  // pinned in LogTest.TestSyncInBackgroundIfPendingIgnoresThresholds, where there is no server
+  // doing anything in the background.
+}
+
+// The other half: with the throttle set so that any fsync at all in the sampling window counts as
+// saturation, a tablet with genuinely unsynced data must be left alone. Without this, "the sweeper
+// flushes everything" and "the sweeper ignores its own throttle" look the same from outside.
+TEST_F(TabletServerTest, TestWalSyncSweeperBacksOffOnBusyDrive) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_sync_sweeper) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wal_sync_sweeper_drive_busy_fraction) = 0.5;
+
+  auto* sweeper = mini_server_->server()->tablet_manager()->TEST_wal_sync_sweeper();
+  ASSERT_NE(sweeper, nullptr);
+
+  auto peer = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+  auto* drive_stats = peer->log()->drive_io_stats();
+  ASSERT_NE(drive_stats, nullptr);
+
+  // A first pass, to give the throttle a baseline for this drive. A drive it has never seen is
+  // presumed idle, so this pass sweeps whatever startup left pending; the assertions below are
+  // about the second pass.
+  sweeper->TEST_RunOnePass();
+
+  // Device time that the *workload* spent, which is what the throttle measures. It has to be
+  // synthesized rather than provoked: an insert appends without necessarily fsyncing, and a sync
+  // the sweeper itself starts is attributed to the proactive counter and correctly subtracted back
+  // out - so driving this with a real sweeper-initiated fsync would leave the drive reading idle no
+  // matter how much device time it burned.
+  drive_stats->RecordSync(/* bytes_synced= */ 0, MonoDelta::FromMilliseconds(500));
+
+  // Something the sweeper would otherwise flush, so that a skip is meaningful rather than vacuous.
+  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
+
+  // Clears the 20 ms minimum sampling window, without which the pass keeps the previous not-busy
+  // verdict instead of recomputing. 500 ms of device time over a window this short is a duty cycle
+  // far above 0.5 whatever else the machine is doing.
+  SleepFor(MonoDelta::FromMilliseconds(30));
+
+  // Asserted on the sweeper's own counters rather than on the drive's. The verdict is per drive
+  // and every tablet on this server shares one, so a correct back-off means the sweep starts
+  // nothing at all - which is a statement the sweeper's counters can make and the drive's, shared
+  // with SSTs and metadata, cannot.
+  auto entity = mini_server_->server()->metric_entity();
+  auto started = entity->FindOrNull<AtomicGauge<uint64_t>>(METRIC_wal_sync_sweeper_syncs_started);
+  auto skipped = entity->FindOrNull<AtomicGauge<uint64_t>>(
+      METRIC_wal_sync_sweeper_tablets_skipped_busy_drive);
+  ASSERT_NE(started, nullptr);
+  ASSERT_NE(skipped, nullptr);
+
+  const auto started_before = started->value();
+  const auto skipped_before = skipped->value();
+  sweeper->TEST_RunOnePass();
+
+  ASSERT_EQ(started->value(), started_before)
+      << "the sweeper must not start an fsync on a drive it has judged saturated";
+  ASSERT_GT(skipped->value(), skipped_before)
+      << "and it must record the skip, so that an unthrottled sweep is distinguishable from a "
+         "sweep that found nothing to do";
 }
 
 TEST_F(TabletServerTest, TestInsert) {

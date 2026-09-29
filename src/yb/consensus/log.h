@@ -67,6 +67,7 @@
 namespace yb {
 
 class Cgroup;
+class DriveIoStats;
 class MetricEntity;
 class ThreadPool;
 
@@ -212,6 +213,42 @@ class Log : public RefCountedThreadSafe<Log> {
   // This never fsyncs on the calling thread, a kForceFsync is downgraded to a background sync
   // and hence is safe to call on a consensus thread.
   bool MaybeSyncInBackground() EXCLUDES(background_sync_token_mutex_);
+
+  // Like MaybeSyncInBackground(), but submits whenever anything is unsynced at all rather than
+  // only once a threshold has been crossed. Same never-fsync-on-the-calling-thread contract.
+  // Returns true if a background sync was submitted.
+  //
+  // For the server-level sweeper, which is deciding whether the *device* can afford another fsync
+  // right now rather than whether this tablet has waited long enough. Once the thresholds are out
+  // of the picture the pacing has to come from somewhere else, and the sweeper's per-drive
+  // throttle is that somewhere; consulting the thresholds here as well would just reintroduce the
+  // delay it is trying to remove.
+  //
+  // Cheaper than it sounds, and bounded in a way worth stating: a sync clears
+  // periodic_sync_needed_ until the next append, so the fsync rate this can produce for one tablet
+  // is min(caller's rate, that tablet's append rate). A tablet nobody is writing to is flushed
+  // once and then costs one atomic load per call.
+  bool SyncInBackgroundIfPending() EXCLUDES(background_sync_token_mutex_);
+
+  // Whether anything has been appended since the last fsync, i.e. whether either of the background
+  // entry points above would have work to do. One atomic load.
+  //
+  // Exposed so a caller sweeping many tablets can answer "is there anything to sync here" before
+  // doing anything more expensive - notably before consulting a per-drive throttle, which would
+  // otherwise charge a skip against tablets that had nothing to flush in the first place and make
+  // the skip counter unreadable.
+  bool has_unsynced_data() const {
+    return periodic_sync_needed_.load(std::memory_order_acquire);
+  }
+
+  // Counters for the drive this tablet's WAL lives on, or null when the WAL is under no registered
+  // drive root (--export_drive_io_metrics off, or a root dropped for a fault). Resolved once at
+  // construction; stable for the lifetime of the process.
+  //
+  // Exposed so a caller that is about to ask for an fsync can first look at what the device is
+  // already doing. Deliberately the drive and not this Log: fsync latency is set by the shared
+  // block device, so one tablet's WAL is the wrong unit to throttle on.
+  DriveIoStats* drive_io_stats() const { return drive_io_stats_; }
 
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
@@ -551,8 +588,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Submits DoSyncAndResetTaskInQueue() on background_sync_threadpool_token_ unless one is
   // already queued or running, and returns whether it submitted. Never blocks on the fsync
-  // itself. Shared by the append path (::Sync) and by ::MaybeSyncInBackground.
-  bool SubmitBackgroundSync() EXCLUDES(background_sync_token_mutex_);
+  // itself. Shared by the append path (::Sync) and by the two background entry points.
+  //
+  // proactive marks the submission as one a durability sweep asked for rather than one the write
+  // path needed, for the drive-level accounting in DoSync().
+  bool SubmitBackgroundSync(bool proactive = false) EXCLUDES(background_sync_token_mutex_);
 
   Status Sync() EXCLUDES(active_segment_mutex_, background_sync_token_mutex_);
 
@@ -729,6 +769,13 @@ class Log : public RefCountedThreadSafe<Log> {
   // For periodic sync, indicates if there are entries to be sync'ed.
   std::atomic<bool> periodic_sync_needed_ = {false};
 
+  // Set when a background sweep asked for the pending fsync, consumed by DoSync() once the fsync
+  // has actually happened. Only labels an fsync for the per-drive proactive counter, and is
+  // approximate on purpose: an in-line sync from the append path can consume a label the sweep
+  // set, shifting the attribution by one. Everything on the drive counters is approximate by
+  // design, and being exact here would mean threading the reason through Sync() for a metric.
+  std::atomic<bool> proactive_sync_pending_{false};
+
   // If true, implies that there is a enqueued/running ::DoSyncAndResetTaskInQueue task
   std::atomic<bool> fsync_task_in_queue_ = false;
 
@@ -736,6 +783,11 @@ class Log : public RefCountedThreadSafe<Log> {
   // Needs to be atomic since it might be operated by concurrent threads
   // when gflag log_enable_background_sync is set to true.
   std::atomic<size_t> periodic_sync_unsynced_bytes_ = 0;
+
+  // Counters for the drive holding wal_dir_, or null when it is under no registered root. Resolved
+  // once at construction because the registry never removes entries, so the pointer is stable for
+  // the process lifetime - the same reason PosixWritableFile resolves its drive once per open.
+  DriveIoStats* drive_io_stats_ = nullptr;
 
   // If true, ignore the 'durable_wal_write_' flags above.  This is used to disable fsync during
   // bootstrap.

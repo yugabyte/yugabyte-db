@@ -503,15 +503,56 @@ TEST_F(LogTest, TestOverdueEntrySyncsWithoutFurtherAppends) {
   ASSERT_OK(log_->Close());
 }
 
-// Under durable_wal_write every Sync() from the appender already fsyncs in-line, so the background
-// check has nothing to add. It tests this before consulting periodic_sync_needed_, because
-// FindSyncType() returns kForceFsync unconditionally in that mode and would otherwise have every
-// heartbeat submit a redundant fsync racing the in-line one.
+// The aggressive entry point the background sweeper uses. Unlike MaybeSyncInBackground() it must
+// fsync as soon as anything is unsynced, without waiting for either threshold - the sweeper's
+// per-drive throttle is what paces it instead. And having done so it must go quiet, which is the
+// property that bounds the sweeper's cost to the tablet's append rate rather than to its own tick
+// rate. Tested here rather than through a running server because the per-drive counters aggregate
+// every file under the mount, so on a live server they cannot say anything about one tablet.
+TEST_F(LogTest, TestSyncInBackgroundIfPendingIgnoresThresholds) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  // Both arms far out of reach, so nothing but the aggressive path can explain an fsync.
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(600000);
+  options_.bytes_durable_wal_write_mb = 1024;
+
+  auto& drive_stats = DriveIoStatsRegistry::Instance().Register(tablet_wal_path_, nullptr);
+
+  BuildLog();
+  const auto syncs_before = drive_stats.sync_count();
+  const auto proactive_before = drive_stats.proactive_sync_count();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+
+  // Nothing is overdue by any threshold, so the threshold-respecting entry point must decline...
+  ASSERT_FALSE(log_->MaybeSyncInBackground());
+  // ...and the aggressive one must not.
+  ASSERT_TRUE(log_->SyncInBackgroundIfPending());
+  ASSERT_OK(WaitFor(
+      [&drive_stats, syncs_before] { return drive_stats.sync_count() > syncs_before; },
+      MonoDelta::FromSeconds(10), "the sweeper-initiated fsync"));
+
+  // Attributed as proactive, so drive_sync_count minus this stays the organically demanded rate.
+  ASSERT_EQ(drive_stats.proactive_sync_count(), proactive_before + 1);
+
+  // With nothing appended since, further calls do nothing at all - no matter how often the sweeper
+  // asks.
+  ASSERT_FALSE(log_->SyncInBackgroundIfPending());
+  ASSERT_FALSE(log_->SyncInBackgroundIfPending());
+  ASSERT_EQ(drive_stats.sync_count(), syncs_before + 1);
+
+  ASSERT_OK(log_->Close());
+}
+
+// Under durable_wal_write every Sync() from the appender already fsyncs in-line, so neither
+// background entry point has anything to add. Both check this before consulting
+// periodic_sync_needed_, because FindSyncType() returns kForceFsync unconditionally in that mode
+// and would otherwise have every heartbeat submit a redundant fsync racing the in-line one.
 TEST_F(LogTest, TestBackgroundSyncIsNoOpUnderDurableWalWrite) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
   options_.durable_wal_write = true;
-  // Well past the interval by the time the check below runs, so nothing but the durable_wal_write
-  // short-circuit itself can explain it declining.
+  // Well past the interval by the time the checks below run, so nothing but the durable_wal_write
+  // short-circuit itself can explain the entry points declining.
   options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(1);
   options_.preallocate_segments = false;
   BuildLog();
@@ -520,13 +561,14 @@ TEST_F(LogTest, TestBackgroundSyncIsNoOpUnderDurableWalWrite) {
   ASSERT_OK(AppendNoOp(&opid));
   SleepFor(MonoDelta::FromMilliseconds(20));
 
-  // Asserted on the return value and not on the drive's fsync counter, which would be the obvious
+  // Asserted on the return values and not on the drive's fsync counter, which would be the obvious
   // instrument and is the wrong one: durable_wal_write also selects O_DIRECT for the segment, and
   // PosixDirectIOWritableFile overrides Sync() to be its own write rather than reaching
   // PosixWritableFile::Sync(), so drive_sync_count legitimately stays at zero in this mode and the
-  // device cost shows up in drive_write_time instead. The return value being false is the property
-  // anyway: nothing was submitted.
+  // device cost shows up in drive_write_time instead. Both return values being false is the
+  // property anyway: neither entry point submitted anything.
   ASSERT_FALSE(log_->MaybeSyncInBackground());
+  ASSERT_FALSE(log_->SyncInBackgroundIfPending());
 
   ASSERT_OK(log_->Close());
 }
