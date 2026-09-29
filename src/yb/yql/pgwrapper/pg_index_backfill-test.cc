@@ -3766,6 +3766,8 @@ TEST_P(PgIndexBackfillPartialIndexTest, RowCountsChunkRetry) {
   ASSERT_OK(CreatePartialIndexTable(1 /* num_tablets */));
 
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "3000"));
+  const auto rpc_timeout = ASSERT_RESULT(
+      cluster_->GetLeaderMaster()->GetFlag("ysql_index_backfill_rpc_timeout_ms"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_index_backfill_rpc_timeout_ms", "1000"));
 
   std::vector<ExternalDaemon*> tablet_servers;
@@ -3786,6 +3788,8 @@ TEST_P(PgIndexBackfillPartialIndexTest, RowCountsChunkRetry) {
   LogWaiter redone_waiter(tablet_servers, kFirstChunkOfTablet);
   ASSERT_OK(redone_waiter.WaitFor(60s * kTimeMultiplier));
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "0"));
+  // An unslowed chunk can still take over 1s on slow builds, so it would never finish in time.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_index_backfill_rpc_timeout_ms", rpc_timeout));
   thread_holder_.JoinAll();
 
   ASSERT_NO_FATALS(CheckRowCounts("idx_concurrent", kNumRows, kMatchingRows));
