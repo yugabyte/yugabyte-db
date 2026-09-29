@@ -1572,11 +1572,12 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
 // Basic check: a PL/pgSQL function with a single SPI query produces one
 // "spi.query" span under the root trace.
 TEST_F(DistTraceTest, TestSpiTracingBasic) {
+  ASSERT_OK(CreateTable("yb_spi_basic_t", 1));
   ASSERT_OK(conn_->Execute(
       "CREATE OR REPLACE FUNCTION yb_spi_trace_basic() RETURNS integer AS $$"
       " DECLARE v integer;"
       " BEGIN"
-      "   SELECT 1 INTO v;"
+      "   SELECT id INTO v FROM yb_spi_basic_t;"
       "   RETURN v;"
       " END;"
       " $$ LANGUAGE plpgsql"));
@@ -1589,24 +1590,25 @@ TEST_F(DistTraceTest, TestSpiTracingBasic) {
 
   // The spi.query span should carry the SQL executed via SPI in its
   // "spi.query.text" attribute. plpgsql strips the "INTO v" target, so the
-  // recorded statement contains the "SELECT 1" expression it ran.
+  // recorded statement still contains the "yb_spi_basic_t" it ran against.
   auto spi_span = collector_.FindSpanByNamePrefix(tp.trace_id, "spi.query");
   ASSERT_TRUE(spi_span.has_value()) << "spi.query span not found";
   auto statement_it = spi_span->str_attrs.find("spi.query.text");
   ASSERT_NE(statement_it, spi_span->str_attrs.end())
       << "spi.query.text attribute missing on spi.query span";
-  ASSERT_STR_CONTAINS(statement_it->second, "SELECT 1");
+  ASSERT_STR_CONTAINS(statement_it->second, "yb_spi_basic_t");
 }
 
 // Verifies that a function making N SPI calls produces at least N "spi.query" spans.
 TEST_F(DistTraceTest, TestSpiTracingMultipleQueriesProduceMultipleSpans) {
+  ASSERT_OK(CreateTable("yb_spi_multi_t", 3));
   ASSERT_OK(conn_->Execute(
       "CREATE OR REPLACE FUNCTION yb_spi_trace_multi() RETURNS void AS $$"
       " DECLARE v integer;"
       " BEGIN"
-      "   SELECT 1 INTO v;"
-      "   SELECT 2 INTO v;"
-      "   SELECT 3 INTO v;"
+      "   SELECT id INTO v FROM yb_spi_multi_t WHERE id = 1;"
+      "   SELECT id INTO v FROM yb_spi_multi_t WHERE id = 2;"
+      "   SELECT id INTO v FROM yb_spi_multi_t WHERE id = 3;"
       " END;"
       " $$ LANGUAGE plpgsql"));
 
@@ -1620,11 +1622,12 @@ TEST_F(DistTraceTest, TestSpiTracingMultipleQueriesProduceMultipleSpans) {
 // Verifies that nested PL/pgSQL functions each produce "spi.query" spans,
 // all under the same root trace.
 TEST_F(DistTraceTest, TestSpiTracingNestedFunctions) {
+  ASSERT_OK(CreateTable("yb_spi_nested_t", 1));
   ASSERT_OK(conn_->Execute(
       "CREATE OR REPLACE FUNCTION yb_spi_trace_inner() RETURNS integer AS $$"
       " DECLARE v integer;"
       " BEGIN"
-      "   SELECT 42 INTO v;"
+      "   SELECT id INTO v FROM yb_spi_nested_t;"
       "   RETURN v;"
       " END;"
       " $$ LANGUAGE plpgsql"));
@@ -1632,7 +1635,7 @@ TEST_F(DistTraceTest, TestSpiTracingNestedFunctions) {
       "CREATE OR REPLACE FUNCTION yb_spi_trace_outer() RETURNS integer AS $$"
       " DECLARE v integer;"
       " BEGIN"
-      "   SELECT yb_spi_trace_inner() INTO v;"
+      "   SELECT yb_spi_trace_inner() INTO v FROM yb_spi_nested_t;"
       "   RETURN v;"
       " END;"
       " $$ LANGUAGE plpgsql"));
@@ -1641,8 +1644,8 @@ TEST_F(DistTraceTest, TestSpiTracingNestedFunctions) {
   ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
   ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_outer()"));
 
-  // Outer function: 1 spi.query for "SELECT yb_spi_trace_inner() INTO v"
-  // Inner function: 1 spi.query for "SELECT 42 INTO v"
+  // Outer function: 1 spi.query for "SELECT yb_spi_trace_inner() INTO v FROM yb_spi_nested_t"
+  // Inner function: 1 spi.query for "SELECT id INTO v FROM yb_spi_nested_t"
   ASSERT_OK(VerifySpiSpanCount(tp.trace_id, 2));
 }
 
@@ -1697,11 +1700,12 @@ TEST_F(DistTraceTest, TestSpiTracingErrorHandledGracefully) {
 
 // Verifies that get_cached_plan and execute appear as child spans of spi.query.
 TEST_F(DistTraceTest, TestSpiTracingChildSpans) {
+  ASSERT_OK(CreateTable("yb_spi_child_t", 1));
   ASSERT_OK(conn_->Execute(
       "CREATE OR REPLACE FUNCTION yb_spi_trace_child_spans() RETURNS integer AS $$"
       " DECLARE v integer;"
       " BEGIN"
-      "   SELECT 1 INTO v;"
+      "   SELECT id INTO v FROM yb_spi_child_t;"
       "   RETURN v;"
       " END;"
       " $$ LANGUAGE plpgsql"));
