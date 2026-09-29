@@ -104,7 +104,7 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
 | `log_sync_latency` | microseconds | counter | Time spent to flush (fsync) the WAL entries to disk. |
-| `log_wal_sync_overdue_ms` | milliseconds | gauge | Time by which the oldest unsynced WAL entry has exceeded [`interval_durable_wal_write_ms`](../../../../reference/configuration/yb-tserver/#interval-durable-wal-write-ms). The value is 0 when every entry is synced or still within the interval, or durable WAL writes are enabled or the interval is disabled. When you aggregate tablets, use the maximum. |
+| `log_wal_sync_overdue_ms` | milliseconds | gauge | How far the oldest unsynced WAL entry is past [`interval_durable_wal_write_ms`](../../../../reference/configuration/yb-tserver/#interval-durable-wal-write-ms). 0 when the WAL is keeping up. |
 | `log_append_latency` | microseconds | counter | Time spent on appending a batch of values to the WAL. |
 | `log_group_commit_latency` | microseconds | counter | Time spent on committing an entire group. |
 | `log_bytes_logged`| bytes | counter | Number of bytes written to the WAL after the tablet starts. |
@@ -116,22 +116,24 @@ These metrics are available per tablet and can be aggregated across the entire c
 
 Available in v2026.1.3.0 and later.
 
-These metrics are exported once per drive (each WAL or data directory) on the `drive` metric entity. They cover Raft WAL writes and RocksDB writes, including SST files, the intents database, tablet metadata, remote bootstrap, and snapshots. `log_sync_latency` is table-level and mixes whatever drives a table's tablets use. These metrics attribute bytes and fsync time to one device.
+These metrics are reported per data or WAL directory, with a `drive_path` label naming the directory. They cover DocDB's WAL and data file writes, so unlike `log_sync_latency`, which is reported per table, they can point to a single slow device.
 
-Read them as rates over a scrape interval. Write throughput is the rate of `drive_bytes_written`. Average fsync cost is the rate of `drive_sync_time` divided by the rate of `drive_sync_count`. Compare `drive_sync_time` with `drive_bytes_written` so a long fsync of a small write is not confused with a long fsync of a large write. Compare a drive with its peers or with its own history.
+Read them as rates. Write throughput is the rate of `drive_bytes_written`, and average sync cost is the rate of `drive_sync_time` divided by the rate of `drive_sync_count`. If sync time per byte written rises on one drive but not on its peers, suspect that drive.
 
 The metrics are enabled by default. Set [`export_drive_io_metrics`](../../../../reference/configuration/yb-tserver/#export-drive-io-metrics) to `false` to disable them.
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `drive_bytes_written` | bytes | counter | Bytes passed to `write()` and `writev()` for files on this drive since the server started. When [`durable_wal_write`](../../../../reference/configuration/yb-tserver/#durable-wal-write) is `true`, writes are block-aligned, so a partially filled trailing block is rewritten on each sync and counted each time. |
-| `drive_write_time` | microseconds | counter | Cumulative time spent in `write()` and `writev()` on this drive. Usually small for buffered writes. When `durable_wal_write` is `true`, there is no later fsync, and this counter is where the device cost shows up. |
-| `drive_sync_count` | operations | counter | Number of `fsync()` and `fdatasync()` calls for files on this drive since the server started. |
-| `drive_sync_time` | microseconds | counter | Cumulative time blocked in `fsync()` and `fdatasync()` on this drive. |
-| `drive_range_sync_count` | operations | counter | Number of `sync_file_range()` writeback calls on this drive since the server started. RocksDB uses these to pace SST writeback. |
-| `drive_range_sync_time` | microseconds | counter | Cumulative time in `sync_file_range()` writeback on this drive. Counted separately from `drive_sync_time`, because SST writeback can finish before the closing fsync. |
-| `drive_bytes_unsynced` | bytes | gauge | Bytes written to files on this drive that are still open and have not been fsynced since. Closing a file drops those bytes from the gauge. Kernel writeback and `Flush` or `RangeSync` do not decrease it, and `O_DIRECT` writes do not add to it. |
-| `drive_sync_latency` | microseconds | counter | Latency of individual `fsync()` and `fdatasync()` calls on this drive. |
+| `drive_bytes_written` | bytes | counter | Bytes written to this drive. |
+| `drive_write_time` | microseconds | counter | Time spent writing to this drive. |
+| `drive_sync_count` | operations | counter | Number of syncs (fsync) to this drive. |
+| `drive_sync_time` | microseconds | counter | Time spent syncing data to this drive. |
+| `drive_range_sync_count` | operations | counter | Number of range syncs to this drive (partial write-backs, lighter than a full sync). RocksDB uses them to spread out SST writes. |
+| `drive_range_sync_time` | microseconds | counter | Time spent in range syncs on this drive. |
+| `drive_bytes_unsynced` | bytes | gauge | Approximate bytes written to this drive and not yet synced. Compare across drives rather than reading it as an absolute value. |
+| `drive_sync_latency` | microseconds | counter | Latency of individual syncs to this drive. |
+
+When [`durable_wal_write`](../../../../reference/configuration/yb-tserver/#durable-wal-write) is `true`, WAL writes go directly to disk, so WAL disk time appears in `drive_write_time` instead of `drive_sync_time`.
 
 ## YSQL cache metrics
 

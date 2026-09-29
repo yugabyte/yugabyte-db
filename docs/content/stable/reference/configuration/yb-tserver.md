@@ -1009,7 +1009,7 @@ Default: `true`
 
 Available in v2026.1.3.0 and later.
 
-Enables [per-drive write I/O metrics](../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#per-drive-write-i-o) on the `drive` metric entity. When `false`, those metrics are not exported.
+Enables [per-drive write I/O metrics](../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#per-drive-write-i-o). When `false`, those metrics are not exported.
 
 ##### --log_min_seconds_to_retain
 
