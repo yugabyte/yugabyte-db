@@ -26,6 +26,7 @@ import xml.etree.ElementTree as ET
 import json
 import signal
 import glob
+import re
 
 from typing import Any, Dict, AnyStr
 
@@ -120,6 +121,7 @@ FAIL_TAG_AND_PATTERN: Dict[str, str] = {
     'timeout': 'Timeout reached',
     'memory_leak': 'LeakSanitizer: detected memory leaks',
     'asan_heap_use_after_free': 'AddressSanitizer: heap-use-after-free',
+    'asan_error': 'ERROR: AddressSanitizer: ',
     'asan_undefined': 'AddressSanitizer: undefined-behavior',
     'undefined_behavior': 'UndefinedBehaviorSanitizer: undefined-behavior',
     'tsan_race': 'ThreadSanitizer: data race',
@@ -131,6 +133,15 @@ FAIL_TAG_AND_PATTERN: Dict[str, str] = {
     'check_failed': 'Check failed: ',
     'java_build': r'^\[INFO\] BUILD FAILURE$',
 }
+
+# The first line of each sanitizer report.
+SANITIZER_REPORT_PATTERN = (
+    r'ERROR: (AddressSanitizer|LeakSanitizer): |WARNING: ThreadSanitizer: |'
+    r'SUMMARY: UndefinedBehaviorSanitizer: ')
+SANITIZER_NAME_RE = re.compile(
+    r'AddressSanitizer|LeakSanitizer|ThreadSanitizer|UndefinedBehaviorSanitizer')
+MAX_SANITIZER_REPORT_LINES = 10
+MAX_SANITIZER_REPORT_LINE_LEN = 300
 
 
 def rename_key(d: Dict[str, Any], key: str, new_key: str) -> None:
@@ -303,6 +314,28 @@ class Postprocessor:
                     )
                     test_kvs['processing_errors'] = grep_command.stderr.decode('utf-8').split()
 
+    def set_sanitizer_reports(self, test_kvs: Dict[str, Any]) -> None:
+        """
+        Record the sanitizer reports in the log of any test, passing or not. A report does not
+        always fail the test, e.g. when the test is rerun and passes.
+        """
+        grep_command = subprocess.run(
+            ['zgrep', '-Eh', SANITIZER_REPORT_PATTERN, self.test_log_path], capture_output=True)
+        if grep_command.returncode != 0:
+            return
+        counts: Dict[str, int] = {}
+        lines = []
+        for line in grep_command.stdout.decode('utf-8', errors='replace').splitlines():
+            match = SANITIZER_NAME_RE.search(line)
+            if not match:
+                continue
+            counts[match.group(0)] = counts.get(match.group(0), 0) + 1
+            if len(lines) < MAX_SANITIZER_REPORT_LINES:
+                lines.append(line.strip()[:MAX_SANITIZER_REPORT_LINE_LEN])
+        if counts:
+            test_kvs['sanitizer_reports'] = counts
+            test_kvs['sanitizer_report_lines'] = lines
+
     def run(self) -> None:
         junit_xml_path = self.args.junit_xml_path
         if not os.path.exists(junit_xml_path):
@@ -355,6 +388,7 @@ class Postprocessor:
             rename_key(test_kvs, 'classname', 'class_name')
             self.set_common_test_kvs(test_kvs)
             self.set_fail_tags(test_kvs)
+            self.set_sanitizer_reports(test_kvs)
             tests.append(test_kvs)
 
         output_path = os.path.splitext(junit_xml_path)[0] + '_test_report.json'

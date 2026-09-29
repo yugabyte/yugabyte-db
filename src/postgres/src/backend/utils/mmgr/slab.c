@@ -160,6 +160,17 @@ static const MemoryContextMethods SlabMethods = {
 #endif
 };
 
+/* YB declarations */
+
+/*
+ * YB: Every WARNING in this file reports memory corruption found by
+ * MEMORY_CONTEXT_CHECKING, and tests do not notice a WARNING.  Escalate to
+ * PANIC, which unlike ERROR and FATAL does no cleanup that would re-enter
+ * the check (see the note on SlabCheck).
+ */
+#undef WARNING
+#define WARNING PANIC
+
 
 /*
  * SlabContextCreate
