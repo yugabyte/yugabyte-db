@@ -26,8 +26,8 @@ Use the `UPDATE` statement to modify the values of specified columns in all rows
   column_names
 {{%/ebnf%}}
 
-{{< note title="Table inheritance is not yet supported" >}}
-The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+{{< note title="Table inheritance" >}}
+`ONLY` and `*` in [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) apply when other tables inherit a listed table. See [Table inheritance](../../ddl-inherit/).
 {{< /note >}}
 
 See the section [The WITH clause and common table expressions](../../with-clause/) for more information about the semantics of the `common_table_expression` grammar rule.

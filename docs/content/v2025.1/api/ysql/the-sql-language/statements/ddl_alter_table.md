@@ -27,23 +27,23 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 {{%/ebnf%}}
 
 <a name="table-expr-note"></a></br></br>
-{{< note title="Table inheritance is not yet supported" >}}
+{{< note title="Table inheritance" >}}
 
-YSQL in the present "latest" YugabyteDB does not yet support the "table inheritance" feature that is described in the [PostgreSQL documentation](https://www.postgresql.org/docs/15/ddl-inherit.html). The attempt to create a table that inherits another table causes the _0A000 (feature_not_supported)_ error with the message _"INHERITS not supported yet"_. This means that the syntax that the `table_expr` rule allows doesn't yet bring any useful meaning.
-
-It says that you can write, for example, this:
+When other tables inherit `t`, these variants do different work:
 
 ```plpgsql
 alter table t * add column y text;
 ```
 
-or this:
+changes `t` and tables that inherit from it.
 
 ```plpgsql
 alter table only t add column y text;
 ```
 
-These variants are useful only when at least one other table inherits `t`. But as yet, no table can inherit `t`. This means that if the unadorned variant `alter table t...` runs without error, then each of these variants will run without error too. But the effect of each is the same as that of the unadorned variant. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+changes `t` alone.
+
+See [Table inheritance](../../ddl-inherit/).
 {{< /note >}}
 
 ## Semantics
