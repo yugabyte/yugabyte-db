@@ -64,6 +64,12 @@ Therefore, if you don't specify a primary key at table-creation time, YugabyteDB
 
 FOREIGN KEY and REFERENCES specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table. It is used to enforce referential integrity of data.
 
+#### Foreign keys on partitioned tables
+
+A foreign key can reference a partitioned table, and a partitioned table can declare a foreign key.
+
+For how to create and manage partitioned tables, see [Table partitioning](../../../../../explore/ysql-language-features/advanced-features/partitions/).
+
 ### Unique
 
 This enforces that the set of columns specified in the UNIQUE constraint are unique in the table, that is, no two rows can have the same values for the set of columns specified in the UNIQUE constraint.

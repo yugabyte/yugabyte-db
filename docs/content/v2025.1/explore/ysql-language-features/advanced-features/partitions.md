@@ -175,10 +175,7 @@ Note:
 - A partition table inherits tablespaces from its parent.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 - If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
-
-## Foreign key references
-
-Starting with {{<release "2.25">}}, foreign key references on a partitioned table are supported. This allows you to enforce referential integrity directly on partitioned tables, ensuring consistency across large-scale datasets that benefit from partitioning for performance and scalability.
+- For foreign keys on partitioned tables, see [Foreign keys on partitioned tables](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-keys-on-partitioned-tables).
 
 ## Partition pruning and constraint exclusion
 
