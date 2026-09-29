@@ -719,6 +719,9 @@ typedef struct {
   uint64_t commit_time;
   // The hybrid time of the commit. Used to set the correct read time for catalog changes.
   uint64_t commit_time_ht;
+  // The hybrid time of the record's intent write. Used as in_txn_limit when reading catalog
+  // tables after an interleaved DDL in the same transaction.
+  uint64_t record_time_ht;
   YbcPgRowMessageAction action;
   // Valid for DMLs and kPgInvalidOid for other (BEGIN/COMMIT) records.
   YbcPgOid table_oid;
@@ -727,6 +730,9 @@ typedef struct {
   uint32_t xid;
   // Replication origin id associated with the transaction.
   uint32_t xrepl_origin_id;
+  // DocDB transaction id associated with the record.
+  bool has_docdb_txn_id;
+  char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
 } YbcPgRowMessage;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in

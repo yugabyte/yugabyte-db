@@ -507,6 +507,10 @@ message TransactionMetadataPB {
 
   // Stores hybrid time of first write batch of the transaction on a participating tablet.
   optional fixed64 first_write_ht = 13;
+
+  // When set, the transaction is treated as committed and txn status checks are skipped.
+  // Used for historical catalog reads that need to resolve a committed txn's own intents.
+  optional bool is_read_only_historical_committed_txn = 14;
 }
 
 // See ReadHybridTime for explation of this message.

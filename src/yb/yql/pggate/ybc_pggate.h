@@ -938,6 +938,11 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
 void YBCPgResetCatalogReadTime();
+
+void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id);
+
+void YBCPgResetHistoricalReadContext();
+
 YbcReadHybridTime YBCGetPgCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);

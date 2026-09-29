@@ -772,6 +772,15 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
     read_operation_data.read_time = read_tx.read_time();
   }
+  if (req_->has_transaction()) {
+    const auto& transaction = req_->transaction();
+    if (transaction.is_read_only_historical_committed_txn() && transaction.has_transaction_id() &&
+        !transaction.transaction_id().empty()) {
+      // Historical reads of a committed txn's own writes need the intents DB even when no
+      // transactions are currently running (MinRunningHybridTime == kMax).
+      read_operation_data.use_ht_file_filter = false;
+    }
+  }
   used_read_time_ = read_operation_data.read_time;
   if (!req_->redis_batch().empty()) {
     // Assert the primary table is a redis table.

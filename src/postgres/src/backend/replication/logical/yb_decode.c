@@ -34,8 +34,10 @@
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+static void YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
@@ -43,6 +45,12 @@ static void YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 static int	YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
 static void YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
+static bool YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
+									  uint64_t *read_time,
+									  uint64_t *in_txn_limit,
+									  const char **txn_id);
+static void YbStoreDmlHistoricalReadContext(ReorderBufferChange *change,
+											const YbVirtualWalRecord *yb_record);
 
 static void YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 									  TupleDesc tupdesc);
@@ -79,7 +87,6 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	/* Now delegate to specific handlers depending on the action type. */
 	switch (action)
 	{
-			/* Nothing to handle here. */
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			elog(DEBUG4,
 				 "Received DDL record for table: %d, xid: %d, commit_time_ht: "
@@ -87,6 +94,10 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				 record->yb_virtual_wal_record->table_oid,
 				 record->yb_virtual_wal_record->xid,
 				 record->yb_virtual_wal_record->commit_time_ht);
+			if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+			{
+				YBDecodeDDL(ctx, record);
+			}
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
@@ -101,6 +112,8 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 			 */
 			if (am_walsender)
 				StartTransactionCommand();
+
+			ctx->yb_inval_catalog_on_decode_commit = false;
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
@@ -151,6 +164,35 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 }
 
 /*
+ * Queue a transactional DDL marker so cache invalidation and schema change
+ * are replayed in order with the transaction's DML changes.
+ */
+static void
+YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record)
+{
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+
+	Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
+	Assert(yb_record->record_time_ht != 0);
+	Assert(yb_record->has_docdb_txn_id);
+
+	change->action = YB_REORDER_BUFFER_CHANGE_DDL;
+	change->origin_id = yb_record->xrepl_origin_id;
+	change->data.yb_ddl.table_oid = yb_record->table_oid;
+
+	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
+							ctx->reader->ReadRecPtr);
+	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
+							 ctx->reader->ReadRecPtr, change,
+							 false /* toast_insert */ );
+
+	/* Remember to invalidate caches before reorder-buffer replay. */
+	ctx->yb_inval_catalog_on_decode_commit = true;
+}
+
+/*
  * YB version of the DecodeInsert function from decode.c
  */
 static void
@@ -190,6 +232,7 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.newtuple = tuple_buf;
 	change->data.tp.oldtuple = NULL;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
+	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
 
@@ -371,6 +414,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.newtuple = after_op_tuple_buf;
 	change->data.tp.oldtuple = before_op_tuple_buf;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
+	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
@@ -408,6 +452,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.newtuple = NULL;
 	change->data.tp.oldtuple = tuple_buf;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
+	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
@@ -448,6 +493,7 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 * the next GetConsistentChanges call.
 		 */
 		YBCTrackFilteredTransaction(commit_lsn);
+		ctx->yb_inval_catalog_on_decode_commit = false;
 		return;
 	}
 
@@ -456,9 +502,22 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 "end_lsn: %lu",
 		 yb_record->xid, commit_lsn, end_lsn);
 
+	/*
+	 * If this transaction block contains a DDL, we need to invalidate the
+	 * caches so that the reorderbuffer replay doesn't read future catalog
+	 * entries.
+	 */
+	if (ctx->yb_inval_catalog_on_decode_commit)
+	{
+		Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+		YBCInvalidateCachesForHistoricalReadContext();
+	}
+
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
 						yb_record->commit_time, yb_record->xrepl_origin_id,
 						origin_lsn);
+
+	ctx->yb_inval_catalog_on_decode_commit = false;
 
 	elog(DEBUG1,
 		 "Successfully streamed transaction: %d with commit_lsn: %lu and "
@@ -573,14 +632,19 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			{
-				bool		found;
+				if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+					YBCInvalidateCachesForHistoricalReadContext();
+				else
+				{
+					bool		found;
 
-				/*
-				 * Mark for relcache invalidation to be done on first DML by just
-				 * inserting an entry for the table_oid.
-				 */
-				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-							HASH_ENTER, &found);
+					/*
+					 * Mark for relcache invalidation to be done on first DML by
+					 * inserting an entry for the table_oid.
+					 */
+					hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+								HASH_ENTER, &found);
+				}
 				break;
 			}
 
@@ -590,7 +654,19 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 			{
+				uint64_t	read_time;
+				uint64_t	in_txn_limit;
+				const char *txn_id;
 				bool		needs_invalidation = false;
+
+				if (YbDmlHistoricalReadParams(record->yb_virtual_wal_record,
+											  &read_time, &in_txn_limit,
+											  &txn_id))
+				{
+					YBCSetHistoricalReadContext(read_time, in_txn_limit,
+												txn_id);
+					break;
+				}
 
 				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
 							HASH_FIND, &needs_invalidation);
@@ -631,6 +707,49 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			return;
 	}
+}
+
+static bool
+YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
+						  uint64_t *read_time, uint64_t *in_txn_limit,
+						  const char **txn_id)
+{
+	if (!*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+		return false;
+
+	if (yb_record->has_docdb_txn_id)
+	{
+		Assert(yb_record->record_time_ht != 0);
+		*read_time = yb_record->commit_time_ht - 1;
+		*in_txn_limit = yb_record->record_time_ht;
+		*txn_id = yb_record->docdb_txn_id;
+	}
+	else
+	{
+		*read_time = yb_record->commit_time_ht;
+		*in_txn_limit = PG_UINT64_MAX;
+		*txn_id = "";
+	}
+
+	return true;
+}
+
+static void
+YbStoreDmlHistoricalReadContext(ReorderBufferChange *change,
+								const YbVirtualWalRecord *yb_record)
+{
+	uint64_t	read_time;
+	uint64_t	in_txn_limit;
+	const char *txn_id;
+
+	if (!YbDmlHistoricalReadParams(yb_record, &read_time, &in_txn_limit,
+								   &txn_id))
+		return;
+
+	change->data.tp.yb_read_time = read_time;
+	change->data.tp.yb_in_txn_limit = in_txn_limit;
+	strlcpy(change->data.tp.yb_txn_id, txn_id,
+			sizeof(change->data.tp.yb_txn_id));
 }
 
 static void
