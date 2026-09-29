@@ -24,6 +24,29 @@
 
 #include "access/heapam.h"
 #include "access/genam.h"
+#include "access/htup_details.h"
+#include "utils/memutils.h"
+
+/*
+ * Fetch the next row of a catalog preload scan into row_cxt, first discarding
+ * the previous row.  A decoded catalog row leaves behind the per-column copies
+ * pggate makes while decoding it, several times the size of the tuple itself,
+ * so a full-catalog scan must not accumulate them.  The returned row stays
+ * valid until the next call, so a scan that finds the end of one relation's
+ * rows by reading the next relation's first row can still pass that row on.
+ */
+HeapTuple
+YbSystableGetNextInContext(SysScanDesc scandesc, MemoryContext row_cxt)
+{
+	MemoryContext oldcxt;
+	HeapTuple	htup;
+
+	MemoryContextReset(row_cxt);
+	oldcxt = MemoryContextSwitchTo(row_cxt);
+	htup = systable_getnext(scandesc);
+	MemoryContextSwitchTo(oldcxt);
+	return htup;
+}
 
 void
 YbLoadTupleCache(YbTupleCache *cache, Oid relid,
@@ -41,8 +64,16 @@ YbLoadTupleCache(YbTupleCache *cache, Oid relid,
 
 	YbTupleCacheEntry *entry = NULL;
 	HeapTuple htup;
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	MemoryContext row_cxt = AllocSetContextCreate(CurrentMemoryContext,
+												  "tuple cache row",
+												  ALLOCSET_DEFAULT_SIZES);
+
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
+															  row_cxt)))
 	{
+		/* The next fetch resets row_cxt */
+		htup = heap_copytuple(htup);
+
 		Oid key = key_extractor(htup);
 		if (!entry || entry->key != key)
 		{
@@ -54,6 +85,7 @@ YbLoadTupleCache(YbTupleCache *cache, Oid relid,
 		}
 		entry->tuples = lappend(entry->tuples, htup);
 	}
+	MemoryContextDelete(row_cxt);
 	systable_endscan(scandesc);
 }
 

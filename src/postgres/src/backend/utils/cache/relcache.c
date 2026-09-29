@@ -1402,6 +1402,21 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 }
 
 /*
+ * A scratch context for one row of a relcache preload scan, reset by
+ * YbSystableGetNextInContext.  The scans may also process their rows in it:
+ * everything a relcache entry keeps is allocated explicitly in
+ * CacheMemoryContext (or a child of it), the same as when RelationBuildDesc
+ * runs in a throwaway workspace context.
+ */
+static MemoryContext
+YbCreatePreloadRowContext(void)
+{
+	return AllocSetContextCreate(CurrentMemoryContext,
+								 "relcache preload row",
+								 ALLOCSET_DEFAULT_SIZES);
+}
+
+/*
  * YugaByte-mode only utility used to load up the relcache on initialization
  * to minimize the number on YB-master queries needed.
  * It is based on (and similar to) RelationBuildDesc but does all relations
@@ -1429,7 +1444,11 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 
 	HeapTuple pg_class_tuple;
 	int num_tuples = 0;
-	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
+
+	while (HeapTupleIsValid(pg_class_tuple =
+							YbSystableGetNextInContext(scandesc, row_cxt)))
 	{
 		++num_tuples;
 		Oid relid = HeapTupleGetOid(pg_class_tuple);
@@ -1560,6 +1579,9 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		state->has_partitioned_tables |= relation->rd_rel->relkind ==
 										 RELKIND_PARTITIONED_TABLE;
 	}
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
+
 	if (yb_debug_log_catcache_events)
 		elog(LOG, "Inserted %d entries into relcache", num_tuples);
 
@@ -1948,7 +1970,11 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 		cache_update_state->sys_relations_update_required;
 
 	HeapTuple htup;
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
+
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
+															  row_cxt)))
 	{
 		if (!YbApplyAttr(&state, attrel, htup))
 		{
@@ -1958,6 +1984,8 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 		}
 	}
 	YbCompleteAttrProcessing(&state);
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
 	systable_endscan(scandesc);
 	heap_close(attrel, AccessShareLock);
 }
@@ -1970,7 +1998,11 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 	    partrel, PartitionedRelationId, false /* indexOk */, NULL, 0, NULL);
 
 	HeapTuple htup;
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+	MemoryContext oldcxt = MemoryContextSwitchTo(row_cxt);
+
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scandesc,
+															  row_cxt)))
 	{
 		Form_pg_partitioned_table part_table_form =
 		    (Form_pg_partitioned_table) GETSTRUCT(htup);
@@ -1987,6 +2019,8 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 			RelationBuildPartitionDesc(relation);
 		}
 	}
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(row_cxt);
 
 	systable_endscan(scandesc);
 	heap_close(partrel, AccessShareLock);
@@ -2156,7 +2190,15 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 		indrel, IndexIndrelidIndexId, true /* indexOk */, NULL, 0, NULL);
 	HeapTuple htup;
 	YbIndexProcessorState state = {0};
-	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
+	MemoryContext row_cxt = YbCreatePreloadRowContext();
+
+	/*
+	 * Unlike the other preload scans, don't process rows in row_cxt:
+	 * YbApplyIndex appends to state.result in the current context, and that
+	 * list must survive until the relation's last row.
+	 */
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(indscan,
+															  row_cxt)))
 	{
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
 		/*
@@ -2176,6 +2218,7 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 		}
 	}
 	YbCompleteIndexProcessing(&state);
+	MemoryContextDelete(row_cxt);
 	systable_endscan(indscan);
 	heap_close(indrel, AccessShareLock);
 }
