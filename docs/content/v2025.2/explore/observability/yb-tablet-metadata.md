@@ -14,30 +14,9 @@ menu:
 type: docs
 ---
 
-The `yb_tablet_metadata` view provides a YSQL-accessible interface for fetching tablet distribution and leadership information across a YugabyteDB cluster.
+The `yb_tablet_metadata` view returns tablet placement and leadership for the whole cluster. The examples below look up tablets, leaders, and the tablet that holds a row.
 
-While the [yb_local_tablets](../yb-local-tablets/) view provides information about tablets on the local node, `yb_tablet_metadata` exposes tablet placement and replica roles cluster-wide, serving as the YSQL equivalent of the YCQL `system.partitions` table.
-
-Use the `yb_tablet_metadata` view for the following:
-
-- Identifying the location of all tablets for a specific table.
-- Determining the leader node for a specific tablet.
-- Identifying the tablet for a given tuple, in case of [hash-sharded](../../../architecture/docdb-sharding/sharding/#hash-sharding) tables.
-
-Note that the view returns tablet information for YSQL objects and the system transaction table only.
-
-The following table describes the columns of the `yb_tablet_metadata` view.
-
-| Column | Type | Description |
-| :----- | :--- | :---------- |
-| tablet_id | text | A unique identifier (UUID) representing the tablet. |
-| oid | oid | The object identifier (OID) for the table/index that the tablet belongs to. |
-| db_name | text | Name of the database this relation belongs to. |
-| relname | text | Name of table/index whose data is stored on the tablet. |
-| start_hash_code | int | Starting hash code (inclusive) for the tablet. (NULL for range-sharded tables.) |
-| end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
-| leader | text | IP address, port of the leader node for the tablet. |
-| replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
+Columns are listed in [Tablet metadata](../../../launch-and-manage/monitor-and-alert/tablet-metadata/#yb-tablet-metadata).
 
 ## Examples
 
