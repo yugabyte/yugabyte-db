@@ -62,7 +62,7 @@ By default this applies to statements run on their own. To use it inside `BEGIN`
 
 ## Use it inside transaction blocks
 
-{{<tags/feature/tp idea="2337">}} To use the optimization inside explicit transaction blocks, set the YB-TServer flag `ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks` to true. This also requires [Read Committed isolation](../isolation-levels/#read-committed-isolation) and [transactional DDL](../transactional-ddl/).
+{{<tags/feature/tp idea="2337">}} To use the optimization inside explicit transaction blocks, set the YB-TServer flag `ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks` to true. This also requires [Read Committed isolation](../isolation-levels/#read-committed-isolation) and [transactional DDL](../../../architecture/transactions/transactional-ddl/).
 
 Because `ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks` is a preview flag, add it to the [`allowed_preview_flags_csv`](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list before you set it. See [Enable for transaction blocks](../../../architecture/transactions/skip-intents/#enable-for-transaction-blocks) for the full flag list and a yugabyted example.
 
