@@ -1,9 +1,9 @@
 ---
-title: Transactional DDL
+title: Explore Transactional DDL
 headerTitle: Transactional DDL
 linkTitle: Transactional DDL
-description: Learn how YugabyteDB handles DDLs in a transaction
-headcontent: Learn how YugabyteDB handles DDLs in a transaction
+description: Learn how to roll back DDL statements in a YugabyteDB transaction using transactional DDL.
+headcontent: Learn how to roll back DDL statements in a transaction
 tags:
    feature: early-access
 menu:
