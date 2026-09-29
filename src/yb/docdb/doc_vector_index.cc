@@ -444,6 +444,19 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.GetFrontiers(kinds);
   }
 
+  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) override {
+    // An empty insert only carries the frontier into the mutable chunk, the following flush
+    // persists it. Same shape as the split generation update above.
+    ConsensusFrontiers frontiers;
+    frontiers.Largest().set_op_id(frontier.op_id());
+    RETURN_NOT_OK(Insert(
+        DocVectorIndexInsertEntries{}, InsertOptions{ .frontiers = &frontiers, }));
+    // Wait for the flush: callers stamp an OpId to make it durable, and an ungraceful restart
+    // could otherwise happen before the chunk reaches the manifest.
+    RETURN_NOT_OK(Flush());
+    return WaitForFlush();
+  }
+
   rocksdb::FlushAbility GetFlushAbility() override {
       return lsm_.GetFlushAbility();
   }

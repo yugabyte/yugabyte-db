@@ -1141,21 +1141,15 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
   }
 
   if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    tablet_->FlushIntentsDbIfNecessary(latest_log_entry_op_id);
-    auto max_persistent_op_id = VERIFY_RESULT(
-        tablet_->MaxPersistentOpId(true /* invalid_if_no_new_data */));
-    if (max_persistent_op_id.regular.valid()) {
-      min_index = std::min(min_index, max_persistent_op_id.regular.index);
+    const auto add_factor =
+        [details](const std::string& name, int64_t index, const std::string& extra) {
       if (details) {
-        *details += Format("Max persistent regular op id: $0\n", max_persistent_op_id.regular);
+        *details += Format("$0: $1$2\n", name, index, extra);
       }
-    }
-    if (max_persistent_op_id.intents.valid()) {
-      min_index = std::min(min_index, max_persistent_op_id.intents.index);
-      if (details) {
-        *details += Format("Max persistent intents op id: $0\n", max_persistent_op_id.intents);
-      }
-    }
+    };
+    min_index = std::min(
+        min_index,
+        VERIFY_RESULT(tablet_->EarliestNeededLogIndex(latest_log_entry_op_id, add_factor)));
   }
 
   if (meta_->IsLazySuperblockFlushEnabled()) {
