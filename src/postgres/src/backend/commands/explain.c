@@ -41,6 +41,7 @@
 #include "utils/xml.h"
 
 /* YB includes */
+#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/planner.h"
 #include "pg_yb_utils.h"
@@ -3298,6 +3299,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										 bnl->numSortCols, 0, bnl->sortColIdx,
 										 bnl->sortOperators, bnl->collations,
 										 bnl->nullsFirst, ancestors, es);
+
+				/*
+				 * Without the hash strategy every inner row is compared with
+				 * every outer row of the batch; report that, since it is the
+				 * costly case.
+				 */
+				if (!YbBnlUseHash(bnl))
+					ExplainPropertyText("Batch Matching", "Tuplestore", es);
 
 				if (is_yb_planning_stats_required &&
 					bnl->first_batch_size > 0)
