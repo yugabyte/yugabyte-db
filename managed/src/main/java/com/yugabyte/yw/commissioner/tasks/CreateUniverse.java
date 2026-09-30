@@ -269,8 +269,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createPersistUseClockboundTask();
 
-      createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
-
       createPersistCpuCgroupConfiguredTask(universe);
 
       boolean deleteCapacityReservation =
