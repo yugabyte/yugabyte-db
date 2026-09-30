@@ -656,7 +656,7 @@ Specifies how the LSN of processed records is flushed (acknowledged) to the repl
 
 Don't set `lsn.flush.mode` to `connector_and_driver` for a replication slot that uses the `HYBRID_TIME` [LSN type](../key-concepts/#lsn-type). With `HYBRID_TIME`, all records of a transaction carry the LSN of its commit record, and a keepalive message can carry that LSN before the connector has received the transaction. The driver can then acknowledge changes that haven't reached Kafka, and those changes are lost if the connector restarts.
 
-The connector rejects `connector_and_driver` when [slot.lsn.type](#slot-lsn-type) is `HYBRID_TIME`.
+The connector rejects `connector_and_driver` only when [slot.lsn.type](#slot-lsn-type) is set to `HYBRID_TIME`. It does not read the LSN type from the slot. Set `slot.lsn.type` to the slot's actual LSN type. If the slot was created as `HYBRID_TIME` and `slot.lsn.type` is left at its default, `SEQUENCE`, the connector accepts `connector_and_driver`.
 
 {{< /warning >}}
 
@@ -698,7 +698,7 @@ How often, in milliseconds, the connector sends a heartbeat record to the heartb
 
 Starting with connector version `dz.2.5.2.yb.2026.1.2.0.1`, the connector flushes LSNs based on the offsets that Kafka Connect has committed, so records that are filtered out no longer advance the flush LSN. If you filter records, or if the captured tables change infrequently, enable heartbeats, and make sure that no single message transformation (SMT) drops the heartbeat records; otherwise, the replication slot can stop advancing and YugabyteDB retains WAL.
 
-In connector versions earlier than `dz.2.5.2.yb.2026.1`, the connector doesn't send heartbeats while streaming changes.
+Sending heartbeats while streaming changes requires connector version [`dz.2.5.2.yb.2026.1`](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1) (the first release in the v2026.1 series) or later. Earlier releases, such as `dz.2.5.2.yb.2025.2.3`, don't send heartbeats while streaming changes.
 
 Default: 0
 
@@ -706,7 +706,7 @@ Default: 0
 
 A query that the connector runs on the source database each time it sends a heartbeat record. For example, you can set it to `INSERT INTO heartbeat_table (ts) VALUES (now())`, where `heartbeat_table` is a table included in the publication, so that the connector receives a change at every heartbeat even when the other captured tables are idle.
 
-Applies only when `heartbeat.interval.ms` is greater than `0`, and requires connector version `dz.2.5.2.yb.2026.1` or later.
+Applies only when `heartbeat.interval.ms` is greater than `0`, and requires connector version [`dz.2.5.2.yb.2026.1`](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1) or later.
 
 No default
 
@@ -783,7 +783,7 @@ The type of LSN to use for the specified replication slot:
 * SEQUENCE - A monotonic increasing number that determines the record in global order within the context of a slot.
 * HYBRID_TIME - A hybrid time value that can be used to compare transactions across slots.
 
-If you set this property to `HYBRID_TIME`, don't set [lsn.flush.mode](#lsn-flush-mode) to `connector_and_driver`; the connector rejects that combination.
+Set `slot.lsn.type` to the LSN type of the replication slot. If this property is `HYBRID_TIME`, don't set [lsn.flush.mode](#lsn-flush-mode) to `connector_and_driver`. The connector rejects that combination only when this property is `HYBRID_TIME`.
 
 Default: `SEQUENCE`
 
