@@ -33,7 +33,7 @@ Universe health checks report that drift. For example:
 - A transparent hugepages warning, when THP is disabled or no longer matches the [required settings](../../prepare/server-nodes-software/#transparent-hugepages).
 - A clock or NTP warning, when chrony is stopped or the system clock is no longer synchronized.
 
-Reprovisioning writes the current settings back and reinstalls node agent as part of provisioning.
+Reprovisioning writes the current settings back and reinstalls node agent as part of provisioning. You can also run it proactively, before a health check reports a problem. After you upgrade YugabyteDB Anywhere, the OS settings it expects may have changed, and existing nodes can be out of date until you reprovision them.
 
 On a supported universe, **Actions > More > Reprovision Universe Nodes** is available whenever no other universe task is running, just like **Reinstall Node Agent**. Reinstall Node Agent reinstalls node agent. Reprovision Universe Nodes re-applies the OS settings above and reinstalls node agent as part of that provisioning.
 
@@ -52,12 +52,14 @@ It is available for universes that YugabyteDB Anywhere provisions itself: public
 | Deployment type | Support |
 | :-------------- | :------ |
 | Public cloud (AWS, GCP, Azure, OCI) | Full UI and API support. |
-| On-premises with passwordless sudo | Full UI and API support. This is [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), where YugabyteDB Anywhere signs in and provisions the node. |
+| On-premises with passwordless sudo | Full UI and API support. This is [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), which is deprecated and still supported: YugabyteDB Anywhere signs in and provisions the node. |
 | On-premises, manual (no passwordless sudo) | Not supported. The UI hides the action. The API returns an error. |
 
-Manual on-premises provisioning includes [fully manual legacy provisioning](../../prepare/server-nodes-software/software-on-prem-manual/) and nodes prepared with [`node-agent-provision.sh`](../../prepare/server-nodes-software/software-on-prem/). YugabyteDB Anywhere has no passwordless sudo on those nodes, so it cannot re-apply OS settings for you. Run `node-agent-provision.sh` on the node.
+For universes with nodes configured using [fully manual legacy provisioning](../../prepare/server-nodes-software/software-on-prem-manual/), Reprovision Universe Nodes is not available, and the API returns an error. Re-apply OS settings on those nodes by running [`node-agent-provision.sh`](../../prepare/server-nodes-software/software-on-prem/).
 
-Reprovisioning leaves the universe on the provisioning method used to create it. It does not move a manually provisioned node onto YugabyteDB Anywhere-managed provisioning, and it does not switch a node to user-level systemd. To move an on-premises universe from legacy provisioning to the node agent provisioning script, follow [Node provisioning](../../upgrade/prepare-to-upgrade/#node-provisioning).
+A node prepared with `node-agent-provision.sh` runs a user-level node agent. When that node belongs to an on-premises provider where YugabyteDB Anywhere has passwordless sudo, the UI still shows the action and the API accepts the request. The task then fails its precheck, because the node is running a user-level node agent, which YugabyteDB Anywhere provisioning does not manage. Re-apply OS settings by running `node-agent-provision.sh` on the node.
+
+Reprovisioning leaves the universe on the provisioning method used to create it. It does not move a manually provisioned node onto YugabyteDB Anywhere-managed provisioning, and it does not switch a node to user-level systemd. Moving from legacy provisioning to the node agent provisioning script is optional. See [Node provisioning](../../upgrade/prepare-to-upgrade/#node-provisioning).
 
 This action does not replace [patching the Linux OS](../upgrade-nodes/) or replacing a boot disk. After a boot disk replacement, continue to follow that procedure, which reinstalls YugabyteDB software on the node.
 
