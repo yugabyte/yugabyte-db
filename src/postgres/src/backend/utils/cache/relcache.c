@@ -2572,11 +2572,16 @@ YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 	Assert(*ts == YB_PFETCH_STATE_LOADED);
 	/*
 	 * The relcache build reads pg_attribute from the prefetched rows, not
-	 * through its catcaches, so filling them is optional.
+	 * through its catcaches, so filling each of them is optional.
 	 */
-	if (table == YB_PFETCH_TABLE_PG_ATTRIBUTE &&
-		!*YBCGetGFlags()->ysql_catalog_preload_pg_attribute_caches)
+	if (table == YB_PFETCH_TABLE_PG_ATTRIBUTE)
 	{
+		bool		fill_attname = *YBCGetGFlags()->ysql_catalog_preload_attname_cache;
+		bool		fill_attnum = *YBCGetGFlags()->ysql_catalog_preload_attnum_cache;
+
+		if (fill_attname || fill_attnum)
+			YbPreloadCatalogCache(fill_attname ? ATTNAME : ATTNUM,
+								  fill_attname && fill_attnum ? ATTNUM : -1);
 		*ts = YB_PFETCH_STATE_CACHE_FILLED;
 		return;
 	}
