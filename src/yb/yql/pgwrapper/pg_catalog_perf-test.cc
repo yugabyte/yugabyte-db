@@ -60,6 +60,7 @@ DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
+DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
@@ -435,8 +436,14 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
         FLAGS_TEST_pg_response_cache_catalog_read_time_usec) = kHistoryCutoffInitialValue - 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) =
         ReleaseVsDebugVsAsanVsTsan(1000, 5000, 5000, 10000);
+    // Page the relcache preload's prefetch so that the 'Snapshot too old' error hits one of its
+    // later pages, before any relcache entry is built. A retry after relcache entries exist trips
+    // an assert in the relcache preload (GH#34493).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_prefetch_row_limit) = kStaleCachePrefetchRowLimit;
     PgCatalogWithUnlimitedCachePerfTest::SetUp();
   }
+
+  static constexpr uint64_t kStaleCachePrefetchRowLimit = 1024;
 };
 
 constexpr uint64_t kFirstConnectionRPCCountDefault = 3;
@@ -720,7 +727,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(first_connection_cache_metrics.hits, 0);
-  ASSERT_EQ(first_connection_cache_metrics.queries, 2);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(
       2 * FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms));
@@ -729,7 +736,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 1);
   ASSERT_EQ(second_connection_cache_metrics.hits, 1);
-  ASSERT_EQ(second_connection_cache_metrics.queries, 4);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 7);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
@@ -744,13 +751,13 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(first_connection_cache_metrics.hits, 0);
-  ASSERT_EQ(first_connection_cache_metrics.queries, 2);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
 
   auto second_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
   ASSERT_EQ(second_connection_cache_metrics.renew_hard, 1);
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(second_connection_cache_metrics.hits, 2);
-  ASSERT_EQ(second_connection_cache_metrics.queries, 6);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 9);
 }
 
 // The test checks that GC keeps response cache memory lower than limit
