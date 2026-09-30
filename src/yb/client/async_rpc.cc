@@ -71,14 +71,14 @@ METRIC_DEFINE_event_stats(
     yb::MetricUnit::kMicroseconds, "Microseconds spent before sending the request to the server");
 
 METRIC_DEFINE_counter(server, consistent_prefix_successful_reads,
-    "Number of consistent prefix reads that were served by the closest replica.",
+    "Number of successful consistent prefix reads, including leader fallback.",
     yb::MetricUnit::kRequests,
-    "Number of consistent prefix reads that were served by the closest replica.");
+    "Number of successful consistent prefix reads, including leader fallback.");
 
 METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
-    "Number of consistent prefix reads that failed to be served by the closest replica.",
+    "Number of retries of consistent prefix reads.",
     yb::MetricUnit::kRequests,
-    "Number of consistent prefix reads that failed to be served by the closest replica.");
+    "Number of retries of consistent prefix reads.");
 
 METRIC_DEFINE_counter(server, skip_intents_writes,
     "Number of writes that have skipped intents db within a transaction.",
@@ -122,6 +122,8 @@ bool IsTracingEnabled() {
 }
 
 namespace {
+
+constexpr uint32_t kAuthCatalogFollowerRpcTimeoutMs = 2000;
 
 const char* const kRead = "Read";
 const char* const kWrite = "Write";
@@ -566,8 +568,16 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     Failed(StatusFromPB(resp_.error().status()));
     return false;
   }
+  bool auth_catalog_read = false;
+  if constexpr (std::is_same_v<Req, tserver::LWReadRequestPB>) {
+    auth_catalog_read = req_.ysql_auth_catalog_read();
+  }
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
   if (restart_read_time) {
+    if (auth_catalog_read) {
+      Failed(STATUS(IllegalState, "Authentication catalog read cannot restart at a new snapshot"));
+      return false;
+    }
     auto read_point = batcher_->read_point();
     auto tablet_id = req_.tablet_id();
     HybridTime original_read_time;
@@ -591,7 +601,7 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     return false;
   }
   auto local_limit_ht = resp_.local_limit_ht();
-  if (local_limit_ht) {
+  if (local_limit_ht && !auth_catalog_read) {
     auto read_point = batcher_->read_point();
     if (read_point) {
       read_point->UpdateLocalLimit(req_.tablet_id(), HybridTime(local_limit_ht));
@@ -684,9 +694,10 @@ void HandleExtraFields(YBqlReadOp* op, tserver::LWReadRequestPB* req) {
   }
 }
 
-template <class OpType, class Req, class Out>
+template <class OpType, class Req, class Out, class OpCallback = std::nullptr_t>
 void FillOps(
-    const InFlightOps& ops, YBOperation::Type expected_type, Req* req, Out* out) {
+    const InFlightOps& ops, YBOperation::Type expected_type, Req* req, Out* out,
+    const OpCallback& op_callback = nullptr) {
   size_t idx = 0;
   for (auto& op : ops) {
     CHECK_EQ(op.yb_op->type(), expected_type);
@@ -694,6 +705,9 @@ void FillOps(
     concrete_op->ResetResponse();
     out->push_back_ref(concrete_op->mutable_request());
     HandleExtraFields(concrete_op, req);
+    if constexpr (!std::is_same_v<OpCallback, std::nullptr_t>) {
+      op_callback(*concrete_op);
+    }
     VLOG(5) << ++idx << ") encoded row: " << op.yb_op->ToString();
   }
 }
@@ -931,10 +945,16 @@ ReadRpc::ReadRpc(
       FillOps<YBqlReadOp>(
           ops_, YBOperation::Type::QL_READ, &req_, req_.mutable_ql_batch());
       break;
-    case YBTableType::PGSQL_TABLE_TYPE:
+    case YBTableType::PGSQL_TABLE_TYPE: {
+      size_t marked_ops = 0;
       FillOps<YBPgsqlReadOp>(
-          ops_, YBOperation::Type::PGSQL_READ, &req_, req_.mutable_pgsql_batch());
+          ops_, YBOperation::Type::PGSQL_READ, &req_, req_.mutable_pgsql_batch(),
+          [&marked_ops](const YBPgsqlReadOp& op) {
+            marked_ops += op.ysql_auth_catalog_read();
+          });
+      initialization_status_ = InitYsqlAuthCatalogRead(data, marked_ops);
       break;
+    }
     case YBTableType::UNKNOWN_TABLE_TYPE:
     case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
       LOG(DFATAL) << "Unsupported table type: " << table()->ToString();
@@ -957,10 +977,69 @@ ReadRpc::~ReadRpc() {
   }
 }
 
-void ReadRpc::CallRemoteMethod() {
-  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
+Status ReadRpc::InitYsqlAuthCatalogRead(const AsyncRpcData& data, size_t marked_ops) {
+  if (!marked_ops) {
+    return Status::OK();
+  }
+
+  SCHECK_EQ(marked_ops, ops_.size(), InvalidArgument,
+            "Cannot mix authentication catalog reads with unmarked operations");
+  SCHECK_EQ(req_.consistency_level(), YBConsistencyLevel::CONSISTENT_PREFIX, InvalidArgument,
+            "Authentication catalog reads must start with consistent prefix routing");
+  SCHECK(!req_.has_transaction() && !req_.has_subtransaction() && !data.skip_intents &&
+             !data.read_at_in_txn_limit && !data.use_async_write &&
+             !data.pending_async_write_op_id.valid(),
+         InvalidArgument, "Authentication catalog reads cannot carry transaction or write state");
+  const auto* read_point = batcher_->read_point();
+  SCHECK(read_point, InvalidArgument,
+         "Authentication catalog reads require an explicit read point");
+  const auto read_time = read_point->GetReadTime(tablet().tablet_id());
+  SCHECK(!read_time.read.is_special() && read_time.read > HybridTime::kInitial &&
+             read_time == ReadHybridTime::SingleTime(read_time.read),
+         InvalidArgument, "Authentication catalog reads require a fixed single read timestamp");
+
+  // Catalog tables need not satisfy AsyncRpcBase's transactional/consistent-read conditions.
+  // Serialize the supplied snapshot once; retries only change routing, never this read time.
+  read_time.AddToPB(&req_);
+  req_.set_ysql_auth_catalog_read(true);
+  return Status::OK();
+}
+
+void ReadRpc::SendRpc() {
+  if (!initialization_status_.ok()) {
+    retained_self_ = shared_from_this();
+    Failed(initialization_status_);
+    HandleFinished({}, initialization_status_);
+    return;
+  }
+  AsyncRpc::SendRpc();
+}
+
+bool ReadRpc::PreferFollower() const {
+  return req_.ysql_auth_catalog_read();
+}
+
+rpc::RpcController* ReadRpc::PrepareReadController() {
+  const bool prefer_follower = PreferFollower();
+  const bool leader_selection = tablet_invoker_.is_leader_selection();
+  if (prefer_follower) {
+    req_.set_consistency_level(
+        leader_selection ? YBConsistencyLevel::STRONG : YBConsistencyLevel::CONSISTENT_PREFIX);
+  }
+  TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   resp_.Clear();
-  ts_proxy()->ReadAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
+  auto* controller = PrepareController();
+  if (prefer_follower && !leader_selection) {
+    // A blackholed follower must not consume the operation's entire fallback budget.
+    controller->set_timeout(std::min(
+        controller->timeout() / 2,
+        MonoDelta::FromMilliseconds(kAuthCatalogFollowerRpcTimeoutMs)));
+  }
+  return controller;
+}
+
+void ReadRpc::CallRemoteMethod() {
+  ts_proxy()->ReadAsync(req_, &resp_, PrepareReadController(), [this] { Finished(Status::OK()); });
 }
 
 Status ReadRpc::SwapResponses(RefCntBuffer data_holder) {
@@ -1039,7 +1118,7 @@ Status ReadRpc::SwapResponses(RefCntBuffer data_holder) {
 }
 
 void ReadRpc::NotifyBatcher(const Status& status) {
-  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::NotifyBatcher", &resp_);
+  TEST_SYNC_POINT_CALLBACK("ReadRpc::NotifyBatcher", &resp_);
   batcher_->ProcessReadResponse(*this, status);
 }
 

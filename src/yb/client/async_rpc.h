@@ -32,6 +32,7 @@
 
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/metrics_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace client {
@@ -219,10 +220,19 @@ class ReadRpc : public AsyncRpcBase<tserver::LWReadRequestPB, tserver::LWReadRes
 
   std::string GetRpcName() override { return "Read"; }
 
+  void SendRpc() override;
+  bool PreferFollower() const override;
+
  private:
+  friend class TabletRpcTest;
+
+  Status InitYsqlAuthCatalogRead(const AsyncRpcData& data, size_t marked_ops);
+  rpc::RpcController* PrepareReadController();
   Status SwapResponses(RefCntBuffer data_holder) override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
+
+  Status initialization_status_;
 };
 
 class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
