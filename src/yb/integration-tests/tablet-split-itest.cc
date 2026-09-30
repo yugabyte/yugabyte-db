@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <chrono>
 #include <limits>
 #include <thread>
@@ -288,6 +289,126 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
 
   // This will make client first try to access deleted tablet and that should be handled correctly.
   ASSERT_OK(CheckRowsCount(kNumRows));
+}
+
+namespace {
+
+// Waits until the tablet is gone from both its table's tablets_ and the catalog manager's
+// tablet_map_, and returns the split children a lookup for it now reports.
+constexpr auto kTabletRemovedTimeout = 30s * kTimeMultiplier;
+
+Result<std::vector<TabletId>> WaitForTabletRemoved(
+    master::CatalogManagerIf& catalog_mgr, const master::TableInfo& table_info,
+    const TabletId& tablet_id, MonoDelta timeout = kTabletRemovedTimeout) {
+  std::vector<TabletId> split_child_ids;
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto tablet = catalog_mgr.GetTabletInfo(tablet_id);
+        if (tablet.ok()) {
+          return false;
+        }
+        if (!tablet.status().IsDeleted()) {
+          return tablet.status();
+        }
+        const auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
+        SCHECK(
+            std::ranges::find_if(tablets, [&tablet_id](const auto& t) {
+              return t->tablet_id() == tablet_id;
+            }) == tablets.end(),
+            IllegalState, "Tablet erased from tablet_map_ but still in tablets_");
+        split_child_ids = SplitChildTabletIdsData(tablet.status()).value();
+        return true;
+      },
+      timeout, Format("Wait for tablet $0 to be removed", tablet_id)));
+  return split_child_ids;
+}
+
+} // namespace
+
+// Test for #15043
+TEST_F(TabletSplitITest, DeletedParentTabletRemovedFromTableMaps) {
+  const auto parent_tablet_id = ASSERT_RESULT(CreateSingleTabletAndSplit(kDefaultNumRows));
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto table_id = ASSERT_RESULT(GetTestTableId());
+  const auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_id));
+  std::vector<TabletId> child_ids;
+  for (const auto& tablet : ASSERT_RESULT(table_info->GetTablets())) {
+    child_ids.push_back(tablet->tablet_id());
+  }
+  ASSERT_EQ(child_ids.size(), 2);
+
+  // Nothing here retains the parent, so it is deleted and removed. A lookup for it must still name
+  // its children: that is how a client holding a stale parent location finds them.
+  auto split_child_ids =
+      ASSERT_RESULT(WaitForTabletRemoved(*catalog_mgr, *table_info, parent_tablet_id));
+  std::ranges::sort(child_ids);
+  std::ranges::sort(split_child_ids);
+  ASSERT_EQ(split_child_ids, child_ids);
+}
+
+// A deleted split parent must stay out of the maps after a master restart, whether the loader
+// skips it or the cleanup removes it again.
+TEST_F(TabletSplitITest, DeletedParentTabletRemovedAfterRestart) {
+  const auto parent_tablet_id = ASSERT_RESULT(CreateSingleTabletAndSplit(kDefaultNumRows));
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto table_id = ASSERT_RESULT(GetTestTableId());
+  const auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_id));
+  ASSERT_RESULT(WaitForTabletRemoved(*catalog_mgr, *table_info, parent_tablet_id));
+}
+
+// Under a snapshot schedule a split parent is hidden, not deleted. It must stay in
+// TableInfo::tablets_ while retained so PITR can restore to before the split, and be removed once
+// it ages out of the retention window and is deleted.
+TEST_F(TabletSplitITest, HiddenParentTabletRemovedFromTableMapsAfterRetention) {
+  constexpr auto kNumRows = kDefaultNumRows;
+  constexpr auto kInterval = 1s;
+  constexpr auto kRetention = 5s * kTimeMultiplier;
+
+  CreateSingleTablet();
+
+  auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util->SetProxy(&client_->proxy_cache());
+  snapshot_util->SetCluster(cluster_.get());
+  ASSERT_RESULT(snapshot_util->CreateSchedule(
+      table_, client::kTableName.namespace_type(), client::kTableName.namespace_name(),
+      client::WaitSnapshot::kTrue, kInterval, kRetention));
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto parent_tablet_id = ASSERT_RESULT(SplitTabletAndValidate(
+      split_hash_code, kNumRows, /* parent_tablet_protected_from_deletion = */ true));
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto table_id = ASSERT_RESULT(GetTestTableId());
+  const auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_id));
+  auto parent_in_tablets = [&]() -> Result<bool> {
+    const auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
+    return std::ranges::find_if(tablets, [&parent_tablet_id](const auto& tablet) {
+             return tablet->tablet_id() == parent_tablet_id;
+           }) != tablets.end();
+  };
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        // Read tablets_ before the tablet's state: only a DELETED tablet is removed, so if the
+        // parent is still not deleted afterwards it must have been listed.
+        const auto listed = VERIFY_RESULT(parent_in_tablets());
+        auto parent = VERIFY_RESULT(catalog_mgr->GetTabletInfo(parent_tablet_id));
+        auto parent_lock = parent->LockForRead();
+        SCHECK(
+            !parent_lock->is_deleted(), IllegalState, "Split parent deleted before it was hidden");
+        if (!parent_lock->is_hidden()) {
+          return false;
+        }
+        SCHECK(listed, IllegalState, "Retained hidden parent was removed from tablets_");
+        return true;
+      },
+      30s * kTimeMultiplier, "Wait for split parent to become hidden"));
+
+  ASSERT_RESULT(
+      WaitForTabletRemoved(*catalog_mgr, *table_info, parent_tablet_id, 120s * kTimeMultiplier));
 }
 
 // Test for #31936, ensure that marking all_tablets as stale forces a full tablet lookup, even if
@@ -3182,11 +3303,11 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     auto parent = catalog_mgr->GetTabletInfo(parent_tablet_id);
     if (!parent.ok()) {
-      if (parent.status().IsNotFound()) {
+      if (parent.status().IsDeleted() || parent.status().IsNotFound()) {
         return true;
-    }
+      }
       return parent.status();
-  }
+    }
     auto parent_lock = parent.get()->LockForRead();
     return hide_only ? parent_lock->is_hidden() : parent_lock->is_deleted();
   }, 10s * kTimeMultiplier, "Wait for parent to be hidden / deleted."));

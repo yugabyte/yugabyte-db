@@ -110,6 +110,7 @@ DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(ysql_operation_lease_ttl_client_buffer_ms);
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
 
 namespace yb::integration_tests {
 
@@ -659,6 +660,7 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
     MasterPathHandlersItest::SetUp();
   }
 
@@ -707,6 +709,65 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
 
   ASSERT_FALSE(ASSERT_RESULT(webpage_shows_deleted_tablets(false /* should_show_deleted */)));
   ASSERT_TRUE(ASSERT_RESULT(webpage_shows_deleted_tablets(true /* should_show_deleted */)));
+}
+
+// With the cleanup on, a split parent removed from memory is still listed, with its children, when
+// the table page shows deleted tablets.
+TEST_F_EX(MasterPathHandlersItest, ShowRemovedSplitParent, TabletSplitMasterPathHandlersItest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = true;
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  const auto parent_tablet_id = tablet->tablet_id();
+
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto parent = catalog_manager.GetTabletInfo(parent_tablet_id);
+        return !parent.ok() && parent.status().IsDeleted();
+      },
+      30s /* timeout */, "Wait for split parent to be removed from memory"));
+
+  const auto table_page = [this, &table](const bool show_deleted) -> Result<std::string> {
+    faststring result;
+    RETURN_NOT_OK(GetUrl(
+        "/table?id=" + table->id() + (show_deleted ? "&show_deleted" : ""), &result));
+    return result.ToString();
+  };
+  // Match the row, since the task list can also mention the parent.
+  ASSERT_STR_NOT_CONTAINS(
+      ASSERT_RESULT(table_page(false /* show_deleted */)), "<tr><th>" + parent_tablet_id);
+  const auto page = ASSERT_RESULT(table_page(true /* show_deleted */));
+  ASSERT_STR_CONTAINS(page, parent_tablet_id);
+  // The state message is kept. Partition and split depth are checked through the JSON endpoint.
+  ASSERT_STR_CONTAINS(page, "Not serving tablet deleted upon request at");
+
+  // The JSON endpoint lists it too, with the same rebuilt fields.
+  faststring json_result;
+  ASSERT_OK(GetUrl("/api/v1/table?id=" + table->id(), &json_result));
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(json_result.ToString()));
+  bool found_parent = false;
+  for (const auto& tablet_json : ASSERT_RESULT(json_obj["tablets"].GetArray())) {
+    if (ASSERT_RESULT(tablet_json["tablet_id"].GetString()) != parent_tablet_id) {
+      continue;
+    }
+    found_parent = true;
+    ASSERT_FALSE(ASSERT_RESULT(tablet_json["partition"].GetString()).empty());
+    ASSERT_EQ(ASSERT_RESULT(tablet_json["split_depth"].GetUint64()), 0);
+    ASSERT_EQ(ASSERT_RESULT(tablet_json["state"].GetString()), "Deleted");
+    ASSERT_STR_CONTAINS(
+        ASSERT_RESULT(tablet_json["message"].GetString()),
+        "Not serving tablet deleted upon request at");
+    ASSERT_TRUE(ASSERT_RESULT(tablet_json["locations"].GetArray()).empty());
+  }
+  ASSERT_TRUE(found_parent) << json_result.ToString();
 }
 
 // Hidden split parent tablet shouldn't be shown as leaderless.
