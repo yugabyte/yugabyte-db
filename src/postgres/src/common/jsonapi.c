@@ -519,26 +519,23 @@ JsonParseErrorType
 json_lex(JsonLexContext *lex)
 {
 	char	   *s;
-	int			len;
+	char	   *const end = lex->input + lex->input_length;
 	JsonParseErrorType result;
 
 	/* Skip leading whitespace. */
 	s = lex->token_terminator;
-	len = s - lex->input;
-	while (len < lex->input_length &&
-		   (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'))
+	while (s < end && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'))
 	{
 		if (*s++ == '\n')
 		{
 			++lex->line_number;
 			lex->line_start = s;
 		}
-		len++;
 	}
 	lex->token_start = s;
 
 	/* Determine token type. */
-	if (len >= lex->input_length)
+	if (s >= end)
 	{
 		lex->token_start = NULL;
 		lex->prev_token_terminator = lex->token_terminator;
@@ -623,7 +620,7 @@ json_lex(JsonLexContext *lex)
 					 * the whole word as an unexpected token, rather than just
 					 * some unintuitive prefix thereof.
 					 */
-					for (p = s; p - s < lex->input_length - len && JSON_ALPHANUMERIC_CHAR(*p); p++)
+					for (p = s; p < end && JSON_ALPHANUMERIC_CHAR(*p); p++)
 						 /* skip */ ;
 
 					/*
@@ -681,7 +678,6 @@ json_lex_string(JsonLexContext *lex)
 {
 	char	   *s;
 	char	   *const end = lex->input + lex->input_length;
-	int			len;
 	int			hi_surrogate = -1;
 
 	/* Convenience macros for error exits */
@@ -705,13 +701,11 @@ json_lex_string(JsonLexContext *lex)
 
 	Assert(lex->input_length > 0);
 	s = lex->token_start;
-	len = lex->token_start - lex->input;
 	for (;;)
 	{
 		s++;
-		len++;
 		/* Premature end of the string. */
-		if (len >= lex->input_length)
+		if (s >= end)
 			FAIL_AT_CHAR_START(JSON_INVALID_TOKEN);
 		else if (*s == '"')
 			break;
@@ -719,8 +713,7 @@ json_lex_string(JsonLexContext *lex)
 		{
 			/* OK, we have an escape character. */
 			s++;
-			len++;
-			if (len >= lex->input_length)
+			if (s >= end)
 				FAIL_AT_CHAR_START(JSON_INVALID_TOKEN);
 			else if (*s == 'u')
 			{
@@ -730,8 +723,7 @@ json_lex_string(JsonLexContext *lex)
 				for (i = 1; i <= 4; i++)
 				{
 					s++;
-					len++;
-					if (len >= lex->input_length)
+					if (s >= end)
 						FAIL_AT_CHAR_START(JSON_INVALID_TOKEN);
 					else if (*s >= '0' && *s <= '9')
 						ch = (ch * 16) + (*s - '0');
