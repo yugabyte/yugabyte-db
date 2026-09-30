@@ -12,24 +12,19 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rollback.ResizeNodeRollbackComputer;
-import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
-import play.libs.Json;
 
 /**
  * Rolls back a failed {@link ResizeNode} by reversing instance type / cgroup / gflags / IOPS /
@@ -47,7 +42,7 @@ import play.libs.Json;
  * <p>Freeze must not recapture {@code state_transition_details} - the failed ResizeNode's delta is
  * the source of truth for the before intent. {@link
  * com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode} writes the overlaid intent (old
- * instance + kept volumeSize + reverted IOPS/throughput). Successful unlock clears {@code
+ * instance + kept volumeSize + restored IOPS/throughput). Successful unlock clears {@code
  * state_transition_details} in {@link
  * com.yugabyte.yw.commissioner.tasks.UniverseTaskBase#unlockUniverseForUpdate(java.util.UUID,
  * String)}.
@@ -91,14 +86,7 @@ public class RollbackResizeNode extends ResizeNode {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
-    StateTransitionDetails details = universe.getStateTransitionDetails();
-    if (details == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Cannot roll back resize node: state_transition_details is missing (no delta was"
-              + " captured on freeze)");
-    }
-    details.requireRollbackable();
+    requireStateTransitionDetails(universe).requireRollbackable();
   }
 
   /**
@@ -110,24 +98,10 @@ public class RollbackResizeNode extends ResizeNode {
    */
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    StateTransitionDetails details = universe.getStateTransitionDetails();
-    if (details == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Cannot roll back resize node: state_transition_details is missing (no delta was"
-              + " captured on freeze)");
-    }
-    details.requireRollbackable();
-    Date failedTaskCreateTime = null;
-    UUID originalTaskUUID = taskParams().getOriginalTaskUUID();
-    if (originalTaskUUID != null) {
-      Optional<TaskInfo> failedInfo = TaskInfo.maybeGet(originalTaskUUID);
-      if (failedInfo.isPresent()) {
-        failedTaskCreateTime = failedInfo.get().getCreateTime();
-      }
-    }
+    requireStateTransitionDetails(universe).requireRollbackable();
     cloudByNode = rollbackComputer.describeCloudNodes(universe);
-    rollbackComputer.checkCooldownGate(taskParams(), universe, failedTaskCreateTime, cloudByNode);
+    rollbackComputer.checkCooldownGate(
+        taskParams(), universe, taskParams().getFailedTaskCreateTime(), cloudByNode);
   }
 
   @Override
@@ -173,23 +147,39 @@ public class RollbackResizeNode extends ResizeNode {
     return cloud.getInstanceType().equals(targetInstanceType);
   }
 
+  /**
+   * Diff against the failed resize's target gflags from {@code state_transition_details}, not the
+   * chain's first task. Conf rewrites use the baseline as the "old" side for {@code
+   * gflagsToRemove}, so nodes the forward already updated still get added flags stripped.
+   */
   @Override
   protected Map<UUID, Cluster> getGFlagsBaselineClusters(Universe universe) {
-    UUID original = taskParams().getOriginalTaskUUID();
-    if (original == null) {
-      return super.getGFlagsBaselineClusters(universe);
+    UniverseDefinitionTaskParams target =
+        requireStateTransitionDetails(universe).getTargetUniverseDetails();
+    Map<UUID, Cluster> baseline = new HashMap<>();
+    for (Cluster current : universe.getUniverseDetails().clusters) {
+      Cluster cluster = new Cluster(current.clusterType, current.userIntent.clone());
+      cluster.uuid = current.uuid;
+      Cluster targetCluster = target.getClusterByUuid(current.uuid);
+      if (targetCluster != null) {
+        cluster.userIntent.specificGFlags = targetCluster.userIntent.specificGFlags;
+        cluster.userIntent.masterGFlags = targetCluster.userIntent.masterGFlags;
+        cluster.userIntent.tserverGFlags = targetCluster.userIntent.tserverGFlags;
+      }
+      baseline.put(cluster.uuid, cluster);
     }
-    Optional<TaskInfo> failedInfo = TaskInfo.maybeGet(original);
-    if (!failedInfo.isPresent()) {
+    return baseline;
+  }
+
+  private StateTransitionDetails requireStateTransitionDetails(Universe universe) {
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    if (details == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot roll back resize node gflags: original task is missing");
+          BAD_REQUEST,
+          "Cannot roll back resize node: state_transition_details is missing (no delta was"
+              + " captured on freeze)");
     }
-    ResizeNodeParams forward =
-        Json.fromJson(failedInfo.get().getTaskParams(), ResizeNodeParams.class);
-    if (forward == null || forward.clusters == null || !forward.flagsProvided(universe)) {
-      return super.getGFlagsBaselineClusters(universe);
-    }
-    return forward.getNewVersionsOfClusters(universe);
+    return details;
   }
 
   private boolean cloudIopsOrThroughputDiffers(NodeDetails node, DeviceInfo desired) {

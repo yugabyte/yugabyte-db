@@ -180,7 +180,7 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
                 u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
 
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
-    persistFailedResizeForward(NEW_INSTANCE_TYPE, targetFlags);
+    seedFailedResizeTargetGFlags(targetFlags);
 
     ResizeNodeParams rollbackParams = createRollbackParams();
     rollbackParams.getPrimaryCluster().userIntent.specificGFlags = beforeFlags;
@@ -208,9 +208,34 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testRollbackRevertsGFlagsWithoutOriginalTask() {
+    SpecificGFlags beforeFlags =
+        SpecificGFlags.construct(Map.of("master-before", "1"), Map.of("tserver-before", "2"));
+    SpecificGFlags targetFlags =
+        SpecificGFlags.construct(
+            Map.of("master-before", "5", "added-master", "x"), Map.of("added-tserver", "y"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
+
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    seedFailedResizeTargetGFlags(targetFlags);
+
+    ResizeNodeParams rollbackParams = createRollbackParams();
+    rollbackParams.setOriginalTaskUUID(UUID.randomUUID());
+    rollbackParams.getPrimaryCluster().userIntent.specificGFlags = beforeFlags;
+    rollbackParams.masterGFlags = new HashMap<>();
+    rollbackParams.tserverGFlags = new HashMap<>();
+    TaskInfo taskInfo = submitRollback(rollbackParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertGFlagRevertConfTasks(gflagConfSubtasks(taskInfo));
+  }
+
+  @Test
   public void testRollbackInstanceOnlyHasNoGFlagsConfUpdates() {
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
-    persistFailedResizeForward(NEW_INSTANCE_TYPE, null);
     ResizeNodeParams rollbackParams = createRollbackParams();
     rollbackParams.masterGFlags = new HashMap<>();
     rollbackParams.tserverGFlags = new HashMap<>();
@@ -233,7 +258,7 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
                 u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
 
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
-    persistFailedResizeForward(NEW_INSTANCE_TYPE, targetFlags);
+    seedFailedResizeTargetGFlags(targetFlags);
     String alreadyBefore =
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
             .findFirst()
@@ -607,26 +632,21 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     return taskInfo.getUuid();
   }
 
-  private void persistFailedResizeForward(String instanceType, SpecificGFlags specificGFlags) {
-    ResizeNodeParams forward = new ResizeNodeParams();
-    forward.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    forward.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
-    forward.clusters =
-        Json.fromJson(
-                Json.toJson(
-                    Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
-                        .getUniverseDetails()),
-                UniverseDefinitionTaskParams.class)
-            .clusters;
-    forward.getPrimaryCluster().userIntent.instanceType = instanceType;
-    if (specificGFlags != null) {
-      forward.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
-    }
-    forward.masterGFlags = new HashMap<>();
-    forward.tserverGFlags = new HashMap<>();
-    TaskInfo failedInfo = TaskInfo.getOrBadRequest(failedResizeTaskUuid);
-    failedInfo.setTaskParams(Json.toJson(forward));
-    failedInfo.save();
+  /**
+   * Rebuilds the freeze-captured delta so its target carries {@code targetFlags}. Matches what
+   * {@link ResizeNode#getTargetUniverseDetails()} records for a specificGFlags resize.
+   */
+  private void seedFailedResizeTargetGFlags(SpecificGFlags targetFlags) {
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    UniverseDefinitionTaskParams before = details.getBeforeUniverseDetails();
+    UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+    target.getPrimaryCluster().userIntent.specificGFlags = targetFlags;
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(before, target);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.setStateTransitionDetails(new StateTransitionDetails(true, delta)));
   }
 
   private List<TaskInfo> gflagConfSubtasks(TaskInfo taskInfo) {
@@ -667,6 +687,10 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     UserIntent intent = params.getPrimaryCluster().userIntent;
     intent.instanceType = DEFAULT_INSTANCE_TYPE;
     params.setOriginalTaskUUID(failedResizeTaskUuid);
+    if (failedResizeTaskUuid != null) {
+      TaskInfo.maybeGet(failedResizeTaskUuid)
+          .ifPresent(ti -> params.setFailedTaskCreateTime(ti.getCreateTime()));
+    }
     return params;
   }
 

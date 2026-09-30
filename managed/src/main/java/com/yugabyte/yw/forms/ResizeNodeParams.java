@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModelProperty;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -68,6 +69,11 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           Common.CloudType.local);
 
   private boolean forceResizeNode;
+
+  // Set only on RollbackResizeNode params: the Azure disk cooldown clock when a node's
+  // lastVolumeUpdateTime is unset.
+  @ApiModelProperty(hidden = true)
+  private Date failedTaskCreateTime;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
