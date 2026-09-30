@@ -3636,6 +3636,22 @@ PostmasterStateMachine(void)
 								B_BG_WORKER);
 
 		/*
+		 * YB: the YB backend types are backend-like children that serve user
+		 * sessions or run DDL work, so they stop when the regular backends do.
+		 * YB_YSQL_CONN_MGR_WAL_SENDER is handled with B_WAL_SENDER below.
+		 */
+		targetMask = btmask_add(targetMask,
+								YB_YSQL_CONN_MGR,
+								YB_YSQL_CONN_MGR_CTRL,
+								YB_AUTO_ANALYZE_BACKEND,
+								YB_INDEX_BACKFILL_DDL,
+								YB_MATVIEW_REFRESH_DDL,
+								YB_RELCACHE_INIT_BACKEND,
+								YB_GLOBAL_VIEW_BACKEND,
+								YB_XCLUSTER_DDL_QUEUE_BACKEND,
+								YB_XCLUSTER_SETUP_BACKEND);
+
+		/*
 		 * No walwriter, bgwriter, slot sync worker, or WAL summarizer either.
 		 */
 		targetMask = btmask_add(targetMask,
@@ -3659,7 +3675,9 @@ PostmasterStateMachine(void)
 									B_CHECKPOINTER,
 									B_ARCHIVER,
 									B_IO_WORKER,
-									B_WAL_SENDER);
+									B_WAL_SENDER,
+			/* YB: a logical-connection walsender follows B_WAL_SENDER. */
+									YB_YSQL_CONN_MGR_WAL_SENDER);
 
 		/*
 		 * Normally archiver, checkpointer, IO workers and walsenders will
@@ -3687,7 +3705,9 @@ PostmasterStateMachine(void)
 									B_ARCHIVER,
 									B_CHECKPOINTER,
 									B_IO_WORKER,
-									B_WAL_SENDER);
+									B_WAL_SENDER,
+			/* YB: as for B_WAL_SENDER, may or may not be in targetMask. */
+									YB_YSQL_CONN_MGR_WAL_SENDER);
 
 			/* these are not real postmaster children */
 			remainMask = btmask_add(remainMask,
