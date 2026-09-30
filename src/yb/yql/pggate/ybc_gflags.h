@@ -81,6 +81,7 @@ typedef struct {
   const int64_t*  TEST_delay_after_table_analyze_ms;
   const bool*     TEST_enable_obj_tuple_locks;
   const bool*     TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
+  const bool*     ysql_enable_startup_client_connection_check;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();
