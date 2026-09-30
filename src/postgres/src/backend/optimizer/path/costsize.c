@@ -7124,6 +7124,44 @@ yb_get_ybctid_width(Oid baserel_oid, IndexOptInfo *index, bool is_primary_index)
 }
 
 /*
+ * yb_expand_whole_row_attrs
+ *		Replaces the whole-row entry of attrs, a bitmap offset by minattr as in
+ *		pull_varattnos_min_attr(), with every non-dropped column of the
+ *		relation.
+ *
+ * DocDB has no whole-row result: the executor requests each non-dropped
+ * column instead (see ybcBuildRequiredAttrs()).  A column also referenced on
+ * its own is already in attrs, so it is counted once.
+ */
+static Bitmapset *
+yb_expand_whole_row_attrs(Bitmapset *attrs, AttrNumber minattr, Oid relid)
+{
+	int			wholerow_index;
+	Relation	rel;
+	TupleDesc	tupdesc;
+
+	wholerow_index = YBAttnumToBmsIndexWithMinAttr(minattr, InvalidAttrNumber);
+	if (!bms_is_member(wholerow_index, attrs))
+		return attrs;
+
+	attrs = bms_del_member(attrs, wholerow_index);
+
+	rel = table_open(relid, NoLock);
+	tupdesc = RelationGetDescr(rel);
+	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
+	{
+		if (TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+			continue;
+
+		attrs = bms_add_member(attrs,
+							   YBAttnumToBmsIndexWithMinAttr(minattr, attnum));
+	}
+	table_close(rel, NoLock);
+
+	return attrs;
+}
+
+/*
  * yb_get_docdb_result_width
  *		Determines width of the result that is transferred from DocDB to pggate.
  *
@@ -7246,6 +7284,10 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 	{
 		int			bms_index = -1;
 
+		attrs = yb_expand_whole_row_attrs(attrs,
+										  YBFirstLowInvalidAttributeNumber + 1,
+										  baserel_oid);
+
 		while ((bms_index = bms_first_member(attrs)) >= 0)
 		{
 			/* Add 1 byte for null indicator */
@@ -7263,6 +7305,9 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 				/* Ignore system attributes */
 				continue;
 			}
+
+			/* The whole-row entry was replaced by its columns above. */
+			Assert(attnum > 0);
 
 			Relation	baserel = table_open(baserel_oid, NoLock);
 			Form_pg_attribute att = TupleDescAttr(baserel->rd_att, attnum - 1);
