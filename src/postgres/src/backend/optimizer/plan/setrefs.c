@@ -3765,6 +3765,7 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
  *		an index scan.
  *
  * These are the scalar array ops the planner pinned as merge scan stream keys
+ * and the equality index conditions of the single-value stream key columns
  * (see yb_merge_scan.c).  Their left-hand side holds Vars of the scanned
  * relation, so they need the same range table offsetting as every other
  * expression on the node. Otherwise EXPLAIN VERBOSE, which deparses them
@@ -3786,6 +3787,10 @@ yb_fix_merge_scan_stream_conds(PlannerInfo *root,
 		YbMergeScanStreamColInfo *stream_col =
 			lfirst_node(YbMergeScanStreamColInfo, lc);
 
+		/*
+		 * A hash column with neither a SAOP nor an equality index condition is
+		 * NULL here.
+		 */
 		stream_col->clause = (Expr *)
 			fix_scan_expr(root, (Node *) stream_col->clause, rtoffset,
 						  num_exec);
