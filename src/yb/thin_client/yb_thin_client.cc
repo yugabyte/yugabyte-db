@@ -109,8 +109,8 @@ static constexpr int kDefaultNumReactors = 4;
 static constexpr uint32_t kDefaultReadSessions = 4;
 static constexpr uint32_t kDefaultWriteSessions = 1;
 static constexpr uint32_t kDefaultSessionsPerConn = 4;
-// One connection to a tserver. Its own messenger, hence its own socket, so N connections spread
-// across tserver nodes behind a ClusterIP VIP. Sessions are packed onto connections.
+// One connection to a tserver. Its own messenger, with one socket to its host, so N connections
+// spread across tserver nodes behind a ClusterIP VIP. Sessions are packed onto connections.
 struct ybthin_connection {
   std::unique_ptr<rpc::Messenger> messenger;
   std::unique_ptr<rpc::ProxyCache> proxy_cache;
@@ -851,6 +851,9 @@ ybthin_status ybthin_client_create(
     auto conn = std::make_unique<ybthin_connection>();
     rpc::MessengerBuilder builder("yb_thin_client");
     builder.set_num_reactors(client->num_reactors);
+    // A load balancer picks a tserver per socket, so a connection's calls share one socket to reach
+    // the tserver that issued its session ids.
+    builder.set_num_connections_to_server(1);
     builder.UseDefaultConnectionContextFactory();
     if (client->secure_context) {
       rpc::ApplySecureContext(client->secure_context.get(), &builder);
