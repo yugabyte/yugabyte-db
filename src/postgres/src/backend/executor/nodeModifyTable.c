@@ -4906,6 +4906,17 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 */
 		CheckValidResultRel(resultRelInfo, operation);
 
+		/*
+		 * YB: Parse analysis only flags a temp relation that is the
+		 * statement's top-level target, which misses data-modifying CTEs and
+		 * rule actions.  Without the flag, commit does not record the
+		 * transaction in clog and the writes read as aborted.
+		 */
+		if (IsYugaByteEnabled() &&
+			resultRelInfo->ri_RelationDesc->rd_rel->relpersistence ==
+			RELPERSISTENCE_TEMP)
+			YbSetTxnUsesTempRel();
+
 		resultRelInfo++;
 		i++;
 	}
