@@ -90,11 +90,15 @@ class ObjectLockManager {
   // Snapshot conflicting transactions for the given lock keys and register callbacks on each to
   // be notified when they release all locks. The callback fires once all conflicting transactions
   // have completed their unlock.
+  //
+  // Note: WaitForLockers is generally invoked at the start of a phase/txn when either no object
+  // locks are held or session object locks alone are held.
   void WaitForConflictingLockers(
       const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
       StdStatusCallback callback,
       CoarseTimePoint deadline,
-      const TransactionId& background_txn_id);
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet);
 
   void Poll();
 

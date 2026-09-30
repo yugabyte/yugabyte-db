@@ -567,6 +567,7 @@ message WaitForLockersMultipleRequestPB {
   // The expected lease epoch of the recipient tserver.
   optional uint64 recipient_lease_epoch = 5;
   optional bytes background_transaction_id = 6;
+  optional bytes background_transaction_status_tablet = 7;
 }
 
 message WaitForLockersMultipleResponsePB {

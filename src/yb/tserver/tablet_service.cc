@@ -4072,7 +4072,7 @@ void TabletServiceImpl::WaitForLockersMultiple(
   ts_local_lock_manager->WaitForLockersAsync(
       req->object_locks(), deadline,
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()),
-      background_txn_id);
+      background_txn_id, req->background_transaction_status_tablet());
 }
 
 Result<GetYSQLLeaseInfoResponsePB> TabletServiceImpl::GetYSQLLeaseInfo(
