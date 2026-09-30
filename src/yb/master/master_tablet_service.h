@@ -18,6 +18,8 @@
 
 #include "yb/tserver/tablet_service.h"
 
+#include "yb/util/metrics_fwd.h"
+
 namespace yb {
 namespace master {
 
@@ -80,6 +82,8 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
     tserver::ReadResponseMsg* resp) override;
 
   Master *const master_;
+  scoped_refptr<Counter> auth_catalog_follower_reads_;
+  scoped_refptr<Counter> auth_catalog_leader_reads_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);
 };
 
