@@ -284,6 +284,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlYbSystemTableInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletsMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetYsqlAuthCatalogReadTime);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ValidateAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalancerIdle);

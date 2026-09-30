@@ -1263,6 +1263,22 @@ Status YBClient::GetYsqlDBCatalogMasterVersion(
   return Status::OK();
 }
 
+Result<HybridTime> YBClient::GetYsqlAuthCatalogReadTime(CoarseTimePoint deadline) {
+  master::GetYsqlAuthCatalogReadTimeRequestPB req;
+  master::GetYsqlAuthCatalogReadTimeResponsePB resp;
+  const auto propagated_time = GetLatestObservedHybridTime();
+  if (propagated_time != kNoHybridTime) {
+    req.set_propagated_hybrid_time(propagated_time);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(
+      Cluster, req, resp, deadline, GetYsqlAuthCatalogReadTime);
+  const HybridTime read_time(resp.read_time());
+  SCHECK(resp.has_read_time() && !read_time.is_special(), IllegalState,
+         "Master returned an invalid authentication catalog read time");
+  SetLatestObservedHybridTime(read_time.ToUint64());
+  return read_time;
+}
+
 Status YBClient::GrantRevokePermission(
     GrantRevokeStatementType statement_type,
     const PermissionType& permission,
