@@ -1856,6 +1856,10 @@ Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exe
       VLOG(5) << "Non prefetched request is: " << read_req->ShortDebugString();
       DCHECK(std::holds_alternative<MissedPrefetchedDataAlternativeReadTime>(data));
       const auto& alternative_read_time = std::get<MissedPrefetchedDataAlternativeReadTime>(data);
+      SCHECK(
+          !pg_session_->is_auth_catalog_read() || !alternative_read_time ||
+              *alternative_read_time == pg_session_->catalog_read_time(),
+          IllegalState, "Cannot replace the authentication catalog snapshot on a prefetch miss");
       auto catalog_read_time_guard = alternative_read_time
           ? UpdateCatalogReadTime(*pg_session_, *alternative_read_time) : std::nullopt;
       return select.Exec(exec_params);
@@ -2497,7 +2501,37 @@ void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
   }
 
   ResetCatalogReadTime();
-  pg_sys_table_prefetcher_.emplace(options);
+  auto scoped_options = options;
+  if (IsAuthCatalogRead()) {
+    // Later startup phases must not substitute shared-cache data for the pinned snapshot.
+    scoped_options.caching_info.reset();
+  }
+  pg_sys_table_prefetcher_.emplace(scoped_options);
+}
+
+Status PgApiImpl::StartAuthSysTablePrefetching(uint64_t row_limit) {
+  SCHECK(!pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching was started already");
+  SCHECK(!IsAuthCatalogRead(), IllegalState, "Authentication catalog snapshot already acquired");
+  StartSysTablePrefetching({std::nullopt, row_limit});
+  // StartSysTablePrefetching resets the read point. Install T afterwards, before any data Perform.
+  const auto status = pg_session_->StartAuthCatalogRead();
+  if (!status.ok()) {
+    StopSysTablePrefetching();
+  }
+  return status;
+}
+
+void PgApiImpl::EndAuthCatalogRead() {
+  if (!IsAuthCatalogRead()) {
+    return;
+  }
+  // A surviving phase-3 prefetcher must not expose T to normal session operations.
+  pg_sys_table_prefetcher_.reset();
+  pg_session_->EndAuthCatalogRead();
+}
+
+bool PgApiImpl::IsAuthCatalogRead() const {
+  return pg_session_ && pg_session_->is_auth_catalog_read();
 }
 
 void PgApiImpl::StopSysTablePrefetching() {

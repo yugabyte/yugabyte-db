@@ -79,10 +79,13 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
       BufferingSettings& buffering_settings);
   ~PgSession();
 
-  // Resets the read point for catalog tables.
-  // Next catalog read operation will read the very latest catalog's state.
+  // Resets the read point for catalog tables unless an authentication snapshot is pinned.
+  // Outside authentication, the next catalog read will read the latest catalog state.
   void ResetCatalogReadPoint();
   [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
+  Status StartAuthCatalogRead();
+  void EndAuthCatalogRead();
+  bool is_auth_catalog_read() const { return is_auth_catalog_read_; }
 
   void SetHistoricalReadContext(
       const ReadHybridTime& read_time, std::string transaction_id);
@@ -285,6 +288,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   ReadHybridTime catalog_read_time_;
+  bool is_auth_catalog_read_ = false;
 
   struct HistoricalReadContext {
     ReadHybridTime read_time;

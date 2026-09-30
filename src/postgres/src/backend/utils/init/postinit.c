@@ -93,6 +93,7 @@
 #include "catalog/yb_logical_client_version.h"
 #include "commands/dbcommands.h"
 #include "utils/catcache.h"
+#include "utils/inval.h"
 #include "utils/yb_inheritscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include <poll.h>
@@ -112,13 +113,15 @@ static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
-/* YB functions */
+/* YB declarations */
+static void YbEndAuthCatalogRead(void);
 static void YbPresetDatabaseCollation(HeapTuple tuple);
 static void YbEnableStartupClientConnectionCheck(void);
 static void YbDisableStartupClientConnectionCheck(void);
 static void YbCheckClientConnectionFromSignalHandler(void);
 
 static long YbNumAuthorizedConnections = 0L;
+static bool yb_auth_saved_refresh_cache_in_progress = false;
 
 /*
  * Set while InitPostgres runs with the client connection check armed; see
@@ -1166,6 +1169,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
+		uint64_t	shared_catalog_version;
+		bool		use_response_cache;
+
 		HandleYBStatus(YBCPgTableExists(Template1DbOid,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
@@ -1177,10 +1183,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * catalog version mode is impossible in case prefething is started.
 		 */
 		YBIsDBCatalogVersionMode();
-		uint64_t	shared_catalog_version;
 
 		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+		use_response_cache =
+			YbUseTserverResponseCacheForAuth(shared_catalog_version);
+		if (use_response_cache)
 		{
 			/*
 			 * Serve the connection-auth prefetch from the tserver response
@@ -1202,6 +1209,34 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
 										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
+		}
+		else if (*YBCGetGFlags()->ysql_enable_auth_catalog_follower_reads &&
+				 !*YBCGetGFlags()->ysql_enable_profile &&
+				 IsUnderPostmaster && MyProcPort != NULL &&
+				 MyBackendType == B_BACKEND &&
+				 MyProcPort->raddr.addr.ss_family != AF_UNIX &&
+				 !IsBackgroundWorker && !IsAutoVacuumWorkerProcess() &&
+				 !IsAutoVacuumLauncherProcess() &&
+				 !YBCIsInitDbModeEnvVarSet() && !IsBinaryUpgrade &&
+				 !yb_is_auth_backend && !YbIsClientYsqlConnMgr() &&
+				 !YbIsAuthPassthroughControlBackend() &&
+				 !MyProcPort->yb_is_auth_passthrough_req)
+		{
+			/*
+			 * Restrict this rollout to direct network clients. Unix sockets
+			 * also carry connection-manager physical connections before their
+			 * startup GUCs identify them. Cached attempts, including misses,
+			 * keep their existing leader path. Profiles are excluded even when
+			 * their catalogs do not exist yet: authentication can write them.
+			 */
+			HandleYBStatus(YBCStartAuthSysTablePrefetching());
+			/*
+			 * Defer catalog-version invalidation between prefetch phases too:
+			 * refilling at T after advancing the cache version would lose the
+			 * invalidations needed when normal session reads resume.
+			 */
+			yb_auth_saved_refresh_cache_in_progress = yb_refresh_cache_in_progress;
+			yb_refresh_cache_in_progress = true;
 		}
 		else
 			YBCStartSysTablePrefetchingNoCache();
@@ -1400,6 +1435,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		/* process any options passed in the startup packet */
 		if (MyProcPort != NULL)
 			process_startup_options(MyProcPort, am_superuser);
+		YbEndAuthCatalogRead();
 
 		/* Apply PostAuthDelay as soon as we've read all options */
 		if (PostAuthDelay > 0)
@@ -1642,7 +1678,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 		SetDatabasePath(fullpath);
 		pfree(fullpath);
-	}
+	} /* !IsYugaByteEnabled() */
 
 	/*
 	 * It's now possible to do real access to the system catalogs.
@@ -1731,6 +1767,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* Process pg_db_role_setting options */
 	process_settings(MyDatabaseId, GetSessionUserId());
 
+	/* YB: End the fixed snapshot after ACL checks and settings, before SQL. */
+	YbEndAuthCatalogRead();
+
 	/* Apply PostAuthDelay as soon as we've read all options */
 	if (PostAuthDelay > 0)
 		pg_usleep(PostAuthDelay * 1000000L);
@@ -1769,10 +1808,22 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 }
 
 static void
+YbEndAuthCatalogRead(void)
+{
+	if (!IsYugaByteEnabled() || !YBCIsAuthCatalogRead())
+		return;
+
+	YBCEndAuthCatalogRead();
+	yb_refresh_cache_in_progress = yb_auth_saved_refresh_cache_in_progress;
+	InvalidateCatalogSnapshot();
+}
+
+static void
 YbEnsureSysTablePrefetchingStopped()
 {
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
+	YbEndAuthCatalogRead();
 }
 
 void

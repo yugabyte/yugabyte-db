@@ -2099,7 +2099,7 @@ bool YBCIsLegacyModeForCatalogOps() {
   //
   return !YBCIsObjectLockingEnabled() || !FLAGS_ysql_enable_concurrent_ddl ||
       YBCIsInitDbModeEnvVarSet() || YBCIsSysTablePrefetchingStarted() ||
-      pgapi->IsParallelWorker();
+      YBCIsAuthCatalogRead() || pgapi->IsParallelWorker();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2513,6 +2513,21 @@ void* YBCPgGetThreadLocalErrStatus() {
 
 void YBCStartSysTablePrefetchingNoCache() {
   YBCStartSysTablePrefetchingImpl(std::nullopt);
+}
+
+YbcStatus YBCStartAuthSysTablePrefetching() {
+  return ToYBCStatus(
+      pgapi->StartAuthSysTablePrefetching(implicit_cast<uint64_t>(yb_fetch_row_limit)));
+}
+
+void YBCEndAuthCatalogRead() {
+  if (pgapi) {
+    pgapi->EndAuthCatalogRead();
+  }
+}
+
+bool YBCIsAuthCatalogRead() {
+  return pgapi && pgapi->IsAuthCatalogRead();
 }
 
 void YBCStartSysTablePrefetching(
