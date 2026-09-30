@@ -18,8 +18,11 @@ import com.azure.resourcemanager.compute.fluent.models.CapacityReservationGroupI
 import com.azure.resourcemanager.compute.fluent.models.CapacityReservationInner;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
 import com.azure.resourcemanager.compute.models.ApiErrorException;
+import com.azure.resourcemanager.compute.models.CapacityReservationInstanceViewTypes;
 import com.azure.resourcemanager.compute.models.CapacityReservationUpdate;
+import com.azure.resourcemanager.compute.models.CapacityReservationUtilization;
 import com.azure.resourcemanager.compute.models.Sku;
+import com.azure.resourcemanager.compute.models.SubResourceReadOnly;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
@@ -172,9 +175,8 @@ public class AZUResourceGroupApiClient {
 
   public void deleteCapacityReservation(String groupName, String reservationName, Set<String> vms) {
     ComputeManagementClient client = azureResourceManager.computeSkus().manager().serviceClient();
-    log.debug("Delete reservation {}", reservationName);
-    CapacityReservationInner reservation =
-        client.getCapacityReservations().get(resourceGroup, groupName, reservationName);
+    CapacityReservationInner reservation = getCapacityReservation(groupName, reservationName);
+    logCapacityReservationState(groupName, reservation);
     if (reservation.sku().capacity() > 0
         && !reservation.provisioningState().equalsIgnoreCase("Failed")) {
       try {
@@ -225,10 +227,12 @@ public class AZUResourceGroupApiClient {
             .withTags(tags)
             .withSku(new Sku().withCapacity(count.longValue()).withName(instanceType));
     try {
-      CapacityReservationInner reservation =
-          client
-              .getCapacityReservations()
-              .createOrUpdate(resourceGroup, groupName, reservationName, params);
+      client
+          .getCapacityReservations()
+          .createOrUpdate(resourceGroup, groupName, reservationName, params);
+      CapacityReservationInner reservation = getCapacityReservation(groupName, reservationName);
+      logCapacityReservationState(groupName, reservation);
+      verifyCapacityReservationState(groupName, reservation, count);
     } catch (ManagementException e) {
       log.error("Failed to create reservation", e);
       if (e.getValue().getMessage().contains("Capacity Reservation is not supported")) {
@@ -238,6 +242,82 @@ public class AZUResourceGroupApiClient {
     }
 
     return reservationName;
+  }
+
+  private CapacityReservationInner getCapacityReservation(
+      String groupName, String reservationName) {
+    ComputeManagementClient client = azureResourceManager.computeSkus().manager().serviceClient();
+    return client
+        .getCapacityReservations()
+        .getWithResponse(
+            resourceGroup,
+            groupName,
+            reservationName,
+            CapacityReservationInstanceViewTypes.INSTANCE_VIEW,
+            Context.NONE)
+        .getValue();
+  }
+
+  private void logCapacityReservationState(String groupName, CapacityReservationInner reservation) {
+    String skuName = reservation.sku() == null ? null : reservation.sku().name();
+    Long skuCapacity = reservation.sku() == null ? null : reservation.sku().capacity();
+    List<String> allocated = new ArrayList<>();
+    Integer currentCapacity = null;
+    if (reservation.instanceView() != null
+        && reservation.instanceView().utilizationInfo() != null) {
+      CapacityReservationUtilization capacityReservationUtilization =
+          reservation.instanceView().utilizationInfo();
+      currentCapacity = capacityReservationUtilization.currentCapacity();
+      if (capacityReservationUtilization.virtualMachinesAllocated() != null) {
+        allocated =
+            capacityReservationUtilization.virtualMachinesAllocated().stream()
+                .map(SubResourceReadOnly::id)
+                .map(AZUResourceGroupApiClient::resourceName)
+                .collect(Collectors.toList());
+      }
+    }
+    log.debug(
+        "Capacity reservation {}/{} sku={} capacity={} zones={} provisioningState={}"
+            + " currentCapacity={} allocated={}",
+        groupName,
+        reservation.name(),
+        skuName,
+        skuCapacity,
+        reservation.zones(),
+        reservation.provisioningState(),
+        currentCapacity,
+        allocated);
+  }
+
+  private static void verifyCapacityReservationState(
+      String groupName, CapacityReservationInner reservation, Integer requestedCapacity) {
+    String state = reservation.provisioningState();
+    if (state == null || !state.equalsIgnoreCase("Succeeded")) {
+      throw new RuntimeException(
+          String.format(
+              "Capacity reservation %s/%s provisioningState is %s",
+              groupName, reservation.name(), state));
+    }
+    if (reservation.instanceView() != null
+        && reservation.instanceView().utilizationInfo() != null) {
+      CapacityReservationUtilization capacityReservationUtilization =
+          reservation.instanceView().utilizationInfo();
+      Integer currentCapacity = capacityReservationUtilization.currentCapacity();
+      if (currentCapacity != null && currentCapacity < requestedCapacity) {
+        throw new RuntimeException(
+            String.format(
+                "Capacity reservation %s/%s reserved %s of requested %s",
+                groupName, reservation.name(), currentCapacity, requestedCapacity));
+      }
+    }
+  }
+
+  private static String resourceName(String resourceId) {
+    if (resourceId == null) {
+      return null;
+    }
+    int slash = resourceId.lastIndexOf('/');
+    return slash < 0 ? resourceId : resourceId.substring(slash + 1);
   }
 
   public VirtualMachineInner getVirtulMachineDetailsByName(String vmName) {

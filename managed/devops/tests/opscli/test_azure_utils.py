@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from ybops.cloud.azure.cloud import AzureCloud
 from ybops.cloud.azure.utils import AzureCloudAdmin
@@ -26,6 +26,33 @@ class TestAzureCloudAdmin(TestCase):
 
         admin = object.__new__(AzureCloudAdmin)
         self.assertEqual(admin._get_yb_data_disk_lun_indexes(vm), [3, 5, 12])
+
+    @patch("ybops.cloud.azure.utils.RESOURCE_GROUP", "rg")
+    @patch("ybops.cloud.azure.utils.SUBSCRIPTION_ID", "sub")
+    def test_change_instance_type_with_reservation_updates_size_then_group(self):
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+
+        admin.change_instance_type("vm1", "Standard_D4as_v5", "crg1")
+
+        updates = [call.args for call in
+                   admin.compute_client.virtual_machines.begin_update.call_args_list]
+        self.assertEqual(updates, [
+            ("rg", "vm1", {"hardware_profile": {"vm_size": "Standard_D4as_v5"}}),
+            ("rg", "vm1", {"properties": {"capacityReservation": {"capacityReservationGroup": {
+                "id": "/subscriptions/sub/resourceGroups/rg/providers"
+                      "/Microsoft.Compute/capacityReservationGroups/crg1"}}}}),
+        ])
+
+    @patch("ybops.cloud.azure.utils.RESOURCE_GROUP", "rg")
+    def test_change_instance_type_without_reservation_updates_size_only(self):
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+
+        admin.change_instance_type("vm1", "Standard_D4as_v5", None)
+
+        admin.compute_client.virtual_machines.begin_update.assert_called_once_with(
+            "rg", "vm1", {"hardware_profile": {"vm_size": "Standard_D4as_v5"}})
 
     @patch("ybops.cloud.azure.cloud.RemoteShell")
     def test_expand_file_system_supports_nvme(self, remote_shell_class):
