@@ -260,6 +260,18 @@ Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
            "Indexed table not found: $0", table_info->index_info->indexed_table_id());
     RETURN_NOT_OK(DoCreateIndex(*table_info, *it, /* bootstrap = */ true));
   }
+
+  // A backfill aborted by the operation pause of the storage replacement this Open() completes
+  // asked for a retry that could have fired while the indexes were gone. Re-arm it, now that they
+  // are back, or drop the request when no index is left to backfill, e.g. after the index was
+  // dropped or restored away.
+  if (backfill_retry_pending_.load(std::memory_order_acquire)) {
+    if (has_vector_indexes_.load(std::memory_order_acquire)) {
+      ScheduleBackfillRetry();
+    } else {
+      backfill_retry_pending_.store(false, std::memory_order_release);
+    }
+  }
   return Status::OK();
 }
 
@@ -585,6 +597,10 @@ Status TabletVectorIndexes::Backfill(
       return Status::OK();
     }
     if (!shutdown_controller_.IsRunning()) {
+      // Reachable only on tablet shutdown, which the check above already covers: the controller is
+      // stopped by StartShutdownStorages after the blocking operation pause, and that pause waits
+      // for the operation the reader's iterator holds for this whole loop. So a truncate or a
+      // restore cannot stop it from under a running backfill, and no retry has to be asked for.
       LOG_WITH_FUNC(INFO) << "Vector index shutdown: " << AsString(*vector_index);
       return Status::OK();
     }
@@ -630,8 +646,13 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
   auto list = List();
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "list: " << AsString(list);
   if (!list) {
+    // The storages are being replaced: the indexes are torn down and not re-created yet. Leave the
+    // retry request pending for Open() to re-arm once they are back.
     return;
   }
+  // Cleared only here, where the indexes have actually been observed, and before the TryAgain path
+  // below can set it again.
+  backfill_retry_pending_.store(false, std::memory_order_release);
   std::shared_ptr<ScopedRWOperation> read_op;
   for (const auto& vector_index : *list) {
     if (vector_index->BackfillDone()) {
@@ -727,7 +748,9 @@ void TabletVectorIndexes::ScheduleBackfillRetry() {
     LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Scheduler is not set, backfill retry skipped";
     return;
   }
+  backfill_retry_pending_.store(true, std::memory_order_release);
   // A single retry covers every index of the tablet, so replacing the pending one is enough.
+  std::lock_guard lock(backfill_retry_mutex_);
   backfill_retry_task_.Schedule([this](const Status& status) {
     if (!status.ok()) {
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Backfill retry cancelled: " << status;
@@ -738,7 +761,13 @@ void TabletVectorIndexes::ScheduleBackfillRetry() {
 }
 
 void TabletVectorIndexes::StopBackfillRetry() {
-  backfill_retry_task_.Shutdown();
+  {
+    std::lock_guard lock(backfill_retry_mutex_);
+    backfill_retry_task_.StartShutdown();
+  }
+  // A running retry can ask for another one, taking backfill_retry_mutex_, so wait for it outside
+  // the mutex. Scheduling is disabled by StartShutdown above, so that request is a no-op.
+  backfill_retry_task_.CompleteShutdown();
 }
 
 void TabletVectorIndexes::StartShutdown() {
