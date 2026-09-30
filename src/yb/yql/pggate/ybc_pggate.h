@@ -148,7 +148,8 @@ YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 
 int64_t YBCGetTCMallocSamplingPeriod();
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
-void YBCTCMallocReleaseMemoryToSystem(int64_t bytes);
+// Releases free memory to the OS, including pages TCMalloc keeps for recent peak demand.
+void YBCTCMallocReleaseFreeMemory(int64_t bytes);
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
                              int64_t* num_samples,
                              bool peak_heap);
