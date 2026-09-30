@@ -375,6 +375,20 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_catalog_preload_attname_cache, true,
+    "If true, YSQL fills the pg_attribute catalog cache by column name (ATTNAME) whenever it "
+    "preloads the catalog: at connection start-up when preloading is forced, and on every full "
+    "catalog cache refresh. On large schemas this cache is a large share of each backend's catalog "
+    "cache memory. If false, its entries are read on first use. A change applies to new "
+    "connections and to the next full catalog cache refresh of existing ones.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_catalog_preload_attnum_cache, true,
+    "If true, YSQL fills the pg_attribute catalog cache by column number (ATTNUM) whenever it "
+    "preloads the catalog: at connection start-up when preloading is forced, and on every full "
+    "catalog cache refresh. On large schemas this cache is a large share of each backend's catalog "
+    "cache memory. If false, its entries are read on first use. A change applies to new "
+    "connections and to the next full catalog cache refresh of existing ones.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
     "Sets the interval at which TCMalloc should sample allocations. "
     "Sampling is disabled if this is set to 0.");

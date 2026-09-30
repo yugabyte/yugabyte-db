@@ -4717,25 +4717,30 @@ TEST_F_EX(PgLibPqTest, YbPreloadPgAuthidForAuthEnabled, PgPreloadPgAuthidEnabled
 }
 
 // Forces the full catalog preload, so that connection start-up and every full catalog cache
-// refresh fill the catalog caches from the prefetched catalogs. The parameter says whether the
-// ATTNAME and ATTNUM caches are filled.
-class PgPreloadPgAttributeCachesTest : public PgLibPqTest,
-                                       public ::testing::WithParamInterface<std::pair<bool, bool>> {
+// refresh fill the catalog caches from the prefetched catalogs.
+class PgPreloadPgAttributeCachesTestBase : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.emplace_back("--ysql_catalog_preload_additional_tables=true");
     options->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
-    if (!FillAttname()) {
-      options->extra_tserver_flags.emplace_back("--ysql_catalog_preload_attname_cache=false");
-    }
-    if (!FillAttnum()) {
-      options->extra_tserver_flags.emplace_back("--ysql_catalog_preload_attnum_cache=false");
+    for (const auto& flag : ExtraTServerFlags()) {
+      options->extra_tserver_flags.emplace_back(flag);
     }
   }
 
-  bool FillAttname() const { return GetParam().first; }
-  bool FillAttnum() const { return GetParam().second; }
+  virtual std::vector<std::string> ExtraTServerFlags() const { return {}; }
+
+  Status CreateTestTable() {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, a INT, b INT)"));
+    return conn.Execute("CREATE INDEX ON t (a, b)");
+  }
+
+  // Looks up a column of t by name.
+  static constexpr auto kAttnameQuery = "SELECT pg_get_serial_sequence('t', 'a')";
+  // The parser checks that a system column exists by looking it up by number.
+  static constexpr auto kAttnumQuery = "SELECT tableoid FROM t";
 
   struct PgAttributeCacheMisses {
     int64_t attname = 0;
@@ -4771,6 +4776,25 @@ class PgPreloadPgAttributeCachesTest : public PgLibPqTest,
   }
 };
 
+// The parameter says whether the ATTNAME and ATTNUM caches are filled.
+class PgPreloadPgAttributeCachesTest : public PgPreloadPgAttributeCachesTestBase,
+                                       public ::testing::WithParamInterface<std::pair<bool, bool>> {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    std::vector<std::string> flags;
+    if (!FillAttname()) {
+      flags.emplace_back("--ysql_yb_catalog_preload_attname_cache=false");
+    }
+    if (!FillAttnum()) {
+      flags.emplace_back("--ysql_yb_catalog_preload_attnum_cache=false");
+    }
+    return flags;
+  }
+
+  bool FillAttname() const { return GetParam().first; }
+  bool FillAttnum() const { return GetParam().second; }
+};
+
 INSTANTIATE_TEST_CASE_P(, PgPreloadPgAttributeCachesTest,
                         ::testing::Values(std::make_pair(true, true),
                                           std::make_pair(true, false),
@@ -4778,9 +4802,8 @@ INSTANTIATE_TEST_CASE_P(, PgPreloadPgAttributeCachesTest,
                                           std::make_pair(false, false)));
 
 TEST_P(PgPreloadPgAttributeCachesTest, CacheMisses) {
+  ASSERT_OK(CreateTestTable());
   auto ddl_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(ddl_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, a INT, b INT)"));
-  ASSERT_OK(ddl_conn.Execute("CREATE INDEX ON t (a, b)"));
 
   // The first statement also reports the misses of the connection start-up.
   auto conn = ASSERT_RESULT(Connect());
@@ -4788,16 +4811,14 @@ TEST_P(PgPreloadPgAttributeCachesTest, CacheMisses) {
   ASSERT_EQ(misses.attname, 0);
   ASSERT_EQ(misses.attnum, 0);
 
-  // Looks up the column by name.
-  misses = ASSERT_RESULT(MissesFor(conn, "SELECT pg_get_serial_sequence('t', 'a')"));
+  misses = ASSERT_RESULT(MissesFor(conn, kAttnameQuery));
   if (FillAttname()) {
     ASSERT_EQ(misses.attname, 0);
   } else {
     ASSERT_GT(misses.attname, 0);
   }
 
-  // The parser checks that a system column exists by looking it up by number.
-  misses = ASSERT_RESULT(MissesFor(conn, "SELECT tableoid FROM t"));
+  misses = ASSERT_RESULT(MissesFor(conn, kAttnumQuery));
   if (FillAttnum()) {
     ASSERT_EQ(misses.attnum, 0);
   } else {
@@ -4815,6 +4836,32 @@ TEST_P(PgPreloadPgAttributeCachesTest, CacheMisses) {
   ASSERT_EQ(misses.attname, 0);
   ASSERT_EQ(misses.attnum, 0);
   ASSERT_GT(GetMetricValue(GetJsonMetrics(), "CatCacheRefresh"), refreshes_before);
+}
+
+// The flags take effect at runtime: after the tserver reloads the postgres configuration, new
+// connections no longer fill the caches.
+TEST_F_EX(PgLibPqTest, PreloadPgAttributeCachesRuntimeFlags, PgPreloadPgAttributeCachesTestBase) {
+  ASSERT_OK(CreateTestTable());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kAttnameQuery)).attname, 0);
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kAttnumQuery)).attnum, 0);
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_catalog_preload_attname_cache", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_catalog_preload_attnum_cache", "false"));
+  ASSERT_OK(LoggedWaitFor(
+      [this]() -> Result<bool> {
+        auto new_conn = VERIFY_RESULT(Connect());
+        return VERIFY_RESULT(new_conn.FetchRow<std::string>(
+                   "SELECT current_setting('yb_catalog_preload_attname_cache') || "
+                   "current_setting('yb_catalog_preload_attnum_cache')")) == "offoff";
+      },
+      30s * kTimeMultiplier, "postgres reloads the new flag values"));
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kAttnameQuery)).attname, 0);
+  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kAttnumQuery)).attnum, 0);
 }
 
 // Enables the regular-backend tserver response cache for the connection-auth

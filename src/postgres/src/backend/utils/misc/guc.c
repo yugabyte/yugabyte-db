@@ -3629,6 +3629,28 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_catalog_preload_attname_cache", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Fill the pg_attribute catalog cache by column name when preloading the catalog."),
+			gettext_noop("If off, its entries are read on first use."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_catalog_preload_attname_cache,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_catalog_preload_attnum_cache", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Fill the pg_attribute catalog cache by column number when preloading the catalog."),
+			gettext_noop("If off, its entries are read on first use."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_catalog_preload_attnum_cache,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
 						 "when types mismatch."),
