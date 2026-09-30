@@ -1601,6 +1601,11 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
   auto ts = tablet_server(0);
   auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
 
+  // Stop ts's own refresher so it doesn't bump the lease epoch concurrently with the manual
+  // refreshes below. Sleep to let any in-flight refresh complete.
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+  SleepFor(MonoDelta::FromMilliseconds(2 * kDefaultYSQLLeaseRefreshIntervalMilli));
+
   // Acquire a lock on behalf of another ts.
   ASSERT_OK(AcquireLockGlobally(
       &master_proxy, tablet_server(1)->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
