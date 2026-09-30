@@ -90,6 +90,23 @@ public class TestPgMemoryErrorDetection extends BasePgSQLTest {
 
   @Test
   @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
+  public void testUseAfterPfreeIsDetected() throws Exception {
+    assumeTrue("Requires an ASAN build", BuildTypeUtil.isASAN());
+    try (Connection conn = getConnectionBuilder().connect();
+         Statement stmt = conn.createStatement()) {
+      createExtension(stmt);
+      try {
+        stmt.execute("SELECT yb_test_use_after_pfree()");
+        fail("Expected the backend to die");
+      } catch (SQLException e) {
+        // ASAN kills the backend, which drops the connection.
+      }
+    }
+    waitForAndClearErrorLogLine("AddressSanitizer: heap-use-after-free");
+  }
+
+  @Test
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testLeakSanitizerReportIsDetected() throws Exception {
     assumeTrue("Requires an ASAN build", BuildTypeUtil.isASAN());
     try (Connection conn = getConnectionBuilder().connect();

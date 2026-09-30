@@ -27,6 +27,7 @@ PG_FUNCTION_INFO_V1(yb_test_write_past_chunk_end);
 PG_FUNCTION_INFO_V1(yb_test_heap_buffer_overflow);
 PG_FUNCTION_INFO_V1(yb_test_leak_malloc);
 PG_FUNCTION_INFO_V1(yb_test_json_parse_exact);
+PG_FUNCTION_INFO_V1(yb_test_use_after_pfree);
 
 static void
 require_address_sanitizer(void)
@@ -125,4 +126,21 @@ yb_test_json_parse_exact(PG_FUNCTION_ARGS)
 	result = pg_parse_json(lex, &nullSemAction);
 	free(copy);
 	PG_RETURN_BOOL(result == JSON_SUCCESS);
+}
+
+/*
+ * Read a small palloc chunk after freeing it.  AddressSanitizer can only see
+ * this when each chunk is its own malloc'd block, as in ASAN builds.
+ */
+Datum
+yb_test_use_after_pfree(PG_FUNCTION_ARGS)
+{
+	char	   *volatile p;
+	char		c;
+
+	require_address_sanitizer();
+	p = palloc(16);
+	pfree((void *) p);
+	c = p[0];
+	PG_RETURN_INT32(c);
 }
