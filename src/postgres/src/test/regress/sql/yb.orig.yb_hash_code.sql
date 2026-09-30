@@ -399,3 +399,10 @@ INSERT INTO tt VALUES(-2147483648, 3);
 \i :run_query
 
 drop table tt;
+
+-- GH-34210: large arguments must be handled correctly.
+SELECT yb_hash_code(repeat('x', 10000000)) IS NOT NULL;
+CREATE TEMP TABLE large_hash_input (n int);
+INSERT INTO large_hash_input VALUES (10000000);
+SELECT yb_hash_code(repeat('x', n)) IS NOT NULL FROM large_hash_input;
+DROP TABLE large_hash_input;
