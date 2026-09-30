@@ -187,7 +187,7 @@ A full `sudo ./node-agent-provision.sh` mixes both kinds of work. That forces ei
 
 Both teams download the node agent package from the running YugabyteDB Anywhere instance and use the same `node-agent-provision.sh` script and configuration (YugabyteDB Anywhere URL, API token, node identity, and provider details).
 
-1. The OS team runs `--root` as root. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, root systemd units, and firewall/packages as applicable). Non-root modules are skipped.
+1. The OS team runs `--root` as root. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, root systemd units, and packages as applicable). Non-root modules are skipped.
 
    ```sh
    sudo ./node-agent-provision.sh --root
