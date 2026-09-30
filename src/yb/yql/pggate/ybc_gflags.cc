@@ -99,6 +99,11 @@ DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 5 * 1024 * 1024,
     "Maximum combined response size in bytes of each catalog prefetch round. Capped at the safe "
     "maximum RPC response size. 0 uses that safe maximum.");
 
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_cold_buffer_bytes, 256 * 1024,
+    "While catalog prefetching is active, RPC buffers of at least this many bytes are allocated "
+    "from the TCMalloc cold heap, so that the prefetched data does not share hugepages with "
+    "longer-lived memory and is returned to the OS when prefetching stops. 0 disables it.");
+
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
     "before client authentication. Authentication reads pg_authid by role name "

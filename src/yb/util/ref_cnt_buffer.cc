@@ -13,14 +13,38 @@
 //
 //
 
-#include "yb/util/logging.h"
-
 #include "yb/util/ref_cnt_buffer.h"
 
+#include <atomic>
+#include <limits>
+
 #include "yb/util/faststring.h"
+#include "yb/util/logging.h"
 #include "yb/util/malloc.h"
+#include "yb/util/tcmalloc_impl_util.h"
 
 namespace yb {
+
+namespace {
+
+std::atomic<size_t> cold_allocation_threshold{std::numeric_limits<size_t>::max()};
+
+char* AllocateBuffer(size_t size) {
+#if YB_GOOGLE_TCMALLOC
+  // TCMalloc's free() accepts memory from its hot/cold operator new.
+  if (size >= cold_allocation_threshold.load(std::memory_order_relaxed)) {
+    return static_cast<char*>(
+        __size_returning_new_hot_cold(size, static_cast<tcmalloc::hot_cold_t>(0)).p);
+  }
+#endif
+  return malloc_with_check(size);
+}
+
+} // namespace
+
+void SetRefCntBufferColdAllocationThreshold(size_t bytes) {
+  cold_allocation_threshold.store(bytes, std::memory_order_relaxed);
+}
 
 RefCntBuffer::RefCntBuffer()
     : data_(nullptr) {
@@ -31,13 +55,13 @@ size_t RefCntBuffer::GetInternalBufSize(size_t data_size) {
 }
 
 RefCntBuffer::RefCntBuffer(size_t size) {
-  data_ = malloc_with_check(GetInternalBufSize(size));
+  data_ = AllocateBuffer(GetInternalBufSize(size));
   size_reference() = size;
   new (&counter_reference()) CounterType(1);
 }
 
 RefCntBuffer::RefCntBuffer(const char* data, size_t size) {
-  data_ = malloc_with_check(GetInternalBufSize(size));
+  data_ = AllocateBuffer(GetInternalBufSize(size));
   memcpy(this->data(), data, size);
   size_reference() = size;
   new (&counter_reference()) CounterType(1);
