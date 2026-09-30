@@ -238,6 +238,8 @@ void od_rules_rule_free(od_rule_t *rule)
 	if (rule->quantiles) {
 		free(rule->quantiles);
 	}
+	/* YB: kiwi_vars_init allocates the vars on the heap. */
+	yb_kiwi_vars_free(&rule->vars);
 	od_list_unlink(&rule->link);
 	free(rule);
 }
