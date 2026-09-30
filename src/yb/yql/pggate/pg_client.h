@@ -238,6 +238,8 @@ class PgClient {
 
   Result<uint64_t> GetCatalogMasterVersion();
 
+  Result<HybridTime> GetYsqlAuthCatalogReadTime();
+
   Result<uint32_t> GetXClusterRole(uint32_t db_oid);
 
   Status CreateSequencesDataTable();

@@ -52,6 +52,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_auth_catalog_read.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
@@ -175,6 +176,7 @@ DECLARE_bool(enable_qos);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -801,6 +803,13 @@ struct QueryData<PerformQueryTraits> final : public QueryDataBase<PerformQueryTr
  private:
   Status ProcessResponse(TabletReadTime* used_read_time) {
     RETURN_NOT_OK(HandleResponse(used_read_time));
+    if (req.options().ysql_auth_catalog_read()) {
+      SCHECK(
+          resp.has_catalog_read_time() &&
+              ReadHybridTime::FromPB(resp.catalog_read_time()) ==
+                  ReadHybridTime::FromPB(req.options().read_time_options().read_time()),
+          IllegalState, "Authentication catalog response changed the fixed snapshot");
+    }
     if (used_in_txn_limit) {
       resp.set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
     }
@@ -1364,6 +1373,61 @@ DeferReadPoint GetDeferReadPoint(const Req& req) {
   return DeferReadPoint(req.options().read_time_options().defer_read_point());
 }
 
+template <class Options>
+Status ValidateAuthCatalogReadOptions(const Options& options) {
+  if (!options.ysql_auth_catalog_read()) {
+    return Status::OK();
+  }
+  SCHECK(FLAGS_ysql_enable_auth_catalog_follower_reads, NotSupported,
+         "Authentication catalog follower reads are disabled");
+  SCHECK(
+      options.use_legacy_catalog_session() && !options.has_caching_info() &&
+          !options.read_from_followers(),
+      InvalidArgument, "Authentication catalog reads require an uncached legacy catalog session");
+  SCHECK(
+      options.isolation() == IsolationLevel::NON_TRANSACTIONAL && !options.ddl_mode() &&
+          !options.ddl_use_regular_transaction_block() && !options.txn_serial_no() &&
+          !options.active_sub_transaction_id() && !options.has_in_txn_limit_ht() &&
+          !options.is_using_table_locks() && !options.yb_non_ddl_txn_for_sys_tables_allowed() &&
+          !options.use_existing_priority() && !options.priority() && !options.pg_txn_start_us() &&
+          !options.force_global_transaction() && !options.force_tablespace_locality() &&
+          !options.use_xcluster_database_consistency() && !options.xcluster_target_ddl_bypass() &&
+          !options.xrepl_origin_id() && !options.use_historical_read_session() &&
+          options.historical_read_transaction_id().empty(),
+      InvalidArgument, "Authentication catalog reads cannot use transaction or table-lock state");
+  const auto& read_options = options.read_time_options();
+  SCHECK(
+      read_options.has_read_time() && read_options.read_time().has_read_ht() &&
+          !read_options.restart_transaction() && !read_options.defer_read_point() &&
+          read_options.read_time_manipulation() == ReadTimeManipulation::NONE &&
+          !read_options.clamp_uncertainty_window() &&
+          !read_options.has_follower_read_staleness_ms() && !read_options.read_time_serial_no() &&
+          !read_options.read_time_serial_no_history_min(),
+      InvalidArgument, "Authentication catalog reads require an explicit, immutable snapshot");
+  const auto read_time = ReadHybridTime::FromPB(read_options.read_time());
+  SCHECK(
+      !read_time.read.is_special() && read_time.read > HybridTime::kInitial &&
+          read_time == ReadHybridTime::SingleTime(read_time.read),
+      InvalidArgument, "Authentication catalog reads require an exact read time");
+  return Status::OK();
+}
+
+bool IsPureCatalogReadForAuthScope(const LWPgsqlReadRequestPB& read) {
+  for (const auto* request = &read;; request = &request->index_request()) {
+    if (!IsCurrentVersionYsqlCatalogTable(request->table_id()) || request->has_row_mark_type() ||
+        request->has_wait_policy() || request->has_sampling_state() ||
+        request->sample_blocks_size() || request->is_for_backfill() ||
+        request->has_backfill_spec() ||
+        request->has_vector_idx_options() || request->has_get_tablet_key_ranges_request() ||
+        request->skip_intents_read() || request->read_at_in_txn_limit()) {
+      return false;
+    }
+    if (!request->has_index_request()) {
+      return true;
+    }
+  }
+}
+
 Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperations(
     const ThreadSafeArenaPtr& arena, LWPgPerformRequestPB* req, client::YBSession* session,
     rpc::Sidecars* sidecars,
@@ -1379,14 +1443,42 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   client::YBTablePtr table;
   CancelableScopeExit abort_se{[session] { session->Abort(); }};
   const auto read_from_followers = req->options().read_from_followers();
+  const auto auth_catalog_read = req->options().ysql_auth_catalog_read();
+  if (auth_catalog_read) {
+    RETURN_NOT_OK(ValidateAuthCatalogReadOptions(req->options()));
+    SCHECK(
+        !req->write_time() && !has_distributed_txn && !is_txn_using_table_locks &&
+            !req->ops().empty(),
+        InvalidArgument, "Authentication catalog reads cannot write or use a transaction");
+    SCHECK(
+        session->read_point()->GetReadTime() ==
+            ReadHybridTime::FromPB(req->options().read_time_options().read_time()),
+        IllegalState, "Authentication catalog snapshot changed while preparing operations");
+  }
   bool has_write_ops = false;
 
   // TODO(vector_index): it is unexpected to have a mix of vector index read ops and
   // non-vector index read ops. A sanity DCHECK is required.
   for (auto& op : *req->mutable_ops()) {
+    SCHECK(
+        !auth_catalog_read || (op.has_read() && !op.has_write() && !op.read_from_followers()),
+        InvalidArgument, "Authentication catalog scope only supports pure catalog reads");
     if (op.has_read()) {
       auto& read = *op.mutable_read();
       RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
+      if (auth_catalog_read) {
+        SCHECK(
+            table->schema().table_properties().is_ysql_catalog_table() &&
+                IsPureCatalogReadForAuthScope(read),
+            InvalidArgument, "Authentication catalog scope only supports pure catalog reads");
+        SCHECK(
+            YsqlAuthCatalogPagingMatchesReadTime(read, session->read_point()->GetReadTime().read),
+            InvalidArgument, "Conflicting authentication catalog paging read time");
+        // Untagged reads retain STRONG routing and use the normal client's snapshot transport,
+        // which serializes the read point only for transactional tables.
+        SCHECK(table->schema().table_properties().is_transactional(), IllegalState,
+               "Authentication catalog snapshot requires a transactional catalog table");
+      }
       if (read.index_request().has_vector_idx_options()) {
         if (req->ops_size() != 1) {
           auto status = STATUS_FORMAT(
@@ -1403,7 +1495,9 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         RETURN_NOT_OK(result.second->Prepare(arena, read, table, ops));
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, arena, *sidecars, &read);
-        if (read_from_followers) {
+        const bool auth_follower_read = auth_catalog_read && IsYsqlAuthCatalogRead(read);
+        read_op->set_ysql_auth_catalog_read(auth_follower_read);
+        if (auth_follower_read || read_from_followers) {
           read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
         }
         ops.push_back(PgClientSessionOperation {
@@ -3415,6 +3509,8 @@ class PgClientSession::Impl {
 
     VLOG(5) << "Perform request: " << data->req.ShortDebugString();
 
+    // Validate before cache lookup: even cache hits must not admit a marked request.
+    RETURN_NOT_OK(ValidateAuthCatalogReadOptions(options));
     RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
 
     MaybePauseReadWithPagingStateForTesting(data->req);
@@ -3445,8 +3541,10 @@ class PgClientSession::Impl {
 
     // A catalog read time picked here rather than by the storage layer is not echoed back via
     // used_read_time, so report it explicitly to keep all further catalog reads of the session on
-    // the same snapshot. See ProcessUsedReadTime for the other case.
-    if (options.use_legacy_catalog_session() && !options.read_time_options().has_read_time()) {
+    // the same snapshot. Auth reads also echo explicit T so paging never drops it.
+    // See ProcessUsedReadTime for the other case.
+    if (options.use_legacy_catalog_session() &&
+        (!options.read_time_options().has_read_time() || options.ysql_auth_catalog_read())) {
       const auto read_time = session->read_point()->GetReadTime();
       if (read_time) {
         read_time.ToPB(data->resp.mutable_catalog_read_time());
@@ -3714,6 +3812,7 @@ class PgClientSession::Impl {
       const OptionsPB& options, CoarseTimePoint deadline, const ThreadSafeArenaPtr& arena,
       HybridTime in_txn_limit = {},
       TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
+    RETURN_NOT_OK(ValidateAuthCatalogReadOptions(options));
     if (!options.namespace_id().empty()) {
       WARN_NOT_OK(EnsureClientSessionCgroup(options.namespace_id()),
                   "Setting cgroup of PgClientSession");
@@ -3746,6 +3845,8 @@ class PgClientSession::Impl {
     auto& session_data = GetSessionData(kind);
     auto& session = *session_data.session;
     auto& txn = session_data.transaction;
+    SCHECK(!options.ysql_auth_catalog_read() || !txn, InvalidArgument,
+           "Authentication catalog reads cannot use a distributed transaction");
 
     VLOG_WITH_PREFIX_AND_FUNC(4) << options.ShortDebugString() << ", deadline: "
         << MonoDelta(deadline - CoarseMonoClock::now());

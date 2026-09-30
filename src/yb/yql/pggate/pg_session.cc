@@ -928,7 +928,8 @@ Status PgSession::SetReadTimeIfPresent(
   if (historical_read_context_) {
     historical_read_context_->read_time.ToPB(
         options.mutable_read_time_options()->mutable_read_time());
-  } else if (yb_read_time != 0) {
+  } else if (yb_read_time != 0 && !is_auth_catalog_read_) {
+    // Startup options and role settings must not override the authentication snapshot.
     RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
     const auto read_ht = yb_is_read_time_ht
         ? ReadHybridTime::FromUint64(yb_read_time)
@@ -940,6 +941,19 @@ Status PgSession::SetReadTimeIfPresent(
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
   DCHECK(!ops.Empty());
+  if (is_auth_catalog_read_) {
+    SCHECK(
+        ops_options.use_legacy_catalog_session && !ops_options.cache_options &&
+            !ops_options.read_time_action && !ops_options.in_txn_limit && !historical_read_context_,
+        IllegalState, "Authentication catalog reads require the uncached fixed catalog snapshot");
+    for (const auto& op : ops.operations()) {
+      SCHECK(IsReadOnly(*op), InvalidArgument, "Authentication catalog reads must be read-only");
+      SCHECK(
+          !op->read_time() || op->read_time() == catalog_read_time_, InvalidArgument,
+          "Conflicting authentication catalog read time: $0, expected $1",
+          op->read_time(), catalog_read_time_);
+    }
+  }
   tserver::PgPerformOptionsPB options;
   // Passed read time takes precedence over other read time options.
   RETURN_NOT_OK(SetReadTimeIfPresent(ops.operations(), options));
@@ -962,6 +976,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       }
     }
     options.set_use_legacy_catalog_session(true);
+    options.set_ysql_auth_catalog_read(is_auth_catalog_read_);
   } else {
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
@@ -1116,10 +1131,38 @@ bool PgSession::IsInsertOnConflictBufferEmpty() const {
 }
 
 void PgSession::ResetCatalogReadPoint() {
-  catalog_read_time_ = ReadHybridTime();
+  // Authentication outlives individual prefetchers and PG catalog snapshot invalidations.
+  if (!is_auth_catalog_read_) {
+    catalog_read_time_ = ReadHybridTime();
+  }
+}
+
+Status PgSession::StartAuthCatalogRead() {
+  SCHECK(!historical_read_context_, IllegalState,
+         "Authentication catalog reads cannot use a historical read context");
+  SCHECK(!catalog_read_time_ && !is_auth_catalog_read_, IllegalState,
+         "Authentication catalog snapshot must be acquired after resetting prefetch state");
+  const auto read_time = VERIFY_RESULT(pg_client_.GetYsqlAuthCatalogReadTime());
+  SCHECK(!read_time.is_special(), IllegalState, "Invalid authentication catalog read time");
+  catalog_read_time_ = ReadHybridTime::SingleTime(read_time);
+  is_auth_catalog_read_ = true;
+  return Status::OK();
+}
+
+void PgSession::EndAuthCatalogRead() {
+  if (!is_auth_catalog_read_) {
+    return;
+  }
+  is_auth_catalog_read_ = false;
+  ResetCatalogReadPoint();
 }
 
 void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
+  if (is_auth_catalog_read_) {
+    // PgClient validates the echoed snapshot before exposing a Perform response.
+    DCHECK(!read_ht || read_ht == catalog_read_time_);
+    return;
+  }
   if (read_ht) {
     catalog_read_time_ = read_ht;
   }
