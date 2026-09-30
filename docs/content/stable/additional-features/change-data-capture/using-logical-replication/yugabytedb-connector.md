@@ -62,6 +62,8 @@ dz.<debezium-base>.yb.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 | `<connector-patch>` | `.3` | Connector patch in that series. Higher is more recent. |
 | `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release. Don't use in production. |
 
+Starting with `dz.2.5.2.yb.2026.1.2.0.1`, the YugabyteDB part is the full four-part release and the trailing number is the connector patch for that database version. For example, `dz.2.5.2.yb.2026.1.2.0.1` is connector patch 1 for YugabyteDB v2026.1.2.0.
+
 The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (that is, forward compatibility is not supported). For example, connector release `dz.2.5.2.yb.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
 
 Because connectors are backward compatible with YugabyteDB releases, you don't need to match the connector to the database release; use the latest stable connector release regardless of the YugabyteDB version you are running. If a connector release for a particular YugabyteDB version is not available, use the latest released connector.

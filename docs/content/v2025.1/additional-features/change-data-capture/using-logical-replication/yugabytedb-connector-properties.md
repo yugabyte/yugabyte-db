@@ -644,7 +644,31 @@ Determines whether the connector generates events with transaction boundaries an
 
 Default: false
 
+##### lsn.flush.mode
+
+Specifies how the LSN of processed records is flushed (acknowledged) to the replication slot, so that YugabyteDB can clear WAL that is no longer needed. This property replaces the deprecated [flush.lsn.source](#flush-lsn-source) property. Specify one of the following values:
+
+* `connector` - The connector flushes the LSNs of records whose offsets Kafka Connect has committed. The YugabyteDB JDBC driver doesn't flush LSNs on its own.
+* `manual` - The connector doesn't flush LSNs. You must acknowledge LSNs outside the connector; otherwise, WAL isn't cleared, which can result in disk space issues.
+* `connector_and_driver` - The connector flushes LSNs as in `connector` mode, and the YugabyteDB JDBC driver also flushes the LSN that the server reports in keepalive messages, to help prevent WAL growth when the captured tables change infrequently. Supported only for replication slots that use the `SEQUENCE` LSN type.
+
+{{< warning title="HYBRID_TIME replication slots" >}}
+
+Don't set `lsn.flush.mode` to `connector_and_driver` for a replication slot that uses the `HYBRID_TIME` [LSN type](../key-concepts/#lsn-type). With `HYBRID_TIME`, all records of a transaction carry the LSN of its commit record, and a keepalive message can carry that LSN before the connector has received the transaction. The driver can then acknowledge changes that haven't reached Kafka, and those changes are lost if the connector restarts.
+
+The connector rejects `connector_and_driver` when [slot.lsn.type](#slot-lsn-type) is `HYBRID_TIME`.
+
+{{< /warning >}}
+
+If you set both `lsn.flush.mode` and `flush.lsn.source`, `lsn.flush.mode` takes precedence.
+
+Available in connector version `dz.2.5.2.yb.2026.1.2.0.1` and later.
+
+Default: `connector`
+
 ##### flush.lsn.source
+
+{{<tags/feature/deprecated>}} Starting with connector version `dz.2.5.2.yb.2026.1.2.0.1`, this property is deprecated and replaced by [lsn.flush.mode](#lsn-flush-mode). A value of `true` maps to `lsn.flush.mode=connector`, and `false` maps to `lsn.flush.mode=manual`. If `lsn.flush.mode` is set, the connector ignores this property.
 
 Determines whether the connector should commit the LSN of the processed records in the source YugabyteDB database so that the WAL logs can be deleted. Specify `false` if you don't want the connector to do this. Please note that if set to `false` LSN will not be acknowledged by Debezium and as a result WAL logs will not be cleared which might result in disk space issues. User is expected to handle the acknowledgement of LSN outside Debezium.
 
@@ -667,6 +691,34 @@ Default: t
 How often, in milliseconds, the XMIN will be read from the replication slot. The XMIN value provides the lower bounds of where a new replication slot could start from. The default value of `0` disables tracking XMIN tracking.
 
 Default: 0
+
+##### heartbeat.interval.ms
+
+How often, in milliseconds, the connector sends a heartbeat record to the heartbeat topic (see [topic.heartbeat.prefix](#topic-heartbeat-prefix)). Heartbeat records keep the replication slot's confirmed flush LSN moving when no change events are emitted for the captured tables, so that YugabyteDB can clear WAL that is no longer needed. The default value of `0` disables heartbeats.
+
+Starting with connector version `dz.2.5.2.yb.2026.1.2.0.1`, the connector flushes LSNs based on the offsets that Kafka Connect has committed, so records that are filtered out no longer advance the flush LSN. If you filter records, or if the captured tables change infrequently, enable heartbeats, and make sure that no single message transformation (SMT) drops the heartbeat records; otherwise, the replication slot can stop advancing and YugabyteDB retains WAL.
+
+In connector versions earlier than `dz.2.5.2.yb.2026.1`, the connector doesn't send heartbeats while streaming changes.
+
+Default: 0
+
+##### heartbeat.action.query
+
+A query that the connector runs on the source database each time it sends a heartbeat record. For example, you can set it to `INSERT INTO heartbeat_table (ts) VALUES (now())`, where `heartbeat_table` is a table included in the publication, so that the connector receives a change at every heartbeat even when the other captured tables are idle.
+
+Applies only when `heartbeat.interval.ms` is greater than `0`, and requires connector version `dz.2.5.2.yb.2026.1` or later.
+
+No default
+
+##### heartbeat.log.interval.ms
+
+Minimum interval, in milliseconds, between the INFO log lines that the connector writes when it sends heartbeat records. Each connector task logs `Sent heartbeat record` for the first heartbeat record it sends, and then at most once per interval. Set to `0` to log every heartbeat record.
+
+Use these log lines to confirm that heartbeats are being sent, for example when a replication slot stops advancing and YugabyteDB retains WAL, without having to enable DEBUG logging. The lines are logged by `io.debezium.connector.postgresql.YBHeartbeatImpl`, or by `io.debezium.connector.postgresql.YBDatabaseHeartbeatImpl` when `heartbeat.action.query` is set.
+
+Available in connector version `dz.2.5.2.yb.2026.1.2.0.1` and later.
+
+Default: 300000 (5 minutes)
 
 ##### topic.naming.strategy
 
@@ -730,6 +782,10 @@ The type of LSN to use for the specified replication slot:
 
 * SEQUENCE - A monotonic increasing number that determines the record in global order in the context of a slot.
 * HYBRID_TIME - A hybrid time value that can be used to compare transactions across slots.
+
+If you set this property to `HYBRID_TIME`, don't set [lsn.flush.mode](#lsn-flush-mode) to `connector_and_driver`; the connector rejects that combination.
+
+Default: `SEQUENCE`
 
 ##### streaming.mode
 
