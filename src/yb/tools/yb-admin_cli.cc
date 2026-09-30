@@ -522,6 +522,33 @@ Status ClusterAdminCli::RunCommand(
   return Status::OK();
 }
 
+namespace {
+
+const auto get_ysql_catalog_follower_read_reservation_args = "";
+Status get_ysql_catalog_follower_read_reservation_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  return client->GetYsqlCatalogFollowerReadReservation();
+}
+
+const auto reserve_ysql_catalog_follower_reads_args = "acknowledge_permanent_pitr_exclusion";
+
+Status ValidateYsqlCatalogFollowerReadReservationArgs(const ClusterAdminCli::CLIArguments& args) {
+  SCHECK(args.size() == 1 && args.front() == reserve_ysql_catalog_follower_reads_args,
+         InvalidArgument,
+         "Requires exactly: acknowledge_permanent_pitr_exclusion. "
+         "Reservation permanently excludes PITR; there is no release operation.");
+  return Status::OK();
+}
+
+Status reserve_ysql_catalog_follower_reads_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(ValidateYsqlCatalogFollowerReadReservationArgs(args));
+  return client->ReserveYsqlCatalogFollowerReads(/* acknowledge_permanent_pitr_exclusion */ true);
+}
+
+}  // namespace
+
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
   FLAGS_logtostderr = true;
@@ -575,6 +602,14 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
     return STATUS_FORMAT(RuntimeError, "Invalid operation: $0", op);
   }
 
+  CLIArguments command_args(args.begin() + 2, args.end());
+  auto& command = commands_[cmd->second];
+  // Reject an unacknowledged irreversible operation before even discovering the leader.
+  if (op == "reserve_ysql_catalog_follower_reads" &&
+      !ValidateYsqlCatalogFollowerReadReservationArgs(command_args).ok()) {
+    return RunCommand(command, command_args, prog_name);
+  }
+
   // Init client.
   Status s = client_->Init();
 
@@ -589,8 +624,6 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
     return STATUS(RuntimeError, "Error connecting to cluster");
   }
 
-  CLIArguments command_args(args.begin() + 2, args.end());
-  auto& command = commands_[cmd->second];
   return RunCommand(command, command_args, args[0]);
 }
 
@@ -3321,6 +3354,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(xcluster_failover);
 
   /* Upgrade related commands */
+  REGISTER_COMMAND(get_ysql_catalog_follower_read_reservation);
+  REGISTER_COMMAND(reserve_ysql_catalog_follower_reads);
   // AutoFlags
   REGISTER_COMMAND(get_auto_flags_config);
   REGISTER_COMMAND(promote_auto_flags);

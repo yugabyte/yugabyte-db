@@ -2862,6 +2862,60 @@ TEST_F_EX(AdminCliTest, TestSplitTabletMultiWay, AdminCliListTabletsTest) {
       }, 30s, "Wait for tablet split to complete"));
 }
 
+TEST_F(AdminCliTest, YsqlCatalogFollowerReadReservationRequiresAcknowledgement) {
+  const std::string acknowledgement = "acknowledge_permanent_pitr_exclusion";
+  const std::vector<std::vector<std::string>> invalid_args = {
+      {}, {"true"}, {"false"}, {"acknowledge_permanent_pitr_exclusion=true"},
+      {"ACKNOWLEDGE_PERMANENT_PITR_EXCLUSION"}, {acknowledgement, "extra"},
+      {acknowledgement, acknowledgement}};
+  for (const auto& args : invalid_args) {
+    auto argv = ToStringVector(
+        GetAdminToolPath(), "--master_addresses", "127.0.0.1:0", "--timeout_ms", "1000",
+        "reserve_ysql_catalog_follower_reads");
+    argv.insert(argv.end(), args.begin(), args.end());
+    std::string error;
+    ASSERT_NOK(Subprocess::Call(argv, /* output */ nullptr, &error));
+    ASSERT_STR_CONTAINS(error, "Requires exactly: acknowledge_permanent_pitr_exclusion");
+    ASSERT_STR_NOT_CONTAINS(error, "Error connecting to cluster");
+  }
+}
+
+TEST_F(AdminCliTest, YsqlCatalogFollowerReadReservation) {
+  ASSERT_NO_FATALS(BuildAndStart(
+      /* ts_flags = */ {}, /* master_flags = */ {"--limit_auto_flag_promote_for_new_universe=0"}));
+  const auto* status_command = "get_ysql_catalog_follower_read_reservation";
+  const auto* reserve_command = "reserve_ysql_catalog_follower_reads";
+  const auto* acknowledgement = "acknowledge_permanent_pitr_exclusion";
+
+  const auto unreserved = ASSERT_RESULT(CallAdmin(status_command));
+  ASSERT_STR_CONTAINS(unreserved, "reserved: false\n");
+  ASSERT_STR_CONTAINS(unreserved, "reservation_pending: false\n");
+  ASSERT_STR_CONTAINS(unreserved, "pitr_admitted_in_term: false\n");
+  ASSERT_STR_CONTAINS(unreserved, "leader_term: ");
+  ASSERT_NOK(CallAdmin(status_command, "extra"));
+  ASSERT_NOK(CallAdmin(reserve_command));
+  ASSERT_NOK(CallAdmin(reserve_command, "true"));
+  ASSERT_NOK(CallAdmin(reserve_command, acknowledgement, "extra"));
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin(reserve_command, acknowledgement), "capability is not enabled");
+  ASSERT_EQ(ASSERT_RESULT(CallAdmin(status_command)), unreserved);
+
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalPersisted"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(cluster_->GetFlag(
+        cluster_->master(), "ysql_enable_catalog_follower_read_reservation")) == "true";
+  }, 30s * kTimeMultiplier, "Apply promoted reservation capability"));
+  const auto result = ASSERT_RESULT(CallAdmin(reserve_command, acknowledgement));
+  ASSERT_STR_CONTAINS(result, "PITR is permanently excluded");
+  const auto reserved = ASSERT_RESULT(CallAdmin(status_command));
+  ASSERT_STR_CONTAINS(reserved, "reserved: true\n");
+  ASSERT_STR_CONTAINS(reserved, "reservation_pending: false\n");
+  ASSERT_STR_CONTAINS(reserved, "pitr_admitted_in_term: false\n");
+  ASSERT_STR_CONTAINS(reserved, "leader_term: ");
+  ASSERT_OK(CallAdmin(reserve_command, acknowledgement));
+  ASSERT_EQ(ASSERT_RESULT(CallAdmin(status_command)), reserved);
+}
+
 TEST_F(AdminCliTest, GetAutoFlagsConfig) {
   BuildAndStart();
   auto message = ASSERT_RESULT(CallAdmin("get_auto_flags_config"));

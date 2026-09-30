@@ -362,6 +362,10 @@ class ClusterAdminClient {
 
   Status GetWalRetentionSecs(const client::YBTableName& table_name);
 
+  Status GetYsqlCatalogFollowerReadReservation();
+
+  Status ReserveYsqlCatalogFollowerReads(bool acknowledge_permanent_pitr_exclusion);
+
   Status GetAutoFlagsConfig();
 
   Status PromoteAutoFlags(const std::string& max_flag_class, const bool force);

@@ -824,6 +824,34 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetYsqlCatalogFollowerReadReservation() {
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterClusterProxy::GetYsqlCatalogFollowerReadReservation, *master_cluster_proxy_,
+      master::GetYsqlCatalogFollowerReadReservationRequestPB()));
+  std::cout << "YSQL catalog follower-read reservation (read-only status):\n"
+            << "reserved: " << (resp.reserved() ? "true" : "false") << '\n'
+            << "reservation_pending: " << (resp.reservation_pending() ? "true" : "false") << '\n'
+            << "pitr_admitted_in_term: " << (resp.pitr_admitted_in_term() ? "true" : "false")
+            << '\n'
+            << "leader_term: " << resp.leader_term() << '\n'
+            << "A committed reservation permanently excludes PITR; pending admission and PITR "
+               "admission apply only to the reported leader term.\n";
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ReserveYsqlCatalogFollowerReads(
+    bool acknowledge_permanent_pitr_exclusion) {
+  SCHECK(acknowledge_permanent_pitr_exclusion, InvalidArgument,
+         "Must acknowledge permanent PITR exclusion before reserving catalog follower reads");
+  master::ReserveYsqlCatalogFollowerReadsRequestPB req;
+  req.set_acknowledge_permanent_pitr_exclusion(true);
+  RETURN_NOT_OK(InvokeRpc(
+      &master::MasterClusterProxy::ReserveYsqlCatalogFollowerReads, *master_cluster_proxy_, req));
+  std::cout << "YSQL catalog follower reads reserved. PITR is permanently excluded in this "
+               "universe; disabling routing does not release the reservation.\n";
+  return Status::OK();
+}
+
 Status ClusterAdminClient::GetAutoFlagsConfig() {
   master::GetAutoFlagsConfigRequestPB req;
   master::GetAutoFlagsConfigResponsePB resp;
