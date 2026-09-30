@@ -89,6 +89,8 @@ ADD_YB_LIBRARY(gutil
   SRCS ${GUTIL_SRCS}
   DEPS ${GUTIL_LIBS})
 
+ADD_YB_TEST(dynamic_annotations-test)
+YB_TEST_TARGET_LINK_LIBRARIES(dynamic_annotations-test absl)
 ADD_YB_TEST(sysinfo-test)
 ADD_YB_TEST(strings/string_util-test)
 ADD_YB_TEST(hash/jenkins-test)
