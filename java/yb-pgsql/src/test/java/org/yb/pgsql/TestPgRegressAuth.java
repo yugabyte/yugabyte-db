@@ -30,6 +30,11 @@ public class TestPgRegressAuth extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
+    // yb.orig.password_valid_until expects ALTER ROLE ... SET to take effect
+    // only on reconnect. After such a global-impact DDL, conn mgr may move the
+    // client to a new backend that already loaded the new role default. Pin
+    // superuser sessions to one backend.
+    enableStickySuperuserConnsAndRestartCluster();
     runPgRegressTest("yb_auth_schedule");
   }
 }
