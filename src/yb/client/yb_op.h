@@ -559,6 +559,9 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
     yb_consistency_level_ = yb_consistency_level;
   }
 
+  bool ysql_auth_catalog_read() const { return ysql_auth_catalog_read_; }
+  void set_ysql_auth_catalog_read(bool value) { ysql_auth_catalog_read_ = value; }
+
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
 
   bool should_apply_intents(IsolationLevel isolation_level) override;
@@ -575,6 +578,7 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
  private:
   LWPgsqlReadRequestPB* request_;
   bool own_request_;
+  bool ysql_auth_catalog_read_ = false;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime used_read_time_;
   // The tablet that served this operation.
