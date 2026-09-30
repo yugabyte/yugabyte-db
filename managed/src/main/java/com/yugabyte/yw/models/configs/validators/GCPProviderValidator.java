@@ -35,7 +35,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface.VPCType;
-import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
@@ -79,7 +78,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   public void validate(Provider provider) {
     // Deliberately before the runtime-flag gate below: these are cheap format checks that need no
     // GCP API access, and a bad value here breaks universe creation on every node.
-    validateFederatedIamFields(provider);
+    validateCrossCloudFederationTargets(provider);
 
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableGcpProviderValidation)) {
       log.warn("Validation is not enabled");
@@ -769,28 +768,5 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           sshPort);
     }
     return false;
-  }
-
-  private void validateFederatedIamFields(Provider provider) {
-    GCPCloudInfo gcpInfo = CloudInfoInterface.get(provider);
-    if (gcpInfo == null || !gcpInfo.isEnableFederatedIam()) {
-      return;
-    }
-    String roleArn = gcpInfo.getFederatedIamRoleArn();
-    if (!CrossCloudFederationTarget.isValidRoleArn(roleArn)) {
-      throwBeanProviderValidatorError(
-          "FEDERATED_IAM_ROLE_ARN",
-          "Federated IAM is enabled but the role ARN is missing or malformed. Expected"
-              + " arn:aws:iam::<12-digit-account>:role/<role-name>.",
-          null);
-    }
-    String audience = gcpInfo.getFederatedIamAudience();
-    if (!CrossCloudFederationTarget.isValidAudience(audience)) {
-      throwBeanProviderValidatorError(
-          "FEDERATED_IAM_AUDIENCE",
-          "Federated IAM is enabled but the audience is missing or contains unsupported"
-              + " characters.",
-          null);
-    }
   }
 }

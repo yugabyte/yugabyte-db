@@ -571,6 +571,37 @@ public class BackupHelper {
   }
 
   /**
+   * Stamps onto {@code configData} the federation identity YBA needs to reach this backup's bucket
+   * itself, for deletion. Prefers the snapshot taken when the backup was created, which survives
+   * deletion of the universe and its provider; falls back to the live universe for backups taken
+   * before the snapshot existed. No-op for a config that is not federated.
+   */
+  public void applyCrossCloudFederationFromBackup(
+      CustomerConfigStorageData configData, Backup backup) {
+    String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
+    String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
+    if (configData instanceof CustomerConfigStorageGCSData
+        && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
+      if (StringUtils.isNotBlank(snapshotAudience)) {
+        ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience = snapshotAudience;
+        return;
+      }
+    } else if (configData instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+      if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
+        CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+        s3.crossCloudFederationAudience = snapshotAudience;
+        s3.crossCloudFederationRoleArn = snapshotRoleArn;
+        return;
+      }
+    } else {
+      return;
+    }
+    Universe.maybeGet(backup.getUniverseUUID())
+        .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
+  }
+
+  /**
    * Snapshots the cross-cloud federation identity onto the backup request, so the backup can still
    * be deleted once its universe - and with it the provider link - is gone. Every path that submits
    * a {@code CreateBackup} task must call this; scheduled backups do not go through {@link
