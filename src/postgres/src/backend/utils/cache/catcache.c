@@ -652,7 +652,7 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	else
 	{
 		cache->yb_cc_size_bytes -=
-			sizeof(CatCTup) + MAXIMUM_ALIGNOF + ct->tuple.t_len;
+			MAXALIGN(sizeof(CatCTup)) + ct->tuple.t_len;
 		if (need_to_free_ybctid)
 			cache->yb_cc_size_bytes -= VARSIZE(DatumGetPointer(HEAPTUPLE_YBCTID(&ct->tuple)));
 	}
