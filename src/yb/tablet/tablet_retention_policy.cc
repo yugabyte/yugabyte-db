@@ -90,7 +90,7 @@ TabletRetentionPolicy::TabletRetentionPolicy(
 }
 
 HistoryCutoff TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HistoryCutoff value) {
-  std::lock_guard lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   VLOG_WITH_PREFIX(4) << __func__ << "(" << value << ")";
   committed_history_cutoff_information_.MakeAtLeast(value);
   return committed_history_cutoff_information_;
@@ -99,7 +99,7 @@ HistoryCutoff TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HistoryCutoff 
 HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
   docdb::HistoryCutoff history_cutoff;
   {
-    std::lock_guard lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     if (FLAGS_enable_history_cutoff_propagation) {
       history_cutoff = SanitizeHistoryCutoff(committed_history_cutoff_information_);
       VLOG(4) << "Effective history cutoff due to propagation " << history_cutoff;
@@ -117,7 +117,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
 
 HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {
   // For proposed history cutoff we don't respect active readers.
-  std::lock_guard lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   // TODO(Sanket): Since this is only for statistics collection, for the master
   // there will be some imprecision which should be followed up in a diff.
   return FLAGS_enable_history_cutoff_propagation
@@ -126,7 +126,7 @@ HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {
 }
 
 Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
-  std::lock_guard lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   HybridTime earliest_read_time_allowed = GetEarliestAllowedReadHt();
   if (timestamp < earliest_read_time_allowed) {
     // When retain_delete_markers is true the tablet is an index table whose backfill is still in
@@ -156,7 +156,7 @@ Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
 }
 
 void TabletRetentionPolicy::UnregisterReaderTimestamp(HybridTime timestamp) {
-  std::lock_guard lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   active_readers_.erase(timestamp);
 }
 
@@ -184,7 +184,7 @@ HybridTime TabletRetentionPolicy::GetEarliestAllowedReadHt() {
 }
 
 HistoryCutoff TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write_ht) {
-  std::lock_guard lock(mutex_);
+  absl::MutexLock lock(&mutex_);
 
   auto now = CoarseMonoClock::now();
 
@@ -239,7 +239,7 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
 }
 
 void TabletRetentionPolicy::EnableHistoryCutoffPropagation(bool value) {
-  std::lock_guard lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   if (value) {
     --disable_counter_;
   } else {
