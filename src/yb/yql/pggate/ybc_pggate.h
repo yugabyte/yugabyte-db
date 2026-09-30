@@ -955,6 +955,13 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
 
 void YBCStartSysTablePrefetchingNoCache();
 
+// Pins a fresh leader-established snapshot until YBCEndAuthCatalogRead, across prefetch phases.
+// Shared response-cache authentication must not enter this scope.
+YbcStatus YBCStartAuthSysTablePrefetching();
+// Drops any remaining prefetcher and releases the authentication snapshot.
+void YBCEndAuthCatalogRead();
+bool YBCIsAuthCatalogRead();
+
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,

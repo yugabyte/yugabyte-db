@@ -1,81 +1,186 @@
-# YSQL catalog follower reads: PITR exclusion
+# YSQL authentication catalog follower reads
 
-Authentication follower reads need a system catalog whose historical snapshots
-cannot be replaced by restore. This layer supplies that prerequisite only;
-master reads remain leader-only. Snapshot acquisition and routing follow separately.
+Implemented behind an experimental, default-false routing flag. See
+[local reproduction](ysql-auth-follower-reads-local.md) for validation and commands.
+Linux, debug, sanitizer, mixed-version, and performance validation remain outstanding.
 
-## Permanent startup opt-in
+## Permanent operational restriction
 
-`--disable_pitr=true` is a new experimental, non-runtime master flag in this stack,
-not an existing released setting. It defaults to false. It can select permanent
-PITR exclusion when creating a universe or during a coordinated master restart
-of an eligible existing universe. It does not enable follower routing.
+**Create a new universe with the non-runtime master flag `--disable_pitr=true`
+to permanently disable PITR. Turning follower-read routing off does not undo
+this mode.**
 
+- Only a new universe can opt in. Existing default-mode universes cannot, even
+  if they have never used PITR.
 - Servers reject PITR schedules and system-catalog restore across the universe,
-  including YCQL. The masters share one physical system-catalog tablet.
-- Omitting the flag, restarting, or changing leaders does not undo the mode.
-- Re-enabling PITR in place is unsupported.
-- Ordinary backup snapshots and data-only restores remain available.
+  including YCQL: the masters share one physical system-catalog tablet.
+- Changing or omitting the startup flag, restarting, or leader failover cannot
+  remove the persisted mode.
+- There is no supported in-place conversion in either direction, with or without
+  downtime. Do not choose this mode if the universe will need PITR later.
+- Ordinary backup snapshots and data-only restores remain available. Workflows
+  that require PITR schedules or system-catalog restore are excluded.
 
-Inspect `pitrDisabled` through `yb-admin get_universe_config`. There is no
-reservation RPC, acknowledgement, capability promotion, or pending admission state.
+Read the persisted mode through the existing `GetMasterClusterConfig` RPC or:
 
-## Existing-universe activation
+```sh
+yb-admin --master_addresses "$MASTERS" get_universe_config
+```
 
-Install compatible binaries on every master before requesting activation. Keep
-follower routing off. Inspect schedules, snapshots, and restorations using the
-backup APIs before scheduling the control-plane outage.
+The cluster config reports `pitr_disabled` (`pitrDisabled` in JSON). There is no
+reservation/status RPC or CLI, acknowledgement, capability AutoFlag or promotion,
+or pending admission state.
 
-Activation requires no schedule metadata (including deleted schedules awaiting
-cleanup), no retained schedule snapshots, and no unfinished or incompletely
-recorded restoration. Ordinary snapshots and fully finalized restoration history
-do not disqualify a universe. Past PITR use alone is not a permanent restriction.
-No state is deleted or aborted automatically to make the universe eligible.
+## Why exclude restore
 
-Stop all masters before restarting any of them with `--disable_pitr=true`. This
-initial rollout does not support rolling or live activation. The elected master
-finishes recovery, checks eligibility, and commits the mode before becoming ready.
-The existing configuration and universe identifiers are preserved.
+Normal MVCC writes preserve historical snapshots. System-catalog restore can
+change the historical data visible to a read. Supporting both features requires
+restore-overlap checks, durable read boundaries, recovery rules, and cross-replica
+restore validation. This rollout instead prohibits the conflicting operation
+before any follower reads are enabled.
 
-A blocker refuses startup and reports the offending object. Restart without the
-request to recover normal service and explicitly finish or clean up the blocking
-work. A crash or write timeout may occur after commitment: read the persisted mode
-after recovery instead of inferring the outcome from startup success or failure.
-Only enable follower routing after confirming the durable mode.
+## Creation and persistence
 
-## Persistence and recovery
+New-universe bootstrap stores `SysClusterConfigEntryPB.pitr_disabled` in the
+replicated system catalog. It is immutable: administrative cluster-config
+updates cannot change it or clear it by omitting the field. Each master replica
+loads and applies the persisted mode; request checks use that mode, not the
+current startup flag.
 
-Each process captures startup intent before RPC services start; forcing a flag
-change on a running process cannot request activation. The flag is not the
-effective mode: `SysClusterConfigEntryPB.pitr_disabled` is replicated and applied
-on every master. Administrative config replacement rejects changes and preserves
-protected fields omitted by clients.
+An internal template marker on the initial snapshot config distinguishes a
+failed first bootstrap from an existing universe. An initdb retry preserves a
+true mode instead of resetting it from the template or startup flag. The marker
+is not an operator opt-in mechanism.
+Use an initial snapshot generated by this build; run `yb_build.sh ... reinitdb`
+when reusing a build directory so that an older cached template is not retained.
 
-The check/write sequence runs under the leader initialization barrier, not on a
-serving leader. A process requesting exclusion cannot become ready without the
-durable mode, so it cannot first admit PITR and then switch in the same process.
-Already-disabled universes do not recheck eligibility on restart: an ordinary
-data restore may legitimately be in progress.
+Direct system-catalog edits in emergency repair mode are outside this contract
+and are not a supported conversion.
 
-An internal template marker identifies prebuilt initdb metadata. Recovery keeps
-an already committed mode rather than restoring a template over it. Use a matching
-initial snapshot; regenerate it with `yb_build.sh ... reinitdb` in reused builds.
+## Fresh authentication snapshot and routing
 
-The mode does not prove read freshness. Later follower routing must use a
-leader-established timestamp and retain it through paging and leader fallback.
+`ysql_enable_auth_catalog_follower_reads` defaults to false in masters, tservers,
+and PostgreSQL/pggate. The persisted mode does not enable routing. Enable this
+flag only after creating a PITR-disabled universe with compatible binaries on
+all peers; enabling it earlier can fail eligible authentication startup. Enable
+masters first, then restart participating tservers/postmasters with the forwarded
+flag.
+
+For an eligible uncached authentication attempt:
+
+1. PostgreSQL resets prefetch state, then asks the master leader for one fresh
+   snapshot through `GetYsqlAuthCatalogReadTime`. The leader checks its routing
+   flag and persisted PITR-disabled mode, incorporates propagated hybrid time,
+   selects `T = MaxGlobalNow()`, waits for lease-backed safe time at least T, and
+   rechecks the leader term. A lagging safe-time value alone is not a fresh read
+   boundary.
+2. Pggate retains `ReadHybridTime::SingleTime(T)` through authentication, database
+   CONNECT checks, and role settings, across individual prefetch lifetimes. The
+   tserver validates the uncached, nontransactional catalog-session envelope and
+   rejects writes, row locking, transactional state, and conflicting paging times.
+3. Only allowlisted full catalog scans and their matching indexes are tagged for
+   follower routing: current-version `template1` IDs for `pg_authid`,
+   `pg_database`, `pg_auth_members`, `pg_db_role_setting`,
+   `pg_yb_catalog_version`, and `pg_yb_logical_client_version`. Predicates, server
+   expressions, sampling, backfill, vector requests, and unrelated relations do
+   not pass the follower validator. Other permitted pure catalog reads stay
+   STRONG at the same T; they do not broaden follower admission.
+4. The client prefers a known nonleader, distributing requests among equally
+   local followers. A serving master independently validates the strict tagged
+   envelope, initialization, non-shell state, locally applied PITR-disabled mode,
+   and safe time at least T. A tagged `CONSISTENT_PREFIX` read also requires its
+   routing flag. Untagged master reads remain leader-only.
+5. Follower safe-time wait is bounded by 1000 ms and half the remaining RPC
+   deadline. The client bounds the follower RPC by 2000 ms and half its remaining
+   budget, including unreachable followers. These are internal limits, not flags.
+   Retry through leader selection explicitly switches to STRONG and waits under
+   the leader lease at the same T. Neither fallback nor paging chooses a new
+   snapshot. Conflicting restart/response read times fail rather than silently
+   advancing T.
+
+The snapshot ends explicitly after CONNECT checks and `pg_db_role_setting`, before
+ordinary session initialization can execute SQL. Catalog-version invalidation is
+deferred while T is pinned and resumes afterward. Snapshot acquisition failure is
+an authentication-startup error, not permission to use an older snapshot.
+
+### Bounded acquisition and latency
+
+`GetYsqlAuthCatalogReadTime` runs on dedicated, on-demand worker pools rather than
+holding general RPC workers during the clock/lease wait. Admission includes queued
+and running tasks; excess requests receive `ServiceUnavailable`. Queue plus execution
+is bounded by the RPC deadline and an internal 5000 ms budget. Expiration returns
+`TimedOut`; shutdown rejects queued tasks and joins running tasks.
+
+| Internal limit | Master | Tserver |
+| --- | --- | --- |
+| Workers | 32 | 16 |
+| Running plus queued tasks | 128 | 64 |
+| Queue plus execution budget | 5000 ms | 5000 ms |
+
+These limits bound resource use, not guaranteed capacity. They are not tuning
+flags; deterministic tests configure them through sync points.
+Selecting `MaxGlobalNow()` can add approximately the clock-skew bound to each
+eligible login (500 ms with the default wall clock). Freshness is not traded away
+to avoid that wait. Measure connection latency, overload, and leader row/byte work
+before enabling this experimentally; no throughput improvement is established.
+
+## Excluded paths and cache behavior
+
+The PostgreSQL entry point is restricted to direct TCP client backends. Unix
+sockets, connection-manager authentication/physical/control/passthrough backends,
+internal/background workers, autovacuum, initdb, and binary-upgrade paths retain
+their existing behavior. Login profiles are excluded whenever
+`ysql_enable_profile=true`, even before profile catalogs exist, because
+authentication can write profile state.
+
+Response-cache selection takes precedence over follower routing. Every attempt
+that selects the authentication response cache, including misses and retries,
+stays on the existing cache/leader path. Shared-cache freshness semantics are not
+changed by this feature. To exercise follower routing locally, explicitly set
+`ysql_enable_read_request_cache_for_connection_auth=false`; do not disable global
+`ysql_enable_read_request_caching`. Forwarded PostgreSQL gflags are captured when
+the postmaster starts, so changing only the live tserver flag is insufficient.
+
+Later phase-3 prefetches within an opted-in attempt also bypass the shared response
+cache, because its data may come from another snapshot. Per-attempt PostgreSQL
+prefetch remains enabled. This can increase leader work for non-allowlisted catalogs,
+so include warm/cold relcache and broad-preload configurations in performance tests.
+
+## Observability and validation
+
+Master metrics distinguish `ysql_auth_catalog_snapshot_acquisitions`,
+`ysql_auth_catalog_follower_reads`, and `ysql_auth_catalog_leader_reads`. Read
+counters increment after envelope, PITR-disabled mode, and safe-time checks,
+classified by the actual serving replica's role. They count admissions, not
+completed storage reads or successful logins. A wrong password can still cause a
+read admission.
+
+The metric prefixes `master_ysql_auth_snapshot_` and `tserver_ysql_auth_snapshot_`
+expose `task_limit_rejections`, `deadline_expirations`, and `outstanding_tasks`.
+Monitor both layers: a full tserver queue can reject logins before the master sees
+any acquisition. Read-admission counters alone do not show this overload or prove
+reduced leader load.
+
+Validation must cover new-universe mode selection, rejection of opt-in on
+existing universes, immutable cluster-config updates, initdb retry, and mode
+persistence through replay/restart/failover. Check universe-wide PITR and
+system-catalog restore rejection, plus ordinary backup/data-only restore
+availability. The mode target is `pitr_disabled-test`. Read-path tests must cover
+fresh role/password changes, follower admissions, fixed-T leader fallback,
+malformed envelopes, lag/timeout handling, cache/profile exclusions, direct-TCP
+scope, and default-off behavior. The integration target is
+`pg_auth_follower_reads-test`; commands are in the local reproduction document.
+Functional tests do not establish a performance improvement.
 
 ## Upgrade/Rollback safety
 
-All masters must support this mode before opt-in. Do not downgrade PITR-disabled
-data to mode-unaware binaries: those binaries could admit PITR. A routing or
-startup-flag change does not undo the persisted policy.
+Install compatible binaries on every master and participating tserver/PostgreSQL
+process **before creating the universe**. No capability AutoFlag or promotion
+is involved. Do not create or activate this mode with mixed versions.
 
-Old experimental reservation data remains unsupported and rejected. Direct
-system-catalog edits in emergency repair mode are not a supported conversion.
+**Do not downgrade PITR-disabled data to binaries unaware of this mode.** They
+could admit PITR. Disabling routing or changing the startup flag is not a
+conversion or rollback procedure.
 
-## Validation
-
-Use `pitr_disabled-test`, one case per invocation, for startup eligibility,
-runtime-mutation rejection, preserved configuration, old PITR history, interrupted
-activation, flagless recovery, immutable updates, and ordinary restore recovery.
-New-universe bootstrap and default-mode PITR must continue to work.
+Old experimental reservation universes are unsupported: create a new universe
+with new data directories; do not silently convert or reuse their metadata.
