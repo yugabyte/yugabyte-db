@@ -177,7 +177,7 @@ DROP TABLE t_domain_int, t_domain_text;
 DROP DOMAIN positive_int, non_empty_text;
 
 ---
---- test a query that has multiple recheck types. 
+--- test a query that has multiple recheck types.
 ---
 
 CREATE TABLE test_multiple_rechecks (a int, b int, c int);
