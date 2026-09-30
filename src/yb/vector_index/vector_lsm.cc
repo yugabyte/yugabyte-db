@@ -395,6 +395,8 @@ class VectorLSMInsertRegistryBase
   using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
   using InsertTaskList = boost::intrusive::list<InsertTask>;
   using InsertTaskPtr = std::unique_ptr<InsertTask>;
+  using VectorIndexPtr = typename InsertTask::VectorIndexPtr;
+  using InsertCallback = typename InsertTask::InsertCallback;
 
   virtual ~VectorLSMInsertRegistryBase() = default;
 
@@ -443,11 +445,30 @@ class VectorLSMInsertRegistryBase
       // Catches a task that completed before ExecuteTasks moved it to active_tasks_.
       DCHECK(!active_tasks_.empty());
       active_tasks_.erase(active_tasks_.iterator_to(*raw_task));
-      if (task_pool_.size() < FLAGS_vector_index_task_pool_size) {
-        task_pool_.push_back(std::move(task));
-      }
+      ReturnTaskUnlocked(std::move(task));
       DoTaskDoneUnlocked();
     }
+  }
+
+  // Binds tasks allocated without index and callback. Must be called before ExecuteTasks.
+  void BindTasks(
+      InsertTaskList& tasks, const VectorIndexPtr& index, const InsertCallback& insert_callback) {
+    for (auto& task : tasks) {
+      // Make sure insert_callback is not moved but copied as it is used in several tasks.
+      task.Bind(index, this->shared_from_this(), insert_callback);
+    }
+  }
+
+  // Returns allocated tasks that will not be executed.
+  void ReleaseTasks(InsertTaskList& tasks) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    allocated_tasks_ -= tasks.size();
+    while (!tasks.empty()) {
+      InsertTaskPtr task(&tasks.front());
+      tasks.pop_front();
+      ReturnTaskUnlocked(std::move(task));
+    }
+    DoTaskDoneUnlocked();
   }
 
   bool HasRunningTasks() {
@@ -456,9 +477,6 @@ class VectorLSMInsertRegistryBase
   }
 
  protected:
-  using VectorIndexPtr = typename InsertTask::VectorIndexPtr;
-  using InsertCallback = typename InsertTask::InsertCallback;
-
   VectorLSMInsertRegistryBase(std::string log_prefix, rpc::ThreadPool& thread_pool)
       : log_prefix_(std::move(log_prefix)), thread_pool_(thread_pool) {}
 
@@ -466,9 +484,9 @@ class VectorLSMInsertRegistryBase
     return log_prefix_;
   }
 
-  Result<InsertTaskList> DoAllocateTasks(
-      size_t num_tasks, const VectorIndexPtr& index,
-      InsertCallback&& insert_callback) REQUIRES(mutex_) {
+  // Allocated tasks must be bound with BindTasks before ExecuteTasks or returned with
+  // ReleaseTasks.
+  Result<InsertTaskList> DoAllocateTasks(size_t num_tasks) REQUIRES(mutex_) {
     if (stopping_) {
       return STATUS_FORMAT(ShutdownInProgress, "VectorLSM registry is shutting down");
     }
@@ -482,13 +500,23 @@ class VectorLSMInsertRegistryBase
         task = std::move(task_pool_.back());
         task_pool_.pop_back();
       }
-
-      // Make sure insert_callback is not moved but copied as it is used in several tasks.
-      task->Bind(index, this->shared_from_this(), insert_callback);
-
       result.push_back(*task.release());
     }
     return result;
+  }
+
+  Result<InsertTaskList> DoAllocateTasks(
+      size_t num_tasks, const VectorIndexPtr& index,
+      const InsertCallback& insert_callback) REQUIRES(mutex_) {
+    auto result = VERIFY_RESULT(DoAllocateTasks(num_tasks));
+    BindTasks(result, index, insert_callback);
+    return result;
+  }
+
+  void ReturnTaskUnlocked(InsertTaskPtr&& task) REQUIRES(mutex_) {
+    if (task_pool_.size() < FLAGS_vector_index_task_pool_size) {
+      task_pool_.push_back(std::move(task));
+    }
   }
 
   virtual void DoTaskDoneUnlocked() REQUIRES(mutex_) {
@@ -617,9 +645,6 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
 
   rocksdb::UserFrontiersPtr user_frontiers;
 
-  // Used to indicates this chunk insertion failed and hence save_callback should not be called.
-  std::atomic<bool> insertion_failed { false };
-
   // Returns true if registration was successful. Otherwise, new mutable chunk should be allocated.
   // Invoked when owning VectorLSM holds the mutex.
   bool RegisterInsert(
@@ -640,9 +665,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     auto new_tasks = --num_tasks;
     if (new_tasks == 0) {
       DCHECK(save_callback);
-      if (!insertion_failed.load(std::memory_order::acquire)) {
-        save_callback();
-      }
+      save_callback();
       save_callback = {};
     }
   }
@@ -1089,6 +1112,10 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
     merge_registry_->Shutdown();
   }
 
+  TEST_SYNC_POINT_CALLBACK(
+      "VectorLSM::CompleteShutdown:RegistriesStopped",
+      const_cast<std::string*>(&options_.storage_dir));
+
   // Wait for all chunks to be saved.
   auto start_time = CoarseMonoClock::now();
   auto last_warning_time = start_time;
@@ -1302,8 +1329,23 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   VLOG_WITH_PREFIX_AND_FUNC(5)
       << "entries: " << entries.size() << ", frontier: " << AsString(context.frontiers);
 
-  MutableChunkPtr chunk;
   size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
+
+  TEST_SYNC_POINT_CALLBACK(
+      "VectorLSM::Insert:BeforeAllocateTasks", const_cast<std::string*>(&options_.storage_dir));
+
+  // Allocate before registering on a chunk: a chunk counting tasks of a failed insert would never
+  // save and hang CompleteShutdown, and its frontiers would claim vectors that were never inserted.
+  typename InsertRegistry::InsertTaskList tasks;
+  if (num_tasks) {
+    tasks = VERIFY_RESULT(insert_registry_->AllocateTasks(num_tasks));
+    DCHECK_EQ(num_tasks, tasks.size());
+  }
+  auto release_tasks = CancelableScopeExit([this, &tasks] {
+    insert_registry_->ReleaseTasks(tasks);
+  });
+
+  MutableChunkPtr chunk;
   {
     std::lock_guard lock(mutex_);
     RETURN_NOT_OK(failed_status_);
@@ -1320,27 +1362,25 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     }
     chunk = mutable_chunk_;
   }
+  release_tasks.Cancel();
 
   if (!num_tasks) {
     // Empty insert could be used to update frontiers.
     return Status::OK();
   }
 
+  insert_registry_->BindTasks(tasks, chunk->index, [this, chunk](const Status& status) {
+    if (!status.ok()) {
+      auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
+      LOG(ERROR) << LogPrefix() << failure;
+      CheckFailure(failure);
+    }
+    // A failed chunk is still saved: CheckFailure records the failure, and an unsaved chunk would
+    // block the updates queue and CompleteShutdown.
+    chunk->InsertTaskDone();
+  });
+
   size_t entries_per_task = ceil_div(entries.size(), num_tasks);
-
-  auto tasks = VERIFY_RESULT(insert_registry_->AllocateTasks(
-      num_tasks, chunk->index,
-      [this, chunk](const Status& status) {
-        if (!status.ok()) {
-          auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
-          LOG(ERROR) << LogPrefix() << failure;
-          CheckFailure(failure);
-          chunk->insertion_failed.store(false, std::memory_order::release);
-        }
-        chunk->InsertTaskDone();
-      }));
-  DCHECK_EQ(num_tasks, tasks.size());
-
   auto tasks_it = tasks.begin();
   size_t index_in_task = 0;
   for (auto& [vector_id, v] : entries) {
@@ -1816,9 +1856,7 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
   auto tasks = mutable_chunk_->num_tasks -= kRunningMark;
   RSTATUS_DCHECK_LT(tasks, kRunningMark, RuntimeError, "Wrong value for num_tasks");
   if (tasks == 0) {
-    if (!mutable_chunk_->insertion_failed.load(std::memory_order::acquire)) {
-      options_.insert_thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
-    }
+    options_.insert_thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
     // TODO(vector_index): Optimize memory allocation related to save callback
     mutable_chunk_->save_callback = {};
   }
