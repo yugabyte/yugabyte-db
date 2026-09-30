@@ -5241,4 +5241,97 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
   ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
 }
 
+// VectorLSM::Insert counts its tasks on the mutable chunk before allocating them in the insert
+// registry. When the allocation failed because the registry was already shut down, the count
+// stayed elevated, so a chunk that a flush had meanwhile handed to the save path never saved and
+// the shutdown waited for it forever (GH#34199). Only an index removal can shut the registry down
+// under a running insert: a tablet shutdown drains the operations first.
+TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
+  constexpr size_t kNumRows = 64;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+
+  // Park a follower's backfill insert before it allocates its tasks. CREATE INDEX waits for the
+  // leader's backfill only, so the leader proceeds and the DROP INDEX below can run. The follower
+  // is picked once the index is registered on the tablets, so every insert first waits for that
+  // choice.
+  std::string parked_dir;
+  CountDownLatch follower_picked{1};
+  CountDownLatch insert_parked{1};
+  CountDownLatch resume_insert{1};
+  CountDownLatch registries_stopped{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::Insert:BeforeAllocateTasks", [&](void* arg) {
+    ASSERT_TRUE(follower_picked.WaitFor(60s * kTimeMultiplier));
+    if (*static_cast<const std::string*>(arg) != parked_dir) {
+      return;
+    }
+    insert_parked.CountDown();
+    ASSERT_TRUE(resume_insert.WaitFor(60s * kTimeMultiplier));
+  });
+  sync_point->SetCallBack("VectorLSM::CompleteShutdown:RegistriesStopped", [&](void* arg) {
+    if (*static_cast<const std::string*>(arg) == parked_dir) {
+      registries_stopped.CountDown();
+    }
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  // Keep only a weak reference to the parked index: the removal destroys it once its shutdown
+  // completes, which is what the test waits for.
+  std::weak_ptr<docdb::DocVectorIndex> weak_index;
+  ASSERT_OK(WaitFor([this, &weak_index, &parked_dir] {
+    auto indexes = ListVectorIndexes(cluster_.get(), ListPeersFilter::kNonLeaders);
+    if (indexes.empty()) {
+      return false;
+    }
+    weak_index = indexes.front();
+    parked_dir = indexes.front()->path();
+    return true;
+  }, 60s * kTimeMultiplier, "Vector index registered on a follower"));
+  follower_picked.CountDown();
+
+  ASSERT_TRUE(insert_parked.WaitFor(60s * kTimeMultiplier)) << "Backfill insert did not park";
+  threads.JoinAll();
+
+  // Let the other replicas finish their backfills, so the removal below overtakes the parked insert
+  // only.
+  ASSERT_OK(WaitFor([this, &parked_dir] {
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (index->path() != parked_dir && !index->BackfillDone()) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Other replicas backfilled"));
+
+  // The removal shuts the insert registry down, then waits for all chunks to save. Resume the
+  // insert only after that, so its allocation fails. The drop runs off the main thread in case it
+  // waits for the parked replica.
+  threads.AddThreadFunctor([this] {
+    auto drop_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(drop_conn.ExecuteFormat("DROP INDEX $0", kVectorIndexName));
+  });
+  ASSERT_TRUE(registries_stopped.WaitFor(60s * kTimeMultiplier))
+      << "Index removal did not reach the registry shutdown";
+  resume_insert.CountDown();
+
+  ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 30s * kTimeMultiplier,
+                    "Index removal hung waiting for the chunk of the failed insert"));
+  threads.JoinAll();
+}
+
 }  // namespace yb::pgwrapper
