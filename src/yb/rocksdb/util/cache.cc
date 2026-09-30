@@ -24,6 +24,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include <absl/synchronization/mutex.h>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/statistics.h"
@@ -415,12 +417,12 @@ class LRUCache {
   // protect them with mutex_.
 
   size_t GetUsage() const {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     return single_touch_sub_cache_.Usage() + multi_touch_sub_cache_.Usage();
   }
 
   size_t GetPinnedUsage() const {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     return single_touch_sub_cache_.GetPinnedUsage() + multi_touch_sub_cache_.GetPinnedUsage();
   }
 
@@ -483,7 +485,7 @@ class LRUCache {
   // mutex_ protects the following state.
   // We don't count mutex_ as the cache's internal state so semantically we
   // don't mind mutex_ invoking the non-const actions.
-  mutable port::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   HandleTable table_;
 
@@ -518,15 +520,10 @@ void LRUCache::DecrementUsage(const SubCacheType subcache_type, const size_t cha
 
 void LRUCache::ApplyToAllCacheEntries(void (*callback)(void*, size_t),
                                       bool thread_safe) {
-  if (thread_safe) {
-    mutex_.Lock();
-  }
+  absl::MutexLockMaybe l{thread_safe ? &mutex_ : nullptr};
   table_.ApplyToAllCacheEntries([callback](LRUHandle* h) {
     callback(h->value, h->charge);
   });
-  if (thread_safe) {
-    mutex_.Unlock();
-  }
 }
 
 void LRUCache::LRU_Remove(LRUHandle* e) {
@@ -587,7 +584,7 @@ void LRUCache::SetCapacity(size_t capacity) {
   LRUHandleDeleter last_reference_list(metrics_.get());
 
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     base_total_capacity_ = capacity;
     UpdateCapacities(&last_reference_list);
   }
@@ -597,7 +594,7 @@ void LRUCache::ConsumeSpace(size_t bytes) {
   LRUHandleDeleter last_reference_list(metrics_.get());
 
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     space_consumed_ += bytes;
     UpdateCapacities(&last_reference_list);
   }
@@ -607,14 +604,14 @@ void LRUCache::ReleaseSpace(size_t bytes) {
   LRUHandleDeleter last_reference_list(metrics_.get());
 
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     space_consumed_ = space_consumed_ > bytes ? space_consumed_ - bytes : 0;
     UpdateCapacities(&last_reference_list);
   }
 }
 
 void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
-  MutexLock l(&mutex_);
+  absl::MutexLock l(&mutex_);
   // Allow setting strict capacity limit only when there are no elements in the cache.
   // This is because we disable overflowing single touch cache when strict_capacity_limit_ is true.
   // We cannot ensure that single touch cache has not already overflown when the cache already has
@@ -625,7 +622,7 @@ void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
 
 Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId query_id,
                                 Statistics* statistics)  {
-  MutexLock l(&mutex_);
+  absl::MutexLock l(&mutex_);
   LRUHandle* e = table_.Lookup(key, hash);
   if (e != nullptr) {
     assert(e->in_cache);
@@ -701,7 +698,7 @@ void LRUCache::Release(Cache::Handle* handle) {
   LRUHandle* e = reinterpret_cast<LRUHandle*>(handle);
   bool last_reference = false;
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     LRUSubCache* sub_cache = GetSubCache(e->GetSubCacheType());
     last_reference = Unref(e);
     if (last_reference) {
@@ -734,7 +731,7 @@ void LRUCache::Release(Cache::Handle* handle) {
 size_t LRUCache::Evict(size_t required) {
   LRUHandleDeleter evicted(metrics_.get());
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     EvictFromLRU(required, &evicted, SINGLE_TOUCH);
     if (required > evicted.TotalCharge()) {
       EvictFromLRU(required, &evicted, MULTI_TOUCH);
@@ -773,7 +770,7 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
   memcpy(e->key_data, key.data(), key.size());
 
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     // Free the space following strict LRU policy until enough space
     // is freed or the lru list is empty.
     // Check if there is a single touch cache.
@@ -861,7 +858,7 @@ void LRUCache::Erase(const Slice& key, uint32_t hash) {
   LRUHandle* e;
   bool last_reference = false;
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     e = table_.Remove(key, hash);
     if (e != nullptr) {
       last_reference = Unref(e);
