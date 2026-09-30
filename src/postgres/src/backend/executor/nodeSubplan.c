@@ -154,8 +154,7 @@ ExecHashSubPlan(SubPlanState *node,
 			FindTupleHashEntry(node->hashtable,
 							   slot,
 							   node->cur_eq_comp,
-							   node->lhs_hash_expr,
-							   node->hashtable->keyColIdx) != NULL)
+							   node->lhs_hash_expr) != NULL)
 			result = true;
 		else if (node->havenullrows &&
 				 findPartialMatch(node->hashnulls, slot, node->cur_eq_funcs))

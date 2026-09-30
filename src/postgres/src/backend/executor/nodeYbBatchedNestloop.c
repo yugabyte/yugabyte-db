@@ -34,23 +34,20 @@
 #include <math.h>
 
 #include "access/relation.h"
+#include "catalog/pg_collation.h"
 #include "executor/execdebug.h"
 #include "executor/executor.h"
 #include "executor/instrument.h"
 #include "executor/nodeYbBatchedNestloop.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/tuplesort.h"
 #include "utils/tuplestore.h"
 
-/*
- * YB_TODO_PG19MERGE: default-disabled until YbBuildTupleHashTableExt is reworked
- * for the PG19 TupleHashTable refactor (execGrouping.c). The hashing path of the
- * batched nested loop currently elog(ERROR)s; disabling hashing routes BNL through
- * its non-hash path so initdb (pg_init_privs INSERT...SELECT) and other BNL queries
- * work. Re-enable (back to true) once YbBuildTupleHashTableExt is implemented.
- */
-bool		yb_bnl_enable_hashing = false;
+bool		yb_bnl_enable_hashing = true;
 
 /* Methods to help keep track of outer tuple batches */
 static bool CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
@@ -461,74 +458,129 @@ UseHash(YbBatchedNestLoop *plan, YbBatchedNestLoopState *nl)
 }
 
 /*
- * Initialize batch state for the hashing strategy
+ * Initialize batch state for the hashing strategy.
+ * Hashing strategy leverages a hash table to store the join keys of the outer
+ * tuples participating in the batch. The hash table stores the keys only. The
+ * original tuples are stored in separate lists.
+ *
+ * We use projections to extract the join keys from the outer and inner tuples.
+ * Therefore the tuples we put into the hash table and the ones we use to lookup
+ * the matches have the matching keys in the matching positions. However, the
+ * column datatypes may be different. For that reason we build separate hash
+ * and equality functions for the inner tuple lookup.
  */
 static void
 InitHash(YbBatchedNestLoopState *bnlstate)
 {
 	EState	   *estate = bnlstate->js.ps.state;
 	YbBatchedNestLoop *plan = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
-	ExprContext *econtext = CreateExprContext(estate);
-	TupleDesc	outer_tdesc = outerPlanState(bnlstate)->ps_ResultTupleDesc;
-
-	const TupleTableSlotOps *innerops = bnlstate->js.ps.innerops;
-	bool		inneropsfixed = bnlstate->js.ps.inneropsfixed;
-	bool		inneropsset = bnlstate->js.ps.inneropsset;
+	ExprContext *econtext = bnlstate->js.ps.ps_ExprContext;
+	TupleDesc	innerDesc = innerPlanState(bnlstate)->ps_ResultTupleDesc;
+	int			nkeys = plan->num_hashClauseInfos;
 
 	Assert(UseHash(plan, bnlstate));
 
-	int			num_hashClauseInfos = plan->num_hashClauseInfos;
-	Oid		   *eqops = palloc(num_hashClauseInfos * (sizeof(Oid)));
+	/* Outer tuple's join keys */
+	List	   *outerKeytlist = NIL;
+	/* Inner tuple's join keys */
+	List	   *innerKeytlist = NIL;
+	/* Column indexes of the join keys in the key tuples (sequential numbers) */
+	AttrNumber *keyAttrs = palloc_array(AttrNumber, nkeys);
+	/* Collations */
+	Oid		   *collations = palloc_array(Oid, nkeys);
+	/* Equality function for the hash table to compare outer key tuples */
+	Oid		   *eqFuncOids = palloc_array(Oid, nkeys);
+	/* Equality function to compare an inner key tuple to an outer key tuple */
+	Oid		   *crossEqFuncOids = palloc_array(Oid, nkeys);
+	/* Hash functions to hash an inner key tuple */
+	FmgrInfo   *innerHashFunctions = palloc_array(FmgrInfo, nkeys);
+	/* Hash functions to hash an outer key tuple */
+	FmgrInfo   *outerHashFunctions = palloc_array(FmgrInfo, nkeys);
 
-	bnlstate->numLookupAttrs = num_hashClauseInfos;
-	bnlstate->innerAttrs =
-		palloc(num_hashClauseInfos * sizeof(AttrNumber));
-	ExprState **keyexprs = palloc(num_hashClauseInfos * (sizeof(ExprState *)));
-	List	   *outerParamExprs = NULL;
-	List	   *hashExprs = NULL;
 	YbBNLHashClauseInfo *current_hinfo = plan->hashClauseInfos;
-
-	for (int i = 0; i < num_hashClauseInfos; i++)
+	for (int i = 0; i < nkeys; i++)
 	{
-		Oid			eqop = current_hinfo->hashOp;
+		Oid			outer_eq_oper;
+		Oid			inner_hashfn;
+		Oid			outer_hashfn;
 
-		Assert(OidIsValid(eqop));
-		eqops[i] = eqop;
-		bnlstate->innerAttrs[i] = current_hinfo->innerHashAttNo;
+		keyAttrs[i] = i + 1;
+		/* Outer tuple's join key */
 		Expr	   *outerExpr = current_hinfo->outerParamExpr;
+		/* YB doesn't support collations with hash functions. */
+		collations[i] = DEFAULT_COLLATION_OID;
+		outerKeytlist = lappend(outerKeytlist,
+								makeTargetEntry(outerExpr, i + 1, NULL, false));
 
-		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
-		outerParamExprs = lappend(outerParamExprs, outerExpr);
-		hashExprs = lappend(hashExprs, current_hinfo->orig_expr);
+		/* Inner tuple's join key */
+		FormData_pg_attribute *attr =
+			TupleDescAttr(innerDesc, current_hinfo->innerHashAttNo - 1);
+		Expr	   *innerExpr = (Expr *) makeVar(INNER_VAR,
+												 current_hinfo->innerHashAttNo,
+												 attr->atttypid,
+												 attr->atttypmod,
+												 attr->attcollation,
+												 0);
+		innerKeytlist = lappend(innerKeytlist,
+								makeTargetEntry(innerExpr, i + 1, NULL, false));
+
+		Assert(OidIsValid(current_hinfo->hashOp));
+		/* Cross type equality function */
+		crossEqFuncOids[i] = get_opcode(current_hinfo->hashOp);
+		/* Hash table equality function */
+		if (!get_compatible_hash_operators(current_hinfo->hashOp,
+										   NULL, &outer_eq_oper))
+			elog(ERROR, "could not find compatible hash operator for operator %u",
+				 current_hinfo->hashOp);
+		eqFuncOids[i] = get_opcode(outer_eq_oper);
+
+		/* Hash functions for the inner and outer types */
+		if (!get_op_hash_functions(current_hinfo->hashOp,
+								   &inner_hashfn, &outer_hashfn))
+			elog(ERROR, "could not find hash function for hash operator %u",
+				 current_hinfo->hashOp);
+		fmgr_info(inner_hashfn, &innerHashFunctions[i]);
+		fmgr_info(outer_hashfn, &outerHashFunctions[i]);
+
 		current_hinfo++;
 	}
-	Oid		   *eqFuncOids;
+	/* Outer tuple projection */
+	TupleDesc	outerKeyDesc = ExecTypeFromTL(outerKeytlist);
+	TupleTableSlot *outerKeySlot =
+		ExecInitExtraTupleSlot(estate, outerKeyDesc, &TTSOpsVirtual);
+	bnlstate->outer_key_projection = ExecBuildProjectionInfo(outerKeytlist,
+															 econtext,
+															 outerKeySlot,
+															 &bnlstate->js.ps,
+															 NULL);
 
-	execTuplesHashPrepare(num_hashClauseInfos, eqops, &eqFuncOids,
-						  &bnlstate->innerHashFunctions,
-						  &bnlstate->outerHashFunctions);
+	/* Inner tuple projection */
+	TupleDesc	innerKeyDesc = ExecTypeFromTL(innerKeytlist);
+	TupleTableSlot *innerKeySlot =
+		ExecInitExtraTupleSlot(estate, innerKeyDesc, &TTSOpsVirtual);
+	bnlstate->inner_key_projection = ExecBuildProjectionInfo(innerKeytlist,
+															 econtext,
+															 innerKeySlot,
+															 &bnlstate->js.ps,
+															 NULL);
 
-	/*
-	 * Since hash table stores MinimalTuple, both LHS and RHS operands of the
-	 * hash table comparator will be MinimalTuple. The operands will be stored
-	 * in ecxt_innertuple and ecxt_outertuple (see TupleHashTableMatch).
-	 * Therefore, both innerops and outerops must be TTSOpsMinimalTuple when
-	 * compiling the hash table comparator. outerops is already handled in
-	 * ExecInitYbBatchedNestLoop. Temporarily set the innerops to
-	 * &TTSOpsMinimalTuple.
-	 */
-	bnlstate->js.ps.innerops = &TTSOpsMinimalTuple;
-	bnlstate->js.ps.inneropsfixed = true;
-	bnlstate->js.ps.inneropsset = true;
-
-	ExprState  *tab_eq_fn = ybPrepareOuterExprsEqualFn(outerParamExprs,
-													   eqops,
-													   (PlanState *) bnlstate);
-
-	/* revert to original innerops */
-	bnlstate->js.ps.innerops = innerops;
-	bnlstate->js.ps.inneropsfixed = inneropsfixed;
-	bnlstate->js.ps.inneropsset = inneropsset;
+	bnlstate->inner_hash_fn =
+		ExecBuildHash32FromAttrs(innerKeyDesc,
+								 &TTSOpsVirtual,
+								 innerHashFunctions,
+								 collations,
+								 nkeys,
+								 keyAttrs,
+								 &bnlstate->js.ps,
+								 0);
+	bnlstate->inner_lookup_fn =
+		ExecBuildGroupingEqual(innerKeyDesc, outerKeyDesc,
+							   &TTSOpsVirtual, &TTSOpsMinimalTuple,
+							   nkeys,
+							   keyAttrs,
+							   crossEqFuncOids,
+							   collations,
+							   &bnlstate->js.ps);
 
 	/* Per batch memory context for the hash table to work with */
 	MemoryContext tablecxt = AllocSetContextCreate(CurrentMemoryContext,
@@ -536,15 +588,20 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 												   ALLOCSET_DEFAULT_SIZES);
 
 	bnlstate->hashtable =
-		YbBuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
-								 num_hashClauseInfos, keyexprs, tab_eq_fn,
-								 eqFuncOids, bnlstate->outerHashFunctions,
-								 GetMaxBatchSize(plan), 0,
-								 econtext->ecxt_per_query_memory, tablecxt,
-								 econtext->ecxt_per_tuple_memory, econtext,
-								 false);
-	bnlstate->ht_lookup_fn = ExecInitQual(hashExprs, (PlanState *) bnlstate);
-
+		BuildTupleHashTable(&bnlstate->js.ps,
+							outerKeyDesc,
+							&TTSOpsVirtual,
+							nkeys,
+							keyAttrs,
+							eqFuncOids,
+							outerHashFunctions,
+							collations,
+							GetMaxBatchSize(plan),
+							sizeof(YbNLBucketInfo),
+							econtext->ecxt_per_query_memory,
+							tablecxt,
+							econtext->ecxt_per_tuple_memory,
+							false);
 	bnlstate->hashiterinit = false;
 	bnlstate->current_hash_entry = NULL;
 }
@@ -598,18 +655,12 @@ FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 bool
 GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
-	TupleTableSlot *inner = econtext->ecxt_innertuple;
 	TupleHashTable ht = bnlstate->hashtable;
-	ExprState  *eq = bnlstate->ht_lookup_fn;
-
-	TupleHashEntry data;
-
-	/* YB_TODO_PG19MERGE: fix args hashexpr, keyColIdx */
-	data = FindTupleHashEntry(ht,
-							  inner,
-							  eq,
-							  NULL /* hashexpr */ ,
-							  NULL /* keyColIdx */ );
+	TupleTableSlot *keySlot = ExecProject(bnlstate->inner_key_projection);
+	TupleHashEntry data = FindTupleHashEntry(ht,
+											 keySlot,
+											 bnlstate->inner_lookup_fn,
+											 bnlstate->inner_hash_fn);
 	if (data == NULL)
 	{
 		/* Inner plan returned a tuple that doesn't match with anything. */
@@ -622,22 +673,17 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 
 	while (binfo->current != NULL)
 	{
-		YbBucketTupleInfo *curr_btinfo = lfirst(binfo->current);
+		YbBucketTupleInfo *btinfo = lfirst(binfo->current);
 
 		/* Change the bucket's state for the next invocation of this method */
 		binfo->current = lnext(binfo->tuples, binfo->current);
-
-		/* We found a bucket with more matching tuples to be outputted. */
-		YbBucketTupleInfo *btinfo = (YbBucketTupleInfo *) curr_btinfo;
 
 		/*
 		 * This has already been matched so no need to look at this again in a
 		 * semijoin.
 		 */
 		if (bnlstate->js.single_match && btinfo->matched)
-		{
 			continue;
-		}
 
 		ExecStoreMinimalTuple(btinfo->tuple, econtext->ecxt_outertuple, false);
 
@@ -693,31 +739,16 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 	bool		isnew = false;
 
 	Assert(!TupIsNull(slot));
-	TupleHashEntry orig_data = LookupTupleHashEntry(ht, slot, &isnew, NULL);
+	TupleTableSlot *keySlot = ExecProject(bnlstate->outer_key_projection);
+	TupleHashEntry orig_data = LookupTupleHashEntry(ht, keySlot, &isnew, NULL);
 
 	Assert(orig_data != NULL);
 	Assert(orig_data->firstTuple != NULL);
 	MemoryContext cxt = MemoryContextSwitchTo(ht->tuplescxt);
-	MinimalTuple tuple;
-
-	/*
-	 * YB_TODO_PG19MERGE:
-	 * PG auto-allocates additional storage based on the table's
-	 * additionalsize; the YB BNL hash construction must set additionalsize
-	 * in YbBuildTupleHashTableExt
-	 */
-	if (isnew)
-		tuple = orig_data->firstTuple;
+	MinimalTuple tuple = ExecCopySlotMinimalTuple(slot);
 	YbNLBucketInfo *binfo = (YbNLBucketInfo *)
 		TupleHashEntryGetAdditional(ht, orig_data);
 	List	   *tl = binfo->tuples;
-
-	if (!isnew)
-	{
-		/* Bucket already exists. */
-		tuple = ExecCopySlotMinimalTuple(slot);
-	}
-
 	YbBucketTupleInfo *tupinfo = palloc0(sizeof(YbBucketTupleInfo));
 
 	tupinfo->tuple = tuple;
@@ -738,7 +769,6 @@ FreeBatchHash(YbBatchedNestLoopState *bnlstate)
 	Assert(bnlstate->hashtable != NULL);
 	bnlstate->hashiterinit = false;
 	ResetTupleHashTable(bnlstate->hashtable);
-	MemoryContextReset(bnlstate->hashtable->tuplescxt);
 	bnlstate->current_hash_entry = NULL;
 }
 
@@ -1113,7 +1143,6 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	{
 		InitHash(bnlstate);
 		REGISTER_LOCAL_JOIN_FN(FlushTuple, Hash);
-		REGISTER_LOCAL_JOIN_FN(FlushTuple, Hash);
 		REGISTER_LOCAL_JOIN_FN(GetNewOuterTuple, Hash);
 		REGISTER_LOCAL_JOIN_FN(ResetBatch, Hash);
 		REGISTER_LOCAL_JOIN_FN(RegisterOuterMatch, Hash);
@@ -1124,7 +1153,6 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	else
 	{
 		InitTS(bnlstate);
-		REGISTER_LOCAL_JOIN_FN(FlushTuple, TS);
 		REGISTER_LOCAL_JOIN_FN(FlushTuple, TS);
 		REGISTER_LOCAL_JOIN_FN(GetNewOuterTuple, TS);
 		REGISTER_LOCAL_JOIN_FN(ResetBatch, TS);
@@ -1152,10 +1180,6 @@ ExecEndYbBatchedNestLoop(YbBatchedNestLoopState *bnlstate)
 	EndSorting(bnlstate);
 	LOCAL_JOIN_FN(End, bnlstate);
 
-	/*
-	 * YB_TODO_PG19MERGE: PG commit d060e921ea5aa47b6265174c32e1128cebdbc3df
-	 * removed ExecFreeExprContext
-	 */
 	/*
 	 * clean out the tuple table
 	 */

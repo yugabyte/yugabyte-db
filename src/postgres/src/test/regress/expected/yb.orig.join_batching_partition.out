@@ -73,13 +73,13 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b =
          ->  Append
                ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
                      Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
                      Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
                      Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
 (18 rows)
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
@@ -103,11 +103,11 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.a AND t1.a =
          Join Filter: (t2.a = t1.a)
          ->  Append
                ->  Seq Scan on prt2_p1 t2_1
-                     Filter: (a = b)
+                     Storage Filter: (a = b)
                ->  Seq Scan on prt2_p2 t2_2
-                     Filter: (a = b)
+                     Storage Filter: (a = b)
                ->  Seq Scan on prt2_p3 t2_3
-                     Filter: (a = b)
+                     Storage Filter: (a = b)
          ->  Append
                ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
                      Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
@@ -140,11 +140,11 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b WHER
          Join Filter: (t1.a = t2.b)
          ->  Append
                ->  Seq Scan on prt1_p1 t1_1
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Seq Scan on prt1_p2 t1_2
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Seq Scan on prt1_p3 t1_3
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
          ->  Append
                ->  Index Scan using iprt2_p1_b on prt2_p1 t2_1
                      Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
@@ -181,11 +181,11 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt2 t2 RIGHT JOIN prt1 t1 ON t1.a = t2.b WHE
          Join Filter: (t1.a = t2.b)
          ->  Append
                ->  Seq Scan on prt1_p1 t1_1
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Seq Scan on prt1_p2 t1_2
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Seq Scan on prt1_p3 t1_3
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
          ->  Append
                ->  Index Scan using iprt2_p1_b on prt2_p1 t2_1
                      Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
@@ -267,7 +267,7 @@ SELECT t1.a, t2.a, t3.a FROM prt1 t1
    ->  Nested Loop Left Join
          Disabled: true
          ->  Seq Scan on prt1_p1 t1_1
-               Filter: (a < 60)
+               Storage Filter: (a < 60)
          ->  Nested Loop Left Join
                Disabled: true
                ->  Index Scan using iprt2_p1_b on prt2_p1 t2_1
@@ -382,13 +382,13 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b =
          ->  Append
                ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
                      Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
                      Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
                ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
                      Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-                     Filter: (b = 0)
+                     Storage Filter: (b = 0)
 (18 rows)
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;

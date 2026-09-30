@@ -649,8 +649,7 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 		execTuplesHashPrepare(node->numCols,
 							  node->cmpOperators,
 							  &setopstate->eqfuncoids,
-							  &setopstate->hashfunctions,
-							  NULL);
+							  &setopstate->hashfunctions);
 	else
 	{
 		int			nkeys = node->numCols;

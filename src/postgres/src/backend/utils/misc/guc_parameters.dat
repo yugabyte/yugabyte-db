@@ -3793,7 +3793,7 @@
 { name => 'yb_bnl_enable_hashing', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
   short_desc => 'Enables batched nested loop joins to use hashing to process its matches.',
   variable => 'yb_bnl_enable_hashing',
-  boot_val => 'false',
+  boot_val => 'true',
 },
 
 { name => 'yb_bnl_optimize_first_batch', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',

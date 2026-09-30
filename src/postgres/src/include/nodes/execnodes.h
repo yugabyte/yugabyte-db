@@ -1011,15 +1011,6 @@ typedef struct TupleHashTableData
 	ExprState  *in_hash_expr;	/* ExprState for hashing input datatype(s) */
 	ExprState  *cur_eq_func;	/* comparator for input vs. table */
 	ExprContext *exprcontext;	/* expression context */
-
-	/* YB */
-	ExprState **yb_keyColExprs; /* expressions that are input to hash
-								 * functions. If these are null, we revert to
-								 * using keyColIdx to know what tuple
-								 * attributes to hash. */
-	AttrNumber *in_keyColIdx;	/* attr numbers of input key columns */
-	ExprState **yb_in_keycolExprs;	/* equivalent of yb_keyColExprs for input
-									 * tuples */
 } TupleHashTableData;
 
 typedef tuplehash_iterator TupleHashIterator;
@@ -2431,10 +2422,6 @@ typedef struct NestLoopState
 	bool		nl_NeedNewOuter;
 	bool		nl_MatchedOuter;
 	TupleTableSlot *nl_NullInnerTupleSlot;
-
-	/* YB */
-	Tuplestorestate *batchedtuplestorestate;
-	YbNLBatchStatus nl_currentstatus;
 } NestLoopState;
 
 typedef struct YbBatchedNestLoopState
@@ -2464,16 +2451,15 @@ typedef struct YbBatchedNestLoopState
 	 * This hash table stores instance of YbNLBucketInfo, each of which
 	 * stores lists of tuples with the same hash value.
 	 */
+	ProjectionInfo *outer_key_projection;
+	ProjectionInfo *inner_key_projection;
 	TupleHashTable hashtable;
 	bool		hashiterinit;
 	TupleHashIterator hashiter;
 	YbBucketTupleInfo *current_ht_tuple;
 	TupleHashEntry current_hash_entry;
-	FmgrInfo   *outerHashFunctions;
-	FmgrInfo   *innerHashFunctions;
-	int			numLookupAttrs;
-	AttrNumber *innerAttrs;
-	ExprState  *ht_lookup_fn;
+	ExprState  *inner_lookup_fn;
+	ExprState  *inner_hash_fn;
 
 	/* Function pointers to local join methods */
 	YbFlushTupleFn_t FlushTupleImpl;

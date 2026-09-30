@@ -71,16 +71,16 @@ where r.x like '%0%';
  Gather
    Workers Planned: 2
    ->  YB Batched Nested Loop Join
-         Join Filter: ((r.a = u.a) AND (t.b = s.b))
+         Join Filter: ((r.a = u.a) AND (s.b = t.b))
          ->  YB Batched Nested Loop Join
-               Join Filter: (r.a = t.a)
+               Join Filter: (t.a = r.a)
                Sort Keys: r.a
                ->  Parallel Index Scan using r_pkey on r
                      Storage Filter: (x ~~ '%0%'::text)
                ->  Index Scan using t_pkey on t
                      Index Cond: (a = ANY (ARRAY[r.a, $1, $2]))
          ->  YB Batched Nested Loop Join
-               Join Filter: (s.b = u.b)
+               Join Filter: (u.b = s.b)
                Sort Keys: s.b
                ->  Index Scan using s_pkey on s
                ->  Index Scan using u_pkey on u
@@ -138,16 +138,16 @@ where r.x like '%0%';
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: ((r.a = u.a) AND (t.b = s.b))
+   Join Filter: ((r.a = u.a) AND (s.b = t.b))
    ->  YB Batched Nested Loop Join
-         Join Filter: (r.a = t.a)
+         Join Filter: (t.a = r.a)
          Sort Keys: r.a
          ->  Index Scan using r_pkey on r
                Storage Filter: (x ~~ '%0%'::text)
          ->  Index Scan using t_pkey on t
                Index Cond: (a = ANY (ARRAY[r.a, $1, $2]))
    ->  YB Batched Nested Loop Join
-         Join Filter: (s.b = u.b)
+         Join Filter: (u.b = s.b)
          Sort Keys: s.b
          ->  Index Scan using s_pkey on s
          ->  Index Scan using u_pkey on u
@@ -199,21 +199,24 @@ from
   (r join t on r.a = t.a)
   join (s join u on s.b = u.b) on s.b = t.b and r.a = u.a
 where r.x like '%0%';
-                       QUERY PLAN                        
----------------------------------------------------------
- Hash Join
-   Hash Cond: (u.b = s.b)
-   ->  Merge Join
-         Merge Cond: (t.a = r.a)
-         ->  Merge Join
-               Merge Cond: ((u.a = t.a) AND (u.b = t.b))
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Nested Loop
+   Disabled: true
+   ->  Nested Loop
+         Disabled: true
+         Join Filter: (t.a = r.a)
+         ->  Nested Loop
+               Disabled: true
+               ->  Index Scan using r_pkey on r
+                     Storage Filter: (x ~~ '%0%'::text)
                ->  Index Scan using u_pkey on u
-               ->  Index Scan using t_pkey on t
-         ->  Index Scan using r_pkey on r
-               Storage Filter: (x ~~ '%0%'::text)
-   ->  Hash
-         ->  Index Scan using s_pkey on s
-(12 rows)
+                     Index Cond: (a = r.a)
+         ->  Index Scan using t_pkey on t
+               Index Cond: ((a = u.a) AND (b = u.b))
+   ->  Index Scan using s_pkey on s
+         Index Cond: (b = u.b)
+(15 rows)
 
 create temporary table nl (a int, b int, c int);
 insert into nl

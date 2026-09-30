@@ -422,6 +422,13 @@ SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a;
 EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
 SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
 
+-- The same two joins with the outer keys cast through xml.  Same rows as the
+-- two joins above.
+EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a::xml::text = strtable2.a ORDER BY 1, 2, 3, 4;
+SELECT * FROM strtable, strtable2 WHERE strtable.a::xml::text = strtable2.a ORDER BY 1, 2, 3, 4;
+EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a::xml::text = strtable2.a AND strtable.b::xml::text = strtable2.b ORDER BY 1, 2, 3, 4;
+SELECT * FROM strtable, strtable2 WHERE strtable.a::xml::text = strtable2.a AND strtable.b::xml::text = strtable2.b ORDER BY 1, 2, 3, 4;
+
 DROP TABLE strtable;
 DROP TABLE strtable2;
 
@@ -923,6 +930,7 @@ order by p1.c1, p1.c2;
 -- q2 is the outer relation.  Wrapped in a transaction so the row changes
 -- made by the actual UPDATE are rolled back.
 BEGIN;
+-- YB_TODO_PG19MERGE: yb_enable_cbo is temporary off pending #34169
 /*+
   Set(enable_nestloop off)
   Set(enable_hashjoin off)
@@ -930,7 +938,7 @@ BEGIN;
   Set(yb_bnl_batch_size 3)
   Set(enable_seqscan off)
   Set(enable_material off)
-  Set(yb_enable_cbo on)
+  Set(yb_enable_cbo off)
   Leading((q2 q1))
 */
 explain (costs off)
@@ -945,7 +953,7 @@ update q1
   Set(yb_bnl_batch_size 3)
   Set(enable_seqscan off)
   Set(enable_material off)
-  Set(yb_enable_cbo on)
+  Set(yb_enable_cbo off)
   Leading((q2 q1))
 */
 update q1

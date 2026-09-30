@@ -140,8 +140,7 @@ extern ExprState *execTuplesMatchPrepare(TupleDesc desc,
 extern void execTuplesHashPrepare(int numCols,
 								  const Oid *eqOperators,
 								  Oid **eqFuncOids,
-								  FmgrInfo **leftHashFunctions,
-								  FmgrInfo **rightHashFunctions);
+								  FmgrInfo **hashFunctions);
 extern TupleHashTable BuildTupleHashTable(PlanState *parent,
 										  TupleDesc inputDesc,
 										  const TupleTableSlotOps *inputOps,
@@ -167,8 +166,7 @@ extern TupleHashEntry LookupTupleHashEntryHash(TupleHashTable hashtable,
 extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
 										 TupleTableSlot *slot,
 										 ExprState *eqcomp,
-										 ExprState *hashexpr,
-										 AttrNumber *keyColIdx);
+										 ExprState *hashexpr);
 extern void ResetTupleHashTable(TupleHashTable hashtable);
 extern Size EstimateTupleHashTableSpace(double nentries,
 										Size tupleWidth,
@@ -834,20 +832,6 @@ extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
 											   bool update_cache);
 
 /* YB */
-extern ExprState *ybPrepareOuterExprsEqualFn(List *outer_exprs,
-											 Oid *eqOps, PlanState *parent);
-extern TupleHashTable YbBuildTupleHashTableExt(PlanState *parent,
-											   TupleDesc inputDesc,
-											   int numCols, ExprState **keyColExprs,
-											   ExprState *eqExpr,
-											   Oid *eqfuncoids,
-											   FmgrInfo *hashfunctions,
-											   long nbuckets, Size additionalsize,
-											   MemoryContext metacxt,
-											   MemoryContext tablecxt,
-											   MemoryContext tempcxt,
-											   ExprContext *expr_cxt,
-											   bool use_variable_hash_iv);
 extern void ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
 								  EState *estate);
 extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
