@@ -48,6 +48,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_auth_catalog_snapshot.h"
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
@@ -92,6 +93,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -99,7 +101,9 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_pool.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -171,11 +175,25 @@ DEFINE_RUNTIME_int32(db_history_retention_pin_log_interval_sec, 60,
     "How often a tserver logs the per-database history retention pins held by its "
     "own PG sessions. 0 disables the logging.");
 
+METRIC_DEFINE_counter(
+    server, tserver_ysql_auth_snapshot_task_limit_rejections,
+    "Tserver authentication snapshot task limit rejections", yb::MetricUnit::kRequests,
+    "Authentication snapshot requests rejected because the tserver's task limit was reached.");
+METRIC_DEFINE_counter(
+    server, tserver_ysql_auth_snapshot_deadline_expirations,
+    "Tserver authentication snapshot deadline expirations", yb::MetricUnit::kRequests,
+    "Authentication snapshot tasks that timed out in the tserver's queue or during forwarding.");
+METRIC_DEFINE_gauge_uint64(
+    server, tserver_ysql_auth_snapshot_outstanding_tasks,
+    "Tserver authentication snapshot outstanding tasks", yb::MetricUnit::kTasks,
+    "Admitted authentication snapshot tasks queued or running on the tserver until response.");
+
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(db_history_retention_pin_min_txn_age_sec);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
@@ -839,7 +857,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
               auto& ts = *servers.front();
               RETURN_NOT_OK(ts.InitProxy(&client()));
               return ts.proxy();
-            }) {
+            }),
+        auth_snapshot_task_limit_rejections_(
+            METRIC_tserver_ysql_auth_snapshot_task_limit_rejections.Instantiate(metric_entity)),
+        auth_snapshot_deadline_expirations_(
+            METRIC_tserver_ysql_auth_snapshot_deadline_expirations.Instantiate(metric_entity)),
+        auth_snapshot_outstanding_tasks_(
+            METRIC_tserver_ysql_auth_snapshot_outstanding_tasks.Instantiate(metric_entity, 0)) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckObjectIdAllocators();
     if (FLAGS_pg_client_use_shared_memory) {
@@ -850,6 +874,10 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   }
 
   void Shutdown() {
+    std::call_once(auth_snapshot_shutdown_, [this] {
+      auth_snapshot_stopping_.store(true);
+      auth_snapshot_pool_.Shutdown();
+    });
     if (!session_registry_.Shutdown()) {
       return;
     }
@@ -1164,6 +1192,32 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     RETURN_NOT_OK(client().DEPRECATED_GetYsqlCatalogMasterVersion(&version));
     resp->set_version(version);
     return Status::OK();
+  }
+
+  void GetYsqlAuthCatalogReadTime(
+      const PgGetYsqlAuthCatalogReadTimeRequestPB& req,
+      PgGetYsqlAuthCatalogReadTimeResponsePB* resp, rpc::RpcContext context) {
+    if (!FLAGS_ysql_enable_auth_catalog_follower_reads) {
+      Respond(STATUS(NotSupported, "Authentication catalog follower reads are disabled"),
+              resp, &context);
+      return;
+    }
+    if (auth_snapshot_stopping_.load() || !auth_snapshot_pool_.options().max_workers) {
+      Respond(STATUS(ServiceUnavailable, "Authentication snapshot workers are unavailable"),
+              resp, &context);
+      return;
+    }
+    if (auth_snapshot_tasks_.fetch_add(1) >= auth_snapshot_limits_.max_tasks) {
+      --auth_snapshot_tasks_;
+      auth_snapshot_task_limit_rejections_->Increment();
+      Respond(STATUS(ServiceUnavailable, "Authentication snapshot task limit reached"),
+              resp, &context);
+      return;
+    }
+    auth_snapshot_outstanding_tasks_->Increment();
+    auth_snapshot_pool_.Enqueue(new AuthSnapshotTask(
+        *this, rpc::MakeTypedPBRpcContextHolder(req, resp, std::move(context))));
+    TEST_SYNC_POINT_CALLBACK("PgClientService::AuthSnapshot::Enqueued", this);
   }
 
   Status GetXClusterRole(
@@ -3012,6 +3066,62 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   }
 
  private:
+  using AuthSnapshotContext = rpc::TypedPBRpcContextHolder<
+      PgGetYsqlAuthCatalogReadTimeRequestPB, PgGetYsqlAuthCatalogReadTimeResponsePB>;
+
+  class AuthSnapshotTask : public yb::ThreadPoolTask {
+   public:
+    AuthSnapshotTask(Impl& service, AuthSnapshotContext&& context)
+        : service_(service), context_(std::move(context)),
+          deadline_(AuthSnapshotDeadline(
+              context_->GetClientDeadline(), "PgClientService::AuthSnapshot::Timeout")) {}
+
+   private:
+    void Run() override {
+      const auto status = service_.ForwardAuthSnapshot(&context_.resp(), deadline_);
+      if (status.IsTimedOut()) {
+        service_.auth_snapshot_deadline_expirations_->Increment();
+      }
+      Respond(status, &context_.resp(), &context_.context());
+    }
+
+    void Done(const Status& status) override {
+      if (!status.ok()) {
+        Respond(STATUS(ServiceUnavailable, "Authentication snapshot workers are shutting down"),
+                &context_.resp(), &context_.context());
+      }
+      --service_.auth_snapshot_tasks_;
+      service_.auth_snapshot_outstanding_tasks_->Decrement();
+      delete this;
+    }
+
+    Impl& service_;
+    AuthSnapshotContext context_;
+    const CoarseTimePoint deadline_;
+  };
+
+  Status ForwardAuthSnapshot(
+      PgGetYsqlAuthCatalogReadTimeResponsePB* resp, CoarseTimePoint deadline) {
+    SCHECK(!auth_snapshot_stopping_.load(), ServiceUnavailable,
+           "Authentication snapshot workers are shutting down");
+    SCHECK(CoarseMonoClock::Now() < deadline, TimedOut,
+           "Authentication snapshot expired in queue");
+    SCHECK(FLAGS_ysql_enable_auth_catalog_follower_reads, NotSupported,
+           "Authentication catalog follower reads are disabled");
+    // client() otherwise waits without a deadline for asynchronous client initialization.
+    SCHECK(client_future_.wait_for(0s) == std::future_status::ready, ServiceUnavailable,
+           "Authentication snapshot client is not ready");
+    const auto read_time = VERIFY_RESULT(client().GetYsqlAuthCatalogReadTime(deadline));
+    SCHECK(!auth_snapshot_stopping_.load(), ServiceUnavailable,
+           "Authentication snapshot workers are shutting down");
+    SCHECK(!read_time.is_special(), IllegalState, "Invalid authentication catalog read time");
+    clock_->Update(read_time);
+    SCHECK(CoarseMonoClock::Now() < deadline, TimedOut,
+           "Authentication snapshot expired before publishing read time");
+    resp->set_read_time(read_time.ToUint64());
+    return Status::OK();
+  }
+
   client::YBClient& client() { return *client_future_.get(); }
 
   bool ShouldLogDatabasePins() {
@@ -3179,6 +3289,20 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   PgTxnSnapshotManager txn_snapshot_manager_;
 
   std::atomic<CoarseTimePoint> next_pin_log_time_{CoarseTimePoint::min()};
+
+  scoped_refptr<Counter> auth_snapshot_task_limit_rejections_;
+  scoped_refptr<Counter> auth_snapshot_deadline_expirations_;
+  scoped_refptr<AtomicGauge<uint64_t>> auth_snapshot_outstanding_tasks_;
+  std::atomic<size_t> auth_snapshot_tasks_{0};
+  std::atomic<bool> auth_snapshot_stopping_{false};
+  std::once_flag auth_snapshot_shutdown_;
+  const YsqlAuthSnapshotLimits auth_snapshot_limits_ = TserverAuthSnapshotLimits();
+  // Done responds and releases the admission slot even if shutdown discards the queued task.
+  YBThreadPool auth_snapshot_pool_{ThreadPoolOptions{
+      .name = "tserver_auth_snapshot",
+      .max_workers = auth_snapshot_limits_.workers,
+      .min_workers = 0,
+  }};
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

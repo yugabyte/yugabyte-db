@@ -11,9 +11,17 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+
 #include "yb/gutil/casts.h"
 
+#include "yb/common/ysql_auth_catalog_snapshot.h"
 #include "yb/common/ysql_operation_lease.h"
+
+#include "yb/consensus/consensus.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
@@ -23,23 +31,50 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/object_lock_info_manager.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 
+#include "yb/server/clock.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/service_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/metrics.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/thread_pool.h"
 
 using std::string;
 using std::vector;
 
 DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
-DECLARE_bool(enable_ysql_tablespaces_for_placement);
-
 DECLARE_bool(emergency_repair_mode);
+DECLARE_bool(enable_ysql_tablespaces_for_placement);
+DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
+
+METRIC_DEFINE_counter(
+    server, ysql_auth_catalog_snapshot_acquisitions, "YSQL authentication catalog snapshots",
+    yb::MetricUnit::kRequests,
+    "Fresh authentication catalog snapshots established by this master leader.");
+METRIC_DEFINE_counter(
+    server, master_ysql_auth_snapshot_task_limit_rejections,
+    "Master authentication snapshot task limit rejections", yb::MetricUnit::kRequests,
+    "Authentication snapshot requests rejected because the master's task limit was reached.");
+METRIC_DEFINE_counter(
+    server, master_ysql_auth_snapshot_deadline_expirations,
+    "Master authentication snapshot deadline expirations", yb::MetricUnit::kRequests,
+    "Authentication snapshot tasks that timed out in the master's queue or during execution.");
+METRIC_DEFINE_gauge_uint64(
+    server, master_ysql_auth_snapshot_outstanding_tasks,
+    "Master authentication snapshot outstanding tasks", yb::MetricUnit::kTasks,
+    "Admitted authentication snapshot tasks queued or running on the master until response.");
 
 DEFINE_RUNTIME_bool(master_list_raft_peers_check_is_leader, false,
     "When enabled, ListMasterRaftPeers RPC will reject "
@@ -56,7 +91,27 @@ namespace {
 class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterIf {
  public:
   explicit MasterClusterServiceImpl(Master* master)
-      : MasterServiceBase(master), MasterClusterIf(master->metric_entity()) {}
+      : MasterServiceBase(master), MasterClusterIf(master->metric_entity()),
+        auth_catalog_snapshot_acquisitions_(
+            METRIC_ysql_auth_catalog_snapshot_acquisitions.Instantiate(master->metric_entity())),
+        auth_snapshot_task_limit_rejections_(
+            METRIC_master_ysql_auth_snapshot_task_limit_rejections.Instantiate(
+                master->metric_entity())),
+        auth_snapshot_deadline_expirations_(
+            METRIC_master_ysql_auth_snapshot_deadline_expirations.Instantiate(
+                master->metric_entity())),
+        auth_snapshot_outstanding_tasks_(
+            METRIC_master_ysql_auth_snapshot_outstanding_tasks.Instantiate(
+                master->metric_entity(), 0)) {}
+
+  ~MasterClusterServiceImpl() override { Shutdown(); }
+
+  void Shutdown() override {
+    std::call_once(auth_snapshot_shutdown_, [this] {
+      auth_snapshot_stopping_.store(true);
+      auth_snapshot_pool_.Shutdown();
+    });
+  }
 
   void ListTabletServers(const ListTabletServersRequestPB* req,
                          ListTabletServersResponsePB* resp,
@@ -383,6 +438,35 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, SetClusterConfig);
   }
 
+  void GetYsqlAuthCatalogReadTime(
+      const GetYsqlAuthCatalogReadTimeRequestPB* req,
+      GetYsqlAuthCatalogReadTimeResponsePB* resp, rpc::RpcContext rpc) override {
+    if (!FLAGS_ysql_enable_auth_catalog_follower_reads) {
+      FillStatus(STATUS(NotSupported, "Authentication catalog follower reads are disabled"),
+                 MasterErrorPB::UNKNOWN_ERROR, resp);
+      rpc.RespondSuccess();
+      return;
+    }
+    if (auth_snapshot_stopping_.load() || !auth_snapshot_pool_.options().max_workers) {
+      FillStatus(STATUS(ServiceUnavailable, "Authentication snapshot workers are unavailable"),
+                 MasterErrorPB::UNKNOWN_ERROR, resp);
+      rpc.RespondSuccess();
+      return;
+    }
+    if (auth_snapshot_tasks_.fetch_add(1) >= auth_snapshot_limits_.max_tasks) {
+      --auth_snapshot_tasks_;
+      auth_snapshot_task_limit_rejections_->Increment();
+      FillStatus(STATUS(ServiceUnavailable, "Authentication snapshot task limit reached"),
+                 MasterErrorPB::UNKNOWN_ERROR, resp);
+      rpc.RespondSuccess();
+      return;
+    }
+    auth_snapshot_outstanding_tasks_->Increment();
+    auth_snapshot_pool_.Enqueue(new AuthSnapshotTask(
+        *this, rpc::MakeTypedPBRpcContextHolder(*req, resp, std::move(rpc))));
+    TEST_SYNC_POINT_CALLBACK("MasterClusterService::AuthSnapshot::Enqueued", server_);
+  }
+
   void GetMasterClusterConfig(
       const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
       rpc::RpcContext rpc) override {
@@ -433,6 +517,113 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (GetMasterXClusterConfig)
   )
 
+ private:
+  using AuthSnapshotContext = rpc::TypedPBRpcContextHolder<
+      GetYsqlAuthCatalogReadTimeRequestPB, GetYsqlAuthCatalogReadTimeResponsePB>;
+
+  class AuthSnapshotTask : public yb::ThreadPoolTask {
+   public:
+    AuthSnapshotTask(MasterClusterServiceImpl& service, AuthSnapshotContext&& context)
+        : service_(service), context_(std::move(context)),
+          deadline_(AuthSnapshotDeadline(
+              context_->GetClientDeadline(), "MasterClusterService::AuthSnapshot::Timeout")) {}
+
+   private:
+    void Run() override {
+      TEST_SYNC_POINT_CALLBACK(
+          "MasterClusterService::AuthSnapshot::Service", static_cast<MasterClusterIf*>(&service_));
+      TEST_SYNC_POINT_CALLBACK("MasterClusterService::AuthSnapshot::Execute", service_.server_);
+      service_.EstablishAuthSnapshot(context_, deadline_);
+    }
+
+    void Done(const Status& status) override {
+      if (!status.ok()) {
+        FillStatus(STATUS(ServiceUnavailable, "Authentication snapshot workers are shutting down"),
+                   MasterErrorPB::UNKNOWN_ERROR, &context_.resp());
+        context_->RespondSuccess();
+      }
+      --service_.auth_snapshot_tasks_;
+      service_.auth_snapshot_outstanding_tasks_->Decrement();
+      delete this;
+    }
+
+    MasterClusterServiceImpl& service_;
+    AuthSnapshotContext context_;
+    const CoarseTimePoint deadline_;
+  };
+
+  void EstablishAuthSnapshot(AuthSnapshotContext& context, CoarseTimePoint deadline) {
+    auto* resp = &context.resp();
+    const auto& req = context.req();
+    SCOPED_LEADER_SHARED_LOCK(lock, server_->catalog_manager_impl());
+    if (!lock.CheckIsInitializedAndIsLeaderOrRespond(resp, &context.context())) {
+      return;
+    }
+    const auto epoch = lock.epoch();
+    auto establish = [&]() -> Status {
+      SCHECK(!auth_snapshot_stopping_.load(), ServiceUnavailable,
+             "Authentication snapshot workers are shutting down");
+      SCHECK(CoarseMonoClock::Now() < deadline, TimedOut,
+             "Authentication snapshot expired in queue");
+      SCHECK(FLAGS_ysql_enable_auth_catalog_follower_reads, NotSupported,
+             "Authentication catalog follower reads are disabled");
+      SCHECK(server_->snapshot_coordinator().PitrDisabled(), IllegalState,
+             "Authentication catalog follower reads require a universe created with PITR disabled");
+      if (req.has_propagated_hybrid_time()) {
+        SCHECK(!HybridTime(req.propagated_hybrid_time()).is_special(), InvalidArgument,
+               "Invalid propagated hybrid time");
+      }
+      server::UpdateClock(req, server_->clock());
+      // Select T only after dequeue and ready-leader/capability validation. Safe time alone can
+      // lag completed writes: cover bounded skew, then wait under the leader lease.
+      auto read_time = server_->clock()->MaxGlobalNow();
+      TEST_SYNC_POINT_CALLBACK("MasterClusterService::AuthSnapshot::ReadTime", &read_time);
+      const auto peer = server_->sys_catalog().tablet_peer();
+      SCHECK(peer, ServiceUnavailable, "System catalog peer is unavailable");
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      lock.Unlock();
+      RETURN_NOT_OK(ResultToStatus(tablet->SafeTime(
+          tablet::RequireLease::kTrue, read_time, deadline)));
+      TEST_SYNC_POINT_CALLBACK("MasterClusterService::AuthSnapshot::AfterSafeTime", server_);
+      SCHECK(!auth_snapshot_stopping_.load(), ServiceUnavailable,
+             "Authentication snapshot workers are shutting down");
+      SCOPED_LEADER_SHARED_LOCK(recheck, server_->catalog_manager_impl(), epoch.leader_term);
+      auto consensus = VERIFY_RESULT(peer->GetConsensus());
+      const auto leader_state = consensus->GetLeaderState();
+      if (!recheck.IsInitializedAndIsLeader() || !leader_state.ok() ||
+          leader_state.term != epoch.leader_term) {
+        return STATUS(IllegalState, "Master leadership changed while establishing auth snapshot",
+                      MasterError(MasterErrorPB::NOT_THE_LEADER));
+      }
+      SCHECK(CoarseMonoClock::Now() < deadline, TimedOut,
+             "Authentication snapshot expired before publishing read time");
+      resp->set_read_time(read_time.ToUint64());
+      auth_catalog_snapshot_acquisitions_->Increment();
+      return Status::OK();
+    };
+    const auto status = establish();
+    if (status.IsTimedOut()) {
+      auth_snapshot_deadline_expirations_->Increment();
+    }
+    CheckRespErrorOrSetUnknown(status, resp);
+    context->RespondSuccess();
+  }
+
+  scoped_refptr<Counter> auth_catalog_snapshot_acquisitions_;
+  scoped_refptr<Counter> auth_snapshot_task_limit_rejections_;
+  scoped_refptr<Counter> auth_snapshot_deadline_expirations_;
+  scoped_refptr<AtomicGauge<uint64_t>> auth_snapshot_outstanding_tasks_;
+  std::atomic<size_t> auth_snapshot_tasks_{0};
+  std::atomic<bool> auth_snapshot_stopping_{false};
+  std::once_flag auth_snapshot_shutdown_;
+  const YsqlAuthSnapshotLimits auth_snapshot_limits_ = MasterAuthSnapshotLimits();
+  // The admission counter bounds both queued and running tasks. Done also releases slots and
+  // responds for tasks discarded by Shutdown, unlike a plain EnqueueFunctor.
+  YBThreadPool auth_snapshot_pool_{ThreadPoolOptions{
+      .name = "master_auth_snapshot",
+      .max_workers = auth_snapshot_limits_.workers,
+      .min_workers = 0,
+  }};
 };
 
 } // namespace

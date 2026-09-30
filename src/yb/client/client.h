@@ -557,6 +557,10 @@ class YBClient {
   Status GetYsqlDBCatalogMasterVersion(
       const std::string& database_name, uint64_t *ysql_catalog_version);
 
+  // Selects one fresh leader-established snapshot; all reads and retries in the authentication
+  // attempt must retain it. Requires the routing flag and a durable non-PITR reservation.
+  Result<HybridTime> GetYsqlAuthCatalogReadTime(CoarseTimePoint deadline);
+
   // Grant permission with given arguments.
   Status GrantRevokePermission(
       GrantRevokeStatementType statement_type,
