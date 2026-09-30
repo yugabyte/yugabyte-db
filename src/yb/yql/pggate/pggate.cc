@@ -2509,10 +2509,10 @@ void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
   pg_sys_table_prefetcher_.emplace(scoped_options);
 }
 
-Status PgApiImpl::StartAuthSysTablePrefetching(uint64_t row_limit) {
+Status PgApiImpl::StartAuthSysTablePrefetching(uint64_t row_limit, uint64_t size_limit) {
   SCHECK(!pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching was started already");
   SCHECK(!IsAuthCatalogRead(), IllegalState, "Authentication catalog snapshot already acquired");
-  StartSysTablePrefetching({std::nullopt, row_limit});
+  StartSysTablePrefetching({std::nullopt, row_limit, size_limit});
   // StartSysTablePrefetching resets the read point. Install T afterwards, before any data Perform.
   const auto status = pg_session_->StartAuthCatalogRead();
   if (!status.ok()) {

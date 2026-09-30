@@ -2516,8 +2516,12 @@ void YBCStartSysTablePrefetchingNoCache() {
 }
 
 YbcStatus YBCStartAuthSysTablePrefetching() {
-  return ToYBCStatus(
-      pgapi->StartAuthSysTablePrefetching(implicit_cast<uint64_t>(yb_fetch_row_limit)));
+  const auto* flags = YBCGetGFlags();
+  const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
+  const auto max_size_limit = YBCGetMaxRpcResponseSize();
+  return ToYBCStatus(pgapi->StartAuthSysTablePrefetching(
+      *flags->ysql_catalog_prefetch_row_limit,
+      configured_size_limit ? std::min(configured_size_limit, max_size_limit) : max_size_limit));
 }
 
 void YBCEndAuthCatalogRead() {

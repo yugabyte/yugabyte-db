@@ -33,6 +33,7 @@ set(YB_TEST_LINK_LIBS pggate_test ${YB_MIN_TEST_LIBS})
 # build these tests after PostgrSQL.
 add_dependencies(pggate_test postgres)
 
+ADD_YB_TEST(pggate_test_auth_snapshot)
 ADD_YB_TEST(pggate_test_catalog)
 ADD_YB_TEST(pggate_test_delete)
 ADD_YB_TEST(pggate_test_select)
