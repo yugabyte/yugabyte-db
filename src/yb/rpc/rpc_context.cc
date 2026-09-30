@@ -143,6 +143,11 @@ RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
     : call_(std::move(call)),
       params_(std::move(params)) {
   call_->CreateServerSpan();
+  if (const auto& span = call_->server_span(); span) {
+    const auto& local = call_->local_address();
+    span->SetAttribute("server.address", local.address().to_string());
+    span->SetAttribute("server.port", static_cast<int64_t>(local.port()));
+  }
   const Status s = call_->ParseParam(params_.get());
   if (PREDICT_FALSE(!s.ok())) {
     RespondRpcFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, s);
