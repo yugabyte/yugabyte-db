@@ -149,6 +149,9 @@ main(int argc, char **argv)
 
 	output_check_banner(live_check);
 
+	/* YB: ahead of every check, so the output is not parsed as a check result */
+	yb_generate_schema_dump();
+
 	/*
 	 * YB: Socket directories are explicitly set from input arguments.
 	 */
