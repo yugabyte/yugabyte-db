@@ -337,6 +337,9 @@ YbLogHeapSnapshotProcExit(int status, Datum arg)
  * heap, so an idle connection would hold them for its whole lifetime.  A
  * backend that freed little is left alone: releasing costs syscalls and the
  * first queries would fault the pages back in.
+ *
+ * Startup is the backend's recent demand peak, so a plain release would keep
+ * most of the free pages mapped to cover that peak.
  */
 void
 YbReleaseFreeMemoryAfterStartup(void)
@@ -349,5 +352,5 @@ YbReleaseFreeMemoryAfterStartup(void)
 	HandleYBStatus(YBCGetHeapConsumption(&stats));
 	if (stats.pageheap_free_bytes >=
 		(int64) yb_startup_free_memory_release_threshold * 1024)
-		YBCTCMallocReleaseMemoryToSystem(stats.pageheap_free_bytes);
+		YBCTCMallocReleaseFreeMemory(stats.pageheap_free_bytes);
 }

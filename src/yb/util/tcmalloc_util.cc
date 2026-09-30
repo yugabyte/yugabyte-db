@@ -176,6 +176,20 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes) {
 #endif
 }
 
+void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
+#if YB_GOOGLE_TCMALLOC
+  const auto short_interval = tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval();
+  const auto long_interval = tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval();
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(absl::ZeroDuration());
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::ZeroDuration());
+  TCMallocReleaseMemoryToSystem(bytes);
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
+#else
+  TCMallocReleaseMemoryToSystem(bytes);
+#endif
+}
+
 #if YB_GOOGLE_TCMALLOC
 // Sets the given property to the given value in Google tcmalloc using a Set... function and
 // immediately calls the corresponding Get... function to verify the effective new value of the
