@@ -1329,7 +1329,8 @@ class PgReadTimeBaseTest
   void StartConcurrentInserts(
       TestThreadHolder* threads, const std::string& table, int start_key) {
     threads->AddThreadFunctor([this, &stop = threads->stop_flag(), table, start_key] {
-      auto conn = ASSERT_RESULT(Connect());
+      // _FAST: SUCCEED() would race with HasFatalFailure() in RunFor on the main thread.
+      auto conn = ASSERT_RESULT_FAST(Connect());
       LoopUntilStop(stop, [&conn, table, start_key] {
         for (int k = start_key; k < start_key + kChurnBatch; ++k) {
           (void)conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 1)", table, k);
@@ -1735,7 +1736,8 @@ TEST_P(PgCatalogReadTimeTest, ConflictsWithRestartRead) {
 
   TestThreadHolder threads;
   threads.AddThreadFunctor([this, &stop = threads.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
+    // _FAST: SUCCEED() would race with HasFatalFailure() in RunFor on the main thread.
+    auto conn = ASSERT_RESULT_FAST(Connect());
     int i = 0;
     LoopUntilStop(stop, [&conn, &i] {
       const auto create_status =
