@@ -233,4 +233,7 @@ message CloneTabletRequestPB {
   // 2- The colocated tables on the target can have different schemas than the tables on the source
   // tablet. i.e when cloning to a time before DDl operations happened on the source tablet.
   repeated TableInfoPB colocated_tables = 16;
+
+  // Indexes attached to the target table.
+  repeated IndexInfoPB target_indexes = 18;
 }

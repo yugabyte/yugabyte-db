@@ -2133,6 +2133,93 @@ TEST_P(PgVectorIndexColocationOnlyTest, SnapshotScheduleRestoreBeforeVectorColum
       make_unsigned(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"))));
 }
 
+// After clone, the child's TS-side index_map must list the cloned vector index, not the source
+// Restore does not rewrite those IDs for vector indexes.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr auto kSourceDb = "source_db";
+  constexpr auto kCloneDb = "clone_db";
+  constexpr size_t kNumRows = 8;
+  dimensions_ = 3;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  if (IsColocated()) {
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 COLOCATION = true", kSourceDb));
+  } else {
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0", kSourceDb));
+  }
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  const auto create_suffix = IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0", create_suffix));
+  for (size_t i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+  }
+  ASSERT_OK(CreateIndex(conn));
+
+  auto find_table_id = [this](const std::string& namespace_name,
+                              const std::string& table_name) -> Result<TableId> {
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == table_name &&
+          table.namespace_name() == namespace_name) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(
+        NotFound, "Didn't find table $0 in namespace $1", table_name, namespace_name);
+  };
+
+  const auto source_table_id = ASSERT_RESULT(find_table_id(kSourceDb, "test"));
+  const auto source_index_id = ASSERT_RESULT(find_table_id(kSourceDb, kVectorIndexName));
+
+  ASSERT_OK(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb,
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+
+  ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
+
+  const auto clone_table_id = ASSERT_RESULT(find_table_id(kCloneDb, "test"));
+  const auto clone_index_id = ASSERT_RESULT(find_table_id(kCloneDb, kVectorIndexName));
+  ASSERT_NE(clone_table_id, source_table_id);
+  ASSERT_NE(clone_index_id, source_index_id);
+
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(clone_table_id));
+    std::string index_ids;
+    for (const auto& [id, _] : *table_info->index_map) {
+      if (!index_ids.empty()) {
+        index_ids += ", ";
+      }
+      index_ids += id;
+    }
+    ASSERT_NE(table_info->index_map->find(clone_index_id), table_info->index_map->end())
+        << "cloned tablet " << peer->tablet_id() << " index_map: " << index_ids;
+    ASSERT_EQ(table_info->index_map->find(source_index_id), table_info->index_map->end())
+        << "cloned tablet " << peer->tablet_id()
+        << " still has source index " << source_index_id
+        << " index_map: " << index_ids;
+  }
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), kNumRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
+          "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
+      1);
+}
+
 class PgDistributedVectorIndexTest
     : public PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
   using Base = PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase>;
