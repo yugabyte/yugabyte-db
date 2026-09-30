@@ -23,6 +23,7 @@ type KMSConfig struct {
 	Azure        *AzuKmsAuthConfigField  `json:"azure,omitempty"`
 	Hashicorp    *HcVaultAuthConfigField `json:"hashicorp,omitempty"`
 	CipherTrust  *CipherTrustConfigField `json:"ciphertrust,omitempty"`
+	OCI          *OciKmsAuthConfigField  `json:"oci,omitempty"`
 }
 
 // AwsKmsAuthConfigField is a struct to hold values retrieved by parsing the AWS KMS config map
@@ -72,6 +73,20 @@ type HcVaultAuthConfigField struct {
 
 	HcVaultTTL       int64 `json:"HC_VAULT_TTL"`
 	HcVaultTTLExpiry int64 `json:"HC_VAULT_TTL_EXPIRY"`
+}
+
+// OciKmsAuthConfigField holds values retrieved by parsing the OCI KMS config map.
+type OciKmsAuthConfigField struct {
+	TenancyID         string `json:"ociTenancyId"`
+	UserID            string `json:"ociUserId"`
+	Fingerprint       string `json:"ociFingerprint"`
+	PrivateKeyContent string `json:"ociPrivateKeyContent"`
+	AuthType          string `json:"ociAuthType"`
+	CompartmentID     string `json:"ociCompartmentId"`
+	VaultID           string `json:"ociVaultId"`
+	Region            string `json:"ociRegion"`
+	KeyName           string `json:"ociKeyName"`
+	KeyOCID           string `json:"ociKeyOcid"`
 }
 
 // CipherTrustConfigField holds values for CipherTrust configuration.
@@ -262,6 +277,40 @@ func ConvertToKMSConfig(r map[string]interface{}) (KMSConfig, error) {
 				ct.KeySize = v
 			}
 			kmsConfig.CipherTrust = &ct
+
+		case OCIEARType:
+			oci := OciKmsAuthConfigField{}
+			if v, ok := credentials[OCITenancyIDField].(string); ok {
+				oci.TenancyID = v
+			}
+			if v, ok := credentials[OCIUserIDField].(string); ok {
+				oci.UserID = v
+			}
+			if v, ok := credentials[OCIFingerprintField].(string); ok {
+				oci.Fingerprint = v
+			}
+			if v, ok := credentials[OCIPrivateKeyContentField].(string); ok {
+				oci.PrivateKeyContent = v
+			}
+			if v, ok := credentials[OCIAuthTypeField].(string); ok {
+				oci.AuthType = v
+			}
+			if v, ok := credentials[OCICompartmentIDField].(string); ok {
+				oci.CompartmentID = v
+			}
+			if v, ok := credentials[OCIVaultIDField].(string); ok {
+				oci.VaultID = v
+			}
+			if v, ok := credentials[OCIRegionField].(string); ok {
+				oci.Region = v
+			}
+			if v, ok := credentials[OCIKeyNameField].(string); ok {
+				oci.KeyName = v
+			}
+			if v, ok := credentials[OCIKeyOCIDField].(string); ok {
+				oci.KeyOCID = v
+			}
+			kmsConfig.OCI = &oci
 
 		}
 	}
