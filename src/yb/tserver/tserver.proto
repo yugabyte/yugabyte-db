@@ -279,6 +279,9 @@ message ReadRequestPB {
   // OpId of a pending async write on this tablet that the server should verify is present in
   // its local log before serving the read (see TabletPeer::VerifyAsyncWriteReceived).
   optional OpIdPB pending_async_write_op_id = 21;
+
+  // Only for validated uncached authentication catalog reads at a fixed leader-established time.
+  optional bool ysql_auth_catalog_read = 22 [default = false];
 }
 
 message ReadResponsePB {
