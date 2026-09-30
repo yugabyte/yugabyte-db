@@ -1110,8 +1110,15 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     TransitionToFailedState(MonitoredTaskState::kRunning, tablets_running_result.status());
     return;
   }
-  LOG_IF(DFATAL, !*tablets_running_result)
-      << "Not all tablets are running while processing AddTableToTablet response";
+  if (!*tablets_running_result) {
+    // A vector index shares the indexed table's tablets, which may include split children the
+    // master has not yet seen RUNNING. Wait for them without resending the RPC: re-adding a
+    // vector index to a tablet is not idempotent.
+    LOG_WITH_PREFIX(INFO) << "Not all tablets are running yet, waiting before promoting table";
+    table_added_ = true;
+    TransitionToWaitingState(MonitoredTaskState::kRunning);
+    return;
+  }
   if (--*task_counter_ == 0) {
     VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
     Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
@@ -1127,9 +1134,19 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
   TransitionToCompleteState();
 }
 
+Status AsyncAddTableToTablet::PickReplica() {
+  // No RPC is sent once the table is added, so the tablet may already be gone (split parent).
+  return table_added_ ? Status::OK() : RetryingTSRpcTaskWithTable::PickReplica();
+}
+
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
   if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled)) {
     LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
+    return true;
+  }
+  if (table_added_) {
+    // resp_ still holds the successful response, so HandleResponse only re-checks tablet states.
+    RpcCallback();
     return true;
   }
 
