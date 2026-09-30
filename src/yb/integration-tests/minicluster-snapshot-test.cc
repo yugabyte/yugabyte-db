@@ -1846,12 +1846,13 @@ TEST_F(PgCloneColocationTest, NoColocatedChildTables) {
 TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyDBTest) {
   // Regression test for GitHub issue #29335.
   // Create a partitioned table with many partitions, an index, and CHECK constraints
-  // in the source DB. ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
+  // in the source DB.  ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
   // but CHECK constraint OIDs in pg_constraint are always dynamically allocated via
-  // GetNewObjectId. This forces the tserver to call ReservePgsqlOids during the clone's
-  // DDL replay, populating its OID cache with a stale range. This should be invalidated after
+  // GetNewObjectId.  This forces the tserver to call ReservePgsqlOids during the clone's
+  // DDL replay, populating its OID cache with a stale range.  This should be invalidated after
   // the clone so if any objects are dropped and recreated, they will get a new OID instead of
-  // colliding with the hidden objects.
+  // colliding with the hidden objects.  The partitions and constraints make the cached range
+  // overlap enough explicit OIDs that the recreated relations hit hidden ones.
   auto create_partitioned_table = [&](pgwrapper::PGConn& conn) -> Status {
     RETURN_NOT_OK(conn.Execute(
         "CREATE TABLE t (key INT, value INT, CHECK (key >= 0), CHECK (value >= 0)) "

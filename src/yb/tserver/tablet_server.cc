@@ -2500,6 +2500,10 @@ Status TabletServer::ClusterConfigHandleMasterHeartbeatResponse(
   return Status::OK();
 }
 
+void TabletServer::UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count) {
+  xcluster_context_->UpdateOidCacheInvalidationsCount(oid_cache_invalidations_count);
+}
+
 void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info) {
   const auto& version = info.xcluster_guarded_info_version();
   const std::pair<int64_t, uint64_t> term_and_count{version.term(), version.count()};
@@ -2514,7 +2518,7 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
 
   xcluster_context_->UpdateXClusterInfoPerNamespace(info.xcluster_info_per_namespace());
   if (info.has_oid_cache_invalidations_count()) {
-    set_oid_cache_invalidations_count(info.oid_cache_invalidations_count());
+    UpdateOidCacheInvalidationsCount(info.oid_cache_invalidations_count());
   }
 }
 

@@ -466,7 +466,7 @@ Status HeartbeatPoller::TryHeartbeat() {
       // Put another way, during the upgrade master may be sending both the deprecated fields and
       // the xcluster_guarded_info or just the deprecated fields.  We want to apply only one of
       // them, giving preference to the new xcluster_guarded_info if present.
-      server_.set_oid_cache_invalidations_count(resp.deprecated_oid_cache_invalidations_count());
+      server_.UpdateOidCacheInvalidationsCount(resp.deprecated_oid_cache_invalidations_count());
     }
 
     RETURN_NOT_OK(server_.ClusterConfigHandleMasterHeartbeatResponse(resp));

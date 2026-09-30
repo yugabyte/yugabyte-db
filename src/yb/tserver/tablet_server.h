@@ -290,18 +290,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_) override;
   void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
-  uint32_t get_oid_cache_invalidations_count() const override {
-    return oid_cache_invalidations_count_.load();
-  }
-
-  void set_oid_cache_invalidations_count(uint32_t oid_cache_invalidations_count) {
-    uint32_t old_value = oid_cache_invalidations_count_.load();
-    if (old_value < oid_cache_invalidations_count) {
-      LOG(INFO) << "Received higher oid_cache_invalidations_count value ("
-                << oid_cache_invalidations_count << " > " << old_value << ")";
-      oid_cache_invalidations_count_.store(oid_cache_invalidations_count);
-    }
-  }
+  void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version,
@@ -598,10 +587,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
-
-  // Highest value of SysClusterConfigEntryPB.oid_cache_invalidations_count received from the
-  // master.  This value is bumped to invalidate all the TServer OID caches.
-  std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
 
   // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
   // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.

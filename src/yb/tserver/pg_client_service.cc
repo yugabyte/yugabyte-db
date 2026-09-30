@@ -1133,8 +1133,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       oid_chunk.allocated_from_secondary_space = use_secondary_space;
       oid_chunk.oid_cache_invalidations_count = 0;
     }
-    uint32_t highest_received_invalidations_count =
-        tablet_server_.get_oid_cache_invalidations_count();
+    // The master process has no xCluster context and nothing to invalidate its OID cache.
+    const auto* xcluster_context = session_context_.xcluster_context;
+    const uint32_t highest_received_invalidations_count =
+        xcluster_context ? VERIFY_RESULT_PREPEND(
+                               xcluster_context->GetOidCacheInvalidationsCount(),
+                               "Cannot allocate a new object identifier")
+                         : 0;
     while (oid_chunk.oid_count == 0 ||
            oid_chunk.oid_cache_invalidations_count < highest_received_invalidations_count) {
       // We don't have any valid OIDs left so fetch more.
