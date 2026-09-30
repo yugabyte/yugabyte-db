@@ -109,7 +109,7 @@ You can handle and mitigate read restart errors using the following techniques:
   SELECT * FROM large_table;
   ```
 
-  Deferred mode does not apply to serializable transactions, or to single-shard writes that run outside a transaction block. Those statements do not raise read restart errors. Set the parameter before you start a transaction block. You cannot change it inside a transaction block.
+  Deferred mode does not apply to read-write serializable transactions, or to single-shard writes that run outside a transaction block. Those statements do not raise read restart errors. Set the parameter before you start a transaction block. You cannot change it inside a transaction block.
 
 - If waiting out the clock skew is not acceptable, try increasing the value of `ysql_output_buffer_size`.
 

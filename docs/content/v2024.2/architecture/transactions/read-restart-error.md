@@ -98,14 +98,16 @@ You can handle and mitigate read restart errors using the following techniques:
   COMMIT;
   ```
 
-- Set `yb_read_after_commit_visibility` to `deferred` to avoid read restart errors and still keep the _read-after-commit-visibility_ guarantee. The statement waits out the maximum clock skew before it reads ([max_clock_skew_usec](../../../reference/configuration/yb-tserver/#max-clock-skew-usec), 500ms by default). Use this when the statement is not a read-only serializable transaction, including writes that can raise a read restart error.
+- Set `yb_read_after_commit_visibility` to `deferred` to avoid read restart errors and still keep the _read-after-commit-visibility_ guarantee. The statement waits out the maximum clock skew before it reads ([max_clock_skew_usec](../../../reference/configuration/yb-tserver/#max-clock-skew-usec), 500ms by default). Use this when the statement is not a read-only serializable transaction.
 
   ```sql
   SET yb_read_after_commit_visibility TO deferred;
   SELECT * FROM large_table;
   ```
 
-  Deferred mode does not apply to serializable transactions, or to single-shard writes that run outside a transaction block. Those statements do not raise read restart errors. Set the parameter before you start a transaction block. You cannot change it inside a transaction block.
+  Starting in v2024.2.6.0, deferred mode also applies to writes that can raise a read restart error.
+
+  Deferred mode does not apply to read-write serializable transactions, or to single-shard writes that run outside a transaction block. Those statements do not raise read restart errors. Set the parameter before you start a transaction block. You cannot change it inside a transaction block.
 
 - If waiting out the clock skew is not acceptable, try increasing the value of `ysql_output_buffer_size`.
 
