@@ -1314,12 +1314,14 @@ typedef struct YbPlanInfo
 /*
  * YB: info used by YbIndexPathInfo.
  *
- * Holds info used for merge scans.
+ * Holds info used for merge scans.  'clause' is the column's SAOP or equality
+ * index condition, or NULL for a hash column with neither, which
+ * ybValidateMergeScanBinds reports.
  */
 typedef struct YbMergeScanStreamColInfo
 {
 	NodeTag		type;
-	Expr	   *clause;			/* the SAOP */
+	Expr	   *clause;			/* SAOP, equality index cond, or NULL */
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
@@ -1330,6 +1332,9 @@ typedef struct YbMergeScanStreamColInfo
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
+ *
+ * 'merge_scan_stream_cols' lists the merge stream keys in index column order
+ * (see yb_finalize_merge_scan_stream_cols).
  */
 typedef struct YbIndexPathInfo
 {

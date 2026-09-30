@@ -80,3 +80,21 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 \i :run_query
 
 DROP INDEX idx;
+
+--
+-- Index 4: a relabeled expression column held at one value, before the stream
+-- column i2.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+\set query ':P :Q SELECT i4, n, v, i2 FROM tv_tbl WHERE v :R AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;'
+\i :run_query
+DROP INDEX idx;
+
+--
+-- Index 5: the same as a hash column, which stays a stream key either way and
+-- shows its equality index condition under Merge Cond.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) HASH, i2 ASC, i4 ASC);
+\i :run_query
+DROP INDEX idx;

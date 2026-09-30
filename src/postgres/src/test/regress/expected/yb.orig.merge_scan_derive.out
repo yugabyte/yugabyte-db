@@ -957,9 +957,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Output: r1, r3, r4, n
                Index Cond: ((r5n.r1 = 1) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5) = ANY ('{0,1,2,3,4}'::integer[])))
                Merge Sort Key: r5n.r3, r5n.r4
-               Merge Stream Key: (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)
+               Merge Stream Key: r5n.r1, (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)
                Merge Streams: 5
-               Merge Cond: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5) = ANY ('{0,1,2,3,4}'::integer[]))
+               Merge Cond: ((r5n.r1 = 1) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5) = ANY ('{0,1,2,3,4}'::integer[])))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 492
