@@ -107,8 +107,21 @@ class WriteStallCascadeTest : public integration_tests::YBTableTestBase {
     std::shared_ptr<tablet::TabletPeer> stalled_peer;
   };
 
-  // Finds the leader and two followers, returning their tserver indices.
+  // Like TryGetTabletLayout(), but retries since roles may still be settling after startup.
   Result<TabletLayout> GetTabletLayout(const std::string& tablet_id) {
+    Result<TabletLayout> layout = STATUS(NotFound, "Tablet layout not found");
+    auto status = WaitFor([&] {
+      layout = TryGetTabletLayout(tablet_id);
+      return layout.ok();
+    }, 10s * kTimeMultiplier, Format("Waiting for leader and two followers of $0", tablet_id));
+    if (!status.ok()) {
+      return status.CloneAndAppend(Format("last error: $0", layout.status()));
+    }
+    return layout;
+  }
+
+  // Finds the leader and two followers, returning their tserver indices.
+  Result<TabletLayout> TryGetTabletLayout(const std::string& tablet_id) {
     TabletLayout layout;
     bool found_leader = false;
     std::vector<size_t> follower_indices;
@@ -313,17 +326,49 @@ TEST_F(WriteStallCascadeTest, WriteStallCanBlockElection) {
   LOG(INFO) << "=== Shutting down ts-" << layout.other_follower_idx << " ===";
   mini_cluster()->mini_tablet_server(layout.other_follower_idx)->Shutdown();
 
-  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(mini_cluster(), tablet_id));
-  LOG(INFO) << "=== Stepping down leader (ts-" << layout.leader_idx << ") ===";
-  ASSERT_OK(StepDown(leader_peer, std::string(), ForceStepDown::kTrue));
-
-  ASSERT_OK(WaitFor([&]() {
+  // Don't use GetLeaderPeerForTablet() here: it requires LEADER_AND_READY, and while the
+  // shutdown above runs the leader may lose its lease (no acks from the stalled follower) or
+  // lose leadership to the stalled follower.
+  auto leader_peer = mini_cluster()->mini_tablet_server(layout.leader_idx)->server()
+      ->tablet_manager()->LookupTablet(tablet_id);
+  ASSERT_NE(leader_peer, nullptr);
+  auto is_leader = [&leader_peer] {
     auto consensus = leader_peer->GetConsensus();
     return consensus.ok() &&
-           (*consensus)->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
-  }, 5s * kTimeMultiplier, "Waiting for old leader to step down"));
+           (*consensus)->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+  };
+  auto describe_leader_peer = [&leader_peer] {
+    auto consensus = leader_peer->GetConsensus();
+    if (!consensus.ok()) {
+      return AsString(consensus.status());
+    }
+    auto cstate = (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+    return Format("leader status: $0, term: $1, known leader: $2",
+                  (*consensus)->GetLeaderStatus(), cstate.current_term(),
+                  cstate.has_leader_uuid() ? cstate.leader_uuid() : "<none>");
+  };
+  LOG(INFO) << "=== After shutdown, old leader (ts-" << layout.leader_idx << "): "
+            << describe_leader_peer() << "; stalled follower uuid: "
+            << layout.stalled_peer->permanent_uuid() << " ===";
 
-  LOG(INFO) << "=== Old leader stepped down, waiting for election ===";
+  if (is_leader()) {
+    LOG(INFO) << "=== Stepping down leader (ts-" << layout.leader_idx << ") ===";
+    auto step_down_status = StepDown(leader_peer, std::string(), ForceStepDown::kTrue);
+    if (!step_down_status.ok()) {
+      if (is_leader()) {
+        ASSERT_OK(step_down_status);
+      }
+      LOG(INFO) << "=== Step down failed and old leader is no longer leader: "
+                << step_down_status << " ===";
+    }
+
+    ASSERT_OK(WaitFor([&] { return !is_leader(); },
+                      5s * kTimeMultiplier, "Waiting for old leader to step down"));
+    LOG(INFO) << "=== Old leader is no longer leader, waiting for election ===";
+  } else {
+    LOG(INFO) << "=== Old leader (ts-" << layout.leader_idx << ") already lost leadership, "
+              << "skipping step down ===";
+  }
 
   auto election_result = WaitUntilTabletHasLeader(
       mini_cluster(), tablet_id,
@@ -332,10 +377,10 @@ TEST_F(WriteStallCascadeTest, WriteStallCanBlockElection) {
 
   if (election_result.ok()) {
     // The stalled follower likely became the candidate and won via self-vote +
-    // the stepped-down leader's vote, bypassing its own blocked update_mutex_.
+    // the old leader's vote, bypassing its own blocked update_mutex_.
     LOG(INFO) << "=== ELECTION RESULT: SUCCEEDED (stalled follower likely self-elected) ===";
   } else {
-    // The stepped-down leader became the candidate but couldn't get the stalled
+    // The old leader became the candidate but couldn't get the stalled
     // follower's vote because update_mutex_ was held by a thread in DelayWrite().
     LOG(INFO) << "=== ELECTION RESULT: FAILED (update_mutex_ blocked VoteRequest) ==="
               << " error=" << election_result;
