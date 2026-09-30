@@ -8150,6 +8150,9 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		 */
 		*indexStartupCost = *indexTotalCost =
 			yb_test_ybgin_disable_cost_factor * disable_cost;
+		*indexSelectivity = 0;
+		*indexCorrelation = 0.0;
+		*indexPages = 0;
 		return;
 	}
 
@@ -8320,9 +8323,12 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		{
 			/*
 			 * TODO(#7850): for ybgin, full scan is not supported.
+			 *
+			 * indexSelectivity and indexCorrelation are already set above.
 			 */
 			*indexStartupCost = *indexTotalCost =
 				yb_test_ybgin_disable_cost_factor * disable_cost;
+			*indexPages = 0;
 			return;
 		}
 
