@@ -2570,6 +2570,16 @@ YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 	if (*ts == YB_PFETCH_STATE_CACHE_FILLED)
 		return;
 	Assert(*ts == YB_PFETCH_STATE_LOADED);
+	/*
+	 * The relcache build reads pg_attribute from the prefetched rows, not
+	 * through its catcaches, so filling them is optional.
+	 */
+	if (table == YB_PFETCH_TABLE_PG_ATTRIBUTE &&
+		!*YBCGetGFlags()->ysql_catalog_preload_pg_attribute_caches)
+	{
+		*ts = YB_PFETCH_STATE_CACHE_FILLED;
+		return;
+	}
 	switch (info->cache.type)
 	{
 		case YB_TABLE_CACHE_TYPE_NO_CACHE:
@@ -8991,6 +9001,21 @@ RelationGetIndexAttOptions(Relation relation, bool copy)
 
 	for (i = 0; i < natts; i++)
 	{
+		/*
+		 * YB: Skip the pg_attribute lookup for a column whose opclass has no
+		 * options procedure: index creation rejects options for such a
+		 * column, so there is nothing to find.  A full catalog cache refresh
+		 * does this for every index column, and without the pg_attribute
+		 * catcaches preloaded each lookup scans the whole prefetched
+		 * pg_attribute.
+		 */
+		if (IsYugaByteEnabled() &&
+			(relation->rd_indam->amoptsprocnum == 0 ||
+			 i >= IndexRelationGetNumberOfKeyAttributes(relation) ||
+			 !OidIsValid(index_getprocid(relation, i + 1,
+										 relation->rd_indam->amoptsprocnum))))
+			continue;
+
 		if (criticalRelcachesBuilt && relid != AttributeRelidNumIndexId)
 		{
 			Datum		attoptions = get_attoptions(relid, i + 1);

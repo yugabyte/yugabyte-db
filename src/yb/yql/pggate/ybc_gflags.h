@@ -43,6 +43,7 @@ typedef struct {
   const bool*     ysql_enable_colocated_tables_with_tablespaces;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
+  const bool*     ysql_catalog_preload_pg_attribute_caches;
   const bool*     ysql_use_relcache_file;
   const bool*     ysql_use_optimized_relcache_update;
   const bool*     ysql_cdcsdk_enable_old_namespace_streams;
