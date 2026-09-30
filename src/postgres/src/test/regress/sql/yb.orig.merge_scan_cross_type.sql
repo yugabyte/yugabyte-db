@@ -58,7 +58,10 @@ RESET yb_enable_advanced_index_cond_fold;
 \unset Q3
 \unset Q4
 \unset Q5
-DROP INDEX num_tbl_i2_f4_id_idx, num_tbl_f4_hash_idx, num_tbl_dup_idx, num_tbl_part_idx;
+DROP INDEX num_tbl_i2_f4_id_idx;
+DROP INDEX num_tbl_f4_hash_idx;
+DROP INDEX num_tbl_dup_idx;
+DROP INDEX num_tbl_part_idx;
 
 -- An integer equality whose value the column's type cannot hold, which no row
 -- matches.  The scan returns no rows without binding it, so the merge scan does
