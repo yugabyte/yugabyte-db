@@ -52,7 +52,14 @@ This tutorial assumes that you have:
 
 ## Install the Yugabyte Go Driver for YCQL
 
-To install the [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) locally, run the following command:
+Create a directory for the sample application and initialize a Go module in it:
+
+```sh
+$ mkdir ybcql_hello_world && cd ybcql_hello_world
+$ go mod init ybcql_hello_world
+```
+
+To install the [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) in the module, run the following command:
 
 ```sh
 $ go get github.com/yugabyte/gocql/v2
@@ -60,7 +67,7 @@ $ go get github.com/yugabyte/gocql/v2
 
 ## Write the YCQL sample application
 
-Create a file `ybcql_hello_world.go` and copy the contents below into it.
+In the `ybcql_hello_world` directory, create a file `ybcql_hello_world.go` and copy the contents below into it.
 
 ```go
 package main;
