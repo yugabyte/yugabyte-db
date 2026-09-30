@@ -1978,12 +1978,18 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	}
 
 	if (relation->rd_rel->relhastriggers)
+	{
+		Assert(state->pg_trigger_cache != NULL);
 		RelationBuildTriggers(relation, state->pg_trigger_cache);
+	}
 	else
 		relation->trigdesc = NULL;
 
 	if (relation->rd_rel->relrowsecurity)
+	{
+		Assert(state->pg_policy_cache != NULL);
 		RelationBuildRowSecurity(relation, state->pg_policy_cache);
+	}
 	else
 		relation->rd_rsdesc = NULL;
 }
