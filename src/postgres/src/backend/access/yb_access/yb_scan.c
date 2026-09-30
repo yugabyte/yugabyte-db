@@ -2481,6 +2481,10 @@ ybMergeScanStreamColAttnum(Relation index,
  * yb_merge_scan_info->stream_cols got a usable bound condition: a single
  * equality value or a plain scalar IN list.  The merge scan would silently
  * return missing or misordered rows otherwise, so raise an error.
+ *
+ * If the executor ever turns an unbindable index condition into a filter
+ * inside the per-stream storage request, which runs before the streams are
+ * merged, this check must accept such a filter on the column.
  */
 static void
 ybValidateMergeScanBinds(YbScanDesc ybScan, YbScanPlan scan_plan,
@@ -2488,8 +2492,26 @@ ybValidateMergeScanBinds(YbScanDesc ybScan, YbScanPlan scan_plan,
 						 bool is_column_eq_or_in_bound[], int max_idx)
 {
 	ListCell   *lc;
+	List	   *unconditioned = NIL;
+	List	   *conditioned = NIL;
 
+	/*
+	 * Check the columns without a condition first.  When a hash column lacks
+	 * one, ybcSetupScanKeys leaves every hash column unbound, and the error
+	 * should name the column that lacks it.
+	 */
 	foreach(lc, yb_merge_scan_info->stream_cols)
+	{
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
+
+		if (info->clause)
+			conditioned = lappend(conditioned, info);
+		else
+			unconditioned = lappend(unconditioned, info);
+	}
+
+	foreach(lc, list_concat(unconditioned, conditioned))
 	{
 		YbMergeScanStreamColInfo *info =
 			lfirst_node(YbMergeScanStreamColInfo, lc);
@@ -2936,12 +2958,24 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 				{
 					YbMergeScanStreamColInfo *info =
 						lfirst_node(YbMergeScanStreamColInfo, lc);
-					ScalarArrayOpExpr *pinned_saop =
-						castNode(ScalarArrayOpExpr, info->clause);
-					Const	   *pinned_array =
-						castNode(Const, lsecond(pinned_saop->args));
-					AttrNumber	attnum =
-						ybMergeScanStreamColAttnum(ybScan->index, info);
+					ScalarArrayOpExpr *pinned_saop;
+					Const	   *pinned_array;
+					AttrNumber	attnum;
+
+					/*
+					 * Only SAOPs pre-bind.  A single-value equality stream key
+					 * column binds through the ordinary priority loop, where a
+					 * Row IN on the same column outranks it, as it does on the
+					 * fold path, and the validation below then errors.
+					 * TODO(#32734): pre-bind declared equalities too once such
+					 * a plan is reachable.
+					 */
+					if (!info->clause || !IsA(info->clause, ScalarArrayOpExpr))
+						continue;
+
+					pinned_saop = (ScalarArrayOpExpr *) info->clause;
+					pinned_array = castNode(Const, lsecond(pinned_saop->args));
+					attnum = ybMergeScanStreamColAttnum(ybScan->index, info);
 
 					/*
 					 * Compare that the scan key and the pinned SAOP are on the

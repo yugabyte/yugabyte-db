@@ -71,9 +71,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
                      Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                      Merge Sort Key: a.r3, a.r4
-                     Merge Stream Key: a.r2
+                     Merge Stream Key: a.r1, a.r2
                      Merge Streams: 3
-                     Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                     Merge Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                      Storage Table Read Requests: 2
                      Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
@@ -129,9 +129,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                      Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
                      Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                      Merge Sort Key: a.r3, a.r4
-                     Merge Stream Key: a.r2
+                     Merge Stream Key: a.r1, a.r2
                      Merge Streams: 3
-                     Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                     Merge Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                      Storage Table Read Requests: 2
                      Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
@@ -169,9 +169,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                                  Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
                                  Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                                  Merge Sort Key: a.r3, a.r4
-                                 Merge Stream Key: a.r2
+                                 Merge Stream Key: a.r1, a.r2
                                  Merge Streams: 3
-                                 Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                                 Merge Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 3
                                  Storage Table Rows Scanned: 163
@@ -262,9 +262,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                            Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
                            Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                            Merge Sort Key: a.r3, a.r4
-                           Merge Stream Key: a.r2
+                           Merge Stream Key: a.r1, a.r2
                            Merge Streams: 3
-                           Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                           Merge Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                            Storage Table Read Requests: 1
                            Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 163
@@ -302,9 +302,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                                  Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
                                  Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                                  Merge Sort Key: a.r3, a.r4
-                                 Merge Stream Key: a.r2
+                                 Merge Stream Key: a.r1, a.r2
                                  Merge Streams: 3
-                                 Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                                 Merge Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                                  Storage Table Read Requests: 1
                                  Storage Table Read Ops: 3
                                  Storage Table Rows Scanned: 163
@@ -461,9 +461,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                      Index Cond: ((r5n.r1 = 9) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                      Merge Sort Key: r5n.r3, r5n.r4
-                     Merge Stream Key: r5n.r2
+                     Merge Stream Key: r5n.r1, r5n.r2
                      Merge Streams: 3
-                     Merge Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
+                     Merge Cond: ((r5n.r1 = 9) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                      Storage Table Read Requests: 2
                      Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
@@ -529,9 +529,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                      Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                      Index Cond: ((r5n.r1 = 9) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                      Merge Sort Key: r5n.r3, r5n.r4
-                     Merge Stream Key: r5n.r2
+                     Merge Stream Key: r5n.r1, r5n.r2
                      Merge Streams: 3
-                     Merge Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
+                     Merge Cond: ((r5n.r1 = 9) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                      Storage Table Read Requests: 2
                      Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
@@ -735,9 +735,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                            Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                            Index Cond: ((r5n.r1 = 6) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                            Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
-                           Merge Stream Key: r5n.r2
+                           Merge Stream Key: r5n.r1, r5n.r2
                            Merge Streams: 3
-                           Merge Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
+                           Merge Cond: ((r5n.r1 = 6) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                            Storage Table Read Requests: 2
                            Storage Table Read Ops: 6
                            Storage Table Rows Scanned: 168
