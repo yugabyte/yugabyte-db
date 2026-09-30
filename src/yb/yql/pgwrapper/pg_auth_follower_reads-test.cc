@@ -73,6 +73,7 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint32(pg_cache_response_trust_auth_lifetime_limit_ms);
 DECLARE_uint32(pg_response_cache_size_percentage);
 DECLARE_uint64(pg_response_cache_size_bytes);
+DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 
 METRIC_DECLARE_counter(pg_response_cache_hits);
 METRIC_DECLARE_counter(pg_response_cache_queries);
@@ -605,6 +606,11 @@ TEST_F(PgAuthFollowerReadsTest, DatabaseAuthorizationAndSettingsKeepSnapshot) {
 
 class PgAuthFollowerPagingTest : public PgAuthFollowerReadsTest {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_prefetch_row_limit) = 8;
+    PgAuthFollowerReadsTest::SetUp();
+  }
+
   std::string PgConf() const override { return "yb_fetch_row_limit=8"; }
 };
 

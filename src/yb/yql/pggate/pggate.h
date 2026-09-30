@@ -794,7 +794,7 @@ class PgApiImpl {
                                   double* num_rows_backfilled);
 
   void StartSysTablePrefetching(const PrefetcherOptions& options);
-  Status StartAuthSysTablePrefetching(uint64_t row_limit);
+  Status StartAuthSysTablePrefetching(uint64_t row_limit, uint64_t size_limit);
   void EndAuthCatalogRead();
   bool IsAuthCatalogRead() const;
   void StopSysTablePrefetching();
