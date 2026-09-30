@@ -14,3 +14,7 @@ CREATE FUNCTION yb_test_heap_buffer_overflow()
 CREATE FUNCTION yb_test_leak_malloc()
 	RETURNS pg_catalog.void
 	AS 'MODULE_PATHNAME' LANGUAGE C;
+
+CREATE FUNCTION yb_test_json_parse_exact(pg_catalog.text)
+	RETURNS pg_catalog.bool
+	AS 'MODULE_PATHNAME' LANGUAGE C STRICT;

@@ -2,7 +2,8 @@
  *
  * yb_test_memory_errors.c
  *		Functions that deliberately corrupt or leak memory, so tests can check
- *		that the corruption or leak is detected.
+ *		that the corruption or leak is detected, and that run code on inputs
+ *		held in exact-size buffers, so AddressSanitizer catches overreads.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -15,13 +16,17 @@
 
 #include <stdlib.h>
 
+#include "common/jsonapi.h"
 #include "fmgr.h"
+#include "mb/pg_wchar.h"
+#include "utils/builtins.h"
 
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(yb_test_write_past_chunk_end);
 PG_FUNCTION_INFO_V1(yb_test_heap_buffer_overflow);
 PG_FUNCTION_INFO_V1(yb_test_leak_malloc);
+PG_FUNCTION_INFO_V1(yb_test_json_parse_exact);
 
 static void
 require_address_sanitizer(void)
@@ -96,4 +101,28 @@ yb_test_leak_malloc(PG_FUNCTION_ARGS)
 	require_address_sanitizer();
 	leak_malloc_blocks();
 	PG_RETURN_VOID();
+}
+
+/*
+ * Parse the argument as JSON from a malloc'd copy of exactly its length, so
+ * that AddressSanitizer reports any read past the end of the input.  A palloc'd
+ * copy would not do: the chunk is padded and sits inside a larger block.
+ * Returns whether the input is valid JSON.
+ */
+Datum
+yb_test_json_parse_exact(PG_FUNCTION_ARGS)
+{
+	text	   *json = PG_GETARG_TEXT_PP(0);
+	int			len = VARSIZE_ANY_EXHDR(json);
+	char	   *copy;
+	JsonLexContext *lex;
+	JsonParseErrorType result;
+
+	require_address_sanitizer();
+	copy = malloc(len);
+	memcpy(copy, VARDATA_ANY(json), len);
+	lex = makeJsonLexContextCstringLen(copy, len, GetDatabaseEncoding(), false);
+	result = pg_parse_json(lex, &nullSemAction);
+	free(copy);
+	PG_RETURN_BOOL(result == JSON_SUCCESS);
 }
