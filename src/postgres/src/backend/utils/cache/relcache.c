@@ -2576,12 +2576,10 @@ YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 	 */
 	if (table == YB_PFETCH_TABLE_PG_ATTRIBUTE)
 	{
-		bool		fill_attname = *YBCGetGFlags()->ysql_catalog_preload_attname_cache;
-		bool		fill_attnum = *YBCGetGFlags()->ysql_catalog_preload_attnum_cache;
-
-		if (fill_attname || fill_attnum)
-			YbPreloadCatalogCache(fill_attname ? ATTNAME : ATTNUM,
-								  fill_attname && fill_attnum ? ATTNUM : -1);
+		if (yb_catalog_preload_attname_cache || yb_catalog_preload_attnum_cache)
+			YbPreloadCatalogCache(yb_catalog_preload_attname_cache ? ATTNAME : ATTNUM,
+								  (yb_catalog_preload_attname_cache &&
+								   yb_catalog_preload_attnum_cache) ? ATTNUM : -1);
 		*ts = YB_PFETCH_STATE_CACHE_FILLED;
 		return;
 	}

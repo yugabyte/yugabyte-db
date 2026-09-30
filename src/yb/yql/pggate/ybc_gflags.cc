@@ -92,18 +92,6 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
-DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_attname_cache, true,
-    "If true, YSQL fills the pg_attribute catalog cache by column name (ATTNAME) whenever it "
-    "preloads the catalog: at connection start-up when preloading is forced, and on every full "
-    "catalog cache refresh. On large schemas this cache is a large share of each backend's catalog "
-    "cache memory. If false, its entries are read on first use.");
-
-DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_attnum_cache, true,
-    "If true, YSQL fills the pg_attribute catalog cache by column number (ATTNUM) whenever it "
-    "preloads the catalog: at connection start-up when preloading is forced, and on every full "
-    "catalog cache refresh. On large schemas this cache is a large share of each backend's catalog "
-    "cache memory. If false, its entries are read on first use.");
-
 DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_row_limit, 0,
     "Maximum number of rows returned by each catalog prefetch request. 0 means no limit.");
 
@@ -272,8 +260,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
-      .ysql_catalog_preload_attname_cache       = &FLAGS_ysql_catalog_preload_attname_cache,
-      .ysql_catalog_preload_attnum_cache        = &FLAGS_ysql_catalog_preload_attnum_cache,
       .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
       .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
       .ysql_cdcsdk_enable_old_namespace_streams  = &FLAGS_ysql_cdcsdk_enable_old_namespace_streams,

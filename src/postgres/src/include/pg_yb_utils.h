@@ -664,6 +664,13 @@ extern int	yb_insert_on_conflict_read_batch_size;
 extern bool yb_enable_fkey_catcache;
 
 /*
+ * Fill the pg_attribute catalog caches by column name (ATTNAME) and by
+ * column number (ATTNUM) when preloading the catalog.
+ */
+extern bool yb_catalog_preload_attname_cache;
+extern bool yb_catalog_preload_attnum_cache;
+
+/*
  * Enable batched DocDB lookup for foreign key constraint check when types
  * mismatch. The batch size is controlled by ysql_session_max_batch_size.
  */
