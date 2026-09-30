@@ -13,11 +13,13 @@
 
 #include "yb/common/clock.h"
 
+#include <algorithm>
 #include <thread>
 
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/flags.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 
@@ -30,12 +32,17 @@ namespace yb {
 Result<HybridTime> WaitUntil(ClockBase* clock, HybridTime hybrid_time, CoarseTimePoint deadline) {
   auto ht_now = clock->Now();
   while (ht_now < hybrid_time) {
-    if (CoarseMonoClock::now() > deadline) {
+    TEST_SYNC_POINT_CALLBACK("Clock::WaitUntil::BeforeSleep", clock);
+    const auto now = CoarseMonoClock::Now();
+    if (now >= deadline) {
       return STATUS_FORMAT(TimedOut, "Timed out waiting for $0, now $1", deadline, ht_now);
     }
     auto delta_micros = hybrid_time.GetPhysicalValueMicros() - ht_now.GetPhysicalValueMicros();
-    std::this_thread::sleep_for(
-        std::max(FLAGS_wait_hybrid_time_sleep_interval_us, delta_micros) * 1us);
+    std::this_thread::sleep_for(std::min<CoarseDuration>(
+        std::max(FLAGS_wait_hybrid_time_sleep_interval_us, delta_micros) * 1us, deadline - now));
+    if (CoarseMonoClock::Now() >= deadline) {
+      return STATUS_FORMAT(TimedOut, "Timed out waiting for $0, now $1", deadline, ht_now);
+    }
     ht_now = clock->Now();
   }
 
