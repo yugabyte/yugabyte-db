@@ -41,7 +41,7 @@ Use the `CREATE TABLESPACE` statement to create a tablespace in the cluster. It 
 
 {{<tags/feature/ea idea="2006">}}`read_replica_placement` is a JSON object for copies on a [read replica](../../../../../explore/multi-region-deployments/read-replicas-ysql/) cluster. It uses the same fields as `replica_placement`. A tablespace has one read-replica placement. `leader_preference` applies only to `replica_placement`.
 
-`placement_uuid` is the [placement ID of the read replica cluster](../../../../../admin/yb-admin/#add-read-replica-placement-info). When the cluster has one read-replica cluster, omit `placement_uuid` and that cluster's placement ID is used. When the cluster has more than one, set `placement_uuid` to the cluster you want. Obtain the ID with [get-universe-config](../../../../../admin/yb-admin/#get-universe-config).
+`placement_uuid` is the [placement ID of the read replica cluster](../../../../../admin/yb-admin/#add-read-replica-placement-info). Set `placement_uuid` to the cluster you want. Starting in v2025.2.4, when the cluster has one read-replica cluster, omit `placement_uuid` and that cluster's placement ID is used. Obtain the ID with [get-universe-config](../../../../../admin/yb-admin/#get-universe-config).
 
 ## Examples
 

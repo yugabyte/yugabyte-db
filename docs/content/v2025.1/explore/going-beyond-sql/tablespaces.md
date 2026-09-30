@@ -327,7 +327,7 @@ yugabyte=# SELECT * FROM preferred_leader_table;
 Time: 1.052 ms
 ```
 
-`leader_preference` is defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/#replica_placement).
+`leader_preference` is defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/#replica-placement).
 
 You can check the overall leader distribution and [cluster level leader preference](../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).
 

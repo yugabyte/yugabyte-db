@@ -34,8 +34,8 @@ Use the `CREATE TABLESPACE` statement to create a tablespace in the cluster. It 
 - `num_replicas` is the replication factor. It is required and must be a positive integer.
 - `placement_blocks` is an array of placement blocks. Each block requires `cloud`, `region`, `zone`, and `min_num_replicas`.
   - `min_num_replicas` is the minimum number of replicas in that cloud, region, and zone. It must be greater than 0. The sum across blocks cannot exceed `num_replicas`.
-  - `max_num_replicas` is an optional upper bound on replicas in that block. When omitted, the upper bound is `num_replicas`. It must be at least `min_num_replicas`. The sum of these upper bounds must be at least `num_replicas`. An RF5 policy across three zones can set each block to `"min_num_replicas":1,"max_num_replicas":2` so that no zone holds a majority.
-  - `region` and `zone` accept `*` for any region or any zone. A `*` region requires a `*` zone. `cloud` must name a cloud.
+  - `max_num_replicas` is an optional upper bound on replicas in that block. When omitted, the upper bound is `num_replicas`. It must be at least `min_num_replicas`. The sum of these upper bounds must be at least `num_replicas`. An RF5 policy across three zones can set each block to `"min_num_replicas":1,"max_num_replicas":2` so that no zone holds a majority. When any block sets `max_num_replicas`, every block in that placement must name a cloud, region, and zone, and no two blocks may name the same cloud, region, and zone. `CREATE TABLESPACE` accepts a placement that breaks this. The tablespace is then marked invalid, and tables in it cannot be placed.
+  - `region` and `zone` accept `*` for any region or any zone when no block in the placement sets `max_num_replicas`. A `*` region requires a `*` zone. `cloud` must name a cloud.
   - `leader_preference` is an optional positive integer. `1` is the most preferred zone for tablet leaders. Values that are set must form a contiguous sequence starting at 1. Zones that share a value split leaders evenly. Zones that omit the field are least preferred.
 
 #### read_replica_placement
