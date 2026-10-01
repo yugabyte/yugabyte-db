@@ -40,9 +40,9 @@ Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. If you 
 - The table is partitioned. No notice is issued. See [Partitioned indexes](#partitioned-indexes) for how to build indexes on partitioned tables concurrently.
 - The table is temporary.
 
-A nonconcurrent build does not perform online index backfill. Unless [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks) are enabled, rows that other sessions write to the table while the build runs are stored in the table but can be missing from the index. When table-level locks are enabled, those writes wait until the transaction block commits instead.
+A nonconcurrent build does not perform online index backfill. Unless [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks) are enabled, concurrent writes during nonconcurrent index creation can result in an inconsistent index. When table-level locks are enabled, those writes wait until the nonconcurrent CREATE INDEX completes instead.
 
-Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a statement that cannot be built concurrently (inside a transaction block or on a partitioned table) fails with an error instead of silently switching to a nonconcurrent build. If an index was built nonconcurrently while the table was receiving writes, verify it using [yb_index_check()](../../../exprs/func_yb_index_check/).
+Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a statement that cannot be built concurrently (inside a transaction block or on a partitioned table) fails with an error instead of silently switching to a nonconcurrent build.
 
 Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
 
