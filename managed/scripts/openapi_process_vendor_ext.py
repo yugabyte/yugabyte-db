@@ -33,6 +33,7 @@ X_YBA_API_VISIBILITY_PREVIEW = "preview"
 X_YBA_API_SINCE = "x-yba-api-since"
 X_YBA_API_AUDIT = "x-yba-api-audit"
 X_YBA_API_AUTHZ = "x-yba-api-authz"
+X_YBA_API_BLOCK_OPERATOR_RESOURCE = "x-yba-api-block-operator-resource"
 DEPRECATED_MSG_FMT = "<b style=\"color:#ff0000\">Deprecated since YBA version {}.</b></p>"
 PREVIEW_MSG_FMT = ("<b style=\"color:#FFA500\">WARNING: This is a preview API in YBA version {}"
                    " that could change.</b></p>")
