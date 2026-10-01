@@ -2315,7 +2315,11 @@ TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWrite
   CountDownLatch flush_at_gate(1), flush_gate(1);
   CountDownLatch writer_stalled(1);
   std::atomic<bool> pause_next_flush{true};
+  std::atomic<int> regular_flushes{0};
+  const auto tablet_id = tablet->tablet_id();
 
+  // Everything the callbacks capture by reference is declared above this cleanup, which clears
+  // the callbacks before those objects are destroyed.
   auto& sync_point = *SyncPoint::GetInstance();
   auto sync_point_cleanup = ScopeExit([&] {
     sync_point.DisableProcessing();
@@ -2338,8 +2342,6 @@ TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWrite
   // (3) Hold this tablet's regular flush with the DB mutex released and its result not installed,
   // so the stall it caused stays in place while the writer arrives. The sync point runs for every
   // DB in the process, so key on the DB's log prefix ("T <tablet> ... [R]: ").
-  const auto tablet_id = tablet->tablet_id();
-  std::atomic<int> regular_flushes{0};
   sync_point.SetCallBack("FlushJob::WriteLevel0Table", [&, tablet_id](void* arg) {
     const auto& log_prefix = *static_cast<const std::string*>(arg);
     if (log_prefix.find(tablet_id) == std::string::npos ||
