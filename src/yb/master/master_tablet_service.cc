@@ -18,11 +18,15 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_auth_catalog_read.h"
+
+#include "yb/consensus/consensus.h"
 
 #include "yb/dockv/doc_key.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -30,10 +34,14 @@
 
 #include "yb/rpc/rpc_context.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/service_util.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -42,6 +50,17 @@ DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
 
 DEFINE_test_flag(bool, ysql_require_force_catalog_modifications, false,
     "Fail YSQL catalog writes requests if force_catalog_modifications is not set.");
+
+DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
+
+METRIC_DEFINE_counter(
+    server, ysql_auth_catalog_follower_reads, "YSQL authentication catalog follower reads",
+    yb::MetricUnit::kRequests,
+    "Validated authentication catalog reads admitted on a nonleader after the snapshot is safe.");
+METRIC_DEFINE_counter(
+    server, ysql_auth_catalog_leader_reads, "YSQL authentication catalog leader reads",
+    yb::MetricUnit::kRequests,
+    "Validated authentication catalog reads admitted on a leader after the snapshot is safe.");
 
 using namespace std::chrono_literals;
 
@@ -54,8 +73,37 @@ namespace master {
 // Note: If this value changes, then IsTabletServerReady has to be revisited.
 constexpr int NUM_TABLETS_SYS_CATALOG = 1;
 
+namespace {
+
+// Allow the ordinary 500ms safe-time propagation cadence while reserving leader fallback time.
+constexpr auto kAuthCatalogFollowerWait = 1s;
+
+Status ValidateAuthCatalogRead(const tserver::ReadRequestMsg& req) {
+  SCHECK(req.tablet_id() == kSysCatalogTabletId && req.pgsql_batch_size() > 0 &&
+             req.redis_batch_size() == 0 && req.ql_batch_size() == 0 &&
+             !req.has_transaction() && !req.has_subtransaction() && !req.use_async_write() &&
+             !req.has_pending_async_write_op_id(),
+         InvalidArgument, "Invalid authentication catalog read envelope");
+  const auto read_time = ReadHybridTime::FromReadTimePB(req);
+  SCHECK(req.has_read_time() && !read_time.read.is_special() &&
+             read_time == ReadHybridTime::SingleTime(read_time.read),
+         InvalidArgument, "Authentication catalog reads require one explicit fixed snapshot");
+  for (const auto& pg_req : req.pgsql_batch()) {
+    SCHECK(IsYsqlAuthCatalogRead(pg_req) &&
+               YsqlAuthCatalogPagingMatchesReadTime(pg_req, read_time.read),
+           InvalidArgument, "Request is outside the authentication catalog read scope");
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Master* master)
-    : TabletServiceImpl(server), master_(master) {
+    : TabletServiceImpl(server), master_(master),
+      auth_catalog_follower_reads_(
+          METRIC_ysql_auth_catalog_follower_reads.Instantiate(master->metric_entity())),
+      auth_catalog_leader_reads_(
+          METRIC_ysql_auth_catalog_leader_reads.Instantiate(master->metric_entity())) {
 }
 
 Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabletForRead(
@@ -93,11 +141,65 @@ Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServiceImpl::GetYSQLLeas
 }
 
 void MasterTabletServiceImpl::Read(const tserver::ReadRequestMsg* req,
-                                    tserver::ReadResponseMsg* resp,
-                                    rpc::RpcContext context) {
+                                   tserver::ReadResponseMsg* resp,
+                                   rpc::RpcContext context) {
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+  const bool auth_read = req->ysql_auth_catalog_read();
+  const bool follower_read =
+      auth_read && req->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX;
+  if (follower_read) {
+    if (!l.CheckIsInitializedOrRespondTServer(resp, &context)) {
+      return;
+    }
+  } else if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
     return;
+  }
+
+  if (auth_read) {
+    auto prepare = [&]() -> Result<bool> {
+      RETURN_NOT_OK(ValidateAuthCatalogRead(*req));
+      SCHECK(!master_->IsShellMode(), IllegalState, "Master is in shell mode");
+      SCHECK(!follower_read || FLAGS_ysql_enable_auth_catalog_follower_reads, IllegalState,
+             "Authentication catalog follower reads are disabled");
+      SCHECK(master_->snapshot_coordinator().PitrDisabled(), IllegalState,
+             "Authentication catalog follower reads require a universe created with PITR disabled");
+      auto peer_tablet = VERIFY_RESULT(tserver::LookupTabletPeer(
+          master_->tablet_server(), req->tablet_id()));
+      auto tablet = VERIFY_RESULT(GetTabletForRead(
+          req->tablet_id(), peer_tablet.tablet_peer, req->consistency_level(),
+          tserver::AllowSplitTablet::kFalse, resp));
+      auto deadline = context.GetClientDeadline();
+      if (follower_read) {
+        const auto now = CoarseMonoClock::Now();
+        SCHECK(deadline > now, IllegalState, "No time remains for authentication follower read");
+        deadline = std::min(now + kAuthCatalogFollowerWait, now + (deadline - now) / 2);
+      }
+      const auto safe_time = tablet->SafeTime(
+          tablet::RequireLease(!follower_read),
+          ReadHybridTime::FromReadTimePB(*req).read, deadline);
+      if (!safe_time.ok()) {
+        // A follower timeout must remain retryable without consuming the leader's budget.
+        if (follower_read) {
+          return STATUS_FORMAT(IllegalState, "Authentication catalog snapshot is not safe: $0",
+                               safe_time.status());
+        }
+        return safe_time.status();
+      }
+      auto consensus = VERIFY_RESULT(peer_tablet.tablet_peer->GetConsensus());
+      if (!follower_read) {
+        const auto leader_state = consensus->GetLeaderState();
+        SCHECK(leader_state.ok() && leader_state.term == l.epoch().leader_term, IllegalState,
+               "Master leadership changed while waiting for authentication catalog snapshot");
+      }
+      return consensus->role() == PeerRole::LEADER;
+    };
+    auto is_leader = prepare();
+    if (!is_leader.ok()) {
+      tserver::SetupErrorAndRespond(resp->mutable_error(), is_leader.status(), &context);
+      return;
+    }
+    // CONSISTENT_PREFIX can reach the leader too; classify the actual serving replica.
+    (*is_leader ? auth_catalog_leader_reads_ : auth_catalog_follower_reads_)->Increment();
   }
 
   tserver::TabletServiceImpl::Read(req, resp, std::move(context));
