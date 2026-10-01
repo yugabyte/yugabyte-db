@@ -675,6 +675,26 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 									   old_path_pathkeys);
 
 			/*
+			 * YB: compare_path_costs_fuzzily() ranks a path that follows the
+			 * join hints ahead of one that does not, so at a join rel the only
+			 * way the unhinted path survives here is a better sort order
+			 * (COSTS_BETTER1 with PATHKEYS_BETTER2 keeps both).  Treat the
+			 * orderings as equal in that case: a plan built on the unhinted
+			 * path breaks the hints whatever it saves in sorting.  This
+			 * decides the plan when the hinted join method cannot be built,
+			 * e.g. a MergeJoin hint on a join with no merge clause: both
+			 * orientations are then disabled, and the reversed one's ordering
+			 * would otherwise win at the join above, where paths built on
+			 * either orientation count as hinted alike, or at ORDER BY, where
+			 * it meets a Sort over the hinted path and the ranking does not
+			 * apply because the two belong to different kinds of rel.
+			 */
+			if (IsYugaByteEnabled() && IS_JOIN_REL(parent_rel) &&
+				(new_path->ybHasHintedUid != old_path->ybHasHintedUid ||
+				 new_path->ybIsHinted != old_path->ybIsHinted))
+				keyscmp = PATHKEYS_EQUAL;
+
+			/*
 			 * YB: If one is batched and the other isn't we consider
 			 * the two parameterizations to be different.
 			 */

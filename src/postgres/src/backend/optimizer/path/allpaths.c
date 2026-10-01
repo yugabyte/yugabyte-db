@@ -5428,6 +5428,33 @@ ybFindHintedJoin(PlannerInfo *root, Relids outerRelids, Relids innerRelids, bool
 	ListCell   *lc1,
 			   *lc2;
 
+	Relids		outer_baserels;
+	Relids		inner_baserels;
+
+	if (root->ybHintedJoinsOuter == NIL)
+		return false;
+
+	/*
+	 * A joinrel's relids carry outer-join relids, which the hinted sets
+	 * recorded by ybAddHintedJoin() never hold: those are built from relation
+	 * names and filtered to base relations.  Compare on the same footing, or a
+	 * hinted join whose side spans an outer join never matches its own
+	 * registration.  A side with no base relation at all (a partitionwise
+	 * child join) cannot be hinted; it must not turn into the NULL that means
+	 * "either side" below.
+	 */
+	outer_baserels = bms_intersect(outerRelids, root->all_baserels);
+	inner_baserels = bms_intersect(innerRelids, root->all_baserels);
+	if ((outerRelids != NULL && outer_baserels == NULL) ||
+		(innerRelids != NULL && inner_baserels == NULL))
+	{
+		bms_free(outer_baserels);
+		bms_free(inner_baserels);
+		return false;
+	}
+	outerRelids = outer_baserels;
+	innerRelids = inner_baserels;
+
 	forboth(lc1, root->ybHintedJoinsOuter, lc2, root->ybHintedJoinsInner)
 	{
 		Relids		hintedJoinOuterRelids = (Relids) lfirst(lc1);
@@ -5469,6 +5496,9 @@ ybFindHintedJoin(PlannerInfo *root, Relids outerRelids, Relids innerRelids, bool
 			break;
 		}
 	}
+
+	bms_free(outer_baserels);
+	bms_free(inner_baserels);
 
 	return foundHintedJoin;
 }

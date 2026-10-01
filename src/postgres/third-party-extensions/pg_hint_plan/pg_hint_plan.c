@@ -6075,6 +6075,9 @@ pg_hint_plan_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 	JoinMethodHint *join_hint = NULL;
 	JoinMethodHint *memoize_hint = NULL;
 
+	Relids		ybInnerRelids;
+	bool		ybLevelHasHints = true;
+
 	Assert(bms_membership(joinrel->relids) == BMS_MULTIPLE);
 
 	/* Track the max join level (nrels) where this hook fired */
@@ -6092,6 +6095,17 @@ pg_hint_plan_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 		hint_inhibit_level == 0)
 	{
 		Relids		joinrelids = bms_union(outerrel->relids, innerrel->relids);
+		Relids		ybLevelRelids = bms_difference(joinrelids, root->outer_join_rels);
+
+		/*
+		 * YB: the join level counts every relation joined, the child rels of
+		 * a partitionwise join included; only outer-join relids are not
+		 * relations.  Filtered to base relations, a child join would count as
+		 * level 0 and get every method back under a Leading hint.
+		 */
+		ybLevelHasHints =
+			current_hint_state->join_hint_level[bms_num_members(ybLevelRelids)] != NIL;
+		bms_free(ybLevelRelids);
 
 		/*
 		 * joinrelids may include outer-join relids since PostgreSQL 16, so
@@ -6107,7 +6121,16 @@ pg_hint_plan_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 
 	if (join_hint)
 	{
-		if (join_hint->inner_nrels == 0 || bms_equal(join_hint->inner_joinrelids, innerrel->relids))
+		/*
+		 * YB: compare base relations only, or a Leading hint whose inner side
+		 * spans an outer join matches neither orientation of that join and
+		 * both end up disabled: innerrel->relids carries outer-join relids,
+		 * inner_joinrelids never does (see ybFindHintedJoin()).
+		 */
+		ybInnerRelids = bms_intersect(innerrel->relids, root->all_baserels);
+
+		if (join_hint->inner_nrels == 0 ||
+			bms_equal(join_hint->inner_joinrelids, ybInnerRelids))
 		{
 			join_hint->base.state = HINT_STATE_USED;
 			set_join_config_options(extra, join_hint->enforce_mask,
@@ -6118,11 +6141,24 @@ pg_hint_plan_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 			set_join_config_options(extra, DISABLE_ALL_JOIN,
 									YB_HINT_KEYWORD_NONE);
 		}
+
+		bms_free(ybInnerRelids);
 	}
 	else if (current_hint_state && current_hint_state->deny_all_joins)
 	{
-		set_join_config_options(extra, DISABLE_ALL_JOIN,
-								YB_HINT_KEYWORD_NONE);
+		/*
+		 * YB: deny_all_joins leaves only the joins a Leading hint names
+		 * reachable, so a hint naming just part of the query strands the rest
+		 * with no plan.  Give every method back at a level the hint never
+		 * reaches; a level it does reach, by a route it did not name, stays
+		 * denied -- that is what constrains the join order.
+		 */
+		if (ybLevelHasHints)
+			set_join_config_options(extra, DISABLE_ALL_JOIN,
+									YB_HINT_KEYWORD_NONE);
+		else
+			set_join_config_options(extra, ENABLE_ALL_JOIN,
+									YB_HINT_KEYWORD_NONE);
 	}
 
 	if (memoize_hint)
