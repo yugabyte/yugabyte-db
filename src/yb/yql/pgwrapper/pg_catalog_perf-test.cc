@@ -403,10 +403,9 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
   static constexpr uint64_t kStaleCachePrefetchRowLimit = 1024;
 };
 
-constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
-constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
-constexpr uint64_t kFirstConnectionRPCCountWithPreloadCatalogList = 6;
-constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
+constexpr uint64_t kFirstConnectionRPCCountDefault = 3;
+constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 4;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 3;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
 constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 4;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
@@ -572,7 +571,7 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheEfficiency, PgCatalogWithUnlimitedCach
   constexpr auto kExpectedColumns = kAlterTableCount + 2;
   ASSERT_OK(conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
   ASSERT_OK(aux_conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
-  constexpr size_t kUniqueQueriesPerRefresh = 3;
+  constexpr size_t kUniqueQueriesPerRefresh = 1;
   constexpr auto kUniqueQueries = kAlterTableCount * kUniqueQueriesPerRefresh;
   constexpr auto kTotalQueries = kConnectionCount * kUniqueQueries;
   ASSERT_EQ(metrics.cache.queries, kTotalQueries);
@@ -588,8 +587,8 @@ TEST_F_EX(PgCatalogPerfTest,
     RETURN_NOT_OK(Connect());
     return static_cast<Status>(Status::OK());
   }));
-  ASSERT_EQ(metrics.cache.queries, 4);
-  ASSERT_EQ(metrics.cache.hits, 4);
+  ASSERT_EQ(metrics.cache.queries, 2);
+  ASSERT_EQ(metrics.cache.hits, 2);
 }
 
 class PgCatalogShortRpcDeadlineTest : public PgCatalogWithUnlimitedCachePerfTest {
@@ -845,7 +844,7 @@ TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatTablesPreload,
           PgPreloadAdditionalCatTablesTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithPreloadCatalogList + ASHCollectorRPCCount());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
 }
 
 TEST_F_EX(PgCatalogPerfTest,
@@ -873,7 +872,7 @@ TEST_F_EX(PgCatalogPerfTest,
 TEST_F_EX(PgCatalogPerfTest, ResponseCacheIsDBSpecific, PgCatalogWithUnlimitedCachePerfTest) {
   constexpr auto* kDBName = "db1";
   auto rpc_count_checker = [this](const std::string& db_name = {}) -> Status {
-    for (auto expected_rpc_count : {kFirstConnectionRPCCountWithPreloadCatalogList,
+    for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
                                     kSubsequentConnectionRPCCount}) {
       const auto rpc_count = VERIFY_RESULT(RPCCountOnStartUp(db_name));
       SCHECK_EQ(rpc_count, expected_rpc_count + ASHCollectorRPCCount(), IllegalState,
@@ -915,7 +914,7 @@ TEST_F_EX(
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
 
-  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithPreloadCatalogList,
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
                                   kSubsequentConnectionRPCCount}) {
     const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
     ASSERT_EQ(connect_rpc_count, expected_rpc_count);
@@ -941,7 +940,7 @@ TEST_F_EX(PgCatalogPerfTest,
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
 
-  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithPreloadCatalogList,
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
                                   kSubsequentConnectionRPCCount}) {
     const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
     ASSERT_EQ(connect_rpc_count, expected_rpc_count);
