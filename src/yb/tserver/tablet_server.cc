@@ -121,6 +121,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -1611,6 +1612,14 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
 void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   const tserver::DBCatalogVersionDataPB& db_catalog_version_data, uint64_t debug_id) {
   DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
+  const auto read_time = HybridTime::FromPB(db_catalog_version_data.read_time());
+  if (!read_time.is_special()) {
+    // We advance the clock before publishing versions, so a new catalog read time cannot precede
+    // the snapshot that supplied its cache key to avoid stale reads.
+    clock_->Update(read_time);
+  }
+  TEST_SYNC_POINT_CALLBACK("TabletServer::SetYsqlDBCatalogVersions:BeforePublish",
+                           const_cast<DBCatalogVersionDataPB*>(&db_catalog_version_data));
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;

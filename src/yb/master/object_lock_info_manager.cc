@@ -90,6 +90,7 @@ DEFINE_test_flag(bool, pause_obj_lock_release_before_persist, false,
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_catalog_version_read_time);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
 
 namespace yb {
@@ -1111,6 +1112,9 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
     return;
   }
   auto* db_catalog_version_data = req.mutable_db_catalog_version_data();
+  if (FLAGS_ysql_enable_catalog_version_read_time) {
+    db_catalog_version_data->set_read_time(read_ht.ToPB());
+  }
   // The catalog version data may become out of date by the time these requests are
   // retried and processed by the TServer.
   db_catalog_version_data->set_ignore_catalog_version_staleness_check(true);
