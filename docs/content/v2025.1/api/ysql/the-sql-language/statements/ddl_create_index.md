@@ -44,7 +44,7 @@ A nonconcurrent build does not perform online index backfill. Unless [table-leve
 
 Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a statement that cannot be built concurrently (inside a transaction block or on a partitioned table) fails with an error instead of silently switching to a nonconcurrent build.
 
-Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table. This restriction is enforced only when table-level locks are enabled. The following table summarizes the differences in these two modes.
 
 | Condition | Concurrent | Nonconcurrent |
 | :-------- | :--------- | :------------ |
