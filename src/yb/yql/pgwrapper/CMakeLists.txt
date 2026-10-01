@@ -259,6 +259,10 @@ add_dependencies(
   gen_auto_flags_json
   postgres)
 
+# Without the snapshot, the mini cluster runs initdb itself, which is too slow for this test's
+# clone scenarios under sanitizers.
+ADD_YB_TEST_DEPENDENCIES(pg_vector_index-test initial_sys_catalog_snapshot)
+
 add_custom_target(
   update_ysql_migrations ALL
   COMMAND ${CMAKE_COMMAND} -E remove_directory

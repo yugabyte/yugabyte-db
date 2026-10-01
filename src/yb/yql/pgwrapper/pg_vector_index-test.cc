@@ -2193,9 +2193,11 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
   const auto source_table_id = ASSERT_RESULT(find_table_id(kSourceDb, "test"));
   const auto source_index_id = ASSERT_RESULT(find_table_id(kSourceDb, kVectorIndexName));
 
+  // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
+  // snapshot is GC'd before the clone is applied.
   ASSERT_OK(snapshot_util.CreateSchedule(
       nullptr, YQL_DATABASE_PGSQL, kSourceDb,
-      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+      client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
 
   ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
 
