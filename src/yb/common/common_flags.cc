@@ -45,6 +45,12 @@ DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
     "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
+DEFINE_RUNTIME_bool(ysql_enable_auth_catalog_follower_reads, false,
+    "Allow uncached authentication catalog reads on master followers at a leader-established "
+    "snapshot. Requires a universe created with --disable_pitr and compatible binaries on every "
+    "master and tserver.");
+TAG_FLAG(ysql_enable_auth_catalog_follower_reads, experimental);
+
 DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
 
 DEFINE_NON_RUNTIME_bool(enable_wait_queues, true,

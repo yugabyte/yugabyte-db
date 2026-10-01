@@ -214,6 +214,16 @@ message ChangeMasterClusterConfigResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// Establish one fresh snapshot for an uncached authentication catalog read attempt.
+message GetYsqlAuthCatalogReadTimeRequestPB {
+  optional fixed64 propagated_hybrid_time = 1;
+}
+
+message GetYsqlAuthCatalogReadTimeResponsePB {
+  optional MasterErrorPB error = 1;
+  optional fixed64 read_time = 2;
+}
+
 // Get the percentage of tablet data that got moved as part of a blacklist config change.
 // Handled by the master leader and picked up by new leader on failover.
 message GetLoadMovePercentRequestPB {
@@ -384,6 +394,8 @@ service MasterCluster {
       returns (GetMasterXClusterConfigResponsePB);
   rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
       returns (ChangeMasterClusterConfigResponsePB);
+  rpc GetYsqlAuthCatalogReadTime(GetYsqlAuthCatalogReadTimeRequestPB)
+      returns (GetYsqlAuthCatalogReadTimeResponsePB);
   rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
       returns (GetLoadMovePercentResponsePB);
   rpc GetLeaderBlacklistCompletion(GetLeaderBlacklistPercentRequestPB)

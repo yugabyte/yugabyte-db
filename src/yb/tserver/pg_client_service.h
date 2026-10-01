@@ -130,6 +130,7 @@ class TserverXClusterContextIf;
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
     (FinishTransaction) \
+    (GetYsqlAuthCatalogReadTime) \
     (OpenTable) \
     (TriggerRelcacheInitConnection) \
     /**/
