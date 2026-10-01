@@ -47,8 +47,8 @@ TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 DEFINE_RUNTIME_bool(ysql_enable_auth_catalog_follower_reads, false,
     "Allow uncached authentication catalog reads on master followers at a leader-established "
-    "snapshot. Requires a durable catalog follower-read reservation and compatible binaries "
-    "on every master and tserver. Disabling this does not release the permanent PITR exclusion.");
+    "snapshot. Requires a universe created with --disable_pitr and compatible binaries on every "
+    "master and tserver.");
 TAG_FLAG(ysql_enable_auth_catalog_follower_reads, experimental);
 
 DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
