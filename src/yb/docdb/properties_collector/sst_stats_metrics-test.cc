@@ -31,8 +31,10 @@ METRIC_DECLARE_gauge_uint64(docdb_sst_shadowed_entries);
 METRIC_DECLARE_gauge_uint64(docdb_sst_repackable_entries);
 METRIC_DECLARE_gauge_uint64(docdb_sst_dead_rows);
 METRIC_DECLARE_gauge_uint64(docdb_sst_dead_row_entries);
+METRIC_DECLARE_gauge_uint64(docdb_sst_rows);
 METRIC_DECLARE_gauge_uint64(docdb_sst_reclaimable_entries);
 METRIC_DECLARE_gauge_uint64(docdb_sst_reclaimable_bytes);
+METRIC_DECLARE_gauge_uint64(docdb_sst_raw_bytes);
 METRIC_DECLARE_gauge_uint64(docdb_sst_files_without_stats);
 METRIC_DECLARE_gauge_uint64(docdb_sst_files_with_partial_stats);
 METRIC_DECLARE_gauge_uint64(docdb_sst_tablets_without_stats);
@@ -152,8 +154,10 @@ TEST_F(SstStatsMetricsTest, UsesSumAggregation) {
            &METRIC_docdb_sst_repackable_entries,
            &METRIC_docdb_sst_dead_rows,
            &METRIC_docdb_sst_dead_row_entries,
+           &METRIC_docdb_sst_rows,
            &METRIC_docdb_sst_reclaimable_entries,
            &METRIC_docdb_sst_reclaimable_bytes,
+           &METRIC_docdb_sst_raw_bytes,
            &METRIC_docdb_sst_files_without_stats,
            &METRIC_docdb_sst_files_with_partial_stats,
            &METRIC_docdb_sst_tablets_without_stats,
@@ -174,8 +178,11 @@ TEST_F(SstStatsMetricsTest, ReportsAggregateAfterResync) {
   EXPECT_EQ(Read(METRIC_docdb_sst_tombstone_entries), 640);
   EXPECT_EQ(Read(METRIC_docdb_sst_dead_rows), 80);
   EXPECT_EQ(Read(METRIC_docdb_sst_dead_row_entries), 40);
+  EXPECT_EQ(Read(METRIC_docdb_sst_rows), 160);
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_entries), 20);
   EXPECT_EQ(Read(METRIC_docdb_sst_reclaimable_bytes), 200);
+  // From the file's built-in raw key and value sizes rather than its collector statistics.
+  EXPECT_EQ(Read(METRIC_docdb_sst_raw_bytes), 40000);
   EXPECT_EQ(Read(METRIC_docdb_sst_files_without_stats), 0);
   EXPECT_EQ(Read(METRIC_docdb_sst_files_with_partial_stats), 0);
   EXPECT_EQ(Read(METRIC_docdb_sst_tablets_without_stats), 0);
@@ -202,9 +209,13 @@ TEST_F(SstStatsMetricsTest, PartialFileSuppressesDerivedGauges) {
   SstStatsMetrics metrics(entity_, aggregator);
 
   auto partial = FileStats(/* entries = */ 640);
-  // A parse failure makes the chain identities unavailable.
+  // A parse failure makes the chain identities unavailable. ChainTracker stops counting at the
+  // failure, so all three chain counters come out truncated together. They stay far enough apart
+  // that both derived gauges would read non-zero without the partial_files guard.
   partial.chain_valid = false;
-  partial.chain_entries = 0;
+  partial.chain_entries = 280;
+  partial.num_subdoc_keys = 100;
+  partial.num_rows = 40;
   ASSERT_OK(aggregator->Resync(SnapshotOf({&partial})));
 
   ASSERT_EQ(aggregator->Get().aggregate.partial_files, 1);

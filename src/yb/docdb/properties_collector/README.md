@@ -191,8 +191,10 @@ shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per
 
 `SstStatsMetrics` exports the aggregate as `docdb_sst_*` tablet-entity gauges, pulled on scrape:
 `total_entries`, `tombstone_entries`, `shadowed_entries`, `repackable_entries`, `dead_rows`,
-`dead_row_entries`, `reclaimable_entries`, `reclaimable_bytes`, `files_without_stats`,
-`files_with_partial_stats`, and `tablets_without_stats`.
+`dead_row_entries`, `rows`, `reclaimable_entries`, `reclaimable_bytes`, `raw_bytes`,
+`files_without_stats`, `files_with_partial_stats`, and `tablets_without_stats`. `total_entries`,
+`rows` and `raw_bytes` are the denominators for ratios in entries, rows and raw bytes, and cover the
+same files as their numerators.
 
 No scrape shows a per-tablet value. `MetricEntity` labels a tablet-entity metric with the table
 rather than the tablet, and `PrometheusWriter::WriteSingleEntry` sums the tablets into a series per
@@ -210,11 +212,11 @@ Two cases contribute zero rather than a number: every gauge for a tablet before 
 when the aggregate holds only the files the listener happened to see, and the two derived gauges
 while any covered file is partial, when their chain identities do not hold. The sum hides both --
 one unmeasured tablet in a table reads as a smaller total, not as a gap -- which is what
-`tablets_without_stats` and `files_with_partial_stats` are for: gate alerts and ratios on those two
-rather than reading a total as complete.
+`tablets_without_stats` and `files_with_partial_stats` are for: gate ratios on those two rather
+than reading a total as complete.
 
-Nothing inside the server reads these. They exist for operators: dashboards, alerting, and tuning
-thresholds before the trigger ships.
+Nothing inside the server reads these. They exist for operators: dashboards, and studying the
+trigger's thresholds before it ships.
 
 ## Boundaries
 

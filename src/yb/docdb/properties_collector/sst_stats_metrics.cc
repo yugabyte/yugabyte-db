@@ -52,6 +52,11 @@ METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_dead_rows,
     "Sum of rows classified as dead within each live SST: their newest covering write in that file "
     "is a tombstone with nothing newer in the same file.");
 
+METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_rows,
+    "DocDB SST Rows", yb::MetricUnit::kRows,
+    "Sum of rows within each live SST, counting a row once per file it appears in: the denominator "
+    "for docdb_sst_dead_rows. A lower bound while docdb_sst_files_with_partial_stats is non-zero.");
+
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_dead_row_entries,
     "DocDB SST Dead Row Entries", yb::MetricUnit::kEntries,
     "Number of measured entries belonging to rows classified as dead within their live SST.");
@@ -65,6 +70,11 @@ METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_reclaimable_bytes,
     "DocDB SST Reclaimable Bytes", yb::MetricUnit::kBytes,
     "Raw key and value bytes of measured entries identified as garbage within their live SST. "
     "This is retention-independent and not comparable with compressed on-disk size.");
+
+METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_raw_bytes,
+    "DocDB SST Raw Bytes", yb::MetricUnit::kBytes,
+    "Raw key and value bytes of the measured live SST files: the denominator for "
+    "docdb_sst_reclaimable_bytes, in the same units. Files without statistics are excluded.");
 
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_files_without_stats,
     "DocDB SST Files Without Statistics", yb::MetricUnit::kFiles,
@@ -87,8 +97,8 @@ METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_files_with_partial_stats,
 METRIC_DEFINE_gauge_uint64(tablet, docdb_sst_tablets_without_stats,
     "DocDB SST Tablets Without Statistics", yb::MetricUnit::kUnits,
     "Number of tablets whose live SST files have never been measured as a whole, each of which "
-    "contributes zero to every other docdb_sst_* gauge. Gate alerts and ratios on this being zero "
-    "rather than reading those contributions as measurements.");
+    "contributes zero to every other docdb_sst_* gauge. Gate ratios on this being zero rather than "
+    "reading those contributions as measurements.");
 
 namespace yb::docdb {
 
@@ -127,10 +137,14 @@ struct SstStatsMetrics::MetricInfos {
         [](const Snapshot& s) { return s.aggregate.dead_rows; } },
       { METRIC_docdb_sst_dead_row_entries,
         [](const Snapshot& s) { return s.aggregate.dead_row_entries; } },
+      { METRIC_docdb_sst_rows,
+        [](const Snapshot& s) { return s.aggregate.num_rows; } },
       { METRIC_docdb_sst_reclaimable_entries,
         [](const Snapshot& s) { return s.aggregate.reclaimable_entries; } },
       { METRIC_docdb_sst_reclaimable_bytes,
         [](const Snapshot& s) { return s.aggregate.reclaimable_bytes; } },
+      { METRIC_docdb_sst_raw_bytes,
+        [](const Snapshot& s) { return s.aggregate.covered_raw_bytes; } },
       { METRIC_docdb_sst_files_without_stats,
         [](const Snapshot& s) { return s.aggregate.uncovered_files; } },
       { METRIC_docdb_sst_files_with_partial_stats,
