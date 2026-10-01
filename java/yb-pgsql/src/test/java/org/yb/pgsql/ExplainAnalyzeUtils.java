@@ -49,7 +49,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
   public static final String INDEX_SCAN_DIRECTION_FORWARD = "Forward";
   public static final String INDEX_SCAN_DIRECTION_BACKWARD = "Backward";
-  public static final String INDEX_SCAN_DIRECTION_ARBITRARY = "NoMovement";
+  public static final String INDEX_SCAN_DIRECTION_DEFAULT = "Default";
 
   public static final String PLAN = "Plan";
 

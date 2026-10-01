@@ -6077,6 +6077,10 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 			case ForwardScanDirection:
 				scandir = "Forward";
 				break;
+			case NoMovementScanDirection:
+				/* YB scans make use of NoMovementScanDirection */
+				scandir = "Default";
+				break;
 			default:
 				scandir = "???";
 				break;

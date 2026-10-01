@@ -106,21 +106,21 @@ IndexNext(IndexScanState *node)
 	 */
 	estate = node->ss.ps.state;
 
-	/*
-	 * Determine which direction to scan the index in based on the plan's scan
-	 * direction and the current direction of execution.
-	 */
-	direction = ScanDirectionCombine(estate->es_direction,
-									 ((IndexScan *) node->ss.ps.plan)->indexorderdir);
-
-	/*
-	 * YB relation scans are optimized for the "Don't care about order"
-	 * direction.
-	 */
-	if (IsYBRelation(node->ss.ss_currentRelation) &&
-		ScanDirectionIsNoMovement(((IndexScan *) node->ss.ps.plan)->indexorderdir))
+	if (IsYBRelation(node->ss.ss_currentRelation))
 	{
-		direction = NoMovementScanDirection;
+		/*
+		 * YB relation scans can't change the direction.
+		 */
+		direction = ((IndexScan *) node->ss.ps.plan)->indexorderdir;
+	}
+	else
+	{
+		/*
+		 * Determine which direction to scan the index in based on the plan's scan
+		 * direction and the current direction of execution.
+		 */
+		direction = ScanDirectionCombine(estate->es_direction,
+										 ((IndexScan *) node->ss.ps.plan)->indexorderdir);
 	}
 	scandesc = node->iss_ScanDesc;
 	econtext = node->ss.ps.ps_ExprContext;

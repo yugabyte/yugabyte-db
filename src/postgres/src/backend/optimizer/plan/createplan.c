@@ -4441,8 +4441,10 @@ create_indexscan_plan(PlannerInfo *root,
 	/* it should be a base rel... */
 	Assert(baserelid > 0);
 	Assert(best_path->path.parent->rtekind == RTE_RELATION);
-	/* check the scan direction is valid */
-	Assert(best_path->indexscandir == ForwardScanDirection ||
+	/* only YB relations allow NoMovementScanDirection */
+	Assert((best_path->path.parent->is_yb_relation &&
+			ScanDirectionIsValid(best_path->indexscandir)) ||
+		   best_path->indexscandir == ForwardScanDirection ||
 		   best_path->indexscandir == BackwardScanDirection);
 
 	/*

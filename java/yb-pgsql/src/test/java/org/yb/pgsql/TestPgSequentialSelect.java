@@ -14,7 +14,7 @@
 package org.yb.pgsql;
 
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.INDEX_SCAN_DIRECTION_ARBITRARY;
+import static org.yb.pgsql.ExplainAnalyzeUtils.INDEX_SCAN_DIRECTION_DEFAULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.INDEX_SCAN_DIRECTION_BACKWARD;
 import static org.yb.pgsql.ExplainAnalyzeUtils.INDEX_SCAN_DIRECTION_FORWARD;
 import static org.yb.pgsql.ExplainAnalyzeUtils.makePlanBuilder;
@@ -95,16 +95,16 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       String index_name = "range_hash_pk_i1_idx";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4)",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 4);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 4);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (5, 2, 7)",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 6);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 6);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1 ORDER BY i1 ASC",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4) ORDER BY i1 ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_BACKWARD, 2, 4);
@@ -113,7 +113,7 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
           table_name, index_name, INDEX_SCAN_DIRECTION_BACKWARD, 3, 6);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1 ORDER BY i1 DESC",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4) ORDER BY i1 DESC",
           table_name, index_name, INDEX_SCAN_DIRECTION_FORWARD, 2, 4);
@@ -124,22 +124,22 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       index_name = "range_hash_pk_i2_idx";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 = 550",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 190 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 3);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 3);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 390 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 2);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 2);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1590 AND i2 < 1910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 3);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 3);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1790 AND i2 < 1910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 2);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 2);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1790 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 190 AND i2 < 410 ORDER BY i2 ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_FORWARD, 3, 3);
@@ -196,22 +196,22 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       String index_name = "range_asc_pk_pkey";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k = 550",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 90 AND k < 210",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 190 AND k < 210",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 790 AND k < 910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 890 AND k < 910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 890 AND k < 210",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 90 AND k < 210 ORDER BY k ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_FORWARD, 3, 0);
@@ -246,16 +246,16 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       index_name = "range_asc_pk_i1_idx";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4)",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 4);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 4);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (5, 2, 7)",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 6);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 6);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1 ORDER BY i1 ASC",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4) ORDER BY i1 ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_FORWARD, 2, 4);
@@ -264,7 +264,7 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
           table_name, index_name, INDEX_SCAN_DIRECTION_FORWARD, 3, 6);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1 ORDER BY i1 DESC",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4) ORDER BY i1 DESC",
           table_name, index_name, INDEX_SCAN_DIRECTION_BACKWARD, 2, 4);
@@ -275,22 +275,22 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       index_name = "range_asc_pk_i2_idx";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 = 550",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 190 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 3);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 3);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 390 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 2);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 2);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1590 AND i2 < 1910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 3);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 3);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1790 AND i2 < 1910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 2);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 2);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1790 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 190 AND i2 < 410 ORDER BY i2 ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_BACKWARD, 3, 3);
@@ -347,22 +347,22 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       String index_name = "range_desc_pk_pkey";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k = 550",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 90 AND k < 210",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 190 AND k < 210",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 790 AND k < 910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 890 AND k < 910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 890 AND k < 210",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE k > 90 AND k < 210 ORDER BY k ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_BACKWARD, 3, 0);
@@ -397,16 +397,16 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       index_name = "range_desc_pk_i1_idx";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4)",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 4);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 4);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (5, 2, 7)",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 6);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 6);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1 ORDER BY i1 ASC",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4) ORDER BY i1 ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_FORWARD, 2, 4);
@@ -415,7 +415,7 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
           table_name, index_name, INDEX_SCAN_DIRECTION_FORWARD, 3, 6);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 = 1 ORDER BY i1 DESC",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 1, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 1, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i1 in (1, 4) ORDER BY i1 DESC",
           table_name, index_name, INDEX_SCAN_DIRECTION_BACKWARD, 2, 4);
@@ -426,22 +426,22 @@ public class TestPgSequentialSelect extends BasePgSQLTest {
       index_name = "range_desc_pk_i2_idx";
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 = 550",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 1);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 1);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 190 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 3);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 3);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 390 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 2);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 2);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1590 AND i2 < 1910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 3, 3);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 3, 3);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1790 AND i2 < 1910",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 2, 2);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 2, 2);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 1790 AND i2 < 410",
-          table_name, index_name, INDEX_SCAN_DIRECTION_ARBITRARY, 0, 0);
+              table_name, index_name, INDEX_SCAN_DIRECTION_DEFAULT, 0, 0);
       testRangeScanHelper(
           statement, "SELECT * from %s WHERE i2 > 190 AND i2 < 410 ORDER BY i2 ASC",
           table_name, index_name, INDEX_SCAN_DIRECTION_BACKWARD, 3, 3);
