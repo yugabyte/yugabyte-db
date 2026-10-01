@@ -91,6 +91,39 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testShouldEnableNodeExporterHttps() {
+    Universe u = createUniverse(defaultCustomer.getId());
+    u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt =
+                  true;
+              univ.getUniverseDetails()
+                  .nodeDetailsSet
+                  .forEach(
+                      n -> n.nodeExporterSystemdLevel = NodeDetails.NodeExporterSystemdLevel.USER);
+            });
+    assertTrue(Universe.shouldEnableNodeExporterHttps(u, true));
+    assertFalse(Universe.shouldEnableNodeExporterHttps(u, false));
+
+    // One node not known to be user-level keeps the universe on HTTP...
+    NodeDetails node = u.getUniverseDetails().nodeDetailsSet.iterator().next();
+    node.nodeExporterSystemdLevel = null;
+    assertFalse(Universe.shouldEnableNodeExporterHttps(u, true));
+    // ...even while it is being removed: it still runs its exporter...
+    node.state = NodeDetails.NodeState.ToBeRemoved;
+    assertFalse(Universe.shouldEnableNodeExporterHttps(u, true));
+    // ...until it is gone.
+    node.state = NodeDetails.NodeState.Removed;
+    assertTrue(Universe.shouldEnableNodeExporterHttps(u, true));
+
+    u.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = false;
+    assertFalse(Universe.shouldEnableNodeExporterHttps(u, true));
+  }
+
+  @Test
   public void testCreate() {
     Universe u = createUniverse(defaultCustomer.getId());
     assertNotNull(u);
