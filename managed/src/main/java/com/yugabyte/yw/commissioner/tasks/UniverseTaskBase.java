@@ -280,6 +280,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.CertsRotate,
           TaskType.TlsToggle,
+          TaskType.TlsToggleKubernetes,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
           TaskType.PauseUniverse,
