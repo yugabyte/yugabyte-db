@@ -22,7 +22,6 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_tablet_service.h"
@@ -43,8 +42,8 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(disable_pitr);
 DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
-DECLARE_bool(ysql_enable_catalog_follower_read_reservation);
 
 METRIC_DECLARE_counter(ysql_auth_catalog_follower_reads);
 METRIC_DECLARE_counter(ysql_auth_catalog_leader_reads);
@@ -174,26 +173,30 @@ class MasterTabletServiceMultiMasterTest : public MasterTabletServiceTest {
     return STATUS(NotFound, "No master follower");
   }
 
-  Status ReserveAuthCatalogReads() {
-    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<MasterClusterProxy>());
-    ReserveYsqlCatalogFollowerReadsRequestPB req;
-    req.set_acknowledge_permanent_pitr_exclusion(true);
-    ReserveYsqlCatalogFollowerReadsResponsePB resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(30s * kTimeMultiplier);
-    RETURN_NOT_OK(proxy.ReserveYsqlCatalogFollowerReads(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
+  Status WaitForPitrDisabledMode() {
     return WaitFor([&] {
       for (size_t i = 0; i < cluster_->num_masters(); ++i) {
-        if (!cluster_->mini_master(i)->master()->snapshot_coordinator()
-                 .YsqlCatalogFollowerReadsReserved()) {
+        if (!cluster_->mini_master(i)->master()->snapshot_coordinator().PitrDisabled()) {
           return false;
         }
       }
       return true;
-    }, 30s * kTimeMultiplier, "Wait for local catalog follower-read reservations");
+    }, 30s * kTimeMultiplier, "Wait for local PITR-disabled mode");
+  }
+
+  tserver::ReadRequestPB AuthCatalogReadRequest(HybridTime read_time) {
+    tserver::ReadRequestPB req;
+    req.set_tablet_id(kSysCatalogTabletId);
+    req.set_ysql_auth_catalog_read(true);
+    req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+    auto* pg = req.add_pgsql_batch();
+    pg->set_table_id(GetPgsqlTableId(kTemplate1Oid, 1260));
+    pg->set_client(YQL_CLIENT_PGSQL);
+    pg->set_schema_version(0);
+    pg->add_targets()->set_column_id(10);
+    pg->add_col_refs()->set_column_id(10);
+    ReadHybridTime::SingleTime(read_time).AddToPB(&req);
+    return req;
   }
 
   Result<tserver::ReadResponsePB> ReadAuthCatalog(
@@ -239,6 +242,15 @@ class MasterTabletServiceMultiMasterTest : public MasterTabletServiceTest {
   }
 
   std::unique_ptr<client::YBClient> auth_client_;
+};
+
+class MasterTabletServicePitrDisabledModeTest : public MasterTabletServiceMultiMasterTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
+    ASSERT_NO_FATAL_FAILURE(MasterTabletServiceMultiMasterTest::SetUp());
+    ASSERT_OK(WaitForPitrDisabledMode());
+  }
 };
 
 TEST_F(MasterTabletServiceTest, ListMasterServers) {
@@ -312,32 +324,35 @@ TEST_F(MasterTabletServiceMultiMasterTest, FollowerReadRpcRemainsLeaderOnly) {
   }
 }
 
-TEST_F(MasterTabletServiceMultiMasterTest, AuthFollowerServingAndFixedTimeLeaderFallback) {
+TEST_F(MasterTabletServiceMultiMasterTest, AuthFollowerReadsRequirePitrDisabledMode) {
+  ASSERT_FALSE(FLAGS_disable_pitr);
   ASSERT_OK(CreateAuthCatalogTable());
   ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   auto* follower = ASSERT_RESULT(RestartFollower());
-  tserver::ReadRequestPB req;
-  req.set_tablet_id(kSysCatalogTabletId);
-  req.set_ysql_auth_catalog_read(true);
-  req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
-  auto* pg = req.add_pgsql_batch();
-  pg->set_table_id(GetPgsqlTableId(kTemplate1Oid, 1260));
-  pg->set_client(YQL_CLIENT_PGSQL);
-  pg->set_schema_version(0);
-  pg->add_targets()->set_column_id(10);
-  pg->add_col_refs()->set_column_id(10);
-  ReadHybridTime::SingleTime(leader->Now()).AddToPB(&req);
-  ASSERT_NOK_STR_CONTAINS(ReadAuthCatalog(follower, req), "reservation");
-  ASSERT_OK(SET_FLAG(ysql_enable_catalog_follower_read_reservation, true));
-  ASSERT_OK(ReserveAuthCatalogReads());
+  ASSERT_FALSE(leader->master()->snapshot_coordinator().PitrDisabled());
+  ASSERT_FALSE(follower->master()->snapshot_coordinator().PitrDisabled());
+  auto req = AuthCatalogReadRequest(leader->Now());
+  ASSERT_NOK_STR_CONTAINS(
+      ReadAuthCatalog(follower, req),
+      "Authentication catalog follower reads require a universe created with PITR disabled");
+  req.set_consistency_level(YBConsistencyLevel::STRONG);
+  ASSERT_NOK_STR_CONTAINS(
+      ReadAuthCatalog(leader, req),
+      "Authentication catalog follower reads require a universe created with PITR disabled");
+}
+
+TEST_F(MasterTabletServicePitrDisabledModeTest, AuthFollowerServingAndFixedTimeLeaderFallback) {
+  ASSERT_OK(CreateAuthCatalogTable());
+  ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   const auto read_time = ASSERT_RESULT(auth_client_->GetYsqlAuthCatalogReadTime(
       CoarseMonoClock::Now() + 30s * kTimeMultiplier));
   ASSERT_GE(auth_client_->GetLatestObservedHybridTime(), read_time.ToUint64());
-  ReadHybridTime::SingleTime(read_time).AddToPB(&req);
-  // Restart must recover both the physical catalog metadata and its durable reservation.
-  follower = ASSERT_RESULT(RestartFollower());
-  ASSERT_TRUE(follower->master()->snapshot_coordinator().YsqlCatalogFollowerReadsReserved());
+  auto req = AuthCatalogReadRequest(read_time);
+  // Restart must recover both the physical catalog metadata and its durable PITR-disabled mode.
+  auto* follower = ASSERT_RESULT(RestartFollower());
+  ASSERT_TRUE(follower->master()->snapshot_coordinator().PitrDisabled());
   auto tablet = ASSERT_RESULT(follower->tablet_peer()->shared_tablet());
   ASSERT_RESULT(tablet->SafeTime(
       tablet::RequireLease::kFalse, read_time, CoarseMonoClock::Now() + 30s * kTimeMultiplier));
@@ -399,7 +414,7 @@ TEST_F(MasterTabletServiceMultiMasterTest, AuthFollowerServingAndFixedTimeLeader
   ASSERT_EQ(ReadHybridTime::FromReadTimePB(req), ReadHybridTime::SingleTime(read_time));
   ASSERT_EQ(METRIC_ysql_auth_catalog_leader_reads.Instantiate(
       leader->master()->metric_entity())->value(), 1);
-  ASSERT_TRUE(leader->master()->snapshot_coordinator().YsqlCatalogFollowerReadsReserved());
+  ASSERT_TRUE(leader->master()->snapshot_coordinator().PitrDisabled());
 }
 
 void MasterTabletServiceTest::SetUp() {
