@@ -1164,7 +1164,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     if (ybUniverse.getSpec() == null || ybUniverse.getSpec().getUpgradeOption() == null) {
       return UpgradeOption.ROLLING_UPGRADE;
     }
-    switch (ybUniverse.getSpec().getUpgradeOption().getValue()) {
+    return toUpgradeOption(ybUniverse.getSpec().getUpgradeOption().getValue());
+  }
+
+  /** Maps a CR upgradeOption enum value ("Rolling", "Non-Rolling", "Non-Restart"). */
+  static UpgradeOption toUpgradeOption(String crValue) {
+    switch (crValue) {
       case "Non-Rolling":
         return UpgradeOption.NON_ROLLING_UPGRADE;
       case "Non-Restart":
@@ -1175,8 +1180,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private static void applyUpgradeOptions(UpgradeTaskParams requestParams, YBUniverse ybUniverse) {
-    requestParams.upgradeOption = getUpgradeOption(ybUniverse);
+  static void applyUpgradeOptions(UpgradeTaskParams requestParams, YBUniverse ybUniverse) {
+    applyUpgradeOptions(requestParams, ybUniverse, getUpgradeOption(ybUniverse));
+  }
+
+  // Rolling batch size and wait times still come from the ybUniverse spec when upgradeOption
+  // overrides the spec's own option.
+  static void applyUpgradeOptions(
+      UpgradeTaskParams requestParams, YBUniverse ybUniverse, UpgradeOption upgradeOption) {
+    requestParams.upgradeOption = upgradeOption;
     if (ybUniverse.getSpec() == null) {
       return;
     }
