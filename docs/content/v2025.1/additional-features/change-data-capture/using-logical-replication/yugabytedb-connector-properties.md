@@ -700,6 +700,20 @@ Starting with connector version `dz.2.5.2.yb.2026.1.2.0.1`, the connector flushe
 
 Sending heartbeats while streaming changes requires connector version [`dz.2.5.2.yb.2026.1`](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1) (the first release in the v2026.1 series) or later. Earlier releases, such as `dz.2.5.2.yb.2025.2.3`, don't send heartbeats while streaming changes.
 
+{{< note title="Heartbeats with BinaryDataConverter" >}}
+
+Heartbeat records have a structured (`Struct`) key and value. If you use `io.debezium.converters.BinaryDataConverter` as the value converter, for example to write pre-serialized payloads to Kafka unchanged, configure a delegate converter for records whose value isn't binary. Otherwise, the connector task fails when it sends the first heartbeat record, with an error that includes `requires a delegate.converter.type to be configured`. For example:
+
+```properties
+value.converter=io.debezium.converters.BinaryDataConverter
+value.converter.delegate.converter.type=org.apache.kafka.connect.json.JsonConverter
+value.converter.delegate.converter.type.schemas.enable=false
+```
+
+Records whose value is already binary are still written unchanged; the delegate converter serializes only records whose value isn't binary, such as heartbeat and transaction metadata records. If `key.converter` is also `BinaryDataConverter`, configure `key.converter.delegate.converter.type` in the same way. For more information, refer to [Using Avro as the payload format](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html#avro-as-payload-format) in the Debezium documentation.
+
+{{< /note >}}
+
 Default: 0
 
 ##### heartbeat.action.query
