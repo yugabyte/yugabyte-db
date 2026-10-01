@@ -1125,8 +1125,10 @@ public class CustomerTask extends Model {
       if (!optional.isPresent()) {
         return true;
       }
-      if (upgradeCustomerTasksSet.contains(type)) {
-        LOG.debug("Universe task {} is not deletable as it is an upgrade task.", targetUUID);
+      // The UI reads the latest upgrade, finalize and rollback task of a universe, and a successful
+      // upgrade can stay in PreFinalize longer than the task retention period.
+      if (upgradeCustomerTasksSet.contains(type) && isLatestOfTypeForTarget()) {
+        LOG.debug("Universe task {} is not deletable as it is the latest {} task.", taskUUID, type);
         return false;
       }
       UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
@@ -1154,6 +1156,18 @@ public class CustomerTask extends Model {
       }
     }
     return true;
+  }
+
+  private boolean isLatestOfTypeForTarget() {
+    return find.query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", type)
+        .orderBy("create_time desc")
+        .setMaxRows(1)
+        .findOneOrEmpty()
+        .map(latest -> latest.getTaskUUID().equals(taskUUID))
+        .orElse(true);
   }
 
   public static List<CustomerTask> findByTargetUUIDsAndTypesSince(
